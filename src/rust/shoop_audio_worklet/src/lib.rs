@@ -1,14 +1,16 @@
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireApplicationPort,
-    WireConfirmedLink, WireHostPort, WireLoopMode, WireLoopState, WirePortDataType,
-    WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl, WireTrackState,
-    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WireConfirmedLink, WireHostPort, WireLoopMode, WireLoopState, WireMidiOutputEvent,
+    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl,
+    WireTrackState, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
+    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendGrabRequest, BackendLoopId, BackendLoopMode, BackendPortDataType,
-    BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData, BackendSnapshot,
-    BackendTrackControl, BackendTrackId, DirectTrackRequest, EngineBackend, MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopId, BackendLoopMode,
+    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData,
+    BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest, EngineBackend,
+    MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -120,7 +122,7 @@ impl WorkletHost {
             event,
         })
         .unwrap_or_else(|_| {
-            r#"{"version":2,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
+            r#"{"version":4,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
                 .to_owned()
         });
         &self.response
@@ -161,6 +163,59 @@ impl WorkletHost {
                     .configure_web_audio_channels(input_channels, output_channels)
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
+            }
+            Command::ConfigureMidiEndpoints { endpoints } => {
+                let endpoints = endpoints
+                    .into_iter()
+                    .map(|endpoint| BackendHostPortDescriptor {
+                        id: endpoint.id,
+                        name: endpoint.name,
+                        data_type: from_wire_data_type(endpoint.data_type),
+                        direction: from_wire_direction(endpoint.direction),
+                    })
+                    .collect();
+                self.backend
+                    .configure_web_midi_endpoints(endpoints)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::PushMidiInput {
+                host_port_id,
+                events,
+            } => {
+                if events.len() > MIDI_BATCH_CAPACITY {
+                    return Err("Web MIDI input batch exceeds capacity".to_owned());
+                }
+                for event in events {
+                    if event.frame != 0
+                        || event.data.is_empty()
+                        || event.data.len() > TRACK_MIDI_MESSAGE_BYTES
+                    {
+                        return Err("invalid Web MIDI track input event".to_owned());
+                    }
+                    self.backend
+                        .stage_web_midi_input(&host_port_id, &event.data)
+                        .map_err(|error| error.to_string())?;
+                }
+                Ok(Event::Ack)
+            }
+            Command::DrainMidiOutput { max_events } => {
+                let (events, dropped, refused_input) = self
+                    .backend
+                    .drain_web_midi_output(max_events.min(MIDI_BATCH_CAPACITY));
+                Ok(Event::MidiOutput {
+                    events: events
+                        .into_iter()
+                        .map(|event| WireMidiOutputEvent {
+                            application_port_id: event.application_port_id.raw(),
+                            host_port_id: event.host_port_id,
+                            frame: event.frame,
+                            data: event.data,
+                        })
+                        .collect(),
+                    dropped,
+                    refused_input,
+                })
             }
             Command::CreateTrack {
                 expected_track_id,
@@ -466,6 +521,20 @@ fn to_wire_loop_mode(mode: BackendLoopMode) -> WireLoopMode {
         BackendLoopMode::Replacing => WireLoopMode::Replacing,
         BackendLoopMode::PlayingDryThroughWet => WireLoopMode::PlayingDryThroughWet,
         BackendLoopMode::RecordingDryIntoWet => WireLoopMode::RecordingDryIntoWet,
+    }
+}
+
+fn from_wire_data_type(value: WirePortDataType) -> BackendPortDataType {
+    match value {
+        WirePortDataType::Audio => BackendPortDataType::Audio,
+        WirePortDataType::Midi => BackendPortDataType::Midi,
+    }
+}
+
+fn from_wire_direction(value: WirePortDirection) -> BackendPortDirection {
+    match value {
+        WirePortDirection::Input => BackendPortDirection::Input,
+        WirePortDirection::Output => BackendPortDirection::Output,
     }
 }
 
@@ -875,6 +944,211 @@ mod tests {
         assert!(matches!(
             command(&mut host, 8, Command::Poll).event,
             Event::Snapshot(_)
+        ));
+    }
+
+    #[test]
+    fn web_midi_commands_route_record_monitor_and_playback() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let endpoints = vec![
+            WireHostPort {
+                id: "webmidi:source:controller".to_owned(),
+                name: "Controller input".to_owned(),
+                data_type: WirePortDataType::Midi,
+                direction: WirePortDirection::Output,
+            },
+            WireHostPort {
+                id: "webmidi:sink:controller".to_owned(),
+                name: "Controller output".to_owned(),
+                data_type: WirePortDataType::Midi,
+                direction: WirePortDirection::Input,
+            },
+        ];
+        assert!(matches!(
+            command(&mut host, 1, Command::ConfigureMidiEndpoints { endpoints },).event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "midi".to_owned(),
+                    audio_channels: 0,
+                    midi: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        for (sequence, application_port_id, host_port_id) in [
+            (3, 1, "webmidi:source:controller"),
+            (4, 2, "webmidi:sink:controller"),
+        ] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetPortConnected {
+                        application_port_id,
+                        host_port_id: host_port_id.to_owned(),
+                        connected: true,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
+                Command::SetTrackControl {
+                    track_id: 1,
+                    control: WireTrackControl::InputMonitoring(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Recording,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::PushMidiInput {
+                    host_port_id: "webmidi:source:controller".to_owned(),
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0x90, 60, 100],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 0, 128)));
+        let Event::MidiOutput {
+            events,
+            dropped,
+            refused_input,
+        } = command(&mut host, 8, Command::DrainMidiOutput { max_events: 16 }).event
+        else {
+            panic!("expected Web MIDI output")
+        };
+        assert_eq!((dropped, refused_input), (0, 0));
+        assert!(events.iter().any(|event| event.data == [0x90, 60, 100]));
+        assert!(matches!(
+            command(
+                &mut host,
+                9,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Stopped,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                10,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Playing,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 0, 128)));
+        let Event::MidiOutput {
+            events,
+            dropped,
+            refused_input,
+        } = command(&mut host, 11, Command::DrainMidiOutput { max_events: 16 }).event
+        else {
+            panic!("expected Web MIDI playback output")
+        };
+        assert_eq!((dropped, refused_input), (0, 0));
+        assert!(events.iter().any(|event| {
+            event.host_port_id == "webmidi:sink:controller" && event.data == [0x90, 60, 100]
+        }));
+        assert!(matches!(
+            command(
+                &mut host,
+                12,
+                Command::PushMidiInput {
+                    host_port_id: "webmidi:source:controller".to_owned(),
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0xf0, 1, 2, 3, 0xf7],
+                    }],
+                },
+            )
+            .event,
+            Event::Error { .. }
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                13,
+                Command::PushMidiInput {
+                    host_port_id: "webmidi:source:controller".to_owned(),
+                    events: vec![
+                        shoop_audio_protocol::WireMidiEvent {
+                            frame: 0,
+                            data: vec![0xf8],
+                        };
+                        MIDI_BATCH_CAPACITY + 1
+                    ],
+                },
+            )
+            .event,
+            Event::Error { .. }
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                14,
+                Command::ConfigureMidiEndpoints {
+                    endpoints: Vec::new(),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                15,
+                Command::PushMidiInput {
+                    host_port_id: "webmidi:source:controller".to_owned(),
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0xf8],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
         ));
     }
 

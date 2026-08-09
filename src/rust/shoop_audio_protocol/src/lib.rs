@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 3;
+pub const PROTOCOL_VERSION: u16 = 4;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 16 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -8,6 +8,9 @@ pub const SESSION_TRANSFER_MAX_BYTES: usize = 256 * 1024 * 1024;
 pub const WAVEFORM_CHUNK_SAMPLES: usize = 512;
 pub const STATUS_INTERVAL_MS: u32 = 50;
 pub const MAX_DEVICE_AUDIO_CHANNELS: usize = 2;
+pub const MIDI_BATCH_CAPACITY: usize = 128;
+pub const MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
+pub const TRACK_MIDI_MESSAGE_BYTES: usize = 4;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CommandEnvelope {
@@ -32,6 +35,16 @@ pub enum Command {
     ConfigureDeviceChannels {
         input_channels: u32,
         output_channels: u32,
+    },
+    ConfigureMidiEndpoints {
+        endpoints: Vec<WireHostPort>,
+    },
+    PushMidiInput {
+        host_port_id: String,
+        events: Vec<WireMidiEvent>,
+    },
+    DrainMidiOutput {
+        max_events: usize,
     },
     CreateTrack {
         expected_track_id: u64,
@@ -175,7 +188,8 @@ impl Command {
                     loop_id: replacement_loop,
                 },
             ) => existing_loop == replacement_loop,
-            (Self::ConfigureDeviceChannels { .. }, Self::ConfigureDeviceChannels { .. }) => true,
+            (Self::ConfigureDeviceChannels { .. }, Self::ConfigureDeviceChannels { .. })
+            | (Self::ConfigureMidiEndpoints { .. }, Self::ConfigureMidiEndpoints { .. }) => true,
             (
                 Self::SetPortConnected {
                     application_port_id: existing_port,
@@ -245,6 +259,11 @@ pub enum Event {
         host_port_id: String,
         desired_connected: bool,
         message: String,
+    },
+    MidiOutput {
+        events: Vec<WireMidiOutputEvent>,
+        dropped: u32,
+        refused_input: u32,
     },
     Snapshot(WireSnapshot),
     Waveform(WaveformChunk),
@@ -337,6 +356,20 @@ pub struct WireHostPort {
 pub struct WireConfirmedLink {
     pub application_port_id: u64,
     pub host_port_id: String,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireMidiEvent {
+    pub frame: u32,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireMidiOutputEvent {
+    pub application_port_id: u64,
+    pub host_port_id: String,
+    pub frame: u32,
+    pub data: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -432,6 +465,17 @@ mod tests {
             input_channels: 0,
             output_channels: 1,
         }));
+        assert!(Command::ConfigureMidiEndpoints {
+            endpoints: vec![WireHostPort {
+                id: "webmidi:source:new".to_owned(),
+                name: "new".to_owned(),
+                data_type: WirePortDataType::Midi,
+                direction: WirePortDirection::Output,
+            }],
+        }
+        .supersedes_in_journal(&Command::ConfigureMidiEndpoints {
+            endpoints: Vec::new(),
+        }));
     }
 
     #[test]
@@ -465,5 +509,19 @@ mod tests {
         let encoded = serde_json::to_string(&grab).unwrap();
         let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, grab);
+
+        let midi = CommandEnvelope::new(
+            44,
+            Command::PushMidiInput {
+                host_port_id: "webmidi:source:controller".to_owned(),
+                events: vec![WireMidiEvent {
+                    frame: 0,
+                    data: vec![0x90, 60, 100],
+                }],
+            },
+        );
+        let encoded = serde_json::to_string(&midi).unwrap();
+        let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, midi);
     }
 }

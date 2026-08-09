@@ -1,5 +1,6 @@
 const MAX_CHANNELS = 2;
 const MAX_COMMAND_BYTES = 16 * 1024;
+const PROTOCOL_VERSION = 4;
 
 function encodeUtf8(value) {
   const bytes = [];
@@ -68,7 +69,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
   handleCommand(message) {
     if (typeof message !== 'string') {
       this.port.postMessage(JSON.stringify({
-        version: 1,
+        version: PROTOCOL_VERSION,
         sequence: 0,
         event: { kind: 'error', message: 'worklet commands must be JSON strings' },
       }));
@@ -77,7 +78,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     const encoded = encodeUtf8(message);
     if (encoded.length > MAX_COMMAND_BYTES) {
       this.port.postMessage(JSON.stringify({
-        version: 1,
+        version: PROTOCOL_VERSION,
         sequence: 0,
         event: { kind: 'error', message: 'worklet command exceeds capacity' },
       }));
@@ -104,7 +105,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
 
   fail(message) {
     this.port.postMessage(JSON.stringify({
-      version: 1,
+      version: PROTOCOL_VERSION,
       sequence: 0,
       event: { kind: 'error', message },
     }));

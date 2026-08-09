@@ -4,13 +4,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::browser_midi::{BrowserMidiHub, TrackMidiInput};
 use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
-    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireGrabRequest, WireLoopMode,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl,
-    COMMAND_CAPACITY, MAX_DEVICE_AUDIO_CHANNELS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireGrabRequest, WireHostPort,
+    WireLoopMode, WireMidiEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
+    WireTrackControl, COMMAND_CAPACITY, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
+    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
@@ -130,7 +132,17 @@ impl Transport {
             output_channels,
         })?;
         let journal = self.journal.clone();
-        for command in journal {
+        for command in journal
+            .iter()
+            .filter(|command| matches!(command, Command::ConfigureMidiEndpoints { .. }))
+            .cloned()
+        {
+            self.send(command)?;
+        }
+        for command in journal
+            .into_iter()
+            .filter(|command| !matches!(command, Command::ConfigureMidiEndpoints { .. }))
+        {
             self.send(command)?;
         }
         Ok(())
@@ -910,10 +922,12 @@ pub struct WebAudioBackend {
     next_session_generation: u64,
     session_capture: Option<SessionCaptureAssembly>,
     session_replace: Option<SessionReplaceAssembly>,
+    midi: BrowserMidiHub,
+    midi_revision: u64,
 }
 
 impl WebAudioBackend {
-    pub fn new() -> (Self, Rc<RefCell<Transport>>) {
+    pub fn new(midi: BrowserMidiHub) -> (Self, Rc<RefCell<Transport>>) {
         let transport = Rc::new(RefCell::new(Transport::new()));
         (
             Self {
@@ -949,6 +963,8 @@ impl WebAudioBackend {
                 next_session_generation: 1,
                 session_capture: None,
                 session_replace: None,
+                midi,
+                midi_revision: u64::MAX,
             },
             transport,
         )
@@ -956,6 +972,77 @@ impl WebAudioBackend {
 
     fn submit(&mut self, command: Command) -> Result<()> {
         self.transport.borrow_mut().journal(command)
+    }
+
+    fn sync_midi_endpoints(&mut self) -> Result<()> {
+        let endpoint_snapshot = self.midi.endpoint_snapshot();
+        if endpoint_snapshot.revision == self.midi_revision {
+            return Ok(());
+        }
+        let endpoints = self.midi.endpoints();
+        let wire_endpoints = endpoints
+            .iter()
+            .map(|endpoint| WireHostPort {
+                id: endpoint.id.clone(),
+                name: endpoint.name.clone(),
+                data_type: WirePortDataType::Midi,
+                direction: match endpoint.direction {
+                    shoop_scripting::MidiEndpointDirection::Input => WirePortDirection::Input,
+                    shoop_scripting::MidiEndpointDirection::Output => WirePortDirection::Output,
+                },
+            })
+            .collect::<Vec<_>>();
+        self.submit(Command::ConfigureMidiEndpoints {
+            endpoints: wire_endpoints,
+        })?;
+        self.snapshot
+            .connections
+            .host_ports
+            .retain(|_, host| host.data_type != BackendPortDataType::Midi);
+        for endpoint in endpoints {
+            self.snapshot.connections.host_ports.insert(
+                endpoint.id.clone(),
+                BackendHostPortDescriptor {
+                    id: endpoint.id,
+                    name: endpoint.name,
+                    data_type: BackendPortDataType::Midi,
+                    direction: match endpoint.direction {
+                        shoop_scripting::MidiEndpointDirection::Input => {
+                            BackendPortDirection::Input
+                        }
+                        shoop_scripting::MidiEndpointDirection::Output => {
+                            BackendPortDirection::Output
+                        }
+                    },
+                },
+            );
+        }
+        self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
+        self.midi_revision = endpoint_snapshot.revision;
+        Ok(())
+    }
+
+    fn pump_midi_input(&mut self, running: bool) -> Result<()> {
+        let messages = self.midi.drain_track_messages(MIDI_BATCH_CAPACITY);
+        if !running {
+            return Ok(());
+        }
+        let mut batches: BTreeMap<String, Vec<WireMidiEvent>> = BTreeMap::new();
+        for TrackMidiInput { endpoint_id, data } in messages {
+            batches
+                .entry(endpoint_id)
+                .or_default()
+                .push(WireMidiEvent { frame: 0, data });
+        }
+        for (host_port_id, events) in batches {
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::PushMidiInput {
+                    host_port_id,
+                    events,
+                })?;
+        }
+        Ok(())
     }
 
     fn request_waveform_chunk(&mut self, loop_id: BackendLoopId) -> Result<()> {
@@ -1720,7 +1807,10 @@ impl Backend for WebAudioBackend {
     fn advance(&mut self, _elapsed: Duration) {}
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
+        self.sync_midi_endpoints()?;
         let state = self.transport.borrow().driver_state;
+        let running = matches!(state, BackendDriverState::Running);
+        self.pump_midi_input(running)?;
         self.snapshot.status.driver_state = state;
         self.snapshot.status.command_overflows = self.transport.borrow().overflows;
         if matches!(
@@ -1730,6 +1820,11 @@ impl Backend for WebAudioBackend {
             && self.transport.borrow().in_flight < COMMAND_CAPACITY / 2
         {
             self.transport.borrow_mut().ephemeral(Command::Poll)?;
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::DrainMidiOutput {
+                    max_events: MIDI_BATCH_CAPACITY,
+                })?;
             self.last_poll = Instant::now();
         }
         let events: Vec<_> = self.transport.borrow_mut().inbound.drain(..).collect();
@@ -1752,6 +1847,29 @@ impl Backend for WebAudioBackend {
                         desired_connected,
                         message,
                     }),
+                Event::MidiOutput {
+                    events,
+                    dropped,
+                    refused_input,
+                } => {
+                    let current_overflows = self.transport.borrow().overflows;
+                    self.transport.borrow_mut().overflows = current_overflows
+                        .saturating_add(dropped)
+                        .saturating_add(refused_input);
+                    for event in events {
+                        if let Err(error) = self.midi.send(&event.host_port_id, &event.data) {
+                            self.snapshot
+                                .connections
+                                .failures
+                                .push(BackendConnectionFailure {
+                                    port_id: BackendPortId::from_raw(event.application_port_id),
+                                    external_port: event.host_port_id,
+                                    desired_connected: true,
+                                    message: error.to_string(),
+                                });
+                        }
+                    }
+                }
                 Event::Snapshot(snapshot) => self.apply_wire_snapshot(snapshot),
                 Event::Waveform(chunk) => self.apply_waveform_chunk(chunk)?,
                 Event::SessionCaptureReady {

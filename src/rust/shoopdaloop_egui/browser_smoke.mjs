@@ -31,6 +31,12 @@ const stress = process.env.STRESS === '1';
 const saturate = process.env.SATURATE === '1';
 const settingsOnly = process.env.SETTINGS_ONLY === '1';
 const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
+const webMidi = process.env.WEB_MIDI === '1';
+const webMidiDenyFirst = process.env.WEB_MIDI_DENY_FIRST === '1';
+const webMidiOpenFail = process.env.WEB_MIDI_OPEN_FAIL === '1';
+if ((webMidiDenyFirst || webMidiOpenFail) && !webMidi) {
+  throw new Error('Web MIDI failure modes require WEB_MIDI=1');
+}
 if (settingsUnavailable && !settingsOnly) {
   throw new Error('SETTINGS_UNAVAILABLE requires SETTINGS_ONLY=1');
 }
@@ -190,6 +196,82 @@ try {
 
   await call('Runtime.enable');
   await call('Page.enable');
+  if (webMidi) {
+    await call('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        class FakeMIDIPort extends EventTarget {
+          constructor(id, name, manufacturer) {
+            super();
+            this.id = id;
+            this.name = name;
+            this.manufacturer = manufacturer;
+            this.version = '1';
+            this.state = 'connected';
+            this.connection = 'closed';
+            this.onstatechange = null;
+          }
+          open() {
+            if (this.failOpen) {
+              this.failOpen = false;
+              return Promise.reject(new DOMException('test open failure', 'InvalidStateError'));
+            }
+            this.connection = 'open';
+            return Promise.resolve(this);
+          }
+          close() { this.connection = 'closed'; return Promise.resolve(this); }
+        }
+        class FakeMIDIInput extends FakeMIDIPort {
+          constructor(...args) { super(...args); this.onmidimessage = null; }
+          emit(data) {
+            this.onmidimessage?.({ data: Uint8Array.from(data), timeStamp: performance.now() });
+          }
+        }
+        class FakeMIDIOutput extends FakeMIDIPort {
+          send(data) {
+            if (this.failNext) {
+              this.failNext = false;
+              throw new DOMException('test send failure', 'InvalidStateError');
+            }
+            window.__shoopWebMidi.sent.push(Array.from(data));
+          }
+          clear() {}
+        }
+        class FakeMIDIAccess extends EventTarget {
+          constructor(input, output) {
+            super();
+            this.inputs = new Map([[input.id, input]]);
+            this.outputs = new Map([[output.id, output]]);
+            this.sysexEnabled = true;
+            this.onstatechange = null;
+          }
+        }
+        Object.defineProperties(globalThis, {
+          MIDIPort: { value: FakeMIDIPort, configurable: true },
+          MIDIInput: { value: FakeMIDIInput, configurable: true },
+          MIDIOutput: { value: FakeMIDIOutput, configurable: true },
+          MIDIAccess: { value: FakeMIDIAccess, configurable: true },
+        });
+        const input = new FakeMIDIInput('test-input', 'APC MINI MIDI', 'Shoop Test');
+        const output = new FakeMIDIOutput('test-output', 'APC MINI MIDI', 'Shoop Test');
+        output.failOpen = ${webMidiOpenFail};
+        const access = new FakeMIDIAccess(input, output);
+        window.__shoopWebMidi = {
+          access, input, output, sent: [], requested: [], denyNext: ${webMidiDenyFirst}
+        };
+        Object.defineProperty(navigator, 'requestMIDIAccess', {
+          configurable: true,
+          value: options => {
+            window.__shoopWebMidi.requested.push({ sysex: options?.sysex === true });
+            if (window.__shoopWebMidi.denyNext) {
+              window.__shoopWebMidi.denyNext = false;
+              return Promise.reject(new DOMException('test denial', 'NotAllowedError'));
+            }
+            return Promise.resolve(access);
+          },
+        });
+      })();`,
+    });
+  }
   const origin = `http://${host}:${webPort}`;
   if (denyFirst) {
     await call('Browser.setPermission', {
@@ -204,11 +286,13 @@ try {
       ? settingsUnavailable
         ? '?offline=1&settings-test=unavailable'
         : '?offline=1&settings-test=write'
-      : directFileMicrophone
-        ? '?self-test=1'
-        : outputOnly
-          ? ''
-          : '?offline=1&self-test=1';
+      : webMidi
+        ? '?web-midi-test=1'
+        : directFileMicrophone
+          ? '?self-test=1'
+          : outputOnly
+            ? ''
+            : '?offline=1&self-test=1';
     entryUrl = `${pathToFileURL(selfContainedPath).href}${query}`;
   } else {
     entryUrl = settingsOnly
@@ -217,7 +301,9 @@ try {
         : `${origin}/?offline=1&settings-test=write`
       : outputOnly
         ? `${origin}/`
-        : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
+        : webMidi
+          ? `${origin}/?web-midi-test=1`
+          : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
   }
   await call('Page.navigate', { url: entryUrl });
 
@@ -249,6 +335,12 @@ try {
     memoryGrowths: Number(document.getElementById('runtime_status')?.getAttribute('data-memory-growths')),
     overflows: Number(document.getElementById('runtime_status')?.getAttribute('data-command-overflows')),
     webMidi: document.getElementById('runtime_status')?.getAttribute('data-web-midi'),
+    webMidiEndpoints: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-endpoints')),
+    webMidiSelfTest: document.getElementById('runtime_status')?.getAttribute('data-web-midi-self-test'),
+    webMidiTrackDrops: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-track-drops')),
+    webMidiTrackRefusals: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-track-refusals')),
+    webMidiControlRefusals: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-control-refusals')),
+    webMidiStatus: document.getElementById('enable_midi')?.title,
     applicationPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-application-ports')),
     hostPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-host-ports')),
     confirmedLinks: Number(document.getElementById('runtime_status')?.getAttribute('data-confirmed-links')),
@@ -359,7 +451,7 @@ try {
       throw new Error('failed browser save wrote settings bytes');
     }
     console.log(`${selfContained ? 'direct-file' : 'hosted'} browser settings save/reload/rejection passed`);
-  } else if (selfContained && !outputOnly && !directFileMicrophone) {
+  } else if (selfContained && !outputOnly && !directFileMicrophone && !webMidi) {
     const state = await waitFor(
       candidate => candidate.driver === 'Dummy'
         && candidate.revision > 0
@@ -387,6 +479,183 @@ try {
       throw new Error(`output-only mode acquired input or left enable actions visible: ${JSON.stringify(state)}`);
     }
     console.log(`${selfContained ? 'direct-file' : 'hosted'} output-only audio passed at ${browserSize}`);
+  } else if (webMidi) {
+    await waitFor(
+      candidate => candidate.webMidiSelfTest === 'awaiting-permission'
+        && candidate.driver === 'AwaitingGesture',
+      'Web MIDI test enable actions were not presented',
+    );
+    await clickEnable('enable_midi');
+    if (webMidiDenyFirst) {
+      await waitFor(
+        candidate => candidate.webMidi === 'Denied',
+        'Web MIDI permission denial was not visible',
+      );
+      await clickEnable('enable_midi');
+    }
+    await waitFor(
+      candidate => candidate.webMidi === 'Running'
+        && candidate.webMidiEndpoints === 2
+        && candidate.webMidiSelfTest === 'control-ready-without-audio'
+        && candidate.driver === 'AwaitingGesture'
+        && candidate.luaControlPorts === 2,
+      'Web MIDI control did not become ready independently of audio',
+      120_000,
+    );
+    if (webMidiOpenFail) {
+      await waitFor(
+        candidate => candidate.webMidiStatus?.includes('could not open Web MIDI output'),
+        'Web MIDI port-open failure was not user-visible',
+      );
+    }
+    const controlDeadline = Date.now() + 10_000;
+    let preAudioControlOutput = [];
+    while (Date.now() < controlDeadline) {
+      preAudioControlOutput = await evaluate('window.__shoopWebMidi.sent');
+      if (preAudioControlOutput.length > 0) break;
+      await delay(50);
+    }
+    if (preAudioControlOutput.length === 0) {
+      throw new Error('Web MIDI control output did not run before audio startup');
+    }
+    await clickEnable();
+    const midiState = await waitFor(
+      candidate => candidate.webMidi === 'Running'
+        && candidate.webMidiEndpoints === 2
+        && candidate.midiHostPorts === 2
+        && candidate.webMidiSelfTest === 'awaiting-input'
+        && candidate.driver === 'Running',
+      'Web MIDI track and control routes were not prepared',
+      120_000,
+    );
+    const request = await evaluate('window.__shoopWebMidi.requested[0]');
+    if (!request?.sysex) {
+      throw new Error(`Web MIDI SysEx permission was not explicit: ${JSON.stringify(request)}`);
+    }
+    await evaluate(`(() => {
+      const input = window.__shoopWebMidi.input;
+      input.emit([0x90, 98, 0x7f]);
+      input.emit([0x90, 83, 0x7f]);
+      input.emit([0x80, 83, 0x40]);
+      input.emit([0x80, 98, 0x40]);
+    })()`);
+    await waitFor(
+      candidate => candidate.webMidiSelfTest === 'ready-for-playback',
+      'Web MIDI input was not consumed by track recording and APC control',
+      120_000,
+    );
+    const prePlaybackOutput = await evaluate('window.__shoopWebMidi.sent');
+    if (!prePlaybackOutput.some(message => message.length === 3 && message[2] <= 6)) {
+      throw new Error(`APC control output was not delivered: ${JSON.stringify(prePlaybackOutput)}`);
+    }
+    await evaluate(`(() => {
+      window.__shoopWebMidi.sent = [];
+      document.getElementById('runtime_status').setAttribute('data-web-midi-playback-ready', 'true');
+    })()`);
+    await waitFor(
+      candidate => candidate.webMidiSelfTest === 'awaiting-playback-output',
+      'Web MIDI playback did not start after browser acknowledgement',
+    );
+    const state = await waitFor(
+      candidate => candidate.webMidiSelfTest === 'passed'
+        && candidate.callbacks > midiState.callbacks,
+      'recorded Web MIDI was not played back',
+      120_000,
+    );
+    let playbackOutput;
+    const playbackDeadline = Date.now() + 10_000;
+    while (Date.now() < playbackDeadline) {
+      playbackOutput = await evaluate('window.__shoopWebMidi.sent');
+      const playedNoteOn = playbackOutput.some(message => message.join(',') === '144,83,127');
+      const playedNoteOff = playbackOutput.some(message => message.join(',') === '128,83,64');
+      if (playedNoteOn && playedNoteOff) break;
+      await delay(50);
+    }
+    const playedNoteOnIndex = playbackOutput.findIndex(message => message.join(',') === '144,83,127');
+    const playedNoteOffIndex = playbackOutput.findIndex(message => message.join(',') === '128,83,64');
+    if (playedNoteOnIndex < 0 || playedNoteOffIndex <= playedNoteOnIndex) {
+      throw new Error(`exact recorded Web MIDI note pair was not replayed in order: ${JSON.stringify(playbackOutput)}`);
+    }
+    if (!(state.confirmedLinks >= 4 && state.luaControlPorts === 2 && state.midiHostPorts === 2)) {
+      throw new Error(`Web MIDI normalized route truth is incomplete: ${JSON.stringify(state)}`);
+    }
+    if (!(state.callbacks > 0 && state.frames >= state.callbacks * 128 && state.overflows === 0)) {
+      throw new Error(`Web MIDI workflow disrupted bounded audio progress: ${JSON.stringify(state)}`);
+    }
+
+    await evaluate(`(() => {
+      window.__shoopWebMidi.output.failNext = true;
+      window.__shoopWebMidi.input.emit([0xf8]);
+    })()`);
+    await waitFor(
+      candidate => candidate.webMidiStatus?.includes('could not send Web MIDI'),
+      'Web MIDI output-send failure was not user-visible',
+    );
+
+    const callbacksBeforeOverflow = state.callbacks;
+    await evaluate(`(() => {
+      window.__shoopWebMidi.input.emit([]);
+      window.__shoopWebMidi.input.emit(new Array(257).fill(1));
+      for (let index = 0; index < 1100; index += 1) {
+        window.__shoopWebMidi.input.emit([0xf8]);
+      }
+    })()`);
+    await waitFor(
+      candidate => candidate.webMidiTrackDrops > 0
+        && candidate.webMidiTrackRefusals >= 2
+        && candidate.webMidiControlRefusals >= 2
+        && candidate.callbacks > callbacksBeforeOverflow,
+      'bounded Web MIDI refusal/drop counters or callback recovery were missing',
+    );
+
+    await evaluate(`(() => {
+      const midi = window.__shoopWebMidi;
+      midi.input.state = 'disconnected';
+      midi.output.state = 'disconnected';
+      midi.access.inputs.delete(midi.input.id);
+      midi.access.outputs.delete(midi.output.id);
+      midi.access.onstatechange?.(new Event('statechange'));
+    })()`);
+    await waitFor(
+      candidate => candidate.webMidiEndpoints === 0 && candidate.midiHostPorts === 0,
+      'Web MIDI hot-unplug was not published',
+    );
+    await evaluate(`(() => {
+      const midi = window.__shoopWebMidi;
+      midi.input.state = 'connected';
+      midi.output.state = 'connected';
+      midi.access.inputs.set(midi.input.id, midi.input);
+      midi.access.outputs.set(midi.output.id, midi.output);
+      midi.access.onstatechange?.(new Event('statechange'));
+    })()`);
+    let recovered = await waitFor(
+      candidate => candidate.webMidiEndpoints === 2
+        && candidate.midiHostPorts === 2
+        && candidate.confirmedLinks >= 6,
+      'Web MIDI hotplug routes did not reconnect',
+      120_000,
+    );
+
+    const generationBeforeRestart = recovered.generation;
+    const callbacksBeforeRestart = recovered.callbacks;
+    await evaluate("dispatchEvent(new Event('shoop-test-audio-fail'))");
+    await waitFor(
+      candidate => candidate.driver === 'Failed',
+      'forced worklet failure was not visible during Web MIDI use',
+    );
+    await clickEnable('enable_output_audio');
+    recovered = await waitFor(
+      candidate => candidate.driver === 'Running'
+        && candidate.generation > generationBeforeRestart
+        && candidate.callbacks > 0
+        && candidate.confirmedLinks >= 6,
+      'Web MIDI routes did not recover after worklet restart',
+      120_000,
+    );
+    if (callbacksBeforeRestart === 0 || recovered.overflows === 0) {
+      throw new Error(`Web MIDI restart/refusal evidence is invalid: ${JSON.stringify(recovered)}`);
+    }
+    console.log(`${selfContained ? 'self-contained' : 'hosted'} Web MIDI track/control/hotplug/restart workflow passed: ${JSON.stringify(recovered)}`);
   } else {
     await waitFor(candidate => candidate.selfTest === 'awaiting-audio', 'enable action was not presented');
     await clickEnable();
@@ -425,7 +694,7 @@ try {
       || state.overflows !== 0
       || !Number.isFinite(state.memoryGrowths)
       || state.memoryGrowths > 32
-      || state.webMidi !== 'unavailable'
+      || state.webMidi !== 'AwaitingGesture'
     ) {
       throw new Error(`render, memory-growth, protocol, or Web MIDI diagnostics are invalid: ${JSON.stringify(state)}`);
     }

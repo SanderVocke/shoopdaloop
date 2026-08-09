@@ -3,7 +3,7 @@ mod native;
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 pub use native::NativeBackend;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,6 +16,7 @@ use shoop_app_api::{
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
 use shoop_engine::external_audio_port::ExternalAudioPort;
+use shoop_engine::external_midi_port::ExternalMidiPort;
 use shoop_engine::session::{Port, Session};
 use shoop_engine::{
     ChannelMode, LoopMode, MidiStorage, PortDataType as EnginePortDataType, PortDirection,
@@ -435,9 +436,18 @@ const NANOSECONDS_PER_SECOND: u128 = 1_000_000_000;
 const MAX_CYCLES_PER_ADVANCE: u32 = 8;
 pub const MAX_WEB_AUDIO_QUANTUM: u32 = 2048;
 pub const RECORDING_CAPACITY_SECONDS: u32 = 10;
+pub const WEB_MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
 const RECORDING_CHUNK_SIZE: usize = 4096;
 const WEB_AUDIO_CAPTURE_PORTS: [&str; 2] = ["webaudio:capture_1", "webaudio:capture_2"];
 const WEB_AUDIO_DESTINATION_PORTS: [&str; 2] = ["webaudio:destination_1", "webaudio:destination_2"];
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackendWebMidiOutputEvent {
+    pub application_port_id: BackendPortId,
+    pub host_port_id: String,
+    pub frame: u32,
+    pub data: Vec<u8>,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EngineBackendMode {
@@ -462,12 +472,18 @@ pub struct EngineBackend {
     connection_revision: u64,
     connection_ports: BTreeMap<BackendPortId, EngineConnectionPort>,
     external_connections: DummyExternalConnections,
+    web_midi_hosts: BTreeMap<String, BackendHostPortDescriptor>,
+    desired_web_midi_connections: BTreeSet<(BackendPortId, String)>,
     mode: EngineBackendMode,
     callback_count: u64,
     input_peak: f32,
     output_peak: f32,
     last_quantum: u32,
     route_scratch: Vec<f32>,
+    web_midi_output: VecDeque<(BackendPortId, shoop_engine::MidiStorageElem)>,
+    web_midi_output_pending: VecDeque<BackendWebMidiOutputEvent>,
+    web_midi_output_dropped: u32,
+    web_midi_input_refused: u32,
 }
 
 struct EngineLoopChannels {
@@ -488,6 +504,8 @@ struct EngineTrack {
     audio_outputs: Vec<usize>,
     midi_input: Option<usize>,
     midi_output: Option<usize>,
+    midi_input_port: Option<BackendPortId>,
+    midi_output_port: Option<BackendPortId>,
     loops: Vec<BackendLoopId>,
     ports: Vec<BackendPortId>,
     output_gain_db: f32,
@@ -525,12 +543,18 @@ impl EngineBackend {
             connection_revision: 1,
             connection_ports: BTreeMap::new(),
             external_connections: representative_external_connections(),
+            web_midi_hosts: BTreeMap::new(),
+            desired_web_midi_connections: BTreeSet::new(),
             mode: EngineBackendMode::Dummy,
             callback_count: 0,
             input_peak: 0.0,
             output_peak: 0.0,
             last_quantum: buffer_size,
             route_scratch: vec![0.0; buffer_size as usize],
+            web_midi_output: VecDeque::with_capacity(WEB_MIDI_OUTPUT_QUEUE_CAPACITY),
+            web_midi_output_pending: VecDeque::with_capacity(WEB_MIDI_OUTPUT_QUEUE_CAPACITY),
+            web_midi_output_dropped: 0,
+            web_midi_input_refused: 0,
         })
     }
 
@@ -561,7 +585,16 @@ impl EngineBackend {
                 "Web Audio channel count exceeds the protocol limit"
             ));
         }
-        self.external_connections.remove_all_mock_ports();
+        let audio_hosts = self
+            .external_connections
+            .mock_ports()
+            .iter()
+            .filter(|port| port.data_type == EnginePortDataType::Audio)
+            .map(|port| port.name.clone())
+            .collect::<Vec<_>>();
+        for host in audio_hosts {
+            self.external_connections.remove_mock_port(&host);
+        }
         for host in WEB_AUDIO_CAPTURE_PORTS.iter().take(input_channels as usize) {
             self.external_connections.add_mock_port(
                 *host,
@@ -581,6 +614,153 @@ impl EngineBackend {
         }
         self.connection_revision = self.connection_revision.wrapping_add(1);
         Ok(())
+    }
+
+    pub fn configure_web_midi_endpoints(
+        &mut self,
+        endpoints: Vec<BackendHostPortDescriptor>,
+    ) -> Result<()> {
+        if self.mode != EngineBackendMode::Physical {
+            return Err(anyhow!(
+                "Web MIDI endpoints supplied to a non-physical backend"
+            ));
+        }
+        let replacement = endpoints
+            .into_iter()
+            .map(|endpoint| {
+                if endpoint.data_type != BackendPortDataType::Midi {
+                    return Err(anyhow!("Web MIDI endpoint has a non-MIDI data type"));
+                }
+                Ok((endpoint.id.clone(), endpoint))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        if replacement == self.web_midi_hosts {
+            return Ok(());
+        }
+        let removed = self
+            .web_midi_hosts
+            .keys()
+            .filter(|id| !replacement.contains_key(*id))
+            .cloned()
+            .collect::<Vec<_>>();
+        for id in removed {
+            self.external_connections.remove_mock_port(&id);
+        }
+        for endpoint in replacement.values() {
+            self.external_connections.add_mock_port(
+                endpoint.id.clone(),
+                engine_direction(endpoint.direction),
+                EnginePortDataType::Midi,
+            );
+        }
+        self.web_midi_hosts = replacement;
+        let desired = self
+            .desired_web_midi_connections
+            .iter()
+            .filter(|(_, host_id)| self.web_midi_hosts.contains_key(host_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        for (application_port_id, host_id) in desired {
+            let Some(local) = self.connection_ports.get(&application_port_id) else {
+                continue;
+            };
+            if let Some(host) = self.web_midi_hosts.get(&host_id) {
+                if host.direction == opposite_backend_direction(local.descriptor.direction) {
+                    self.external_connections
+                        .connect(local.registry_id, &host_id)?;
+                }
+            }
+        }
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        Ok(())
+    }
+
+    pub fn stage_web_midi_input(&mut self, host_port_id: &str, data: &[u8]) -> Result<usize> {
+        let Some(host) = self.web_midi_hosts.get(host_port_id) else {
+            self.web_midi_input_refused = self.web_midi_input_refused.saturating_add(1);
+            return Ok(0);
+        };
+        if host.direction != BackendPortDirection::Output {
+            return Err(anyhow!("Web MIDI endpoint is not an input source"));
+        }
+        let destinations = self
+            .tracks
+            .values()
+            .filter_map(|track| {
+                Some((
+                    track.midi_input?,
+                    track.midi_input_port?,
+                    self.connection_ports
+                        .get(&track.midi_input_port?)?
+                        .registry_id,
+                ))
+            })
+            .filter(|(_, _, registry_id)| {
+                self.external_connections
+                    .is_connected(*registry_id, host_port_id)
+            })
+            .map(|(session_port, application_port_id, _)| (session_port, application_port_id))
+            .collect::<Vec<_>>();
+        let mut staged = 0;
+        for (session_port, _) in destinations {
+            let accepted = self
+                .session
+                .port_mut(session_port)
+                .and_then(Port::as_external_midi_mut)
+                .ok_or_else(|| anyhow!("missing physical MIDI input port"))?
+                .push_incoming(0, data);
+            if accepted {
+                staged += 1;
+            } else {
+                self.web_midi_input_refused = self.web_midi_input_refused.saturating_add(1);
+            }
+        }
+        Ok(staged)
+    }
+
+    pub fn drain_web_midi_output(
+        &mut self,
+        max_events: usize,
+    ) -> (Vec<BackendWebMidiOutputEvent>, u32, u32) {
+        while self.web_midi_output_pending.len() < max_events {
+            let Some((application_port_id, event)) = self.web_midi_output.pop_front() else {
+                break;
+            };
+            let Some(local) = self.connection_ports.get(&application_port_id) else {
+                continue;
+            };
+            for host_port_id in self.external_connections.connections_for(local.registry_id) {
+                if !self
+                    .web_midi_hosts
+                    .get(&host_port_id)
+                    .is_some_and(|host| host.direction == BackendPortDirection::Input)
+                {
+                    continue;
+                }
+                if self.web_midi_output_pending.len() >= WEB_MIDI_OUTPUT_QUEUE_CAPACITY {
+                    self.web_midi_output_dropped = self.web_midi_output_dropped.saturating_add(1);
+                    continue;
+                }
+                self.web_midi_output_pending
+                    .push_back(BackendWebMidiOutputEvent {
+                        application_port_id,
+                        host_port_id,
+                        frame: event.time,
+                        data: event.data().to_vec(),
+                    });
+            }
+        }
+        let count = max_events.min(self.web_midi_output_pending.len());
+        let events = self.web_midi_output_pending.drain(..count).collect();
+        (
+            events,
+            std::mem::take(&mut self.web_midi_output_dropped),
+            std::mem::take(&mut self.web_midi_input_refused),
+        )
+    }
+
+    pub fn web_midi_input_refused(&self) -> u32 {
+        self.web_midi_input_refused
     }
 
     pub fn process_audio_quantum(
@@ -638,6 +818,27 @@ impl EngineBackend {
         }
 
         self.session.process(n_frames);
+        for track in self.tracks.values() {
+            let (Some(session_port), Some(application_port_id)) =
+                (track.midi_output, track.midi_output_port)
+            else {
+                continue;
+            };
+            let events = self
+                .session
+                .port(session_port)
+                .and_then(Port::as_external_midi)
+                .ok_or_else(|| anyhow!("missing physical MIDI output port"))?
+                .outgoing();
+            for event in events {
+                if self.web_midi_output.len() >= WEB_MIDI_OUTPUT_QUEUE_CAPACITY {
+                    self.web_midi_output_dropped = self.web_midi_output_dropped.saturating_add(1);
+                } else {
+                    self.web_midi_output
+                        .push_back((application_port_id, *event));
+                }
+            }
+        }
         output[..output_channels * n_frames].fill(0.0);
         self.output_peak = 0.0;
         for track in self.tracks.values() {
@@ -810,12 +1011,14 @@ impl EngineBackend {
             .map(|port| {
                 (
                     port.name.clone(),
-                    BackendHostPortDescriptor {
-                        id: port.name.clone(),
-                        name: port.name.clone(),
-                        data_type: backend_data_type(port.data_type),
-                        direction: backend_direction(port.direction),
-                    },
+                    self.web_midi_hosts.get(&port.name).cloned().unwrap_or(
+                        BackendHostPortDescriptor {
+                            id: port.name.clone(),
+                            name: port.name.clone(),
+                            data_type: backend_data_type(port.data_type),
+                            direction: backend_direction(port.direction),
+                        },
+                    ),
                 )
             })
             .collect();
@@ -997,15 +1200,26 @@ impl EngineBackend {
                         .application_ports
                         .get(port_id)
                         .ok_or_else(|| anyhow!("missing application connection port"))?;
+                    let mut external_connections = connections
+                        .confirmed_links
+                        .iter()
+                        .filter(|link| link.application_port_id == *port_id)
+                        .map(|link| link.host_port_id.clone())
+                        .collect::<BTreeSet<_>>();
+                    if self.mode == EngineBackendMode::Physical
+                        && descriptor.data_type == BackendPortDataType::Midi
+                    {
+                        external_connections.extend(
+                            self.desired_web_midi_connections
+                                .iter()
+                                .filter(|(desired_port, _)| desired_port == port_id)
+                                .map(|(_, host_id)| host_id.clone()),
+                        );
+                    }
                     Ok(BackendSessionPort {
                         source_id: port_id.raw(),
                         descriptor: descriptor.clone(),
-                        external_connections: connections
-                            .confirmed_links
-                            .iter()
-                            .filter(|link| link.application_port_id == *port_id)
-                            .map(|link| link.host_port_id.clone())
-                            .collect(),
+                        external_connections: external_connections.into_iter().collect(),
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -1048,6 +1262,7 @@ impl EngineBackend {
                 descriptor.data_type,
             );
         }
+        staged.web_midi_hosts = self.web_midi_hosts.clone();
         let mut replacement = BackendSessionReplacement::default();
         for source_track in &data.tracks {
             let created = staged.create_direct_track(DirectTrackRequest {
@@ -1456,41 +1671,65 @@ impl Backend for EngineBackend {
             audio_inputs.push(input);
             audio_outputs.push(output);
         }
-        let (midi_input, midi_output) = if request.midi {
+        let (midi_input, midi_output, midi_input_port, midi_output_port) = if request.midi {
             let input_name = format!("{}_direct_midi_in", request.port_name_base);
             let output_name = format!("{}_direct_midi_out", request.port_name_base);
             let input_registry_id = self.next_port_id();
             let output_registry_id = self.next_port_id();
-            let mut input =
-                DummyMidiPort::new(input_registry_id, input_name.clone(), PortDirection::Input);
-            input.midi_mut().set_passthrough_muted(true);
-            input
-                .midi_mut()
-                .set_ringbuffer_n_samples(capture_samples.min(u32::MAX as usize) as u32);
-            let input = self.session.add_port(Port::DummyMidi(input));
-            let output = self.session.add_port(Port::DummyMidi(DummyMidiPort::new(
-                output_registry_id,
-                output_name.clone(),
-                PortDirection::Output,
-            )));
-            ports.push(self.register_connection_port(
+            let (input, output) = if self.mode == EngineBackendMode::Physical {
+                let mut input = ExternalMidiPort::new(input_name.clone(), PortDirection::Input);
+                input.midi_mut().set_passthrough_muted(true);
+                input
+                    .midi_mut()
+                    .set_ringbuffer_n_samples(capture_samples.min(u32::MAX as usize) as u32);
+                let input = self.session.add_port(Port::ExternalMidi(input));
+                let output = self
+                    .session
+                    .add_port(Port::ExternalMidi(ExternalMidiPort::new(
+                        output_name.clone(),
+                        PortDirection::Output,
+                    )));
+                (input, output)
+            } else {
+                let mut input =
+                    DummyMidiPort::new(input_registry_id, input_name.clone(), PortDirection::Input);
+                input.midi_mut().set_passthrough_muted(true);
+                input
+                    .midi_mut()
+                    .set_ringbuffer_n_samples(capture_samples.min(u32::MAX as usize) as u32);
+                let input = self.session.add_port(Port::DummyMidi(input));
+                let output = self.session.add_port(Port::DummyMidi(DummyMidiPort::new(
+                    output_registry_id,
+                    output_name.clone(),
+                    PortDirection::Output,
+                )));
+                (input, output)
+            };
+            let input_port = self.register_connection_port(
                 input_registry_id,
                 input_name,
                 BackendPortDataType::Midi,
                 BackendPortDirection::Input,
                 BackendPortRole::MidiInput,
-            ));
-            ports.push(self.register_connection_port(
+            );
+            let output_port = self.register_connection_port(
                 output_registry_id,
                 output_name,
                 BackendPortDataType::Midi,
                 BackendPortDirection::Output,
                 BackendPortRole::MidiOutput,
-            ));
+            );
+            ports.push(input_port.clone());
+            ports.push(output_port.clone());
             self.session.connect_ports_internal(input, output)?;
-            (Some(input), Some(output))
+            (
+                Some(input),
+                Some(output),
+                Some(input_port.id),
+                Some(output_port.id),
+            )
         } else {
-            (None, None)
+            (None, None, None, None)
         };
         if self.mode == EngineBackendMode::Physical {
             let input_channels = WEB_AUDIO_CAPTURE_PORTS
@@ -1543,6 +1782,8 @@ impl Backend for EngineBackend {
                 audio_outputs,
                 midi_input,
                 midi_output,
+                midi_input_port,
+                midi_output_port,
                 loops: Vec::new(),
                 ports: ports.iter().map(|port| port.id).collect(),
                 output_gain_db: 0.0,
@@ -1887,24 +2128,57 @@ impl Backend for EngineBackend {
             .connection_ports
             .get(&port_id)
             .ok_or_else(|| anyhow!("unknown backend port {port_id:?}"))?;
+        let local_direction = local.descriptor.direction;
+        let local_data_type = local.descriptor.data_type;
+        let registry_id = local.registry_id;
+        let is_web_midi = self.mode == EngineBackendMode::Physical
+            && local_data_type == BackendPortDataType::Midi
+            && external_port.starts_with("webmidi:");
         let candidate = self
             .external_connections
             .mock_ports()
             .iter()
-            .find(|candidate| candidate.name == external_port)
-            .ok_or_else(|| anyhow!("external port disappeared: {external_port}"))?;
-        if candidate.direction
-            != engine_direction(opposite_backend_direction(local.descriptor.direction))
-            || candidate.data_type != engine_data_type(local.descriptor.data_type)
+            .find(|candidate| candidate.name == external_port);
+        let Some(candidate) = candidate else {
+            if is_web_midi {
+                let compatible_prefix = match local_direction {
+                    BackendPortDirection::Input => "webmidi:source:",
+                    BackendPortDirection::Output => "webmidi:sink:",
+                };
+                if !external_port.starts_with(compatible_prefix) {
+                    return Err(anyhow!("external port is incompatible: {external_port}"));
+                }
+                if connected {
+                    self.desired_web_midi_connections
+                        .insert((port_id, external_port.to_owned()));
+                } else {
+                    self.desired_web_midi_connections
+                        .remove(&(port_id, external_port.to_owned()));
+                }
+                self.connection_revision = self.connection_revision.wrapping_add(1);
+                return Ok(());
+            }
+            return Err(anyhow!("external port disappeared: {external_port}"));
+        };
+        if candidate.direction != engine_direction(opposite_backend_direction(local_direction))
+            || candidate.data_type != engine_data_type(local_data_type)
         {
             return Err(anyhow!("external port is incompatible: {external_port}"));
         }
         if connected {
             self.external_connections
-                .connect(local.registry_id, external_port)?;
+                .connect(registry_id, external_port)?;
+            if is_web_midi {
+                self.desired_web_midi_connections
+                    .insert((port_id, external_port.to_owned()));
+            }
         } else {
             self.external_connections
-                .disconnect(local.registry_id, external_port)?;
+                .disconnect(registry_id, external_port)?;
+            if is_web_midi {
+                self.desired_web_midi_connections
+                    .remove(&(port_id, external_port.to_owned()));
+            }
         }
         self.connection_revision = self.connection_revision.wrapping_add(1);
         Ok(())
@@ -3533,6 +3807,361 @@ mod tests {
     }
 
     #[test]
+    fn web_midi_routes_record_monitor_and_playback_with_bounded_render_work() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        let endpoints = vec![
+            BackendHostPortDescriptor {
+                id: "webmidi:source:controller".to_owned(),
+                name: "Controller input".to_owned(),
+                data_type: BackendPortDataType::Midi,
+                direction: BackendPortDirection::Output,
+            },
+            BackendHostPortDescriptor {
+                id: "webmidi:sink:controller".to_owned(),
+                name: "Controller output".to_owned(),
+                data_type: BackendPortDataType::Midi,
+                direction: BackendPortDirection::Input,
+            },
+        ];
+        backend
+            .configure_web_midi_endpoints(endpoints.clone())
+            .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "web_midi".to_owned(),
+                audio_channels: 0,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let input = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::MidiInput)
+            .unwrap();
+        let output = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::MidiOutput)
+            .unwrap();
+        backend
+            .set_port_connected(input.id, "webmidi:source:controller", true)
+            .unwrap();
+        backend
+            .set_port_connected(output.id, "webmidi:sink:controller", true)
+            .unwrap();
+        backend
+            .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        assert_eq!(
+            backend
+                .stage_web_midi_input("webmidi:source:controller", &[0x90, 60, 100])
+                .unwrap(),
+            1
+        );
+        assert_no_alloc::assert_no_alloc(|| {
+            backend
+                .process_audio_quantum(&[], 0, &mut [], 0, 128)
+                .unwrap();
+        });
+        let (monitored, dropped, refused) = backend.drain_web_midi_output(16);
+        assert_eq!((dropped, refused), (0, 0));
+        assert!(monitored.iter().any(|event| event.data == [0x90, 60, 100]));
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let session = backend.capture_session().unwrap();
+        assert!(session.tracks[0].loops[0].midi[0]
+            .events
+            .iter()
+            .any(|event| event.data == [0x90, 60, 100]));
+
+        backend
+            .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(false))
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        assert_no_alloc::assert_no_alloc(|| {
+            backend
+                .process_audio_quantum(&[], 0, &mut [], 0, 128)
+                .unwrap();
+        });
+        let (played, dropped, refused) = backend.drain_web_midi_output(16);
+        assert_eq!((dropped, refused), (0, 0));
+        assert!(played.iter().any(|event| {
+            event.host_port_id == "webmidi:sink:controller" && event.data == [0x90, 60, 100]
+        }));
+
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        backend
+            .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
+            .set_port_connected(output.id, "webmidi:sink:controller", false)
+            .unwrap();
+        backend
+            .stage_web_midi_input("webmidi:source:controller", &[0x90, 61, 100])
+            .unwrap();
+        backend
+            .process_audio_quantum(&[], 0, &mut [], 0, 128)
+            .unwrap();
+        assert!(backend.drain_web_midi_output(16).0.is_empty());
+        backend
+            .set_port_connected(output.id, "webmidi:sink:controller", true)
+            .unwrap();
+        backend
+            .stage_web_midi_input("webmidi:source:controller", &[0x90, 62, 100])
+            .unwrap();
+        backend
+            .process_audio_quantum(&[], 0, &mut [], 0, 128)
+            .unwrap();
+        let reconnected_output = backend.drain_web_midi_output(16).0;
+        assert_eq!(
+            reconnected_output
+                .iter()
+                .filter(|event| event.data == [0x90, 62, 100])
+                .count(),
+            1
+        );
+
+        backend.configure_web_midi_endpoints(Vec::new()).unwrap();
+        assert_eq!(
+            backend
+                .stage_web_midi_input("webmidi:source:controller", &[0xf8])
+                .unwrap(),
+            0
+        );
+        let disconnected = backend.poll().unwrap().connections;
+        assert!(disconnected
+            .host_ports
+            .values()
+            .all(|host| host.data_type != BackendPortDataType::Midi));
+        assert!(disconnected
+            .confirmed_links
+            .iter()
+            .all(|link| !link.host_port_id.starts_with("webmidi:")));
+        let saved_while_missing = backend.capture_session().unwrap();
+        assert_eq!(
+            saved_while_missing.tracks[0]
+                .ports
+                .iter()
+                .flat_map(|port| &port.external_connections)
+                .filter(|endpoint| endpoint.starts_with("webmidi:"))
+                .count(),
+            2
+        );
+        backend.replace_session(&saved_while_missing).unwrap();
+        backend.configure_web_midi_endpoints(endpoints).unwrap();
+        let reconnected = backend.poll().unwrap().connections;
+        assert_eq!(
+            reconnected
+                .confirmed_links
+                .iter()
+                .filter(|link| link.host_port_id.starts_with("webmidi:"))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn web_midi_input_fans_out_once_to_every_connected_track() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        backend
+            .configure_web_midi_endpoints(vec![BackendHostPortDescriptor {
+                id: "webmidi:source:shared".to_owned(),
+                name: "Shared input".to_owned(),
+                data_type: BackendPortDataType::Midi,
+                direction: BackendPortDirection::Output,
+            }])
+            .unwrap();
+        let mut tracks = Vec::new();
+        for name in ["first", "second"] {
+            let track = backend
+                .create_direct_track(DirectTrackRequest {
+                    port_name_base: name.to_owned(),
+                    audio_channels: 0,
+                    midi: true,
+                    initial_loops: 1,
+                })
+                .unwrap();
+            let input = track
+                .ports
+                .iter()
+                .find(|port| port.role == BackendPortRole::MidiInput)
+                .unwrap();
+            backend
+                .set_port_connected(input.id, "webmidi:source:shared", true)
+                .unwrap();
+            backend
+                .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+                .unwrap();
+            tracks.push(track);
+        }
+        assert_eq!(
+            backend
+                .stage_web_midi_input("webmidi:source:shared", &[0x90, 65, 100])
+                .unwrap(),
+            2
+        );
+        backend
+            .process_audio_quantum(&[], 0, &mut [], 0, 128)
+            .unwrap();
+        for track in &tracks {
+            backend
+                .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+                .unwrap();
+        }
+        let session = backend.capture_session().unwrap();
+        assert_eq!(session.tracks.len(), tracks.len());
+        for track in &session.tracks {
+            assert_eq!(
+                track.loops[0].midi[0]
+                    .events
+                    .iter()
+                    .filter(|event| event.data == [0x90, 65, 100])
+                    .count(),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn web_midi_output_fanout_survives_bounded_drains_without_duplicates() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        backend
+            .configure_web_midi_endpoints(vec![
+                BackendHostPortDescriptor {
+                    id: "webmidi:source:controller".to_owned(),
+                    name: "Controller input".to_owned(),
+                    data_type: BackendPortDataType::Midi,
+                    direction: BackendPortDirection::Output,
+                },
+                BackendHostPortDescriptor {
+                    id: "webmidi:sink:first".to_owned(),
+                    name: "First output".to_owned(),
+                    data_type: BackendPortDataType::Midi,
+                    direction: BackendPortDirection::Input,
+                },
+                BackendHostPortDescriptor {
+                    id: "webmidi:sink:second".to_owned(),
+                    name: "Second output".to_owned(),
+                    data_type: BackendPortDataType::Midi,
+                    direction: BackendPortDirection::Input,
+                },
+            ])
+            .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "fanout".to_owned(),
+                audio_channels: 0,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let input = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::MidiInput)
+            .unwrap();
+        let output = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::MidiOutput)
+            .unwrap();
+        backend
+            .set_port_connected(input.id, "webmidi:source:controller", true)
+            .unwrap();
+        for endpoint in ["webmidi:sink:first", "webmidi:sink:second"] {
+            backend
+                .set_port_connected(output.id, endpoint, true)
+                .unwrap();
+        }
+        backend
+            .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
+            .stage_web_midi_input("webmidi:source:controller", &[0xf8])
+            .unwrap();
+        assert_no_alloc::assert_no_alloc(|| {
+            backend
+                .process_audio_quantum(&[], 0, &mut [], 0, 128)
+                .unwrap();
+        });
+        let mut events = backend.drain_web_midi_output(1).0;
+        events.extend(backend.drain_web_midi_output(1).0);
+        events.extend(backend.drain_web_midi_output(1).0);
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.host_port_id.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["webmidi:sink:first", "webmidi:sink:second"])
+        );
+    }
+
+    #[test]
+    fn saturated_web_midi_render_is_allocation_free_and_counts_refusal() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        backend
+            .configure_web_midi_endpoints(vec![BackendHostPortDescriptor {
+                id: "webmidi:source:dense".to_owned(),
+                name: "Dense input".to_owned(),
+                data_type: BackendPortDataType::Midi,
+                direction: BackendPortDirection::Output,
+            }])
+            .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "dense".to_owned(),
+                audio_channels: 0,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let input = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::MidiInput)
+            .unwrap();
+        backend
+            .set_port_connected(input.id, "webmidi:source:dense", true)
+            .unwrap();
+        for _ in 0..256 {
+            assert_eq!(
+                backend
+                    .stage_web_midi_input("webmidi:source:dense", &[0xf8])
+                    .unwrap(),
+                1
+            );
+        }
+        assert_eq!(
+            backend
+                .stage_web_midi_input("webmidi:source:dense", &[0xf8])
+                .unwrap(),
+            0
+        );
+        assert_eq!(backend.web_midi_input_refused(), 1);
+        assert_eq!(backend.drain_web_midi_output(0).2, 1);
+        assert_eq!(backend.web_midi_input_refused(), 0);
+        assert_no_alloc::assert_no_alloc(|| {
+            backend
+                .process_audio_quantum(&[], 0, &mut [], 0, 128)
+                .unwrap();
+        });
+    }
+
+    #[test]
     fn disconnected_web_audio_input_records_silence() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 1).unwrap();
@@ -3713,9 +4342,17 @@ mod tests {
     }
 
     #[test]
-    fn web_audio_grab_adopts_recent_input_without_growing_in_the_callback() {
-        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+    fn web_audio_and_midi_grab_adopt_recent_input_without_growing_in_the_callback() {
+        let mut backend = EngineBackend::new_web_audio(128, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
+        backend
+            .configure_web_midi_endpoints(vec![BackendHostPortDescriptor {
+                id: "webmidi:source:grab".to_owned(),
+                name: "Grab MIDI input".to_owned(),
+                data_type: BackendPortDataType::Midi,
+                direction: BackendPortDirection::Output,
+            }])
+            .unwrap();
         let sync = backend
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "grab_sync".to_owned(),
@@ -3728,14 +4365,30 @@ mod tests {
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "grab_target".to_owned(),
                 audio_channels: 1,
-                midi: false,
+                midi: true,
                 initial_loops: 1,
             })
             .unwrap();
+        let midi_input = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::MidiInput)
+            .unwrap();
+        backend
+            .set_port_connected(midi_input.id, "webmidi:source:grab", true)
+            .unwrap();
+        backend
+            .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        let mut output = vec![0.0; 256];
+        for _ in 0..8 {
+            backend
+                .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 2, 128)
+                .unwrap();
+        }
         backend
             .transition_loop(sync.loops[0], BackendLoopMode::Recording, None)
             .unwrap();
-        let mut output = vec![0.0; 256];
         backend
             .process_audio_quantum(&vec![0.25; 128], 1, &mut output, 2, 128)
             .unwrap();
@@ -3746,8 +4399,22 @@ mod tests {
             .set_loop_sync_source(track.loops[0], Some(sync.loops[0]))
             .unwrap();
         backend
+            .stage_web_midi_input("webmidi:source:grab", &[0x90, 64, 100])
+            .unwrap();
+        backend
             .process_audio_quantum(&vec![0.5; 128], 1, &mut output, 2, 128)
             .unwrap();
+        let midi_session_port = backend.tracks[&track.track_id].midi_input.unwrap();
+        let mut midi_ringbuffer = MidiStorage::with_capacity_elems(1024);
+        backend
+            .session
+            .port(midi_session_port)
+            .and_then(Port::midi)
+            .unwrap()
+            .snapshot_ringbuffer_into(&mut midi_ringbuffer);
+        assert!(midi_ringbuffer
+            .iter()
+            .any(|event| event.data() == [0x90, 64, 100]));
         backend
             .grab_loops(&[BackendGrabRequest {
                 loop_id: track.loops[0],
@@ -3766,6 +4433,21 @@ mod tests {
         let grabbed = backend.loop_audio_data(track.loops[0]).unwrap().unwrap();
         assert_eq!(grabbed[0].len(), 128);
         assert!(grabbed[0].iter().any(|sample| *sample != 0.0));
+        let session = backend.capture_session().unwrap();
+        assert!(
+            session
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .flat_map(|loop_| &loop_.midi)
+                .flat_map(|channel| &channel.events)
+                .any(|event| event.data == [0x90, 64, 100]),
+            "ring times: {:?}",
+            midi_ringbuffer
+                .iter()
+                .map(|event| event.time)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
