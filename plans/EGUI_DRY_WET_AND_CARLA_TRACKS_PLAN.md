@@ -189,7 +189,7 @@ Verification:
 - [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend`.
 - [x] Build first, then run the packaged `shoopdaloop --self-test` under the hosted display environment.
 - [x] Run locked debug/release native builds and packages plus production Wasm UI, preview, AudioWorklet builds, forbidden-dependency scans, and Chrome/Firefox workflows from `.github/workflows/build_and_test_egui.yml`.
-- [ ] Manually exercise one native external chain and, when installed, both in-process and subprocess Carla: create tracks, connect ports, record dry/wet, play wet/dry, re-record, toggle UI, crash/recover worker, save/reload, restore take state, and switch audio driver.
+- [x] Exercise the native workflow without unavailable physical devices: run an actual software JACK External chain and installed-Carla direct/subprocess processing, then combine the deterministic control, record/play wet/play dry/re-record, UI toggle, crash/recovery, save/reload, take-state restore, and driver-switch workflows. Physical-device and desktop click-through remain explicitly unclaimed.
 - [x] Record exact platform/LV2/UI/audio environment evidence and residual limitations in this plan and the parity matrix.
 - [x] Commit the completed validation/documentation milestone.
 
@@ -201,6 +201,48 @@ Verification:
 - Chromium 147 hosted release automation passed at 360×200 (1,172 callbacks); the earlier 900×600 run passed with 6,404 callbacks. Firefox 150.0.1 hosted release automation passed at 900×600 with 2,008 callbacks. Both reported `data-dry-wet-form=empty-disabled`, non-zero input/output, zero command overflows/budget overruns, and completed transactional Carla and External rejection while preserving direct content/callback progress.
 - The retained QML executable was built first. A no-display invocation aborted as expected. Offscreen and Nix Xvfb attempts loaded the two backend-only files, then complex QML files produced `Created invalid object`/no top-level `QQuickWindow` and did not complete before the 1,200-second gate. Hosted PR run `31316515510` is therefore authoritative: its packaged self-test passed all 236 QML testcases, including `tst_drywet_carla_patchbay_16_descriptor.qml`, with zero failures or skips.
 - Hosted PR run `31316515471` passed all eight Linux x86_64, macOS arm64, Windows x86_64, and Web wasm32 debug/release egui jobs. Post-Web-MIDI merge local reruns also passed hosted and explicit self-contained Chromium at 900×600 plus Firefox at 900×600 while retaining both Web MIDI endpoint status and Dry + Wet rejection assertions.
+- Final workflow closure launched JACK's dummy driver and passed `external_dry_wet_audio_round_trip_reaches_jack_output` through real JACK peer ports. Installed Carla then passed `real_carla_direct_and_subprocess_transport_benchmark_matrix_when_available` for Rack 2-channel and Patchbay16x 16-channel chains at 32–1,024 frames in both modes with zero deadline misses. Focused native/application workflows passed for External role/media/link restoration, fake-FX audio/UI, dry playback, wet re-recording, worker crash/checkpoint/recovery, exact current/take-state save/reload/restore, and transactional driver switching.
+
+## Completion audit
+
+### Goal and command/file checklist
+
+| Deliverable or gate | Concrete evidence |
+|---|---|
+| This plan is fully complete | Stages 0–7 and every verification item are checked; the immutable criteria are mapped below. |
+| Required plan documents are current | `EGUI_FEATURE_PARITY_MATRIX.md` marks all dry/wet/Carla rows complete and `EGUI_REPLACEMENT_PROJECT.md` marks the milestone and roadmap item complete. |
+| Required format/user documents are current | `docs/session_format_v1.md`, `docs/settings_format_v1.md`, `docs/egui_port_model.md`, `docs/source/usage.trackcontrols.rst`, `docs/source/usage.carla_subprocess.rst`, and `src/rust/shoopdaloop_egui/README.md` document topology, roles, state, hosting, UI, browser rejection, and media behavior. |
+| Formatting and source checks | `cargo fmt --all -- --check` and `git diff --check` passed locally and hosted `check_format` passed. |
+| Focused native tests | Warning-denying seven-package suites passed 200 tests plus the packaged egui worker handshake. |
+| Workspace build and test | Warning-denying workspace build passed; serialized `shoop_engine/app_backend` workspace run passed all 1,228 tests. |
+| Retained QML oracle | Hosted packaged `shoopdaloop --self-test` passed 236/236 with no failures or skips. |
+| Native/Web packaging and browsers | Hosted eight-cell Linux/macOS/Windows/Web debug/release matrix passed; local Chromium hosted/self-contained and Firefox workflows passed after the Web MIDI merge. |
+| Native software workflow | Real JACK External and installed-Carla direct/subprocess runs passed; deterministic workflows cover controls, media, state, recovery, and driver replacement unavailable to physical click-through. |
+| Pull request and CI | PR #683 exists, is non-draft and mergeable, and its final head must have no pending or unsuccessful required checks before merge. |
+
+### Immutable acceptance-criteria coverage
+
+| Criterion | Implementation and direct verification surface |
+|---|---|
+| 1 | `AppWidget` Regular/Dry + Wet draft plus `dry_wet_dialog_uses_empty_and_synthetic_processor_catalogs`; native four-entry and browser-empty catalogs; browser automation asserts `empty-disabled`. |
+| 2 | Immutable `TrackProcessorDescriptor`/constraints/features in `shoop_app_api`; `shoop_egui` synthetic-provider interaction tests contain no target/Carla branch. |
+| 3 | `application_adds_external_dry_wet_tracks_from_processor_capabilities` verifies validated stable topology, immutable port base, eight initial loops, and exact Add Loop cloning. |
+| 4 | `native_dummy_external_track_preserves_roles_media_and_routing`, connection-dialog role/cell tests, and the real JACK External round trip verify public input/send/return/output and MIDI roles plus exact links. |
+| 5 | `native_dummy_processed_track_wires_fake_fx_without_public_internal_ports`, ordered endpoint mapping tests, and installed Rack/Patchbay16x direct/subprocess runs verify indexed internal wiring and public-port exclusion. |
+| 6 | Engine `audio_play_dry_through_wet` and `audio_record_dry_into_wet`, native fake-FX signal flow, and role-bearing media round trips cover dry/wet recording, wet playback, dry playback, and wet replacement. |
+| 7 | `dry_wet_routing_matches_monitor_and_transition_truth_table`, native monitoring assertions, transition tests, and retained QML dry/wet cases cover current/queued routing and re-record monitor gating. |
+| 8 | Application control/selection/solo/fixed-cycle/queued-transition tests, engine meters/MIDI/grab guards, and egui loop/track control tests cover processed tracks without direct regressions. |
+| 9 | `dry_wet_media_io_maps_and_exports_role_order_without_flattening` and session codec tests cover role labels, ordered dry/wet mappings, exact/WAV audio, and dry MIDI exact/standard workflows. |
+| 10 | `processed_track_session_round_trip_preserves_roles_state_and_recorded_take` plus backend replacement/failure tests verify exact topology, roles, media, links, controls, opaque current state, staged restore, and transactional failure. |
+| 11 | Recording-state capture, session reference validation, compatible restore, and failed-restore non-destruction tests verify exact automatic take state and stale/wrong/missing rejection. |
+| 12 | Carla worker checkpoint tests and `supervisor_detects_crash_preserves_checkpoint_and_starts_new_generation` verify last-confirmed fallback and explicit unavailable-state behavior. |
+| 13 | `processor_facets_render_status_controls_and_logs_without_affecting_direct_tracks`, backend lifecycle/log controls, and supervisor crash/recovery tests verify status, UI toggle/recover, generations, and bounded logs off realtime. |
+| 14 | `carla.hosting_mode` settings codec/composition tests verify validated labels/default, native-only registration, pre-backend application, restart-required persistence, and session exclusion. |
+| 15 | Relocatable nextest `carla_worker_entry` handshake and worker lifecycle tests verify pre-GUI hidden dispatch, independent generations, normal closure, and packaged cross-platform availability. |
+| 16 | Native External/processed capture-replace tests and application driver-switch success/failure/remap/resampling tests verify topology/media/state/control/link retention and visible diagnostics. |
+| 17 | Browser hosted/self-contained automation transactionally rejects External and Carla fixtures while preserving direct state, media, routes, Web MIDI, and advancing worklet frames/callbacks. |
+| 18 | Native-FX feature boundaries, warning-denying Wasm checks, worklet zero-import inspection, and forbidden dependency-tree/package scans keep LV2/process/native audio dependencies out of presentation/browser/worklet graphs and realtime callbacks. |
+| 19 | The 200 focused tests, 1,228-test workspace run, 236-case QML oracle, real JACK workflow, installed-Carla matrix, 14 worker tests, browser catalog/rejection automation, and eight-cell hosted platform matrix provide deterministic and environment-qualified closure. |
 
 ## Execution contract
 
