@@ -53,8 +53,13 @@ impl TrackControls {
                 } else {
                     ICON_VOLUME_UP
                 };
+                let color = if state.output_muted {
+                    colors::MUTED_FOREGROUND
+                } else {
+                    colors::FOREGROUND
+                };
                 let response = ui
-                    .add(egui::Button::new(icon.rich_text().size(16.0)).frame(false))
+                    .add(egui::Button::new(icon.rich_text().size(16.0).color(color)).frame(false))
                     .on_hover_text("Mute/unmute output");
                 self.record_rect(TestTrackControl::OutputMute, &response);
                 if response.clicked() {
@@ -98,7 +103,7 @@ impl TrackControls {
             );
             ui.horizontal(|ui| {
                 let color = if state.input_monitoring {
-                    ui.visuals().text_color()
+                    colors::FOREGROUND
                 } else {
                     colors::MUTED_FOREGROUND
                 };

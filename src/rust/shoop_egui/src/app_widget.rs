@@ -612,7 +612,7 @@ impl AppWidget {
 
         egui::Panel::right("logo_status_and_sync")
             .resizable(false)
-            .exact_size(190.0)
+            .exact_size(220.0)
             .frame(
                 egui::Frame::new()
                     .fill(colors::SIDEBAR_BACKGROUND)

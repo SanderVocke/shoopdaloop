@@ -71,7 +71,7 @@ impl TracksWidget {
                                 result.add_track_requested = add.clicked();
                             });
                         });
-                    ui.separator();
+                    // ui.separator();
                     ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing.x = 3.0;
                         for (track, widget) in tracks.iter().zip(&mut self.track_widgets) {
