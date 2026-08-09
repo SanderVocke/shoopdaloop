@@ -936,6 +936,7 @@ mod tests {
         session.tracks[0].loops[0].length = 4;
         session.tracks[0].loops[0].audio[0].samples = vec![0.1, 0.2, 0.3, 0.4];
         session.tracks[0].loops[0].midi[0] = shoop_backend::BackendMidiContent {
+            mode: shoop_backend::BackendChannelMode::Direct,
             length: 4,
             start_state: vec![vec![0xB0, 7, 100]],
             events: vec![shoop_backend::BackendMidiEvent {

@@ -164,8 +164,8 @@ Verification:
 Verification:
 
 - [x] Settings tests cover default, both modes, invalid fallback/diagnostic, unknown-key preservation, restart persistence, and no session serialization.
-- [ ] Runner/backend tests prove the selected mode is applied before first FX creation and changing the setting has no runtime effect until restart.
-- [ ] In-process and fake-subprocess workflows create independent chains, save/restore state, toggle UI, recover one failed chain, and shut down without orphan workers.
+- [x] Runner/backend tests prove the selected mode is applied before first FX creation and changing the setting has no runtime effect until restart.
+- [x] In-process and fake-subprocess workflows create independent chains, save/restore state, toggle UI, recover one failed chain, and shut down without orphan workers.
 - [x] Commit the settings/startup milestone.
 
 ### Stage 6 — QML-parity integration and documentation

@@ -2369,6 +2369,23 @@ mod tests {
     }
 
     #[test]
+    fn runtime_applies_carla_hosting_setting_before_backend_start() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        register_carla_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let settings = builder.finish().defaults(1);
+        configure_carla_hosting_mode(shoop_settings::CarlaHostingMode::Subprocess);
+        let runtime = Runtime::new(&settings).unwrap();
+        assert_eq!(
+            shoop_backend::configured_carla_hosting_mode(),
+            shoop_settings::CarlaHostingMode::InProcess
+        );
+        drop(runtime);
+    }
+
+    #[test]
     fn carla_hosting_mode_persists_but_does_not_change_the_running_backend() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
