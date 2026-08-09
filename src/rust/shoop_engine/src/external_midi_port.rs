@@ -121,6 +121,9 @@ impl ExternalMidiPort {
     ///
     /// Refuses an oversized or empty payload rather than storing something malformed.
     pub fn push_incoming(&mut self, time: u32, data: &[u8]) -> bool {
+        if self.staged.len() >= RESERVE {
+            return false;
+        }
         match MidiStorageElem::new(time, data) {
             Some(e) => {
                 self.staged.push(e);

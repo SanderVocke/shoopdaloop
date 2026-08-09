@@ -36,6 +36,8 @@ use shoop_egui::{
 use shoop_app::CooperativeApplicationRuntime;
 #[cfg(target_arch = "wasm32")]
 mod browser_audio;
+#[cfg(any(target_arch = "wasm32", test))]
+mod browser_midi;
 mod settings;
 use shoop_app::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
@@ -861,6 +863,7 @@ enum BrowserRuntimeMode {
 struct Runtime {
     runtime: CooperativeApplicationRuntime,
     mode: BrowserRuntimeMode,
+    midi: browser_midi::BrowserMidiController,
     applied_settings_revision: u64,
 }
 
@@ -871,32 +874,38 @@ impl Runtime {
             .and_then(|window| window.location().search().ok())
             .is_some_and(|search| search.contains("offline=1"));
         let startup_scripts = browser_startup_scripts(settings)?;
+        let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
         if offline {
             let mut backend = shoop_backend::EngineBackend::new_dummy(48_000, 256)?;
             backend.remove_all_external_mock_ports();
             return Ok(Self {
-                runtime: CooperativeApplicationRuntime::start_with_scripts(
+                runtime: CooperativeApplicationRuntime::start_with_scripts_and_midi(
                     Box::new(backend),
                     startup_scripts,
+                    midi_service,
                 )?,
                 mode: BrowserRuntimeMode::OfflineDummy,
+                midi,
                 applied_settings_revision: settings.revision(),
             });
         }
-        let (backend, transport) = browser_audio::WebAudioBackend::new();
+        let (backend, transport) = browser_audio::WebAudioBackend::new(midi.hub());
         let controller = browser_audio::BrowserAudioController::new(transport)?;
         Ok(Self {
-            runtime: CooperativeApplicationRuntime::start_with_scripts(
+            runtime: CooperativeApplicationRuntime::start_with_scripts_and_midi(
                 Box::new(backend),
                 startup_scripts,
+                midi_service,
             )?,
             mode: BrowserRuntimeMode::WebAudio(controller),
+            midi,
             applied_settings_revision: settings.revision(),
         })
     }
 
     fn tick(&mut self, elapsed: Duration) {
         self.runtime.tick(elapsed);
+        self.midi.update_presentation();
         let snapshot = self.runtime.snapshot();
         let mut message = match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => {
@@ -910,6 +919,21 @@ impl Runtime {
             message.push_str(&notification.message);
         }
         set_browser_status(&message, Some(&snapshot));
+        if let Some(element) = browser_status_element() {
+            let _ = element.set_attribute("data-web-midi", &format!("{:?}", self.midi.state()));
+            let _ = element.set_attribute(
+                "data-web-midi-endpoints",
+                &self.midi.endpoint_count().to_string(),
+            );
+            let (dropped, refused_track, refused_control) = self.midi.diagnostics();
+            let _ = element.set_attribute("data-web-midi-track-drops", &dropped.to_string());
+            let _ =
+                element.set_attribute("data-web-midi-track-refusals", &refused_track.to_string());
+            let _ = element.set_attribute(
+                "data-web-midi-control-refusals",
+                &refused_control.to_string(),
+            );
+        }
     }
 
     fn reconcile_script_settings(
@@ -1209,10 +1233,59 @@ const BROWSER_SESSION_SCRIPT_SOURCE: &str =
     "local shoop_control = require('shoop_control'); shoop_control.register_keyboard_event_cb(function(_) end)";
 
 #[cfg(target_arch = "wasm32")]
+fn set_browser_web_midi_test_status(status: &str) {
+    if let Some(element) = browser_status_element() {
+        let _ = element.set_attribute("data-web-midi-self-test", status);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BrowserSelfTest {
     Disabled,
     WaitForAudio,
+    WaitForWebMidi,
+    WaitForWebMidiControlBeforeAudio,
+    AddWebMidiTrack,
+    WaitForWebMidiTrack,
+    WaitForWebMidiTrackReady {
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+        input_port: shoop_egui::PortId,
+        output_port: shoop_egui::PortId,
+        callbacks_before: u64,
+    },
+    WaitForWebMidiConnections {
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+        input_port: shoop_egui::PortId,
+        output_port: shoop_egui::PortId,
+    },
+    WaitForWebMidiControl {
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+    },
+    WaitForWebMidiInput {
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+    },
+    WaitForWebMidiStopped {
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+    },
+    WaitForWebMidiSessionLoad {
+        callbacks_before: u64,
+    },
+    WaitForWebMidiSave {
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+        callbacks_before: u64,
+    },
+    WaitForWebMidiPlayback {
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+        callbacks_before: u64,
+    },
     AddTrack,
     WaitForTrack,
     WaitForRecording,
@@ -1261,10 +1334,14 @@ enum BrowserSelfTest {
 #[cfg(target_arch = "wasm32")]
 impl BrowserSelfTest {
     fn from_location() -> Self {
-        let enabled = web_sys::window()
+        let search = web_sys::window()
             .and_then(|window| window.location().search().ok())
-            .is_some_and(|search| search.contains("self-test=1"));
-        if enabled {
+            .unwrap_or_default();
+        if search.contains("web-midi-test=1") {
+            set_browser_self_test_status("web-midi");
+            set_browser_web_midi_test_status("awaiting-permission");
+            Self::WaitForWebMidi
+        } else if search.contains("self-test=1") {
             set_browser_self_test_status("awaiting-audio");
             Self::WaitForAudio
         } else {
@@ -1281,6 +1358,387 @@ impl BrowserSelfTest {
                 }
                 widget.browser_test_open_global_connections();
                 Ok(Self::AddTrack)
+            }
+            Self::WaitForWebMidi => {
+                if runtime.midi.state() != browser_midi::BrowserMidiState::Running {
+                    return;
+                }
+                let Some(apc) = snapshot
+                    .scripting
+                    .scripts
+                    .iter()
+                    .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
+                else {
+                    return self.fail("bundled APC script is missing");
+                };
+                runtime
+                    .dispatch(AppIntent::SetScriptEnabled {
+                        script_id: apc.id,
+                        enabled: true,
+                    })
+                    .map(|()| Self::WaitForWebMidiControlBeforeAudio)
+            }
+            Self::WaitForWebMidiControlBeforeAudio => {
+                let ready = snapshot
+                    .scripting
+                    .scripts
+                    .iter()
+                    .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
+                    .is_some_and(|script| {
+                        script.lifecycle == shoop_egui::ScriptLifecycle::Listening
+                            && script.midi.connections == 2
+                    });
+                if !ready {
+                    return;
+                }
+                set_browser_web_midi_test_status("control-ready-without-audio");
+                if !runtime.audio_running() {
+                    return;
+                }
+                widget.browser_test_open_global_connections();
+                Ok(Self::AddWebMidiTrack)
+            }
+            Self::AddWebMidiTrack => runtime
+                .dispatch(AppIntent::Global(shoop_egui::GlobalControlAction::SetSync(
+                    false,
+                )))
+                .and_then(|()| {
+                    runtime.dispatch(AppIntent::AddTrack(shoop_egui::DirectTrackSpec {
+                        name: "Browser Web MIDI test".to_owned(),
+                        audio_channels: 0,
+                        midi: true,
+                    }))
+                })
+                .map(|()| Self::WaitForWebMidiTrack),
+            Self::WaitForWebMidiTrack => {
+                let Some(track) = snapshot.tracks.iter().find(|track| !track.is_sync) else {
+                    return;
+                };
+                let Some(loop_state) = track.loops.first() else {
+                    return;
+                };
+                let input_port = snapshot.connections.application_ports.iter().find(|port| {
+                    matches!(
+                        port.owner,
+                        shoop_egui::ApplicationPortOwner::Track { track_id, .. }
+                            if track_id == track.id
+                    ) && port.role == shoop_egui::PortRole::MidiInput
+                });
+                let output_port = snapshot.connections.application_ports.iter().find(|port| {
+                    matches!(
+                        port.owner,
+                        shoop_egui::ApplicationPortOwner::Track { track_id, .. }
+                            if track_id == track.id
+                    ) && port.role == shoop_egui::PortRole::MidiOutput
+                });
+                let (Some(input_port), Some(output_port)) = (input_port, output_port) else {
+                    return;
+                };
+                Ok(Self::WaitForWebMidiTrackReady {
+                    track_id: track.id,
+                    loop_id: loop_state.id,
+                    input_port: input_port.id,
+                    output_port: output_port.id,
+                    callbacks_before: snapshot.status.callback_count,
+                })
+            }
+            Self::WaitForWebMidiTrackReady {
+                track_id,
+                loop_id,
+                input_port,
+                output_port,
+                callbacks_before,
+            } => {
+                if snapshot.status.callback_count <= callbacks_before.saturating_add(10) {
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::SetPortConnected {
+                        port_id: input_port,
+                        host_port_id: shoop_egui::HostPortId::new("webmidi:source:test-input"),
+                        connected: true,
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::SetPortConnected {
+                            port_id: output_port,
+                            host_port_id: shoop_egui::HostPortId::new("webmidi:sink:test-output"),
+                            connected: true,
+                        })
+                    })
+                    .map(|()| Self::WaitForWebMidiConnections {
+                        track_id,
+                        loop_id,
+                        input_port,
+                        output_port,
+                    })
+            }
+            Self::WaitForWebMidiConnections {
+                track_id,
+                loop_id,
+                input_port,
+                output_port,
+            } => {
+                let track_input_connected =
+                    snapshot.connections.confirmed_links.iter().any(|link| {
+                        link.application_port_id == input_port
+                            && link.host_port_id.as_str() == "webmidi:source:test-input"
+                    });
+                let track_output_connected =
+                    snapshot.connections.confirmed_links.iter().any(|link| {
+                        link.application_port_id == output_port
+                            && link.host_port_id.as_str() == "webmidi:sink:test-output"
+                    });
+                let Some(apc) = snapshot
+                    .scripting
+                    .scripts
+                    .iter()
+                    .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
+                else {
+                    return;
+                };
+                let control_ports = snapshot
+                    .connections
+                    .application_ports
+                    .iter()
+                    .filter(|port| {
+                        matches!(
+                            port.owner,
+                            shoop_egui::ApplicationPortOwner::LuaControl { script_id, .. }
+                                if script_id == apc.id
+                        )
+                    })
+                    .map(|port| port.id)
+                    .collect::<Vec<_>>();
+                let control_links = snapshot
+                    .connections
+                    .confirmed_links
+                    .iter()
+                    .filter(|link| control_ports.contains(&link.application_port_id))
+                    .count();
+                if !track_input_connected {
+                    let _ = runtime.dispatch(AppIntent::SetPortConnected {
+                        port_id: input_port,
+                        host_port_id: shoop_egui::HostPortId::new("webmidi:source:test-input"),
+                        connected: true,
+                    });
+                }
+                if !track_output_connected {
+                    let _ = runtime.dispatch(AppIntent::SetPortConnected {
+                        port_id: output_port,
+                        host_port_id: shoop_egui::HostPortId::new("webmidi:sink:test-output"),
+                        connected: true,
+                    });
+                }
+                if !track_input_connected
+                    || !track_output_connected
+                    || apc.lifecycle != shoop_egui::ScriptLifecycle::Listening
+                    || control_ports.len() != 2
+                    || control_links != 2
+                {
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::Track {
+                        track_id,
+                        action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::Loop {
+                            track_id,
+                            loop_id,
+                            action: shoop_egui::LoopAction::IconClicked(Default::default()),
+                        })
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::Loop {
+                            track_id,
+                            loop_id,
+                            action: shoop_egui::LoopAction::RecordClicked,
+                        })
+                    })
+                    .map(|()| {
+                        set_browser_web_midi_test_status("awaiting-input");
+                        Self::WaitForWebMidiControl { track_id, loop_id }
+                    })
+            }
+            Self::WaitForWebMidiControl { track_id, loop_id } => {
+                let Some(track) = snapshot.tracks.iter().find(|track| track.id == track_id) else {
+                    return;
+                };
+                let Some(loop_state) = track.loops.iter().find(|loop_| loop_.id == loop_id) else {
+                    return;
+                };
+                if loop_state.mode != shoop_egui::LoopMode::Recording
+                    || !snapshot.global_controls.solo
+                {
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::Loop {
+                        track_id,
+                        loop_id,
+                        action: shoop_egui::LoopAction::StopClicked,
+                    })
+                    .map(|()| Self::WaitForWebMidiInput { track_id, loop_id })
+            }
+            Self::WaitForWebMidiInput { track_id, loop_id } => {
+                let Some(track) = snapshot.tracks.iter().find(|track| track.id == track_id) else {
+                    return;
+                };
+                let Some(loop_state) = track.loops.iter().find(|loop_| loop_.id == loop_id) else {
+                    return;
+                };
+                if loop_state.mode != shoop_egui::LoopMode::Stopped {
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::RequestSaveSession)
+                    .map(|()| Self::WaitForWebMidiStopped { track_id, loop_id })
+            }
+            Self::WaitForWebMidiStopped {
+                track_id: _,
+                loop_id: _,
+            } => {
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                let bundle = match shoop_session::decode_session(&output.bytes) {
+                    Ok(bundle) => bundle,
+                    Err(error) => {
+                        return self.fail(&format!("could not decode Web MIDI session: {error}"));
+                    }
+                };
+                let recorded = bundle.media.values().any(|payload| {
+                    matches!(
+                        payload,
+                        shoop_session::MediaPayload::Midi(midi)
+                            if midi.events.iter().any(|event| event.data == [0x90, 83, 0x7f])
+                    )
+                });
+                let routes = bundle
+                    .document
+                    .track_groups
+                    .iter()
+                    .flat_map(|group| &group.tracks)
+                    .flat_map(|track| &track.ports)
+                    .flat_map(|port| &port.external_connections)
+                    .filter(|endpoint| endpoint.starts_with("webmidi:"))
+                    .count();
+                if !recorded || routes != 2 {
+                    return self.fail("Web MIDI recording or persisted routes are missing");
+                }
+                runtime
+                    .dispatch(AppIntent::LoadSessionBytes {
+                        name: output.suggested_name,
+                        bytes: output.bytes,
+                    })
+                    .map(|()| Self::WaitForWebMidiSessionLoad {
+                        callbacks_before: snapshot.status.callback_count,
+                    })
+            }
+            Self::WaitForWebMidiSessionLoad { callbacks_before } => {
+                if snapshot.io_task.as_ref().is_none_or(|task| {
+                    task.kind != shoop_egui::IoTaskKind::LoadSession
+                        || task.status != shoop_egui::IoTaskStatus::Completed
+                }) {
+                    return;
+                }
+                let Some(track) = snapshot
+                    .tracks
+                    .iter()
+                    .find(|track| track.name == "Browser Web MIDI test")
+                else {
+                    return self.fail("loaded Web MIDI session lost its track");
+                };
+                let Some(loop_state) = track.loops.first() else {
+                    return self.fail("loaded Web MIDI session lost its loop");
+                };
+                let track_ports = snapshot
+                    .connections
+                    .application_ports
+                    .iter()
+                    .filter(|port| {
+                        matches!(
+                            port.owner,
+                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
+                                if track_id == track.id
+                        )
+                    })
+                    .map(|port| port.id)
+                    .collect::<Vec<_>>();
+                let restored_routes = snapshot
+                    .connections
+                    .confirmed_links
+                    .iter()
+                    .filter(|link| {
+                        track_ports.contains(&link.application_port_id)
+                            && link.host_port_id.as_str().starts_with("webmidi:")
+                    })
+                    .count();
+                if restored_routes < 2 {
+                    return;
+                }
+                if restored_routes > 2 {
+                    return self.fail("loaded Web MIDI session restored duplicate routes");
+                }
+                if snapshot.status.callback_count <= callbacks_before {
+                    return;
+                }
+                set_browser_web_midi_test_status("ready-for-playback");
+                Ok(Self::WaitForWebMidiSave {
+                    track_id: track.id,
+                    loop_id: loop_state.id,
+                    callbacks_before: snapshot.status.callback_count,
+                })
+            }
+            Self::WaitForWebMidiSave {
+                track_id,
+                loop_id,
+                callbacks_before: _,
+            } => {
+                let ready = browser_status_element().is_some_and(|element| {
+                    element
+                        .get_attribute("data-web-midi-playback-ready")
+                        .as_deref()
+                        == Some("true")
+                });
+                if !ready {
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::Loop {
+                        track_id,
+                        loop_id,
+                        action: shoop_egui::LoopAction::PlayClicked,
+                    })
+                    .map(|()| {
+                        set_browser_web_midi_test_status("awaiting-playback-output");
+                        Self::WaitForWebMidiPlayback {
+                            track_id,
+                            loop_id,
+                            callbacks_before: snapshot.status.callback_count,
+                        }
+                    })
+            }
+            Self::WaitForWebMidiPlayback {
+                track_id,
+                loop_id,
+                callbacks_before,
+            } => {
+                let playing = snapshot
+                    .tracks
+                    .iter()
+                    .find(|track| track.id == track_id)
+                    .and_then(|track| track.loops.iter().find(|loop_| loop_.id == loop_id))
+                    .is_some_and(|loop_| loop_.mode == shoop_egui::LoopMode::Playing);
+                if !playing
+                    || snapshot.status.callback_count <= callbacks_before.saturating_add(100)
+                {
+                    return;
+                }
+                set_browser_web_midi_test_status("passed");
+                mark_browser_self_test_nonzero_io();
+                Ok(Self::Complete)
             }
             Self::AddTrack => runtime
                 .dispatch(AppIntent::Global(shoop_egui::GlobalControlAction::SetSync(
@@ -1878,7 +2336,7 @@ fn set_browser_status(message: &str, snapshot: Option<&AppSnapshot>) {
             "data-storage-exhaustions",
             &status.storage_exhaustions.to_string(),
         );
-        let _ = element.set_attribute("data-web-midi", "unavailable");
+        let _ = element.set_attribute("data-web-midi", "AwaitingGesture");
         let _ = element.set_attribute(
             "data-application-ports",
             &snapshot.connections.application_ports.len().to_string(),

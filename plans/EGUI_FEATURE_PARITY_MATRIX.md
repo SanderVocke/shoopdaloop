@@ -4,7 +4,7 @@
 
 This is the living feature-discovery and implementation ledger for the pure egui replacement described in `EGUI_REPLACEMENT_PROJECT.md`. It is intentionally incomplete. Entries are discovered and refined as milestone work reaches each part of the old application.
 
-The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, native JACK/CPAL+midir/dummy driver management, track-port connections, session-persistence/loop-I/O, settings, native Lua, and cross-target ports/browser-Lua/omniLua-migration milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
+The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, native JACK/CPAL+midir/dummy driver management, track-port connections, session-persistence/loop-I/O, settings, native Lua, cross-target ports/browser-Lua/omniLua migration, and Wasm Web MIDI milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
 
 The retired Qt-hosted egui experiment has been removed. The legacy QML application and standalone egui applications now have independent presentation and dependency paths; QML remains only as the behavior baseline for features not yet replaced.
 
@@ -425,6 +425,19 @@ The native parity contract is frozen in `docs/egui_lua_compatibility_contract.md
 | XLUA-SESSION-001 | Browser source-bearing session scripts | Browser transaction loads/activates an enabled source script and resaves exact name/source/enabled fields | Explored for cross-target ports/Lua | Required | Complete | Production hosted/direct-file session workflows pass with callback continuity |
 | XLUA-KEY-001 | Browser keyboard control independent of audio permission | Real browser key events traverse egui translation and embedded `keyboard.lua` into authoritative selection | Explored for cross-target ports/Lua | Required | Complete | Chrome hosted/direct-file workflow plus focus/text/release unit tests pass |
 | XPORT-E2E-001 | Cross-target artifacts and regression closure | Production source/Wasm contains omniLua, scripting, normalized routing, bundled settings, and the empty MIDI service | Explored for cross-target ports/Lua | Required | Complete | Debug/release hosted/standalone artifacts, Chrome/Firefox/direct-file mode matrix, realtime guards, 1,415-test workspace run, retained Lua-specific QML cases, and dependency/package audits passed; the historical CPAL exception was subsequently fixed and the current full QML suite is 236/236 |
+
+## Wasm Web MIDI follow-up
+
+`EGUI_WASM_WEBMIDI_PLAN.md` supersedes the current no-host limitation without rewriting the completed historical cross-target milestone. Direct `web-sys` access is explicitly permission-gated and main-thread-owned. One bounded hub fans physical input to worklet track routes and Lua subscriptions; the AudioWorklet remains the authoritative track router and never accesses browser APIs.
+
+| ID | Capability or behavior | Previous baseline | Discovery | Milestone target | Current implementation | Replacement evidence |
+|---|---|---|---|---|---|---|
+| WMIDI-PLAT-001 | Explicit browser Web MIDI access and hotplug inventory | Wasm used `NullMidiService` and published zero MIDI hosts | Explored for Web MIDI | Required | Complete | Direct `web-sys` permission/SysEx flow, opaque direction-qualified IDs, state-change refresh, denial/retry, hotplug, deterministic hub tests, and hosted/self-contained Chrome workflows |
+| WMIDI-TRACK-001 | Direct-track MIDI recording, monitoring, and output | Worklet created inert dummy MIDI application ports | Explored for Web MIDI | Required | Complete | Protocol v4 endpoint/input/output batches, physical `ExternalMidiPort` staging, authoritative links, allocation-guarded backend/worklet record-monitor-play tests, exact production-browser note-pair round trip |
+| WMIDI-CTRL-001 | Browser Lua controller input/output | Browser APC could run only with zero endpoints | Explored for Web MIDI | Required | Complete | Wasm `MidiControlService` adapter, shared canonical host rows, unchanged APC authoritative solo/LED workflow, rate-limited output, hotplug reconnect, and audio-independent access |
+| WMIDI-BOUND-001 | Bounded timing, payload, and failure contract | No browser MIDI event transport existed | Explored for Web MIDI | Required | Complete | `docs/web_midi_contract.md`; 256 subscriptions, 1,024-message queues, 128-message batches, 256-event per-track staging, 4-byte track/256-byte control limits, refusal/drop diagnostics, next-quantum timing, stale-input nonfatal recovery, realtime guards |
+| WMIDI-PERSIST-001 | Desired route persistence through missing devices | Browser sessions contained no physical MIDI IDs | Explored for Web MIDI | Required | Complete | Canonical route capture/load, missing-endpoint replacement/reconnect backend test, production browser save/load/playback, hotplug and worklet-generation route recovery |
+| WMIDI-E2E-001 | Production artifact and browser closure | Browser artifacts intentionally had no physical MIDI | Explored for Web MIDI | Required | Complete | Debug/release hosted and self-contained Chrome track/control/session/hotplug/restart workflows pass, including denial/retry, generation-safe open-failure removal/reopen, send-failure visibility, saturation recovery, and callback continuity; 1,204-test workspace, 236/236 QML, Firefox no-host regression, package/import/dependency scans, and debug/release artifacts pass |
 
 ## Persistent egui settings discovery
 

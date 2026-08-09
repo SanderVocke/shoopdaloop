@@ -15,8 +15,29 @@ use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 pub const MIDI_QUEUE_CAPACITY: usize = 1024;
 pub const MAX_MIDI_MESSAGE_BYTES: usize = 256;
 
+pub fn midi_endpoint_host_id(direction: MidiEndpointDirection, endpoint_id: &str) -> String {
+    if endpoint_id.starts_with("webmidi:") {
+        return endpoint_id.to_owned();
+    }
+    let kind = match direction {
+        MidiEndpointDirection::Input => "sink",
+        MidiEndpointDirection::Output => "source",
+    };
+    format!("script-midi:{kind}:{endpoint_id}")
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct MidiConnectionId(u64);
+
+impl MidiConnectionId {
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn raw(self) -> u64 {
+        self.0
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MidiEndpointDirection {

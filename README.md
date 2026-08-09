@@ -93,7 +93,7 @@ See the Releases page and [INSTALL](INSTALL.md) for details.
 
 # egui application
 
-The pure-egui application uses the native threaded dummy backend on desktop and a direct Web Audio/AudioWorklet microphone/output backend in hosted secure browser runs. Browser audio starts only after an explicit enable action and remains audio-only; Web MIDI is not implemented. The production web application includes the normal tracks/loops workspace and connections dialog; it is not a feature-preview build. The directly opened self-contained artifact supports an explicitly selected offline dummy mode rather than claiming microphone access from `file:`.
+The pure-egui application uses persisted native JACK, CPAL+midir, or dummy/offline drivers on desktop and a direct Web Audio/AudioWorklet driver in hosted secure browser runs. Browser audio and Web MIDI have independent explicit enable actions. Supported browsers expose physical Web MIDI endpoints for direct-track recording/playback and Lua controller ports; unavailable or denied Web MIDI leaves the rest of the application usable. The production web application includes the normal tracks/loops workspace and connections dialog. Direct-file audio, storage, and Web MIDI remain subject to browser policy, with explicit offline dummy mode available.
 
 The dedicated egui workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native targets emit unsigned application archives; each web profile emits a hosted bundle archive plus a self-contained HTML file. Coverage is not part of this matrix yet. See [`src/rust/shoopdaloop_egui/README.md`](src/rust/shoopdaloop_egui/README.md) for native, hosted browser, secure-context, artifact, local `act`, and verification instructions.
 

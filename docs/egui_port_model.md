@@ -9,13 +9,13 @@ The egui application uses one normalized connection model on native and browser 
 
 A link is compatible when data types match and directions oppose. The application/backend boundary validates this before mutation. The egui matrix derives compatible cells from the normalized inventories and emits a typed `HostPortId`; it does not retain a second candidate list.
 
-Track links are user-managed. Lua control links are owner-managed because script regex/autoconnect policy remains authoritative; egui displays their confirmed host truth but disables competing cell mutation. Script control-port IDs remain stable across stop/restart, disappear while stopped, and use raw MIDI endpoint IDs for stable host identity. With the Wasm null MIDI service, enabled APC registrations remain visible while the MIDI host inventory and confirmed-link set are empty.
+Track links are user-managed. Lua control links are owner-managed because script regex/autoconnect policy remains authoritative; egui displays their confirmed host truth but disables competing cell mutation. Script control-port IDs remain stable across stop/restart and disappear while stopped. Browser track and Lua control consumers share canonical `webmidi:source|sink:<MIDIPort.id>` host rows without duplicate namespaced copies. Before permission, denial, or on unsupported browsers, application ports remain visible with an empty MIDI host inventory.
 
 ## Web Audio endpoints
 
-After the explicit browser audio enable action, device channels are configured before track commands are replayed. Negotiated microphone channels appear as `webaudio:capture_N` host outputs and destination channels as `webaudio:destination_N` host inputs. Output-only mode has no capture host ports. Track audio and MIDI application ports remain visible in either mode; browser MIDI host inventory is empty because Web MIDI is out of scope.
+After the explicit browser audio enable action, device channels are configured before track commands are replayed. Negotiated microphone channels appear as `webaudio:capture_N` host outputs and destination channels as `webaudio:destination_N` host inputs. Output-only mode has no capture host ports. A separate Web MIDI gesture publishes connected browser inputs as host outputs and browser outputs as host inputs. MIDI control can operate without audio; track MIDI waits for the AudioWorklet clock.
 
-The AudioWorklet owns routing truth. Bounded protocol commands mutate links, and subsequent worklet snapshots publish normalized application ports, host ports, and confirmed links. The render callback consults fixed-capacity device-channel routes without allocation. Disconnecting a route changes actual staged input or destination mixing; a failed mutation is reported without stopping the worklet.
+The AudioWorklet owns audio and track-MIDI routing truth. Bounded protocol commands mutate links, and subsequent worklet snapshots publish normalized application ports, host ports, and confirmed links. A main-thread hub owns Web MIDI permission, physical callbacks, script subscriptions, and browser output sends. The render callback consults fixed-capacity routes and queues without allocation or browser calls. Disconnecting a route changes actual event/audio flow; stale input after hotplug is dropped nonfatally.
 
 Initial audio links preserve prior startup behavior but are explicit confirmed state:
 
@@ -25,4 +25,4 @@ Initial audio links preserve prior startup behavior but are explicit confirmed s
 - mono output fans out to available destination channels;
 - multi-channel output maps by channel and clamps excess channels to the last destination.
 
-Session capture stores confirmed host IDs. Transactional replacement removes startup defaults before restoring saved links, so a user's disconnected route is not silently re-enabled. Device loss/retry republishes host inventory and reconciles pending requests against authoritative snapshots.
+Session capture stores audio confirmed IDs and desired Web MIDI IDs. Transactional replacement removes startup audio defaults before restoring saved links, so a user's disconnected route is not silently re-enabled. Device loss removes confirmation while retaining desired MIDI identity; return of the same opaque browser ID reconnects compatible track routes and script regex policy. Web MIDI timing, payload limits, capacities, and permission behavior are specified in `web_midi_contract.md`.

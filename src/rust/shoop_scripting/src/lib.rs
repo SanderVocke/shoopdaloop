@@ -25,9 +25,9 @@ use legacy_key_constants::{LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi::NativeMidiService;
 pub use midi::{
-    FakeMidiControl, FakeMidiService, MidiConnectionId, MidiControlService, MidiEndpoint,
-    MidiEndpointDirection, MidiEndpointSnapshot, NullMidiService, MAX_MIDI_MESSAGE_BYTES,
-    MIDI_QUEUE_CAPACITY,
+    midi_endpoint_host_id, FakeMidiControl, FakeMidiService, MidiConnectionId, MidiControlService,
+    MidiEndpoint, MidiEndpointDirection, MidiEndpointSnapshot, NullMidiService,
+    MAX_MIDI_MESSAGE_BYTES, MIDI_QUEUE_CAPACITY,
 };
 
 pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");

@@ -5,6 +5,7 @@ import subprocess
 import time
 
 from selenium import webdriver
+from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
 
 HOST = "127.0.0.1"
@@ -72,6 +73,11 @@ def main() -> None:
                 "owned_media_tracks": int(
                     status.get_attribute("data-owned-media-tracks") or 0
                 ),
+                "web_midi": status.get_attribute("data-web-midi"),
+                "web_midi_button": driver.find_element(By.ID, "enable_midi").text,
+                "midi_host_ports": int(
+                    status.get_attribute("data-midi-host-ports") or 0
+                ),
             }
             if state["self_test"] == "passed":
                 break
@@ -80,6 +86,10 @@ def main() -> None:
             time.sleep(0.1)
         else:
             raise RuntimeError(f"Firefox browser audio timed out: {state}")
+        unsupported_midi_is_visible = (
+            state["web_midi"] != "Unsupported"
+            or "unsupported" in state["web_midi_button"].lower()
+        )
         if not (
             state["driver"] == "Running"
             and state["callbacks"] > 0
@@ -89,6 +99,9 @@ def main() -> None:
             and state["overflows"] == 0
             and state["budget_overruns"] == 0
             and state["owned_media_tracks"] > 0
+            and state["web_midi"] in {"Unsupported", "AwaitingGesture"}
+            and unsupported_midi_is_visible
+            and state["midi_host_ports"] == 0
         ):
             raise RuntimeError(f"Firefox browser evidence is incomplete: {state}")
         print(f"Firefox Web Audio self-test passed: {state}")
