@@ -4810,13 +4810,27 @@ pub fn replace_loop_content(
     }
     let audio_ids = audio
         .iter()
-        .map(|item| Arc::as_ptr(&item.channel.control) as usize)
-        .collect::<BTreeSet<_>>();
+        .map(|item| {
+            item.channel
+                .control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .ok_or_else(|| anyhow!("audio channel is not ready"))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let midi_ids = midi
         .iter()
-        .map(|item| Arc::as_ptr(&item.channel.control) as usize)
-        .collect::<BTreeSet<_>>();
-    if audio_ids.len() != audio.len() || midi_ids.len() != midi.len() {
+        .map(|item| {
+            item.channel
+                .control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .ok_or_else(|| anyhow!("MIDI channel is not ready"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if audio_ids.iter().collect::<BTreeSet<_>>().len() != audio_ids.len()
+        || midi_ids.iter().collect::<BTreeSet<_>>().len() != midi_ids.len()
+    {
         return Err(anyhow!("loop content update contains a duplicate channel"));
     }
 
@@ -4826,7 +4840,7 @@ pub fn replace_loop_content(
         Vec::with_capacity(audio.len());
     let mut midi_cancellations: Vec<engine::content_snapshot::MidiSnapshotControl> =
         Vec::with_capacity(midi.len());
-    for item in audio {
+    for (item, channel_id) in audio.iter().zip(audio_ids) {
         let owned = item.samples.to_vec();
         let Some(snapshot) = item
             .channel
@@ -4843,14 +4857,14 @@ pub fn replace_loop_content(
         prepared.begin_load(owned.len());
         prepared.write(0, &owned);
         prepared_audio.push((
-            Arc::clone(&item.channel.control),
+            channel_id,
             prepared,
             snapshot,
             item.start_offset,
             item.preplay,
         ));
     }
-    for item in midi {
+    for (item, channel_id) in midi.iter().zip(midi_ids) {
         let state = item
             .messages
             .iter()
@@ -4893,7 +4907,7 @@ pub fn replace_loop_content(
         };
         midi_cancellations.push(item.channel.snapshot_control.clone());
         prepared_midi.push((
-            Arc::clone(&item.channel.control),
+            channel_id,
             engine::PreparedMidiChannelData::new(
                 &elements,
                 item.length,
@@ -4914,19 +4928,29 @@ pub fn replace_loop_content(
             let Some(loop_id) = loop_control.ready_id().map(ObjectIdentity::index) else {
                 return;
             };
+            if session.loop_(loop_id).is_none()
+                || prepared_audio.as_ref().is_none_or(|audio| {
+                    audio
+                        .iter()
+                        .any(|(channel_id, ..)| session.audio_channel(*channel_id).is_none())
+                })
+                || prepared_midi.as_ref().is_none_or(|midi| {
+                    midi.iter()
+                        .any(|(channel_id, ..)| session.midi_channel(*channel_id).is_none())
+                })
+            {
+                return;
+            }
             let Some(mut audio) = prepared_audio.take() else {
                 return;
             };
             let Some(mut midi) = prepared_midi.take() else {
                 return;
             };
-            for (control, prepared, snapshot, offset, preplay) in &mut audio {
-                let Some(channel_id) = control.ready_id().map(ObjectIdentity::index) else {
-                    return;
-                };
-                let Some(channel) = session.audio_channel_mut(channel_id) else {
-                    return;
-                };
+            for (channel_id, prepared, snapshot, offset, preplay) in &mut audio {
+                let channel = session
+                    .audio_channel_mut(*channel_id)
+                    .expect("loop content channels were preflighted");
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
                 if let Some(offset) = offset {
                     channel.set_start_offset(*offset);
@@ -4935,13 +4959,10 @@ pub fn replace_loop_content(
                     channel.set_pre_play_samples(*preplay);
                 }
             }
-            for (control, prepared, snapshot, offset, preplay) in &mut midi {
-                let Some(channel_id) = control.ready_id().map(ObjectIdentity::index) else {
-                    return;
-                };
-                let Some(channel) = session.midi_channel_mut(channel_id) else {
-                    return;
-                };
+            for (channel_id, prepared, snapshot, offset, preplay) in &mut midi {
+                let channel = session
+                    .midi_channel_mut(*channel_id)
+                    .expect("loop content channels were preflighted");
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
                 if let Some(offset) = offset {
                     channel.set_start_offset(*offset);

@@ -1806,6 +1806,9 @@ impl Backend for WebAudioBackend {
         loop_id: BackendLoopId,
         update: &BackendLoopContentUpdate,
     ) -> Result<()> {
+        if update.audio.is_empty() && update.midi.is_empty() {
+            return Err(anyhow!("loop content update is empty"));
+        }
         if let Some(replace) = &self.loop_content_replace {
             if replace.loop_id != loop_id || &replace.update != update {
                 return Err(anyhow!("another loop content replacement is active"));

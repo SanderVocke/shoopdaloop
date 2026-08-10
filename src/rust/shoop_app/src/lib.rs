@@ -9568,6 +9568,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
+        let track_id = runtime.snapshot().tracks[1].id;
         let loop_id = runtime.snapshot().tracks[1].loops[0].id;
         let audio = LoopAudio {
             sample_rate: 32_000,
@@ -9668,6 +9669,21 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             );
         }
         runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
             .dispatch(AppIntent::RequestLoopAudioExport {
                 loop_id,
                 format: LoopAudioExportFormat::Exact,
@@ -9696,6 +9712,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             exported_audio.channels[0].samples,
             exported_audio.channels[1].samples
         );
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
         runtime
             .dispatch(AppIntent::RequestLoopAudioExport {
                 loop_id,
@@ -9721,6 +9741,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             assert_eq!(wav.role, exact.role);
             assert_eq!(wav.samples, exact.samples);
         }
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
 
         let midi = ExactMidi {
             sample_rate: 32_000,
@@ -9753,6 +9777,18 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.tick(Duration::ZERO);
         }
         runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
             .dispatch(AppIntent::RequestLoopMidiExport {
                 loop_id,
                 standard: false,
@@ -9765,6 +9801,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(exported_midi.sample_rate, 48_000);
         assert_eq!(exported_midi.length_frames, 150);
         assert_eq!(exported_midi.events[0].frame, 75);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
     }
 
     #[test]

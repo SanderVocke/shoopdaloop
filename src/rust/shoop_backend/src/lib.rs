@@ -2422,6 +2422,9 @@ impl Backend for EngineBackend {
         loop_id: BackendLoopId,
         update: &BackendLoopContentUpdate,
     ) -> Result<()> {
+        if update.audio.is_empty() && update.midi.is_empty() {
+            return Err(anyhow!("loop content update is empty"));
+        }
         let engine_loop = self.engine_loop_index(loop_id)?;
         let state = self
             .session
@@ -3987,6 +3990,9 @@ impl Backend for FakeBackend {
         loop_id: BackendLoopId,
         update: &BackendLoopContentUpdate,
     ) -> Result<()> {
+        if update.audio.is_empty() && update.midi.is_empty() {
+            return Err(anyhow!("loop content update is empty"));
+        }
         if let Some(message) = self.fail_next_loop_content_replace.take() {
             return Err(anyhow!(message));
         }

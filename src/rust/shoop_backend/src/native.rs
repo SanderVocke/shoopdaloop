@@ -1883,6 +1883,9 @@ impl Backend for NativeBackend {
         loop_id: BackendLoopId,
         update: &BackendLoopContentUpdate,
     ) -> Result<()> {
+        if update.audio.is_empty() && update.midi.is_empty() {
+            return Err(anyhow!("loop content update is empty"));
+        }
         let runtime = self.runtime_mut()?;
         let target = runtime
             .loops
@@ -1923,13 +1926,16 @@ impl Backend for NativeBackend {
                         data: data.clone(),
                     })
                     .collect::<Vec<_>>();
-                messages.extend(item.events.iter().map(|event| MidiEvent {
-                    time: event.time as i32,
-                    data: event.data.clone(),
-                }));
-                messages
+                for event in &item.events {
+                    messages.push(MidiEvent {
+                        time: i32::try_from(event.time)
+                            .map_err(|_| anyhow!("MIDI event time exceeds native range"))?,
+                        data: event.data.clone(),
+                    });
+                }
+                Ok(messages)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
         let midi = update
             .midi
             .iter()
