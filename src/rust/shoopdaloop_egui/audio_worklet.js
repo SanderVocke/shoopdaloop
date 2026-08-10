@@ -67,6 +67,14 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
   }
 
   handleCommand(message) {
+    try {
+      this.handleCommandInner(message);
+    } catch (error) {
+      this.fail(`AudioWorklet control command failed: ${error?.stack || error}`);
+    }
+  }
+
+  handleCommandInner(message) {
     if (typeof message !== 'string') {
       this.port.postMessage(JSON.stringify({
         version: PROTOCOL_VERSION,
@@ -105,9 +113,11 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     // the render callback must never allocate replacement typed-array views.
     if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
     this.port.postMessage(response);
-    queueMicrotask(() => {
-      if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
-    });
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(() => {
+        if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
+      });
+    }
   }
 
   fail(message) {

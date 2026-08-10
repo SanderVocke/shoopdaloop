@@ -260,6 +260,24 @@ impl UnifiedApp {
         if switch.status == shoop_egui::AudioDriverSwitchStatus::Completed {
             return;
         }
+        let view = self.settings.view();
+        let desired_settings_saved = view.persistence
+            == shoop_settings::SettingsPersistenceState::Saved
+            && view.active.revision() > pending.draft.base_revision()
+            && shoop_egui::selected_audio_driver(&view.active).ok() == Some(pending.config.kind())
+            && shoop_egui::audio_driver_config_from_snapshot(&view.active, pending.config.kind())
+                .ok()
+                == Some(pending.config.clone());
+        if desired_settings_saved {
+            let _ = self
+                .runtime
+                .dispatch(AppIntent::CompleteAudioDriverSwitchPersistence {
+                    request_id,
+                    success: true,
+                    message: "Audio driver switched and saved for the next launch".to_owned(),
+                });
+            return;
+        }
         if switch.status == shoop_egui::AudioDriverSwitchStatus::Persisting && !pending.saving {
             shoop_egui::set_selected_audio_driver(&mut pending.draft, pending.config.kind());
             match self.settings.request_save(pending.draft.clone()) {
@@ -279,18 +297,7 @@ impl UnifiedApp {
         }
         if pending.saving {
             let view = self.settings.view();
-            if view.persistence == shoop_settings::SettingsPersistenceState::Saved
-                && view.active.revision() > pending.draft.base_revision()
-            {
-                let _ = self
-                    .runtime
-                    .dispatch(AppIntent::CompleteAudioDriverSwitchPersistence {
-                        request_id,
-                        success: true,
-                        message: "Audio driver switched and saved for the next launch".to_owned(),
-                    });
-                return;
-            } else if view.persistence == shoop_settings::SettingsPersistenceState::Failed {
+            if view.persistence == shoop_settings::SettingsPersistenceState::Failed {
                 let _ = self.runtime.dispatch(
                     AppIntent::CompleteAudioDriverSwitchPersistence {
                         request_id,
@@ -1477,6 +1484,7 @@ enum BrowserSelfTest {
     },
     PlayLoadedLoop,
     WaitForLoadedPlayback,
+    WaitForMediaStopped,
     ExportLoopAudio,
     WaitForLoopAudioSelection,
     WaitForLoopAudioExport,
@@ -2566,8 +2574,38 @@ impl BrowserSelfTest {
                 if browser_stress_enabled() || browser_session_only_enabled() {
                     Ok(Self::RejectProcessedSession)
                 } else {
-                    Ok(Self::ExportLoopAudio)
+                    let Some((track, loop_state)) = first_main_loop(snapshot) else {
+                        return;
+                    };
+                    runtime
+                        .dispatch(AppIntent::Global(
+                            shoop_egui::GlobalControlAction::DeselectAll,
+                        ))
+                        .and_then(|()| {
+                            runtime.dispatch(AppIntent::Loop {
+                                track_id: track.id,
+                                loop_id: loop_state.id,
+                                action: shoop_egui::LoopAction::StopClicked,
+                            })
+                        })
+                        .map(|()| Self::WaitForMediaStopped)
                 }
+            }
+            Self::WaitForMediaStopped => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                if loop_state.mode != shoop_egui::LoopMode::Stopped
+                    || snapshot
+                        .tracks
+                        .iter()
+                        .flat_map(|track| &track.loops)
+                        .any(|loop_| loop_.selected)
+                    || snapshot.details.is_some()
+                {
+                    return;
+                }
+                Ok(Self::ExportLoopAudio)
             }
             Self::ExportLoopAudio => {
                 let Some((_, loop_state)) = first_main_loop(snapshot) else {
@@ -2625,6 +2663,15 @@ impl BrowserSelfTest {
                     .map(|()| Self::WaitForLoopAudioImport)
             }
             Self::WaitForLoopAudioImport => {
+                if snapshot.io_task.as_ref().is_some_and(|task| {
+                    task.kind == shoop_egui::IoTaskKind::ImportLoopAudio
+                        && task.status == shoop_egui::IoTaskStatus::Failed
+                }) {
+                    return self.fail(&format!(
+                        "browser loop audio import failed: {:?}",
+                        snapshot.io_task
+                    ));
+                }
                 if snapshot.io_task.as_ref().is_none_or(|task| {
                     task.kind != shoop_egui::IoTaskKind::ImportLoopAudio
                         || task.status != shoop_egui::IoTaskStatus::Completed
@@ -2699,9 +2746,30 @@ impl BrowserSelfTest {
                     .map(|()| Self::WaitForClickAudio { previous_task })
             }
             Self::WaitForClickAudio { previous_task } => {
+                if let Some(notification) =
+                    snapshot.notifications.iter().rev().find(|notification| {
+                        notification.level == shoop_egui::NotificationLevel::Error
+                            && (notification.message.contains("click")
+                                || notification.message.contains("I/O task"))
+                    })
+                {
+                    return self.fail(&format!(
+                        "browser audio click request was rejected: {}",
+                        notification.message
+                    ));
+                }
                 let Some(task) = &snapshot.io_task else {
                     return;
                 };
+                if task.id != previous_task
+                    && task.kind == shoop_egui::IoTaskKind::GenerateClickTrack
+                    && task.status == shoop_egui::IoTaskStatus::Failed
+                {
+                    return self.fail(&format!(
+                        "browser audio click generation failed: {:?}",
+                        snapshot.io_task
+                    ));
+                }
                 if task.id == previous_task
                     || task.kind != shoop_egui::IoTaskKind::GenerateClickTrack
                     || task.status != shoop_egui::IoTaskStatus::Completed
@@ -2797,9 +2865,30 @@ impl BrowserSelfTest {
                     .map(|()| Self::WaitForClickMidi { previous_task })
             }
             Self::WaitForClickMidi { previous_task } => {
+                if let Some(notification) =
+                    snapshot.notifications.iter().rev().find(|notification| {
+                        notification.level == shoop_egui::NotificationLevel::Error
+                            && (notification.message.contains("click")
+                                || notification.message.contains("I/O task"))
+                    })
+                {
+                    return self.fail(&format!(
+                        "browser MIDI click request was rejected: {}",
+                        notification.message
+                    ));
+                }
                 let Some(task) = &snapshot.io_task else {
                     return;
                 };
+                if task.id != previous_task
+                    && task.kind == shoop_egui::IoTaskKind::GenerateClickTrack
+                    && task.status == shoop_egui::IoTaskStatus::Failed
+                {
+                    return self.fail(&format!(
+                        "browser MIDI click generation failed: {:?}",
+                        snapshot.io_task
+                    ));
+                }
                 if task.id == previous_task
                     || task.kind != shoop_egui::IoTaskKind::GenerateClickTrack
                     || task.status != shoop_egui::IoTaskStatus::Completed
