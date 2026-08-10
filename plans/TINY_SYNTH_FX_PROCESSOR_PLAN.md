@@ -16,7 +16,7 @@ Implemented and focused-verified:
 - browser protocol v5, bounded/coalesced control journal, allocation-guarded worklet rendering, transactional state publication, browser catalog/proxy/session mapping, and zero-audio Web MIDI routing;
 - application/session persistence and recorded-take mappings, plus a backend-free stable-track-ID embedded egui editor with typed tests for every control and close/visibility behavior;
 - hosted Chrome 147 Web Audio and Web MIDI Tiny workflows, hosted Firefox 153 Web Audio, Chrome self-contained offline and output-only workflows, and debug/release hosted plus self-contained packages;
-- warning-free no-default native and Wasm checks, debug/release AudioWorklet builds, no-default native debug/release builds/packages, a warning-free default native-FX build, and 42/42 backend tests with native FX enabled;
+- warning-free no-default native and Wasm checks, debug/release AudioWorklet builds, no-default native debug/release builds/packages, a warning-free default native-FX build, and 44/44 backend tests with native FX enabled;
 - dependency audits showing `shoop_egui` remains backend/filesystem/tinyviolin-free and the browser/worklet closure excludes native driver, plugin, frontend, and Qt dependencies;
 - after rebasing onto the MIDI-keyboard changes, the combined protocol/worklet/backend/engine/app/egui/session no-default-feature suites pass serially, including 610 engine tests and realtime guards, and the no-default-feature product suite passes 23/23. The earlier two timeout-sensitive product failures did not reproduce in the required serialized run.
 
