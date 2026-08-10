@@ -13,6 +13,7 @@ use crate::{
 pub struct LoopWidgetResponse {
     pub actions: Vec<LoopWidgetAction>,
     pub io_intents: Vec<AppIntent>,
+    pub click_track_requested: bool,
     pub(crate) hover_active: bool,
 }
 
@@ -111,6 +112,10 @@ fn peak_fraction(db: f32, minimum_db: f32) -> f32 {
     ((db - minimum_db) / -minimum_db).clamp(0.0, 1.0)
 }
 
+fn can_generate_click_track(state: &LoopState) -> bool {
+    state.composite_kind == CompositeKind::None && (state.has_audio || state.has_midi)
+}
+
 fn generated_loop_name(name: &str) -> bool {
     name.strip_prefix('(')
         .and_then(|name| name.strip_suffix(')'))
@@ -140,6 +145,13 @@ impl LoopWidget {
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
         response.context_menu(|ui| {
             ui.label(&state.name);
+            if can_generate_click_track(state) {
+                if ui.button("Generate click track…").clicked() {
+                    result.click_track_requested = true;
+                    ui.close();
+                }
+                ui.separator();
+            }
             if state.has_audio {
                 if ui.button("Save exact audio…").clicked() {
                     result.io_intents.push(AppIntent::RequestLoopAudioExport {
@@ -802,6 +814,24 @@ mod tests {
             vec![pointer(record_popup.center())],
         );
         assert!(widget.record_popup_until > 2.02);
+    }
+
+    #[test]
+    fn click_track_context_action_applies_only_to_primitive_media_loops() {
+        assert!(can_generate_click_track(&LoopState {
+            has_audio: true,
+            ..Default::default()
+        }));
+        assert!(can_generate_click_track(&LoopState {
+            has_midi: true,
+            ..Default::default()
+        }));
+        assert!(!can_generate_click_track(&LoopState::default()));
+        assert!(!can_generate_click_track(&LoopState {
+            has_audio: true,
+            composite_kind: CompositeKind::Regular,
+            ..Default::default()
+        }));
     }
 
     #[test]

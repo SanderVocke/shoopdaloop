@@ -4922,6 +4922,7 @@ dependencies = [
  "js-sys",
  "log",
  "rfd",
+ "rodio",
  "serde_json",
  "shoop_app",
  "shoop_audio_protocol",

@@ -185,6 +185,27 @@ def archive_names(path: Path) -> tuple[set[str], dict[str, int]]:
         return files, modes
 
 
+def archive_file(path: Path, name: str) -> bytes:
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            return archive.read(name)
+    with tarfile.open(path, "r:gz") as archive:
+        extracted = archive.extractfile(name)
+        if extracted is None:
+            raise RuntimeError(f"archive entry is unavailable: {name}")
+        return extracted.read()
+
+
+def require_click_assets(binary: bytes, artifact: str) -> None:
+    missing = [
+        name
+        for name in (b"click_high", b"click_low", b"shaker_primary", b"shaker_secondary")
+        if name not in binary
+    ]
+    if missing:
+        raise RuntimeError(f"{artifact} is missing embedded click assets: {missing}")
+
+
 def verify_native(path: Path, platform: str) -> None:
     names, modes = archive_names(path)
     root = f"{ARCHIVE_ROOT}/"
@@ -208,6 +229,7 @@ def verify_native(path: Path, platform: str) -> None:
         )
     if platform != "windows" and modes.get(executable, 0) & 0o111 == 0:
         raise RuntimeError(f"archive executable has no execute bit: {executable}")
+    require_click_assets(archive_file(path, executable), "native executable")
 
 
 def verify_web(bundle: Path, html: Path) -> None:
@@ -221,6 +243,7 @@ def verify_web(bundle: Path, html: Path) -> None:
         raise RuntimeError(f"unexpected hosted web archive manifest: {sorted(names)}")
     if any("preview" in name.lower() for name in names):
         raise RuntimeError("hosted web archive contains a preview-named file")
+    require_click_assets(archive_file(bundle, wasm[0]), "hosted application Wasm")
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
         raise RuntimeError("self-contained HTML does not contain the embedded application")
@@ -240,12 +263,17 @@ def verify_web(bundle: Path, html: Path) -> None:
         raise RuntimeError("self-contained HTML contains an external Roboto font URL")
     if text.count('url("data:font/ttf;base64,') != 4:
         raise RuntimeError("self-contained HTML does not contain every embedded Roboto font face")
+    application_binary = None
     for variable in ("shoopWasmBinary", "shoopAudioWorkletBinary"):
         match = re.search(rf'const {variable} = atob\("([A-Za-z0-9+/=]+)"\);', text)
         if not match:
             raise RuntimeError(f"self-contained HTML is missing {variable}")
-        if not base64.b64decode(match.group(1), validate=True).startswith(b"\0asm"):
+        binary = base64.b64decode(match.group(1), validate=True)
+        if not binary.startswith(b"\0asm"):
             raise RuntimeError(f"self-contained HTML has invalid {variable}")
+        if variable == "shoopWasmBinary":
+            application_binary = binary
+    require_click_assets(application_binary or b"", "self-contained application Wasm")
     worklet = re.search(
         r'const shoopAudioWorkletModuleUrl = "data:text/javascript;base64,([A-Za-z0-9+/=]+)";',
         text,

@@ -14,6 +14,7 @@ shoop_scripting = { path = "../shoop_scripting" }
 shoop_backend = { path = "../shoop_backend", features = ["native-fx"] }
 shoop_settings = { path = "../shoop_settings", features = ["native-store"] }
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
+rodio = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 shoop_settings = { path = "../shoop_settings" }
@@ -28,9 +29,12 @@ wasm-bindgen-futures = "0.4"
 web-time = "1.1"
 web-sys = { version = "0.3", features = [
     "AudioContext",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
     "AudioContextState",
     "AudioDestinationNode",
     "AudioNode",
+    "AudioScheduledSourceNode",
     "AudioWorklet",
     "AudioWorkletNode",
     "AudioWorkletNodeOptions",
@@ -67,6 +71,7 @@ web-sys = { version = "0.3", features = [
 
 [dev-dependencies]
 serde_json = { workspace = true }
+shoop_session = { path = "../shoop_session" }
 tempfile = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

@@ -1,6 +1,7 @@
 //! Controller-independent egui elements.
 
 mod app_widget;
+mod click_track_dialog;
 pub mod colors;
 mod connection_dialog;
 mod details_pane;

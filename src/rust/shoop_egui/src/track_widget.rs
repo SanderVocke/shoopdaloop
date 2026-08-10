@@ -11,6 +11,7 @@ pub struct TrackWidgetResponse {
     pub actions: Vec<TrackWidgetAction>,
     pub loop_actions: Vec<(LoopId, LoopWidgetAction)>,
     pub io_intents: Vec<AppIntent>,
+    pub click_track_requested: Option<LoopId>,
     pub add_loop_requested: bool,
     pub connections_requested: bool,
 }
@@ -99,6 +100,9 @@ impl TrackWidget {
                                 .map(|action| (loop_state.id, action)),
                         );
                         result.io_intents.extend(loop_response.inner.io_intents);
+                        if loop_response.inner.click_track_requested {
+                            result.click_track_requested = Some(loop_state.id);
+                        }
                         #[cfg(test)]
                         self.test_loop_rects.push(loop_response.response.rect);
                         ui.add_space(2.0);

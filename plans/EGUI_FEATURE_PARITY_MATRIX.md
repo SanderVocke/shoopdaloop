@@ -4,7 +4,7 @@
 
 This is the living feature-discovery and implementation ledger for the pure egui replacement described in `EGUI_REPLACEMENT_PROJECT.md`. It is intentionally incomplete. Entries are discovered and refined as milestone work reaches each part of the old application.
 
-The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, native JACK/CPAL+midir/dummy driver management, track-port connections, session-persistence/loop-I/O, settings, native Lua, cross-target ports/browser-Lua/omniLua migration, and Wasm Web MIDI milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
+The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, native JACK/CPAL+midir/dummy driver management, track-port connections, session-persistence/loop-I/O, settings, native Lua, cross-target ports/browser-Lua/omniLua migration, Wasm Web MIDI, and click-track generation milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
 
 The retired Qt-hosted egui experiment has been removed. The legacy QML application and standalone egui applications now have independent presentation and dependency paths; QML remains only as the behavior baseline for features not yet replaced.
 
@@ -49,6 +49,7 @@ Discovery:
 - `Explored for M2`: investigated enough to define the cross-target dummy-engine milestone behavior.
 - `Explored for M3`: investigated enough to define the direct browser Web Audio milestone behavior.
 - `Explored for connections`: investigated enough to define the track-port connections milestone behavior.
+- `Explored for click tracks`: investigated enough to define the click-track generation milestone behavior.
 - `Partially explored`: some relevant behavior is known, but later work must continue discovery.
 - `Unexplored`: not yet inventoried for replacement.
 
@@ -67,6 +68,7 @@ Milestone target:
 - `M2 required`: must be complete for `EGUI_MILESTONE_2_ENGINE.md`.
 - `M3 required`: must be complete for `EGUI_MILESTONE_3_BROWSER_AUDIO.md`.
 - `Connections required`: must be complete for `EGUI_MILESTONE_X_CONNECTIONS_DIALOG.md`.
+- `Click-track required`: must be complete for `EGUI_CLICK_TRACK_GENERATION_PLAN.md`.
 - `Superseded in M2`: completed Milestone 1 behavior intentionally replaced by the accepted Milestone 2 architecture; its historical evidence remains valid.
 - `Deferred`: explicitly outside the active milestone, but not outside the project.
 - `Loop-control refinement`: required by `EGUI_LOOP_HOVER_CONTROLS_AND_EMPTY_TRACKS_PLAN.md` after Milestone 1.
@@ -198,7 +200,7 @@ Evidence referenced below consists of:
 | LOOP-014 | Dry playback and dry-to-wet recording controls | QML exposes orange play-dry below play and re-record below record, with mode/timing policy outside the widget. | Explored for loop-control refinement | Loop-control refinement | Complete | Foreground hover-group tests, typed `PlayingDryThroughWet`/`RecordingDryIntoWet` intents, actor scheduling tests, shared routing table, and runnable native External/Carla tracks |
 | LOOP-015 | Grab control and behavior | QML supports always-on-ringbuffer capture with selection, sync/immediate, fixed-cycle, target, play-after-record, and solo policy. | Explored for loop-control refinement | Loop-control refinement | Complete | Typed grab intent, actor policy test, all-target backend preflight, bounded audio/MIDI capture, non-zero Web Audio adoption, and protocol/worklet coverage |
 | LOOP-016 | Stereo loop balance control | QML exposes a `B` dial beside volume while volume or balance remains hovered. | Explored for loop-control refinement | Loop-control refinement | Complete | Foreground balance popup/reset test, immutable balance snapshots, coherent gain/balance backend factors, fake/engine/worklet/native workflow tests |
-| LOOP-017 | Loop context menu and its dialogs | QML provides clear, load/save, click-track, details, composition, and other actions. | Partially explored | Deferred | Partial | Milestone 5 completes exact/WAV audio and exact/standard MIDI import/export context actions with mapping/selection dialogs; clear, click-track, details, and composition actions remain deferred |
+| LOOP-017 | Loop context menu and its dialogs | QML provides clear, load/save, click-track, details, composition, and other actions. | Explored for click tracks | Click-track required subset | Partial | Milestone 5 completes exact/WAV audio and exact/standard MIDI import/export; `EGUI_CLICK_TRACK_GENERATION_PLAN.md` completes the click action/dialog, while clear, details, and composition remain deferred |
 | LOOP-018 | Loop drag reordering/moving | QML supports loop drag/drop within a track and related coordinate updates. | Partially explored | Deferred | Deferred | Later layout-management milestone |
 | LOOP-019 | Hover-family overlay lifetime and geometry | QML temporary controls remain visible over source/children and paint outside the loop row without changing layout. | Explored for loop-control refinement | Loop-control refinement | Complete | Foreground `Area` groups with traversal grace/drag retention, stable-ID widget map, hover geometry tests, and dense track paint regressions |
 | GLOBAL-001 | Stop all | Stops running loops and respects current sync policy. | Explored for M1 | Required | Complete | Typed global action tests and actor transition policy |
@@ -465,13 +467,28 @@ The completed persistent-settings implementation and `docs/settings_format_v1.md
 
 Generic MIDI-rule editing and session-local overrides remain assigned to their owning milestones. Runnable native Carla/FX settings are complete; browser-native processing remains an explicit future capability. Native driver/device selection is complete under `EGUI_NATIVE_AUDIO_DRIVER_SWITCHING_PLAN.md`. Bundled Lua startup toggles are cross-target; native alone registers user-script paths, which browser preserves as unknown values.
 
+## Completed click-track generation discovery
+
+`EGUI_CLICK_TRACK_GENERATION_PLAN.md` is the completed immutable implementation contract for this slice. Discovery covered `ClickTrackDialog.qml`, its `LoopWidget.qml` context-menu wiring, the Rust QML generator/bridge, the four repository click WAVs, and the replacement's existing session-media transaction, loop context menu, native/browser composition, and package boundaries. The implementation preserves the visible legacy contract while applying the explicitly approved fractional-BPM and MIDI velocity-127 corrections.
+
+| ID | Capability or behavior | Retained baseline / milestone contract | Discovery | Milestone target | Current implementation | Planned evidence |
+|---|---|---|---|---|---|---|
+| CLICK-ENTRY-001 | Primitive loop context entry and kind applicability | **Click loop...** targets sync/main primitive loops and limits Audio/MIDI by channel shape | Explored for click tracks | Click-track required | Complete | Primitive audio/MIDI applicability, composite/channel-less omission, stable LoopId propagation through sync/main widget paths, and dialog target tests pass |
+| CLICK-CAT-001 | Built-in click catalog and defaults | Sorted installed WAV stems; repository defaults resolve to `click_high` primary and `click_low` secondary | Explored for click tracks | Click-track required | Complete | Four embedded WAVs decode in native/Wasm target-neutral tests; application publishes the stable sorted catalog; dialog selectors/default/reconciliation tests pass |
+| CLICK-TIME-001 | Tempo, count, pattern, and odd-click timing | Primary plus N secondary clicks cycles at clicks/minute; odd clicks receive 0–100% interval delay | Explored for click tracks | Click-track required | Complete | Checked shared timing tests cover fractional BPM, exact floor duration/starts, 0/50/100% delay, zero/NaN/overflow, and fixed frame/click limits |
+| CLICK-AUD-001 | Generated audio loop media | First source channel is resampled, mixed/truncated, copied to every target audio channel, and adopts loop length | Explored for click tracks | Click-track required | Complete | Deterministic 44.1/48 kHz generation, fake/native/worklet transactions, all-channel/offset/opposite-media/stable-ID tests, exact export and save/load, and Chrome/Firefox production playback pass |
+| CLICK-MIDI-001 | Generated MIDI loop media | Note-on/off clicks are copied to every target MIDI channel and adopt loop length | Explored for click tracks | Click-track required | Complete | Exact note/order/boundary generation, fake/native/worklet transactions, velocity 127/offset/opposite-media/save-load tests, and Chrome/Firefox exact exported-byte workflows pass |
+| CLICK-FILL-001 | Fill current loop length | Derives BPM from current loop frames, click count, and backend sample rate | Explored for click tracks | Click-track required | Complete | Loop length is plain snapshot data; egui tests prove 120 BPM fitting plus zero-length/rate/count disabled reasons and fractional precision |
+| CLICK-PREV-001 | Non-mutating audio preview | Audio draft can be heard without loading the target loop | Explored for click tracks | Click-track required | Complete | Capacity-one application/native queues, request generations, no-mutation/stale/error tests, Chrome/Firefox active-context success, and self-contained offline fallback-context success pass; native audible output is an explicit no-device environment skip |
+| CLICK-TXN-001 | Transactional target-loop replacement | Replacement must preserve stable IDs, unrelated media/session state, and fail without partial mutation | Explored for click tracks | Click-track required | Complete | Capture/prepare/replace/remap passes mixed-content, all-channel, sync/main, conflict/recording, injected failure/no-mutation, stable-ID, native `NativeBackend`, worklet, exact export, and save/load workflows |
+| CLICK-XTARGET-001 | Native/browser resources, preview, and artifacts | Legacy is native/resource-directory based; replacement must compile assets into every product target | Explored for click tracks | Click-track required | Complete | Debug/release native, hosted, and self-contained packages verify all four compiled markers; native workflow, Chrome/Firefox/self-contained production runs, import inspection, and forbidden-dependency scans pass |
+
 ## Coarsely listed future areas
 
 These broader future areas remain outside the currently explored milestone contracts and must be expanded before their own milestones set acceptance criteria:
 
 | Area | Discovery | Implementation |
 |---|---|---|
-| Click-track generation beyond loop media I/O | Partially explored | Deferred |
 | Runtime reconnect policy and runnable bus topology | Partially explored | Deferred |
 | Dry/wet topology and FX-chain hosting/state management | Explored for dry/wet/Carla | Implemented and validated under `EGUI_DRY_WET_AND_CARLA_TRACKS_PLAN.md` |
 | Composite-loop creation, scheduling, editing, and nesting beyond the Lua-required append path | Partially explored | Deferred |
