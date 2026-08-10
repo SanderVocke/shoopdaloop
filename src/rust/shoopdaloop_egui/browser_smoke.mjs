@@ -369,6 +369,7 @@ try {
     webMidiStatus: document.getElementById('enable_midi')?.title,
     webMidiInputConnection: window.__shoopWebMidi?.input.connection,
     webMidiOutputConnection: window.__shoopWebMidi?.output.connection,
+    webMidiInputHandler: typeof window.__shoopWebMidi?.input.onmidimessage === 'function',
     applicationPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-application-ports')),
     hostPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-host-ports')),
     confirmedLinks: Number(document.getElementById('runtime_status')?.getAttribute('data-confirmed-links')),
@@ -589,6 +590,8 @@ try {
         && candidate.webMidiEndpoints === 2
         && candidate.midiHostPorts === 2
         && candidate.webMidiSelfTest === 'awaiting-input'
+        && candidate.webMidiInputConnection === 'open'
+        && candidate.webMidiInputHandler
         && candidate.driver === 'Running',
       'Web MIDI track and control routes were not prepared',
       120_000,
@@ -723,6 +726,7 @@ try {
       'forced worklet failure was not visible during Web MIDI use',
     );
     await clickEnable('enable_output_audio');
+    await delay(250);
     recovered = await waitFor(
       candidate => candidate.driver === 'Running'
         && candidate.generation > generationBeforeRestart

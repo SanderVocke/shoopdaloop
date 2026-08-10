@@ -61,6 +61,7 @@ struct PendingAudioSettings {
     config: AudioDriverConfig,
     draft: shoop_settings::SettingsDraft,
     saving: bool,
+    retry_requested: bool,
 }
 
 struct UnifiedApp {
@@ -167,6 +168,7 @@ impl UnifiedApp {
                                 config,
                                 draft,
                                 saving: false,
+                                retry_requested: false,
                             });
                         })
                 })
@@ -177,12 +179,7 @@ impl UnifiedApp {
                     .as_mut()
                     .filter(|pending| pending.request_id == Some(request_id))
                     .ok_or_else(|| anyhow::anyhow!("stale audio settings retry {request_id}"));
-                pending.and_then(|pending| {
-                    self.settings
-                        .request_save(pending.draft.clone())
-                        .map_err(Into::into)
-                        .map(|()| pending.saving = true)
-                })
+                pending.map(|pending| pending.retry_requested = true)
             }
             SettingsAction::RecoverWithDefaults => {
                 self.settings.request_recovery().map_err(Into::into)
@@ -307,6 +304,16 @@ impl UnifiedApp {
                     },
                 );
                 pending.saving = false;
+            }
+        }
+        if pending.retry_requested
+            && !pending.saving
+            && self.settings.view().persistence != shoop_settings::SettingsPersistenceState::Saving
+        {
+            pending.retry_requested = false;
+            match self.settings.request_save(pending.draft.clone()) {
+                Ok(()) => pending.saving = true,
+                Err(error) => self.settings.report_action_error(error.to_string()),
             }
         }
         self.pending_audio_settings = Some(pending);
@@ -1421,6 +1428,7 @@ enum BrowserSelfTest {
         loop_id: shoop_egui::LoopId,
         input_port: shoop_egui::PortId,
         output_port: shoop_egui::PortId,
+        tiny_input_port: shoop_egui::PortId,
         callbacks_before: u64,
     },
     WaitForWebMidiConnections {
@@ -1428,10 +1436,16 @@ enum BrowserSelfTest {
         loop_id: shoop_egui::LoopId,
         input_port: shoop_egui::PortId,
         output_port: shoop_egui::PortId,
+        tiny_input_port: shoop_egui::PortId,
     },
     WaitForWebMidiControl {
         track_id: shoop_egui::TrackId,
         loop_id: shoop_egui::LoopId,
+    },
+    WaitForWebMidiRecorded {
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+        callbacks_after_control: Option<u64>,
     },
     WaitForWebMidiInput {
         track_id: shoop_egui::TrackId,
@@ -1701,6 +1715,7 @@ impl BrowserSelfTest {
                         loop_id: loop_state.id,
                         input_port: input_port.id,
                         output_port: output_port.id,
+                        tiny_input_port: tiny_midi_input.id,
                         callbacks_before: snapshot.status.callback_count,
                     })
             }
@@ -1709,6 +1724,7 @@ impl BrowserSelfTest {
                 loop_id,
                 input_port,
                 output_port,
+                tiny_input_port,
                 callbacks_before,
             } => {
                 if snapshot.status.callback_count <= callbacks_before.saturating_add(10) {
@@ -1732,6 +1748,7 @@ impl BrowserSelfTest {
                         loop_id,
                         input_port,
                         output_port,
+                        tiny_input_port,
                     })
             }
             Self::WaitForWebMidiConnections {
@@ -1739,6 +1756,7 @@ impl BrowserSelfTest {
                 loop_id,
                 input_port,
                 output_port,
+                tiny_input_port,
             } => {
                 let track_input_connected =
                     snapshot.connections.confirmed_links.iter().any(|link| {
@@ -1749,6 +1767,11 @@ impl BrowserSelfTest {
                     snapshot.connections.confirmed_links.iter().any(|link| {
                         link.application_port_id == output_port
                             && link.host_port_id.as_str() == "webmidi:sink:test-output"
+                    });
+                let tiny_input_connected =
+                    snapshot.connections.confirmed_links.iter().any(|link| {
+                        link.application_port_id == tiny_input_port
+                            && link.host_port_id.as_str() == "webmidi:source:test-input"
                     });
                 let Some(apc) = snapshot
                     .scripting
@@ -1791,8 +1814,16 @@ impl BrowserSelfTest {
                         connected: true,
                     });
                 }
+                if !tiny_input_connected {
+                    let _ = runtime.dispatch(AppIntent::SetPortConnected {
+                        port_id: tiny_input_port,
+                        host_port_id: shoop_egui::HostPortId::new("webmidi:source:test-input"),
+                        connected: true,
+                    });
+                }
                 if !track_input_connected
                     || !track_output_connected
+                    || !tiny_input_connected
                     || apc.lifecycle != shoop_egui::ScriptLifecycle::Listening
                     || control_ports.len() != 2
                     || control_links != 2
@@ -1831,16 +1862,39 @@ impl BrowserSelfTest {
                     return;
                 }
                 set_browser_web_midi_test_status("awaiting-input");
+                Ok(Self::WaitForWebMidiRecorded {
+                    track_id,
+                    loop_id,
+                    callbacks_after_control: None,
+                })
+            }
+            Self::WaitForWebMidiRecorded {
+                track_id,
+                loop_id,
+                callbacks_after_control,
+            } => {
                 if !snapshot.global_controls.solo {
                     return;
                 }
-                runtime
-                    .dispatch(AppIntent::Loop {
+                if let Some(callbacks_after_control) = callbacks_after_control {
+                    if snapshot.status.callback_count <= callbacks_after_control.saturating_add(100)
+                    {
+                        return;
+                    }
+                    runtime
+                        .dispatch(AppIntent::Loop {
+                            track_id,
+                            loop_id,
+                            action: shoop_egui::LoopAction::StopClicked,
+                        })
+                        .map(|()| Self::WaitForWebMidiInput { track_id, loop_id })
+                } else {
+                    Ok(Self::WaitForWebMidiRecorded {
                         track_id,
                         loop_id,
-                        action: shoop_egui::LoopAction::StopClicked,
+                        callbacks_after_control: Some(snapshot.status.callback_count),
                     })
-                    .map(|()| Self::WaitForWebMidiInput { track_id, loop_id })
+                }
             }
             Self::WaitForWebMidiInput { track_id, loop_id } => {
                 let Some(track) = snapshot.tracks.iter().find(|track| track.id == track_id) else {
@@ -1881,12 +1935,21 @@ impl BrowserSelfTest {
                     .track_groups
                     .iter()
                     .flat_map(|group| &group.tracks)
-                    .flat_map(|track| &track.ports)
-                    .flat_map(|port| &port.external_connections)
-                    .filter(|endpoint| endpoint.starts_with("webmidi:"))
-                    .count();
-                if !recorded || routes != 2 {
-                    return self.fail("Web MIDI recording or persisted routes are missing");
+                    .flat_map(|track| {
+                        track.ports.iter().flat_map(|port| {
+                            port.external_connections
+                                .iter()
+                                .filter(|endpoint| endpoint.starts_with("webmidi:"))
+                                .map(|endpoint| {
+                                    format!("{}:{:?}:{endpoint}", track.name, port.role)
+                                })
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                if !recorded || routes.len() != 3 {
+                    return self.fail(&format!(
+                        "Web MIDI recording or persisted routes are missing: recorded={recorded}, routes={routes:?}"
+                    ));
                 }
                 runtime
                     .dispatch(AppIntent::LoadSessionBytes {
@@ -1940,7 +2003,32 @@ impl BrowserSelfTest {
                     return;
                 }
                 if restored_routes > 2 {
-                    return self.fail("loaded Web MIDI session restored duplicate routes");
+                    return self
+                        .fail("loaded Web MIDI session restored duplicate direct-track routes");
+                }
+                let all_track_ports = snapshot
+                    .connections
+                    .application_ports
+                    .iter()
+                    .filter(|port| {
+                        matches!(port.owner, shoop_egui::ApplicationPortOwner::Track { .. })
+                    })
+                    .map(|port| port.id)
+                    .collect::<Vec<_>>();
+                let all_restored_routes = snapshot
+                    .connections
+                    .confirmed_links
+                    .iter()
+                    .filter(|link| {
+                        all_track_ports.contains(&link.application_port_id)
+                            && link.host_port_id.as_str().starts_with("webmidi:")
+                    })
+                    .count();
+                if all_restored_routes < 3 {
+                    return;
+                }
+                if all_restored_routes > 3 {
+                    return self.fail("loaded Web MIDI session restored duplicate track routes");
                 }
                 if snapshot.status.callback_count <= callbacks_before {
                     return;
