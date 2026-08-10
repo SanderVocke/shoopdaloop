@@ -17,12 +17,12 @@ Implemented and focused-verified:
 - application/session persistence and recorded-take mappings, plus a backend-free stable-track-ID embedded egui editor with typed tests for every control and close/visibility behavior;
 - hosted Chrome 147 Web Audio and Web MIDI Tiny workflows, hosted Firefox 153 Web Audio, Chrome self-contained offline and output-only workflows, and debug/release hosted plus self-contained packages;
 - warning-free no-default native and Wasm checks, debug/release AudioWorklet builds, no-default native debug/release builds/packages, a warning-free default native-FX build, and 42/42 backend tests with native FX enabled;
-- dependency audits showing `shoop_egui` remains backend/filesystem/tinyviolin-free and the browser/worklet closure excludes native driver, plugin, frontend, and Qt dependencies.
+- dependency audits showing `shoop_egui` remains backend/filesystem/tinyviolin-free and the browser/worklet closure excludes native driver, plugin, frontend, and Qt dependencies;
+- after rebasing onto the MIDI-keyboard changes, the combined protocol/worklet/backend/engine/app/egui/session no-default-feature suites pass serially, including 610 engine tests and realtime guards, and the no-default-feature product suite passes 23/23. The earlier two timeout-sensitive product failures did not reproduce in the required serialized run.
 
 Pending or requiring a clean rerun after integrating `origin/master`:
 
 - rerun focused and broad suites against the integrated MIDI-keyboard and Tiny MIDI/callback paths;
-- the latest local `shoopdaloop_egui` run passed 23/25 tests but two unrelated timeout-sensitive native tests failed while concurrent Cargo jobs contended for the build directory; rerun serially before closure;
 - the warning-denying all-target workspace build reached the retained Qt/CXX-Qt packages and is blocked locally because Qt is not installed; retained QML self-tests are unavailable for the same reason;
 - run the serialized full workspace suite on the integrated commit;
 - obtain the authoritative Linux/Windows/macOS/WebAssembly debug/release CI matrix for the integrated commit;

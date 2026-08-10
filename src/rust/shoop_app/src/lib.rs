@@ -8202,9 +8202,11 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: None,
                 max_wet_audio_channels: None,
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures::default(),
+            editor: None,
         }]);
         let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
         for (name, audio_channels, midi) in [

@@ -1207,8 +1207,10 @@ mod tests {
                     expected_track_id: 1,
                     expected_loop_ids: vec![1],
                     port_name_base: "piano".to_owned(),
-                    audio_channels: 0,
-                    midi: true,
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 0,
+                        midi: true,
+                    },
                 },
             )
             .event,
