@@ -10,6 +10,7 @@ mod fonts;
 mod global_controls;
 mod key_input;
 mod loop_widget;
+mod optimistic_value;
 mod settings_dialog;
 mod track_controls;
 mod track_widget;
@@ -44,4 +45,11 @@ pub use waveform_widget::WaveformWidget;
 pub fn initialize(context: &egui::Context) {
     fonts::initialize(context);
     egui_material_icons::initialize(context);
+}
+
+fn control_safe_scroll_source() -> egui::scroll_area::ScrollSource {
+    egui::scroll_area::ScrollSource {
+        drag: egui::scroll_area::DragScroll::Never,
+        ..Default::default()
+    }
 }

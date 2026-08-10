@@ -32,6 +32,7 @@ impl DetailsPane {
             .resize_with(details.channels.len(), WaveformWidget::default);
         egui::ScrollArea::vertical()
             .id_salt("details_waveforms")
+            .scroll_source(crate::control_safe_scroll_source())
             .show(ui, |ui| {
                 for (channel, waveform) in details.channels.iter().zip(&mut self.waveforms) {
                     waveform.show(ui, channel);

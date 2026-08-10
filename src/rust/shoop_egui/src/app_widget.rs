@@ -498,15 +498,17 @@ impl Default for AppWidget {
 
 impl AppWidget {
     pub fn new(settings_registry: Arc<SettingsRegistry>) -> Self {
+        let mut sync_track = TrackWidget::default();
+        sync_track.set_width_resizable(false);
         Self {
             tracks: TracksWidget::default(),
             global_controls: GlobalControls::default(),
             details: DetailsPane::default(),
-            sync_track: TrackWidget::default(),
+            sync_track,
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
-            details_open: true,
+            details_open: false,
             add_track_open: false,
             add_track_name: String::new(),
             add_track_mode: AddTrackMode::Regular,
@@ -572,6 +574,7 @@ impl AppWidget {
             .show(ui, |ui| {
                 egui::ScrollArea::horizontal()
                     .id_salt("global_controls_scroll")
+                    .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
                         actions.extend(
                             self.global_controls
@@ -619,6 +622,7 @@ impl AppWidget {
 
         egui::Panel::right("logo_status_and_sync")
             .resizable(false)
+            .show_separator_line(false)
             .exact_size(220.0)
             .frame(
                 egui::Frame::new()
@@ -628,6 +632,7 @@ impl AppWidget {
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("status_and_sync_scroll")
+                    .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
                         self.show_logo_and_status(ui, state);
                         if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
@@ -666,7 +671,12 @@ impl AppWidget {
             .frame(
                 egui::Frame::new()
                     .fill(colors::DARK_BACKGROUND)
-                    .inner_margin(8.0),
+                    .inner_margin(egui::Margin {
+                        left: 8,
+                        right: 8,
+                        top: 8,
+                        bottom: 0,
+                    }),
             )
             .show(ui, |ui| {
                 let main_tracks: Vec<_> = state
@@ -1298,6 +1308,11 @@ mod tests {
     use shoop_settings::{
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
+
+    #[test]
+    fn details_panel_starts_closed() {
+        assert!(!AppWidget::default().details_open);
+    }
 
     #[test]
     fn carla_hosting_setting_validates_modes_and_preserves_unknown_keys() {

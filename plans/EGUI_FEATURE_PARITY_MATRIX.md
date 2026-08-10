@@ -29,7 +29,7 @@ The cleanup is complete:
 - The hosted production bundle contains the complete Web Audio/AudioWorklet microphone path and the connections dialog. Neither product web artifact is a connection-fixture preview.
 - `build_worklet.py` follows Trunk's profile, and package verification requires the UI Wasm/glue, worklet shim, and dedicated worklet Wasm while rejecting extra/stale bundle files.
 - `Swatinem/rust-cache@v2` is configured per target/profile. `nektos/act` Linux/web debug paths pass build/package/staging and focused checks locally; PR #676 passes every GitHub-hosted target/profile build, package, upload, and test cell.
-- `shoop_egui_preview` remains a backend-free fixture/test package and retains a Wasm compiler check, but it is not uploaded by the product workflow.
+- The former backend-free `shoop_egui_preview` fixture package has been removed; its presentation coverage remains in `shoop_egui` tests and the product workflow no longer checks it.
 
 ## Maintenance rules
 
@@ -98,7 +98,7 @@ These sources do not exhaustively specify later milestones. The milestone-1 subs
 
 The initial cross-target dummy-engine plan is based on:
 
-- Current composition roots and browser packaging: `src/rust/shoopdaloop_native`, `src/rust/shoop_egui_preview`, and `.github/workflows/wasm_preview.yml`.
+- Milestone-2-era composition roots and browser packaging: `src/rust/shoopdaloop_native`, the since-removed `src/rust/shoop_egui_preview`, and `.github/workflows/wasm_preview.yml`.
 - Application ownership and polling: `src/rust/shoop_app/src/lib.rs`.
 - Dummy backend topology and engine translation: `src/rust/shoop_backend/src/lib.rs`.
 - Engine feature boundaries and application backend: `src/rust/shoop_engine/Cargo.toml` and `src/rust/shoop_engine/src/app_backend.rs`.
@@ -283,12 +283,12 @@ Replacement evidence referenced below consists of:
 - `shoop_app` actor/cooperative tests for sync/main ownership, stable app/backend mapping, deterministic snapshots, pending/confirmation/failure, churn, stale IDs, timeout, saturation, and retained confirmed truth.
 - `shoop_egui` tests for global and sync/main track menu entry points, stable scope routing, category order/omission, exact cell intents, unavailable cells, first-colon display handling, and matrix painting at 360×200 and 900×600.
 - `shoopdaloop_egui::tests::native_dummy_workflow_creates_records_and_controls_tracks_and_loops`, which now connects sync and main audio/MIDI ports, observes confirmations, disconnects, and continues the existing track/loop workflow.
-- The restored backend-free `shoop_egui_preview`, whose fixtures contain every category, sync/main scopes, multiple clients, connected/disconnected/unavailable/pending/error/loading/backend-unavailable states, endpoint churn, and intent confirmation/failure controls. Its dependency tree contains neither application/backend/engine nor frontend/Qt crates. Its milestone-completion regular/self-contained browser evidence remains historical; the current product workflow retains its compiler check without uploading it as an application artifact.
+- The historical backend-free `shoop_egui_preview` fixtures covered every category, sync/main scopes, multiple clients, connected/disconnected/unavailable/pending/error/loading/backend-unavailable states, endpoint churn, and intent confirmation/failure controls. Its dependency tree contained neither application/backend/engine nor frontend/Qt crates. The package has since been removed after its presentation coverage moved into `shoop_egui` tests; its milestone-completion browser evidence remains historical.
 - Historical M4 delivery published typed browser local descriptors but reported physical connection management unavailable. The completed cross-target ports follow-up supersedes that limitation with normalized host inventories and mutable authoritative worklet routes proven by Chrome/Firefox production automation. Native real-driver selection remains separate.
 
 | ID | Capability or behavior | Retained baseline | Discovery | Milestone target | Current implementation | Replacement evidence |
 |---|---|---|---|---|---|---|
-| CONN-ARCH-001 | Presentation dependency isolation | QML calls QObject port methods directly. | Explored for connections | Connections required | Complete | `shoop_egui` consumes API snapshots/intents only; GUI and preview dependency scans |
+| CONN-ARCH-001 | Presentation dependency isolation | QML calls QObject port methods directly. | Explored for connections | Connections required | Complete | `shoop_egui` consumes API snapshots/intents only; GUI dependency scans and historical preview isolation scan |
 | CONN-MODEL-001 | Stable typed local-port identity and ownership | QML objects/descriptor IDs and regex-derived categories identify ports. | Explored for connections | Connections required | Complete | Stable `PortId`, owning `TrackId`, explicit type/direction/role/name; API and actor tests |
 | CONN-MODEL-002 | Immutable revisioned connection state | QML reconstructs per-port maps every 100 ms. | Explored for connections | Connections required | Complete | `Arc<ConnectionViewState>` and shared port arrays are reused until structural state changes |
 | CONN-ENTRY-001 | Sync/main track **Connections...** entry | Every QML track options menu opens its own window. | Explored for connections | Connections required | Complete | Track-widget menu interaction test and stable track-scope routing |

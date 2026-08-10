@@ -174,6 +174,7 @@ impl SettingsDialog {
                 let active_category = self.active_category.clone().unwrap_or_default();
                 egui::ScrollArea::vertical()
                     .id_salt("settings_values")
+                    .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
                         if active_category == "Audio" {
                             self.show_audio(ui, audio_drivers, &mut response);

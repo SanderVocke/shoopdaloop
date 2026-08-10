@@ -11,18 +11,22 @@ This is the shared native and browser composition root for the egui application.
 From the repository root:
 
 ```sh
+# Native drivers with LV2/Carla FX hosting (default).
 cargo run -p shoopdaloop_egui
+
+# Native drivers without LV2/Carla FX dependencies.
+cargo run -p shoopdaloop_egui --no-default-features
 ```
 
 On first run this starts the dummy/offline engine. Open **Settings** and select **Audio** to configure every driver family supported by the build and currently discovered JACK/CPAL devices, then use **Switch** for a confirmation-gated runtime change. The warning identifies the resolved source and target rates; a changed rate explicitly resamples all loop audio, exact MIDI, lengths, offsets, preplay, ring-buffer durations, and cycle timing through the session resampler. Successful switches are saved for the next launch, while unavailable saved drivers fall back to dummy with a diagnostic without overwriting the preference. Native MIDI controller discovery uses the host MIDI service. Select **Scripts** to manage the embedded keyboard/APC scripts or path-based user scripts. This is the only script-management dialog. ``keyboard.lua`` is enabled on first run; bundled toggles and ordered user path/enabled entries are preserved in the fresh egui settings document after **Save**. Runtime-only Stop, Restart, and Reload controls plus lifecycle, documentation, logs, callbacks/timers, MIDI connections, dropped messages, and failures are visible in the same tab.
 
-The **Add Track** dialog offers **Regular** and **Dry + Wet**. Native capabilities advertise External plus Carla Rack, Patchbay, and Patchbay 16x. Dry and wet audio counts are independent and dry MIDI is optional. External tracks expose dry input/send and wet return/output ports in **Connections**; Carla tracks keep FX endpoints internal and expose dry inputs and wet outputs. Processed track headers show only the state, external-UI/recovery, and bounded log controls advertised by their capability descriptor. Loop playback can use recorded wet content or route recorded dry content through the processor, and wet recordings retain a compatible restorable Carla take state.
+The **Add Track** dialog offers **Regular** and **Dry + Wet**. Native capabilities always advertise External; builds with `native-fx` also advertise Carla Rack, Patchbay, and Patchbay 16x. Dry and wet audio counts are independent and dry MIDI is optional. External tracks expose dry input/send and wet return/output ports in **Connections**; Carla tracks keep FX endpoints internal and expose dry inputs and wet outputs. Processed track headers show only the state, external-UI/recovery, and bounded log controls advertised by their capability descriptor. Loop playback can use recorded wet content or route recorded dry content through the processor, and wet recordings retain a compatible restorable Carla take state.
 
 Bundled Lua sources are compiled into the native binary, so packaged startup does not depend on the source checkout. User-file reads and settings writes stay in this composition root. Source-bearing session scripts are staged before transactional session commit and round-trip in ``.shoop`` files without embedding machine-wide paths.
 
 ## Application settings
 
-Choose **Settings** from the main menu to edit application-wide preferences. The Audio tab retains an independent configuration for dummy, JACK, and CPAL+midir; ordinary Save stores profiles without changing the running backend, while Switch preflights, confirms, transactionally restores the session, and only then updates the preferred startup driver. The **Carla** tab selects `in_process` (default) or one supervised `subprocess` per chain. This global machine preference is validated and applied before native backend construction on the next launch; Save does not migrate running chains, and the value is never session data. The packaged executable also serves as its hidden Carla worker before GUI startup.
+Choose **Settings** from the main menu to edit application-wide preferences. The Audio tab retains an independent configuration for dummy, JACK, and CPAL+midir; ordinary Save stores profiles without changing the running backend, while Switch preflights, confirms, transactionally restores the session, and only then updates the preferred startup driver. In `native-fx` builds, the **Carla** tab selects `in_process` (default) or one supervised `subprocess` per chain. This global machine preference is validated and applied before native backend construction on the next launch; Save does not migrate running chains, and the value is never session data. The packaged executable also serves as its hidden Carla worker before GUI startup.
 
 The track defaults control the audio channel count and MIDI state used the next time the Add Track dialog opens. They do not alter existing tracks, an Add Track draft that is already open, or `.shoop` session data. The dialog keeps edits in a draft until **Save**; **Cancel** or closing it discards the draft, and reset actions restore registered defaults.
 
@@ -141,6 +145,6 @@ The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or 
 Compiler-only checks from the repository root:
 
 ```sh
-cargo check -p shoopdaloop_egui --target wasm32-unknown-unknown
+cargo check -p shoopdaloop_egui --no-default-features --target wasm32-unknown-unknown
 cargo build -p shoop_audio_worklet --target wasm32-unknown-unknown --release
 ```

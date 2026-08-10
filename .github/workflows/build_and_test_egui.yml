@@ -82,7 +82,7 @@ jobs:
             os: ubuntu-24.04
             arch: wasm32
             profile: debug
-            cargo_args: ""
+            cargo_args: --no-default-features
             trunk_args: ""
             rust_targets: wasm32-unknown-unknown
             artifact: shoopdaloop-egui-web-wasm32-debug.zip
@@ -91,7 +91,7 @@ jobs:
             os: ubuntu-24.04
             arch: wasm32
             profile: release
-            cargo_args: --release
+            cargo_args: --release --no-default-features
             trunk_args: --release
             rust_targets: wasm32-unknown-unknown
             artifact: shoopdaloop-egui-web-wasm32-release.zip
@@ -273,14 +273,13 @@ jobs:
           RUSTFLAGS: -D warnings
         run: |
           cargo check --locked ${{ matrix.cargo_args }} -p shoopdaloop_egui --target wasm32-unknown-unknown
-          cargo check --locked ${{ matrix.cargo_args }} -p shoop_egui_preview --target wasm32-unknown-unknown
           cargo build --locked ${{ matrix.cargo_args }} -p shoop_audio_worklet --target wasm32-unknown-unknown
 
       - name: Inspect browser dependency isolation
         if: matrix.target == 'web'
         run: |
           cargo tree -p shoop_audio_worklet --target wasm32-unknown-unknown > /tmp/worklet-tree.txt
-          cargo tree -p shoopdaloop_egui --target wasm32-unknown-unknown > /tmp/browser-tree.txt
+          cargo tree -p shoopdaloop_egui --target wasm32-unknown-unknown --no-default-features > /tmp/browser-tree.txt
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|frontend|cxx-qt|firewheel) v|\(.*src/rust/frontend\))' /tmp/worklet-tree.txt; then exit 1; fi
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|frontend|cxx-qt|firewheel) v|\(.*src/rust/frontend\))' /tmp/browser-tree.txt; then exit 1; fi
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop_egui/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"

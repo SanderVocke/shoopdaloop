@@ -1,4 +1,4 @@
-#![cfg(not(target_arch = "wasm32"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
 
 use shoop_engine::carla_processor::CarlaProcessor;
 use shoop_engine::carla_subprocess::{CarlaWorkerTestMode, SubprocessCarlaProcessor};
