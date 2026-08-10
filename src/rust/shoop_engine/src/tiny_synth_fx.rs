@@ -460,7 +460,59 @@ mod tests {
     }
 
     #[test]
-    fn zero_audio_supported_and_unsupported_midi_and_effect_controls_are_stable() {
+    fn unsupported_or_malformed_midi_preserves_the_audio_quantum() {
+        let control = TinySynthFxControlState::new(48_000.0).unwrap();
+        let mut processor = control.prepare_processor(48_000.0, 1, 64).unwrap();
+        processor.plane_mut(0, 64).unwrap().fill(0.2);
+        let events = [
+            MidiStorageElem::new(8, &[0xF8]).unwrap(),
+            MidiStorageElem::new(24, &[0x90]).unwrap(),
+            MidiStorageElem::new(40, &[0xB0, 7, 100]).unwrap(),
+        ];
+        processor.process(64, &events);
+        let expected = 0.2 * db_to_gain(DEFAULT_MASTER_GAIN_DB);
+        assert!(processor
+            .plane(0, 64)
+            .unwrap()
+            .iter()
+            .all(|sample| (*sample - expected).abs() < 1.0e-6));
+    }
+
+    #[test]
+    fn all_notes_off_and_all_sound_off_reach_tinyviolin_at_sample_offsets() {
+        let control = TinySynthFxControlState::new(48_000.0).unwrap();
+        let note_on = MidiStorageElem::new(0, &[0x90, 69, 127]).unwrap();
+
+        let mut sustained = control.prepare_processor(48_000.0, 1, 64).unwrap();
+        sustained.process(64, std::slice::from_ref(&note_on));
+        let sustained = sustained.plane(0, 64).unwrap().to_vec();
+        assert!(sustained[8..32].iter().any(|sample| sample.abs() > 0.001));
+
+        let mut released = control.prepare_processor(48_000.0, 1, 64).unwrap();
+        released.process(
+            64,
+            &[
+                note_on.clone(),
+                MidiStorageElem::new(32, &[0xB0, 123, 0]).unwrap(),
+            ],
+        );
+        assert!(released.plane(0, 64).unwrap()[33..]
+            .iter()
+            .zip(&sustained[33..])
+            .any(|(released, sustained)| (*released - *sustained).abs() > 1.0e-5));
+
+        let mut stopped = control.prepare_processor(48_000.0, 1, 64).unwrap();
+        stopped.process(
+            64,
+            &[note_on, MidiStorageElem::new(32, &[0xB0, 120, 0]).unwrap()],
+        );
+        assert!(stopped.plane(0, 64).unwrap()[32..]
+            .iter()
+            .all(|sample| sample.abs() < 1.0e-7));
+    }
+
+    #[test]
+    fn zero_audio_midi_and_effect_controls_are_stable() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut silent = control.prepare_processor(48_000.0, 0, 64).unwrap();
         let events = [
