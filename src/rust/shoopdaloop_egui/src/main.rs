@@ -2064,37 +2064,71 @@ impl BrowserSelfTest {
                         action,
                     })
                 });
-                tiny_controls.and_then(|()| {
-                    if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
-                        Ok(Self::SaveSession {
-                            callbacks_before: snapshot.status.callback_count,
-                        })
-                    } else {
-                        runtime
-                            .dispatch(AppIntent::Track {
-                                track_id: track.id,
-                                action: shoop_egui::TrackAction::InputMonitoringChanged(true),
-                            })
-                            .and_then(|()| {
-                                runtime.dispatch(AppIntent::Loop {
-                                    track_id: track.id,
-                                    loop_id: loop_state.id,
-                                    action: shoop_egui::LoopAction::IconClicked(Default::default()),
+                let tiny_audio_inputs = snapshot
+                    .connections
+                    .application_ports
+                    .iter()
+                    .filter(|port| {
+                        matches!(
+                            port.owner,
+                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
+                                if track_id == tiny.id
+                        ) && port.role == shoop_egui::PortRole::AudioInput
+                    })
+                    .map(|port| port.id)
+                    .collect::<Vec<_>>();
+                let tiny_audio_links = snapshot
+                    .connections
+                    .confirmed_links
+                    .iter()
+                    .filter(|link| tiny_audio_inputs.contains(&link.application_port_id))
+                    .map(|link| (link.application_port_id, link.host_port_id.clone()))
+                    .collect::<Vec<_>>();
+                tiny_controls
+                    .and_then(|()| {
+                        tiny_audio_links
+                            .into_iter()
+                            .try_for_each(|(port_id, host_port_id)| {
+                                runtime.dispatch(AppIntent::SetPortConnected {
+                                    port_id,
+                                    host_port_id,
+                                    connected: false,
                                 })
                             })
-                            .and_then(|()| {
-                                runtime.dispatch(AppIntent::Loop {
-                                    track_id: track.id,
-                                    loop_id: loop_state.id,
-                                    action: shoop_egui::LoopAction::RecordClicked,
-                                })
+                    })
+                    .and_then(|()| {
+                        if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
+                            Ok(Self::SaveSession {
+                                callbacks_before: snapshot.status.callback_count,
                             })
-                            .map(|()| Self::WaitForRecording)
-                    }
-                })
+                        } else {
+                            runtime
+                                .dispatch(AppIntent::Track {
+                                    track_id: track.id,
+                                    action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                                })
+                                .and_then(|()| {
+                                    runtime.dispatch(AppIntent::Loop {
+                                        track_id: track.id,
+                                        loop_id: loop_state.id,
+                                        action: shoop_egui::LoopAction::IconClicked(
+                                            Default::default(),
+                                        ),
+                                    })
+                                })
+                                .and_then(|()| {
+                                    runtime.dispatch(AppIntent::Loop {
+                                        track_id: track.id,
+                                        loop_id: loop_state.id,
+                                        action: shoop_egui::LoopAction::RecordClicked,
+                                    })
+                                })
+                                .map(|()| Self::WaitForRecording)
+                        }
+                    })
             }
             Self::WaitForRecording => {
-                let Some((_track, loop_state)) = first_main_loop(snapshot) else {
+                let Some((track, loop_state)) = first_main_loop(snapshot) else {
                     return;
                 };
                 if loop_state.mode != shoop_egui::LoopMode::Recording
@@ -2103,23 +2137,62 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
+                let Some(tiny) = snapshot.tracks.iter().find(|candidate| {
+                    candidate.fx.as_ref().is_some_and(|fx| {
+                        fx.processor_type.as_str()
+                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                    })
+                }) else {
+                    return;
+                };
+                let tiny_audio_inputs = snapshot
+                    .connections
+                    .application_ports
+                    .iter()
+                    .filter(|port| {
+                        matches!(
+                            port.owner,
+                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
+                                if track_id == tiny.id
+                        ) && port.role == shoop_egui::PortRole::AudioInput
+                    })
+                    .map(|port| port.id)
+                    .collect::<Vec<_>>();
+                if let Some(link) = snapshot
+                    .connections
+                    .confirmed_links
+                    .iter()
+                    .find(|link| tiny_audio_inputs.contains(&link.application_port_id))
+                {
+                    if let Err(error) = runtime.dispatch(AppIntent::SetPortConnected {
+                        port_id: link.application_port_id,
+                        host_port_id: link.host_port_id.clone(),
+                        connected: false,
+                    }) {
+                        return self.fail(&format!(
+                            "could not isolate browser Tiny Synth/FX audio input: {error}"
+                        ));
+                    }
+                    return;
+                }
                 runtime
-                    .dispatch(AppIntent::Piano(shoop_egui::PianoAction::Press(
-                        shoop_egui::MidiNote::new(65).unwrap(),
-                    )))
+                    .dispatch(AppIntent::Track {
+                        track_id: track.id,
+                        action: shoop_egui::TrackAction::OutputMuteChanged(true),
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::Piano(shoop_egui::PianoAction::Press(
+                            shoop_egui::MidiNote::new(65).unwrap(),
+                        )))
+                    })
                     .map(|()| Self::WaitForPianoPress {
                         callbacks_before: snapshot.status.callback_count,
                     })
             }
             Self::WaitForPianoPress { callbacks_before } => {
-                let tiny_wet_signal = snapshot.tracks.iter().any(|track| {
-                    track.fx.as_ref().is_some_and(|fx| {
-                        fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
-                    }) && (track.controls.output_peak_left_db > -100.0
-                        || track.controls.output_peak_right_db > -100.0)
-                });
-                if snapshot.status.callback_count <= callbacks_before || !tiny_wet_signal {
+                if snapshot.status.callback_count <= callbacks_before
+                    || snapshot.status.output_peak <= 0.000_001
+                {
                     return;
                 }
                 runtime
@@ -2138,10 +2211,16 @@ impl BrowserSelfTest {
                     return;
                 };
                 runtime
-                    .dispatch(AppIntent::Loop {
+                    .dispatch(AppIntent::Track {
                         track_id: track.id,
-                        loop_id: loop_state.id,
-                        action: shoop_egui::LoopAction::StopClicked,
+                        action: shoop_egui::TrackAction::OutputMuteChanged(false),
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::Loop {
+                            track_id: track.id,
+                            loop_id: loop_state.id,
+                            action: shoop_egui::LoopAction::StopClicked,
+                        })
                     })
                     .map(|()| Self::WaitForStopped)
             }
