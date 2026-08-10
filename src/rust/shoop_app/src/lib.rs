@@ -6594,6 +6594,44 @@ mod tests {
         };
         assert_eq!(restored_editor.master_gain_db, -12.0);
         assert_eq!(restored_editor.selected_preset_id.as_deref(), Some("pad"));
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 256,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let switched = runtime.snapshot();
+        assert_eq!(switched.status.sample_rate, 44_100);
+        assert_eq!(switched.tracks[1].topology, track.topology);
+        assert!(switched.tracks[1].loops[0].has_recorded_fx_state);
+        let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(switched_editor)) = switched
+            .tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX state after sample-rate switch");
+        };
+        assert_eq!(switched_editor.master_gain_db, -12.0);
+        assert_eq!(switched_editor.selected_preset_id.as_deref(), Some("pad"));
+        assert!(switched_editor.reverb_enabled);
+        assert_eq!(switched_editor.reverb_amount, 0.4);
+        assert!(switched_editor.distortion_enabled);
+        assert_eq!(switched_editor.distortion_drive, 7.0);
     }
 
     #[test]
