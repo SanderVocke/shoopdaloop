@@ -1161,6 +1161,30 @@ pub enum GlobalControlAction {
     SetApplyNCycles(u32),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MidiNote(u8);
+
+impl MidiNote {
+    pub const fn new(value: u8) -> Option<Self> {
+        if value <= 127 {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    pub const fn value(self) -> u8 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PianoAction {
+    Press(MidiNote),
+    Release(MidiNote),
+    ReleaseAll,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
     Loop {
@@ -1173,6 +1197,7 @@ pub enum AppIntent {
         action: TrackAction,
     },
     Global(GlobalControlAction),
+    Piano(PianoAction),
     AddTrack(DirectTrackSpec),
     AddTrackWithTopology(TrackSpec),
     AddLoop {
@@ -1441,6 +1466,18 @@ mod tests {
         assert_eq!(
             AppSnapshot::default().click_track,
             ClickTrackState::default()
+        );
+    }
+
+    #[test]
+    fn midi_notes_validate_the_full_midi_range() {
+        assert_eq!(MidiNote::new(0).unwrap().value(), 0);
+        assert_eq!(MidiNote::new(60).unwrap().value(), 60);
+        assert_eq!(MidiNote::new(127).unwrap().value(), 127);
+        assert_eq!(MidiNote::new(128), None);
+        assert_eq!(
+            AppIntent::Piano(PianoAction::Press(MidiNote::new(60).unwrap())),
+            AppIntent::Piano(PianoAction::Press(MidiNote::new(60).unwrap()))
         );
     }
 

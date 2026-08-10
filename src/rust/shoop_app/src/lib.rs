@@ -753,6 +753,7 @@ impl ApplicationModel {
                 action,
             } => self.handle_loop_action(backend, track_id, loop_id, action),
             AppIntent::Global(action) => self.handle_global_action(backend, action),
+            AppIntent::Piano(_) => Ok(()),
             AppIntent::Track { track_id, action } => {
                 self.handle_track_action(backend, track_id, action)
             }
