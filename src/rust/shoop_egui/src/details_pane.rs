@@ -1,8 +1,8 @@
-use crate::{LoopDetailsState, WaveformWidget};
+use crate::{LoopDetailsState, LoopId, WaveformWidget};
 
 #[derive(Debug, Default)]
 pub struct DetailsPane {
-    generation: u64,
+    loop_id: LoopId,
     waveforms: Vec<WaveformWidget>,
 }
 
@@ -13,8 +13,8 @@ impl DetailsPane {
             return;
         };
 
-        if self.generation != details.generation {
-            self.generation = details.generation;
+        if self.loop_id != details.loop_id {
+            self.loop_id = details.loop_id;
             self.waveforms.clear();
         }
 
