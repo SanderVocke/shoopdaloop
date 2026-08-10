@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 4;
+pub const PROTOCOL_VERSION: u16 = 5;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 16 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -41,6 +41,10 @@ pub enum Command {
     },
     PushMidiInput {
         host_port_id: String,
+        events: Vec<WireMidiEvent>,
+    },
+    InjectTrackMidiInput {
+        track_id: u64,
         events: Vec<WireMidiEvent>,
     },
     DrainMidiOutput {
@@ -523,5 +527,19 @@ mod tests {
         let encoded = serde_json::to_string(&midi).unwrap();
         let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, midi);
+
+        let piano = CommandEnvelope::new(
+            45,
+            Command::InjectTrackMidiInput {
+                track_id: 7,
+                events: vec![WireMidiEvent {
+                    frame: 0,
+                    data: vec![0x80, 60, 0],
+                }],
+            },
+        );
+        let encoded = serde_json::to_string(&piano).unwrap();
+        let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, piano);
     }
 }

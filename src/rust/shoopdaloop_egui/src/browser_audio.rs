@@ -17,10 +17,10 @@ use shoop_audio_protocol::{
 use shoop_backend::{
     Backend, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
     BackendGrabRequest, BackendHostPortDescriptor, BackendLoopId, BackendLoopMode,
-    BackendLoopState, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortRole, BackendSessionData, BackendSessionReplacement, BackendSnapshot,
-    BackendStatus, BackendTrackControl, BackendTrackCreation, BackendTrackId, BackendTrackState,
-    DirectTrackRequest,
+    BackendLoopState, BackendMidiEvent, BackendPortDataType, BackendPortDescriptor,
+    BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData,
+    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
+    BackendTrackCreation, BackendTrackId, BackendTrackState, DirectTrackRequest,
 };
 use shoop_egui::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
@@ -1586,6 +1586,40 @@ impl Backend for WebAudioBackend {
             BackendTrackControl::InputMonitoring(value) => track.input_monitoring = value,
         }
         Ok(())
+    }
+
+    fn inject_midi_input(
+        &mut self,
+        track_id: BackendTrackId,
+        events: &[BackendMidiEvent],
+    ) -> Result<()> {
+        let track = self
+            .snapshot
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown browser backend track {track_id:?}"))?;
+        if !track.topology.has_midi() {
+            return Err(anyhow!(
+                "browser backend track has no MIDI input {track_id:?}"
+            ));
+        }
+        if events.len() > MIDI_BATCH_CAPACITY
+            || events
+                .iter()
+                .any(|event| event.time != 0 || event.data.is_empty() || event.data.len() > 4)
+        {
+            return Err(anyhow!("invalid browser MIDI input injection batch"));
+        }
+        self.submit(Command::InjectTrackMidiInput {
+            track_id: track_id.raw(),
+            events: events
+                .iter()
+                .map(|event| WireMidiEvent {
+                    frame: event.time,
+                    data: event.data.clone(),
+                })
+                .collect(),
+        })
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {

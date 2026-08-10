@@ -1,6 +1,6 @@
 const MAX_CHANNELS = 2;
 const MAX_COMMAND_BYTES = 16 * 1024;
-const PROTOCOL_VERSION = 4;
+const PROTOCOL_VERSION = 5;
 
 function encodeUtf8(value) {
   const bytes = [];

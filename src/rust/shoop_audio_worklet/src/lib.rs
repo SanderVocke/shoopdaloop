@@ -8,9 +8,9 @@ use shoop_audio_protocol::{
 };
 use shoop_backend::{
     Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopId, BackendLoopMode,
-    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData,
-    BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest, EngineBackend,
-    MAX_WEB_AUDIO_QUANTUM,
+    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortRole,
+    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest,
+    EngineBackend, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -197,6 +197,22 @@ impl WorkletHost {
                         .stage_web_midi_input(&host_port_id, &event.data)
                         .map_err(|error| error.to_string())?;
                 }
+                Ok(Event::Ack)
+            }
+            Command::InjectTrackMidiInput { track_id, events } => {
+                if events.len() > MIDI_BATCH_CAPACITY {
+                    return Err("piano MIDI input batch exceeds capacity".to_owned());
+                }
+                let events = events
+                    .into_iter()
+                    .map(|event| BackendMidiEvent {
+                        time: event.frame,
+                        data: event.data,
+                    })
+                    .collect::<Vec<_>>();
+                self.backend
+                    .inject_midi_input(BackendTrackId::from_raw(track_id), &events)
+                    .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
             Command::DrainMidiOutput { max_events } => {
@@ -944,6 +960,88 @@ mod tests {
         assert!(matches!(
             command(&mut host, 8, Command::Poll).event,
             Event::Snapshot(_)
+        ));
+    }
+
+    #[test]
+    fn track_midi_injection_needs_no_web_midi_endpoint() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "piano".to_owned(),
+                    audio_channels: 0,
+                    midi: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Recording,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                3,
+                Command::InjectTrackMidiInput {
+                    track_id: 1,
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0x90, 60, 100],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 0, 128)));
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Stopped,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let session = host.backend.capture_session().unwrap();
+        assert_eq!(
+            session.tracks[0].loops[0].midi[0].events[0].data,
+            [0x90, 60, 100]
+        );
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
+                Command::InjectTrackMidiInput {
+                    track_id: 999,
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0x90, 60, 100],
+                    }],
+                },
+            )
+            .event,
+            Event::Error { .. }
         ));
     }
 

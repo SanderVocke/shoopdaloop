@@ -90,18 +90,18 @@ Verification:
 
 ### Stage 1 — Add driver-independent track input injection
 
-- [ ] Extend `Backend` with a bounded track-targeted MIDI-input staging operation and add fake-backend operations for exact target/message assertions.
-- [ ] Give the threaded native MIDI port a driver-neutral incoming-event API built on its existing bounded control queue or mailbox and `ExternalMidiPort::push_incoming`; ingest pending messages once per engine process iteration and implement the backend operation for direct and dry-MIDI native tracks without requiring host connections.
-- [ ] Implement the same soft-latency operation in `EngineBackend` by resolving the track's external MIDI input and staging frame-zero events for the next engine process iteration.
-- [ ] Add a bounded track-targeted command to `shoop_audio_protocol`; submit it from `WebAudioBackend`, validate it in `shoop_audio_worklet`, and forward it to the shared engine backend without consulting browser MIDI endpoints or links.
-- [ ] Implement explicit unsupported/stale/overflow errors and continue-safe per-track semantics; retain existing physical Web MIDI routing unchanged.
+- [x] Extend `Backend` with a bounded track-targeted MIDI-input staging operation and add fake-backend operations for exact target/message assertions.
+- [x] Give the threaded native MIDI port a driver-neutral incoming-event API built on its existing bounded control queue and `ExternalMidiPort::push_incoming`; ingest pending messages once per engine process iteration and implement the backend operation for direct and dry-MIDI native tracks without requiring host connections.
+- [x] Implement the same soft-latency operation in `EngineBackend` by resolving either dummy or external track MIDI input and staging frame-zero events for the next engine process iteration.
+- [x] Add protocol-v5 `InjectTrackMidiInput` to `shoop_audio_protocol`; submit it from `WebAudioBackend`, validate it in `shoop_audio_worklet`, and forward it to the shared engine backend without consulting browser MIDI endpoints or links.
+- [x] Implement explicit unsupported/stale/invalid/overflow errors and continue-safe per-track semantics; retain existing physical Web MIDI routing unchanged.
 
 Verification:
 
-- [ ] Backend tests prove direct and dry-MIDI input staging, stale/audio-only rejection, exact note bytes/order, ingestion on the next available process iteration, monitoring/recording behavior, and independence from external host inventory/connections.
-- [ ] Native deterministic driver tests exercise dummy, JACK-test, and CPAL-test compositions through the same driver-independent input-port path; worklet/protocol tests exercise Web Audio with no configured Web MIDI endpoint.
-- [ ] Existing realtime guards and command/staging saturation tests remain green. Tests may observe one-process-iteration side-injection latency and must not require lock-free submission or a sample offset finer than frame zero of that iteration; build the AudioWorklet for `wasm32-unknown-unknown`.
-- [ ] Run formatting and warning-denying builds for touched Rust crates, then commit the backend/protocol milestone and update plan evidence.
+- [x] `shoop_backend` tests prove exact note-pair recording on the next available process iterations without host endpoints/links plus stale, audio-only, nonzero-frame, and backend-shape rejection.
+- [x] All 39 native-driver backend tests pass; dummy exact-output injection plus JACK-test and CPAL-test injection exercise the shared native input-port operation. All 2 protocol and 7 worklet tests pass, including no-Web-MIDI-endpoint recording.
+- [x] Existing allocation/saturation tests pass. `cargo build -p shoop_audio_worklet --target wasm32-unknown-unknown` and `cargo check -p shoopdaloop_egui --no-default-features --target wasm32-unknown-unknown` pass with the one-process-iteration/frame-zero contract.
+- [x] `cargo fmt --all -- --check`, `RUSTFLAGS="-D warnings" cargo build -p shoopdaloop_egui --no-default-features`, warning-denying Wasm worklet build, and `git diff --check` pass before the backend/protocol milestone commit.
 
 ### Stage 2 — Implement application fanout and note lifecycle
 

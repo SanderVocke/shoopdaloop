@@ -559,6 +559,13 @@ pub trait Backend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()>;
+    fn inject_midi_input(
+        &mut self,
+        _track_id: BackendTrackId,
+        _events: &[BackendMidiEvent],
+    ) -> Result<()> {
+        Err(anyhow!("MIDI input injection is unavailable"))
+    }
     fn set_track_fx_control(
         &mut self,
         _track_id: BackendTrackId,
@@ -649,6 +656,20 @@ pub trait Backend {
 
 const NANOSECONDS_PER_SECOND: u128 = 1_000_000_000;
 const MAX_CYCLES_PER_ADVANCE: u32 = 8;
+const MIDI_INPUT_INJECTION_CAPACITY: usize = 128;
+
+fn validate_midi_input_events(events: &[BackendMidiEvent]) -> Result<()> {
+    if events.len() > MIDI_INPUT_INJECTION_CAPACITY {
+        return Err(anyhow!("MIDI input injection exceeds capacity"));
+    }
+    if events
+        .iter()
+        .any(|event| event.time != 0 || event.data.is_empty() || event.data.len() > 4)
+    {
+        return Err(anyhow!("invalid MIDI input injection event"));
+    }
+    Ok(())
+}
 pub const MAX_WEB_AUDIO_QUANTUM: u32 = 2048;
 pub const RECORDING_CAPACITY_SECONDS: u32 = 10;
 pub const WEB_MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
@@ -2138,6 +2159,35 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
+    fn inject_midi_input(
+        &mut self,
+        track_id: BackendTrackId,
+        events: &[BackendMidiEvent],
+    ) -> Result<()> {
+        validate_midi_input_events(events)?;
+        let port = self
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?
+            .midi_input
+            .ok_or_else(|| anyhow!("backend track has no MIDI input {track_id:?}"))?;
+        let input = self
+            .session
+            .port_mut(port)
+            .ok_or_else(|| anyhow!("missing MIDI input port"))?;
+        for event in events {
+            let accepted = match input {
+                Port::DummyMidi(input) => input.queue_msg(0, &event.data),
+                Port::ExternalMidi(input) => input.push_incoming(0, &event.data),
+                _ => return Err(anyhow!("track MIDI input has an incompatible port type")),
+            };
+            if !accepted {
+                return Err(anyhow!("MIDI input injection staging is full"));
+            }
+        }
+        Ok(())
+    }
+
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
         let channels = self
             .loop_channels
@@ -2889,6 +2939,7 @@ pub enum FakeOperation {
     SetSyncSource(BackendLoopId, Option<BackendLoopId>),
     Transition(BackendLoopId, BackendLoopMode, Option<u32>),
     Clear(BackendLoopId),
+    InjectMidiInput(BackendTrackId, Vec<BackendMidiEvent>),
     SetPortConnected(BackendPortId, String, bool),
 }
 
@@ -3577,6 +3628,24 @@ impl Backend for FakeBackend {
         }
         self.operations
             .push(FakeOperation::SetTrackControl(track_id, control));
+        Ok(())
+    }
+
+    fn inject_midi_input(
+        &mut self,
+        track_id: BackendTrackId,
+        events: &[BackendMidiEvent],
+    ) -> Result<()> {
+        validate_midi_input_events(events)?;
+        let track = self
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown fake track {track_id:?}"))?;
+        if !track.state.topology.has_midi() {
+            return Err(anyhow!("fake track has no MIDI input {track_id:?}"));
+        }
+        self.operations
+            .push(FakeOperation::InjectMidiInput(track_id, events.to_vec()));
         Ok(())
     }
 
@@ -4445,6 +4514,15 @@ mod tests {
             .unwrap();
         backend.set_loop_gain(created.loops[0], 0.5).unwrap();
         backend.set_loop_balance(created.loops[0], 0.25).unwrap();
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, 60, 100],
+                }],
+            )
+            .unwrap();
         let third = backend.add_loop_to_track(created.track_id).unwrap();
         backend.wait_idle();
         let snapshot = backend.poll().unwrap();
@@ -4665,6 +4743,82 @@ mod tests {
         assert!(connections.host_ports.is_empty());
         assert!(connections.confirmed_links.is_empty());
         assert_eq!(connections.application_ports.len(), created.ports.len());
+    }
+
+    #[test]
+    fn track_midi_injection_records_without_host_endpoints_or_links() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        let midi_track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "piano".to_owned(),
+                audio_channels: 0,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let audio_track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "audio_only".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        assert!(backend.poll().unwrap().connections.host_ports.is_empty());
+        backend
+            .transition_loop(midi_track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        backend
+            .inject_midi_input(
+                midi_track.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, 60, 100],
+                }],
+            )
+            .unwrap();
+        backend
+            .process_audio_quantum(&[], 0, &mut [], 0, 128)
+            .unwrap();
+        backend
+            .inject_midi_input(
+                midi_track.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x80, 60, 0],
+                }],
+            )
+            .unwrap();
+        backend
+            .process_audio_quantum(&[], 0, &mut [], 0, 128)
+            .unwrap();
+        backend
+            .transition_loop(midi_track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let events = &backend.capture_session().unwrap().tracks[0].loops[0].midi[0].events;
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].data, [0x90, 60, 100]);
+        assert_eq!(events[1].data, [0x80, 60, 0]);
+        assert!(events[1].time >= events[0].time);
+        assert!(backend
+            .inject_midi_input(
+                audio_track.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, 61, 100],
+                }],
+            )
+            .is_err());
+        assert!(backend
+            .inject_midi_input(
+                midi_track.track_id,
+                &[BackendMidiEvent {
+                    time: 1,
+                    data: vec![0x90, 61, 100],
+                }],
+            )
+            .is_err());
     }
 
     #[test]
