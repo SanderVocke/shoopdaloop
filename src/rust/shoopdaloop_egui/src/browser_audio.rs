@@ -1333,6 +1333,10 @@ impl WebAudioBackend {
                     (
                         BackendTrackId::from_raw(track.id),
                         BackendTrackState {
+                            topology: shoop_backend::BackendTrackTopology::Direct {
+                                audio_channels: track.audio_channels,
+                                midi: track.midi,
+                            },
                             audio_channels: track.audio_channels,
                             midi: track.midi,
                             output_gain_db: track.output_gain_db,
