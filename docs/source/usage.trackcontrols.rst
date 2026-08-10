@@ -38,8 +38,12 @@ The available settings are:
   * **Carla (Rack)**: Host FX/synth internally in **Carla** as a plugin. Carla is run in **Rack** mode (straightforward FX chain).
   * **Carla (Patchbay)**: Host FX/synth internally in **Carla** as a plugin. Carla is run in **Patchbay** mode (processing graph).
 
-* **(dry/wet/direct) Audio**: Number of audio channels for the track's loops.
+* **(dry/wet/direct) Audio**: Number of audio channels for the track's loops. The egui **Dry + Wet** form configures dry and wet counts independently; unequal counts connect only matching processor endpoints.
 * **(dry/direct) MIDI**: Whether to enable a MIDI channel. For direct tracks, this will loop MIDI with a MIDI output. For Dry/Wet tracks, MIDI is only supported on the dry side (the expectation being that the FX to wet includes some kind of synthesis to audio).
+
+Processing choices are runtime capabilities. Native egui builds advertise External and the installed Carla modes. Browser builds retain the complete Dry + Wet form but currently show an empty processing selector and disable acceptance; browser capture/destination ports are not an external effects host.
+
+External tracks expose dry input/send and wet return/output roles in the Connections dialog. Carla tracks expose dry inputs and wet outputs while keeping Carla's internal ports hidden. Processed track headers provide the advertised FX UI/recovery/status/log controls, and a wet recording's loop menu can restore its compatible recorded Carla state.
 
 Port Connections
 ^^^^^^^^^^^^^^^^^

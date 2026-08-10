@@ -1,6 +1,7 @@
 use crate::document::{
-    AudioPayload, DataTypeDocument, FormatVersion, MediaPayload, SessionBundle, SessionDocument,
-    AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_FORMAT,
+    AudioPayload, ChannelModeDocument, DataTypeDocument, FormatVersion, MediaPayload,
+    SessionBundle, SessionDocument, TrackDocument, TrackTopologyDocument, AUDIO_FORMAT,
+    DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -436,6 +437,17 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     let mut loop_ids = BTreeSet::new();
     let mut port_ids = BTreeSet::new();
     let mut channel_ids = BTreeSet::new();
+    let mut fx_chain_ids = BTreeSet::new();
+    let mut fx_state_types = BTreeMap::new();
+    for state in &bundle.document.fx_states {
+        require_id(state.id, "FX state")?;
+        if fx_state_types.insert(state.id, state.chain_type).is_some() {
+            return Err(SessionError::Validation(format!(
+                "duplicate FX state ID {}",
+                state.id
+            )));
+        }
+    }
     for group in &bundle.document.track_groups {
         for track in &group.tracks {
             require_id(track.id, "track")?;
@@ -449,6 +461,26 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             validate_finite(track.controls.output_balance, "track output balance")?;
             validate_finite(track.controls.input_gain_db, "track input gain")?;
             validate_finite(track.controls.input_balance, "track input balance")?;
+            if let Some(chain) = &track.fx_chain {
+                require_id(chain.id, "FX chain")?;
+                if !fx_chain_ids.insert(chain.id) {
+                    return Err(SessionError::Validation(format!(
+                        "duplicate FX chain ID {}",
+                        chain.id
+                    )));
+                }
+                for port in &chain.ports {
+                    require_id(port.id, "port")?;
+                    if !port_ids.insert(port.id) {
+                        return Err(SessionError::Validation(format!(
+                            "duplicate port ID {}",
+                            port.id
+                        )));
+                    }
+                    validate_finite(port.gain, "port gain")?;
+                }
+            }
+            validate_track_fx_shape(track)?;
             for port in &track.ports {
                 require_id(port.id, "port")?;
                 if !port_ids.insert(port.id) {
@@ -475,6 +507,9 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         loop_.id
                     )));
                 }
+                if loop_.composite.is_none() {
+                    validate_track_channel_shape(track, loop_.id, &loop_.channels)?;
+                }
                 for channel in &loop_.channels {
                     require_id(channel.id, "channel")?;
                     if !channel_ids.insert(channel.id) {
@@ -484,6 +519,21 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         )));
                     }
                     validate_finite(channel.gain, "channel gain")?;
+                    if let Some(state_id) = channel.recording_fx_state_id {
+                        let state_type = fx_state_types.get(&state_id).ok_or_else(|| {
+                            SessionError::Validation(format!(
+                                "channel {} references missing FX state {}",
+                                channel.id, state_id
+                            ))
+                        })?;
+                        let chain_type = track.fx_chain.as_ref().map(|chain| chain.chain_type);
+                        if chain_type != Some(*state_type) {
+                            return Err(SessionError::Validation(format!(
+                                "channel {} FX state type does not match its track",
+                                channel.id
+                            )));
+                        }
+                    }
                     if let Some(media_id) = &channel.media_id {
                         let payload = bundle.media.get(media_id).ok_or_else(|| {
                             SessionError::MissingMedia {
@@ -569,6 +619,107 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
         }
     }
     Ok(())
+}
+
+fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
+    match (&track.topology, &track.fx_chain) {
+        (TrackTopologyDocument::DryWetExternal { .. }, Some(_)) => {
+            Err(SessionError::Validation(format!(
+                "external dry/wet track {} must not contain an FX chain",
+                track.id
+            )))
+        }
+        (TrackTopologyDocument::Carla { chain_type, .. }, Some(chain))
+            if *chain_type != chain.chain_type =>
+        {
+            Err(SessionError::Validation(format!(
+                "Carla track {} chain type does not match its topology",
+                track.id
+            )))
+        }
+        (TrackTopologyDocument::Carla { .. }, None) => Err(SessionError::Validation(format!(
+            "Carla track {} is missing its FX chain",
+            track.id
+        ))),
+        (TrackTopologyDocument::Trigger, Some(_)) => Err(SessionError::Validation(format!(
+            "trigger track {} must not contain an FX chain",
+            track.id
+        ))),
+        _ => Ok(()),
+    }
+}
+
+fn validate_track_channel_shape(
+    track: &TrackDocument,
+    loop_id: u64,
+    channels: &[crate::document::ChannelDocument],
+) -> Result<(), SessionError> {
+    let count = |mode: ChannelModeDocument, data_type: DataTypeDocument| {
+        channels
+            .iter()
+            .filter(|channel| channel.mode == mode && channel.data_type == data_type)
+            .count() as u32
+    };
+    let disabled = channels
+        .iter()
+        .any(|channel| channel.mode == ChannelModeDocument::Disabled);
+    let valid = match track.topology {
+        TrackTopologyDocument::Direct {
+            audio_channels,
+            midi,
+        } => {
+            count(ChannelModeDocument::Direct, DataTypeDocument::Audio) == audio_channels
+                && count(ChannelModeDocument::Direct, DataTypeDocument::Midi) == u32::from(midi)
+                && channels
+                    .iter()
+                    .all(|channel| matches!(channel.mode, ChannelModeDocument::Direct))
+        }
+        TrackTopologyDocument::DryWetExternal {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+        } => {
+            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == dry_audio_channels
+                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == wet_audio_channels
+                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == u32::from(dry_midi)
+                && channels.iter().all(|channel| {
+                    matches!(
+                        channel.mode,
+                        ChannelModeDocument::Dry | ChannelModeDocument::Wet
+                    ) && !(channel.mode == ChannelModeDocument::Wet
+                        && channel.data_type == DataTypeDocument::Midi)
+                })
+        }
+        TrackTopologyDocument::Carla {
+            audio_channels,
+            midi,
+            dry_audio_channels,
+            wet_audio_channels,
+            ..
+        } => {
+            let dry_audio_channels = dry_audio_channels.unwrap_or(audio_channels);
+            let wet_audio_channels = wet_audio_channels.unwrap_or(audio_channels);
+            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == dry_audio_channels
+                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == wet_audio_channels
+                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == u32::from(midi)
+                && channels.iter().all(|channel| {
+                    matches!(
+                        channel.mode,
+                        ChannelModeDocument::Dry | ChannelModeDocument::Wet
+                    ) && !(channel.mode == ChannelModeDocument::Wet
+                        && channel.data_type == DataTypeDocument::Midi)
+                })
+        }
+        TrackTopologyDocument::Trigger => channels.is_empty(),
+    };
+    if valid && !disabled {
+        Ok(())
+    } else {
+        Err(SessionError::Validation(format!(
+            "loop {loop_id} channel shape does not match track {} topology",
+            track.id
+        )))
+    }
 }
 
 fn validate_midi(id: &str, midi: &crate::document::ExactMidi) -> Result<(), SessionError> {

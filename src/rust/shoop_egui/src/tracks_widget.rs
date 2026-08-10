@@ -1,4 +1,4 @@
-use crate::{AppIntent, TrackState, TrackWidget};
+use crate::{AppIntent, TrackProcessorDescriptor, TrackState, TrackWidget};
 use egui_material_icons::icons::ICON_ADD;
 
 #[derive(Debug, Default)]
@@ -17,7 +17,12 @@ pub struct TracksWidget {
 }
 
 impl TracksWidget {
-    pub fn show(&mut self, ui: &mut egui::Ui, tracks: &[TrackState]) -> TracksWidgetResponse {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        tracks: &[TrackState],
+        processors: &[TrackProcessorDescriptor],
+    ) -> TracksWidgetResponse {
         self.track_widgets
             .resize_with(tracks.len(), TrackWidget::default);
         let mut result = TracksWidgetResponse::default();
@@ -39,7 +44,14 @@ impl TracksWidget {
                                 ui.spacing_mut().item_spacing.x = 3.0;
                                 for (track, widget) in tracks.iter().zip(&mut self.track_widgets) {
                                     ui.push_id(track.id, |ui| {
-                                        let response = widget.show_content(ui, track, true);
+                                        let processor = track.fx.as_ref().and_then(|fx| {
+                                            processors
+                                                .iter()
+                                                .find(|candidate| candidate.id == fx.processor_type)
+                                        });
+                                        let response = widget.show_content_with_processor(
+                                            ui, track, processor, true,
+                                        );
                                         collect_response(&mut result, track, response);
                                     });
                                 }
@@ -60,7 +72,7 @@ impl TracksWidget {
                                 result.add_track_requested = add.clicked();
                             });
                         });
-                    ui.separator();
+                    // ui.separator();
                     ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing.x = 3.0;
                         for (track, widget) in tracks.iter().zip(&mut self.track_widgets) {
@@ -149,7 +161,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    widget.show(ui, &tracks);
+                    widget.show(ui, &tracks, &[]);
                 },
             );
             assert_eq!(widget.test_empty_prompt_shown, expected);

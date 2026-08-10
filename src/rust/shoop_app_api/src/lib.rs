@@ -56,6 +56,97 @@ impl fmt::Display for HostPortId {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TrackProcessorTypeId(String);
+
+impl TrackProcessorTypeId {
+    pub const EXTERNAL: &'static str = "external";
+    pub const CARLA_RACK: &'static str = "carla_rack";
+    pub const CARLA_PATCHBAY: &'static str = "carla_patchbay";
+    pub const CARLA_PATCHBAY_16X: &'static str = "carla_patchbay_16x";
+
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for TrackProcessorTypeId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TrackProcessorFeatures {
+    pub state: bool,
+    pub external_ui: bool,
+    pub recovery: bool,
+    pub logs: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TrackProcessorConstraints {
+    pub max_dry_audio_channels: Option<u32>,
+    pub max_wet_audio_channels: Option<u32>,
+    pub dry_midi: bool,
+}
+
+impl TrackProcessorConstraints {
+    pub fn accepts(self, dry_audio_channels: u32, wet_audio_channels: u32, dry_midi: bool) -> bool {
+        self.max_dry_audio_channels
+            .is_none_or(|limit| dry_audio_channels <= limit)
+            && self
+                .max_wet_audio_channels
+                .is_none_or(|limit| wet_audio_channels <= limit)
+            && (!dry_midi || self.dry_midi)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrackProcessorDescriptor {
+    pub id: TrackProcessorTypeId,
+    pub label: String,
+    pub available: bool,
+    pub unavailable_reason: Option<String>,
+    pub constraints: TrackProcessorConstraints,
+    pub features: TrackProcessorFeatures,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum FxLifecycle {
+    #[default]
+    Unavailable,
+    Starting,
+    Running,
+    Crashed,
+    Restarting,
+    Stopped,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FxGenerationLogState {
+    pub generation: u64,
+    pub stdout: Arc<str>,
+    pub stderr: Arc<str>,
+    pub dropped_stdout_bytes: u64,
+    pub dropped_stderr_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrackFxState {
+    pub processor_type: TrackProcessorTypeId,
+    pub active: bool,
+    pub visible: bool,
+    pub lifecycle: FxLifecycle,
+    pub generation: u64,
+    pub crash_summary: Option<String>,
+    pub logs: Arc<[FxGenerationLogState]>,
+}
+
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
 
@@ -400,6 +491,7 @@ pub struct LoopState {
     pub peak_left_db: f32,
     pub peak_right_db: f32,
     pub midi_activity: bool,
+    pub has_recorded_fx_state: bool,
 }
 
 impl Default for LoopState {
@@ -428,6 +520,7 @@ impl Default for LoopState {
             peak_left_db: -200.0,
             peak_right_db: -200.0,
             midi_activity: false,
+            has_recorded_fx_state: false,
         }
     }
 }
@@ -581,11 +674,34 @@ impl Default for ConnectionViewState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum TrackChannelRole {
+    DirectAudio(u32),
+    DirectMidi,
+    DryAudio(u32),
+    DryMidi,
+    WetAudio(u32),
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum TrackTopology {
+    #[default]
+    Direct,
+    DryWet {
+        dry_audio_channels: u32,
+        wet_audio_channels: u32,
+        dry_midi: bool,
+        processor_type: TrackProcessorTypeId,
+    },
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct TrackState {
     pub id: TrackId,
     pub name: String,
     pub is_sync: bool,
+    pub topology: TrackTopology,
+    pub fx: Option<TrackFxState>,
     pub loops: Vec<LoopState>,
     pub controls: TrackControlState,
     pub port_ids: Arc<[PortId]>,
@@ -821,6 +937,7 @@ pub struct ClickTrackState {
 pub struct AppSnapshot {
     pub revision: u64,
     pub tracks: Vec<TrackState>,
+    pub track_processors: Arc<[TrackProcessorDescriptor]>,
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
@@ -835,10 +952,104 @@ pub struct AppSnapshot {
 pub type AppState = AppSnapshot;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrackSpec {
+    pub name: String,
+    pub topology: TrackSpecTopology,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TrackSpecTopology {
+    Direct {
+        audio_channels: u32,
+        midi: bool,
+    },
+    DryWet {
+        dry_audio_channels: u32,
+        wet_audio_channels: u32,
+        dry_midi: bool,
+        processor_type: TrackProcessorTypeId,
+    },
+}
+
+impl TrackSpecTopology {
+    pub fn channel_roles(&self) -> Vec<TrackChannelRole> {
+        match self {
+            Self::Direct {
+                audio_channels,
+                midi,
+            } => (0..*audio_channels)
+                .map(TrackChannelRole::DirectAudio)
+                .chain((*midi).then_some(TrackChannelRole::DirectMidi))
+                .collect(),
+            Self::DryWet {
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi,
+                ..
+            } => (0..*dry_audio_channels)
+                .map(TrackChannelRole::DryAudio)
+                .chain((*dry_midi).then_some(TrackChannelRole::DryMidi))
+                .chain((0..*wet_audio_channels).map(TrackChannelRole::WetAudio))
+                .collect(),
+        }
+    }
+}
+
+impl TrackSpec {
+    pub fn validate(&self, processors: &[TrackProcessorDescriptor]) -> Result<(), TrackSpecError> {
+        if self.name.trim().is_empty() {
+            return Err(TrackSpecError::EmptyName);
+        }
+        let TrackSpecTopology::DryWet {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+            processor_type,
+        } = &self.topology
+        else {
+            return Ok(());
+        };
+        let processor = processors
+            .iter()
+            .find(|candidate| candidate.id == *processor_type)
+            .ok_or(TrackSpecError::ProcessorUnavailable)?;
+        if !processor.available {
+            return Err(TrackSpecError::ProcessorUnavailable);
+        }
+        if !processor
+            .constraints
+            .accepts(*dry_audio_channels, *wet_audio_channels, *dry_midi)
+        {
+            return Err(TrackSpecError::UnsupportedShape);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TrackSpecError {
+    EmptyName,
+    ProcessorUnavailable,
+    UnsupportedShape,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectTrackSpec {
     pub name: String,
     pub audio_channels: u32,
     pub midi: bool,
+}
+
+impl From<DirectTrackSpec> for TrackSpec {
+    fn from(value: DirectTrackSpec) -> Self {
+        Self {
+            name: value.name,
+            topology: TrackSpecTopology::Direct {
+                audio_channels: value.audio_channels,
+                midi: value.midi,
+            },
+        }
+    }
 }
 
 impl DirectTrackSpec {
@@ -914,6 +1125,7 @@ pub enum LoopAction {
     StopClicked,
     GainChanged(f32),
     BalanceChanged(f32),
+    RestoreRecordedFxState,
 }
 
 pub type LoopWidgetAction = LoopAction;
@@ -927,6 +1139,11 @@ pub enum TrackAction {
     InputGainChanged(f32),
     InputBalanceChanged(f32),
     InputMonitoringChanged(bool),
+    FxActiveChanged(bool),
+    FxVisibilityChanged(bool),
+    FxToggleOrRecover,
+    FxRestoreState(String),
+    FxClearLogs,
 }
 
 pub type TrackWidgetAction = TrackAction;
@@ -957,6 +1174,7 @@ pub enum AppIntent {
     },
     Global(GlobalControlAction),
     AddTrack(DirectTrackSpec),
+    AddTrackWithTopology(TrackSpec),
     AddLoop {
         track_id: TrackId,
     },
@@ -1097,6 +1315,80 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(first.raw(), 10);
         assert!(!TrackId::INVALID.is_valid());
+    }
+
+    fn synthetic_processor() -> TrackProcessorDescriptor {
+        TrackProcessorDescriptor {
+            id: TrackProcessorTypeId::new("browser_native_test"),
+            label: "Browser native test".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: TrackProcessorConstraints {
+                max_dry_audio_channels: Some(4),
+                max_wet_audio_channels: Some(2),
+                dry_midi: false,
+            },
+            features: TrackProcessorFeatures {
+                state: true,
+                external_ui: true,
+                recovery: false,
+                logs: false,
+            },
+        }
+    }
+
+    #[test]
+    fn track_spec_uses_capability_catalog_and_constraints() {
+        let processor = synthetic_processor();
+        let spec = TrackSpec {
+            name: "Processed".to_owned(),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 4,
+                wet_audio_channels: 2,
+                dry_midi: false,
+                processor_type: processor.id.clone(),
+            },
+        };
+        assert_eq!(
+            spec.validate(&[]),
+            Err(TrackSpecError::ProcessorUnavailable)
+        );
+        assert!(spec.validate(std::slice::from_ref(&processor)).is_ok());
+        assert_eq!(
+            spec.topology.channel_roles(),
+            vec![
+                TrackChannelRole::DryAudio(0),
+                TrackChannelRole::DryAudio(1),
+                TrackChannelRole::DryAudio(2),
+                TrackChannelRole::DryAudio(3),
+                TrackChannelRole::WetAudio(0),
+                TrackChannelRole::WetAudio(1),
+            ]
+        );
+
+        let unsupported = TrackSpec {
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 5,
+                wet_audio_channels: 2,
+                dry_midi: false,
+                processor_type: processor.id.clone(),
+            },
+            ..spec.clone()
+        };
+        assert_eq!(
+            unsupported.validate(&[processor]),
+            Err(TrackSpecError::UnsupportedShape)
+        );
+    }
+
+    #[test]
+    fn processor_descriptors_preserve_future_ui_facets() {
+        let processor = synthetic_processor();
+        assert_eq!(processor.id.as_str(), "browser_native_test");
+        assert!(processor.features.state);
+        assert!(processor.features.external_ui);
+        assert!(!processor.features.logs);
+        assert_eq!(AppSnapshot::default().track_processors.len(), 0);
     }
 
     #[test]

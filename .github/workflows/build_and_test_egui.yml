@@ -129,7 +129,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            libasound2-dev libjack-jackd2-dev libgl1-mesa-dev libx11-dev libxcb-render0-dev \
+            libasound2-dev libjack-jackd2-dev liblilv-dev libgl1-mesa-dev libx11-dev libxcb-render0-dev \
             libxcb-shape0-dev libxcb-xfixes0-dev libxcursor-dev libxi-dev \
             libxkbcommon-dev libxrandr-dev libwayland-dev
 
@@ -137,11 +137,28 @@ jobs:
         if: matrix.target == 'web' && env.ACT != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev pulseaudio xvfb
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev liblilv-dev pulseaudio xvfb
           if ! command -v trunk >/dev/null 2>&1; then
             cargo install --locked trunk --version 0.21.14
           fi
           trunk --version
+
+      - name: Install macOS native FX build dependency
+        if: matrix.target == 'macos' && env.ACT != 'true'
+        run: brew install lilv pkg-config
+
+      - name: Install Windows native FX build dependency
+        if: matrix.target == 'windows' && env.ACT != 'true'
+        shell: pwsh
+        run: |
+          $vcpkg = Join-Path $env:VCPKG_INSTALLATION_ROOT "vcpkg.exe"
+          & $vcpkg install lilv:x64-windows pkgconf:x64-windows
+          $installed = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\x64-windows"
+          $pkgconf = Get-ChildItem -Path $installed -Filter pkgconf.exe -Recurse | Select-Object -First 1
+          if (-not $pkgconf) { throw "vcpkg pkgconf.exe was not installed" }
+          "PKG_CONFIG=$($pkgconf.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_CONFIG_PATH=$installed\lib\pkgconfig;$installed\share\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$installed\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Build native application
         if: matrix.target != 'web'

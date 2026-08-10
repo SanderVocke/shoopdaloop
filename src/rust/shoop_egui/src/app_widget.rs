@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use crate::{
     click_track_dialog::ClickTrackDialog, colors, AppAction, AppState, AudioDriverConfig,
     AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig, DetailsPane,
-    DirectTrackSpec, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, SettingsAction,
-    SettingsDialog, TrackWidget, TracksWidget,
+    DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, SettingsAction, SettingsDialog,
+    TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget,
+    TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
@@ -23,6 +24,7 @@ pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.akai_apc_mini_mk1.enabled");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
+pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
 
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
@@ -263,6 +265,39 @@ pub fn register_audio_settings(
     Ok(())
 }
 
+pub fn register_carla_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    builder.register(
+        SettingDefinition::new(
+            CARLA_HOSTING_MODE,
+            shoop_settings::CarlaHostingMode::InProcess.as_str().to_owned(),
+            "Carla",
+            "Hosting mode",
+            "Run Carla in this process or in a supervised subprocess. This is a global machine setting, is not stored in sessions, and takes effect after restart.",
+        )
+        .category_order(7)
+        .setting_order(10)
+        .effect(SettingEffect::RestartRequired)
+        .editor(shoop_settings::SettingEditor::StringChoice {
+            choices: &[
+                ("in_process", "In application process"),
+                ("subprocess", "One subprocess per FX chain"),
+            ],
+        }),
+    )
+}
+
+pub fn carla_hosting_mode_from_snapshot(
+    snapshot: &SettingsSnapshot,
+) -> Result<shoop_settings::CarlaHostingMode, String> {
+    snapshot
+        .get(CARLA_HOSTING_MODE)
+        .map_err(|error| error.to_string())?
+        .parse()
+        .map_err(|error: shoop_settings::CarlaHostingModeParseError| error.to_string())
+}
+
 pub fn selected_audio_driver(snapshot: &SettingsSnapshot) -> Result<AudioDriverKind, String> {
     parse_audio_driver_kind(
         snapshot
@@ -413,6 +448,13 @@ pub fn register_script_settings(
     )
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum AddTrackMode {
+    #[default]
+    Regular,
+    DryWet,
+}
+
 pub struct AppWidgetResponse {
     pub app_actions: Vec<AppAction>,
     pub settings_actions: Vec<SettingsAction>,
@@ -429,8 +471,13 @@ pub struct AppWidget {
     details_open: bool,
     add_track_open: bool,
     add_track_name: String,
+    add_track_mode: AddTrackMode,
     add_track_audio_channels: u32,
     add_track_midi: bool,
+    add_track_dry_audio_channels: u32,
+    add_track_wet_audio_channels: u32,
+    add_track_dry_midi: bool,
+    add_track_processor: Option<TrackProcessorTypeId>,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
@@ -462,8 +509,13 @@ impl AppWidget {
             details_open: true,
             add_track_open: false,
             add_track_name: String::new(),
+            add_track_mode: AddTrackMode::Regular,
             add_track_audio_channels: 2,
             add_track_midi: false,
+            add_track_dry_audio_channels: 2,
+            add_track_wet_audio_channels: 2,
+            add_track_dry_midi: false,
+            add_track_processor: None,
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
@@ -567,7 +619,7 @@ impl AppWidget {
 
         egui::Panel::right("logo_status_and_sync")
             .resizable(false)
-            .exact_size(190.0)
+            .exact_size(220.0)
             .frame(
                 egui::Frame::new()
                     .fill(colors::SIDEBAR_BACKGROUND)
@@ -623,7 +675,7 @@ impl AppWidget {
                     .filter(|track| !track.is_sync)
                     .cloned()
                     .collect();
-                let response = self.tracks.show(ui, &main_tracks);
+                let response = self.tracks.show(ui, &main_tracks, &state.track_processors);
                 if response.add_track_requested {
                     self.open_add_track_dialog(main_tracks.len(), settings_state);
                 }
@@ -642,7 +694,7 @@ impl AppWidget {
                 actions.extend(response.intents);
             });
 
-        self.show_add_track_dialog(ui.ctx(), &mut actions);
+        self.show_add_track_dialog(ui.ctx(), &state.track_processors, &mut actions);
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
@@ -667,6 +719,7 @@ impl AppWidget {
         settings_state: &SettingsViewState,
     ) {
         self.add_track_name = format!("Track {}", main_track_count + 1);
+        self.add_track_mode = AddTrackMode::Regular;
         self.add_track_audio_channels = settings_state
             .active
             .get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
@@ -675,6 +728,10 @@ impl AppWidget {
             .active
             .get(DEFAULT_NEW_TRACK_MIDI)
             .expect("registered MIDI setting must retain its type");
+        self.add_track_dry_audio_channels = self.add_track_audio_channels;
+        self.add_track_wet_audio_channels = self.add_track_audio_channels;
+        self.add_track_dry_midi = self.add_track_midi;
+        self.add_track_processor = None;
         self.add_track_open = true;
     }
 
@@ -686,6 +743,26 @@ impl AppWidget {
     ) -> (u32, bool) {
         self.open_add_track_dialog(0, settings_state);
         (self.add_track_audio_channels, self.add_track_midi)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_open_empty_dry_wet_form(&mut self) -> bool {
+        self.add_track_name = "Browser dry/wet capability check".to_owned();
+        self.add_track_mode = AddTrackMode::DryWet;
+        self.add_track_open = true;
+        self.add_track_processor = None;
+        self.add_track_open
+            && self.add_track_dry_audio_channels == self.add_track_audio_channels
+            && self.add_track_wet_audio_channels == self.add_track_audio_channels
+            && self.add_track_dry_midi == self.add_track_midi
+            && self.add_track_spec().is_none()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_close_add_track(&mut self) {
+        self.cancel_add_track();
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -908,9 +985,26 @@ impl AppWidget {
             });
     }
 
-    fn show_add_track_dialog(&mut self, context: &egui::Context, actions: &mut Vec<AppAction>) {
+    fn show_add_track_dialog(
+        &mut self,
+        context: &egui::Context,
+        processors: &[TrackProcessorDescriptor],
+        actions: &mut Vec<AppAction>,
+    ) {
         if !self.add_track_open {
             return;
+        }
+        if self.add_track_mode == AddTrackMode::DryWet
+            && self.add_track_processor.as_ref().is_none_or(|selected| {
+                !processors
+                    .iter()
+                    .any(|processor| processor.available && processor.id == *selected)
+            })
+        {
+            self.add_track_processor = processors
+                .iter()
+                .find(|processor| processor.available)
+                .map(|processor| processor.id.clone());
         }
         let mut open = self.add_track_open;
         let mut accepted = false;
@@ -921,7 +1015,7 @@ impl AppWidget {
             .resizable(false)
             .open(&mut open)
             .show(context, |ui| {
-                ui.label("Choose the settings for your direct track.");
+                ui.label("Choose regular looping or separate dry and wet media.");
                 egui::Grid::new("add_track_fields")
                     .num_columns(2)
                     .spacing([10.0, 6.0])
@@ -929,45 +1023,107 @@ impl AppWidget {
                         ui.label("Name:");
                         ui.text_edit_singleline(&mut self.add_track_name);
                         ui.end_row();
-                        ui.label("Audio:");
-                        egui::ComboBox::from_id_salt("add_track_audio")
-                            .selected_text(audio_channel_label(self.add_track_audio_channels))
+                        ui.label("Track type:");
+                        egui::ComboBox::from_id_salt("add_track_mode")
+                            .selected_text(match self.add_track_mode {
+                                AddTrackMode::Regular => "Regular",
+                                AddTrackMode::DryWet => "Dry + Wet",
+                            })
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(
-                                    &mut self.add_track_audio_channels,
-                                    0,
-                                    "Disabled",
+                                    &mut self.add_track_mode,
+                                    AddTrackMode::Regular,
+                                    "Regular",
                                 );
-                                ui.selectable_value(&mut self.add_track_audio_channels, 1, "Mono");
                                 ui.selectable_value(
-                                    &mut self.add_track_audio_channels,
-                                    2,
-                                    "Stereo",
+                                    &mut self.add_track_mode,
+                                    AddTrackMode::DryWet,
+                                    "Dry + Wet",
                                 );
-                                for channels in 3..=10 {
-                                    ui.selectable_value(
-                                        &mut self.add_track_audio_channels,
-                                        channels,
-                                        format!("Custom ({channels})"),
-                                    );
-                                }
                             });
                         ui.end_row();
-                        ui.label("Custom channels:");
-                        ui.add(
-                            egui::DragValue::new(&mut self.add_track_audio_channels)
-                                .range(0..=u32::MAX)
-                                .speed(1),
-                        );
-                        ui.end_row();
-                        ui.label("MIDI:");
-                        ui.checkbox(&mut self.add_track_midi, "Enabled");
-                        ui.end_row();
+                        match self.add_track_mode {
+                            AddTrackMode::Regular => {
+                                ui.label("Audio:");
+                                show_audio_channel_count(
+                                    ui,
+                                    "add_track_audio",
+                                    &mut self.add_track_audio_channels,
+                                );
+                                ui.end_row();
+                                ui.label("MIDI:");
+                                ui.checkbox(&mut self.add_track_midi, "Enabled");
+                                ui.end_row();
+                            }
+                            AddTrackMode::DryWet => {
+                                ui.label("Dry audio:");
+                                show_audio_channel_count(
+                                    ui,
+                                    "add_track_dry_audio",
+                                    &mut self.add_track_dry_audio_channels,
+                                );
+                                ui.end_row();
+                                ui.label("Wet audio:");
+                                show_audio_channel_count(
+                                    ui,
+                                    "add_track_wet_audio",
+                                    &mut self.add_track_wet_audio_channels,
+                                );
+                                ui.end_row();
+                                ui.label("Dry MIDI:");
+                                ui.checkbox(&mut self.add_track_dry_midi, "Enabled");
+                                ui.end_row();
+                                ui.label("Processing:");
+                                let selected = self
+                                    .add_track_processor
+                                    .as_ref()
+                                    .and_then(|selected| {
+                                        processors
+                                            .iter()
+                                            .find(|processor| processor.id == *selected)
+                                    })
+                                    .map(|processor| processor.label.as_str())
+                                    .unwrap_or("No processors available");
+                                egui::ComboBox::from_id_salt("add_track_processor")
+                                    .selected_text(selected)
+                                    .show_ui(ui, |ui| {
+                                        for processor in processors {
+                                            ui.add_enabled_ui(processor.available, |ui| {
+                                                ui.selectable_value(
+                                                    &mut self.add_track_processor,
+                                                    Some(processor.id.clone()),
+                                                    &processor.label,
+                                                );
+                                            });
+                                            if let Some(reason) = &processor.unavailable_reason {
+                                                ui.small(reason);
+                                            }
+                                        }
+                                    });
+                                ui.end_row();
+                            }
+                        }
                     });
+                let spec = self.add_track_spec();
+                let validation = spec
+                    .as_ref()
+                    .ok_or(crate::TrackSpecError::ProcessorUnavailable)
+                    .and_then(|spec| spec.validate(processors));
+                if let Err(error) = validation {
+                    let message = match error {
+                        crate::TrackSpecError::EmptyName => "A track name is required.",
+                        crate::TrackSpecError::ProcessorUnavailable => {
+                            "No compatible dry/wet processor is available on this runtime."
+                        }
+                        crate::TrackSpecError::UnsupportedShape => {
+                            "The selected processor does not support this channel/MIDI shape."
+                        }
+                    };
+                    ui.colored_label(egui::Color32::LIGHT_RED, message);
+                }
                 ui.separator();
                 ui.horizontal(|ui| {
-                    let valid = !self.add_track_name.trim().is_empty();
-                    let add = ui.add_enabled(valid, egui::Button::new("Add"));
+                    let add = ui.add_enabled(validation.is_ok(), egui::Button::new("Add"));
                     #[cfg(test)]
                     {
                         self.add_track_accept_rect = Some(add.rect);
@@ -986,10 +1142,10 @@ impl AppWidget {
                 });
             });
         if accepted {
-            if let Some(action) = self.accept_add_track() {
+            if let Some(action) = self.accept_add_track(processors) {
                 actions.push(action);
+                open = false;
             }
-            open = false;
         }
         if cancelled {
             self.cancel_add_track();
@@ -998,17 +1154,30 @@ impl AppWidget {
         self.add_track_open = open;
     }
 
-    fn accept_add_track(&mut self) -> Option<AppAction> {
-        let name = self.add_track_name.trim();
-        if name.is_empty() {
-            return None;
-        }
+    fn add_track_spec(&self) -> Option<TrackSpec> {
+        let topology = match self.add_track_mode {
+            AddTrackMode::Regular => TrackSpecTopology::Direct {
+                audio_channels: self.add_track_audio_channels,
+                midi: self.add_track_midi,
+            },
+            AddTrackMode::DryWet => TrackSpecTopology::DryWet {
+                dry_audio_channels: self.add_track_dry_audio_channels,
+                wet_audio_channels: self.add_track_wet_audio_channels,
+                dry_midi: self.add_track_dry_midi,
+                processor_type: self.add_track_processor.clone()?,
+            },
+        };
+        Some(TrackSpec {
+            name: self.add_track_name.trim().to_owned(),
+            topology,
+        })
+    }
+
+    fn accept_add_track(&mut self, processors: &[TrackProcessorDescriptor]) -> Option<AppAction> {
+        let spec = self.add_track_spec()?;
+        spec.validate(processors).ok()?;
         self.add_track_open = false;
-        Some(AppAction::AddTrack(DirectTrackSpec {
-            name: name.to_owned(),
-            audio_channels: self.add_track_audio_channels,
-            midi: self.add_track_midi,
-        }))
+        Some(AppAction::AddTrackWithTopology(spec))
     }
 
     fn cancel_add_track(&mut self) {
@@ -1094,6 +1263,23 @@ fn audio_channel_selection_action(task_id: crate::TaskId, channels: &[u32]) -> A
     }
 }
 
+fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
+    ui.horizontal(|ui| {
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(audio_channel_label(*channels))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(channels, 0, "Disabled");
+                ui.selectable_value(channels, 1, "Mono");
+                ui.selectable_value(channels, 2, "Stereo");
+                for custom in 3..=10 {
+                    ui.selectable_value(channels, custom, format!("Custom ({custom})"));
+                }
+            });
+        ui.add(egui::DragValue::new(channels).range(0..=u32::MAX).speed(1))
+            .on_hover_text("Custom channel count");
+    });
+}
+
 fn audio_channel_label(channels: u32) -> String {
     match channels {
         0 => "Disabled".to_owned(),
@@ -1112,6 +1298,53 @@ mod tests {
     use shoop_settings::{
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
+
+    #[test]
+    fn carla_hosting_setting_validates_modes_and_preserves_unknown_keys() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_carla_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let defaults = registry.defaults(1);
+        assert_eq!(
+            carla_hosting_mode_from_snapshot(&defaults).unwrap(),
+            shoop_settings::CarlaHostingMode::InProcess
+        );
+        let definition = registry.definition(CARLA_HOSTING_MODE.id()).unwrap();
+        assert_eq!(definition.effect(), SettingEffect::RestartRequired);
+
+        let mut draft = SettingsDraft::from_snapshot(&defaults);
+        draft.set(CARLA_HOSTING_MODE, "subprocess".to_owned());
+        let mut base = shoop_settings::EgSettingsDocument::empty("test");
+        base.values.insert(
+            "future.setting".to_owned(),
+            serde_json::Value::String("preserved".to_owned()),
+        );
+        let document = registry.document_from_draft(&base, &draft, "test").unwrap();
+        let resolved = registry.resolve(&document, 2);
+        assert_eq!(
+            carla_hosting_mode_from_snapshot(&resolved.snapshot).unwrap(),
+            shoop_settings::CarlaHostingMode::Subprocess
+        );
+        assert_eq!(
+            document.values.get("future.setting"),
+            Some(&serde_json::Value::String("preserved".to_owned()))
+        );
+
+        let mut invalid = document;
+        invalid.values.insert(
+            CARLA_HOSTING_MODE.id().to_owned(),
+            serde_json::Value::String("invalid".to_owned()),
+        );
+        let resolved = registry.resolve(&invalid, 3);
+        assert_eq!(
+            carla_hosting_mode_from_snapshot(&resolved.snapshot).unwrap(),
+            shoop_settings::CarlaHostingMode::InProcess
+        );
+        assert!(resolved
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.key.as_deref() == Some(CARLA_HOSTING_MODE.id())));
+    }
 
     fn settings_state() -> SettingsViewState {
         let mut builder = SettingsRegistryBuilder::default();
@@ -1219,14 +1452,69 @@ mod tests {
         frame(&context, &mut widget, &state, Vec::new());
         assert!(widget.add_track_accept_rect.is_some());
         assert_eq!(
-            widget.accept_add_track(),
-            Some(AppAction::AddTrack(DirectTrackSpec {
+            widget.accept_add_track(&[]),
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
                 name: "New Track".to_owned(),
-                audio_channels: 4,
-                midi: true,
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 4,
+                    midi: true,
+                },
             }))
         );
         assert!(!widget.add_track_open);
+    }
+
+    #[test]
+    fn dry_wet_dialog_uses_empty_and_synthetic_processor_catalogs() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Processed".to_owned();
+        widget.add_track_mode = AddTrackMode::DryWet;
+        widget.add_track_dry_audio_channels = 2;
+        widget.add_track_wet_audio_channels = 1;
+        widget.add_track_dry_midi = true;
+        frame(&context, &mut widget, &AppState::default(), Vec::new());
+        assert!(widget.add_track_processor.is_none());
+        assert_eq!(widget.accept_add_track(&[]), None);
+        assert!(widget.add_track_open);
+
+        let processor = TrackProcessorDescriptor {
+            id: TrackProcessorTypeId::new("future_browser_fx"),
+            label: "Future browser FX".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: crate::TrackProcessorConstraints {
+                max_dry_audio_channels: Some(2),
+                max_wet_audio_channels: Some(2),
+                dry_midi: true,
+            },
+            features: crate::TrackProcessorFeatures {
+                state: true,
+                external_ui: true,
+                recovery: true,
+                logs: true,
+            },
+        };
+        let state = AppState {
+            track_processors: Arc::from([processor.clone()]),
+            ..Default::default()
+        };
+        frame(&context, &mut widget, &state, Vec::new());
+        assert_eq!(widget.add_track_processor, Some(processor.id.clone()));
+        assert_eq!(
+            widget.accept_add_track(&[processor.clone()]),
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
+                name: "Processed".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                    processor_type: processor.id,
+                },
+            }))
+        );
     }
 
     #[test]

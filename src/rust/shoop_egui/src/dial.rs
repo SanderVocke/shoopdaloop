@@ -16,7 +16,7 @@ pub(crate) fn paint_dial(
     fraction: f32,
     label: &str,
 ) {
-    let visuals = ui.style().interact(response);
+    let _visuals = ui.style().interact(response);
     ui.painter().circle_filled(
         rect.center(),
         rect.width() / 2.0,
@@ -25,11 +25,11 @@ pub(crate) fn paint_dial(
     ui.painter().circle_stroke(
         rect.center(),
         rect.width() / 2.0,
-        egui::Stroke::new(1.0, visuals.fg_stroke.color),
+        egui::Stroke::new(1.0, colors::MUTED_FOREGROUND),
     );
     ui.painter().line_segment(
         dial_indicator(rect, fraction),
-        egui::Stroke::new(1.5, colors::FOREGROUND),
+        egui::Stroke::new(2.0, colors::COLORED_HIGHLIGHT),
     );
     ui.painter().text(
         rect.center(),

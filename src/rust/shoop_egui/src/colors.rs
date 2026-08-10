@@ -2,12 +2,13 @@
 
 use egui::Color32;
 
-pub const DARK_BACKGROUND: Color32 = Color32::from_rgb(30, 30, 30);
+pub const DARK_BACKGROUND: Color32 = Color32::from_rgb(28, 27, 31);
 pub const RAISED_BACKGROUND: Color32 = Color32::from_rgb(85, 85, 85);
 pub const SIDEBAR_BACKGROUND: Color32 = Color32::from_rgb(42, 42, 42);
 pub const CONTROL_BACKGROUND: Color32 = Color32::from_rgb(34, 34, 34);
 pub const FOREGROUND: Color32 = Color32::WHITE;
-pub const MUTED_FOREGROUND: Color32 = Color32::GRAY;
+pub const COLORED_HIGHLIGHT: Color32 = Color32::from_rgb(244, 143, 177);
+pub const MUTED_FOREGROUND: Color32 = Color32::from_rgb(128, 128, 128);
 pub const WARNING: Color32 = Color32::YELLOW;
 pub const ERROR: Color32 = Color32::LIGHT_RED;
 pub const STRONG_ERROR: Color32 = Color32::RED;
