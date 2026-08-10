@@ -6,8 +6,8 @@ use crate::{
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
 
-const DEFAULT_TRACK_WIDTH: f32 = 100.0;
-const MIN_TRACK_WIDTH: f32 = 80.0;
+const DEFAULT_TRACK_WIDTH: f32 = 120.0;
+const MIN_TRACK_WIDTH: f32 = 100.0;
 const MAX_TRACK_WIDTH: f32 = 400.0;
 const TRACK_CONTROLS_HEIGHT: f32 = 50.0;
 const TRACK_CONTENT_MARGIN: egui::Margin = egui::Margin::same(4);
