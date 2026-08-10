@@ -652,7 +652,12 @@ impl AppWidget {
             .frame(
                 egui::Frame::new()
                     .fill(colors::DARK_BACKGROUND)
-                    .inner_margin(8.0),
+                    .inner_margin(egui::Margin {
+                        left: 8,
+                        right: 8,
+                        top: 8,
+                        bottom: 0,
+                    }),
             )
             .show(ui, |ui| {
                 let main_tracks: Vec<_> = state

@@ -6,6 +6,24 @@ use crate::{
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
 
+const DEFAULT_TRACK_WIDTH: f32 = 100.0;
+const MIN_TRACK_WIDTH: f32 = 80.0;
+const MAX_TRACK_WIDTH: f32 = 400.0;
+const TRACK_CONTROLS_HEIGHT: f32 = 50.0;
+const TRACK_CONTENT_MARGIN: egui::Margin = egui::Margin {
+    left: 4,
+    right: 4,
+    top: 4,
+    bottom: 0,
+};
+const TRACK_CONTROLS_MARGIN: egui::Margin = egui::Margin {
+    left: 4,
+    right: 4,
+    top: 0,
+    bottom: 4,
+};
+const RESIZE_HANDLE_RADIUS: f32 = 3.0;
+
 #[derive(Debug, Default)]
 pub struct TrackWidgetResponse {
     pub actions: Vec<TrackWidgetAction>,
@@ -15,7 +33,7 @@ pub struct TrackWidgetResponse {
     pub connections_requested: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TrackWidget {
     name_edit: String,
     source_name: String,
@@ -23,8 +41,15 @@ pub struct TrackWidget {
     hovered_loop: Option<LoopId>,
     controls: TrackControls,
     fx_logs_open: bool,
+    width: f32,
+    rendered_content_width: f32,
+    width_drag_start: Option<f32>,
     #[cfg(test)]
     test_loop_rects: Vec<egui::Rect>,
+    #[cfg(test)]
+    test_content_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_controls_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_options_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -33,12 +58,43 @@ pub struct TrackWidget {
     test_fx_rect: Option<egui::Rect>,
 }
 
+impl Default for TrackWidget {
+    fn default() -> Self {
+        Self {
+            name_edit: String::new(),
+            source_name: String::new(),
+            loop_widgets: BTreeMap::new(),
+            hovered_loop: None,
+            controls: TrackControls::default(),
+            fx_logs_open: false,
+            width: DEFAULT_TRACK_WIDTH,
+            rendered_content_width: DEFAULT_TRACK_WIDTH,
+            width_drag_start: None,
+            #[cfg(test)]
+            test_loop_rects: Vec::new(),
+            #[cfg(test)]
+            test_content_rect: None,
+            #[cfg(test)]
+            test_controls_rect: None,
+            #[cfg(test)]
+            test_options_rect: None,
+            #[cfg(test)]
+            test_connections_rect: None,
+            #[cfg(test)]
+            test_fx_rect: None,
+        }
+    }
+}
+
 impl TrackWidget {
     pub fn show(&mut self, ui: &mut egui::Ui, state: &TrackState) -> TrackWidgetResponse {
+        let item_spacing_y = ui.spacing().item_spacing.y;
+        ui.spacing_mut().item_spacing.y = 0.0;
         let mut response = self.show_content(ui, state, !state.is_sync);
         response
             .actions
             .extend(self.show_controls(ui, &state.controls));
+        ui.spacing_mut().item_spacing.y = item_spacing_y;
         response
     }
 
@@ -58,6 +114,17 @@ impl TrackWidget {
         processor: Option<&TrackProcessorDescriptor>,
         show_add_loop: bool,
     ) -> TrackWidgetResponse {
+        self.show_content_with_processor_min_height(ui, state, processor, show_add_loop, 0.0)
+    }
+
+    pub(crate) fn show_content_with_processor_min_height(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &TrackState,
+        processor: Option<&TrackProcessorDescriptor>,
+        show_add_loop: bool,
+        min_height: f32,
+    ) -> TrackWidgetResponse {
         self.loop_widgets
             .retain(|id, _| state.loops.iter().any(|loop_state| loop_state.id == *id));
         if self
@@ -69,11 +136,13 @@ impl TrackWidget {
         let mut result = TrackWidgetResponse::default();
         #[cfg(test)]
         self.test_loop_rects.clear();
-        egui::Frame::new()
+        let rendered_width = self.width;
+        let frame = egui::Frame::new()
             .fill(colors::RAISED_BACKGROUND)
-            .inner_margin(egui::Margin::same(4))
+            .inner_margin(TRACK_CONTENT_MARGIN)
             .show(ui, |ui| {
-                ui.set_width(100.0);
+                ui.set_width(rendered_width);
+                ui.set_min_height((min_height - TRACK_CONTENT_MARGIN.sum().y).max(0.0));
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     self.show_header(ui, state, processor, &mut result);
                     ui.add_space(2.0);
@@ -114,6 +183,12 @@ impl TrackWidget {
                     }
                 });
             });
+        self.rendered_content_width = rendered_width;
+        #[cfg(test)]
+        {
+            self.test_content_rect = Some(frame.response.rect);
+        }
+        self.show_width_resize_handle(ui, frame.response.rect, "content_width_resize");
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
         result
     }
@@ -123,17 +198,71 @@ impl TrackWidget {
         ui: &mut egui::Ui,
         state: &crate::TrackControlState,
     ) -> Vec<TrackWidgetAction> {
-        egui::Frame::new()
+        let frame = egui::Frame::new()
             .fill(colors::RAISED_BACKGROUND)
-            .inner_margin(egui::Margin::same(4))
+            .inner_margin(TRACK_CONTROLS_MARGIN)
             .show(ui, |ui| {
-                ui.set_width(180.0);
+                ui.set_width(self.rendered_content_width);
+                ui.set_min_height(TRACK_CONTROLS_HEIGHT);
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     self.controls.show(ui, state)
                 })
                 .inner
-            })
-            .inner
+            });
+        #[cfg(test)]
+        {
+            self.test_controls_rect = Some(frame.response.rect);
+        }
+        self.show_width_resize_handle(ui, frame.response.rect, "controls_width_resize");
+        frame.inner
+    }
+
+    fn show_width_resize_handle(
+        &mut self,
+        ui: &mut egui::Ui,
+        track_rect: egui::Rect,
+        id_salt: &'static str,
+    ) {
+        let handle_rect = egui::Rect::from_min_max(
+            egui::pos2(track_rect.right() - RESIZE_HANDLE_RADIUS, track_rect.top()),
+            egui::pos2(
+                track_rect.right() + RESIZE_HANDLE_RADIUS,
+                track_rect.bottom(),
+            ),
+        );
+        let response = ui
+            .interact(
+                handle_rect,
+                ui.make_persistent_id(id_salt),
+                egui::Sense::drag(),
+            )
+            .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+            .on_hover_text("Drag to resize track");
+        if response.drag_started() {
+            self.width_drag_start = Some(self.width);
+        }
+        if response.dragged() {
+            self.width = (self.width_drag_start.unwrap_or(self.width) + response.drag_delta().x)
+                .clamp(MIN_TRACK_WIDTH, MAX_TRACK_WIDTH);
+        }
+        if response.drag_stopped() {
+            self.width_drag_start = None;
+        }
+        if response.hovered() || response.dragged() {
+            ui.painter().vline(
+                track_rect.right(),
+                track_rect.y_range(),
+                ui.visuals().widgets.hovered.fg_stroke,
+            );
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_layout_rects(&self) -> (egui::Rect, egui::Rect) {
+        (
+            self.test_content_rect.unwrap(),
+            self.test_controls_rect.unwrap(),
+        )
     }
 
     fn show_header(
@@ -143,96 +272,99 @@ impl TrackWidget {
         processor: Option<&TrackProcessorDescriptor>,
         result: &mut TrackWidgetResponse,
     ) {
-        ui.horizontal(|ui| {
-            let fx_width = if state.fx.is_some() { 34.0 } else { 0.0 };
-            if state.is_sync {
-                ui.add_sized(
-                    [(ui.available_width() - 22.0 - fx_width).max(40.0), 24.0],
-                    egui::Label::new(&state.name),
-                );
-            } else {
-                let name_id = ui.make_persistent_id("name");
-                let has_focus = ui.memory(|memory| memory.has_focus(name_id));
-                if !has_focus && self.source_name != state.name {
-                    self.name_edit.clone_from(&state.name);
-                    self.source_name.clone_from(&state.name);
-                }
-                let available = (ui.available_width() - 22.0 - fx_width).max(40.0);
-                let response = ui.add_sized(
-                    [available, 24.0],
-                    egui::TextEdit::singleline(&mut self.name_edit).id(name_id),
-                );
-                if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
-                    response.surrender_focus();
-                }
-                if response.lost_focus() && self.name_edit != state.name {
-                    self.source_name.clone_from(&self.name_edit);
-                    result
-                        .actions
-                        .push(TrackWidgetAction::NameChanged(self.name_edit.clone()));
-                }
-            }
-            if let Some(fx) = &state.fx {
-                let features = processor.map(|value| value.features).unwrap_or_default();
-                let color = match fx.lifecycle {
-                    FxLifecycle::Running if fx.active => egui::Color32::LIGHT_GREEN,
-                    FxLifecycle::Running => egui::Color32::GRAY,
-                    FxLifecycle::Starting | FxLifecycle::Restarting => egui::Color32::YELLOW,
-                    FxLifecycle::Crashed | FxLifecycle::Unavailable => egui::Color32::LIGHT_RED,
-                    FxLifecycle::Stopped => egui::Color32::GRAY,
-                };
-                let controllable = features.external_ui || features.recovery;
-                let fx_button = ui
-                    .add_enabled(
-                        controllable,
-                        egui::Button::new(egui::RichText::new("FX").color(color)),
-                    )
-                    .on_hover_text(format!(
-                        "{}: {:?}{}",
-                        fx.processor_type,
-                        fx.lifecycle,
-                        fx.crash_summary
-                            .as_deref()
-                            .map(|summary| format!(" — {summary}"))
-                            .unwrap_or_default()
-                    ));
-                #[cfg(test)]
-                {
-                    self.test_fx_rect = Some(fx_button.rect);
-                }
-                if fx_button.clicked() {
-                    result.actions.push(TrackWidgetAction::FxToggleOrRecover);
-                }
-                fx_button.context_menu(|ui| {
-                    if ui
-                        .add_enabled(features.logs, egui::Button::new("Process logs..."))
-                        .clicked()
+        ui.allocate_ui_with_layout(
+            egui::vec2(ui.available_width(), 24.0),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                let menu = ui.menu_button(ICON_MORE_VERT.rich_text().size(17.0), |ui| {
+                    let connections = ui.button("Connections...");
+                    #[cfg(test)]
                     {
-                        self.fx_logs_open = true;
+                        self.test_connections_rect = Some(connections.rect);
+                    }
+                    if connections.clicked() {
+                        result.connections_requested = true;
                         ui.close();
                     }
+                    if !state.is_sync {
+                        ui.add_enabled(false, egui::Button::new("Delete Track"));
+                    }
                 });
-            }
-            let menu = ui.menu_button(ICON_MORE_VERT.rich_text().size(17.0), |ui| {
-                let connections = ui.button("Connections...");
                 #[cfg(test)]
                 {
-                    self.test_connections_rect = Some(connections.rect);
+                    self.test_options_rect = Some(menu.response.rect);
                 }
-                if connections.clicked() {
-                    result.connections_requested = true;
-                    ui.close();
+                menu.response.on_hover_text("Track options");
+
+                if let Some(fx) = &state.fx {
+                    let features = processor.map(|value| value.features).unwrap_or_default();
+                    let color = match fx.lifecycle {
+                        FxLifecycle::Running if fx.active => egui::Color32::LIGHT_GREEN,
+                        FxLifecycle::Running => egui::Color32::GRAY,
+                        FxLifecycle::Starting | FxLifecycle::Restarting => egui::Color32::YELLOW,
+                        FxLifecycle::Crashed | FxLifecycle::Unavailable => egui::Color32::LIGHT_RED,
+                        FxLifecycle::Stopped => egui::Color32::GRAY,
+                    };
+                    let controllable = features.external_ui || features.recovery;
+                    let fx_button = ui
+                        .add_enabled(
+                            controllable,
+                            egui::Button::new(egui::RichText::new("FX").color(color)),
+                        )
+                        .on_hover_text(format!(
+                            "{}: {:?}{}",
+                            fx.processor_type,
+                            fx.lifecycle,
+                            fx.crash_summary
+                                .as_deref()
+                                .map(|summary| format!(" — {summary}"))
+                                .unwrap_or_default()
+                        ));
+                    #[cfg(test)]
+                    {
+                        self.test_fx_rect = Some(fx_button.rect);
+                    }
+                    if fx_button.clicked() {
+                        result.actions.push(TrackWidgetAction::FxToggleOrRecover);
+                    }
+                    fx_button.context_menu(|ui| {
+                        if ui
+                            .add_enabled(features.logs, egui::Button::new("Process logs..."))
+                            .clicked()
+                        {
+                            self.fx_logs_open = true;
+                            ui.close();
+                        }
+                    });
                 }
-                if !state.is_sync {
-                    ui.add_enabled(false, egui::Button::new("Delete Track"));
+
+                let available = ui.available_width();
+                if state.is_sync {
+                    ui.add_sized([available, 24.0], egui::Label::new(&state.name));
+                } else {
+                    let name_id = ui.make_persistent_id("name");
+                    let has_focus = ui.memory(|memory| memory.has_focus(name_id));
+                    if !has_focus && self.source_name != state.name {
+                        self.name_edit.clone_from(&state.name);
+                        self.source_name.clone_from(&state.name);
+                    }
+                    let response = ui.add_sized(
+                        [available, 24.0],
+                        egui::TextEdit::singleline(&mut self.name_edit).id(name_id),
+                    );
+                    if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter))
+                    {
+                        response.surrender_focus();
+                    }
+                    if response.lost_focus() && self.name_edit != state.name {
+                        self.source_name.clone_from(&self.name_edit);
+                        result
+                            .actions
+                            .push(TrackWidgetAction::NameChanged(self.name_edit.clone()));
+                    }
                 }
-            });
-            #[cfg(test)]
-            {
-                self.test_options_rect = Some(menu.response.rect);
-            }
-            menu.response.on_hover_text("Track options");
-        });
+            },
+        );
     }
 
     fn show_fx_logs(
@@ -325,6 +457,27 @@ mod tests {
                 ..Default::default()
             },
             |ui| response = widget.show_content(ui, state, false),
+        );
+        response
+    }
+
+    fn full_frame(
+        context: &egui::Context,
+        widget: &mut TrackWidget,
+        state: &TrackState,
+        events: Vec<egui::Event>,
+    ) -> TrackWidgetResponse {
+        let mut response = TrackWidgetResponse::default();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 400.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| response = widget.show(ui, state),
         );
         response
     }
@@ -568,6 +721,134 @@ mod tests {
             vec![egui::Event::PointerMoved(popup_over_second)],
         );
         assert_eq!(widget.hovered_loop, Some(first));
+    }
+
+    #[test]
+    fn content_and_controls_share_a_bounded_drag_resizable_width() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackState {
+            id: TrackId::from_raw(1),
+            name: "Track".to_owned(),
+            loops: vec![LoopState {
+                id: LoopId::from_raw(1),
+                ..Default::default()
+            }],
+            controls: crate::TrackControlState {
+                has_output: true,
+                has_output_audio: true,
+                output_stereo: true,
+                has_input: true,
+                has_input_audio: true,
+                input_stereo: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+
+        let _ = full_frame(&context, &mut widget, &state, Vec::new());
+        assert_eq!(widget.width, DEFAULT_TRACK_WIDTH);
+        let content_rect = widget.test_content_rect.unwrap();
+        let controls_rect = widget.test_controls_rect.unwrap();
+        assert!(
+            (content_rect.width() - controls_rect.width()).abs() < f32::EPSILON,
+            "content: {content_rect:?}, controls: {controls_rect:?}"
+        );
+        assert!((content_rect.left() - controls_rect.left()).abs() < f32::EPSILON);
+        assert_eq!(content_rect.bottom(), controls_rect.top());
+
+        let content_edge = content_rect.right_center();
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(content_edge),
+                egui::Event::PointerButton {
+                    pos: content_edge,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerMoved(
+                content_edge + egui::vec2(500.0, 0.0),
+            )],
+        );
+        assert_eq!(widget.width, MAX_TRACK_WIDTH);
+        let (content_rect, controls_rect) = widget.test_layout_rects();
+        assert_eq!(content_rect.x_range(), controls_rect.x_range());
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: content_edge + egui::vec2(500.0, 0.0),
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+
+        let _ = full_frame(&context, &mut widget, &state, Vec::new());
+        let content_rect = widget.test_content_rect.unwrap();
+        let controls_rect = widget.test_controls_rect.unwrap();
+        assert!((content_rect.width() - controls_rect.width()).abs() < f32::EPSILON);
+        assert!((content_rect.left() - controls_rect.left()).abs() < f32::EPSILON);
+
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = TrackWidget::default();
+        let _ = full_frame(&context, &mut widget, &state, Vec::new());
+        let controls_edge = widget.test_controls_rect.unwrap().right_center();
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(controls_edge),
+                egui::Event::PointerButton {
+                    pos: controls_edge,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let resized_pointer = controls_edge - egui::vec2(100.0, 0.0);
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerMoved(resized_pointer)],
+        );
+        assert_eq!(widget.width, MIN_TRACK_WIDTH);
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: resized_pointer,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+
+        let _ = full_frame(&context, &mut widget, &state, Vec::new());
+        let content_rect = widget.test_content_rect.unwrap();
+        let controls_rect = widget.test_controls_rect.unwrap();
+        assert!(
+            (content_rect.width() - controls_rect.width()).abs() < f32::EPSILON,
+            "content: {content_rect:?}, controls: {controls_rect:?}"
+        );
+        assert!((content_rect.left() - controls_rect.left()).abs() < f32::EPSILON);
     }
 
     #[test]

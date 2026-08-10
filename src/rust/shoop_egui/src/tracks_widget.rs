@@ -34,10 +34,12 @@ impl TracksWidget {
             .id_salt("main_tracks_horizontal")
             .show(ui, |ui| {
                 ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
                     let loop_height = (ui.available_height() - control_height).max(80.0);
                     egui::ScrollArea::vertical()
                         .id_salt("main_tracks_loops_vertical")
                         .max_height(loop_height)
+                        .auto_shrink([true, false])
                         .show(ui, |ui| {
                             ui.horizontal_top(|ui| {
                                 ui.spacing_mut().item_spacing.x = 3.0;
@@ -48,9 +50,14 @@ impl TracksWidget {
                                                 .iter()
                                                 .find(|candidate| candidate.id == fx.processor_type)
                                         });
-                                        let response = widget.show_content_with_processor(
-                                            ui, track, processor, true,
-                                        );
+                                        let response = widget
+                                            .show_content_with_processor_min_height(
+                                                ui,
+                                                track,
+                                                processor,
+                                                true,
+                                                loop_height,
+                                            );
                                         collect_response(&mut result, track, response);
                                     });
                                 }
@@ -71,7 +78,6 @@ impl TracksWidget {
                                 result.add_track_requested = add.clicked();
                             });
                         });
-                    // ui.separator();
                     ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing.x = 3.0;
                         for (track, widget) in tracks.iter().zip(&mut self.track_widgets) {
@@ -130,7 +136,7 @@ fn collect_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{LoopId, LoopWidgetAction, SelectionModifiers, TrackId};
+    use crate::{LoopId, LoopState, LoopWidgetAction, SelectionModifiers, TrackId};
 
     #[test]
     fn empty_main_tracks_show_first_track_instruction_only() {
@@ -161,6 +167,53 @@ mod tests {
                 },
             );
             assert_eq!(widget.test_empty_prompt_shown, expected);
+        }
+    }
+
+    #[test]
+    fn track_content_and_control_rows_have_matching_horizontal_bounds() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let tracks = (1..=3)
+            .map(|id| TrackState {
+                id: TrackId::from_raw(id),
+                name: format!("Track {id}"),
+                loops: vec![LoopState {
+                    id: LoopId::from_raw(id),
+                    ..Default::default()
+                }],
+                controls: crate::TrackControlState {
+                    has_output: true,
+                    has_output_audio: true,
+                    output_stereo: true,
+                    has_input: true,
+                    has_input_audio: true,
+                    input_stereo: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        let mut widget = TracksWidget::default();
+
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 400.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                widget.show(ui, &tracks, &[]);
+            },
+        );
+
+        for track_widget in &widget.track_widgets {
+            let (content, controls) = track_widget.test_layout_rects();
+            assert_eq!(content.x_range(), controls.x_range());
+            assert_eq!(content.bottom(), controls.top());
+            assert_eq!(controls.bottom(), 400.0);
         }
     }
 
