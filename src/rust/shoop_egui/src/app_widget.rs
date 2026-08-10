@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use crate::{
     click_track_dialog::ClickTrackDialog, colors, AppAction, AppState, AudioDriverConfig,
     AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig, DetailsPane,
-    DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, SettingsAction, SettingsDialog,
-    TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget,
-    TracksWidget,
+    DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane, SettingsAction,
+    SettingsDialog, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
+    TrackWidget, TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
@@ -455,6 +455,12 @@ enum AddTrackMode {
     DryWet,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BottomPane {
+    Details,
+    Piano,
+}
+
 pub struct AppWidgetResponse {
     pub app_actions: Vec<AppAction>,
     pub settings_actions: Vec<SettingsAction>,
@@ -464,11 +470,12 @@ pub struct AppWidget {
     tracks: TracksWidget,
     global_controls: GlobalControls,
     details: DetailsPane,
+    piano: PianoPane,
     sync_track: TrackWidget,
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
-    details_open: bool,
+    bottom_pane: Option<BottomPane>,
     add_track_open: bool,
     add_track_name: String,
     add_track_mode: AddTrackMode,
@@ -486,6 +493,10 @@ pub struct AppWidget {
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_cancel_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    details_toggle_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    piano_toggle_rect: Option<egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -504,11 +515,12 @@ impl AppWidget {
             tracks: TracksWidget::default(),
             global_controls: GlobalControls::default(),
             details: DetailsPane::default(),
+            piano: PianoPane::default(),
             sync_track,
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
-            details_open: false,
+            bottom_pane: None,
             add_track_open: false,
             add_track_name: String::new(),
             add_track_mode: AddTrackMode::Regular,
@@ -526,6 +538,10 @@ impl AppWidget {
             add_track_accept_rect: None,
             #[cfg(test)]
             add_track_cancel_rect: None,
+            #[cfg(test)]
+            details_toggle_rect: None,
+            #[cfg(test)]
+            piano_toggle_rect: None,
         }
     }
 
@@ -597,27 +613,72 @@ impl AppWidget {
                     });
             });
 
-        egui::Panel::bottom("details_toggle")
+        egui::Panel::bottom("bottom_pane_toggle")
             .resizable(false)
             .exact_size(24.0)
             .show(ui, |ui| {
-                if ui.selectable_label(self.details_open, "details").clicked() {
-                    self.details_open = !self.details_open;
-                }
+                ui.horizontal(|ui| {
+                    for (pane, label) in [
+                        (BottomPane::Details, "details"),
+                        (BottomPane::Piano, "piano"),
+                    ] {
+                        let response = ui.selectable_label(self.bottom_pane == Some(pane), label);
+                        #[cfg(test)]
+                        match pane {
+                            BottomPane::Details => self.details_toggle_rect = Some(response.rect),
+                            BottomPane::Piano => self.piano_toggle_rect = Some(response.rect),
+                        }
+                        if response.clicked() {
+                            let next = (self.bottom_pane != Some(pane)).then_some(pane);
+                            if self.bottom_pane == Some(BottomPane::Piano)
+                                && next != self.bottom_pane
+                            {
+                                if let Some(action) = self.piano.release_all() {
+                                    actions.push(AppAction::Piano(action));
+                                }
+                            }
+                            self.bottom_pane = next;
+                        }
+                    }
+                });
             });
 
-        if self.details_open {
-            egui::Panel::bottom("details")
-                .resizable(true)
-                .default_size(200.0)
-                .min_size(70.0)
-                .max_size(400.0)
-                .frame(
-                    egui::Frame::new()
-                        .fill(colors::RAISED_BACKGROUND)
-                        .inner_margin(egui::Margin::same(6)),
-                )
-                .show(ui, |ui| self.details.show(ui, state.details.as_ref()));
+        match self.bottom_pane {
+            Some(BottomPane::Details) => {
+                egui::Panel::bottom("details")
+                    .resizable(true)
+                    .default_size(200.0)
+                    .min_size(70.0)
+                    .max_size(400.0)
+                    .frame(
+                        egui::Frame::new()
+                            .fill(colors::RAISED_BACKGROUND)
+                            .inner_margin(egui::Margin::same(6)),
+                    )
+                    .show(ui, |ui| self.details.show(ui, state.details.as_ref()));
+            }
+            Some(BottomPane::Piano) => {
+                let destinations = piano_destinations(state);
+                egui::Panel::bottom("piano")
+                    .resizable(true)
+                    .default_size(165.0)
+                    .min_size(145.0)
+                    .max_size(260.0)
+                    .frame(
+                        egui::Frame::new()
+                            .fill(colors::RAISED_BACKGROUND)
+                            .inner_margin(egui::Margin::same(6)),
+                    )
+                    .show(ui, |ui| {
+                        actions.extend(
+                            self.piano
+                                .show(ui, &destinations)
+                                .into_iter()
+                                .map(AppAction::Piano),
+                        );
+                    });
+            }
+            None => {}
         }
 
         egui::Panel::right("logo_status_and_sync")
@@ -1290,6 +1351,30 @@ fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
     });
 }
 
+fn piano_destinations(state: &AppState) -> Vec<String> {
+    state
+        .tracks
+        .iter()
+        .filter(|track| {
+            track.controls.input_monitoring
+                && track.port_ids.iter().any(|port_id| {
+                    state.connections.application_ports.iter().any(|port| {
+                        port.id == *port_id
+                            && matches!(
+                                port.owner,
+                                crate::ApplicationPortOwner::Track { track_id, .. }
+                                    if track_id == track.id
+                            )
+                            && port.data_type == crate::PortDataType::Midi
+                            && port.direction == crate::PortDirection::Input
+                            && port.role == crate::PortRole::MidiInput
+                    })
+                })
+        })
+        .map(|track| track.name.clone())
+        .collect()
+}
+
 fn audio_channel_label(channels: u32) -> String {
     match channels {
         0 => "Disabled".to_owned(),
@@ -1310,8 +1395,8 @@ mod tests {
     };
 
     #[test]
-    fn details_panel_starts_closed() {
-        assert!(!AppWidget::default().details_open);
+    fn bottom_panel_starts_closed() {
+        assert_eq!(AppWidget::default().bottom_pane, None);
     }
 
     #[test]
@@ -1394,6 +1479,180 @@ mod tests {
             |ui| actions = widget.show(ui, state, &settings, None).app_actions,
         );
         actions
+    }
+
+    fn click(
+        context: &egui::Context,
+        widget: &mut AppWidget,
+        state: &AppState,
+        position: egui::Pos2,
+    ) -> Vec<AppAction> {
+        frame(
+            context,
+            widget,
+            state,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame(
+            context,
+            widget,
+            state,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        )
+    }
+
+    #[test]
+    fn details_and_piano_toggle_one_bottom_pane_without_stacking() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState::default();
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        let piano = widget.piano_toggle_rect.unwrap().center();
+        click(&context, &mut widget, &state, piano);
+        assert_eq!(widget.bottom_pane, Some(BottomPane::Piano));
+
+        let details = widget.details_toggle_rect.unwrap().center();
+        click(&context, &mut widget, &state, details);
+        assert_eq!(widget.bottom_pane, Some(BottomPane::Details));
+        click(&context, &mut widget, &state, details);
+        assert_eq!(widget.bottom_pane, None);
+    }
+
+    #[test]
+    fn open_piano_routes_pointer_note_actions_as_application_intents() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState::default();
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        let piano_toggle = widget.piano_toggle_rect.unwrap().center();
+        click(&context, &mut widget, &state, piano_toggle);
+        frame(&context, &mut widget, &state, Vec::new());
+        let keyboard = widget.piano.keyboard_rect().unwrap();
+        let note_position = crate::PianoLayout::new(keyboard.min)
+            .key_rect(crate::MIDDLE_C)
+            .unwrap()
+            .center();
+        let pressed = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(note_position),
+                egui::Event::PointerButton {
+                    pos: note_position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert_eq!(
+            pressed,
+            vec![AppAction::Piano(crate::PianoAction::Press(
+                crate::MidiNote::new(crate::MIDDLE_C).unwrap()
+            ))]
+        );
+        let released = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(note_position),
+                egui::Event::PointerButton {
+                    pos: note_position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert_eq!(
+            released,
+            vec![AppAction::Piano(crate::PianoAction::Release(
+                crate::MidiNote::new(crate::MIDDLE_C).unwrap()
+            ))]
+        );
+    }
+
+    #[test]
+    fn piano_destination_summary_uses_monitored_track_midi_input_roles() {
+        let first_id = crate::TrackId::from_raw(1);
+        let muted_id = crate::TrackId::from_raw(2);
+        let midi_port = crate::PortId::from_raw(10);
+        let output_port = crate::PortId::from_raw(11);
+        let state = AppState {
+            tracks: vec![
+                TrackState {
+                    id: first_id,
+                    name: "Listening".to_owned(),
+                    port_ids: Arc::from([midi_port]),
+                    controls: crate::TrackControlState {
+                        input_monitoring: true,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                TrackState {
+                    id: muted_id,
+                    name: "Muted".to_owned(),
+                    port_ids: Arc::from([output_port]),
+                    controls: crate::TrackControlState {
+                        input_monitoring: false,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            ],
+            connections: Arc::new(crate::ConnectionViewState {
+                application_ports: Arc::from([
+                    crate::ApplicationPortState {
+                        id: midi_port,
+                        owner: crate::ApplicationPortOwner::Track {
+                            track_id: first_id,
+                            kind: crate::TrackPortOwnerKind::Main,
+                        },
+                        name: "in".to_owned(),
+                        data_type: crate::PortDataType::Midi,
+                        direction: crate::PortDirection::Input,
+                        role: crate::PortRole::MidiInput,
+                        connection_policy: crate::ConnectionPolicy::UserManaged,
+                    },
+                    crate::ApplicationPortState {
+                        id: output_port,
+                        owner: crate::ApplicationPortOwner::Track {
+                            track_id: muted_id,
+                            kind: crate::TrackPortOwnerKind::Main,
+                        },
+                        name: "out".to_owned(),
+                        data_type: crate::PortDataType::Midi,
+                        direction: crate::PortDirection::Output,
+                        role: crate::PortRole::MidiOutput,
+                        connection_policy: crate::ConnectionPolicy::UserManaged,
+                    },
+                ]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(piano_destinations(&state), ["Listening"]);
     }
 
     fn settings_frame(

@@ -34,7 +34,7 @@ pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;
 pub use global_controls::GlobalControls;
 pub use loop_widget::{LoopWidget, LoopWidgetResponse};
-pub use piano_pane::{c_label, is_black, PianoLayout, MIDDLE_C, MIDI_NOTE_COUNT};
+pub use piano_pane::{c_label, is_black, PianoLayout, PianoPane, MIDDLE_C, MIDI_NOTE_COUNT};
 pub use settings_dialog::{SettingsAction, SettingsDialog, SettingsDialogResponse};
 pub use shoop_app_api::*;
 pub use shoop_settings::*;

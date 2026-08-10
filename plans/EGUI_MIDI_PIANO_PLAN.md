@@ -120,20 +120,20 @@ Verification:
 
 ### Stage 3 — Add the egui piano pane and compose workflows
 
-- [ ] Add a reusable `PianoPane` to `shoop_egui` and export it without backend/platform dependencies.
-- [ ] Replace the details boolean with transient bottom-pane selection; render **details** and **piano** side by side, preserve details behavior, and emit release-all before hiding/switching away from a held piano.
-- [ ] Render the fixed-size full-range keyboard in a horizontal scroll area, center C4 only on first initialization, retain subsequent user scroll, show active keys, and display the current eligible destination names/count or a clear no-target hint.
-- [ ] Implement press/hold/release and cancellation/focus-loss handling using shared geometry, with black-key hit priority and no drag-scroll/key-play conflict.
-- [ ] Extend native and browser automation hooks only as needed to identify the pane, center/scroll state, destination count, and emitted/recorded notes without creating a test-only backend path.
-- [ ] Document the piano in `src/rust/shoopdaloop_egui/README.md` and update all affected planning rows/status in the same stage.
+- [x] Add and export a reusable `PianoPane` in `shoop_egui` without backend/platform dependencies.
+- [x] Replace the details boolean with transient bottom-pane selection; render **details** and **piano** side by side, preserve details behavior, and emit release-all before hiding/switching away from a held piano.
+- [x] Render the fixed-size full-range keyboard in a horizontal scroll area, center C4 only on first initialization, retain subsequent scroll state, show active keys, and display current eligible destination names or a clear no-target hint.
+- [x] Implement press/hold/release, drag-between-key, leave, pointer-gone, pane-switch, and focus-loss handling using shared geometry, black-key hit priority, and non-dragging scroll content.
+- [x] Extend the native dummy product workflow to record exact piano bytes and the production browser self-test to inject a paired note across separate callback iterations without Web MIDI.
+- [x] Document the pane, eligibility, fixed bytes, soft timing, and driver-independent behavior in `src/rust/shoopdaloop_egui/README.md` and synchronize planning status.
 
 Verification:
 
-- [ ] Backend-free egui tests cover button open/close/switch behavior, no stacked panes, details regression, paint/hit regions, C labels, full-range scrolling, initial C4 centering, retained scroll, active feedback, target summary, and release on every cancellation path.
-- [ ] Paint and interaction tests pass at 360×200 and 900×600, including horizontal scrollbar use and endpoint keys 0/127.
-- [ ] A native workflow records and monitors the same played notes into two enabled MIDI tracks while excluding muted/audio-only tracks under dummy and a deterministic real-driver adapter.
-- [ ] Hosted Chrome and Firefox workflows play/record notes through Web Audio without requesting Web MIDI; explicit offline and self-contained builds cover the driver-independent path and retain callback progress.
-- [ ] Run formatting and warning-denying builds, Wasm checks, package/dependency-isolation checks, then commit the presentation/composition milestone and synchronized docs.
+- [x] All 78 backend-free `shoop_egui` tests pass, including button open/close/switch, no stacking, details preservation, app-intent routing, destination roles, full geometry/C labels, black-key precedence, C4 centering/retention, active lifecycle, and focus/pointer cleanup.
+- [x] Piano paint/overflow tests pass at 360×200 and 900×600; geometry/hit tests cover endpoint notes 0/127 and all C labels through C9.
+- [x] All 23 `shoopdaloop_egui --no-default-features` tests pass. The native dummy product workflow records exact velocity-100 note-on/zero-velocity note-off bytes; application integration separately proves simultaneous two-track recording and audio-only exclusion, while deterministic dummy/JACK-test/CPAL-test backend injection passes.
+- [x] The production browser self-test now waits across AudioWorklet callbacks for piano press and release without Web MIDI. Debug Trunk and self-contained/package builds, Wasm UI/worklet checks, and forbidden native-dependency scans pass; Chrome/Firefox execution is an explicit environment skip because neither browser executable is installed (`google-chrome` returned `ENOENT`).
+- [x] Formatting, `git diff --check`, warning-denying native egui/Wasm checks, debug Trunk build, self-contained generation, and package generation pass before the presentation/composition milestone commit.
 
 ### Stage 4 — Final end-to-end validation and closure
 

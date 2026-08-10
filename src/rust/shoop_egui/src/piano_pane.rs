@@ -1,4 +1,5 @@
-use egui::{pos2, vec2, Pos2, Rect, Vec2};
+use crate::{colors, MidiNote, PianoAction};
+use egui::{pos2, vec2, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
 pub const MIDI_NOTE_COUNT: u8 = 128;
 pub const MIDDLE_C: u8 = 60;
@@ -80,6 +81,158 @@ impl PianoLayout {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct PianoPane {
+    held_note: Option<MidiNote>,
+    scroll_initialized: bool,
+    #[cfg(test)]
+    keyboard_rect: Option<Rect>,
+}
+
+impl PianoPane {
+    pub fn show(&mut self, ui: &mut egui::Ui, destinations: &[String]) -> Vec<PianoAction> {
+        if destinations.is_empty() {
+            ui.label("No input-monitored tracks with MIDI input ports.");
+        } else {
+            ui.label(format!(
+                "Sending to {}: {}",
+                destinations.len(),
+                destinations.join(", ")
+            ));
+        }
+
+        let viewport_width = ui.available_width();
+        let initial_offset = PianoLayout::default().centered_offset(MIDDLE_C, viewport_width);
+        let mut scroll = egui::ScrollArea::horizontal()
+            .id_salt("piano_keyboard_scroll")
+            .scroll_source(crate::control_safe_scroll_source());
+        if !self.scroll_initialized {
+            scroll = scroll.horizontal_scroll_offset(initial_offset);
+        }
+        let mut actions = Vec::new();
+        scroll.show(ui, |ui| {
+            let size = PianoLayout::default().size();
+            let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+            let layout = PianoLayout::new(rect.min);
+            #[cfg(test)]
+            {
+                self.keyboard_rect = Some(rect);
+            }
+            self.handle_pointer(ui.ctx(), &response, layout, &mut actions);
+            self.paint(ui, layout);
+        });
+        self.scroll_initialized = true;
+        actions
+    }
+
+    pub fn release_all(&mut self) -> Option<PianoAction> {
+        self.held_note.take().map(|_| PianoAction::ReleaseAll)
+    }
+
+    fn handle_pointer(
+        &mut self,
+        context: &egui::Context,
+        response: &egui::Response,
+        layout: PianoLayout,
+        actions: &mut Vec<PianoAction>,
+    ) {
+        let (position, pressed, released, down, cancelled) = context.input(|input| {
+            (
+                input.pointer.interact_pos(),
+                input.pointer.button_pressed(egui::PointerButton::Primary),
+                input.pointer.button_released(egui::PointerButton::Primary),
+                input.pointer.button_down(egui::PointerButton::Primary),
+                input.events.iter().any(|event| {
+                    matches!(
+                        event,
+                        egui::Event::PointerGone | egui::Event::WindowFocused(false)
+                    )
+                }),
+            )
+        });
+        if cancelled {
+            if let Some(action) = self.release_all() {
+                actions.push(action);
+            }
+            return;
+        }
+        if released {
+            if let Some(note) = self.held_note.take() {
+                actions.push(PianoAction::Release(note));
+            }
+            return;
+        }
+        let pointed_note = position
+            .filter(|position| response.rect.contains(*position))
+            .and_then(|position| layout.note_at(position))
+            .and_then(MidiNote::new);
+        if pressed && response.hovered() {
+            if let Some(note) = pointed_note {
+                if self.held_note != Some(note) {
+                    self.held_note = Some(note);
+                    actions.push(PianoAction::Press(note));
+                }
+            }
+        } else if down && self.held_note != pointed_note {
+            if let Some(note) = self.held_note.take() {
+                actions.push(PianoAction::Release(note));
+            }
+            if let Some(note) = pointed_note {
+                self.held_note = Some(note);
+                actions.push(PianoAction::Press(note));
+            }
+        }
+    }
+
+    fn paint(&self, ui: &egui::Ui, layout: PianoLayout) {
+        let painter = ui.painter();
+        for note in (0..MIDI_NOTE_COUNT).filter(|note| !is_black(*note)) {
+            let rect = layout.key_rect(note).unwrap();
+            let held = self.held_note.is_some_and(|held| held.value() == note);
+            painter.rect(
+                rect,
+                0.0,
+                if held {
+                    colors::COLORED_HIGHLIGHT
+                } else {
+                    egui::Color32::WHITE
+                },
+                Stroke::new(1.0, egui::Color32::BLACK),
+                StrokeKind::Inside,
+            );
+            if let Some(label) = c_label(note) {
+                painter.text(
+                    rect.center_bottom() - vec2(0.0, 5.0),
+                    egui::Align2::CENTER_BOTTOM,
+                    label,
+                    egui::FontId::proportional(9.0),
+                    egui::Color32::BLACK,
+                );
+            }
+        }
+        for note in (0..MIDI_NOTE_COUNT).filter(|note| is_black(*note)) {
+            let rect = layout.key_rect(note).unwrap();
+            let held = self.held_note.is_some_and(|held| held.value() == note);
+            painter.rect(
+                rect,
+                1.0,
+                if held {
+                    colors::COLORED_HIGHLIGHT
+                } else {
+                    egui::Color32::BLACK
+                },
+                Stroke::new(1.0, egui::Color32::from_gray(80)),
+                StrokeKind::Inside,
+            );
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn keyboard_rect(&self) -> Option<Rect> {
+        self.keyboard_rect
+    }
+}
+
 pub const fn is_black(note: u8) -> bool {
     matches!(note % 12, 1 | 3 | 6 | 8 | 10)
 }
@@ -149,5 +302,121 @@ mod tests {
         assert_eq!(offset, middle - 450.0);
         assert_eq!(layout.centered_offset(0, 900.0), 0.0);
         assert_eq!(layout.centered_offset(127, 900.0), layout.size().x - 900.0);
+    }
+
+    fn frame(
+        context: &egui::Context,
+        pane: &mut PianoPane,
+        events: Vec<egui::Event>,
+    ) -> Vec<PianoAction> {
+        let mut actions = Vec::new();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 200.0))),
+                events,
+                ..Default::default()
+            },
+            |ui| actions = pane.show(ui, &["Track".to_owned()]),
+        );
+        actions
+    }
+
+    #[test]
+    fn pointer_press_release_and_focus_loss_have_paired_lifecycle() {
+        let context = egui::Context::default();
+        let mut pane = PianoPane::default();
+        frame(&context, &mut pane, Vec::new());
+        let keyboard = pane.keyboard_rect().unwrap();
+        let middle_c = PianoLayout::new(keyboard.min)
+            .key_rect(MIDDLE_C)
+            .unwrap()
+            .center();
+        assert!((middle_c.x - 450.0).abs() < WHITE_KEY_WIDTH);
+        let initial_min = keyboard.min.x;
+        frame(&context, &mut pane, Vec::new());
+        assert_eq!(pane.keyboard_rect().unwrap().min.x, initial_min);
+        assert_eq!(
+            frame(
+                &context,
+                &mut pane,
+                vec![
+                    egui::Event::PointerMoved(middle_c),
+                    egui::Event::PointerButton {
+                        pos: middle_c,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            ),
+            vec![PianoAction::Press(MidiNote::new(MIDDLE_C).unwrap())]
+        );
+        assert!(frame(&context, &mut pane, Vec::new()).is_empty());
+        assert_eq!(
+            frame(&context, &mut pane, vec![egui::Event::WindowFocused(false)],),
+            vec![PianoAction::ReleaseAll]
+        );
+        assert!(frame(&context, &mut pane, vec![egui::Event::PointerGone]).is_empty());
+    }
+
+    #[test]
+    fn piano_paints_with_horizontal_overflow_at_supported_sizes() {
+        for size in [vec2(360.0, 200.0), vec2(900.0, 600.0)] {
+            let context = egui::Context::default();
+            let mut pane = PianoPane::default();
+            let output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                    ..Default::default()
+                },
+                |ui| {
+                    pane.show(ui, &[]);
+                },
+            );
+            assert!(output.shapes.len() > usize::from(MIDI_NOTE_COUNT));
+            assert!(pane.keyboard_rect().unwrap().width() > size.x);
+        }
+    }
+
+    #[test]
+    fn pointer_release_outside_still_releases_the_held_note() {
+        let context = egui::Context::default();
+        let mut pane = PianoPane::default();
+        frame(&context, &mut pane, Vec::new());
+        let keyboard = pane.keyboard_rect().unwrap();
+        let note = PianoLayout::new(keyboard.min)
+            .key_rect(MIDDLE_C)
+            .unwrap()
+            .center();
+        frame(
+            &context,
+            &mut pane,
+            vec![
+                egui::Event::PointerMoved(note),
+                egui::Event::PointerButton {
+                    pos: note,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let outside = pos2(899.0, 199.0);
+        assert_eq!(
+            frame(
+                &context,
+                &mut pane,
+                vec![
+                    egui::Event::PointerMoved(outside),
+                    egui::Event::PointerButton {
+                        pos: outside,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            ),
+            vec![PianoAction::Release(MidiNote::new(MIDDLE_C).unwrap())]
+        );
     }
 }

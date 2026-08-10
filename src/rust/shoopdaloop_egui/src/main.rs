@@ -1441,6 +1441,12 @@ enum BrowserSelfTest {
     AddTrack,
     WaitForTrack,
     WaitForRecording,
+    WaitForPianoPress {
+        callbacks_before: u64,
+    },
+    WaitForPianoRelease {
+        callbacks_before: u64,
+    },
     WaitForStopped,
     WaitForDetails,
     WaitForPlaying,
@@ -1980,7 +1986,7 @@ impl BrowserSelfTest {
                 }
             }
             Self::WaitForRecording => {
-                let Some((track, loop_state)) = first_main_loop(snapshot) else {
+                let Some((_track, loop_state)) = first_main_loop(snapshot) else {
                     return;
                 };
                 if loop_state.mode != shoop_egui::LoopMode::Recording
@@ -1989,6 +1995,33 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
+                runtime
+                    .dispatch(AppIntent::Piano(shoop_egui::PianoAction::Press(
+                        shoop_egui::MidiNote::new(65).unwrap(),
+                    )))
+                    .map(|()| Self::WaitForPianoPress {
+                        callbacks_before: snapshot.status.callback_count,
+                    })
+            }
+            Self::WaitForPianoPress { callbacks_before } => {
+                if snapshot.status.callback_count <= callbacks_before {
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::Piano(shoop_egui::PianoAction::Release(
+                        shoop_egui::MidiNote::new(65).unwrap(),
+                    )))
+                    .map(|()| Self::WaitForPianoRelease {
+                        callbacks_before: snapshot.status.callback_count,
+                    })
+            }
+            Self::WaitForPianoRelease { callbacks_before } => {
+                if snapshot.status.callback_count <= callbacks_before {
+                    return;
+                }
+                let Some((track, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
                 runtime
                     .dispatch(AppIntent::Loop {
                         track_id: track.id,
@@ -2851,8 +2884,8 @@ mod tests {
     use std::thread;
 
     use shoop_egui::{
-        ApplicationPortOwner, DirectTrackSpec, HostPortId, LoopAction, LoopMode, PortRole,
-        SelectionModifiers, TrackAction,
+        ApplicationPortOwner, DirectTrackSpec, HostPortId, LoopAction, LoopMode, MidiNote,
+        PianoAction, PortRole, SelectionModifiers, TrackAction,
     };
 
     use super::*;
@@ -3546,6 +3579,14 @@ mod tests {
                 action: TrackAction::OutputGainChanged(-3.0),
             })
             .unwrap();
+        for monitored_track in [snapshot.tracks[1].id, snapshot.tracks[3].id] {
+            app.runtime
+                .dispatch(AppIntent::Track {
+                    track_id: monitored_track,
+                    action: TrackAction::InputMonitoringChanged(true),
+                })
+                .unwrap();
+        }
         app.runtime
             .dispatch(AppIntent::Loop {
                 track_id,
@@ -3581,7 +3622,15 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
 
-        thread::sleep(Duration::from_millis(50));
+        let piano_note = MidiNote::new(65).unwrap();
+        app.runtime
+            .dispatch(AppIntent::Piano(PianoAction::Press(piano_note)))
+            .unwrap();
+        thread::sleep(Duration::from_millis(20));
+        app.runtime
+            .dispatch(AppIntent::Piano(PianoAction::Release(piano_note)))
+            .unwrap();
+        thread::sleep(Duration::from_millis(30));
         app.runtime
             .dispatch(AppIntent::Loop {
                 track_id,
@@ -3625,6 +3674,32 @@ mod tests {
             .unwrap();
         assert_eq!(saved_loop.mode, LoopMode::Playing);
         assert!(output.suggested_name.ends_with(".shoop"));
+        let saved = shoop_session::decode_session(&output.bytes).unwrap();
+        let saved_piano_loop = saved
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.id == loop_id.raw())
+            .unwrap();
+        let recorded_midi = saved_piano_loop
+            .channels
+            .iter()
+            .filter_map(|channel| channel.media_id.as_ref())
+            .find_map(|id| match &saved.media[id] {
+                shoop_session::MediaPayload::Midi(midi) => Some(midi),
+                shoop_session::MediaPayload::Audio(_) => None,
+            })
+            .unwrap();
+        assert!(recorded_midi
+            .events
+            .iter()
+            .any(|event| event.data == [0x90, 65, 100]));
+        assert!(recorded_midi
+            .events
+            .iter()
+            .any(|event| event.data == [0x80, 65, 0]));
 
         app.runtime
             .dispatch(AppIntent::LoadSessionBytes {
