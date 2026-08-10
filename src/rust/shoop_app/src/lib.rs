@@ -6490,6 +6490,14 @@ mod tests {
             .unwrap();
         runtime.tick(Duration::ZERO);
         assert!(runtime.snapshot().tracks[1].loops[0].has_recorded_fx_state);
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::FxVisibilityChanged(true),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].fx.as_ref().unwrap().visible);
 
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
         runtime.tick(Duration::ZERO);
@@ -6504,12 +6512,18 @@ mod tests {
             saved_track.fx_chain.as_ref().unwrap().chain_type,
             FxChainTypeDocument::TinySynthFx
         );
-        assert!(!saved_track
-            .fx_chain
-            .as_ref()
+        let current_state = &saved_track.fx_chain.as_ref().unwrap().internal_state;
+        assert!(!current_state.is_empty());
+        let take_id = saved_track.loops[0]
+            .channels
+            .iter()
+            .find(|channel| channel.mode == ChannelModeDocument::Wet)
             .unwrap()
-            .internal_state
-            .is_empty());
+            .recording_fx_state_id
+            .unwrap();
+        assert_eq!(saved.document.fx_states.len(), 1);
+        assert_eq!(saved.document.fx_states[0].id, take_id);
+        assert_eq!(&saved.document.fx_states[0].internal_state, current_state);
 
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
@@ -6530,6 +6544,7 @@ mod tests {
         }
         let loaded = runtime.snapshot();
         assert_eq!(loaded.tracks[1].topology, track.topology);
+        assert!(!loaded.tracks[1].fx.as_ref().unwrap().visible);
         let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(editor)) = loaded.tracks[1]
             .fx
             .as_ref()
@@ -6543,6 +6558,38 @@ mod tests {
         assert_eq!(editor.reverb_amount, 0.4);
         assert!(editor.distortion_enabled);
         assert_eq!(editor.distortion_drive, 7.0);
+        assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
+        let loaded_track_id = loaded.tracks[1].id;
+        let loaded_loop_id = loaded.tracks[1].loops[0].id;
+
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: loaded_track_id,
+                action: TrackAction::TinySynthFx(
+                    shoop_app_api::TinySynthFxControl::SetMasterGainDb(-18.0),
+                ),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: loaded_track_id,
+                loop_id: loaded_loop_id,
+                action: LoopAction::RestoreRecordedFxState,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let restored = runtime.snapshot();
+        let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(restored_editor)) = restored
+            .tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing restored Tiny Synth/FX editor state");
+        };
+        assert_eq!(restored_editor.master_gain_db, -12.0);
+        assert_eq!(restored_editor.selected_preset_id.as_deref(), Some("pad"));
     }
 
     #[test]

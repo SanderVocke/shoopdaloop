@@ -968,7 +968,7 @@ mod tests {
     }
 
     #[test]
-    fn tiny_synth_fx_runs_in_the_worklet_and_publishes_editor_state() {
+    fn tiny_synth_fx_runs_all_shapes_and_controls_in_the_worklet() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
             command(
@@ -998,24 +998,28 @@ mod tests {
             .event,
             Event::Ack
         ));
+        for (sequence, track_id, channels) in [(3, 1, 1), (4, 2, 0), (5, 3, 2), (6, 4, 7)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::CreateTrack {
+                        expected_track_id: track_id,
+                        expected_loop_ids: vec![track_id],
+                        port_name_base: format!("tiny_{channels}"),
+                        topology: WireTrackTopology::TinySynthFx {
+                            audio_channels: channels,
+                        },
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
         assert!(matches!(
             command(
                 &mut host,
-                3,
-                Command::CreateTrack {
-                    expected_track_id: 1,
-                    expected_loop_ids: vec![1],
-                    port_name_base: "tiny".to_owned(),
-                    topology: WireTrackTopology::TinySynthFx { audio_channels: 1 },
-                },
-            )
-            .event,
-            Event::Ack
-        ));
-        assert!(matches!(
-            command(
-                &mut host,
-                4,
+                7,
                 Command::SetPortConnected {
                     application_port_id: 3,
                     host_port_id: "webmidi:source:tiny".to_owned(),
@@ -1028,7 +1032,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                5,
+                8,
                 Command::SetTrackControl {
                     track_id: 1,
                     control: WireTrackControl::InputMonitoring(true),
@@ -1038,13 +1042,13 @@ mod tests {
             Event::Ack
         ));
         assert!(matches!(
-            command(&mut host, 6, Command::Poll).event,
+            command(&mut host, 9, Command::Poll).event,
             Event::Snapshot(_)
         ));
         assert!(matches!(
             command(
                 &mut host,
-                7,
+                10,
                 Command::PushMidiInput {
                     host_port_id: "webmidi:source:tiny".to_owned(),
                     events: vec![shoop_audio_protocol::WireMidiEvent {
@@ -1060,34 +1064,67 @@ mod tests {
         assert!(host.output()[..256]
             .iter()
             .any(|sample| sample.abs() > 0.001));
-        assert!(matches!(
-            command(
-                &mut host,
-                8,
-                Command::SetTrackFxControl {
-                    track_id: 1,
-                    control: WireTrackFxControl::TinySelectPreset("pad".to_owned()),
-                },
-            )
-            .event,
-            Event::Ack
-        ));
-        let Event::Snapshot(snapshot) = command(&mut host, 9, Command::Poll).event else {
+
+        for (sequence, control) in [
+            WireTrackFxControl::TinySelectPreset("pad".to_owned()),
+            WireTrackFxControl::TinySetMasterGainDb(-12.0),
+            WireTrackFxControl::TinySetReverbEnabled(true),
+            WireTrackFxControl::TinySetReverbAmount(0.4),
+            WireTrackFxControl::TinySetDistortionEnabled(true),
+            WireTrackFxControl::TinySetDistortionDrive(7.0),
+            WireTrackFxControl::SetVisible(true),
+            WireTrackFxControl::TinyPanic,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    11 + sequence as u64,
+                    Command::SetTrackFxControl {
+                        track_id: 1,
+                        control,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        let Event::Snapshot(snapshot) = command(&mut host, 19, Command::Poll).event else {
             panic!("missing worklet snapshot");
         };
-        assert_eq!(snapshot.tracks.len(), 1);
         assert_eq!(
-            snapshot.tracks[0]
-                .fx
-                .as_ref()
-                .unwrap()
-                .tiny
-                .selected_preset_id
-                .as_deref(),
-            Some("pad")
+            snapshot
+                .tracks
+                .iter()
+                .map(|track| track.topology.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                WireTrackTopology::TinySynthFx { audio_channels: 1 },
+                WireTrackTopology::TinySynthFx { audio_channels: 0 },
+                WireTrackTopology::TinySynthFx { audio_channels: 2 },
+                WireTrackTopology::TinySynthFx { audio_channels: 7 },
+            ]
         );
+        let fx = snapshot.tracks[0].fx.as_ref().unwrap();
+        assert!(fx.visible);
+        assert_eq!(fx.tiny.selected_preset_id.as_deref(), Some("pad"));
+        assert_eq!(fx.tiny.master_gain_db, -12.0);
+        assert!(fx.tiny.reverb_enabled);
+        assert_eq!(fx.tiny.reverb_amount, 0.4);
+        assert!(fx.tiny.distortion_enabled);
+        assert_eq!(fx.tiny.distortion_drive, 7.0);
+
         let session = host.backend.capture_session().unwrap();
         host.backend.replace_session(&session).unwrap();
+        assert!(host
+            .backend
+            .poll()
+            .unwrap()
+            .tracks
+            .values()
+            .all(|track| !track.fx.as_ref().unwrap().visible));
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
     }
 

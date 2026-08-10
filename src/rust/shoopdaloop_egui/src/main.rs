@@ -2033,6 +2033,7 @@ impl BrowserSelfTest {
                     return;
                 };
                 let tiny_controls = [
+                    shoop_egui::TrackAction::InputMonitoringChanged(true),
                     shoop_egui::TrackAction::TinySynthFx(
                         shoop_egui::TinySynthFxControl::SelectPreset("pad".to_owned()),
                     ),
@@ -2054,6 +2055,7 @@ impl BrowserSelfTest {
                     shoop_egui::TrackAction::TinySynthFx(shoop_egui::TinySynthFxControl::Panic),
                     shoop_egui::TrackAction::FxVisibilityChanged(true),
                     shoop_egui::TrackAction::FxVisibilityChanged(false),
+                    shoop_egui::TrackAction::FxVisibilityChanged(true),
                 ]
                 .into_iter()
                 .try_for_each(|action| {
@@ -2110,7 +2112,14 @@ impl BrowserSelfTest {
                     })
             }
             Self::WaitForPianoPress { callbacks_before } => {
-                if snapshot.status.callback_count <= callbacks_before {
+                let tiny_wet_signal = snapshot.tracks.iter().any(|track| {
+                    track.fx.as_ref().is_some_and(|fx| {
+                        fx.processor_type.as_str()
+                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                    }) && (track.controls.output_peak_left_db > -100.0
+                        || track.controls.output_peak_right_db > -100.0)
+                });
+                if snapshot.status.callback_count <= callbacks_before || !tiny_wet_signal {
                     return;
                 }
                 runtime
@@ -2371,12 +2380,17 @@ impl BrowserSelfTest {
                         return None;
                     }
                     match fx.editor.as_ref()? {
-                        shoop_egui::TrackProcessorEditorState::TinySynthFx(editor) => Some(editor),
+                        shoop_egui::TrackProcessorEditorState::TinySynthFx(editor) => {
+                            Some((fx.visible, editor))
+                        }
                     }
                 });
-                let Some(tiny_state) = tiny_state else {
+                let Some((tiny_visible, tiny_state)) = tiny_state else {
                     return;
                 };
+                if tiny_visible {
+                    return self.fail("loaded browser Tiny Synth/FX editor visibility persisted");
+                }
                 if tiny_state.selected_preset_id.as_deref() != Some("pad")
                     || tiny_state.master_gain_db != -12.0
                     || !tiny_state.reverb_enabled

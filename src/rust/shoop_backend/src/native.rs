@@ -2761,9 +2761,25 @@ mod tests {
             captured.tracks[0].processor_state
         );
 
+        let mut browser = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        browser.replace_session(&captured).unwrap();
+        let browser_state = browser.capture_session().unwrap();
+        assert_eq!(
+            browser_state.tracks[0].topology,
+            captured.tracks[0].topology
+        );
+        assert_eq!(
+            browser_state.tracks[0].processor_state,
+            captured.tracks[0].processor_state
+        );
+
         let mut restored = NativeBackend::new(config).unwrap();
-        restored.replace_session(&captured).unwrap();
+        restored.replace_session(&browser_state).unwrap();
         let restored_state = restored.capture_session().unwrap();
+        assert_eq!(
+            restored_state.tracks[0].topology,
+            captured.tracks[0].topology
+        );
         assert_eq!(
             restored_state.tracks[0].processor_state,
             captured.tracks[0].processor_state

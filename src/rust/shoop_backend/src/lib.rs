@@ -5857,6 +5857,22 @@ mod tests {
             .all(|(left, right)| (*left - *right).abs() < 1.0e-6));
 
         backend
+            .set_track_fx_control(created.track_id, BackendTrackFxControl::SetActive(false))
+            .unwrap();
+        output.fill(1.0);
+        backend
+            .process_audio_quantum(&input, 1, &mut output, 2, 128)
+            .unwrap();
+        assert!(output.iter().all(|sample| sample.abs() < 1.0e-7));
+        backend
+            .set_track_fx_control(created.track_id, BackendTrackFxControl::SetActive(true))
+            .unwrap();
+        backend
+            .process_audio_quantum(&input, 1, &mut output, 2, 128)
+            .unwrap();
+        assert!(output.iter().any(|sample| sample.abs() > 0.01));
+
+        backend
             .set_track_fx_control(
                 created.track_id,
                 BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SelectPreset(
@@ -5932,7 +5948,34 @@ mod tests {
                     initial_loops: 1,
                 })
                 .unwrap();
-            assert_eq!(created.ports.len(), channels as usize * 2 + 1);
+            let expected_roles = (0..channels)
+                .flat_map(|_| [BackendPortRole::AudioInput, BackendPortRole::AudioOutput])
+                .chain(std::iter::once(BackendPortRole::MidiInput))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                created
+                    .ports
+                    .iter()
+                    .map(|port| port.role)
+                    .collect::<Vec<_>>(),
+                expected_roles
+            );
+            let captured = backend.capture_session().unwrap();
+            assert_eq!(
+                captured.tracks[0]
+                    .ports
+                    .iter()
+                    .map(|port| port.descriptor.role)
+                    .collect::<Vec<_>>(),
+                expected_roles
+            );
+            let source_track = captured.tracks[0].source_id;
+            let replacement = backend.replace_session(&captured).unwrap();
+            assert!(replacement.tracks.contains_key(&source_track));
+            assert_eq!(
+                backend.capture_session().unwrap().tracks[0].topology,
+                captured.tracks[0].topology
+            );
         }
         let mut backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         assert!(backend
@@ -5947,6 +5990,19 @@ mod tests {
                 initial_loops: 1,
             })
             .is_err());
+        assert!(backend
+            .create_track(TrackRequest {
+                port_name_base: "missing_midi_tiny".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                },
+                initial_loops: 1,
+            })
+            .is_err());
+        assert!(backend.capture_session().unwrap().tracks.is_empty());
     }
 
     #[test]

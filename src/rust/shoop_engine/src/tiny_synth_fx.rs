@@ -509,6 +509,22 @@ mod tests {
         assert!(stopped.plane(0, 64).unwrap()[32..]
             .iter()
             .all(|sample| sample.abs() < 1.0e-7));
+
+        let mut panicked = control.prepare_processor(48_000.0, 1, 64).unwrap();
+        panicked.process(64, &[MidiStorageElem::new(0, &[0x90, 69, 127]).unwrap()]);
+        assert!(panicked
+            .plane(0, 64)
+            .unwrap()
+            .iter()
+            .any(|sample| sample.abs() > 0.001));
+        panicked.panic();
+        panicked.plane_mut(0, 64).unwrap().fill(0.0);
+        panicked.process(64, &[]);
+        assert!(panicked
+            .plane(0, 64)
+            .unwrap()
+            .iter()
+            .all(|sample| sample.abs() < 1.0e-7));
     }
 
     #[test]
@@ -544,6 +560,56 @@ mod tests {
             .any(|sample| (*sample - 0.2 * db_to_gain(DEFAULT_MASTER_GAIN_DB)).abs() > 0.01));
         processor.panic();
         processor.process(64, &[]);
+    }
+
+    #[test]
+    fn master_gain_changes_are_smoothed_to_the_exact_target() {
+        let control = TinySynthFxControlState::new(48_000.0).unwrap();
+        let mut processor = control.prepare_processor(48_000.0, 1, 128).unwrap();
+        processor.set_master_gain_db(-60.0);
+        processor.plane_mut(0, 128).unwrap().fill(1.0);
+        processor.process(128, &[]);
+        let first_block = processor.plane(0, 128).unwrap();
+        let target = db_to_gain(-60.0);
+        assert!(first_block[0] < db_to_gain(DEFAULT_MASTER_GAIN_DB));
+        assert!(first_block[0] > target);
+        assert!(first_block.windows(2).all(|pair| pair[1] < pair[0]));
+        assert!(first_block[127] > target);
+
+        for _ in 0..8 {
+            processor.plane_mut(0, 128).unwrap().fill(1.0);
+            processor.process(128, &[]);
+        }
+        assert!(processor
+            .plane(0, 128)
+            .unwrap()
+            .iter()
+            .all(|sample| (*sample - target).abs() < 1.0e-6));
+    }
+
+    #[test]
+    fn sustained_variable_block_processing_remains_finite_and_active() {
+        let control = TinySynthFxControlState::new(48_000.0).unwrap();
+        let mut processor = control.prepare_processor(48_000.0, 2, 128).unwrap();
+        let block_sizes = [1, 7, 31, 64, 127, 128, 3, 96];
+        let mut observed_signal = false;
+        for iteration in 0..2_000 {
+            let frames = block_sizes[iteration % block_sizes.len()];
+            processor.plane_mut(0, frames).unwrap().fill(0.01);
+            processor.plane_mut(1, frames).unwrap().fill(-0.02);
+            let event = match iteration {
+                0 => Some(MidiStorageElem::new(0, &[0x90, 69, 127]).unwrap()),
+                1_000 => Some(MidiStorageElem::new(0, &[0x80, 69, 0]).unwrap()),
+                _ => None,
+            };
+            processor.process(frames, event.as_slice());
+            for channel in 0..2 {
+                let output = processor.plane(channel, frames).unwrap();
+                assert!(output.iter().all(|sample| sample.is_finite()));
+                observed_signal |= output.iter().any(|sample| sample.abs() > 0.001);
+            }
+        }
+        assert!(observed_signal);
     }
 
     #[test]
