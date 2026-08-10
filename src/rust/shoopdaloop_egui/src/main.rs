@@ -2391,7 +2391,7 @@ impl BrowserSelfTest {
                 Ok(Self::GenerateClickAudio)
             }
             Self::GenerateClickAudio => {
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
                     return;
                 };
                 if !widget.browser_test_open_click_track(snapshot, loop_state.id) {
@@ -2420,7 +2420,7 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
                     return;
                 };
                 let expected = u64::from(snapshot.status.sample_rate / 5);
@@ -2474,7 +2474,7 @@ impl BrowserSelfTest {
                 Ok(Self::PreviewClickAudio)
             }
             Self::PreviewClickAudio => {
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
                     return;
                 };
                 runtime
@@ -2493,7 +2493,7 @@ impl BrowserSelfTest {
                 _ => return,
             },
             Self::GenerateClickMidi => {
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
                     return;
                 };
                 let previous_task = snapshot
@@ -2518,7 +2518,7 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
                     return;
                 };
                 runtime
@@ -2647,6 +2647,23 @@ fn first_main_loop(
 ) -> Option<(&shoop_egui::TrackState, &shoop_egui::LoopState)> {
     let track = snapshot.tracks.iter().find(|track| !track.is_sync)?;
     Some((track, track.loops.first()?))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn first_mixed_main_loop(
+    snapshot: &AppSnapshot,
+) -> Option<(&shoop_egui::TrackState, &shoop_egui::LoopState)> {
+    snapshot
+        .tracks
+        .iter()
+        .filter(|track| !track.is_sync)
+        .find_map(|track| {
+            track
+                .loops
+                .iter()
+                .find(|loop_| loop_.has_audio && loop_.has_midi)
+                .map(|loop_| (track, loop_))
+        })
 }
 
 #[cfg(target_arch = "wasm32")]

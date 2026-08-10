@@ -9986,6 +9986,55 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
     }
 
     #[test]
+    fn engine_backed_click_replacement_preserves_mixed_track_topology() {
+        let backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Mixed click target".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+        let mut request = ClickTrackRequest {
+            bpm: 600.0,
+            click_count: 2,
+            ..Default::default()
+        };
+        runtime
+            .dispatch(AppIntent::GenerateClickTrack {
+                loop_id,
+                request: request.clone(),
+            })
+            .unwrap();
+        for _ in 0..8 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+
+        request.kind = ClickTrackKind::Midi;
+        runtime
+            .dispatch(AppIntent::GenerateClickTrack { loop_id, request })
+            .unwrap();
+        for _ in 0..8 {
+            runtime.tick(Duration::ZERO);
+        }
+        let snapshot = runtime.snapshot();
+        assert_eq!(
+            snapshot.io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+        assert!(snapshot.tracks[1].loops[0].has_audio);
+        assert!(snapshot.tracks[1].loops[0].has_midi);
+    }
+
+    #[test]
     fn generated_click_replacement_resets_target_offsets_and_preserves_other_media() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
