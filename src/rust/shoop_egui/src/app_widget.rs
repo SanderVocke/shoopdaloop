@@ -549,6 +549,15 @@ impl AppWidget {
         self.connections.open(scope);
     }
 
+    fn set_bottom_pane(&mut self, next: Option<BottomPane>, actions: &mut Vec<AppAction>) {
+        if self.bottom_pane == Some(BottomPane::Piano) && next != self.bottom_pane {
+            if let Some(action) = self.piano.release_all() {
+                actions.push(AppAction::Piano(action));
+            }
+        }
+        self.bottom_pane = next;
+    }
+
     pub fn set_click_track_preview_available(&mut self, available: bool) {
         self.click_track.set_preview_available(available);
     }
@@ -630,14 +639,7 @@ impl AppWidget {
                         }
                         if response.clicked() {
                             let next = (self.bottom_pane != Some(pane)).then_some(pane);
-                            if self.bottom_pane == Some(BottomPane::Piano)
-                                && next != self.bottom_pane
-                            {
-                                if let Some(action) = self.piano.release_all() {
-                                    actions.push(AppAction::Piano(action));
-                                }
-                            }
-                            self.bottom_pane = next;
+                            self.set_bottom_pane(next, &mut actions);
                         }
                     }
                 });
@@ -1533,6 +1535,22 @@ mod tests {
         assert_eq!(widget.bottom_pane, Some(BottomPane::Details));
         click(&context, &mut widget, &state, details);
         assert_eq!(widget.bottom_pane, None);
+    }
+
+    #[test]
+    fn switching_away_from_piano_releases_a_held_note() {
+        let mut widget = AppWidget::default();
+        widget.bottom_pane = Some(BottomPane::Piano);
+        widget
+            .piano
+            .hold_for_test(crate::MidiNote::new(crate::MIDDLE_C).unwrap());
+        let mut actions = Vec::new();
+        widget.set_bottom_pane(Some(BottomPane::Details), &mut actions);
+        assert_eq!(widget.bottom_pane, Some(BottomPane::Details));
+        assert_eq!(
+            actions,
+            vec![AppAction::Piano(crate::PianoAction::ReleaseAll)]
+        );
     }
 
     #[test]

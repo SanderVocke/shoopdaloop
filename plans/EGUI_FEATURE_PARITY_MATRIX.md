@@ -485,7 +485,7 @@ Generic MIDI-rule editing and session-local overrides remain assigned to their o
 
 ## egui MIDI piano discovery
 
-`EGUI_MIDI_PIANO_PLAN.md` is the active implementation contract for this egui-only slice. The new piano is an application input source rather than a physical host endpoint: presentation emits typed key lifecycle actions, the application selects monitored role-bearing MIDI tracks, and each backend stages bounded messages into ordinary track input ports.
+`EGUI_MIDI_PIANO_PLAN.md` is the completed implementation contract for this egui-only slice. The piano is an application input source rather than a physical host endpoint: presentation emits typed key lifecycle actions, the application selects monitored role-bearing MIDI tracks, and each backend stages bounded messages into ordinary track input ports with accepted process-iteration timing.
 
 | ID | Capability or behavior | New contract | Discovery | Milestone target | Current implementation | Planned evidence |
 |---|---|---|---|---|---|---|

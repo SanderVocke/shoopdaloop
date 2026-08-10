@@ -2278,6 +2278,46 @@ fn from_native_mode(mode: shoop_engine::LoopMode) -> BackendLoopMode {
 mod tests {
     use super::*;
 
+    fn assert_injected_note_reaches_output(
+        backend: &mut NativeBackend,
+        created: &BackendTrackCreation,
+        note: u8,
+    ) {
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            runtime.tracks[&created.track_id]
+                .midi_output
+                .as_ref()
+                .unwrap()
+                .dummy_request_data(128)
+                .unwrap();
+        }
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, note, 100],
+                }],
+            )
+            .unwrap();
+        let runtime = backend.runtime_mut().unwrap();
+        runtime.driver.dummy_request_controlled_frames(128);
+        runtime.driver.dummy_run_requested_frames();
+        assert_eq!(
+            runtime.tracks[&created.track_id]
+                .midi_output
+                .as_ref()
+                .unwrap()
+                .dummy_dequeue_data(),
+            [MidiEvent::new(0, vec![0x90, note, 100])]
+        );
+    }
+
     #[test]
     fn native_dummy_satisfies_topology_capture_and_same_driver_switch() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
@@ -2374,39 +2414,7 @@ mod tests {
                 initial_loops: 1,
             })
             .unwrap();
-        backend
-            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
-            .unwrap();
-        {
-            let runtime = backend.runtime_mut().unwrap();
-            runtime.driver.dummy_enter_controlled_mode();
-            runtime.tracks[&created.track_id]
-                .midi_output
-                .as_ref()
-                .unwrap()
-                .dummy_request_data(128)
-                .unwrap();
-        }
-        backend
-            .inject_midi_input(
-                created.track_id,
-                &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, 60, 100],
-                }],
-            )
-            .unwrap();
-        let runtime = backend.runtime_mut().unwrap();
-        runtime.driver.dummy_request_controlled_frames(128);
-        runtime.driver.dummy_run_requested_frames();
-        assert_eq!(
-            runtime.tracks[&created.track_id]
-                .midi_output
-                .as_ref()
-                .unwrap()
-                .dummy_dequeue_data(),
-            [MidiEvent::new(0, vec![0x90, 60, 100])]
-        );
+        assert_injected_note_reaches_output(&mut backend, &created, 60);
     }
 
     #[test]
@@ -2649,15 +2657,7 @@ mod tests {
                 initial_loops: 1,
             })
             .unwrap();
-        backend
-            .inject_midi_input(
-                created.track_id,
-                &[BackendMidiEvent {
-                    time: 0,
-                    data: vec![0x90, 61, 100],
-                }],
-            )
-            .unwrap();
+        assert_injected_note_reaches_output(&mut backend, &created, 61);
         assert!(backend
             .poll()
             .unwrap()

@@ -231,6 +231,11 @@ impl PianoPane {
     pub(crate) fn keyboard_rect(&self) -> Option<Rect> {
         self.keyboard_rect
     }
+
+    #[cfg(test)]
+    pub(crate) fn hold_for_test(&mut self, note: MidiNote) {
+        self.held_note = Some(note);
+    }
 }
 
 pub const fn is_black(note: u8) -> bool {

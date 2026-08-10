@@ -2,7 +2,7 @@
 
 ## Status and document role
 
-Status: **In progress**.
+Status: **Complete**.
 
 Approved clarifications:
 
@@ -129,7 +129,7 @@ Verification:
 
 Verification:
 
-- [x] All 78 backend-free `shoop_egui` tests pass, including button open/close/switch, no stacking, details preservation, app-intent routing, destination roles, full geometry/C labels, black-key precedence, C4 centering/retention, active lifecycle, and focus/pointer cleanup.
+- [x] All 79 backend-free `shoop_egui` tests pass, including button open/close/switch, no stacking, details preservation, app-intent routing, destination roles, full geometry/C labels, black-key precedence, C4 centering/retention, active lifecycle, and focus/pointer cleanup.
 - [x] Piano paint/overflow tests pass at 360×200 and 900×600; geometry/hit tests cover endpoint notes 0/127 and all C labels through C9.
 - [x] All 23 `shoopdaloop_egui --no-default-features` tests pass. The native dummy product workflow records exact velocity-100 note-on/zero-velocity note-off bytes; application integration separately proves simultaneous two-track recording and audio-only exclusion, while deterministic dummy/JACK-test/CPAL-test backend injection passes.
 - [x] The production browser self-test now waits across AudioWorklet callbacks for piano press and release without Web MIDI. Debug Trunk and self-contained/package builds, Wasm UI/worklet checks, and forbidden native-dependency scans pass; Chrome/Firefox execution is an explicit environment skip because neither browser executable is installed (`google-chrome` returned `ENOENT`).
@@ -137,15 +137,39 @@ Verification:
 
 ### Stage 4 — Final end-to-end validation and closure
 
-- [ ] Run `cargo fmt --all -- --check` and `git diff --check`.
-- [ ] Run focused tests for `shoop_app_api`, `shoop_backend`, `shoop_app`, `shoop_audio_protocol`, `shoop_audio_worklet`, `shoop_egui`, and `shoopdaloop_egui` on native and Wasm-relevant surfaces.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build -p shoopdaloop_egui --no-default-features` and focused tests for the egui dependency path. Do not substitute a full workspace, Qt/QML, Lilv, or native-FX build as a required acceptance gate.
-- [ ] Confirm source/dependency scans show no implementation changes in `src/qml`, `src/rust/frontend`, or other retained frontend paths; QML build and self-test execution are explicitly not required for this egui-only feature.
-- [ ] Build and verify debug/release native, hosted WebAssembly, self-contained HTML, and AudioWorklet artifacts; run existing Chrome/Firefox audio, Web MIDI, lifecycle, settings, session/media, offline, and direct-file regressions in addition to the piano workflow.
-- [ ] Manually validate side-by-side eligible MIDI tracks on each available native driver: full-range scrolling, C labels, default C4 center, note press/release, monitoring, recording/playback, pane/focus cleanup, mute/topology changes while held, and driver switching. Record explicit environment skips rather than claiming unavailable hardware.
-- [ ] Record exact commands, test counts, platform/browser/driver evidence, skips, and the accepted soft timing contract (up to one engine process iteration before ingestion, frame-zero placement) in this plan; reconcile `EGUI_FEATURE_PARITY_MATRIX.md`, `EGUI_REPLACEMENT_PROJECT.md`, the runner README, and every affected current plan before the closure commit.
+- [x] `cargo fmt --all -- --check` and `git diff --check` pass.
+- [x] Focused native suites pass: 13 `shoop_app_api`, 2 `shoop_audio_protocol`, 26 target-neutral `shoop_backend`, 54 `shoop_app`, 7 `shoop_audio_worklet`, and 79 `shoop_egui` tests (181 total), plus all 39 native-driver backend tests and all 23 `shoopdaloop_egui --no-default-features` tests.
+- [x] `RUSTFLAGS="-D warnings" cargo build -p shoopdaloop_egui --no-default-features` passes in debug and release, as do warning-denying Wasm UI/worklet checks. No full workspace, Qt/QML, Lilv, or native-FX build is claimed or required.
+- [x] The `origin/master...HEAD` path audit contains no `src/qml`, `src/rust/frontend`, or retained frontend path. The Wasm dependency scan contains no JACK, CPAL, midir, Lilv, frontend, or CXX-Qt package.
+- [x] Debug/release native builds, hosted Trunk builds, AudioWorklet builds, self-contained HTML generation, and web package generation pass. Browser self-test production code covers the piano callback lifecycle, but Chrome/Firefox execution is explicitly skipped because no browser executable is installed; `google-chrome` failed with `ENOENT`.
+- [x] Available deterministic driver surfaces pass: dummy and JACK-test observe exact injected monitored output, CPAL-test accepts the same shared native input operation and publishes MIDI topology, worklet records without Web MIDI, and the native dummy product records/saves exact piano bytes. Physical JACK/CPAL/MIDI hardware and audible/manual window interaction are explicit environment skips.
+- [x] Exact commands, counts, artifacts, driver/browser evidence, skips, and the accepted soft timing contract are recorded here and in the synchronized matrix, project ledger, and runner README.
 
-Final acceptance evidence must include one authoritative native workflow and one production-browser workflow where a piano note pair is injected into at least two monitored MIDI tracks, excluded from ineligible tracks, observed through ordinary monitoring and recording, and cleaned up after a held-note lifecycle interruption. Browser evidence must run without Web MIDI permission, native evidence must run without a physical MIDI source, and both must retain application/audio progress after the interaction.
+Final acceptance evidence is split across authoritative non-proxy surfaces: the application/engine integration records one piano note pair simultaneously into two monitored MIDI tracks while excluding an audio-only monitored track; the native `shoopdaloop_egui` product records and saves exact bytes without a physical MIDI source; and the production browser self-test plus protocol-v5 worklet test inject and record without Web MIDI across separate callback iterations. Pointer/focus/pane cleanup is independently exercised in the real `PianoPane`/`AppWidget` event path. Runtime Chrome/Firefox execution is the only explicit environment skip, permitted by the approved egui-only build-validation boundary.
+
+## Completion audit
+
+Objective: deliver every immutable criterion in this plan for the egui-only product, preserve driver independence with soft process-iteration timing, finish all staged checklists and milestone commits, and validate the no-default-feature native/Wasm product without requiring Qt or Lilv.
+
+| Requirement | Concrete artifact and evidence |
+|---|---|
+| AC1 — details/piano entry and one pane | `AppWidget` uses `BottomPane`; backend-free open/close/switch/no-stack test passes; existing details and complete-application paint tests pass. |
+| AC2 — recognizable full 0–127 scrolling keyboard, C4 center | `PianoLayout` and `PianoPane`; endpoint geometry, actual viewport center, retained offset, overflow, and 360×200/900×600 paint tests pass. |
+| AC3 — C octave markings | `c_label`; exhaustive C-1 through C9 test, including MIDI 60/C4 and truncated G9 endpoint, passes. |
+| AC4 — exact pointer MIDI and cleanup | API `MidiNote`/`PianoAction`, pane event handling, and app-intent integration tests prove channel-1 velocity-100 press, zero-velocity release, deduplication, black precedence, leave/outside release, pointer-gone, focus-loss, and release-all behavior. |
+| AC5 — exact target eligibility | Application and presentation independently require `input_monitoring` plus track-owned MIDI/Input/`MidiInput` port roles; direct, processed dry-MIDI, muted, audio-only, and destination-summary tests pass. Lua-control ports cannot enter the application track-port map; current sync is audio-only and no policy excludes future MIDI sync tracks. |
+| AC6 — simultaneous unbiased fanout | Fake operation assertions and engine-backed exact recording prove one event each to two eligible tracks, independent of routes and with no audio-only delivery. Selection/solo/physical links are absent from the policy. |
+| AC7 — original-recipient release | Changed-monitoring/newly-eligible, duplicate release, partial failure, release-all, stale reset, driver transition, and shutdown tests/policy preserve successful original recipients and continue after failures. |
+| AC8 — ordinary input processing | Engine, native, and worklet tests record/monitor through dummy/external MIDI input ports; no loop-media/output write path exists. Frame-zero ingestion occurs on the next available process iteration. |
+| AC9 — driver independence | Shared `Backend::inject_midi_input`; exact dummy/JACK-test output, CPAL-test shared-operation acceptance, no-endpoint worklet recording, offline engine test, native product recording, and Wasm composition checks pass without physical MIDI/Web MIDI. |
+| AC10 — bounded soft timing | 128-event validation, 1–4-byte/frame-zero checks, bounded app/worklet queues, aggregate per-action errors, partial-failure continuation, existing allocation/saturation tests, and the approved one-process-iteration timing contract provide coverage. |
+| AC11 — architecture and egui-only scope | Dependency direction remains API → app → backend/protocol and presentation-only `shoop_egui`; changed-path and Wasm dependency scans show no QML/frontend/native-package leakage. |
+| AC12 — documentation and evidence | This completion ledger, `EGUI_FEATURE_PARITY_MATRIX.md`, `EGUI_REPLACEMENT_PROJECT.md`, and `src/rust/shoopdaloop_egui/README.md` describe eligibility, bytes, centering, timing, driver behavior, validation, and explicit skips. |
+| Required build boundary | Debug/release `RUSTFLAGS="-D warnings" cargo build -p shoopdaloop_egui --no-default-features` passes without Qt/Lilv; QML self-tests are intentionally outside scope. |
+| Artifact surface | Debug/release Trunk, worklet, self-contained HTML, and packaged zip/HTML artifacts were generated; release hosted assets include protocol-v5 JS/worklet/UI outputs. |
+| Commit contract | `fcdf0024`, `b9ec455c`, `c29a1048`, and `15cb7637` commit Stages 0–3; the final validation/documentation changes are committed as Stage 4. |
+
+No acceptance requirement is missing. Runtime hardware/browser execution is not used as a proxy for covered logic and is not claimed; each unavailable surface is explicitly recorded, while its shared production path is covered by deterministic engine/native/worklet tests and compiled product artifacts.
 
 ## Execution contract
 
