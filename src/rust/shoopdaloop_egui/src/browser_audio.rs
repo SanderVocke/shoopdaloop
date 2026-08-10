@@ -16,11 +16,12 @@ use shoop_audio_protocol::{
 };
 use shoop_backend::{
     Backend, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopId, BackendLoopMode,
-    BackendLoopState, BackendMidiEvent, BackendPortDataType, BackendPortDescriptor,
-    BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackId, BackendTrackState, DirectTrackRequest,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
+    BackendLoopMode, BackendLoopState, BackendMidiEvent, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortRole,
+    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackId, BackendTrackState,
+    DirectTrackRequest,
 };
 use shoop_egui::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
@@ -914,6 +915,16 @@ struct SessionReplaceAssembly {
     complete: bool,
 }
 
+struct LoopContentReplaceAssembly {
+    generation: u64,
+    loop_id: BackendLoopId,
+    update: BackendLoopContentUpdate,
+    bytes: Vec<u8>,
+    next_offset: usize,
+    commit_sent: bool,
+    complete: bool,
+}
+
 pub struct WebAudioBackend {
     transport: Rc<RefCell<Transport>>,
     snapshot: BackendSnapshot,
@@ -926,6 +937,7 @@ pub struct WebAudioBackend {
     next_session_generation: u64,
     session_capture: Option<SessionCaptureAssembly>,
     session_replace: Option<SessionReplaceAssembly>,
+    loop_content_replace: Option<LoopContentReplaceAssembly>,
     midi: BrowserMidiHub,
     midi_revision: u64,
 }
@@ -967,6 +979,7 @@ impl WebAudioBackend {
                 next_session_generation: 1,
                 session_capture: None,
                 session_replace: None,
+                loop_content_replace: None,
                 midi,
                 midi_revision: u64::MAX,
             },
@@ -1186,6 +1199,43 @@ impl WebAudioBackend {
             self.transport
                 .borrow_mut()
                 .ephemeral(Command::CommitSessionReplace {
+                    generation: replace.generation,
+                })?;
+            replace.commit_sent = true;
+        }
+        Ok(())
+    }
+
+    fn pump_loop_content_replace(&mut self) -> Result<()> {
+        let Some(replace) = self.loop_content_replace.as_mut() else {
+            return Ok(());
+        };
+        if replace.complete {
+            return Ok(());
+        }
+        while replace.next_offset < replace.bytes.len()
+            && self.transport.borrow().in_flight < COMMAND_CAPACITY / 2
+        {
+            let end = replace
+                .next_offset
+                .saturating_add(SESSION_TRANSFER_CHUNK_BYTES)
+                .min(replace.bytes.len());
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::WriteLoopContentReplace {
+                    generation: replace.generation,
+                    offset: replace.next_offset,
+                    bytes: replace.bytes[replace.next_offset..end].to_vec(),
+                })?;
+            replace.next_offset = end;
+        }
+        if replace.next_offset == replace.bytes.len()
+            && !replace.commit_sent
+            && self.transport.borrow().in_flight < COMMAND_CAPACITY
+        {
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::CommitLoopContentReplace {
                     generation: replace.generation,
                 })?;
             replace.commit_sent = true;
@@ -1751,6 +1801,58 @@ impl Backend for WebAudioBackend {
         Ok(())
     }
 
+    fn replace_loop_content(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<()> {
+        if let Some(replace) = &self.loop_content_replace {
+            if replace.loop_id != loop_id || &replace.update != update {
+                return Err(anyhow!("another loop content replacement is active"));
+            }
+            if replace.complete {
+                self.loop_content_replace = None;
+                self.waveforms.remove(&loop_id);
+                return Ok(());
+            }
+            self.pump_loop_content_replace()?;
+            return Err(anyhow!("loop content replacement pending"));
+        }
+        let bytes = serde_json::to_vec(update)?;
+        if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
+            return Err(anyhow!(
+                "prepared loop content exceeds browser transfer limit"
+            ));
+        }
+        let generation = self.next_session_generation;
+        self.next_session_generation = self.next_session_generation.saturating_add(1);
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::BeginLoopContentReplace {
+                generation,
+                loop_id: loop_id.raw(),
+                total_bytes: bytes.len(),
+            })?;
+        self.loop_content_replace = Some(LoopContentReplaceAssembly {
+            generation,
+            loop_id,
+            update: update.clone(),
+            bytes,
+            next_offset: 0,
+            commit_sent: false,
+            complete: false,
+        });
+        self.pump_loop_content_replace()?;
+        Err(anyhow!("loop content replacement pending"))
+    }
+
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        self.submit(Command::SetLoopLength {
+            loop_id: loop_id.raw(),
+            length,
+        })
+    }
+
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         if let Some(capture) = &self.session_capture {
             if capture.total_bytes == Some(capture.bytes.len()) && !capture.in_flight {
@@ -1938,6 +2040,13 @@ impl Backend for WebAudioBackend {
                         }
                     }
                 }
+                Event::LoopContentReplaceComplete { generation } => {
+                    if let Some(replace) = self.loop_content_replace.as_mut() {
+                        if replace.generation == generation {
+                            replace.complete = true;
+                        }
+                    }
+                }
                 Event::SessionTransferAborted { generation } => {
                     if self
                         .session_capture
@@ -1953,10 +2062,18 @@ impl Backend for WebAudioBackend {
                     {
                         self.session_replace = None;
                     }
+                    if self
+                        .loop_content_replace
+                        .as_ref()
+                        .is_some_and(|replace| replace.generation == generation)
+                    {
+                        self.loop_content_replace = None;
+                    }
                 }
             }
         }
         self.pump_session_replace()?;
+        self.pump_loop_content_replace()?;
         if let Some(error) = self.transport.borrow_mut().error.take() {
             return Err(anyhow!(error));
         }

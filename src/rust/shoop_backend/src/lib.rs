@@ -453,6 +453,31 @@ pub struct BackendLoopContent {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BackendAudioChannelUpdate {
+    pub channel: usize,
+    pub samples: Vec<f32>,
+    pub start_offset: Option<i32>,
+    pub preplay: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendMidiChannelUpdate {
+    pub channel: usize,
+    pub length: u32,
+    pub start_state: Vec<Vec<u8>>,
+    pub events: Vec<BackendMidiEvent>,
+    pub start_offset: Option<i32>,
+    pub preplay: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct BackendLoopContentUpdate {
+    pub audio: Vec<BackendAudioChannelUpdate>,
+    pub midi: Vec<BackendMidiChannelUpdate>,
+    pub length: Option<u32>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendSessionPort {
     pub source_id: u64,
     pub descriptor: BackendPortDescriptor,
@@ -630,6 +655,16 @@ pub trait Backend {
         self.transition_loop(loop_id, mode, cycles_delay)
     }
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()>;
+    fn replace_loop_content(
+        &mut self,
+        _loop_id: BackendLoopId,
+        _update: &BackendLoopContentUpdate,
+    ) -> Result<()> {
+        Err(anyhow!("targeted loop content replacement is unavailable"))
+    }
+    fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
+        Err(anyhow!("targeted loop length updates are unavailable"))
+    }
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         Err(anyhow!("session capture is unavailable"))
     }
@@ -2382,6 +2417,114 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
+    fn replace_loop_content(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<()> {
+        let engine_loop = self.engine_loop_index(loop_id)?;
+        let state = self
+            .session
+            .loop_(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?;
+        if matches!(
+            state.mode(),
+            LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+        ) {
+            return Err(anyhow!("loop content is changing"));
+        }
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing loop channels"))?;
+        let audio_indices = update
+            .audio
+            .iter()
+            .map(|item| {
+                channels
+                    .audio
+                    .get(item.channel)
+                    .copied()
+                    .ok_or_else(|| anyhow!("unknown audio channel {}", item.channel))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_indices = update
+            .midi
+            .iter()
+            .map(|item| {
+                channels
+                    .midi
+                    .get(item.channel)
+                    .copied()
+                    .ok_or_else(|| anyhow!("unknown MIDI channel {}", item.channel))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if audio_indices.iter().collect::<BTreeSet<_>>().len() != audio_indices.len()
+            || midi_indices.iter().collect::<BTreeSet<_>>().len() != midi_indices.len()
+        {
+            return Err(anyhow!("loop content update contains a duplicate channel"));
+        }
+        let midi_events = update
+            .midi
+            .iter()
+            .map(|item| {
+                item.events
+                    .iter()
+                    .map(|event| {
+                        shoop_engine::MidiStorageElem::new(event.time, &event.data)
+                            .ok_or_else(|| anyhow!("invalid MIDI event"))
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        for (item, index) in update.audio.iter().zip(audio_indices) {
+            let channel = self
+                .session
+                .audio_channel_mut(index)
+                .ok_or_else(|| anyhow!("missing audio channel"))?;
+            channel.load_data(&item.samples);
+            if let Some(offset) = item.start_offset {
+                channel.set_start_offset(offset);
+            }
+            if let Some(preplay) = item.preplay {
+                channel.set_pre_play_samples(preplay);
+            }
+        }
+        for ((item, events), index) in update.midi.iter().zip(midi_events).zip(midi_indices) {
+            let channel = self
+                .session
+                .midi_channel_mut(index)
+                .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+            channel.set_contents(&events, item.length, Some(&item.start_state));
+            if let Some(offset) = item.start_offset {
+                channel.set_start_offset(offset);
+            }
+            if let Some(preplay) = item.preplay {
+                channel.set_pre_play_samples(preplay);
+            }
+        }
+        let loop_ = self
+            .session
+            .loop_mut(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?;
+        loop_.clear_planned_transitions();
+        loop_.set_mode(LoopMode::Stopped);
+        if let Some(length) = update.length {
+            loop_.set_length(length);
+        }
+        Ok(())
+    }
+
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        let engine_loop = self.engine_loop_index(loop_id)?;
+        self.session
+            .loop_mut(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .set_length(length);
+        Ok(())
+    }
+
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         self.capture_session_data()
     }
@@ -2909,6 +3052,7 @@ pub struct FakeBackend {
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
     fail_next_session_replace: Option<String>,
+    fail_next_loop_content_replace: Option<String>,
     failed_midi_input_tracks: BTreeSet<BackendTrackId>,
     processor_catalog: Arc<[TrackProcessorDescriptor]>,
     default_fx_state_string: String,
@@ -2940,6 +3084,8 @@ pub enum FakeOperation {
     SetSyncSource(BackendLoopId, Option<BackendLoopId>),
     Transition(BackendLoopId, BackendLoopMode, Option<u32>),
     Clear(BackendLoopId),
+    ReplaceLoopContent(BackendLoopId, BackendLoopContentUpdate),
+    SetLoopLength(BackendLoopId, u32),
     InjectMidiInput(BackendTrackId, Vec<BackendMidiEvent>),
     SetPortConnected(BackendPortId, String, bool),
 }
@@ -2966,6 +3112,7 @@ impl Default for FakeBackend {
             next_port_id: 1,
             fail_track_creation_after: None,
             fail_next_session_replace: None,
+            fail_next_loop_content_replace: None,
             failed_midi_input_tracks: BTreeSet::new(),
             processor_catalog: Arc::from([]),
             default_fx_state_string: "{}".to_owned(),
@@ -3026,6 +3173,10 @@ impl FakeBackend {
 
     pub fn fail_next_session_replace(&mut self, message: impl Into<String>) {
         self.fail_next_session_replace = Some(message.into());
+    }
+
+    pub fn fail_next_loop_content_replace(&mut self, message: impl Into<String>) {
+        self.fail_next_loop_content_replace = Some(message.into());
     }
 
     pub fn set_preflight_sample_rate_override(&mut self, sample_rate: Option<u32>) {
@@ -3831,6 +3982,136 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
+    fn replace_loop_content(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<()> {
+        if let Some(message) = self.fail_next_loop_content_replace.take() {
+            return Err(anyhow!(message));
+        }
+        let state = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+        if matches!(
+            state.mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            return Err(anyhow!("loop content is changing"));
+        }
+        let content = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?;
+        let audio_indices = update
+            .audio
+            .iter()
+            .map(|item| {
+                content
+                    .audio
+                    .get(item.channel)
+                    .map(|_| item.channel)
+                    .ok_or_else(|| anyhow!("unknown audio channel {}", item.channel))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_indices = update
+            .midi
+            .iter()
+            .map(|item| {
+                content
+                    .midi
+                    .get(item.channel)
+                    .map(|_| item.channel)
+                    .ok_or_else(|| anyhow!("unknown MIDI channel {}", item.channel))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if audio_indices.iter().collect::<BTreeSet<_>>().len() != audio_indices.len()
+            || midi_indices.iter().collect::<BTreeSet<_>>().len() != midi_indices.len()
+        {
+            return Err(anyhow!("loop content update contains a duplicate channel"));
+        }
+        if update
+            .midi
+            .iter()
+            .flat_map(|item| &item.events)
+            .any(|event| shoop_engine::MidiStorageElem::new(event.time, &event.data).is_none())
+        {
+            return Err(anyhow!("invalid MIDI event"));
+        }
+
+        let content = self
+            .loop_content
+            .get_mut(&loop_id)
+            .expect("loop content was validated");
+        for item in &update.audio {
+            let channel = &mut content.audio[item.channel];
+            channel.samples.clone_from(&item.samples);
+            if let Some(offset) = item.start_offset {
+                channel.start_offset = offset;
+            }
+            if let Some(preplay) = item.preplay {
+                channel.preplay = preplay;
+            }
+        }
+        for item in &update.midi {
+            let channel = &mut content.midi[item.channel];
+            channel.length = item.length;
+            channel.start_state.clone_from(&item.start_state);
+            channel.events.clone_from(&item.events);
+            if let Some(offset) = item.start_offset {
+                channel.start_offset = offset;
+            }
+            if let Some(preplay) = item.preplay {
+                channel.preplay = preplay;
+            }
+        }
+        if let Some(length) = update.length {
+            content.length = length;
+        }
+        let state = self.loops.get_mut(&loop_id).expect("loop was validated");
+        state.mode = BackendLoopMode::Stopped;
+        state.next_mode = None;
+        state.next_transition_delay = None;
+        if let Some(length) = update.length {
+            state.length = length;
+            if state.position >= length {
+                state.position = if length == 0 {
+                    0
+                } else {
+                    state.position % length
+                };
+            }
+        }
+        self.operations
+            .push(FakeOperation::ReplaceLoopContent(loop_id, update.clone()));
+        Ok(())
+    }
+
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        let state = self
+            .loops
+            .get_mut(&loop_id)
+            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+        state.length = length;
+        if state.position >= length {
+            state.position = if length == 0 {
+                0
+            } else {
+                state.position % length
+            };
+        }
+        self.loop_content
+            .get_mut(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?
+            .length = length;
+        self.operations
+            .push(FakeOperation::SetLoopLength(loop_id, length));
+        Ok(())
+    }
+
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         if self.loops.values().any(|state| {
             matches!(
@@ -4365,6 +4646,146 @@ mod tests {
         backend.wait_idle();
     }
 
+    fn loop_content_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "content".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 2,
+            })
+            .unwrap();
+        let sync = created.loops[0];
+        let target = created.loops[1];
+        backend.set_loop_sync_source(target, Some(sync)).unwrap();
+        backend
+            .transition_loop(target, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .replace_loop_content(
+                target,
+                &BackendLoopContentUpdate {
+                    audio: vec![
+                        BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![1.0, 2.0, 3.0],
+                            start_offset: Some(-1),
+                            preplay: Some(4),
+                        },
+                        BackendAudioChannelUpdate {
+                            channel: 1,
+                            samples: vec![10.0, 20.0, 30.0],
+                            start_offset: Some(-2),
+                            preplay: Some(5),
+                        },
+                    ],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 3,
+                        start_state: vec![vec![0xB0, 7, 99]],
+                        events: vec![BackendMidiEvent {
+                            time: 2,
+                            data: vec![0x90, 64, 127],
+                        }],
+                        start_offset: Some(-3),
+                        preplay: Some(6),
+                    }],
+                    length: Some(3),
+                },
+            )
+            .unwrap();
+        backend.wait_idle();
+
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.loops[&target].mode, BackendLoopMode::Stopped);
+        assert_eq!(snapshot.loops[&target].length, 3);
+        let captured = backend.capture_session().unwrap();
+        let target_content = captured
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == target.raw())
+            .unwrap();
+        assert_eq!(target_content.audio[0].samples, [1.0, 2.0, 3.0]);
+        assert_eq!(target_content.audio[1].samples, [10.0, 20.0, 30.0]);
+        assert_eq!(target_content.audio[0].start_offset, -1);
+        assert_eq!(target_content.audio[1].preplay, 5);
+        assert_eq!(target_content.midi[0].events[0].time, 2);
+        assert!(target_content.midi[0]
+            .start_state
+            .iter()
+            .any(|message| message == &[0xB0, 7, 99]));
+
+        backend
+            .transition_loop(sync, BackendLoopMode::Recording, None)
+            .unwrap();
+        let audio_before_rejected = backend.loop_audio_data(sync).unwrap();
+        assert!(backend
+            .replace_loop_content(
+                sync,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![99.0],
+                        start_offset: None,
+                        preplay: None,
+                    }],
+                    ..Default::default()
+                },
+            )
+            .is_err());
+        assert_eq!(
+            backend.loop_audio_data(sync).unwrap(),
+            audio_before_rejected
+        );
+        backend
+            .transition_loop(sync, BackendLoopMode::Stopped, None)
+            .unwrap();
+
+        backend
+            .transition_loop(target, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend.set_loop_length(target, 9).unwrap();
+        backend.wait_idle();
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.loops[&target].mode, BackendLoopMode::Playing);
+        assert_eq!(snapshot.loops[&target].length, 9);
+        let lengthened = backend.capture_session().unwrap();
+        let lengthened_content = lengthened
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == target.raw())
+            .unwrap();
+        assert_eq!(lengthened_content.audio[0].samples, [1.0, 2.0, 3.0]);
+        assert_eq!(lengthened_content.audio[1].samples, [10.0, 20.0, 30.0]);
+
+        let before_invalid = backend.capture_session().unwrap();
+        assert!(backend
+            .replace_loop_content(
+                target,
+                &BackendLoopContentUpdate {
+                    audio: vec![
+                        BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![99.0],
+                            start_offset: None,
+                            preplay: None,
+                        },
+                        BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![100.0],
+                            start_offset: None,
+                            preplay: None,
+                        },
+                    ],
+                    ..Default::default()
+                },
+            )
+            .is_err());
+        assert_eq!(backend.capture_session().unwrap(), before_invalid);
+    }
+
     fn session_io_contract(backend: &mut dyn Backend) {
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -4573,6 +4994,12 @@ mod tests {
     fn fake_and_engine_backends_satisfy_transactional_session_io_contract() {
         session_io_contract(&mut FakeBackend::default());
         session_io_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
+    }
+
+    #[test]
+    fn fake_and_engine_backends_update_loop_content_without_session_replacement() {
+        loop_content_contract(&mut FakeBackend::default());
+        loop_content_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
     #[test]
