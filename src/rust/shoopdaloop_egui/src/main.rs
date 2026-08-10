@@ -358,11 +358,20 @@ impl UnifiedApp {
         for action in response.settings_actions {
             self.handle_settings_action(action);
         }
-        while let Some(output) = self.runtime.take_file_output() {
-            #[cfg(not(target_arch = "wasm32"))]
-            save_file_output(output, self.pending_file_intent_tx.clone());
-            #[cfg(target_arch = "wasm32")]
-            save_file_output(output, Rc::clone(&self.pending_file_intents));
+        #[cfg(not(target_arch = "wasm32"))]
+        let drain_file_outputs = true;
+        #[cfg(target_arch = "wasm32")]
+        let drain_file_outputs = matches!(
+            self.browser_self_test,
+            BrowserSelfTest::Disabled | BrowserSelfTest::Complete | BrowserSelfTest::Failed
+        );
+        if drain_file_outputs {
+            while let Some(output) = self.runtime.take_file_output() {
+                #[cfg(not(target_arch = "wasm32"))]
+                save_file_output(output, self.pending_file_intent_tx.clone());
+                #[cfg(target_arch = "wasm32")]
+                save_file_output(output, Rc::clone(&self.pending_file_intents));
+            }
         }
         if let Some(notification) = snapshot.notifications.last() {
             egui::Area::new(egui::Id::new("latest_notification"))
