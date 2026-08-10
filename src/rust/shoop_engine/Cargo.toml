@@ -57,7 +57,7 @@ cpal = ["dep:cpal"]
 midir = ["dep:midir"]
 lv2 = ["dep:lilv", "dep:lv2_raw", "dep:base64", "dep:serde_json", "dep:libloading"]
 native_audio_backend = ["jack", "cpal", "midir"]
-app_backend = ["native_audio_backend", "lv2"]
+app_backend = ["native_audio_backend"]
 
 [dev-dependencies]
 assert2 = { workspace = true }

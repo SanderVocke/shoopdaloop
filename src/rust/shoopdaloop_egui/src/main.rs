@@ -19,14 +19,18 @@ use web_time::Instant;
 
 use eframe::egui;
 use settings::SettingsManager;
+#[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
+use shoop_backend::configure_carla_hosting_mode;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_backend::{configure_carla_hosting_mode, NativeBackend};
+use shoop_backend::NativeBackend;
 #[cfg(target_arch = "wasm32")]
 use shoop_egui::register_bundled_script_settings;
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "native-fx", test)))]
+use shoop_egui::register_carla_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::register_script_settings;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_egui::{register_audio_settings, register_carla_settings, AudioDriverConfig};
+use shoop_egui::{register_audio_settings, AudioDriverConfig};
 use shoop_egui::{
     register_settings, AppIntent, AppSnapshot, AppWidget, ScriptKind, SettingsAction,
     SettingsRegistryBuilder,
@@ -105,7 +109,7 @@ impl UnifiedApp {
         register_settings(&mut settings_builder)?;
         #[cfg(not(target_arch = "wasm32"))]
         register_audio_settings(&mut settings_builder)?;
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
         register_carla_settings(&mut settings_builder)?;
         #[cfg(not(target_arch = "wasm32"))]
         register_script_settings(&mut settings_builder)?;
@@ -689,17 +693,21 @@ struct Runtime {
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
-        let (carla_hosting_mode, carla_configuration_warning) =
-            match shoop_egui::carla_hosting_mode_from_snapshot(settings) {
-                Ok(mode) => (mode, None),
-                Err(error) => (
-                    shoop_settings::CarlaHostingMode::InProcess,
-                    Some(format!(
-                        "Could not use Carla hosting setting: {error}; using in_process"
-                    )),
-                ),
-            };
-        configure_carla_hosting_mode(carla_hosting_mode);
+        #[cfg(feature = "native-fx")]
+        let carla_configuration_warning = {
+            let (carla_hosting_mode, warning) =
+                match shoop_egui::carla_hosting_mode_from_snapshot(settings) {
+                    Ok(mode) => (mode, None),
+                    Err(error) => (
+                        shoop_settings::CarlaHostingMode::InProcess,
+                        Some(format!(
+                            "Could not use Carla hosting setting: {error}; using in_process"
+                        )),
+                    ),
+                };
+            configure_carla_hosting_mode(carla_hosting_mode);
+            warning
+        };
         let configured_driver = shoop_egui::selected_audio_driver(settings)
             .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(settings, kind));
         let (configured_driver, configuration_warning) = match configured_driver {
@@ -714,6 +722,7 @@ impl Runtime {
         let (backend, backend_warning) = NativeBackend::new_with_fallback(configured_driver)?;
         let (startup_scripts, script_paths, mut warnings) = configured_startup_scripts(settings)?;
         warnings.extend(configuration_warning);
+        #[cfg(feature = "native-fx")]
         warnings.extend(carla_configuration_warning);
         warnings.extend(backend_warning);
         let runtime = ApplicationRuntime::start_with_scripts(Box::new(backend), startup_scripts)?;
@@ -1019,6 +1028,7 @@ fn create_app(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
+    #[cfg(feature = "native-fx")]
     match shoop_backend::run_carla_worker_if_requested(std::env::args_os()) {
         Ok(true) => return Ok(()),
         Ok(false) => {}
@@ -2834,6 +2844,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "native-fx")]
     #[test]
     fn runtime_applies_carla_hosting_setting_before_backend_start() {
         let mut builder = SettingsRegistryBuilder::default();
@@ -2851,6 +2862,7 @@ mod tests {
         drop(runtime);
     }
 
+    #[cfg(feature = "native-fx")]
     #[test]
     fn carla_hosting_mode_persists_but_does_not_change_the_running_backend() {
         let directory = tempfile::tempdir().unwrap();

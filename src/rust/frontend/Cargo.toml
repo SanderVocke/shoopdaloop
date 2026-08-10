@@ -9,7 +9,7 @@ crate-type = ["lib"]
 [dependencies]
 macros = { path = "../macros" }
 common = { path = "../common" }
-shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
+shoop_engine = { path = "../shoop_engine", features = ["app_backend", "lv2"] }
 shoop_scripting = { path = "../shoop_scripting" }
 crashhandling = { path = "../crashhandling" }
 config = { path = "../config" }

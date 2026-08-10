@@ -82,7 +82,7 @@ jobs:
             os: ubuntu-24.04
             arch: wasm32
             profile: debug
-            cargo_args: ""
+            cargo_args: --no-default-features
             trunk_args: ""
             rust_targets: wasm32-unknown-unknown
             artifact: shoopdaloop-egui-web-wasm32-debug.zip
@@ -91,7 +91,7 @@ jobs:
             os: ubuntu-24.04
             arch: wasm32
             profile: release
-            cargo_args: --release
+            cargo_args: --release --no-default-features
             trunk_args: --release
             rust_targets: wasm32-unknown-unknown
             artifact: shoopdaloop-egui-web-wasm32-release.zip

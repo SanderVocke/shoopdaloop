@@ -2,6 +2,7 @@
 target = "index.html"
 dist = "dist"
 public_url = "./"
+no_default_features = true
 
 [[hooks]]
 stage = "pre_build"

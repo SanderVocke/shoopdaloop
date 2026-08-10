@@ -2,6 +2,10 @@
 name = "shoopdaloop_egui"
 edition = "2021"
 
+[features]
+default = ["native-fx"]
+native-fx = ["shoop_backend/native-fx"]
+
 [dependencies]
 anyhow = { workspace = true }
 eframe = { workspace = true }
@@ -11,7 +15,7 @@ shoop_egui = { path = "../shoop_egui" }
 shoop_scripting = { path = "../shoop_scripting" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-shoop_backend = { path = "../shoop_backend", features = ["native-fx"] }
+shoop_backend = { path = "../shoop_backend", features = ["native-drivers"] }
 shoop_settings = { path = "../shoop_settings", features = ["native-store"] }
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
 
