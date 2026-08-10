@@ -22,9 +22,11 @@ pub struct TrackControls {
 
 #[derive(Clone, Copy, Debug)]
 enum TestTrackControl {
+    OutputMeter,
     OutputMute,
     OutputGain,
     OutputBalance,
+    InputMeter,
     InputMonitoring,
     InputGain,
     InputBalance,
@@ -33,9 +35,11 @@ enum TestTrackControl {
 #[cfg(test)]
 #[derive(Debug, Default)]
 struct TestTrackControlRects {
+    output_meter: Option<egui::Rect>,
     output_mute: Option<egui::Rect>,
     output_gain: Option<egui::Rect>,
     output_balance: Option<egui::Rect>,
+    input_meter: Option<egui::Rect>,
     input_monitoring: Option<egui::Rect>,
     input_gain: Option<egui::Rect>,
     input_balance: Option<egui::Rect>,
@@ -46,13 +50,14 @@ impl TrackControls {
         let mut actions = Vec::new();
 
         if state.has_output {
-            meter(
+            let response = meter(
                 ui,
                 state.output_stereo,
                 state.output_peak_left_db,
                 state.output_peak_right_db,
                 state.output_midi_activity,
             );
+            self.record_rect(TestTrackControl::OutputMeter, &response);
             ui.horizontal(|ui| {
                 let icon = if state.output_muted {
                     ICON_VOLUME_MUTE
@@ -72,15 +77,13 @@ impl TrackControls {
                     actions.push(TrackWidgetAction::OutputMuteChanged(!state.output_muted));
                 }
 
+                let (gain_width, balance_size) =
+                    control_sizes(ui, state.has_output_audio, state.output_stereo);
                 if state.has_output_audio {
                     let mut gain = self
                         .output_gain
                         .resolve(state.output_gain_db, self.output_gain_dragging);
-                    let response = ui
-                        .add(
-                            egui::Slider::new(&mut gain, MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB)
-                                .show_value(false),
-                        )
+                    let response = gain_slider(ui, &mut gain, gain_width)
                         .on_hover_text(format!("Output gain: {gain:.1} dB"));
                     self.record_rect(TestTrackControl::OutputGain, &response);
                     if response.drag_started() || response.dragged() {
@@ -99,6 +102,7 @@ impl TrackControls {
                     let response = balance_control(
                         ui,
                         state.output_balance,
+                        balance_size,
                         &mut self.output_balance,
                         &mut self.output_balance_drag_start,
                         TrackWidgetAction::OutputBalanceChanged,
@@ -110,13 +114,14 @@ impl TrackControls {
         }
 
         if state.has_input {
-            meter(
+            let response = meter(
                 ui,
                 state.input_stereo,
                 state.input_peak_left_db,
                 state.input_peak_right_db,
                 state.input_midi_activity,
             );
+            self.record_rect(TestTrackControl::InputMeter, &response);
             ui.horizontal(|ui| {
                 let color = if state.input_monitoring {
                     colors::FOREGROUND
@@ -136,15 +141,13 @@ impl TrackControls {
                     ));
                 }
 
+                let (gain_width, balance_size) =
+                    control_sizes(ui, state.has_input_audio, state.input_stereo);
                 if state.has_input_audio {
                     let mut gain = self
                         .input_gain
                         .resolve(state.input_gain_db, self.input_gain_dragging);
-                    let response = ui
-                        .add(
-                            egui::Slider::new(&mut gain, MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB)
-                                .show_value(false),
-                        )
+                    let response = gain_slider(ui, &mut gain, gain_width)
                         .on_hover_text(format!("Input gain: {gain:.1} dB"));
                     self.record_rect(TestTrackControl::InputGain, &response);
                     if response.drag_started() || response.dragged() {
@@ -163,6 +166,7 @@ impl TrackControls {
                     let response = balance_control(
                         ui,
                         state.input_balance,
+                        balance_size,
                         &mut self.input_balance,
                         &mut self.input_balance_drag_start,
                         TrackWidgetAction::InputBalanceChanged,
@@ -179,9 +183,11 @@ impl TrackControls {
     #[cfg(test)]
     fn record_rect(&mut self, control: TestTrackControl, response: &egui::Response) {
         let target = match control {
+            TestTrackControl::OutputMeter => &mut self.test_rects.output_meter,
             TestTrackControl::OutputMute => &mut self.test_rects.output_mute,
             TestTrackControl::OutputGain => &mut self.test_rects.output_gain,
             TestTrackControl::OutputBalance => &mut self.test_rects.output_balance,
+            TestTrackControl::InputMeter => &mut self.test_rects.input_meter,
             TestTrackControl::InputMonitoring => &mut self.test_rects.input_monitoring,
             TestTrackControl::InputGain => &mut self.test_rects.input_gain,
             TestTrackControl::InputBalance => &mut self.test_rects.input_balance,
@@ -195,9 +201,11 @@ impl TrackControls {
     #[cfg(test)]
     fn test_rect(&self, control: TestTrackControl) -> Option<egui::Rect> {
         match control {
+            TestTrackControl::OutputMeter => self.test_rects.output_meter,
             TestTrackControl::OutputMute => self.test_rects.output_mute,
             TestTrackControl::OutputGain => self.test_rects.output_gain,
             TestTrackControl::OutputBalance => self.test_rects.output_balance,
+            TestTrackControl::InputMeter => self.test_rects.input_meter,
             TestTrackControl::InputMonitoring => self.test_rects.input_monitoring,
             TestTrackControl::InputGain => self.test_rects.input_gain,
             TestTrackControl::InputBalance => self.test_rects.input_balance,
@@ -205,16 +213,51 @@ impl TrackControls {
     }
 }
 
+fn gain_slider(ui: &mut egui::Ui, gain: &mut f32, width: f32) -> egui::Response {
+    let slider_width = ui.spacing().slider_width;
+    ui.spacing_mut().slider_width = width;
+    let response =
+        ui.add(egui::Slider::new(gain, MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB).show_value(false));
+    ui.spacing_mut().slider_width = slider_width;
+    response
+}
+
+fn control_sizes(ui: &egui::Ui, gain: bool, balance: bool) -> (f32, f32) {
+    let available = ui.available_width().max(0.0);
+    let gap = if gain && balance {
+        ui.spacing().item_spacing.x.min(available)
+    } else {
+        0.0
+    };
+    let usable = (available - gap).max(0.0);
+    let balance_size = if balance {
+        if gain {
+            (usable * 0.3).min(20.0)
+        } else {
+            usable.min(20.0)
+        }
+    } else {
+        0.0
+    };
+    let gain_width = if gain {
+        (usable - balance_size).max(0.0)
+    } else {
+        0.0
+    };
+    (gain_width, balance_size)
+}
+
 fn balance_control(
     ui: &mut egui::Ui,
     authoritative: f32,
+    size: f32,
     optimistic: &mut OptimisticValue<f32>,
     drag_start: &mut Option<f32>,
     action: impl FnOnce(f32) -> TrackWidgetAction,
     actions: &mut Vec<TrackWidgetAction>,
 ) -> egui::Response {
     let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click_and_drag());
+        ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click_and_drag());
     let value = optimistic.resolve(authoritative, drag_start.is_some());
     if response.drag_started() {
         *drag_start = Some(value);
@@ -239,8 +282,14 @@ fn balance_control(
     response.on_hover_text(format!("Stereo balance: {balance:.2}"))
 }
 
-fn meter(ui: &mut egui::Ui, stereo: bool, left_db: f32, right_db: f32, midi_activity: bool) {
-    let (rect, _) =
+fn meter(
+    ui: &mut egui::Ui,
+    stereo: bool,
+    left_db: f32,
+    right_db: f32,
+    midi_activity: bool,
+) -> egui::Response {
+    let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 4.0), egui::Sense::hover());
     let painter = ui.painter();
     painter.rect_filled(rect, 1.0, colors::CONTROL_BACKGROUND);
@@ -286,16 +335,18 @@ fn meter(ui: &mut egui::Ui, stereo: bool, left_db: f32, right_db: f32, midi_acti
             colors::MIDI_ACTIVITY,
         );
     }
+    response
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn frame(
+    fn frame_at_width(
         context: &egui::Context,
         controls: &mut TrackControls,
         state: &TrackControlState,
+        width: f32,
         events: Vec<egui::Event>,
     ) -> Vec<TrackWidgetAction> {
         let mut actions = Vec::new();
@@ -303,7 +354,7 @@ mod tests {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(220.0, 120.0),
+                    egui::vec2(width, 120.0),
                 )),
                 events,
                 ..Default::default()
@@ -311,6 +362,15 @@ mod tests {
             |ui| actions = controls.show(ui, state),
         );
         actions
+    }
+
+    fn frame(
+        context: &egui::Context,
+        controls: &mut TrackControls,
+        state: &TrackControlState,
+        events: Vec<egui::Event>,
+    ) -> Vec<TrackWidgetAction> {
+        frame_at_width(context, controls, state, 220.0, events)
     }
 
     fn click(
@@ -373,6 +433,41 @@ mod tests {
             .is_none());
         assert!(controls.test_rect(TestTrackControl::InputGain).is_none());
         assert!(controls.test_rect(TestTrackControl::InputBalance).is_none());
+    }
+
+    #[test]
+    fn meters_gain_sliders_and_balance_dials_fit_the_available_width() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackControlState {
+            has_output: true,
+            has_output_audio: true,
+            output_stereo: true,
+            ..Default::default()
+        };
+        let mut controls = TrackControls::default();
+        frame_at_width(&context, &mut controls, &state, 80.0, Vec::new());
+        let narrow_meter = controls.test_rect(TestTrackControl::OutputMeter).unwrap();
+        let narrow_gain = controls.test_rect(TestTrackControl::OutputGain).unwrap();
+        let narrow_balance = controls.test_rect(TestTrackControl::OutputBalance).unwrap();
+        assert_eq!(narrow_meter.x_range(), 0.0..=80.0);
+        assert!(
+            narrow_gain.right() <= narrow_meter.right(),
+            "meter={narrow_meter:?}, gain={narrow_gain:?}, balance={narrow_balance:?}"
+        );
+        assert!(
+            narrow_balance.right() <= narrow_meter.right(),
+            "meter={narrow_meter:?}, gain={narrow_gain:?}, balance={narrow_balance:?}"
+        );
+
+        frame_at_width(&context, &mut controls, &state, 220.0, Vec::new());
+        let wide_meter = controls.test_rect(TestTrackControl::OutputMeter).unwrap();
+        let wide_gain = controls.test_rect(TestTrackControl::OutputGain).unwrap();
+        let wide_balance = controls.test_rect(TestTrackControl::OutputBalance).unwrap();
+        assert_eq!(wide_meter.x_range(), 0.0..=220.0);
+        assert!(wide_gain.width() > narrow_gain.width());
+        assert!(wide_balance.width() >= narrow_balance.width());
+        assert!(wide_balance.right() <= wide_meter.right());
     }
 
     #[test]

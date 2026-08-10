@@ -34,6 +34,7 @@ pub struct TrackWidget {
     width: f32,
     rendered_content_width: f32,
     width_drag_start: Option<f32>,
+    width_resizable: bool,
     #[cfg(test)]
     test_loop_rects: Vec<egui::Rect>,
     #[cfg(test)]
@@ -62,6 +63,7 @@ impl Default for TrackWidget {
             width: DEFAULT_TRACK_WIDTH,
             rendered_content_width: DEFAULT_TRACK_WIDTH,
             width_drag_start: None,
+            width_resizable: true,
             #[cfg(test)]
             test_loop_rects: Vec::new(),
             #[cfg(test)]
@@ -81,6 +83,15 @@ impl Default for TrackWidget {
 }
 
 impl TrackWidget {
+    pub(crate) fn set_width_resizable(&mut self, resizable: bool) {
+        self.width_resizable = resizable;
+        if !resizable {
+            self.width = DEFAULT_TRACK_WIDTH;
+            self.rendered_content_width = DEFAULT_TRACK_WIDTH;
+            self.width_drag_start = None;
+        }
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui, state: &TrackState) -> TrackWidgetResponse {
         let item_spacing_y = ui.spacing().item_spacing.y;
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -182,7 +193,9 @@ impl TrackWidget {
         {
             self.test_content_rect = Some(frame.response.rect);
         }
-        self.show_width_resize_handle(ui, frame.response.rect, "content_width_resize");
+        if self.width_resizable {
+            self.show_width_resize_handle(ui, frame.response.rect, "content_width_resize");
+        }
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
         result
     }
@@ -246,7 +259,9 @@ impl TrackWidget {
         {
             self.test_controls_rect = Some(response.rect);
         }
-        self.show_width_resize_handle(ui, response.rect, "controls_width_resize");
+        if self.width_resizable {
+            self.show_width_resize_handle(ui, response.rect, "controls_width_resize");
+        }
         actions
     }
 
@@ -755,6 +770,45 @@ mod tests {
             vec![egui::Event::PointerMoved(popup_over_second)],
         );
         assert_eq!(widget.hovered_loop, Some(first));
+    }
+
+    #[test]
+    fn fixed_width_track_ignores_resize_drags() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackState {
+            id: TrackId::from_raw(1),
+            name: "Sync".to_owned(),
+            is_sync: true,
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        widget.width = MAX_TRACK_WIDTH;
+        widget.set_width_resizable(false);
+        let _ = full_frame(&context, &mut widget, &state, Vec::new());
+        let edge = widget.test_content_rect.unwrap().right_center();
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(edge),
+                egui::Event::PointerButton {
+                    pos: edge,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerMoved(edge + egui::vec2(100.0, 0.0))],
+        );
+        assert_eq!(widget.width, DEFAULT_TRACK_WIDTH);
+        assert!(widget.width_drag_start.is_none());
     }
 
     #[test]

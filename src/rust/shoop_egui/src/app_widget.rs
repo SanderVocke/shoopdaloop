@@ -496,14 +496,16 @@ impl Default for AppWidget {
 
 impl AppWidget {
     pub fn new(settings_registry: Arc<SettingsRegistry>) -> Self {
+        let mut sync_track = TrackWidget::default();
+        sync_track.set_width_resizable(false);
         Self {
             tracks: TracksWidget::default(),
             global_controls: GlobalControls::default(),
             details: DetailsPane::default(),
-            sync_track: TrackWidget::default(),
+            sync_track,
             connections: ConnectionDialog::default(),
             settings: SettingsDialog::new(settings_registry),
-            details_open: true,
+            details_open: false,
             add_track_open: false,
             add_track_name: String::new(),
             add_track_mode: AddTrackMode::Regular,
@@ -613,6 +615,7 @@ impl AppWidget {
 
         egui::Panel::right("logo_status_and_sync")
             .resizable(false)
+            .show_separator_line(false)
             .exact_size(220.0)
             .frame(
                 egui::Frame::new()
@@ -1262,6 +1265,11 @@ mod tests {
     use shoop_settings::{
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
+
+    #[test]
+    fn details_panel_starts_closed() {
+        assert!(!AppWidget::default().details_open);
+    }
 
     #[test]
     fn carla_hosting_setting_validates_modes_and_preserves_unknown_keys() {

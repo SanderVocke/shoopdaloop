@@ -4,7 +4,7 @@ use egui::Color32;
 
 pub const DARK_BACKGROUND: Color32 = Color32::from_rgb(28, 27, 31);
 pub const RAISED_BACKGROUND: Color32 = Color32::from_rgb(85, 85, 85);
-pub const SIDEBAR_BACKGROUND: Color32 = Color32::from_rgb(42, 42, 42);
+pub const SIDEBAR_BACKGROUND: Color32 = DARK_BACKGROUND;
 pub const CONTROL_BACKGROUND: Color32 = Color32::from_rgb(34, 34, 34);
 pub const FOREGROUND: Color32 = Color32::WHITE;
 pub const COLORED_HIGHLIGHT: Color32 = Color32::from_rgb(244, 143, 177);
