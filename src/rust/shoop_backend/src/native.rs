@@ -2551,7 +2551,14 @@ mod tests {
         backend
             .transition_loop(target, BackendLoopMode::Playing, None)
             .unwrap();
-        let (session_id, callbacks_before, graph_arms, graph_applies) = {
+        let (
+            session_id,
+            callbacks_before,
+            graph_arms,
+            graph_applies,
+            schedule_request_id,
+            schedule_applied_id,
+        ) = {
             let runtime = backend.runtime_mut().unwrap();
             runtime.wait();
             let state = runtime.session.get_state();
@@ -2560,6 +2567,8 @@ mod tests {
                 u64::from(state.cycles),
                 state.graph_arms,
                 state.graph_applies,
+                state.schedule_request_id,
+                state.schedule_applied_id,
             )
         };
 
@@ -2605,6 +2614,8 @@ mod tests {
             assert!(u64::from(state.cycles) > callbacks_before);
             assert_eq!(state.graph_arms, graph_arms);
             assert_eq!(state.graph_applies, graph_applies);
+            assert_eq!(state.schedule_request_id, schedule_request_id);
+            assert_eq!(state.schedule_applied_id, schedule_applied_id);
             assert_eq!(
                 runtime.loops[&sync].handle.get_state().unwrap().mode,
                 shoop_engine::LoopMode::Playing
@@ -2640,6 +2651,8 @@ mod tests {
         assert!(state.cycles > cycles_after_update);
         assert_eq!(state.graph_arms, graph_arms);
         assert_eq!(state.graph_applies, graph_applies);
+        assert_eq!(state.schedule_request_id, schedule_request_id);
+        assert_eq!(state.schedule_applied_id, schedule_applied_id);
         assert_eq!(
             runtime.loops[&sync].handle.get_state().unwrap().mode,
             shoop_engine::LoopMode::Playing
