@@ -609,7 +609,8 @@ impl LoopWidget {
             let mut gain = displayed_gain;
             if dial_response.dragged() {
                 let start = self.gain_drag_start.unwrap_or(displayed_gain);
-                gain = (start - dial_response.drag_delta().y / 100.0).clamp(0.0, 1.0);
+                gain = (start - dial_response.total_drag_delta().unwrap_or_default().y / 100.0)
+                    .clamp(0.0, 1.0);
             }
             if dial_response.double_clicked() {
                 gain = 0.6;
@@ -654,7 +655,9 @@ impl LoopWidget {
                             let mut balance = displayed_balance;
                             if response.dragged() {
                                 let start = self.balance_drag_start.unwrap_or(displayed_balance);
-                                balance = (start - response.drag_delta().y / 50.0).clamp(-1.0, 1.0);
+                                balance = (start
+                                    - response.total_drag_delta().unwrap_or_default().y / 50.0)
+                                    .clamp(-1.0, 1.0);
                             }
                             if response.double_clicked() {
                                 balance = 0.0;

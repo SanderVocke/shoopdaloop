@@ -275,7 +275,8 @@ impl TrackWidget {
             self.width_drag_start = Some(self.width);
         }
         if response.dragged() {
-            self.width = (self.width_drag_start.unwrap_or(self.width) + response.drag_delta().x)
+            self.width = (self.width_drag_start.unwrap_or(self.width)
+                + response.total_drag_delta().unwrap_or_default().x)
                 .clamp(MIN_TRACK_WIDTH, MAX_TRACK_WIDTH);
         }
         if response.drag_stopped() {
@@ -806,6 +807,24 @@ mod tests {
                 },
             ],
         );
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerMoved(
+                content_edge + egui::vec2(30.0, 0.0),
+            )],
+        );
+        assert_eq!(widget.width, DEFAULT_TRACK_WIDTH + 30.0);
+        let _ = full_frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerMoved(
+                content_edge + egui::vec2(80.0, 0.0),
+            )],
+        );
+        assert_eq!(widget.width, DEFAULT_TRACK_WIDTH + 80.0);
         let _ = full_frame(
             &context,
             &mut widget,

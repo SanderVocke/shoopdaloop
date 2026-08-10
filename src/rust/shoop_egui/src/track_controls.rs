@@ -221,7 +221,9 @@ fn balance_control(
     }
     let mut balance = value;
     if response.dragged() {
-        balance = (drag_start.unwrap_or(value) - response.drag_delta().y / 50.0).clamp(-1.0, 1.0);
+        balance = (drag_start.unwrap_or(value)
+            - response.total_drag_delta().unwrap_or_default().y / 50.0)
+            .clamp(-1.0, 1.0);
     }
     if response.double_clicked() {
         balance = 0.0;
@@ -482,6 +484,57 @@ mod tests {
             controls.output_gain.resolve(state.output_gain_db, false),
             state.output_gain_db
         );
+    }
+
+    #[test]
+    fn balance_dial_uses_total_delta_across_drag_frames() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackControlState {
+            has_output: true,
+            output_stereo: true,
+            ..Default::default()
+        };
+        let mut controls = TrackControls::default();
+        frame(&context, &mut controls, &state, Vec::new());
+        let center = controls
+            .test_rect(TestTrackControl::OutputBalance)
+            .unwrap()
+            .center();
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let first = frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![egui::Event::PointerMoved(center - egui::vec2(0.0, 10.0))],
+        );
+        let second = frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![egui::Event::PointerMoved(center - egui::vec2(0.0, 20.0))],
+        );
+        let TrackWidgetAction::OutputBalanceChanged(first) = first[0] else {
+            panic!("first drag frame should change balance");
+        };
+        let TrackWidgetAction::OutputBalanceChanged(second) = second[0] else {
+            panic!("second drag frame should change balance");
+        };
+        assert!((first - 0.2).abs() < f32::EPSILON);
+        assert!((second - 0.4).abs() < f32::EPSILON);
     }
 
     #[test]
