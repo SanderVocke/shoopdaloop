@@ -2644,11 +2644,68 @@ mod tests {
             captured.tracks[0].loops[1].audio[0].samples,
             [1.0, 2.0, 3.0, 4.0]
         );
+        let cycles_after_capture = {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.wait();
+            let state = runtime.session.get_state();
+            assert_eq!(runtime.session.session_id(), session_id);
+            assert!(state.cycles > cycles_after_update);
+            assert_eq!(state.graph_arms, graph_arms);
+            assert_eq!(state.graph_applies, graph_applies);
+            assert_eq!(state.schedule_request_id, schedule_request_id);
+            assert_eq!(state.schedule_applied_id, schedule_applied_id);
+            assert_eq!(
+                runtime.loops[&sync].handle.get_state().unwrap().mode,
+                shoop_engine::LoopMode::Playing
+            );
+            state.cycles
+        };
+
+        for generation in 0_u8..8 {
+            let sample = f32::from(generation) / 8.0;
+            backend
+                .replace_loop_content(
+                    target,
+                    &BackendLoopContentUpdate {
+                        audio: vec![
+                            BackendAudioChannelUpdate {
+                                channel: 0,
+                                samples: vec![sample; 16_384],
+                                start_offset: None,
+                                preplay: None,
+                            },
+                            BackendAudioChannelUpdate {
+                                channel: 1,
+                                samples: vec![-sample; 16_384],
+                                start_offset: None,
+                                preplay: None,
+                            },
+                        ],
+                        midi: vec![BackendMidiChannelUpdate {
+                            channel: 0,
+                            length: 16_384,
+                            start_state: vec![vec![0xB0, 7, generation]],
+                            events: (0..1_024)
+                                .map(|index| BackendMidiEvent {
+                                    time: index * 8,
+                                    data: vec![0x90, 64, generation],
+                                })
+                                .collect(),
+                            start_offset: None,
+                            preplay: None,
+                        }],
+                        length: Some(16_384),
+                    },
+                )
+                .unwrap();
+            backend.set_loop_length(target, 8_192).unwrap();
+        }
+
         let runtime = backend.runtime_mut().unwrap();
         runtime.wait();
         let state = runtime.session.get_state();
         assert_eq!(runtime.session.session_id(), session_id);
-        assert!(state.cycles > cycles_after_update);
+        assert!(state.cycles > cycles_after_capture);
         assert_eq!(state.graph_arms, graph_arms);
         assert_eq!(state.graph_applies, graph_applies);
         assert_eq!(state.schedule_request_id, schedule_request_id);
@@ -2656,6 +2713,14 @@ mod tests {
         assert_eq!(
             runtime.loops[&sync].handle.get_state().unwrap().mode,
             shoop_engine::LoopMode::Playing
+        );
+        assert_eq!(
+            runtime.loops[&target].audio[0].get_data()[0],
+            f32::from(7_u8) / 8.0
+        );
+        assert_eq!(
+            runtime.loops[&target].handle.get_state().unwrap().length,
+            8_192
         );
     }
 

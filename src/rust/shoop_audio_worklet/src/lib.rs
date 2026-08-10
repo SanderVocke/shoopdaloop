@@ -1512,6 +1512,30 @@ mod tests {
             Event::Ack
         ));
         sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::WriteLoopContentReplace {
+                    generation: 8,
+                    offset: 0,
+                    bytes: vec![0],
+                },
+            )
+            .event,
+            Event::Error { .. }
+        ));
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::CommitLoopContentReplace { generation: 9 },
+            )
+            .event,
+            Event::Error { .. }
+        ));
+        sequence += 1;
         for (index, chunk) in bytes.chunks(SESSION_TRANSFER_CHUNK_BYTES).enumerate() {
             assert!(matches!(
                 command(

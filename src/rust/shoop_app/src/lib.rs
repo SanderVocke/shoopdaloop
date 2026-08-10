@@ -9745,6 +9745,30 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Playing
         );
+        runtime
+            .dispatch(AppIntent::ImportLoopAudioBytes {
+                loop_id,
+                name: "roundtrip.wav".to_owned(),
+                bytes: output.bytes,
+                update_loop_length: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let mapping_task = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(mapping_task.status, IoTaskStatus::AwaitingChannelMapping);
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelMapping {
+                task_id: mapping_task.id,
+                source_for_destination: mapping_task.audio_channel_mapping.unwrap().default_mapping,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
 
         let midi = ExactMidi {
             sample_rate: 32_000,
@@ -9805,6 +9829,55 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Playing
         );
+        runtime
+            .dispatch(AppIntent::RequestLoopMidiExport {
+                loop_id,
+                standard: true,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        let standard_output = runtime.take_file_output().unwrap();
+        assert!(standard_output.suggested_name.ends_with(".mid"));
+        let standard_midi = decode_standard_midi(&standard_output.bytes, 48_000).unwrap();
+        assert!(standard_midi
+            .events
+            .iter()
+            .any(|event| event.frame == 75 && event.data == [0x90, 60, 100]));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                name: "roundtrip.mid".to_owned(),
+                bytes: standard_output.bytes,
+                update_loop_length: true,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+        runtime
+            .dispatch(AppIntent::RequestLoopMidiExport {
+                loop_id,
+                standard: false,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        let roundtrip = decode_exact_midi(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert!(roundtrip
+            .events
+            .iter()
+            .any(|event| event.frame == 75 && event.data == [0x90, 60, 100]));
     }
 
     #[test]
