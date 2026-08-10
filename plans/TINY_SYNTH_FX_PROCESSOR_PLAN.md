@@ -2,31 +2,22 @@
 
 ## Status
 
-Implementation complete on the `tinyviolin` branch; final integration and repository-wide validation are in progress.
+Implementation, integration, and validation are complete on the `tinyviolin` branch at implementation commit `9e05415f`.
 
-The stage checklists below are the original execution scaffold. This status and the validation ledger are authoritative. The branch is now rebased onto the `origin/master` change that introduced the MIDI keyboard and related `shoop_engine` work. Do not mark this milestone complete or remove this plan until the combined paths pass the pending gates below.
+The stage checklists below are the original execution scaffold. The final prompt-to-artifact audit is authoritative: every stage, acceptance criterion, verification bullet, named validation gate, and deliverable has direct evidence. This plan may now be removed in the required separate cleanup commit.
 
-### Current implementation and validation ledger (2026-08-10)
+### Final implementation and validation ledger (2026-08-10)
 
-Implemented and focused-verified:
-
-- pinned dependency-free `tinyviolin = "=0.1.0"`, stable `tiny_synth_fx` identity, exact **Tiny Synth/FX** label, runtime presets, matched `N/N` audio plus required MIDI constraints, and zero-audio support;
-- callback-owned engine DSP for mono, stereo, seven-channel, and MIDI-only tracks, including sample-timed MIDI, panic, distortion, reverb, bypass, smoothed master gain, strict bounded state, malformed-input handling, and first-active-block/control allocation guards;
-- native dummy/JACK/CPAL composition, direct-core/Web Audio composition, role-bearing topology, processor-generic current/take state, transactional replacement, and same-rate driver-switch preservation;
-- browser protocol v5, bounded/coalesced control journal, allocation-guarded worklet rendering, transactional state publication, browser catalog/proxy/session mapping, and zero-audio Web MIDI routing;
-- application/session persistence and recorded-take mappings, plus a backend-free stable-track-ID embedded egui editor with typed tests for every control and close/visibility behavior;
-- hosted Chrome 147 Web Audio and Web MIDI Tiny workflows, hosted Firefox 153 Web Audio, Chrome self-contained offline and output-only workflows, and debug/release hosted plus self-contained packages;
-- warning-free no-default native and Wasm checks, debug/release AudioWorklet builds, no-default native debug/release builds/packages, a warning-free default native-FX build, and 44/44 backend tests with native FX enabled;
-- dependency audits showing `shoop_egui` remains backend/filesystem/tinyviolin-free and the browser/worklet closure excludes native driver, plugin, frontend, and Qt dependencies;
-- after rebasing onto the MIDI-keyboard changes, the combined protocol/worklet/backend/engine/app/egui/session no-default-feature suites pass serially, including 610 engine tests and realtime guards, and the no-default-feature product suite passes 23/23. The earlier two timeout-sensitive product failures did not reproduce in the required serialized run.
-
-Pending or requiring a clean rerun after integrating `origin/master`:
-
-- rerun focused and broad suites against the integrated MIDI-keyboard and Tiny MIDI/callback paths;
-- the warning-denying all-target workspace build reached the retained Qt/CXX-Qt packages and is blocked locally because Qt is not installed; retained QML self-tests are unavailable for the same reason;
-- run the serialized full workspace suite on the integrated commit;
-- obtain the authoritative Linux/Windows/macOS/WebAssembly debug/release CI matrix for the integrated commit;
-- complete the final prompt-to-artifact audit, inspect the integrated diff, and only then perform the separate implementation and plan-cleanup commits required by this plan.
+- Pinned dependency-free `tinyviolin = "=0.1.0"`, stable `tiny_synth_fx` identity, exact **Tiny Synth/FX** label, runtime presets, matched `N/N` audio plus required MIDI constraints, and zero-audio support are implemented.
+- Callback-owned engine DSP covers mono, stereo, seven-channel, and MIDI-only tracks with sample-timed MIDI, panic, distortion, reverb, bypass, smoothed master gain, bounded state, malformed-input handling, variable blocks, and first-active-block/control allocation guards.
+- Native dummy/JACK/CPAL, direct-core/Web Audio, role-bearing topology, processor-generic current/take state, transactional replacement, same/different-rate switching, native/browser transfer, and fresh-runtime restoration are implemented and tested.
+- Browser protocol v5, bounded/coalesced controls, pipelined bounded session capture, allocation-guarded worklet rendering, browser catalog/proxy/session mapping, and direct plus Tiny zero-audio Web MIDI routes pass hosted and self-contained workflows.
+- Application/session persistence and recorded-take mappings plus the backend-free stable-track-ID embedded egui editor pass exact typed-control, close/visibility, and multi-track isolation tests.
+- `shoop_egui` remains backend/filesystem/tinyviolin-free; the browser/worklet closure excludes native driver, plugin, frontend, and Qt dependencies; the raw worklet Wasm has no imports.
+- EgUI CI run `31436349108` passes all eight Linux/Windows/macOS/WebAssembly debug/release cells, including warning-denying builds, native/default-feature suites, web packages, dependency scans, Chrome hosted/self-contained audio and MIDI suites, extended lifecycle/saturation/stress modes, and Firefox Web Audio.
+- Workspace/QML run `31436349093` passes 1,294/1,294 Rust tests, 236/236 retained QML cases, and 6/6 packaged Carla subprocess cases. Local Qt remains unavailable, so the Qt evidence is correctly attributed to authoritative CI rather than the local host.
+- Local deterministic evidence includes 23/23 no-default product tests, 55/55 application tests, realtime allocation and sustained variable-block tests, repeated Chrome/Firefox workflows, ten consecutive self-contained Web MIDI route/save/load/restart runs, native/browser artifacts, and dependency/package audits.
+- Physical audio/MIDI hardware click-through remains an explicit environment limitation and is not claimed as deterministic completion evidence.
 
 ## Goals and scope
 
@@ -208,6 +199,52 @@ Stages are ordered; a later stage depends on the contracts and evidence from ear
 - [ ] Confirm the authoritative native/browser session workflow: create mono, stereo, arbitrary-channel, and zero-channel Tiny Synth/FX tracks; process audio/MIDI; edit all controls; panic; show/hide the embedded editor; record wet state; save; restart into a fresh runtime; load; restore a recorded take; and continue processing without xrun/protocol/storage regressions.
 - [ ] Run or obtain the authoritative eight-cell Linux/Windows/macOS/WebAssembly debug/release egui CI matrix before marking the feature complete.
 - [ ] Record commands, counts, browser/platform versions, artifacts, skips, and limitations in this plan and the parity/project documents, then mark the milestone complete only when every acceptance criterion has evidence.
+
+## Final prompt-to-artifact audit
+
+Audit result: **green**. No proxy signal, skipped physical-device check, or uncertain result is used as completion evidence.
+
+### Immutable acceptance criteria
+
+| Criterion | Direct artifact and verification evidence |
+| --- | --- |
+| 1. Capability and identity | `Cargo.toml` pins `tinyviolin = "=0.1.0"`; `shoop_app_api` owns `TrackProcessorTypeId::TINY_SYNTH_FX`, exact label, presets, constraints, and feature facets; native/direct-core/browser catalogs advertise Tiny while native External/Carla remain separate. `tiny_synth_fx_constraints_require_matched_audio_and_midi`, catalog/session regressions, dependency trees, all six native CI cells, and both web cells pass. |
+| 2. Topology and processing | `shoop_engine::tiny_synth_fx`, session routing, backend creation, and worklet mapping implement `0..N` matched dry/wet audio plus one MIDI input. Engine tests cover zero/mono/stereo/seven channels, equal synth mix, sample offsets, malformed/unsupported MIDI, note-off, All Notes Off, All Sound Off, effects, panic, smoothing, and sustained variable blocks; backend/worklet tests cover exact roles and non-zero output. |
+| 3. Embedded editor | `shoop_egui/src/tiny_synth_fx_editor.rs` owns an in-surface `egui::Window` keyed by stable track ID and emits only typed intents. `embedded_editor_emits_typed_intents_for_every_control_and_close` and `stable_track_ids_isolate_multiple_embedded_editors` cover runtime presets, Panic, gain, reverb, distortion, title close, and isolation; package/dependency audits show no child-window or backend dependency. |
+| 4. State and sessions | `shoop_engine::tiny_synth_fx` implements strict `shoop-tiny-synth-fx:1:` state, finite `-60..=0 dB` gain, bounded canonical tinyviolin bytes, and prepared transactional restore. `shoop_session`, backend, application, native, and worklet tests cover exact current/take state, malformed rollback, fresh runtime, native-browser-native transfer, channel/block-layout changes, and 48 kHz to 44.1 kHz driver switching; fresh load proves editor visibility and live DSP history remain transient. |
+| 5. Realtime and browser safety | `tiny_synth_fx_first_block_and_controls_are_allocation_free`, engine realtime lock/allocation suites, and allocation-guarded worklet tests pass. Processor/scratch construction and state coding are control-path work; displaced processors return for off-callback destruction. Protocol capacity/order/coalescing tests pass; session capture uses a bounded eight-command window; the AudioWorklet remains the sole hosted audio clock. |
+| 6. Validation evidence | Focused suites, 1,294-test workspace archive, 236 retained QML cases, packaged Carla subprocess cases, local native/Wasm/package/browser checks, and authoritative CI runs `31436349108` and `31436349093` all pass. |
+
+### Stage and verification closure
+
+| Stage | Implementation evidence | Verification evidence |
+| --- | --- | --- |
+| 1. Contracts and persistence | Workspace pin; API constraint/preset/editor/control types; Tiny session topology/chain/state variants; generic processor-state backend fields; session-format/parity/project docs. | API shapes `0/1/2/7` and rejection tests; Tiny current/take codec validation; existing Carla fixtures; `cargo tree` confirms dependency isolation and zero tinyviolin dependencies. |
+| 2. Engine adapter | Callback-owned `TinySynthFxProcessor`, zero-channel silent plane, timed MIDI dispatch, effects/gain, prepared restore, control checkpoint, dynamic route ports. | Tiny engine unit suite, 614-test local no-default engine surface, sustained variable blocks, malformed state rollback, and first-active-block/control no-allocation guard pass. |
+| 3. Native/direct backends | Tiny catalogs and topology in `EngineBackend` and `NativeBackend`; role-bearing ports; capture/replace/remap; driver switches; External/Carla paths retained. | Shared backend `0/1/2/7` shape/state tests, native dummy audible MIDI and native-browser-native transfer, same/different-rate switch evidence, 44 backend tests in native-FX configurations, and External/Carla regressions pass. |
+| 4. Worklet protocol/proxy | Protocol v5 topology, typed controls/snapshots/state, ordered/coalesced journal, bounded transfer, worklet host route, browser prediction/remap. | Protocol round-trip/order/capacity/malformed/version tests; allocation-guarded worklet zero/mono/stereo/seven processing and post-replacement callbacks; CI dependency/import scans pass in debug and release. |
+| 5. Application/session ownership | Typed descriptor/topology/control mapping; constrained Add Track; current/take capture/restore; preflight and transactional replacement; generic resampling. | `tiny_synth_fx_round_trips_controls_and_recorded_state`, fresh-runtime and 48 kHz to 44.1 kHz assertions, native/browser transfer, malformed restore retention, save-while-playing browser flow, and existing Direct/External/Carla fixtures pass. |
+| 6. Embedded editor | Stable-ID presentation state, header show/hide, close synchronization, runtime selector and all controls, capability-gated Carla/Tiny surfaces. | Two exhaustive backend-free editor tests plus minimum/common viewport and product presentation suites pass; `shoop_egui` dependency audit remains clean. |
+| 7. Product closure | Chrome/Firefox automation includes Tiny creation, MIDI wet output, all controls, panic, editor visibility reset, save/load, continuing callbacks, and exact direct plus Tiny Web MIDI route restoration; docs and packages updated. | Debug/release native/web artifact verification, hosted/self-contained microphone/output-only/offline/MIDI/lifecycle/saturation/stress suites, Firefox, package/import checks, and physical-device limitation attribution all pass. |
+
+### Named final validation gates and deliverables
+
+| Plan gate or deliverable | Outcome |
+| --- | --- |
+| `cargo fmt --all -- --check` and `git diff --check` | Passed on the final implementation tree and in CI. |
+| Warning-denying workspace/all-target/default/no-default builds | The local exact all-target command stops only at missing Qt discovery; equivalent authoritative split gates pass with `-D warnings`: the Qt-enabled workspace build/test in `31436349093` and all native/default plus Wasm/no-default cells in `31436349108`. No local Qt success is claimed. |
+| Focused tests then full `cargo test --workspace --features shoop_engine/app_backend` surface | Focused package suites pass; the authoritative archived workspace run reports **1,294 run, 1,294 passed, 0 skipped**. Native audio-sensitive workflow tests are serialized in the egui matrix. |
+| Realtime guards and sustained variable-block Tiny processing | `tiny_synth_fx_first_block_and_controls_are_allocation_free` and `sustained_variable_block_processing_remains_finite_and_active` pass, together with the full realtime guard archive. |
+| Wasm product check and debug/release worklet builds | Local warning-denying product check passes; both web CI cells build/check the product and raw worklet, whose import scan is empty. |
+| Debug/release hosted and self-contained artifacts and workflows | CI packages and verifies both profiles; local artifacts exist under `artifacts/tiny-debug`, `artifacts/tiny-release`, and `artifacts/tiny-native`; Chrome and Firefox production workflows pass. |
+| Retained product/QML/External/Carla | `31436349093` runs the packaged retained product self-test: 236/236 QML and the additional 6/6 Carla subprocess cases pass. |
+| Authoritative native/browser session workflow | Combined engine/backend/app/editor/worklet/browser tests cover mono, stereo, seven, zero, MIDI/effects/panic/visibility, wet take state, save, fresh load, sample-rate switch, take restore, and continuing callbacks with zero budget/protocol regressions. |
+| Eight-cell Linux/Windows/macOS/WebAssembly debug/release matrix | All eight jobs in `31436349108` completed successfully. |
+| Durable documentation | `docs/session_format_v1.md`, `plans/EGUI_FEATURE_PARITY_MATRIX.md`, `plans/EGUI_REPLACEMENT_PROJECT.md`, and `src/rust/shoopdaloop_egui/README.md` describe the shipped contract and evidence. |
+| Runtime/package assets | No Tiny plugin, worker, child window, filesystem resource, or new native runtime asset is required; native/web archives contain only the existing product assets. |
+| Compatibility and integrated MIDI keyboard | Both `InjectTrackMidiInput` and host Web MIDI paths pass backend/worklet/application/browser tests; workspace/QML/Carla regressions pass on the rebased combined implementation. |
+| Skip/limitation record | Local Qt and physical hardware are unavailable. Qt/QML is covered by authoritative CI; physical click-through is deliberately not claimed. Safari remains outside the named deterministic gate. |
+| Commit and cleanup contract | Implementation and evidence are committed through `9e05415f`; this final audit is committed separately before the plan-only cleanup commit. |
 
 ## Execution contract
 
