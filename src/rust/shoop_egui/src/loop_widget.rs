@@ -5,8 +5,8 @@ use egui_material_icons::icons::{
 use egui_material_icons::MaterialIcon;
 
 use crate::{
-    colors, dial::paint_dial, AppIntent, CompositeKind, LoopAudioExportFormat, LoopMode, LoopState,
-    LoopWidgetAction, SelectionModifiers,
+    colors, dial::paint_dial, optimistic_value::OptimisticValue, AppIntent, CompositeKind,
+    LoopAudioExportFormat, LoopMode, LoopState, LoopWidgetAction, SelectionModifiers,
 };
 
 #[derive(Debug, Default)]
@@ -18,7 +18,9 @@ pub struct LoopWidgetResponse {
 
 #[derive(Debug, Default)]
 pub struct LoopWidget {
+    gain: OptimisticValue<f32>,
     gain_drag_start: Option<f32>,
+    balance: OptimisticValue<f32>,
     balance_drag_start: Option<f32>,
     play_popup_until: f64,
     record_popup_until: f64,
@@ -598,18 +600,22 @@ impl LoopWidget {
                 ui.id().with("loop_gain"),
                 egui::Sense::click_and_drag(),
             );
+            let displayed_gain = self
+                .gain
+                .resolve(state.gain, self.gain_drag_start.is_some());
             if dial_response.drag_started() {
-                self.gain_drag_start = Some(state.gain);
+                self.gain_drag_start = Some(displayed_gain);
             }
-            let mut gain = state.gain;
+            let mut gain = displayed_gain;
             if dial_response.dragged() {
-                let start = self.gain_drag_start.unwrap_or(state.gain);
+                let start = self.gain_drag_start.unwrap_or(displayed_gain);
                 gain = (start - dial_response.drag_delta().y / 100.0).clamp(0.0, 1.0);
             }
             if dial_response.double_clicked() {
                 gain = 0.6;
             }
-            if (gain - state.gain).abs() > f32::EPSILON {
+            if (gain - displayed_gain).abs() > f32::EPSILON {
+                self.gain.set(gain);
                 result.actions.push(LoopWidgetAction::GainChanged(gain));
             }
             if dial_response.drag_stopped() {
@@ -639,18 +645,22 @@ impl LoopWidget {
                                 balance_rect.size(),
                                 egui::Sense::click_and_drag(),
                             );
+                            let displayed_balance = self
+                                .balance
+                                .resolve(state.balance, self.balance_drag_start.is_some());
                             if response.drag_started() {
-                                self.balance_drag_start = Some(state.balance);
+                                self.balance_drag_start = Some(displayed_balance);
                             }
-                            let mut balance = state.balance;
+                            let mut balance = displayed_balance;
                             if response.dragged() {
-                                let start = self.balance_drag_start.unwrap_or(state.balance);
+                                let start = self.balance_drag_start.unwrap_or(displayed_balance);
                                 balance = (start - response.drag_delta().y / 50.0).clamp(-1.0, 1.0);
                             }
                             if response.double_clicked() {
                                 balance = 0.0;
                             }
-                            if (balance - state.balance).abs() > f32::EPSILON {
+                            if (balance - displayed_balance).abs() > f32::EPSILON {
+                                self.balance.set(balance);
                                 result
                                     .actions
                                     .push(LoopWidgetAction::BalanceChanged(balance));

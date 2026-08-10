@@ -1,6 +1,6 @@
 use crate::{
-    colors, dial::paint_dial, TrackControlState, TrackWidgetAction, MAX_TRACK_GAIN_DB,
-    MIN_TRACK_GAIN_DB,
+    colors, dial::paint_dial, optimistic_value::OptimisticValue, TrackControlState,
+    TrackWidgetAction, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
 };
 use egui_material_icons::icons::{ICON_HEARING, ICON_VOLUME_MUTE, ICON_VOLUME_UP};
 
@@ -8,7 +8,13 @@ const METER_MIN_DB: f32 = -50.0;
 
 #[derive(Debug, Default)]
 pub struct TrackControls {
+    output_gain: OptimisticValue<f32>,
+    output_gain_dragging: bool,
+    output_balance: OptimisticValue<f32>,
     output_balance_drag_start: Option<f32>,
+    input_gain: OptimisticValue<f32>,
+    input_gain_dragging: bool,
+    input_balance: OptimisticValue<f32>,
     input_balance_drag_start: Option<f32>,
     #[cfg(test)]
     test_rects: TestTrackControlRects,
@@ -67,7 +73,9 @@ impl TrackControls {
                 }
 
                 if state.has_output_audio {
-                    let mut gain = state.output_gain_db;
+                    let mut gain = self
+                        .output_gain
+                        .resolve(state.output_gain_db, self.output_gain_dragging);
                     let response = ui
                         .add(
                             egui::Slider::new(&mut gain, MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB)
@@ -75,8 +83,15 @@ impl TrackControls {
                         )
                         .on_hover_text(format!("Output gain: {gain:.1} dB"));
                     self.record_rect(TestTrackControl::OutputGain, &response);
+                    if response.drag_started() || response.dragged() {
+                        self.output_gain_dragging = true;
+                    }
                     if response.changed() {
+                        self.output_gain.set(gain);
                         actions.push(TrackWidgetAction::OutputGainChanged(gain));
+                    }
+                    if response.drag_stopped() {
+                        self.output_gain_dragging = false;
                     }
                 }
 
@@ -84,6 +99,7 @@ impl TrackControls {
                     let response = balance_control(
                         ui,
                         state.output_balance,
+                        &mut self.output_balance,
                         &mut self.output_balance_drag_start,
                         TrackWidgetAction::OutputBalanceChanged,
                         &mut actions,
@@ -121,7 +137,9 @@ impl TrackControls {
                 }
 
                 if state.has_input_audio {
-                    let mut gain = state.input_gain_db;
+                    let mut gain = self
+                        .input_gain
+                        .resolve(state.input_gain_db, self.input_gain_dragging);
                     let response = ui
                         .add(
                             egui::Slider::new(&mut gain, MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB)
@@ -129,8 +147,15 @@ impl TrackControls {
                         )
                         .on_hover_text(format!("Input gain: {gain:.1} dB"));
                     self.record_rect(TestTrackControl::InputGain, &response);
+                    if response.drag_started() || response.dragged() {
+                        self.input_gain_dragging = true;
+                    }
                     if response.changed() {
+                        self.input_gain.set(gain);
                         actions.push(TrackWidgetAction::InputGainChanged(gain));
+                    }
+                    if response.drag_stopped() {
+                        self.input_gain_dragging = false;
                     }
                 }
 
@@ -138,6 +163,7 @@ impl TrackControls {
                     let response = balance_control(
                         ui,
                         state.input_balance,
+                        &mut self.input_balance,
                         &mut self.input_balance_drag_start,
                         TrackWidgetAction::InputBalanceChanged,
                         &mut actions,
@@ -181,13 +207,15 @@ impl TrackControls {
 
 fn balance_control(
     ui: &mut egui::Ui,
-    value: f32,
+    authoritative: f32,
+    optimistic: &mut OptimisticValue<f32>,
     drag_start: &mut Option<f32>,
     action: impl FnOnce(f32) -> TrackWidgetAction,
     actions: &mut Vec<TrackWidgetAction>,
 ) -> egui::Response {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click_and_drag());
+    let value = optimistic.resolve(authoritative, drag_start.is_some());
     if response.drag_started() {
         *drag_start = Some(value);
     }
@@ -199,6 +227,7 @@ fn balance_control(
         balance = 0.0;
     }
     if (balance - value).abs() > f32::EPSILON {
+        optimistic.set(balance);
         actions.push(action(balance));
     }
     if response.drag_stopped() {
@@ -382,6 +411,76 @@ mod tests {
                 TestTrackControl::InputMonitoring
             ),
             vec![TrackWidgetAction::InputMonitoringChanged(true)]
+        );
+    }
+
+    #[test]
+    fn dragged_gain_stays_optimistic_while_authoritative_state_is_stale() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackControlState {
+            has_output: true,
+            has_output_audio: true,
+            output_gain_db: 0.0,
+            ..Default::default()
+        };
+        let mut controls = TrackControls::default();
+        frame(&context, &mut controls, &state, Vec::new());
+        let slider = controls.test_rect(TestTrackControl::OutputGain).unwrap();
+        let press = slider.center();
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![
+                egui::Event::PointerMoved(press),
+                egui::Event::PointerButton {
+                    pos: press,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let target = egui::pos2(slider.left() + 2.0, slider.center().y);
+        let actions = frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![egui::Event::PointerMoved(target)],
+        );
+        let TrackWidgetAction::OutputGainChanged(dragged_gain) = actions[0] else {
+            panic!("drag should change output gain");
+        };
+        assert_ne!(dragged_gain, state.output_gain_db);
+        assert_eq!(
+            controls
+                .output_gain
+                .resolve(state.output_gain_db, controls.output_gain_dragging),
+            dragged_gain
+        );
+        frame(
+            &context,
+            &mut controls,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: target,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            controls.output_gain.resolve(state.output_gain_db, false),
+            dragged_gain
+        );
+        assert_eq!(
+            controls.output_gain.resolve(dragged_gain, false),
+            dragged_gain
+        );
+        assert_eq!(
+            controls.output_gain.resolve(state.output_gain_db, false),
+            state.output_gain_db
         );
     }
 

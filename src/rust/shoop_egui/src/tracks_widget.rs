@@ -32,12 +32,14 @@ impl TracksWidget {
         let control_height = 82.0;
         egui::ScrollArea::horizontal()
             .id_salt("main_tracks_horizontal")
+            .scroll_source(crate::control_safe_scroll_source())
             .show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
                     let loop_height = (ui.available_height() - control_height).max(80.0);
                     egui::ScrollArea::vertical()
                         .id_salt("main_tracks_loops_vertical")
+                        .scroll_source(crate::control_safe_scroll_source())
                         .max_height(loop_height)
                         .auto_shrink([true, false])
                         .show(ui, |ui| {

@@ -565,6 +565,7 @@ impl AppWidget {
             .show(ui, |ui| {
                 egui::ScrollArea::horizontal()
                     .id_salt("global_controls_scroll")
+                    .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
                         actions.extend(
                             self.global_controls
@@ -621,6 +622,7 @@ impl AppWidget {
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("status_and_sync_scroll")
+                    .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
                         self.show_logo_and_status(ui, state);
                         if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {

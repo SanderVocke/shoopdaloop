@@ -3,7 +3,10 @@ use egui_material_icons::icons::{
     ICON_PLAY_ARROW, ICON_STOP, ICON_TIMER,
 };
 
-use crate::{colors, DefaultRecordingAction, GlobalControlAction, GlobalControlState};
+use crate::{
+    colors, optimistic_value::OptimisticValue, DefaultRecordingAction, GlobalControlAction,
+    GlobalControlState,
+};
 
 #[derive(Debug, Default)]
 pub struct GlobalControls {
@@ -11,6 +14,8 @@ pub struct GlobalControls {
     save_session_requested: bool,
     load_session_requested: bool,
     settings_requested: bool,
+    apply_n_cycles: OptimisticValue<u32>,
+    apply_n_cycles_dragging: bool,
     #[cfg(test)]
     test_rects: TestGlobalControlRects,
 }
@@ -194,7 +199,9 @@ impl GlobalControls {
                 actions.push(GlobalControlAction::SetSolo(!state.solo));
             }
 
-            let mut cycles = state.apply_n_cycles;
+            let mut cycles = self
+                .apply_n_cycles
+                .resolve(state.apply_n_cycles, self.apply_n_cycles_dragging);
             let response = ui
                 .add(
                     egui::DragValue::new(&mut cycles)
@@ -203,8 +210,15 @@ impl GlobalControls {
                 )
                 .on_hover_text("Recording length in sync cycles; 0 means infinite");
             self.record_rect(TestGlobalControl::ApplyNCycles, &response);
+            if response.drag_started() || response.dragged() {
+                self.apply_n_cycles_dragging = true;
+            }
             if response.changed() {
+                self.apply_n_cycles.set(cycles);
                 actions.push(GlobalControlAction::SetApplyNCycles(cycles));
+            }
+            if response.drag_stopped() {
+                self.apply_n_cycles_dragging = false;
             }
         });
         actions
