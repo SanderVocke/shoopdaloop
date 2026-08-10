@@ -1533,19 +1533,20 @@ impl BrowserSelfTest {
                 if !runtime.audio_running() {
                     return;
                 }
-                if !snapshot.track_processors.is_empty()
-                    || !widget.browser_test_open_empty_dry_wet_form()
-                {
+                if !widget.browser_test_open_tiny_dry_wet_form(&snapshot.track_processors) {
                     return self.fail(
-                        "browser dry/wet form did not expose an empty disabled processor selector",
+                        "browser dry/wet form did not expose the Tiny Synth/FX processor contract",
                     );
                 }
                 mark_browser_dry_wet_capability_check();
                 Ok(Self::WaitForDryWetForm)
             }
             Self::WaitForDryWetForm => {
-                if !snapshot.track_processors.is_empty() {
-                    return self.fail("browser unexpectedly advertised a track processor");
+                if snapshot.track_processors.len() != 1
+                    || snapshot.track_processors[0].id.as_str()
+                        != shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                {
+                    return self.fail("browser Tiny Synth/FX catalog changed unexpectedly");
                 }
                 widget.browser_test_close_add_track();
                 widget.browser_test_open_global_connections();
@@ -1601,6 +1602,19 @@ impl BrowserSelfTest {
                         midi: true,
                     }))
                 })
+                .and_then(|()| {
+                    runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
+                        name: "Browser Web MIDI Tiny".to_owned(),
+                        topology: shoop_egui::TrackSpecTopology::DryWet {
+                            dry_audio_channels: 0,
+                            wet_audio_channels: 0,
+                            dry_midi: true,
+                            processor_type: shoop_egui::TrackProcessorTypeId::new(
+                                shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX,
+                            ),
+                        },
+                    }))
+                })
                 .map(|()| Self::WaitForWebMidiTrack),
             Self::WaitForWebMidiTrack => {
                 let Some(track) = snapshot.tracks.iter().find(|track| !track.is_sync) else {
@@ -1626,13 +1640,52 @@ impl BrowserSelfTest {
                 let (Some(input_port), Some(output_port)) = (input_port, output_port) else {
                     return;
                 };
-                Ok(Self::WaitForWebMidiTrackReady {
-                    track_id: track.id,
-                    loop_id: loop_state.id,
-                    input_port: input_port.id,
-                    output_port: output_port.id,
-                    callbacks_before: snapshot.status.callback_count,
-                })
+                let Some(tiny) = snapshot.tracks.iter().find(|candidate| {
+                    candidate.fx.as_ref().is_some_and(|fx| {
+                        fx.processor_type.as_str()
+                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                    })
+                }) else {
+                    return;
+                };
+                let Some(tiny_midi_input) =
+                    snapshot.connections.application_ports.iter().find(|port| {
+                        matches!(
+                            port.owner,
+                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
+                                if track_id == tiny.id
+                        ) && port.role == shoop_egui::PortRole::MidiInput
+                    })
+                else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::SetPortConnected {
+                        port_id: tiny_midi_input.id,
+                        host_port_id: shoop_egui::HostPortId::new("webmidi:source:test-input"),
+                        connected: true,
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::Track {
+                            track_id: tiny.id,
+                            action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                        })
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::Track {
+                            track_id: tiny.id,
+                            action: shoop_egui::TrackAction::TinySynthFx(
+                                shoop_egui::TinySynthFxControl::SelectPreset("pad".to_owned()),
+                            ),
+                        })
+                    })
+                    .map(|()| Self::WaitForWebMidiTrackReady {
+                        track_id: track.id,
+                        loop_id: loop_state.id,
+                        input_port: input_port.id,
+                        output_port: output_port.id,
+                        callbacks_before: snapshot.status.callback_count,
+                    })
             }
             Self::WaitForWebMidiTrackReady {
                 track_id,
@@ -1950,6 +2003,19 @@ impl BrowserSelfTest {
                         midi: false,
                     }))
                 })
+                .and_then(|()| {
+                    runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
+                        name: "Browser Tiny Synth/FX".to_owned(),
+                        topology: shoop_egui::TrackSpecTopology::DryWet {
+                            dry_audio_channels: 2,
+                            wet_audio_channels: 2,
+                            dry_midi: true,
+                            processor_type: shoop_egui::TrackProcessorTypeId::new(
+                                shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX,
+                            ),
+                        },
+                    }))
+                })
                 .map(|()| Self::WaitForTrack),
             Self::WaitForTrack => {
                 let Some(track) = snapshot.tracks.iter().find(|track| !track.is_sync) else {
@@ -1958,32 +2024,72 @@ impl BrowserSelfTest {
                 let Some(loop_state) = track.loops.first() else {
                     return;
                 };
-                if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
-                    Ok(Self::SaveSession {
-                        callbacks_before: snapshot.status.callback_count,
+                let Some(tiny) = snapshot.tracks.iter().find(|track| {
+                    track.fx.as_ref().is_some_and(|fx| {
+                        fx.processor_type.as_str()
+                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
                     })
-                } else {
-                    runtime
-                        .dispatch(AppIntent::Track {
-                            track_id: track.id,
-                            action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                }) else {
+                    return;
+                };
+                let tiny_controls = [
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SelectPreset("pad".to_owned()),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetMasterGainDb(-12.0),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetReverbEnabled(true),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetReverbAmount(0.4),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetDistortionEnabled(true),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetDistortionDrive(7.0),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(shoop_egui::TinySynthFxControl::Panic),
+                    shoop_egui::TrackAction::FxVisibilityChanged(true),
+                    shoop_egui::TrackAction::FxVisibilityChanged(false),
+                ]
+                .into_iter()
+                .try_for_each(|action| {
+                    runtime.dispatch(AppIntent::Track {
+                        track_id: tiny.id,
+                        action,
+                    })
+                });
+                tiny_controls.and_then(|()| {
+                    if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
+                        Ok(Self::SaveSession {
+                            callbacks_before: snapshot.status.callback_count,
                         })
-                        .and_then(|()| {
-                            runtime.dispatch(AppIntent::Loop {
+                    } else {
+                        runtime
+                            .dispatch(AppIntent::Track {
                                 track_id: track.id,
-                                loop_id: loop_state.id,
-                                action: shoop_egui::LoopAction::IconClicked(Default::default()),
+                                action: shoop_egui::TrackAction::InputMonitoringChanged(true),
                             })
-                        })
-                        .and_then(|()| {
-                            runtime.dispatch(AppIntent::Loop {
-                                track_id: track.id,
-                                loop_id: loop_state.id,
-                                action: shoop_egui::LoopAction::RecordClicked,
+                            .and_then(|()| {
+                                runtime.dispatch(AppIntent::Loop {
+                                    track_id: track.id,
+                                    loop_id: loop_state.id,
+                                    action: shoop_egui::LoopAction::IconClicked(Default::default()),
+                                })
                             })
-                        })
-                        .map(|()| Self::WaitForRecording)
-                }
+                            .and_then(|()| {
+                                runtime.dispatch(AppIntent::Loop {
+                                    track_id: track.id,
+                                    loop_id: loop_state.id,
+                                    action: shoop_egui::LoopAction::RecordClicked,
+                                })
+                            })
+                            .map(|()| Self::WaitForRecording)
+                    }
+                })
             }
             Self::WaitForRecording => {
                 let Some((_track, loop_state)) = first_main_loop(snapshot) else {
@@ -2184,9 +2290,22 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
-                Ok(Self::SaveSession {
-                    callbacks_before: snapshot.status.callback_count,
-                })
+                let Some(tiny) = snapshot.tracks.iter().find(|track| {
+                    track.fx.as_ref().is_some_and(|fx| {
+                        fx.processor_type.as_str()
+                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                    })
+                }) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::Track {
+                        track_id: tiny.id,
+                        action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                    })
+                    .map(|()| Self::SaveSession {
+                        callbacks_before: snapshot.status.callback_count,
+                    })
             }
             Self::SaveSession { callbacks_before } => runtime
                 .dispatch(AppIntent::RequestSaveSession)
@@ -2241,9 +2360,33 @@ impl BrowserSelfTest {
                     .iter()
                     .filter(|track| !track.is_sync)
                     .count()
-                    != 2
+                    != 3
                 {
                     return self.fail("loaded browser session lost tracks");
+                }
+                let tiny_state = snapshot.tracks.iter().find_map(|track| {
+                    let fx = track.fx.as_ref()?;
+                    if fx.processor_type.as_str() != shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                    {
+                        return None;
+                    }
+                    match fx.editor.as_ref()? {
+                        shoop_egui::TrackProcessorEditorState::TinySynthFx(editor) => Some(editor),
+                    }
+                });
+                let Some(tiny_state) = tiny_state else {
+                    return;
+                };
+                if tiny_state.selected_preset_id.as_deref() != Some("pad")
+                    || tiny_state.master_gain_db != -12.0
+                    || !tiny_state.reverb_enabled
+                    || tiny_state.reverb_amount != 0.4
+                    || !tiny_state.distortion_enabled
+                    || tiny_state.distortion_drive != 7.0
+                {
+                    return self.fail(&format!(
+                        "loaded browser Tiny Synth/FX state changed: {tiny_state:?}"
+                    ));
                 }
                 if !snapshot.scripting.scripts.iter().any(|script| {
                     script.kind == ScriptKind::Session
@@ -2425,6 +2568,15 @@ impl BrowserSelfTest {
                     .map(|()| Self::WaitForLoopMidiImport)
             }
             Self::WaitForLoopMidiImport => {
+                if snapshot.io_task.as_ref().is_some_and(|task| {
+                    task.kind == shoop_egui::IoTaskKind::ImportLoopMidi
+                        && task.status == shoop_egui::IoTaskStatus::Failed
+                }) {
+                    return self.fail(&format!(
+                        "browser loop MIDI import failed: {:?}",
+                        snapshot.io_task
+                    ));
+                }
                 if snapshot.io_task.as_ref().is_none_or(|task| {
                     task.kind != shoop_egui::IoTaskKind::ImportLoopMidi
                         || task.status != shoop_egui::IoTaskStatus::Completed
@@ -2735,7 +2887,7 @@ fn mark_browser_dry_wet_capability_check() {
         .and_then(|window| window.document())
         .and_then(|document| document.get_element_by_id("runtime_status"))
     {
-        let _ = element.set_attribute("data-dry-wet-form", "empty-disabled");
+        let _ = element.set_attribute("data-dry-wet-form", "tiny-synth-fx");
     }
 }
 

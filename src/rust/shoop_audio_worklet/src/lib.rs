@@ -1,16 +1,18 @@
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireApplicationPort,
     WireConfirmedLink, WireHostPort, WireLoopMode, WireLoopState, WireMidiOutputEvent,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl,
-    WireTrackState, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
-    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxState,
+    WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
+    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, PROTOCOL_VERSION,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopId, BackendLoopMode,
     BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortRole,
-    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest,
-    EngineBackend, MAX_WEB_AUDIO_QUANTUM,
+    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
+    BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
+    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -122,7 +124,7 @@ impl WorkletHost {
             event,
         })
         .unwrap_or_else(|_| {
-            r#"{"version":4,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
+            r#"{"version":5,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
                 .to_owned()
         });
         &self.response
@@ -237,15 +239,13 @@ impl WorkletHost {
                 expected_track_id,
                 expected_loop_ids,
                 port_name_base,
-                audio_channels,
-                midi,
+                topology,
             } => {
                 let created = self
                     .backend
-                    .create_direct_track(DirectTrackRequest {
+                    .create_track(TrackRequest {
                         port_name_base,
-                        audio_channels,
-                        midi,
+                        topology: from_wire_track_topology(topology),
                         initial_loops: expected_loop_ids.len(),
                     })
                     .map_err(|error| error.to_string())?;
@@ -274,6 +274,15 @@ impl WorkletHost {
                     .set_track_control(
                         BackendTrackId::from_raw(track_id),
                         from_wire_track_control(control),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetTrackFxControl { track_id, control } => {
+                self.backend
+                    .set_track_fx_control(
+                        BackendTrackId::from_raw(track_id),
+                        from_wire_track_fx_control(control),
                     )
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
@@ -516,6 +525,57 @@ fn from_wire_track_control(control: WireTrackControl) -> BackendTrackControl {
     }
 }
 
+fn from_wire_track_topology(topology: WireTrackTopology) -> BackendTrackTopology {
+    match topology {
+        WireTrackTopology::Direct {
+            audio_channels,
+            midi,
+        } => BackendTrackTopology::Direct {
+            audio_channels,
+            midi,
+        },
+        WireTrackTopology::TinySynthFx { audio_channels } => {
+            BackendTrackTopology::DryWetProcessor {
+                processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                dry_audio_channels: audio_channels,
+                wet_audio_channels: audio_channels,
+                dry_midi: true,
+            }
+        }
+    }
+}
+
+fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxControl {
+    match control {
+        WireTrackFxControl::SetActive(value) => BackendTrackFxControl::SetActive(value),
+        WireTrackFxControl::SetVisible(value) => BackendTrackFxControl::SetVisible(value),
+        WireTrackFxControl::ToggleOrRecover => BackendTrackFxControl::ToggleOrRecover,
+        WireTrackFxControl::RestoreState(value) => BackendTrackFxControl::RestoreState(value),
+        WireTrackFxControl::ClearLogs => BackendTrackFxControl::ClearLogs,
+        WireTrackFxControl::TinySelectPreset(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SelectPreset(value))
+        }
+        WireTrackFxControl::TinySetMasterGainDb(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetMasterGainDb(value))
+        }
+        WireTrackFxControl::TinySetReverbEnabled(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetReverbEnabled(value))
+        }
+        WireTrackFxControl::TinySetReverbAmount(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetReverbAmount(value))
+        }
+        WireTrackFxControl::TinySetDistortionEnabled(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetDistortionEnabled(value))
+        }
+        WireTrackFxControl::TinySetDistortionDrive(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetDistortionDrive(value))
+        }
+        WireTrackFxControl::TinyPanic => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
+        }
+    }
+}
+
 fn from_wire_loop_mode(mode: WireLoopMode) -> BackendLoopMode {
     match mode {
         WireLoopMode::Unknown => BackendLoopMode::Unknown,
@@ -525,6 +585,35 @@ fn from_wire_loop_mode(mode: WireLoopMode) -> BackendLoopMode {
         WireLoopMode::Replacing => BackendLoopMode::Replacing,
         WireLoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
         WireLoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
+    }
+}
+
+fn to_wire_track_topology(topology: &BackendTrackTopology) -> WireTrackTopology {
+    match topology {
+        BackendTrackTopology::Direct {
+            audio_channels,
+            midi,
+        } => WireTrackTopology::Direct {
+            audio_channels: *audio_channels,
+            midi: *midi,
+        },
+        BackendTrackTopology::DryWetProcessor {
+            processor_type,
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+        } if processor_type == TrackProcessorTypeId::TINY_SYNTH_FX
+            && dry_audio_channels == wet_audio_channels
+            && *dry_midi =>
+        {
+            WireTrackTopology::TinySynthFx {
+                audio_channels: *dry_audio_channels,
+            }
+        }
+        _ => WireTrackTopology::Direct {
+            audio_channels: 0,
+            midi: false,
+        },
     }
 }
 
@@ -632,6 +721,22 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             .into_iter()
             .map(|(id, track)| WireTrackState {
                 id: id.raw(),
+                topology: to_wire_track_topology(&track.topology),
+                fx: track.fx.and_then(|fx| {
+                    let TrackProcessorEditorState::TinySynthFx(editor) = fx.editor?;
+                    Some(WireTrackFxState {
+                        active: fx.active,
+                        visible: fx.visible,
+                        tiny: WireTinySynthFxState {
+                            selected_preset_id: editor.selected_preset_id,
+                            master_gain_db: editor.master_gain_db,
+                            reverb_enabled: editor.reverb_enabled,
+                            reverb_amount: editor.reverb_amount,
+                            distortion_enabled: editor.distortion_enabled,
+                            distortion_drive: editor.distortion_drive,
+                        },
+                    })
+                }),
                 audio_channels: track.audio_channels,
                 midi: track.midi,
                 output_gain_db: track.output_gain_db,
@@ -771,8 +876,10 @@ mod tests {
                 expected_track_id: 1,
                 expected_loop_ids: vec![1],
                 port_name_base: "direct".to_owned(),
-                audio_channels: 1,
-                midi: false,
+                topology: WireTrackTopology::Direct {
+                    audio_channels: 1,
+                    midi: false,
+                },
             },
         );
         assert!(matches!(created.event, Event::Ack));
@@ -861,6 +968,130 @@ mod tests {
     }
 
     #[test]
+    fn tiny_synth_fx_runs_in_the_worklet_and_publishes_editor_state() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::ConfigureMidiEndpoints {
+                    endpoints: vec![WireHostPort {
+                        id: "webmidi:source:tiny".to_owned(),
+                        name: "Tiny MIDI".to_owned(),
+                        data_type: WirePortDataType::Midi,
+                        direction: WirePortDirection::Output,
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                3,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "tiny".to_owned(),
+                    topology: WireTrackTopology::TinySynthFx { audio_channels: 1 },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::SetPortConnected {
+                    application_port_id: 3,
+                    host_port_id: "webmidi:source:tiny".to_owned(),
+                    connected: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
+                Command::SetTrackControl {
+                    track_id: 1,
+                    control: WireTrackControl::InputMonitoring(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 6, Command::Poll).event,
+            Event::Snapshot(_)
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::PushMidiInput {
+                    host_port_id: "webmidi:source:tiny".to_owned(),
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0x90, 69, 127],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+        assert!(host.output()[..256]
+            .iter()
+            .any(|sample| sample.abs() > 0.001));
+        assert!(matches!(
+            command(
+                &mut host,
+                8,
+                Command::SetTrackFxControl {
+                    track_id: 1,
+                    control: WireTrackFxControl::TinySelectPreset("pad".to_owned()),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 9, Command::Poll).event else {
+            panic!("missing worklet snapshot");
+        };
+        assert_eq!(snapshot.tracks.len(), 1);
+        assert_eq!(
+            snapshot.tracks[0]
+                .fx
+                .as_ref()
+                .unwrap()
+                .tiny
+                .selected_preset_id
+                .as_deref(),
+            Some("pad")
+        );
+        let session = host.backend.capture_session().unwrap();
+        host.backend.replace_session(&session).unwrap();
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+    }
+
+    #[test]
     fn normalized_routes_mutate_authoritatively_without_stopping_audio() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -883,8 +1114,10 @@ mod tests {
                     expected_track_id: 1,
                     expected_loop_ids: vec![1],
                     port_name_base: "stereo".to_owned(),
-                    audio_channels: 2,
-                    midi: false,
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 2,
+                        midi: false,
+                    },
                 },
             )
             .event,
@@ -1074,8 +1307,10 @@ mod tests {
                     expected_track_id: 1,
                     expected_loop_ids: vec![1],
                     port_name_base: "midi".to_owned(),
-                    audio_channels: 0,
-                    midi: true,
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 0,
+                        midi: true,
+                    },
                 },
             )
             .event,
@@ -1262,8 +1497,10 @@ mod tests {
                     expected_track_id: 1,
                     expected_loop_ids: vec![1],
                     port_name_base: "session".to_owned(),
-                    audio_channels: 4,
-                    midi: true,
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 4,
+                        midi: true,
+                    },
                 },
             )
             .event,
@@ -1365,6 +1602,7 @@ mod tests {
             Event::SessionReplaceComplete { generation: 8 }
         ));
         sequence += 1;
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
         let Event::Snapshot(snapshot) = command(&mut host, sequence, Command::Poll).event else {
             panic!("expected snapshot")
         };

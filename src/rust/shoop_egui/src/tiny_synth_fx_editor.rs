@@ -1,0 +1,552 @@
+use crate::{
+    TinySynthFxControl, TrackAction, TrackProcessorDescriptor, TrackProcessorEditorDescriptor,
+    TrackProcessorEditorState, TrackState, MAX_TINY_SYNTH_FX_GAIN_DB, MIN_TINY_SYNTH_FX_GAIN_DB,
+};
+
+#[derive(Debug, Default)]
+pub(crate) struct TinySynthFxEditor {
+    #[cfg(test)]
+    window_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    preset_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    preset_item_rects: Vec<(String, egui::Rect)>,
+    #[cfg(test)]
+    panic_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    gain_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    reverb_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    reverb_amount_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    distortion_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    distortion_drive_rect: Option<egui::Rect>,
+}
+
+impl TinySynthFxEditor {
+    pub(crate) fn show(
+        &mut self,
+        context: &egui::Context,
+        state: &TrackState,
+        processor: Option<&TrackProcessorDescriptor>,
+    ) -> Vec<TrackAction> {
+        let Some(fx) = &state.fx else {
+            return Vec::new();
+        };
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = &fx.editor else {
+            return Vec::new();
+        };
+        let Some(TrackProcessorEditorDescriptor::TinySynthFx { presets }) =
+            processor.and_then(|processor| processor.editor.as_ref())
+        else {
+            return Vec::new();
+        };
+        if !fx.visible {
+            return Vec::new();
+        }
+
+        let mut actions = Vec::new();
+        #[cfg(test)]
+        self.preset_item_rects.clear();
+        let mut open = true;
+        let _shown = egui::Window::new(format!("{} — Tiny Synth/FX", state.name))
+            .id(egui::Id::new(("tiny_synth_fx_editor", state.id)))
+            .open(&mut open)
+            .resizable(true)
+            .show(context, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Preset");
+                    let selected_name = editor
+                        .selected_preset_id
+                        .as_ref()
+                        .and_then(|selected| {
+                            presets
+                                .iter()
+                                .find(|preset| preset.id == *selected)
+                                .map(|preset| preset.name.as_str())
+                        })
+                        .unwrap_or("Custom");
+                    let _preset_combo = egui::ComboBox::from_id_salt("preset")
+                        .selected_text(selected_name)
+                        .show_ui(ui, |ui| {
+                            for preset in presets.iter() {
+                                let selected = editor.selected_preset_id.as_deref()
+                                    == Some(preset.id.as_str());
+                                let response = ui.selectable_label(selected, &preset.name);
+                                #[cfg(test)]
+                                self.preset_item_rects
+                                    .push((preset.id.clone(), response.rect));
+                                if response.clicked() {
+                                    actions.push(TrackAction::TinySynthFx(
+                                        TinySynthFxControl::SelectPreset(preset.id.clone()),
+                                    ));
+                                }
+                            }
+                        });
+                    #[cfg(test)]
+                    {
+                        self.preset_rect = Some(_preset_combo.response.rect);
+                    }
+                    let panic = ui.button("Panic");
+                    #[cfg(test)]
+                    {
+                        self.panic_rect = Some(panic.rect);
+                    }
+                    if panic.clicked() {
+                        actions.push(TrackAction::TinySynthFx(TinySynthFxControl::Panic));
+                    }
+                });
+
+                let mut gain = editor.master_gain_db;
+                let gain_response = ui.add(
+                    egui::Slider::new(
+                        &mut gain,
+                        MIN_TINY_SYNTH_FX_GAIN_DB..=MAX_TINY_SYNTH_FX_GAIN_DB,
+                    )
+                    .text("Master gain")
+                    .suffix(" dB"),
+                );
+                #[cfg(test)]
+                {
+                    self.gain_rect = Some(gain_response.rect);
+                }
+                if gain_response.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetMasterGainDb(gain),
+                    ));
+                }
+
+                let mut reverb_enabled = editor.reverb_enabled;
+                let reverb = ui.checkbox(&mut reverb_enabled, "Reverb");
+                #[cfg(test)]
+                {
+                    self.reverb_rect = Some(reverb.rect);
+                }
+                if reverb.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetReverbEnabled(reverb_enabled),
+                    ));
+                }
+                let mut reverb_amount = editor.reverb_amount;
+                let reverb_amount_response = ui.add_enabled(
+                    reverb_enabled,
+                    egui::Slider::new(&mut reverb_amount, 0.0..=1.0).text("Amount"),
+                );
+                #[cfg(test)]
+                {
+                    self.reverb_amount_rect = Some(reverb_amount_response.rect);
+                }
+                if reverb_amount_response.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetReverbAmount(reverb_amount),
+                    ));
+                }
+
+                let mut distortion_enabled = editor.distortion_enabled;
+                let distortion = ui.checkbox(&mut distortion_enabled, "Distortion");
+                #[cfg(test)]
+                {
+                    self.distortion_rect = Some(distortion.rect);
+                }
+                if distortion.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetDistortionEnabled(distortion_enabled),
+                    ));
+                }
+                let mut distortion_drive = editor.distortion_drive;
+                let distortion_drive_response = ui.add_enabled(
+                    distortion_enabled,
+                    egui::Slider::new(&mut distortion_drive, 1.0..=20.0).text("Drive"),
+                );
+                #[cfg(test)]
+                {
+                    self.distortion_drive_rect = Some(distortion_drive_response.rect);
+                }
+                if distortion_drive_response.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetDistortionDrive(distortion_drive),
+                    ));
+                }
+            });
+        #[cfg(test)]
+        {
+            self.window_rect = _shown.map(|response| response.response.rect);
+        }
+        if !open {
+            actions.push(TrackAction::FxVisibilityChanged(false));
+        }
+        actions
+    }
+
+    #[cfg(test)]
+    pub(crate) fn window_rect(&self) -> Option<egui::Rect> {
+        self.window_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn preset_rect(&self) -> Option<egui::Rect> {
+        self.preset_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn preset_item_rect(&self, id: &str) -> Option<egui::Rect> {
+        self.preset_item_rects
+            .iter()
+            .find_map(|(item_id, rect)| (item_id == id).then_some(*rect))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn panic_rect(&self) -> Option<egui::Rect> {
+        self.panic_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn gain_rect(&self) -> Option<egui::Rect> {
+        self.gain_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reverb_rect(&self) -> Option<egui::Rect> {
+        self.reverb_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reverb_amount_rect(&self) -> Option<egui::Rect> {
+        self.reverb_amount_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn distortion_rect(&self) -> Option<egui::Rect> {
+        self.distortion_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn distortion_drive_rect(&self) -> Option<egui::Rect> {
+        self.distortion_drive_rect
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::{
+        FxLifecycle, TinySynthFxState, TrackFxState, TrackId, TrackProcessorConstraints,
+        TrackProcessorFeatures, TrackProcessorMidiPolicy, TrackProcessorPresetDescriptor,
+        TrackProcessorTypeId,
+    };
+
+    fn fixture() -> (TrackState, TrackProcessorDescriptor) {
+        let processor = TrackProcessorDescriptor {
+            id: TrackProcessorTypeId::new(TrackProcessorTypeId::TINY_SYNTH_FX),
+            label: "Tiny Synth/FX".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: TrackProcessorConstraints {
+                max_dry_audio_channels: None,
+                max_wet_audio_channels: None,
+                matching_audio_channels: true,
+                midi: TrackProcessorMidiPolicy::Required,
+            },
+            features: TrackProcessorFeatures {
+                state: true,
+                external_ui: false,
+                embedded_ui: true,
+                recovery: false,
+                logs: false,
+            },
+            editor: Some(TrackProcessorEditorDescriptor::TinySynthFx {
+                presets: Arc::from([
+                    TrackProcessorPresetDescriptor {
+                        id: "sine".to_owned(),
+                        name: "Sine".to_owned(),
+                    },
+                    TrackProcessorPresetDescriptor {
+                        id: "pad".to_owned(),
+                        name: "Pad".to_owned(),
+                    },
+                ]),
+            }),
+        };
+        let state = TrackState {
+            id: TrackId::from_raw(42),
+            name: "Tiny".to_owned(),
+            fx: Some(TrackFxState {
+                processor_type: processor.id.clone(),
+                active: true,
+                visible: true,
+                lifecycle: FxLifecycle::Running,
+                generation: 0,
+                crash_summary: None,
+                logs: Arc::from([]),
+                editor: Some(TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
+                    selected_preset_id: Some("sine".to_owned()),
+                    master_gain_db: -6.0,
+                    reverb_enabled: false,
+                    reverb_amount: 0.25,
+                    distortion_enabled: false,
+                    distortion_drive: 4.0,
+                })),
+            }),
+            ..Default::default()
+        };
+        (state, processor)
+    }
+
+    fn frame(
+        context: &egui::Context,
+        editor: &mut TinySynthFxEditor,
+        state: &TrackState,
+        processor: &TrackProcessorDescriptor,
+        events: Vec<egui::Event>,
+    ) -> Vec<TrackAction> {
+        let mut actions = Vec::new();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(500.0, 400.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| actions = editor.show(ui.ctx(), state, Some(processor)),
+        );
+        actions
+    }
+
+    fn click(
+        context: &egui::Context,
+        editor: &mut TinySynthFxEditor,
+        state: &TrackState,
+        processor: &TrackProcessorDescriptor,
+        position: egui::Pos2,
+    ) -> Vec<TrackAction> {
+        let mut actions = frame(
+            context,
+            editor,
+            state,
+            processor,
+            vec![egui::Event::PointerMoved(position)],
+        );
+        actions.extend(frame(
+            context,
+            editor,
+            state,
+            processor,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        ));
+        actions.extend(frame(
+            context,
+            editor,
+            state,
+            processor,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        ));
+        actions.dedup();
+        actions
+    }
+
+    fn state_mut(state: &mut TrackState) -> &mut TinySynthFxState {
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) =
+            state.fx.as_mut().and_then(|fx| fx.editor.as_mut())
+        else {
+            panic!("missing Tiny Synth/FX editor fixture");
+        };
+        editor
+    }
+
+    #[test]
+    fn stable_track_ids_isolate_multiple_embedded_editors() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let (first_state, processor) = fixture();
+        let mut second_state = first_state.clone();
+        second_state.id = TrackId::from_raw(43);
+        second_state.name = "Other Tiny".to_owned();
+        let mut first = TinySynthFxEditor::default();
+        let mut second = TinySynthFxEditor::default();
+        let run = |events: Vec<egui::Event>,
+                   first: &mut TinySynthFxEditor,
+                   second: &mut TinySynthFxEditor| {
+            let mut actions = (Vec::new(), Vec::new());
+            let _ = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 600.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    actions.0 = first.show(ui.ctx(), &first_state, Some(&processor));
+                    actions.1 = second.show(ui.ctx(), &second_state, Some(&processor));
+                },
+            );
+            actions
+        };
+        assert_eq!(run(Vec::new(), &mut first, &mut second), (vec![], vec![]));
+        assert_ne!(first.window_rect(), second.window_rect());
+        let position = first.panic_rect().unwrap().center();
+        let _ = run(
+            vec![egui::Event::PointerMoved(position)],
+            &mut first,
+            &mut second,
+        );
+        let _ = run(
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            &mut first,
+            &mut second,
+        );
+        let actions = run(
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            &mut first,
+            &mut second,
+        );
+        assert_eq!(
+            actions,
+            (
+                vec![TrackAction::TinySynthFx(TinySynthFxControl::Panic)],
+                vec![]
+            )
+        );
+    }
+
+    #[test]
+    fn embedded_editor_emits_typed_intents_for_every_control_and_close() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let (mut state, processor) = fixture();
+        let mut editor = TinySynthFxEditor::default();
+        assert!(frame(&context, &mut editor, &state, &processor, Vec::new()).is_empty());
+
+        let panic = editor.panic_rect().unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, panic),
+            [TrackAction::TinySynthFx(TinySynthFxControl::Panic)]
+        );
+        let gain_rect = editor.gain_rect().unwrap();
+        let gain_actions = click(
+            &context,
+            &mut editor,
+            &state,
+            &processor,
+            egui::pos2(gain_rect.left() + 8.0, gain_rect.center().y),
+        );
+        assert!(
+            matches!(
+                gain_actions.as_slice(),
+                [TrackAction::TinySynthFx(TinySynthFxControl::SetMasterGainDb(value))]
+                    if (-60.0..=0.0).contains(value)
+            ),
+            "unexpected gain actions: {gain_actions:?}"
+        );
+
+        let preset = editor.preset_rect().unwrap().center();
+        assert!(click(&context, &mut editor, &state, &processor, preset).is_empty());
+        let pad = editor.preset_item_rect("pad").unwrap().center();
+        let _ = frame(
+            &context,
+            &mut editor,
+            &state,
+            &processor,
+            vec![egui::Event::PointerMoved(pad)],
+        );
+        let pad = editor.preset_item_rect("pad").unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, pad),
+            [TrackAction::TinySynthFx(TinySynthFxControl::SelectPreset(
+                "pad".to_owned()
+            ))]
+        );
+
+        let reverb = editor.reverb_rect().unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, reverb),
+            [TrackAction::TinySynthFx(
+                TinySynthFxControl::SetReverbEnabled(true)
+            )]
+        );
+        state_mut(&mut state).reverb_enabled = true;
+        let _ = frame(&context, &mut editor, &state, &processor, Vec::new());
+        let amount_rect = editor.reverb_amount_rect().unwrap();
+        let amount_actions = click(
+            &context,
+            &mut editor,
+            &state,
+            &processor,
+            egui::pos2(amount_rect.left() + 8.0, amount_rect.center().y),
+        );
+        assert!(matches!(
+            amount_actions.as_slice(),
+            [TrackAction::TinySynthFx(TinySynthFxControl::SetReverbAmount(value))]
+                if (0.0..=1.0).contains(value)
+        ));
+
+        let distortion = editor.distortion_rect().unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, distortion),
+            [TrackAction::TinySynthFx(
+                TinySynthFxControl::SetDistortionEnabled(true)
+            )]
+        );
+        state_mut(&mut state).distortion_enabled = true;
+        let _ = frame(&context, &mut editor, &state, &processor, Vec::new());
+        let drive_rect = editor.distortion_drive_rect().unwrap();
+        let drive_actions = click(
+            &context,
+            &mut editor,
+            &state,
+            &processor,
+            egui::pos2(drive_rect.left() + 8.0, drive_rect.center().y),
+        );
+        assert!(matches!(
+            drive_actions.as_slice(),
+            [TrackAction::TinySynthFx(TinySynthFxControl::SetDistortionDrive(value))]
+                if (1.0..=20.0).contains(value)
+        ));
+
+        let window = editor.window_rect().unwrap();
+        let close = egui::pos2(window.right() - 12.0, window.top() + 12.0);
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, close),
+            [TrackAction::FxVisibilityChanged(false)]
+        );
+    }
+}

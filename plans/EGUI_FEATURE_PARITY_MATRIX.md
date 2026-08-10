@@ -4,7 +4,7 @@
 
 This is the living feature-discovery and implementation ledger for the pure egui replacement described in `EGUI_REPLACEMENT_PROJECT.md`. It is intentionally incomplete. Entries are discovered and refined as milestone work reaches each part of the old application.
 
-The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, native JACK/CPAL+midir/dummy driver management, track-port connections, session-persistence/loop-I/O, settings, native Lua, cross-target ports/browser-Lua/omniLua migration, Wasm Web MIDI, and click-track generation milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
+The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, native JACK/CPAL+midir/dummy driver management, track-port connections, session-persistence/loop-I/O, settings, native Lua, cross-target ports/browser-Lua/omniLua migration, Wasm Web MIDI, and click-track generation milestones, plus the implemented Tiny Synth/FX milestone that is awaiting master integration and final repository-wide gates. Areas outside those slices remain listed coarsely until their milestone discovery begins.
 
 The retired Qt-hosted egui experiment has been removed. The legacy QML application and standalone egui applications now have independent presentation and dependency paths; QML remains only as the behavior baseline for features not yet replaced.
 
@@ -173,7 +173,7 @@ Evidence referenced below consists of:
 | TRACK-004 | Direct-track MIDI choice | QML offers an optional direct MIDI channel. | Explored for M1 | Required | Complete | Supported-shape application and backend contract tests |
 | TRACK-005 | New-track naming and stable port-name base | QML defaults to `Track N`; the accepted name determines the initial port-name base and later title edits do not rename ports. | Explored for M1 | Required | Complete | Application creation/name logic and track action tests |
 | TRACK-006 | New track receives aligned empty loop slots | QML creates at least eight slots and no fewer than the current maximum row count. | Explored for M1 | Required | Complete | `direct_track_creation_and_aligned_rows_are_published` |
-| TRACK-007 | Dry/wet Add Track choices | QML supports external and Carla processing with dry/wet audio/MIDI topology. | Explored for dry/wet/Carla | Dry/wet/Carla required | Complete | Capability-driven Regular/Dry + Wet form; native External/Carla catalog; independent counts/dry MIDI; aligned stable topology; role-aware session/media round trips; empty/disabled browser catalog and transactional rejection automation |
+| TRACK-007 | Dry/wet Add Track choices | QML supports external and Carla processing with dry/wet audio/MIDI topology. | Explored for dry/wet/Carla and Tiny Synth/FX | Dry/wet/processor required | Complete | Capability-driven Regular/Dry + Wet form; native External/Carla/Tiny catalog and browser Tiny catalog; independent External/Carla counts; matched Tiny counts with required MIDI; role-aware cross-target session/media round trips; transactional unavailable-processor rejection |
 | TRACK-008 | Trigger-only Add Track choice | QML offers a trigger-only track type intended for composite/script control. | Partially explored | Deferred | Deferred | Later composite milestone |
 | TRACK-009 | Track title editing | Finishing an edit updates the track name but not its port names. | Explored for M1 | Required | Complete | Stable-ID track action handling and presentation tests |
 | TRACK-010 | Output gain and stereo balance | Applicable audio output controls update the track's output ports. | Explored for M1 | Required | Complete | Track-control widget tests, application control test, and backend contract |
@@ -333,7 +333,24 @@ Final validation on 2026-08-08 passed 141 focused warning-denying native tests, 
 
 ## Carla subprocess hosting discovery
 
-The native QML Carla path supplied the frontend-independent hosting-mode, processor, supervised worker, bounded-log, shared-memory, checkpoint, and status baseline. `EGUI_DRY_WET_AND_CARLA_TRACKS_PLAN.md` now composes that baseline into runnable native egui tracks without introducing a second protocol. The native catalog advertises External and Carla Rack/Patchbay/Patchbay16x; the current browser catalog deliberately remains empty while preserving shared UI/application mechanics and transactionally rejecting unavailable sessions.
+The native QML Carla path supplied the frontend-independent hosting-mode, processor, supervised worker, bounded-log, shared-memory, checkpoint, and status baseline. `EGUI_DRY_WET_AND_CARLA_TRACKS_PLAN.md` composes that baseline into runnable native egui tracks without introducing a second Carla protocol. The native catalog advertises External, Tiny Synth/FX, and feature-dependent Carla Rack/Patchbay/Patchbay16x. The browser catalog advertises only Tiny Synth/FX while preserving shared UI/application mechanics and transactionally rejecting native-only External/Carla sessions.
+
+## Cross-target Tiny Synth/FX processor
+
+The stable processor ID `tiny_synth_fx` and display label **Tiny Synth/FX** identify the dependency-free `tinyviolin 0.1.0` integration. One callback-owned processor handles matched dry/wet audio channels and one MIDI input; MIDI-only zero-audio tracks remain valid. Native and browser compositions share processor state, recorded-take state, routing policy, typed controls, runtime preset discovery, and the embedded egui editor without creating a child window.
+
+| ID | Behavior | Status | Evidence |
+| --- | --- | --- | --- |
+| TINY-CAP-001 | Cross-target capability and stable identity | Complete | Native/direct-core/WebAudio catalogs, API constraint tests, warning-free native and Wasm checks |
+| TINY-DSP-001 | Zero/mono/stereo/arbitrary matched audio with sample-timed MIDI and effects | Complete | Engine processor/backend shape and non-zero audio/MIDI tests, first-active-block allocation guard, worklet render test |
+| TINY-STATE-001 | Versioned exact current and recorded-take state | Complete | Strict envelope tests, backend/app/session round trips, transactional malformed-state tests, native dummy restart-style replacement |
+| TINY-WEB-001 | AudioWorklet-owned browser processing and bounded typed protocol | Complete | Protocol v5 round trips/coalescing rules, worklet allocation-guarded Tiny processing/snapshot test, browser proxy mapping and Wasm dependency checks |
+| TINY-PRES-001 | Embedded editor and capability-driven track controls | Complete | Backend-free editor interaction tests, runtime preset descriptors, stable track-ID window key, no `tinyviolin` dependency in `shoop_egui` |
+| TINY-COMPAT-001 | External/Carla/QML and existing session compatibility | In progress | Existing processor fixtures and focused native-FX regressions pass and Tiny uses separate IDs/topology/state while generalized runtime fields retain Carla document representation. The `origin/master` MIDI-keyboard/engine work is integrated; retained QML and the full cross-platform matrix still require validation on the combined commit. |
+
+Tiny implementation evidence current on 2026-08-10 includes hosted Chrome 147 Web Audio and Web MIDI, hosted Firefox 153 Web Audio, Chrome self-contained offline and output-only runs, debug/release web and native packaging, warning-free no-default native/Wasm checks, warning-free default native-FX compilation, and 42/42 native-FX backend tests. The latest executable suite passed 23/25 under concurrent build contention; its two timeout-sensitive native failures require a clean serialized rerun. The local all-target/QML gates remain unavailable because Qt is not installed, and the authoritative eight-cell matrix has not yet run for the integrated commit. Therefore the processor is usable and its focused rows are complete, but the cross-target milestone is not closed.
+
+Physical audio/MIDI hardware is not required for deterministic Tiny Synth/FX DSP evidence. Native driver, retained QML, browser artifact, and cross-platform CI evidence must continue to distinguish software coverage from unavailable physical-device click-through.
 
 | ID | Capability or behavior | Current native baseline | Discovery | Current implementation | Evidence |
 |---|---|---|---|---|---|
@@ -465,7 +482,7 @@ The completed persistent-settings implementation and `docs/settings_format_v1.md
 | SET-E2E-001 | Cross-target persistence | Native and browser reload use real persisted text and authoritative consumers | Explored for settings | Settings required | Complete | Temporary-path native restart and hosted/direct-file product artifact workflows |
 | SET-OLD-001 | Retained QML isolation | Existing QML settings/Carla path remains independently regression-tested | Explored for settings | Settings required | Complete | Legacy feature tests, fresh-format rejection, and retained QML final gate |
 
-Generic MIDI-rule editing and session-local overrides remain assigned to their owning milestones. Runnable native Carla/FX settings are complete; browser-native processing remains an explicit future capability. Native driver/device selection is complete under `EGUI_NATIVE_AUDIO_DRIVER_SWITCHING_PLAN.md`. Bundled Lua startup toggles are cross-target; native alone registers user-script paths, which browser preserves as unknown values.
+Generic MIDI-rule editing and session-local overrides remain assigned to their owning milestones. Runnable native Carla/FX settings are complete; the browser supports the built-in Tiny Synth/FX processor but native plugin hosting remains intentionally unavailable. Native driver/device selection is complete under `EGUI_NATIVE_AUDIO_DRIVER_SWITCHING_PLAN.md`. Bundled Lua startup toggles are cross-target; native alone registers user-script paths, which browser preserves as unknown values.
 
 ## Completed click-track generation discovery
 

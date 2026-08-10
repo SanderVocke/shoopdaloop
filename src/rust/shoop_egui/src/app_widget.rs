@@ -820,16 +820,28 @@ impl AppWidget {
 
     #[cfg(target_arch = "wasm32")]
     #[doc(hidden)]
-    pub fn browser_test_open_empty_dry_wet_form(&mut self) -> bool {
-        self.add_track_name = "Browser dry/wet capability check".to_owned();
+    pub fn browser_test_open_tiny_dry_wet_form(
+        &mut self,
+        processors: &[TrackProcessorDescriptor],
+    ) -> bool {
+        let Some(processor) = processors
+            .iter()
+            .find(|processor| processor.id.as_str() == TrackProcessorTypeId::TINY_SYNTH_FX)
+        else {
+            return false;
+        };
+        self.add_track_name = "Browser Tiny Synth/FX capability check".to_owned();
         self.add_track_mode = AddTrackMode::DryWet;
         self.add_track_open = true;
-        self.add_track_processor = None;
+        self.add_track_processor = Some(processor.id.clone());
+        self.add_track_dry_audio_channels = 2;
+        self.add_track_wet_audio_channels = 2;
+        self.add_track_dry_midi = true;
         self.add_track_open
-            && self.add_track_dry_audio_channels == self.add_track_audio_channels
-            && self.add_track_wet_audio_channels == self.add_track_audio_channels
-            && self.add_track_dry_midi == self.add_track_midi
-            && self.add_track_spec().is_none()
+            && processor.label == "Tiny Synth/FX"
+            && processor.constraints.matching_audio_channels
+            && processor.constraints.midi == crate::TrackProcessorMidiPolicy::Required
+            && self.add_track_spec().is_some()
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1129,6 +1141,12 @@ impl AppWidget {
                                 ui.end_row();
                             }
                             AddTrackMode::DryWet => {
+                                let selected_processor =
+                                    self.add_track_processor.as_ref().and_then(|selected| {
+                                        processors
+                                            .iter()
+                                            .find(|processor| processor.id == *selected)
+                                    });
                                 ui.label("Dry audio:");
                                 show_audio_channel_count(
                                     ui,
@@ -1136,25 +1154,46 @@ impl AppWidget {
                                     &mut self.add_track_dry_audio_channels,
                                 );
                                 ui.end_row();
+                                let matching_audio = selected_processor.is_some_and(|processor| {
+                                    processor.constraints.matching_audio_channels
+                                });
+                                if matching_audio {
+                                    self.add_track_wet_audio_channels =
+                                        self.add_track_dry_audio_channels;
+                                }
                                 ui.label("Wet audio:");
-                                show_audio_channel_count(
-                                    ui,
-                                    "add_track_wet_audio",
-                                    &mut self.add_track_wet_audio_channels,
+                                ui.add_enabled_ui(!matching_audio, |ui| {
+                                    show_audio_channel_count(
+                                        ui,
+                                        "add_track_wet_audio",
+                                        &mut self.add_track_wet_audio_channels,
+                                    );
+                                });
+                                ui.end_row();
+                                let midi_policy = selected_processor
+                                    .map(|processor| processor.constraints.midi)
+                                    .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
+                                if selected_processor.is_some() {
+                                    match midi_policy {
+                                        crate::TrackProcessorMidiPolicy::Required => {
+                                            self.add_track_dry_midi = true;
+                                        }
+                                        crate::TrackProcessorMidiPolicy::Unsupported => {
+                                            self.add_track_dry_midi = false;
+                                        }
+                                        crate::TrackProcessorMidiPolicy::Optional => {}
+                                    }
+                                }
+                                ui.label("Dry MIDI:");
+                                ui.add_enabled_ui(
+                                    midi_policy == crate::TrackProcessorMidiPolicy::Optional,
+                                    |ui| {
+                                        ui.checkbox(&mut self.add_track_dry_midi, "Enabled");
+                                    },
                                 );
                                 ui.end_row();
-                                ui.label("Dry MIDI:");
-                                ui.checkbox(&mut self.add_track_dry_midi, "Enabled");
-                                ui.end_row();
                                 ui.label("Processing:");
-                                let selected = self
-                                    .add_track_processor
-                                    .as_ref()
-                                    .and_then(|selected| {
-                                        processors
-                                            .iter()
-                                            .find(|processor| processor.id == *selected)
-                                    })
+                                let selected = selected_processor
                                     .map(|processor| processor.label.as_str())
                                     .unwrap_or("No processors available");
                                 egui::ComboBox::from_id_salt("add_track_processor")
@@ -1780,14 +1819,17 @@ mod tests {
             constraints: crate::TrackProcessorConstraints {
                 max_dry_audio_channels: Some(2),
                 max_wet_audio_channels: Some(2),
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: crate::TrackProcessorMidiPolicy::Optional,
             },
             features: crate::TrackProcessorFeatures {
                 state: true,
                 external_ui: true,
+                embedded_ui: false,
                 recovery: true,
                 logs: true,
             },
+            editor: None,
         };
         let state = AppState {
             track_processors: Arc::from([processor.clone()]),

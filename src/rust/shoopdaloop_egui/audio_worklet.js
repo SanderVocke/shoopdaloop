@@ -100,15 +100,25 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       event.event.memory_growths = this.memoryGrowths;
       response = JSON.stringify(event);
     }
+    // A response lookup can cause Rust allocator bookkeeping to acquire another
+    // Wasm page after the command itself. Refresh only on this control callback;
+    // the render callback must never allocate replacement typed-array views.
+    if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
     this.port.postMessage(response);
+    queueMicrotask(() => {
+      if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
+    });
   }
 
   fail(message) {
-    this.port.postMessage(JSON.stringify({
-      version: PROTOCOL_VERSION,
-      sequence: 0,
-      event: { kind: 'error', message },
-    }));
+    if (!this.failureMessage) {
+      this.failureMessage = message;
+      this.port.postMessage(JSON.stringify({
+        version: PROTOCOL_VERSION,
+        sequence: 0,
+        event: { kind: 'error', message },
+      }));
+    }
     return false;
   }
 
@@ -123,8 +133,15 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     }
     this.expectedFrame = currentFrame + frames;
     if (frames > this.maxQuantum) return this.fail(`render quantum ${frames} exceeds ${this.maxQuantum}`);
+    // Control-path topology/state preparation may grow linear memory between
+    // callbacks. Rebind the two bounded host views before entering Rust; growth
+    // after this point is still a fatal realtime violation.
     if (this.exports.memory.buffer !== this.memoryBuffer) {
-      return this.fail('worklet Wasm memory grew between control and process callbacks');
+      try {
+        this.refreshViews();
+      } catch (error) {
+        return this.fail(`worklet view refresh failed: ${error?.stack || error}`);
+      }
     }
     const timer = globalThis.performance;
     const startedAt = timer ? timer.now() : 0;
@@ -135,7 +152,13 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       const offset = channel * this.maxQuantum;
       for (let frame = 0; frame < frames; frame += 1) this.input[offset + frame] = source[frame];
     }
-    if (!this.exports.shoop_worklet_process(this.host, nInputs, nOutputs, frames)) {
+    let processed;
+    try {
+      processed = this.exports.shoop_worklet_process(this.host, nInputs, nOutputs, frames);
+    } catch (error) {
+      return this.fail(`Rust worklet process trapped: ${error?.stack || error}`);
+    }
+    if (!processed) {
       return this.fail(`Rust worklet host rejected ${nInputs}x${nOutputs}x${frames} quantum`);
     }
     if (this.exports.memory.buffer !== this.memoryBuffer) {

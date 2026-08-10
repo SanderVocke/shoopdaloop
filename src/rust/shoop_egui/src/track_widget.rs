@@ -6,6 +6,8 @@ use crate::{
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
 
+use crate::tiny_synth_fx_editor::TinySynthFxEditor;
+
 const DEFAULT_TRACK_WIDTH: f32 = 120.0;
 const MIN_TRACK_WIDTH: f32 = 100.0;
 const MAX_TRACK_WIDTH: f32 = 400.0;
@@ -32,6 +34,7 @@ pub struct TrackWidget {
     hovered_loop: Option<LoopId>,
     controls: TrackControls,
     fx_logs_open: bool,
+    tiny_synth_fx_editor: TinySynthFxEditor,
     width: f32,
     rendered_content_width: f32,
     width_drag_start: Option<f32>,
@@ -61,6 +64,7 @@ impl Default for TrackWidget {
             hovered_loop: None,
             controls: TrackControls::default(),
             fx_logs_open: false,
+            tiny_synth_fx_editor: TinySynthFxEditor::default(),
             width: DEFAULT_TRACK_WIDTH,
             rendered_content_width: DEFAULT_TRACK_WIDTH,
             width_drag_start: None,
@@ -201,6 +205,9 @@ impl TrackWidget {
             self.show_width_resize_handle(ui, frame.response.rect, "content_width_resize");
         }
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
+        result
+            .actions
+            .extend(self.tiny_synth_fx_editor.show(ui.ctx(), state, processor));
         result
     }
 
@@ -358,7 +365,8 @@ impl TrackWidget {
                         FxLifecycle::Crashed | FxLifecycle::Unavailable => egui::Color32::LIGHT_RED,
                         FxLifecycle::Stopped => egui::Color32::GRAY,
                     };
-                    let controllable = features.external_ui || features.recovery;
+                    let controllable =
+                        features.external_ui || features.embedded_ui || features.recovery;
                     let fx_button = ui
                         .add_enabled(
                             controllable,
@@ -606,9 +614,11 @@ mod tests {
             features: crate::TrackProcessorFeatures {
                 state: true,
                 external_ui: true,
+                embedded_ui: false,
                 recovery: true,
                 logs: true,
             },
+            editor: None,
         };
         let state = TrackState {
             id: TrackId::from_raw(9),
@@ -627,6 +637,7 @@ mod tests {
                     dropped_stdout_bytes: 1,
                     dropped_stderr_bytes: 2,
                 }]),
+                editor: None,
             }),
             ..Default::default()
         };

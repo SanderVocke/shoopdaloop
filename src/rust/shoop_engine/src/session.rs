@@ -42,6 +42,7 @@ use crate::state_mirror::{
     AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
     MidiPortStateMirror,
 };
+use crate::tiny_synth_fx::TinySynthFxProcessor;
 
 use thiserror::Error;
 
@@ -377,6 +378,8 @@ pub struct Session {
     boundary_natural_intents: Vec<BoundaryIntent>,
     /// Active state for the temporary test2x2x1 FX-chain shim, keyed by chain title.
     test_fx_active: HashMap<String, bool>,
+    /// Stable, callback-owned Tiny Synth/FX processors with topology-time routes.
+    tiny_fx_routes: Vec<TinyFxRoute>,
     /// Stable, callback-owned Carla endpoints with topology-time port routes.
     #[cfg(feature = "lv2")]
     carla_fx_routes: Vec<CarlaFxRoute>,
@@ -396,6 +399,17 @@ pub struct Session {
     n_sub_blocks_last_cycle: u32,
     /// Existing deterministic stage profiler, enabled only for explicit tracing sessions.
     profiler: Profiler,
+}
+
+#[derive(Debug)]
+struct TinyFxRoute {
+    title: String,
+    processor: TinySynthFxProcessor,
+    active: bool,
+    audio_inputs: Vec<Option<usize>>,
+    audio_outputs: Vec<(Option<usize>, Option<usize>)>,
+    midi_input: Option<usize>,
+    midi_staging: Vec<MidiStorageElem>,
 }
 
 #[cfg(feature = "lv2")]
@@ -1404,6 +1418,54 @@ impl Session {
         self.test_fx_active.insert(title.into(), active);
     }
 
+    pub fn set_tiny_synth_fx_processor(
+        &mut self,
+        title: impl Into<String>,
+        processor: TinySynthFxProcessor,
+    ) -> Option<TinySynthFxProcessor> {
+        let title = title.into();
+        let displaced = if let Some(route) = self
+            .tiny_fx_routes
+            .iter_mut()
+            .find(|route| route.title == title)
+        {
+            Some(std::mem::replace(&mut route.processor, processor))
+        } else {
+            self.tiny_fx_routes.push(TinyFxRoute {
+                title,
+                processor,
+                active: false,
+                audio_inputs: Vec::new(),
+                audio_outputs: Vec::new(),
+                midi_input: None,
+                midi_staging: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+            });
+            None
+        };
+        self.note_graph_change();
+        displaced
+    }
+
+    pub fn set_tiny_synth_fx_active(&mut self, title: &str, active: bool) {
+        if let Some(route) = self
+            .tiny_fx_routes
+            .iter_mut()
+            .find(|route| route.title == title)
+        {
+            route.active = active;
+        }
+    }
+
+    pub fn tiny_synth_fx_processor_mut(
+        &mut self,
+        title: &str,
+    ) -> Option<&mut TinySynthFxProcessor> {
+        self.tiny_fx_routes
+            .iter_mut()
+            .find(|route| route.title == title)
+            .map(|route| &mut route.processor)
+    }
+
     #[cfg(feature = "lv2")]
     pub fn set_carla_fx_host(&mut self, title: impl Into<String>, host: Box<dyn CarlaProcessor>) {
         let title = title.into();
@@ -1862,6 +1924,7 @@ impl Session {
         }
         self.scratch.resize(self.buffer_size as usize, 0.0);
         self.out_scratch.resize(self.buffer_size as usize, 0.0);
+        self.rebuild_tiny_fx_routes();
         #[cfg(feature = "lv2")]
         self.rebuild_carla_fx_routes();
 
@@ -2024,6 +2087,7 @@ impl Session {
         {
             let _span = shoop_tracing::realtime_span!("engine.rt.fx");
             self.apply_test2x2x1_fx_outputs(n_frames);
+            self.process_tiny_fx_chains(n_frames);
             #[cfg(feature = "lv2")]
             self.process_carla_fx_chains(n_frames);
         }
@@ -2043,9 +2107,11 @@ impl Session {
             .ports
             .iter()
             .filter_map(|p| {
-                p.name()
-                    .split_once(":audio_in_0")
-                    .map(|(title, _)| title.to_string())
+                p.name().split_once(":audio_in_0").and_then(|(title, _)| {
+                    self.test_fx_active
+                        .contains_key(title)
+                        .then(|| title.to_string())
+                })
             })
             .collect();
         for title in titles {
@@ -2164,6 +2230,107 @@ impl Session {
                 }
             }
         }
+    }
+
+    fn rebuild_tiny_fx_routes(&mut self) {
+        for route in &mut self.tiny_fx_routes {
+            let title = &route.title;
+            let find_port = |name: &str| self.ports.iter().position(|port| port.name() == name);
+            route.audio_inputs = (0..route.processor.logical_channel_count())
+                .map(|index| find_port(&format!("{title}:audio_in_{index}")))
+                .collect();
+            route.audio_outputs = (0..route.processor.logical_channel_count())
+                .map(|index| {
+                    (
+                        find_port(&format!("{title}:audio_out_{index}")),
+                        find_port(&format!("{title}_audio_wet_out_{}", index + 1)),
+                    )
+                })
+                .collect();
+            route.midi_input = find_port(&format!("{title}:midi_in_0"));
+            route.midi_staging.clear();
+            route
+                .midi_staging
+                .reserve(MAX_MIDI_EVENTS_PER_BLOCK.saturating_sub(route.midi_staging.capacity()));
+        }
+    }
+
+    fn process_tiny_fx_chains(&mut self, n_frames: usize) {
+        let rerecording = self
+            .loops
+            .iter()
+            .any(|loop_| loop_.mode() == LoopMode::RecordingDryIntoWet);
+        let mut routes = std::mem::take(&mut self.tiny_fx_routes);
+        for route in &mut routes {
+            if !route.active || n_frames > route.processor.max_frames() {
+                continue;
+            }
+            for index in 0..route.processor.logical_channel_count() {
+                let Some(destination) = route.processor.plane_mut(index, n_frames) else {
+                    continue;
+                };
+                if let Some(port_index) = route.audio_inputs.get(index).copied().flatten() {
+                    destination.copy_from_slice(self.ports[port_index].buffer(n_frames));
+                } else {
+                    destination.fill(0.0);
+                }
+            }
+            route.processor.clear_silent_plane(n_frames);
+            route.midi_staging.clear();
+            if rerecording {
+                self.append_recent_loop_midi_events(n_frames, &mut route.midi_staging);
+            } else if let Some(port_index) = route.midi_input {
+                route.midi_staging.extend(
+                    self.ports[port_index]
+                        .midi_events()
+                        .iter()
+                        .take(MAX_MIDI_EVENTS_PER_BLOCK)
+                        .copied(),
+                );
+                if let Some(port) = self.ports[port_index].as_external_midi() {
+                    let remaining =
+                        MAX_MIDI_EVENTS_PER_BLOCK.saturating_sub(route.midi_staging.len());
+                    route
+                        .midi_staging
+                        .extend(port.outgoing().iter().take(remaining).copied());
+                }
+            }
+            route.midi_staging.truncate(MAX_MIDI_EVENTS_PER_BLOCK);
+            route.processor.process(n_frames, &route.midi_staging);
+            for index in 0..route.audio_outputs.len() {
+                let (Some(fx_output_index), Some(wet_output_index)) = route.audio_outputs[index]
+                else {
+                    continue;
+                };
+                let target = self.ports[wet_output_index]
+                    .audio()
+                    .map(|audio| (audio.gain(), audio.muted()))
+                    .unwrap_or((1.0, false));
+                let fx_passthrough_muted = self.ports[fx_output_index]
+                    .audio()
+                    .map(|audio| audio.passthrough_muted())
+                    .unwrap_or(false);
+                let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
+                let Some(source) = route.processor.plane(index, n_frames) else {
+                    continue;
+                };
+                for (output, sample) in self.scratch[..n_frames]
+                    .iter_mut()
+                    .zip(source.iter().copied())
+                {
+                    *output = if muted { 0.0 } else { sample * gain };
+                }
+                if let Some(output) = self.ports[wet_output_index].as_external_mut() {
+                    output.add_late_output(&self.scratch[..n_frames]);
+                } else {
+                    let output = self.ports[wet_output_index].buffer(n_frames);
+                    for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                        *output += *sample;
+                    }
+                }
+            }
+        }
+        self.tiny_fx_routes = routes;
     }
 
     #[cfg(feature = "lv2")]
@@ -2538,7 +2705,10 @@ impl Session {
     /// FX-chain ports as ordinary internal ports, so this reproduces that behavior
     /// when those synthetic port names are processed.
     fn process_test2x2x1_fx_port(&mut self, port_idx: usize, n_frames: usize) {
-        if !self.ports[port_idx].name().contains(':') {
+        let Some((title, _)) = self.ports[port_idx].name().split_once(':') else {
+            return;
+        };
+        if !self.test_fx_active.contains_key(title) {
             return;
         }
         crate::realtime_allow_alloc_once!("Session::process_test2x2x1_fx_port", || {

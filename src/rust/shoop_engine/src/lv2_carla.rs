@@ -1083,7 +1083,7 @@ pub fn carla_plugin_uri(chain_type: FXChainType) -> Option<&'static str> {
         FXChainType::CarlaRack => Some(CARLA_RACK_URI),
         FXChainType::CarlaPatchbay => Some(CARLA_PATCHBAY_URI),
         FXChainType::CarlaPatchbay16x => Some(CARLA_PATCHBAY_16_URI),
-        FXChainType::Test2x2x1 => None,
+        FXChainType::Test2x2x1 | FXChainType::TinySynthFx => None,
     }
 }
 
@@ -1091,7 +1091,7 @@ pub fn carla_audio_port_count(chain_type: FXChainType) -> Option<usize> {
     match chain_type {
         FXChainType::CarlaRack | FXChainType::CarlaPatchbay => Some(2),
         FXChainType::CarlaPatchbay16x => Some(16),
-        FXChainType::Test2x2x1 => None,
+        FXChainType::Test2x2x1 | FXChainType::TinySynthFx => None,
     }
 }
 

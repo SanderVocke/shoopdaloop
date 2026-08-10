@@ -28,7 +28,7 @@ cpal = { workspace = true, optional = true }
 midir = { workspace = true, optional = true }
 lilv = { workspace = true, optional = true }
 lv2_raw = { workspace = true, optional = true }
-base64 = { workspace = true, optional = true }
+base64 = { workspace = true }
 serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
 memmap2 = { workspace = true }
@@ -39,6 +39,7 @@ shoop_settings = { path = "../shoop_settings" }
 tracing = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
+tinyviolin = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_tracing = { workspace = true, features = ["tracy"] }
@@ -55,7 +56,7 @@ prebuild = []
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
-lv2 = ["dep:lilv", "dep:lv2_raw", "dep:base64", "dep:serde_json", "dep:libloading"]
+lv2 = ["dep:lilv", "dep:lv2_raw", "dep:serde_json", "dep:libloading"]
 native_audio_backend = ["jack", "cpal", "midir"]
 app_backend = ["native_audio_backend"]
 
