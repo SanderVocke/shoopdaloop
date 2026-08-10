@@ -10,18 +10,8 @@ const DEFAULT_TRACK_WIDTH: f32 = 100.0;
 const MIN_TRACK_WIDTH: f32 = 80.0;
 const MAX_TRACK_WIDTH: f32 = 400.0;
 const TRACK_CONTROLS_HEIGHT: f32 = 50.0;
-const TRACK_CONTENT_MARGIN: egui::Margin = egui::Margin {
-    left: 4,
-    right: 4,
-    top: 4,
-    bottom: 0,
-};
-const TRACK_CONTROLS_MARGIN: egui::Margin = egui::Margin {
-    left: 4,
-    right: 4,
-    top: 0,
-    bottom: 4,
-};
+const TRACK_CONTENT_MARGIN: egui::Margin = egui::Margin::same(4);
+const TRACK_CONTROLS_MARGIN: egui::Margin = egui::Margin::same(4);
 const RESIZE_HANDLE_RADIUS: f32 = 3.0;
 
 #[derive(Debug, Default)]
@@ -51,6 +41,8 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_controls_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_controls_clip_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_options_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_connections_rect: Option<egui::Rect>,
@@ -76,6 +68,8 @@ impl Default for TrackWidget {
             test_content_rect: None,
             #[cfg(test)]
             test_controls_rect: None,
+            #[cfg(test)]
+            test_controls_clip_rect: None,
             #[cfg(test)]
             test_options_rect: None,
             #[cfg(test)]
@@ -200,21 +194,60 @@ impl TrackWidget {
     ) -> Vec<TrackWidgetAction> {
         let frame = egui::Frame::new()
             .fill(colors::RAISED_BACKGROUND)
-            .inner_margin(TRACK_CONTROLS_MARGIN)
-            .show(ui, |ui| {
-                ui.set_width(self.rendered_content_width);
-                ui.set_min_height(TRACK_CONTROLS_HEIGHT);
-                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                    self.controls.show(ui, state)
-                })
-                .inner
-            });
+            .inner_margin(TRACK_CONTROLS_MARGIN);
+        let background = ui.painter().add(egui::Shape::Noop);
+        let total_margin = frame.total_margin();
+        let outer_min = ui.next_widget_position();
+        let content_min = egui::pos2(
+            outer_min.x + total_margin.left,
+            outer_min.y + total_margin.top,
+        );
+        let content_bounds = egui::Rect::from_min_max(
+            content_min,
+            egui::pos2(
+                content_min.x + self.rendered_content_width,
+                (ui.max_rect().bottom() - total_margin.bottom).max(content_min.y),
+            ),
+        );
+        let mut content_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("track_controls_content")
+                .max_rect(content_bounds)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        let horizontal_clip = egui::Rect::from_min_max(
+            egui::pos2(outer_min.x, ui.clip_rect().top()),
+            egui::pos2(
+                outer_min.x + self.rendered_content_width + total_margin.sum().x,
+                ui.clip_rect().bottom(),
+            ),
+        );
+        content_ui.set_clip_rect(ui.clip_rect().intersect(horizontal_clip));
         #[cfg(test)]
         {
-            self.test_controls_rect = Some(frame.response.rect);
+            self.test_controls_clip_rect = Some(content_ui.clip_rect());
         }
-        self.show_width_resize_handle(ui, frame.response.rect, "controls_width_resize");
-        frame.inner
+        content_ui.set_width(self.rendered_content_width);
+        let content_height =
+            (ui.available_height() - total_margin.sum().y).max(TRACK_CONTROLS_HEIGHT);
+        content_ui.set_min_height(content_height);
+        let actions = self.controls.show(&mut content_ui, state);
+        let content_rect = egui::Rect::from_min_size(
+            content_min,
+            egui::vec2(
+                self.rendered_content_width,
+                content_ui.min_rect().height().max(content_height),
+            ),
+        );
+        ui.painter().set(background, frame.paint(content_rect));
+        let outer_rect = frame.outer_rect(content_rect);
+        let response = ui.allocate_rect(outer_rect, egui::Sense::hover());
+        #[cfg(test)]
+        {
+            self.test_controls_rect = Some(response.rect);
+        }
+        self.show_width_resize_handle(ui, response.rect, "controls_width_resize");
+        actions
     }
 
     fn show_width_resize_handle(
@@ -849,6 +882,10 @@ mod tests {
             "content: {content_rect:?}, controls: {controls_rect:?}"
         );
         assert!((content_rect.left() - controls_rect.left()).abs() < f32::EPSILON);
+        assert_eq!(
+            widget.test_controls_clip_rect.unwrap().x_range(),
+            controls_rect.x_range()
+        );
     }
 
     #[test]
