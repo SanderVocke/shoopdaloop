@@ -62,6 +62,14 @@ Browser recording storage is prepared per channel for ten seconds at the actual 
 
 The browser application embeds omniLua, Shoop's Lua modules, `keyboard.lua`, and the APC Mini script. Keyboard control is enabled by default and receives egui press/release events independently of audio permission. The APC script is embedded but disabled by default; after Web MIDI access it autoconnects matching physical endpoints through the same bounded control contract as native. The Scripts settings tab persists those bundled toggles in `localStorage` and reconciles runtime state only after a successful save; native user-file paths and the Add-file action are omitted. Source-bearing `.shoop` scripts use the same syntax-check/transaction/save path as native egui.
 
+## On-screen MIDI piano
+
+The bottom bar has **details** and **piano** buttons selecting one resizable bottom pane. The piano covers MIDI notes 0–127 in a horizontally scrollable keyboard, initially centered on middle C (MIDI 60/C4); every C key carries its scientific-pitch octave marking from C-1 through C9.
+
+Pointer press/release sends channel-1 note-on at velocity 100 and zero-velocity note-off. The application fans each press out once to every track whose input monitoring is enabled (input mute is off) and which owns a MIDI input port. Releases follow the tracks that received the press, including when monitoring changes while a note is held; pane close/switch and pointer/focus cancellation release held notes. The pane shows the current destination names or a no-target message.
+
+Piano messages enter ordinary track MIDI input processing at frame zero of the next available engine process iteration. This soft timing is not sample-exact, but the path is driver-independent: native dummy/offline, JACK, and CPAL+midir need no physical MIDI source, while Web Audio and browser offline mode need no Web MIDI permission or host route. The piano creates no host endpoint and changes no connection or session setting.
+
 ## Session and loop files
 
 The main menu saves and loads fresh `.shoop` v1 sessions. Loop context menus import/export exact `.shoop-audio` and `.shoop-midi`, float WAV, and standard MIDI. Audio import requires explicit destination mapping; audio export presents an ordered channel selection. Direct, dry, and wet role labels are preserved, including dry-only, wet-only, mixed, and reordered exports; exact/standard MIDI targets dry MIDI. Different-rate assets require confirmation before deterministic audio/MIDI/timing conversion. QML-era session/media formats are deliberately unsupported.

@@ -5241,13 +5241,7 @@ impl MidiPort {
             }
         })
     }
-    pub fn dummy_queue_msg(
-        &self,
-        msg: &MidiEvent,
-    ) -> std::result::Result<CommandSequence, SendError> {
-        self.dummy_queue_msgs(vec![msg.clone()])
-    }
-    pub fn dummy_queue_msgs(
+    pub fn queue_incoming_msgs(
         &self,
         msgs: Vec<MidiEvent>,
     ) -> std::result::Result<CommandSequence, SendError> {
@@ -5267,6 +5261,18 @@ impl MidiPort {
                 }
             }
         })
+    }
+    pub fn dummy_queue_msg(
+        &self,
+        msg: &MidiEvent,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.queue_incoming_msgs(vec![msg.clone()])
+    }
+    pub fn dummy_queue_msgs(
+        &self,
+        msgs: Vec<MidiEvent>,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.queue_incoming_msgs(msgs)
     }
     pub fn dummy_dequeue_data(&self) -> Vec<MidiEvent> {
         let mut output = self

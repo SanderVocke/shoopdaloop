@@ -123,6 +123,16 @@ impl DummyMidiPort {
         true
     }
 
+    pub fn queue_msg_next_cycle(&mut self, time: u32, data: &[u8]) -> bool {
+        let pending_progress = self
+            .n_processed_last_round
+            .saturating_sub(self.n_requested_frames);
+        let Some(time) = time.checked_add(pending_progress) else {
+            return false;
+        };
+        self.queue_msg(time, data)
+    }
+
     pub fn queue_empty(&self) -> bool {
         self.queued.is_empty()
     }
