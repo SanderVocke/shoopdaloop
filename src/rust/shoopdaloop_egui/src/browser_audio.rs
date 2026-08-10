@@ -901,11 +901,14 @@ struct WaveformAssembly {
     in_flight: bool,
 }
 
+const SESSION_CAPTURE_IN_FLIGHT_LIMIT: usize = 8;
+
 struct SessionCaptureAssembly {
     generation: u64,
     total_bytes: Option<usize>,
     bytes: Vec<u8>,
-    in_flight: bool,
+    next_offset: usize,
+    in_flight: usize,
 }
 
 struct SessionReplaceAssembly {
@@ -1100,24 +1103,30 @@ impl WebAudioBackend {
         self.request_waveform_chunk(loop_id)
     }
 
-    fn request_session_capture_chunk(&mut self) -> Result<()> {
+    fn request_session_capture_chunks(&mut self) -> Result<()> {
         let Some(capture) = self.session_capture.as_mut() else {
             return Ok(());
         };
         let Some(total_bytes) = capture.total_bytes else {
             return Ok(());
         };
-        if capture.in_flight || capture.bytes.len() >= total_bytes {
-            return Ok(());
+        while capture.next_offset < total_bytes
+            && capture.in_flight < SESSION_CAPTURE_IN_FLIGHT_LIMIT
+            && self.transport.borrow().in_flight < COMMAND_CAPACITY / 2
+        {
+            let offset = capture.next_offset;
+            capture.next_offset = offset
+                .saturating_add(SESSION_TRANSFER_CHUNK_BYTES)
+                .min(total_bytes);
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::ReadSessionCapture {
+                    generation: capture.generation,
+                    offset,
+                    max_bytes: SESSION_TRANSFER_CHUNK_BYTES,
+                })?;
+            capture.in_flight += 1;
         }
-        self.transport
-            .borrow_mut()
-            .ephemeral(Command::ReadSessionCapture {
-                generation: capture.generation,
-                offset: capture.bytes.len(),
-                max_bytes: SESSION_TRANSFER_CHUNK_BYTES,
-            })?;
-        capture.in_flight = true;
         Ok(())
     }
 
@@ -1130,8 +1139,9 @@ impl WebAudioBackend {
         }
         capture.total_bytes = Some(total_bytes);
         capture.bytes.reserve(total_bytes);
-        capture.in_flight = false;
-        self.request_session_capture_chunk()
+        capture.next_offset = 0;
+        capture.in_flight = 0;
+        self.request_session_capture_chunks()
     }
 
     fn apply_session_capture_chunk(
@@ -1148,6 +1158,7 @@ impl WebAudioBackend {
         if capture.generation != generation
             || capture.total_bytes != Some(total_bytes)
             || capture.bytes.len() != offset
+            || capture.in_flight == 0
             || bytes.len() > SESSION_TRANSFER_CHUNK_BYTES
             || offset.saturating_add(bytes.len()) > total_bytes
             || final_chunk != (offset.saturating_add(bytes.len()) >= total_bytes)
@@ -1155,8 +1166,8 @@ impl WebAudioBackend {
             return Err(anyhow!("invalid session capture chunk"));
         }
         capture.bytes.extend_from_slice(&bytes);
-        capture.in_flight = false;
-        self.request_session_capture_chunk()
+        capture.in_flight -= 1;
+        self.request_session_capture_chunks()
     }
 
     fn pump_session_replace(&mut self) -> Result<()> {
@@ -2036,7 +2047,7 @@ impl Backend for WebAudioBackend {
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         if let Some(capture) = &self.session_capture {
-            if capture.total_bytes == Some(capture.bytes.len()) && !capture.in_flight {
+            if capture.total_bytes == Some(capture.bytes.len()) && capture.in_flight == 0 {
                 let session = serde_json::from_slice(&capture.bytes)
                     .map_err(|error| anyhow!("invalid worklet session capture: {error}"))?;
                 self.session_capture = None;
@@ -2053,7 +2064,8 @@ impl Backend for WebAudioBackend {
             generation,
             total_bytes: None,
             bytes: Vec::new(),
-            in_flight: true,
+            next_offset: 0,
+            in_flight: 0,
         });
         Err(anyhow!("session capture pending"))
     }
