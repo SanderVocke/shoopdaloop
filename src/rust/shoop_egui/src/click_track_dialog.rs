@@ -5,18 +5,42 @@ use crate::{
     ClickTrackState, LoopId, LoopState,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ClickTrackDialog {
     target: Option<LoopId>,
     drafts: BTreeMap<LoopId, ClickTrackRequest>,
     validation_message: Option<String>,
+    preview_available: bool,
     #[cfg(test)]
     generate_rect: Option<egui::Rect>,
     #[cfg(test)]
     preview_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    preview_enabled: bool,
+}
+
+impl Default for ClickTrackDialog {
+    fn default() -> Self {
+        Self {
+            target: None,
+            drafts: BTreeMap::new(),
+            validation_message: None,
+            preview_available: true,
+            #[cfg(test)]
+            generate_rect: None,
+            #[cfg(test)]
+            preview_rect: None,
+            #[cfg(test)]
+            preview_enabled: false,
+        }
+    }
 }
 
 impl ClickTrackDialog {
+    pub fn set_preview_available(&mut self, available: bool) {
+        self.preview_available = available;
+    }
+
     pub fn open(&mut self, target: &LoopState, click_state: &ClickTrackState) {
         let draft = self.drafts.entry(target.id).or_default();
         reconcile_draft(draft, target, click_state);
@@ -169,13 +193,22 @@ impl ClickTrackDialog {
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
-                    let preview_button = ui.add_enabled(
-                        validation.is_ok() && draft.kind == ClickTrackKind::Audio,
-                        egui::Button::new("Preview"),
-                    );
+                    let preview_button = ui
+                        .add_enabled(
+                            validation.is_ok()
+                                && draft.kind == ClickTrackKind::Audio
+                                && self.preview_available,
+                            egui::Button::new("Preview"),
+                        )
+                        .on_disabled_hover_text(if self.preview_available {
+                            "Preview requires valid audio click settings"
+                        } else {
+                            "Audio preview is unavailable on this system"
+                        });
                     #[cfg(test)]
                     {
                         self.preview_rect = Some(preview_button.rect);
+                        self.preview_enabled = preview_button.enabled();
                     }
                     if preview_button.clicked() {
                         preview = true;
@@ -535,5 +568,19 @@ mod tests {
             assert!(dialog.show(&context, &stale).is_empty());
             assert_eq!(dialog.target(), None);
         }
+    }
+
+    #[test]
+    fn preview_is_disabled_when_the_platform_has_no_audio_path() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = state();
+        let mut dialog = ClickTrackDialog::default();
+        dialog.set_preview_available(false);
+        dialog.open(&state.tracks[0].loops[0], &state.click_track);
+        let _ = context.run_ui(Default::default(), |_ui| {
+            assert!(dialog.show(&context, &state).is_empty());
+        });
+        assert!(!dialog.preview_enabled);
     }
 }

@@ -115,11 +115,12 @@ impl UnifiedApp {
         register_bundled_script_settings(&mut settings_builder)?;
         let settings_registry = settings_builder.finish();
         let settings = load_settings_manager(settings_registry.clone());
-        let widget = AppWidget::new(std::sync::Arc::new(settings_registry));
+        let mut widget = AppWidget::new(std::sync::Arc::new(settings_registry));
         #[cfg(not(target_arch = "wasm32"))]
         let runtime = Runtime::new(&settings.active())?;
         #[cfg(target_arch = "wasm32")]
         let runtime = Runtime::new(&settings.active())?;
+        widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {
             runtime,
             widget,
@@ -845,6 +846,10 @@ impl Runtime {
             self.preview_player.play(preview);
         }
     }
+
+    fn audio_preview_available(&self) -> bool {
+        native_preview::is_available()
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -999,6 +1004,10 @@ impl Runtime {
 
     fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
         self.runtime.take_file_output()
+    }
+
+    fn audio_preview_available(&self) -> bool {
+        browser_preview::is_available()
     }
 
     fn process_audio_previews(&mut self) {
@@ -3413,10 +3422,41 @@ mod tests {
             .iter()
             .find(|track| track.name == "Native stereo + MIDI")
             .unwrap();
+        let generated_track = target.id;
         let generated_loop = target.loops[1].id;
         let mut request = shoop_egui::ClickTrackRequest::default();
         request.bpm = 600.0;
         request.click_count = 2;
+        let before_preview = target.loops[1].clone();
+        app.runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id: generated_loop,
+                request: request.clone(),
+            })
+            .unwrap();
+        let preview_started = Instant::now();
+        loop {
+            app.runtime.process_audio_previews();
+            let snapshot = app.runtime.snapshot();
+            if matches!(
+                snapshot.click_track.preview_status,
+                shoop_egui::ClickTrackPreviewStatus::Completed
+                    | shoop_egui::ClickTrackPreviewStatus::Failed
+            ) {
+                let after_preview = snapshot
+                    .tracks
+                    .iter()
+                    .flat_map(|track| &track.loops)
+                    .find(|loop_| loop_.id == generated_loop)
+                    .unwrap();
+                assert_eq!(after_preview.id, before_preview.id);
+                assert_eq!(after_preview.length_frames, before_preview.length_frames);
+                assert_eq!(after_preview.empty, before_preview.empty);
+                break;
+            }
+            assert!(preview_started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        }
         app.runtime
             .dispatch(AppIntent::GenerateClickTrack {
                 loop_id: generated_loop,
@@ -3434,6 +3474,101 @@ mod tests {
             })
             .unwrap();
         wait_for_click_generation(&app, generated_loop, 9_600, Some(first_task));
+        app.runtime
+            .dispatch(AppIntent::Loop {
+                track_id: generated_track,
+                loop_id: generated_loop,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        wait_for_loop_mode(&app, generated_track, generated_loop, LoopMode::Playing);
+        app.runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        let save_started = Instant::now();
+        let generated_session = loop {
+            if let Some(output) = app.runtime.take_file_output() {
+                break output;
+            }
+            assert!(save_started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        };
+        let decoded = shoop_session::decode_session(&generated_session.bytes).unwrap();
+        let saved_generated = decoded
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.id == generated_loop.raw())
+            .unwrap();
+        assert_eq!(saved_generated.length_frames, 9_600);
+        assert_eq!(
+            saved_generated
+                .channels
+                .iter()
+                .filter(|channel| channel.media_id.is_some())
+                .count(),
+            3
+        );
+        let generated_media = saved_generated
+            .channels
+            .iter()
+            .filter_map(|channel| channel.media_id.as_ref())
+            .map(|id| &decoded.media[id])
+            .collect::<Vec<_>>();
+        let audio = generated_media
+            .iter()
+            .filter_map(|payload| match payload {
+                shoop_session::MediaPayload::Audio(audio) => Some(&audio.samples),
+                shoop_session::MediaPayload::Midi(_) => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(audio.len(), 2);
+        assert_eq!(audio[0], audio[1]);
+        assert!(audio[0].iter().any(|sample| *sample != 0.0));
+        let midi = generated_media
+            .iter()
+            .find_map(|payload| match payload {
+                shoop_session::MediaPayload::Midi(midi) => Some(midi),
+                shoop_session::MediaPayload::Audio(_) => None,
+            })
+            .unwrap();
+        assert_eq!(midi.length_frames, 9_600);
+        assert_eq!(
+            midi.events
+                .iter()
+                .map(|event| (event.frame, event.data.as_slice()))
+                .collect::<Vec<_>>(),
+            vec![
+                (0, [0x90, 67, 127].as_slice()),
+                (4_800, [0x80, 67, 127].as_slice()),
+                (4_800, [0x90, 67, 127].as_slice()),
+                (9_599, [0x80, 67, 127].as_slice()),
+            ]
+        );
+        app.runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: generated_session.suggested_name,
+                bytes: generated_session.bytes,
+            })
+            .unwrap();
+        let reload_started = Instant::now();
+        loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot.io_task.as_ref().is_some_and(|task| {
+                task.kind == shoop_egui::IoTaskKind::LoadSession
+                    && task.status == shoop_egui::IoTaskStatus::Completed
+            }) && snapshot
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .find(|loop_| loop_.id == generated_loop)
+                .is_some_and(|loop_| loop_.length_frames == 9_600 && !loop_.empty)
+            {
+                break;
+            }
+            assert!(reload_started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 
     fn wait_for_click_generation(

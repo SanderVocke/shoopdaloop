@@ -9,6 +9,10 @@ enum PreviewCommand {
     Shutdown,
 }
 
+pub fn is_available() -> bool {
+    rodio::OutputStreamBuilder::from_default_device().is_ok()
+}
+
 pub struct NativePreviewPlayer {
     sender: SyncSender<PreviewCommand>,
     worker: Option<JoinHandle<()>>,

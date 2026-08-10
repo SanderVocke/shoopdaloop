@@ -479,6 +479,10 @@ impl AppWidget {
         self.connections.open(scope);
     }
 
+    pub fn set_click_track_preview_available(&mut self, available: bool) {
+        self.click_track.set_preview_available(available);
+    }
+
     pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
         self.settings.add_user_script_path(path)
     }

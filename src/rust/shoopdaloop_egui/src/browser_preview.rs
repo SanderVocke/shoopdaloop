@@ -8,6 +8,16 @@ use web_sys::{
     AudioBufferSourceNode, AudioContext, AudioContextState, AudioScheduledSourceNode, Event,
 };
 
+pub fn is_available() -> bool {
+    web_sys::window().is_some_and(|window| {
+        js_sys::Reflect::has(
+            window.as_ref(),
+            &wasm_bindgen::JsValue::from_str("AudioContext"),
+        )
+        .unwrap_or(false)
+    })
+}
+
 struct ActivePreview {
     request_id: u64,
     source: AudioBufferSourceNode,

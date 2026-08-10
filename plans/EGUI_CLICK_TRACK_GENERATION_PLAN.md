@@ -2,7 +2,7 @@
 
 ## Status and document role
 
-Status: **In progress**. Stages 0–3 are complete: shared generation, application transactions, the egui dialog, native/browser preview adapters, production runtime workflows, and embedded debug artifacts pass focused native, Chrome, Firefox, and Wasm checks. Final release/regression closure remains Stage 4.
+Status: **Complete**. Stages 0–4 and every immutable acceptance criterion are implemented and audited against the evidence recorded below.
 
 This is the implementation contract for adding the legacy loop-scoped click-track workflow to the pure-egui product. It depends on the session/media transaction delivered by the persistence milestone and must remain synchronized with:
 
@@ -132,21 +132,49 @@ Verification:
 
 Verification:
 
-- [x] The 23-test runner suite proves native `NativeBackend` audio/MIDI generation after transactional session load plus bounded no-hardware preview failure. This host exposes no usable default ALSA playback device, so audible native preview is an explicit environment skip rather than a success claim.
+- [x] The 23-test runner suite proves native `NativeBackend` non-mutating valid-draft preview with truthful no-hardware completion, exact audio/MIDI generation after transactional session load, playback, generated-media save/reload, plus bounded malformed-preview failure. This host exposes no usable default ALSA playback device, so audible native preview is an explicit environment skip rather than a success claim.
 - [x] Debug hosted Chrome passes the complete generated audio export, non-mutating preview, exact MIDI export, and callback-continuity self-test with 21,920 callbacks. Firefox 150 under Xvfb passes the same production flow with 6,704 callbacks. Self-contained Chrome passes the explicit offline-dummy flow, including fallback-context preview.
 - [x] Warning-denying native/Wasm checks, Trunk 0.21.14 UI/worklet build, Python syntax, debug native/hosted/self-contained package verification, and compiled click-marker checks pass. Worklet import and full forbidden-dependency scans are repeated in Stage 4.
 - [x] Commit the cross-target composition/artifact milestone and synchronized plans/documentation.
 
 ### Stage 4 — Final end-to-end validation and closure
 
-- [ ] Run `cargo fmt --all -- --check` and `git diff --check`.
-- [ ] Run focused warning-denying tests for `shoop_session`, `shoop_app_api`, `shoop_backend`, `shoop_app`, `shoop_egui`, and `shoopdaloop_egui`, including native-driver features.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace --features shoop_engine/app_backend` and `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend`.
-- [ ] Build first, then run `target/debug/shoopdaloop_dev.sh --self-test` to retain the QML behavior oracle.
-- [ ] Build/verify debug and release native, hosted WebAssembly, self-contained HTML, and AudioWorklet artifacts using the locked workflow commands; rerun Chrome/Firefox normal, minimum-size, lifecycle, settings, session/media, Web MIDI, offline, and direct-file regressions in addition to click workflows.
-- [ ] Exercise end to end on sync and mixed audio/MIDI main loops: defaults, alternate sound pattern, fractional BPM, 0/100% odd delay, fill existing loop, preview/no mutation, generate, play, export, save/load, and sample-rate-changing driver/session operations.
-- [ ] Record exact test counts, platform/browser/audio environment, explicit skips, limits, and residual browser policy in this plan. Reconcile all click rows and project status with concrete evidence.
-- [ ] Audit every other document in `plans/` for stale status, limitations, cross-references, or roadmap text; update affected documents without altering frozen historical contracts, then commit the validation/documentation milestone.
+- [x] Run `cargo fmt --all -- --check` and `git diff --check`.
+- [x] Run focused warning-denying tests for `shoop_session`, `shoop_app_api`, `shoop_backend`, `shoop_app`, `shoop_egui`, and `shoopdaloop_egui`, including native-driver features.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace --features shoop_engine/app_backend` and `SHOOP_ALLOW_MISSING_BACKENDS=1 RUSTFLAGS="-D warnings" cargo test --workspace --features shoop_engine/app_backend`.
+- [x] Build first, then run `QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh --self-test` to retain the QML behavior oracle.
+- [x] Build/verify debug and release native, hosted WebAssembly, self-contained HTML, and AudioWorklet artifacts using the locked workflow commands; rerun Chrome/Firefox normal, minimum-size, lifecycle, settings, session/media, Web MIDI, offline, and direct-file regressions in addition to click workflows.
+- [x] Exercise end to end on sync and mixed audio/MIDI main loops: defaults, alternate sound pattern, fractional BPM, 0/100% odd delay, fill existing loop, preview/no mutation, generate, play, export, save/load, and sample-rate-changing driver/session operations.
+- [x] Record exact test counts, platform/browser/audio environment, explicit skips, limits, and residual browser policy in this plan. Reconcile all click rows and project status with concrete evidence.
+- [x] Audit every other document in `plans/` for stale status, limitations, cross-references, or roadmap text; update affected documents without altering frozen historical contracts, then commit the validation/documentation milestone.
+
+### Completion evidence (2026-08-10)
+
+- Formatting, `git diff --check`, warning-denying native workspace build, warning-denying focused native-driver tests, and warning-denying Wasm checks pass. The focused suites contain 182 tests: `shoop_session` 21, `shoop_app_api` 10, `shoop_backend` 30, `shoop_app` 46, `shoop_egui` 52, and `shoopdaloop_egui` 23. The final complete workspace run contains 1,222 passing tests across 78 result sets.
+- The unchanged QML oracle passes all 236 test cases under `QT_QPA_PLATFORM=offscreen`. Its existing engine-gone, changing-content, queue-pressure, and Carla diagnostic messages do not produce test failures.
+- Trunk 0.21.14 builds the release UI and import-free release AudioWorklet with explicit LLVM `lld`. Native Linux x86_64, hosted Wasm zip, and self-contained HTML debug/release package verification finds all four embedded click markers. UI/worklet `cargo tree` scans contain none of the forbidden native/frontend dependencies; `WebAssembly.Module.imports` reports zero worklet imports.
+- Chrome 147 release hosted click/session self-test passes at 900x600 with 11,524 callbacks after the final capability change; Chrome also passes 360x200, deny-first, restart lifecycle, saturation, output-only, settings rejection/recovery, Web MIDI track/control/hotplug/restart, direct-file, and explicit self-contained offline modes. Firefox 150.0.1 under Xvfb passes the final hosted production click/session self-test with 4,648 callbacks. No workflow reports an unexpected console error.
+- This Linux host has no `/dev/snd/seq` and no usable default ALSA playback device. Native MIDI/backend tests therefore use their documented `SHOOP_ALLOW_MISSING_BACKENDS=1` environment skip, and audible native preview is not claimed. The runner now probes default-output availability and disables Preview with an explanation when none exists; bounded failure reporting remains unit-tested. Browser preview succeeds from the Preview gesture in Chrome/Firefox and uses a gesture-created fallback context in explicit offline mode. Browser autoplay/user-media policy remains authoritative: hosted full-duplex audio requires its enable gesture, while output-only and preview use their own user gestures.
+- Shared generator tests prove the four sorted decoded assets, default/alternate patterns, fractional BPM, exact floor duration and starts, 0/50/100% odd delay, truncation, 44.1/48 kHz resampling, velocity 127, final-boundary clamping, invalid values, and the 4,096-click/10,000,000-frame limits. Dialog tests prove stable sync/main IDs, applicability, retained drafts, exact defaults, Fill math/disabled reasons, minimum sizing, stale-target closure, validation, and unavailable-preview disabling.
+- Fake, native, and worklet application workflows prove all-channel replacement, opposite-media preservation, offset/preplay reset, stable IDs, no partial mutation on injected failure or conflicts, non-mutating/stale preview handling, exact audio/MIDI export, playback/callback continuity, deterministic save/load, and existing sample-rate-changing driver/session conversion behavior. The native runner additionally verifies generated stereo audio identity/non-silence, exact MIDI events at frames 0/4,800/4,800/9,599 with velocity 127, play state, and stable 9,600-frame save/reload through `NativeBackend`.
+
+### Immutable-criterion audit
+
+1. Context-entry applicability and exact stable sync/main routing are covered by loop/track/widget tests and browser production-dialog opening.
+2. Audio/MIDI-specific controls, resizable/minimum layouts, live validation, and limits are covered by all dialog paint/action/validation tests.
+3. Defaults are shared plain API values; catalog resolution, source selectors, no-runtime-resource fallback, and unavailable-preview disabling are tested and package-verified.
+4. Checked fractional timing, floor duration, primary/secondary cycling, odd delay, and finite limits are generator-tested.
+5. Embedded WAV decode, first-channel use, resampling, overlap/truncation, all-channel copy, and loop length are generator/application/browser-tested.
+6. MIDI note-on/off ordering, velocity 127, all-channel copy, exact frame boundaries, and loop length are generator/application/browser-tested.
+7. Fill uses click count, sample rate, and existing frame length; precision and every disabled reason are tested.
+8. Preview/generation use the application actor and transaction path, never UI/render/audio callbacks; bounded queues and warning builds pass.
+9. Native/browser preview adapters, non-mutation, replacement ordering, stale generations, and truthful success/failure/unsupported results are tested; platform policy is recorded above.
+10. Capture/prepare/replace/remap preserves stable IDs and unrelated/opposite media; failures/conflicts leave capture unchanged across fake/native/worklet evidence.
+11. Exact exports and deterministic session save/load retain generated audio/MIDI and loop length.
+12. Embedded markers pass debug/release native, hosted, and self-contained package checks without an external resource directory.
+13. Native dummy and Chrome/Firefox worklet product workflows generate, play/inspect, export, and preserve callback progress; physical native output is the explicit environment skip above.
+14. Warning-denying native/Wasm builds/tests, QML oracle, browser matrix, package verification, worklet-import inspection, and dependency scans all pass.
+15. User/runner documentation and every affected planning document are synchronized; milestone commits preserve the implementation ledger and the final audit commit leaves a clean tree.
 
 Final acceptance evidence must include one authoritative native workflow and one production browser workflow where a click draft is previewed without session mutation, generated into a real target loop, observed with exact expected frame/MIDI timing and length, played through the existing backend, saved/loaded as ordinary media, and followed by continuing application/audio progress. The final source/package audit must prove that egui artifacts use the shared generated-media implementation and embedded click assets without a Qt/frontend or runtime resource-directory dependency.
 
