@@ -66,7 +66,9 @@ The browser application embeds omniLua, Shoop's Lua modules, `keyboard.lua`, and
 
 The main menu saves and loads fresh `.shoop` v1 sessions. Loop context menus import/export exact `.shoop-audio` and `.shoop-midi`, float WAV, and standard MIDI. Audio import requires explicit destination mapping; audio export presents an ordered channel selection. Direct, dry, and wet role labels are preserved, including dry-only, wet-only, mixed, and reordered exports; exact/standard MIDI targets dry MIDI. Different-rate assets require confirmation before deterministic audio/MIDI/timing conversion. QML-era session/media formats are deliberately unsupported.
 
-Native picker reads and atomic temporary-file replacement run outside the application actor. Browser pickers use asynchronous upload/download file handles; ordinary hosted and direct-file artifacts do not require the File System Access API. Session/media bytes stay outside immutable GUI snapshots. See `../../../docs/session_format_v1.md` for formats, limits, timing, and recovery behavior.
+Right-click a primitive loop and choose **Generate click track...** to create embedded audio or MIDI click content with primary/secondary sounds, fractional tempo, click count, odd-click delay, and loop-length fitting. Audio Preview is non-mutating. Native preview uses the default system playback output on a bounded worker and is disabled with an explanation when no default output is available. Hosted browser preview uses the running Web Audio context; explicit offline mode creates a bounded fallback context subject to browser autoplay policy. Generated content persists as ordinary loop media without storing the dialog draft.
+
+Native picker reads and atomic temporary-file replacement run outside the application actor. Browser pickers use asynchronous upload/download file handles; ordinary hosted and direct-file artifacts do not require the File System Access API. Session/media and generated preview bytes stay outside immutable GUI snapshots. See `../../../docs/session_format_v1.md` for formats, limits, timing, and recovery behavior.
 
 ## Builds and artifacts
 

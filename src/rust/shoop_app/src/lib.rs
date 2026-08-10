@@ -12,7 +12,8 @@ use shoop_app_api::{
     AppIntent, AppNotification, AppSnapshot, ApplicationPortOwner, ApplicationPortState,
     AudioChannelMappingState, AudioChannelSelectionState, AudioDriverConfig,
     AudioDriverRuntimeState, AudioDriverState, AudioDriverSwitchState, AudioDriverSwitchStatus,
-    ChannelId, ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState,
+    ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest,
+    ClickTrackState, ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState,
     ConnectionPolicy, ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId,
     HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
     LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
@@ -37,21 +38,25 @@ use shoop_scripting::{
     ScriptLoopEvent, ScriptManager, SessionScriptSource,
 };
 use shoop_session::{
-    decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
-    encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session, encode_standard_midi,
-    resample_exact_midi, resample_loop_audio, resample_session, AudioPayload, ChannelDocument,
-    ChannelModeDocument, CompositeDocument, CompositeEventDocument, CompositeKindDocument,
-    ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent, FxChainDocument,
-    FxChainTypeDocument, FxStateDocument, GlobalControlsDocument, LoopAudio, LoopAudioChannel,
-    LoopDocument, MediaPayload, MidiControlDocument, PortDirectionDocument, PortDocument,
-    PortRoleDocument, RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument,
-    TrackControlsDocument, TrackDocument, TrackGroupDocument, TrackTopologyDocument,
+    click_sound_ids, decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi,
+    decode_wav, encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session,
+    encode_standard_midi, generate_audio_click_track, generate_midi_click_track,
+    resample_exact_midi, resample_loop_audio, resample_session, AudioClickTrackSpec, AudioPayload,
+    ChannelDocument, ChannelModeDocument, ClickTrackTimingSpec, CompositeDocument,
+    CompositeEventDocument, CompositeKindDocument, ConnectabilityDocument, DataTypeDocument,
+    ExactMidi, ExactMidiEvent, FxChainDocument, FxChainTypeDocument, FxStateDocument,
+    GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
+    MidiClickTrackSpec, MidiControlDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
+    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument,
+    TrackDocument, TrackGroupDocument, TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS,
+    MAX_CLICK_TRACK_FRAMES,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
 const MAX_COOPERATIVE_COMMANDS_PER_TICK: usize = 64;
 const POLL_INTERVAL: Duration = Duration::from_millis(16);
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(2);
+const PREVIEW_OUTPUT_CAPACITY: usize = 1;
 
 #[derive(Clone, Debug)]
 pub struct ApplicationFileOutput {
@@ -61,12 +66,20 @@ pub struct ApplicationFileOutput {
     pub bytes: Arc<[u8]>,
 }
 
+#[derive(Clone, Debug)]
+pub struct ApplicationAudioPreview {
+    pub request_id: u64,
+    pub sample_rate: u32,
+    pub samples: Arc<[f32]>,
+}
+
 #[derive(Clone)]
 pub struct ApplicationHandle {
     sender: SyncSender<ApplicationMessage>,
     snapshot: Arc<RwLock<Arc<AppSnapshot>>>,
     saturated_connection: Arc<Mutex<Option<(PortId, String)>>>,
     file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
+    preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
 }
 
 impl ApplicationHandle {
@@ -98,6 +111,13 @@ impl ApplicationHandle {
 
     pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
         self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .pop_front()
+    }
+
+    pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
+        self.preview_outputs
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .pop_front()
@@ -154,6 +174,7 @@ impl ApplicationRuntime {
         startup_scripts: Vec<StartupScript>,
     ) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
+        let preview_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let snapshot = Arc::new(RwLock::new(Arc::new(AppSnapshot::default())));
         let (sender, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
         let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
@@ -163,13 +184,19 @@ impl ApplicationRuntime {
             snapshot: Arc::clone(&snapshot),
             saturated_connection: Arc::clone(&saturated_connection),
             file_outputs: Arc::clone(&file_outputs),
+            preview_outputs: Arc::clone(&preview_outputs),
         };
         let actor_snapshot = Arc::clone(&snapshot);
         let actor_saturated_connection = Arc::clone(&saturated_connection);
         let join = thread::Builder::new()
             .name("shoop-application".to_owned())
             .spawn(move || {
-                match ApplicationModel::initialize(&mut *backend, file_outputs, true) {
+                match ApplicationModel::initialize(
+                    &mut *backend,
+                    file_outputs,
+                    preview_outputs,
+                    true,
+                ) {
                     Ok(mut model) => {
                         let startup_script_ids = model.install_startup_scripts(startup_scripts);
                         *actor_snapshot
@@ -232,6 +259,7 @@ pub struct CooperativeApplicationRuntime {
     commands: VecDeque<AppIntent>,
     snapshot: Arc<AppSnapshot>,
     file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
+    preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
 }
 
 impl CooperativeApplicationRuntime {
@@ -252,12 +280,17 @@ impl CooperativeApplicationRuntime {
         midi: Box<dyn shoop_scripting::MidiControlService>,
     ) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model =
-            ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
+        let preview_outputs = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(
+            &mut *backend,
+            Arc::clone(&file_outputs),
+            Arc::clone(&preview_outputs),
+            false,
+        )?;
         model.script_manager = ScriptManager::new_with_midi(midi);
         model.install_startup_scripts(startup_scripts);
         model.script_last_snapshot = model.script_control_snapshot();
-        Self::from_model(model, backend, file_outputs)
+        Self::from_model(model, backend, file_outputs, preview_outputs)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -272,6 +305,7 @@ impl CooperativeApplicationRuntime {
         model: ApplicationModel,
         backend: Box<dyn Backend>,
         file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
+        preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
     ) -> Result<Self> {
         let snapshot = Arc::new(model.snapshot());
         Ok(Self {
@@ -280,6 +314,7 @@ impl CooperativeApplicationRuntime {
             commands: VecDeque::with_capacity(COMMAND_CAPACITY),
             snapshot,
             file_outputs,
+            preview_outputs,
         })
     }
 
@@ -323,6 +358,13 @@ impl CooperativeApplicationRuntime {
 
     pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
         self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .pop_front()
+    }
+
+    pub fn take_audio_preview(&self) -> Option<ApplicationAudioPreview> {
+        self.preview_outputs
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .pop_front()
@@ -424,6 +466,8 @@ struct ApplicationModel {
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
     audio_drivers: AudioDriverRuntimeState,
+    click_track: ClickTrackState,
+    next_preview_request_id: u64,
     notifications: Vec<AppNotification>,
     next_task_id: u64,
     next_audio_switch_id: u64,
@@ -434,6 +478,7 @@ struct ApplicationModel {
     #[cfg(not(target_arch = "wasm32"))]
     background_session_encoding: bool,
     file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
+    preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
 }
 
 struct TrackModel {
@@ -546,6 +591,14 @@ enum PendingIo {
         midi: ExactMidi,
         update_loop_length: bool,
     },
+    PrepareGeneratedClickAudio {
+        loop_id: LoopId,
+        audio: LoopAudio,
+    },
+    PrepareGeneratedClickMidi {
+        loop_id: LoopId,
+        midi: ExactMidi,
+    },
     CommitLoopImport {
         loop_id: LoopId,
         backend_data: BackendSessionData,
@@ -557,6 +610,7 @@ impl ApplicationModel {
     fn initialize(
         backend: &mut dyn Backend,
         file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
+        preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
         background_session_encoding: bool,
     ) -> Result<Self> {
         #[cfg(target_arch = "wasm32")]
@@ -643,6 +697,19 @@ impl ApplicationModel {
             global: Default::default(),
             status: Default::default(),
             audio_drivers: backend.audio_driver_state().unwrap_or_default(),
+            click_track: ClickTrackState {
+                sounds: click_sound_ids()
+                    .map(|id| ClickSoundDescriptor {
+                        id: id.to_owned(),
+                        name: id.to_owned(),
+                    })
+                    .collect::<Vec<_>>()
+                    .into(),
+                max_click_count: MAX_CLICK_TRACK_CLICKS,
+                max_output_frames: MAX_CLICK_TRACK_FRAMES,
+                ..Default::default()
+            },
+            next_preview_request_id: 1,
             notifications: Vec::new(),
             next_task_id: 1,
             next_audio_switch_id: 1,
@@ -653,6 +720,7 @@ impl ApplicationModel {
             #[cfg(not(target_arch = "wasm32"))]
             background_session_encoding,
             file_outputs,
+            preview_outputs,
         };
         let mut model = model;
         model.script_last_snapshot = model.script_control_snapshot();
@@ -754,6 +822,17 @@ impl ApplicationModel {
                 }
                 self.notify_error(message);
                 Ok(())
+            }
+            AppIntent::PreviewClickTrack { loop_id, request } => {
+                self.preview_click_track(loop_id, request)
+            }
+            AppIntent::CompleteClickTrackPreview {
+                request_id,
+                success,
+                message,
+            } => self.complete_click_track_preview(request_id, success, message),
+            AppIntent::GenerateClickTrack { loop_id, request } => {
+                self.begin_generate_click_track(loop_id, request)
             }
             AppIntent::RequestLoopAudioExport { loop_id, format } => {
                 self.export_loop_audio(backend, loop_id, format)
@@ -1843,6 +1922,164 @@ impl ApplicationModel {
         };
     }
 
+    fn preview_click_track(
+        &mut self,
+        loop_id: LoopId,
+        request: ClickTrackRequest,
+    ) -> Result<(), String> {
+        self.validate_click_track_target(loop_id, ClickTrackKind::Audio)?;
+        if request.kind != ClickTrackKind::Audio {
+            return Err("MIDI click tracks cannot be previewed as audio".to_owned());
+        }
+        let request_id = self.next_preview_request_id;
+        self.next_preview_request_id = self.next_preview_request_id.wrapping_add(1).max(1);
+        let result = generate_audio_click_track(
+            &AudioClickTrackSpec {
+                timing: click_timing_spec(&request),
+                primary_sound: request.primary_sound_id,
+                secondary_sound: request.secondary_sound_id,
+                secondary_clicks_per_primary: request.secondary_clicks_per_primary,
+            },
+            self.status.sample_rate,
+        )
+        .map_err(|error| error.to_string());
+        let audio = match result {
+            Ok(audio) => audio,
+            Err(message) => {
+                self.click_track.preview_request_id = request_id;
+                self.click_track.preview_status = ClickTrackPreviewStatus::Failed;
+                self.click_track.preview_message.clone_from(&message);
+                return Err(message);
+            }
+        };
+        let samples = audio
+            .channels
+            .into_iter()
+            .next()
+            .map(|channel| channel.samples)
+            .ok_or_else(|| "generated preview contains no audio".to_owned())?;
+        let mut outputs = self
+            .preview_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        while outputs.len() >= PREVIEW_OUTPUT_CAPACITY {
+            outputs.pop_front();
+        }
+        outputs.push_back(ApplicationAudioPreview {
+            request_id,
+            sample_rate: audio.sample_rate,
+            samples: samples.into(),
+        });
+        self.click_track.preview_request_id = request_id;
+        self.click_track.preview_status = ClickTrackPreviewStatus::Queued;
+        self.click_track.preview_message = "Click preview queued".to_owned();
+        Ok(())
+    }
+
+    fn complete_click_track_preview(
+        &mut self,
+        request_id: u64,
+        success: bool,
+        message: String,
+    ) -> Result<(), String> {
+        if request_id != self.click_track.preview_request_id {
+            return Ok(());
+        }
+        self.click_track.preview_status = if success {
+            ClickTrackPreviewStatus::Completed
+        } else {
+            ClickTrackPreviewStatus::Failed
+        };
+        self.click_track.preview_message = message.clone();
+        if success {
+            Ok(())
+        } else {
+            Err(message)
+        }
+    }
+
+    fn begin_generate_click_track(
+        &mut self,
+        loop_id: LoopId,
+        request: ClickTrackRequest,
+    ) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        self.validate_click_track_target(loop_id, request.kind)?;
+        if self.loops.values().any(|loop_| {
+            matches!(
+                loop_.state.mode,
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            )
+        }) {
+            return Err("click generation is unavailable while recording or replacing".to_owned());
+        }
+        self.start_io_task(IoTaskKind::GenerateClickTrack, "Generating click track");
+        let pending = match request.kind {
+            ClickTrackKind::Audio => generate_audio_click_track(
+                &AudioClickTrackSpec {
+                    timing: click_timing_spec(&request),
+                    primary_sound: request.primary_sound_id,
+                    secondary_sound: request.secondary_sound_id,
+                    secondary_clicks_per_primary: request.secondary_clicks_per_primary,
+                },
+                self.status.sample_rate,
+            )
+            .map(|audio| PendingIo::PrepareGeneratedClickAudio { loop_id, audio }),
+            ClickTrackKind::Midi => generate_midi_click_track(
+                MidiClickTrackSpec {
+                    timing: click_timing_spec(&request),
+                    note: request.midi_note,
+                    channel: 0,
+                    velocity: 127,
+                    note_length_seconds: request.midi_note_length_seconds,
+                },
+                self.status.sample_rate,
+            )
+            .map(|midi| PendingIo::PrepareGeneratedClickMidi { loop_id, midi }),
+        };
+        match pending {
+            Ok(pending) => {
+                self.pending_io = Some(pending);
+                self.set_io_progress(0.35, "Preparing generated click media");
+                Ok(())
+            }
+            Err(error) => {
+                let message = error.to_string();
+                self.finish_io(IoTaskStatus::Failed, &message);
+                Err(message)
+            }
+        }
+    }
+
+    fn validate_click_track_target(
+        &self,
+        loop_id: LoopId,
+        kind: ClickTrackKind,
+    ) -> Result<(), String> {
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        if model.state.composite_kind != shoop_app_api::CompositeKind::None {
+            return Err("click tracks require a primitive loop".to_owned());
+        }
+        let supported = match kind {
+            ClickTrackKind::Audio => model.state.has_audio,
+            ClickTrackKind::Midi => model.state.has_midi,
+        };
+        if supported {
+            Ok(())
+        } else {
+            Err(format!(
+                "target loop has no {} channels",
+                match kind {
+                    ClickTrackKind::Audio => "audio",
+                    ClickTrackKind::Midi => "MIDI",
+                }
+            ))
+        }
+    }
+
     fn begin_save_session(&mut self) -> Result<(), String> {
         self.ensure_io_idle()?;
         if self.loops.values().any(|loop_| {
@@ -2404,6 +2641,40 @@ impl ApplicationModel {
                 }
                 Err(error) => self.fail_io(error),
             },
+            PendingIo::PrepareGeneratedClickAudio { loop_id, audio } => {
+                match self.prepare_generated_click_audio(backend, loop_id, &audio) {
+                    Ok(backend_data) => {
+                        self.pending_io = Some(PendingIo::CommitLoopImport {
+                            loop_id,
+                            backend_data,
+                            message: "Audio click track generated".to_owned(),
+                        });
+                        self.set_io_progress(0.75, "Committing generated click track");
+                    }
+                    Err(error) if io_pending_error(&error) => {
+                        self.pending_io =
+                            Some(PendingIo::PrepareGeneratedClickAudio { loop_id, audio });
+                    }
+                    Err(error) => self.fail_io(error),
+                }
+            }
+            PendingIo::PrepareGeneratedClickMidi { loop_id, midi } => {
+                match self.prepare_generated_click_midi(backend, loop_id, &midi) {
+                    Ok(backend_data) => {
+                        self.pending_io = Some(PendingIo::CommitLoopImport {
+                            loop_id,
+                            backend_data,
+                            message: "MIDI click track generated".to_owned(),
+                        });
+                        self.set_io_progress(0.75, "Committing generated click track");
+                    }
+                    Err(error) if io_pending_error(&error) => {
+                        self.pending_io =
+                            Some(PendingIo::PrepareGeneratedClickMidi { loop_id, midi });
+                    }
+                    Err(error) => self.fail_io(error),
+                }
+            }
             PendingIo::CommitLoopImport {
                 loop_id,
                 backend_data,
@@ -4469,6 +4740,7 @@ impl ApplicationModel {
                         .map(|model| {
                             let mut state = model.state.clone();
                             state.name.clone_from(&model.name);
+                            state.length_frames = u64::from(model.length);
                             state
                         })
                         .collect(),
@@ -4483,6 +4755,7 @@ impl ApplicationModel {
             details: self.details_snapshot(),
             connections: Arc::clone(&self.connection_view),
             scripting: Arc::clone(&self.scripting_view),
+            click_track: self.click_track.clone(),
             io_task: self.io_task.clone(),
             notifications: self.notifications.clone(),
         }
@@ -4621,6 +4894,94 @@ impl ApplicationModel {
         if update_loop_length {
             target.length = channel.length;
         }
+        Ok(capture)
+    }
+
+    fn prepare_generated_click_audio(
+        &self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        audio: &LoopAudio,
+    ) -> Result<BackendSessionData, String> {
+        let samples = audio
+            .channels
+            .first()
+            .ok_or_else(|| "generated audio contains no channels".to_owned())?
+            .samples
+            .clone();
+        let length = u32::try_from(samples.len())
+            .map_err(|_| "generated audio exceeds engine range".to_owned())?;
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let mut capture = backend
+            .capture_session()
+            .map_err(|error| format!("could not capture target loop: {error}"))?;
+        let target = capture
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.loops)
+            .find(|loop_| loop_.source_id == model.backend_id.raw())
+            .ok_or_else(|| "backend omitted target loop".to_owned())?;
+        if target.audio.is_empty() {
+            return Err("target loop has no audio channels".to_owned());
+        }
+        for channel in &mut target.audio {
+            channel.samples.clone_from(&samples);
+            channel.start_offset = 0;
+            channel.preplay = 0;
+        }
+        target.length = length;
+        Ok(capture)
+    }
+
+    fn prepare_generated_click_midi(
+        &self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        midi: &ExactMidi,
+    ) -> Result<BackendSessionData, String> {
+        let length = u32::try_from(midi.length_frames)
+            .map_err(|_| "generated MIDI exceeds engine range".to_owned())?;
+        let events = midi
+            .events
+            .iter()
+            .map(|event| {
+                Ok(BackendMidiEvent {
+                    time: u32::try_from(event.frame)
+                        .map_err(|_| "generated MIDI event exceeds engine range".to_owned())?,
+                    data: event.data.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let mut capture = backend
+            .capture_session()
+            .map_err(|error| format!("could not capture target loop: {error}"))?;
+        let target = capture
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.loops)
+            .find(|loop_| loop_.source_id == model.backend_id.raw())
+            .ok_or_else(|| "backend omitted target loop".to_owned())?;
+        if target.midi.is_empty() {
+            return Err("target loop has no MIDI channels".to_owned());
+        }
+        for channel in &mut target.midi {
+            *channel = BackendMidiContent {
+                mode: channel.mode,
+                length,
+                start_state: midi.start_state.clone(),
+                events: events.clone(),
+                start_offset: 0,
+                preplay: 0,
+            };
+        }
+        target.length = length;
         Ok(capture)
     }
 
@@ -5127,6 +5488,14 @@ impl ApplicationModel {
             self.notifications
                 .drain(..self.notifications.len() - MAX_NOTIFICATIONS);
         }
+    }
+}
+
+fn click_timing_spec(request: &ClickTrackRequest) -> ClickTrackTimingSpec {
+    ClickTrackTimingSpec {
+        bpm: request.bpm,
+        click_count: request.click_count,
+        odd_click_delay_percent: request.odd_click_delay_percent,
     }
 }
 
@@ -6763,6 +7132,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let mut model = ApplicationModel::initialize(
             &mut backend,
             Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
             false,
         )
         .unwrap();
@@ -7605,6 +7975,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let mut model = ApplicationModel::initialize(
             &mut backend,
             Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
             false,
         )
         .unwrap();
@@ -7644,6 +8015,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
             &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
         )
@@ -7737,6 +8109,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
             &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(VecDeque::new())),
             false,
         )
@@ -9409,6 +9782,400 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             assert_eq!(exported.channels[0].label, expected_label);
             assert_eq!(exported.channels[0].role, expected_role);
         }
+    }
+
+    #[test]
+    fn click_generation_and_preview_preserve_opposite_media_and_stable_identity() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Click target".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let before = runtime.snapshot();
+        let track_id = before.tracks[1].id;
+        let loop_id = before.tracks[1].loops[0].id;
+        let mut audio_request = ClickTrackRequest::default();
+        audio_request.bpm = 600.0;
+        audio_request.click_count = 2;
+        runtime
+            .dispatch(AppIntent::GenerateClickTrack {
+                loop_id,
+                request: audio_request.clone(),
+            })
+            .unwrap();
+        for _ in 0..6 {
+            runtime.tick(Duration::ZERO);
+        }
+        let generated_audio_state = runtime.snapshot();
+        assert_eq!(generated_audio_state.tracks[1].id, track_id);
+        assert_eq!(generated_audio_state.tracks[1].loops[0].id, loop_id);
+        assert_eq!(
+            generated_audio_state.tracks[1].loops[0].length_frames,
+            9_600
+        );
+        assert_eq!(
+            generated_audio_state.io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+
+        runtime
+            .dispatch(AppIntent::RequestLoopAudioExport {
+                loop_id,
+                format: LoopAudioExportFormat::Exact,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let task = runtime.snapshot().io_task.clone().unwrap();
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                task_id: task.id,
+                channels: vec![0, 1],
+            })
+            .unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let audio_before_midi =
+            decode_loop_audio(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert_eq!(audio_before_midi.channels.len(), 2);
+        assert_eq!(
+            audio_before_midi.channels[0].samples,
+            audio_before_midi.channels[1].samples
+        );
+        assert!(audio_before_midi.channels[0]
+            .samples
+            .iter()
+            .any(|sample| *sample != 0.0));
+
+        let mut midi_request = audio_request.clone();
+        midi_request.kind = ClickTrackKind::Midi;
+        midi_request.midi_note = 65;
+        runtime
+            .dispatch(AppIntent::GenerateClickTrack {
+                loop_id,
+                request: midi_request,
+            })
+            .unwrap();
+        for _ in 0..6 {
+            runtime.tick(Duration::ZERO);
+        }
+        runtime
+            .dispatch(AppIntent::RequestLoopMidiExport {
+                loop_id,
+                standard: false,
+            })
+            .unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let midi = decode_exact_midi(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert_eq!(midi.length_frames, 9_600);
+        assert_eq!(midi.events[0].data, vec![0x90, 65, 127]);
+
+        runtime
+            .dispatch(AppIntent::RequestLoopAudioExport {
+                loop_id,
+                format: LoopAudioExportFormat::Exact,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let task = runtime.snapshot().io_task.clone().unwrap();
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                task_id: task.id,
+                channels: vec![0, 1],
+            })
+            .unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let audio_after_midi =
+            decode_loop_audio(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert_eq!(audio_after_midi, audio_before_midi);
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            {
+                break;
+            }
+        }
+        let session = runtime.take_file_output().unwrap();
+        let decoded = decode_session(&session.bytes).unwrap();
+        let saved_loop = decoded.document.track_groups[1].tracks[0]
+            .loops
+            .iter()
+            .find(|saved| saved.id == loop_id.raw())
+            .unwrap();
+        assert_eq!(saved_loop.length_frames, 9_600);
+        assert_eq!(
+            saved_loop
+                .channels
+                .iter()
+                .filter(|channel| channel.media_id.is_some())
+                .count(),
+            3
+        );
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: session.suggested_name,
+                bytes: session.bytes,
+            })
+            .unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime.snapshot().io_task.as_ref().is_some_and(|task| {
+                task.kind == IoTaskKind::LoadSession && task.status == IoTaskStatus::Completed
+            }) {
+                break;
+            }
+        }
+        assert_eq!(runtime.snapshot().tracks[1].loops[0].id, loop_id);
+        assert_eq!(runtime.snapshot().tracks[1].loops[0].length_frames, 9_600);
+
+        let state_before_preview = runtime.snapshot();
+        runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id,
+                request: audio_request.clone(),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let first_preview = runtime.take_audio_preview().unwrap();
+        assert_eq!(first_preview.sample_rate, 48_000);
+        assert_eq!(first_preview.samples.len(), 9_600);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].length_frames,
+            state_before_preview.tracks[1].loops[0].length_frames
+        );
+        runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id,
+                request: audio_request,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let second_preview = runtime.take_audio_preview().unwrap();
+        runtime
+            .dispatch(AppIntent::CompleteClickTrackPreview {
+                request_id: first_preview.request_id,
+                success: false,
+                message: "stale failure".to_owned(),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().click_track.preview_request_id,
+            second_preview.request_id
+        );
+        assert_eq!(
+            runtime.snapshot().click_track.preview_status,
+            ClickTrackPreviewStatus::Queued
+        );
+    }
+
+    #[test]
+    fn engine_backed_click_replacement_preserves_mixed_track_topology() {
+        let backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Mixed click target".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+        let mut request = ClickTrackRequest {
+            bpm: 600.0,
+            click_count: 2,
+            ..Default::default()
+        };
+        runtime
+            .dispatch(AppIntent::GenerateClickTrack {
+                loop_id,
+                request: request.clone(),
+            })
+            .unwrap();
+        for _ in 0..8 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+
+        request.kind = ClickTrackKind::Midi;
+        runtime
+            .dispatch(AppIntent::GenerateClickTrack { loop_id, request })
+            .unwrap();
+        for _ in 0..8 {
+            runtime.tick(Duration::ZERO);
+        }
+        let snapshot = runtime.snapshot();
+        assert_eq!(
+            snapshot.io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+        assert!(snapshot.tracks[1].loops[0].has_audio);
+        assert!(snapshot.tracks[1].loops[0].has_midi);
+    }
+
+    #[test]
+    fn generated_click_replacement_resets_target_offsets_and_preserves_other_media() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Mixed".to_owned(),
+                    audio_channels: 2,
+                    midi: true,
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let loop_id = model.tracks[1].loops[0];
+        let backend_loop_id = model.loops[&loop_id].backend_id;
+        let mut seeded = backend.capture_session().unwrap();
+        let seeded_target = seeded
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.loops)
+            .find(|loop_| loop_.source_id == backend_loop_id.raw())
+            .unwrap();
+        for (index, channel) in seeded_target.audio.iter_mut().enumerate() {
+            channel.samples = vec![index as f32 + 0.25; 128];
+            channel.start_offset = 11;
+            channel.preplay = 12;
+        }
+        for channel in &mut seeded_target.midi {
+            *channel = BackendMidiContent {
+                mode: channel.mode,
+                length: 128,
+                start_state: vec![vec![0xB0, 7, 99]],
+                events: vec![BackendMidiEvent {
+                    time: 64,
+                    data: vec![0x90, 70, 88],
+                }],
+                start_offset: 13,
+                preplay: 14,
+            };
+        }
+        seeded_target.length = 128;
+        let replacement = backend.replace_session(&seeded).unwrap();
+        model.remap_backend_entities(&seeded, &replacement).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+
+        let mut request = ClickTrackRequest::default();
+        request.bpm = 600.0;
+        request.click_count = 2;
+        model
+            .begin_generate_click_track(loop_id, request.clone())
+            .unwrap();
+        model.advance_io(&mut backend);
+        model.advance_io(&mut backend);
+        let audio_result = backend.capture_session().unwrap();
+        let target = audio_result
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == model.loops[&loop_id].backend_id.raw())
+            .unwrap();
+        assert_eq!(target.length, 9_600);
+        assert_eq!(target.audio.len(), 2);
+        assert_eq!(target.audio[0].samples, target.audio[1].samples);
+        assert!(target
+            .audio
+            .iter()
+            .all(|channel| channel.start_offset == 0 && channel.preplay == 0));
+        assert_eq!(target.midi[0].events[0].data, vec![0x90, 70, 88]);
+        assert_eq!(target.midi[0].start_offset, 13);
+        let preserved_audio = target.audio.clone();
+
+        request.kind = ClickTrackKind::Midi;
+        model.begin_generate_click_track(loop_id, request).unwrap();
+        model.advance_io(&mut backend);
+        model.advance_io(&mut backend);
+        let midi_result = backend.capture_session().unwrap();
+        let target = midi_result
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == model.loops[&loop_id].backend_id.raw())
+            .unwrap();
+        assert_eq!(target.audio, preserved_audio);
+        assert_eq!(target.midi[0].events[0].data, vec![0x90, 64, 127]);
+        assert_eq!(target.midi[0].start_offset, 0);
+        assert_eq!(target.midi[0].preplay, 0);
+
+        let sync_id = model.tracks[0].loops[0];
+        model
+            .begin_generate_click_track(sync_id, ClickTrackRequest::default())
+            .unwrap();
+        model.advance_io(&mut backend);
+        model.advance_io(&mut backend);
+        assert_eq!(model.loops[&sync_id].length, 115_200);
+    }
+
+    #[test]
+    fn click_generation_rejects_conflicts_and_failed_replace_keeps_capture() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Failure target".to_owned(),
+                    audio_channels: 1,
+                    midi: true,
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let loop_id = model.tracks[1].loops[0];
+        let before = backend.capture_session().unwrap();
+        model
+            .begin_generate_click_track(loop_id, ClickTrackRequest::default())
+            .unwrap();
+        model.advance_io(&mut backend);
+        backend.fail_next_session_replace("injected click replacement failure");
+        model.advance_io(&mut backend);
+        assert_eq!(model.io_task.as_ref().unwrap().status, IoTaskStatus::Failed);
+        assert_eq!(backend.capture_session().unwrap(), before);
+        assert_eq!(model.loops[&loop_id].length, 0);
+
+        model.loops.get_mut(&loop_id).unwrap().state.mode = LoopMode::Recording;
+        assert!(model
+            .begin_generate_click_track(loop_id, ClickTrackRequest::default())
+            .unwrap_err()
+            .contains("recording"));
+        model.loops.get_mut(&loop_id).unwrap().state.mode = LoopMode::Stopped;
+        model.pending_io = Some(PendingIo::SaveSession);
+        assert!(model
+            .begin_generate_click_track(loop_id, ClickTrackRequest::default())
+            .unwrap_err()
+            .contains("another I/O task"));
     }
 
     #[test]

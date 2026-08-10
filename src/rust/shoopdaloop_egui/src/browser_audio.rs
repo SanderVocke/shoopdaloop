@@ -331,6 +331,10 @@ impl BrowserAudioController {
         self.inner.borrow().transport.borrow().driver_state
     }
 
+    pub fn audio_context(&self) -> Option<AudioContext> {
+        self.inner.borrow().context.clone()
+    }
+
     pub fn update_presentation(&self) {
         let (state, generation, owned_media_tracks, input_mode) = {
             let mut inner = self.inner.borrow_mut();
@@ -1329,6 +1333,10 @@ impl WebAudioBackend {
                     (
                         BackendTrackId::from_raw(track.id),
                         BackendTrackState {
+                            topology: shoop_backend::BackendTrackTopology::Direct {
+                                audio_channels: track.audio_channels,
+                                midi: track.midi,
+                            },
                             audio_channels: track.audio_channels,
                             midi: track.midi,
                             output_gain_db: track.output_gain_db,

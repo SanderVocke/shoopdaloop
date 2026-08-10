@@ -2858,6 +2858,7 @@ pub struct FakeBackend {
     next_track_id: u64,
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
+    fail_next_session_replace: Option<String>,
     processor_catalog: Arc<[TrackProcessorDescriptor]>,
     default_fx_state_string: String,
     fail_fx_state_restore: bool,
@@ -2912,6 +2913,7 @@ impl Default for FakeBackend {
             next_track_id: 1,
             next_port_id: 1,
             fail_track_creation_after: None,
+            fail_next_session_replace: None,
             processor_catalog: Arc::from([]),
             default_fx_state_string: "{}".to_owned(),
             fail_fx_state_restore: false,
@@ -2963,6 +2965,10 @@ impl FakeBackend {
 
     pub fn fail_next_driver_switch(&mut self, message: impl Into<String>) {
         self.audio_driver_control.fail_next_switch(message);
+    }
+
+    pub fn fail_next_session_replace(&mut self, message: impl Into<String>) {
+        self.fail_next_session_replace = Some(message.into());
     }
 
     pub fn set_preflight_sample_rate_override(&mut self, sample_rate: Option<u32>) {
@@ -3815,6 +3821,9 @@ impl Backend for FakeBackend {
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
+        if let Some(message) = self.fail_next_session_replace.take() {
+            return Err(anyhow!(message));
+        }
         if session.sample_rate != self.status.sample_rate {
             return Err(anyhow!(
                 "prepared session sample rate does not match backend"
