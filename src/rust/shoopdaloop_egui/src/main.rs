@@ -1373,8 +1373,8 @@ fn set_browser_web_midi_test_status(status: &str) {
 fn browser_click_request(kind: shoop_egui::ClickTrackKind) -> shoop_egui::ClickTrackRequest {
     shoop_egui::ClickTrackRequest {
         kind,
-        bpm: 600.0,
-        click_count: 2,
+        bpm: 1_000.0,
+        click_count: 1,
         midi_note: 67,
         ..Default::default()
     }
@@ -2423,7 +2423,7 @@ impl BrowserSelfTest {
                 let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
                     return;
                 };
-                let expected = u64::from(snapshot.status.sample_rate / 5);
+                let expected = u64::from(snapshot.status.sample_rate) * 3 / 50;
                 if loop_state.length_frames != expected || loop_state.empty {
                     self.fail("generated browser audio click length/state is incorrect");
                     return;
@@ -2457,7 +2457,7 @@ impl BrowserSelfTest {
                     self.fail("generated browser click audio did not decode");
                     return;
                 };
-                let expected = (snapshot.status.sample_rate / 5) as usize;
+                let expected = (u64::from(snapshot.status.sample_rate) * 3 / 50) as usize;
                 if audio.channels.len() != 2
                     || audio
                         .channels
@@ -2536,8 +2536,8 @@ impl BrowserSelfTest {
                     self.fail("generated browser click MIDI did not decode");
                     return;
                 };
-                if midi.length_frames != u64::from(snapshot.status.sample_rate / 5)
-                    || midi.events.len() != 4
+                if midi.length_frames != u64::from(snapshot.status.sample_rate) * 3 / 50
+                    || midi.events.len() != 2
                     || midi.events[0].data != [0x90, 67, 127]
                 {
                     self.fail("generated browser click MIDI payload is incorrect");
