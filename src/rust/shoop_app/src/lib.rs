@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -58,6 +59,8 @@ const POLL_INTERVAL: Duration = Duration::from_millis(16);
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(2);
 const PREVIEW_OUTPUT_CAPACITY: usize = 1;
 
+static NEXT_INTENT_ID: AtomicU64 = AtomicU64::new(1);
+
 #[derive(Clone, Debug)]
 pub struct ApplicationFileOutput {
     pub task_id: TaskId,
@@ -84,13 +87,29 @@ pub struct ApplicationHandle {
 
 impl ApplicationHandle {
     pub fn dispatch(&self, intent: AppIntent) -> Result<(), DispatchError> {
-        match self.sender.try_send(ApplicationMessage::Intent(intent)) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Full(ApplicationMessage::Intent(AppIntent::SetPortConnected {
-                port_id,
-                host_port_id,
+        let queued = QueuedIntent::new(intent);
+        let span = tracing::debug_span!(
+            "frontend.app.intent_dispatch",
+            intent_id = queued.id,
+            intent = queued.intent.kind(),
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
+        match self.sender.try_send(ApplicationMessage::Intent(queued)) {
+            Ok(()) => {
+                span.record("outcome", "queued");
+                Ok(())
+            }
+            Err(TrySendError::Full(ApplicationMessage::Intent(QueuedIntent {
+                intent:
+                    AppIntent::SetPortConnected {
+                        port_id,
+                        host_port_id,
+                        ..
+                    },
                 ..
             }))) => {
+                span.record("outcome", "full");
                 *self
                     .saturated_connection
                     .lock()
@@ -98,7 +117,17 @@ impl ApplicationHandle {
                     Some((port_id, host_port_id.to_string()));
                 Err(DispatchError::Full)
             }
-            Err(error) => Err(DispatchError::from(error)),
+            Err(error) => {
+                let error = DispatchError::from(error);
+                span.record(
+                    "outcome",
+                    match error {
+                        DispatchError::Full => "full",
+                        DispatchError::Disconnected => "disconnected",
+                    },
+                );
+                Err(error)
+            }
         }
     }
 
@@ -173,6 +202,11 @@ impl ApplicationRuntime {
         mut backend: Box<dyn Backend + Send>,
         startup_scripts: Vec<StartupScript>,
     ) -> Result<Self> {
+        let _span = tracing::info_span!(
+            "frontend.app.runtime_start",
+            startup_script_count = startup_scripts.len()
+        )
+        .entered();
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let preview_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let snapshot = Arc::new(RwLock::new(Arc::new(AppSnapshot::default())));
@@ -191,6 +225,7 @@ impl ApplicationRuntime {
         let join = thread::Builder::new()
             .name("shoop-application".to_owned())
             .spawn(move || {
+                let _worker_span = tracing::info_span!("worker.application").entered();
                 match ApplicationModel::initialize(
                     &mut *backend,
                     file_outputs,
@@ -246,6 +281,7 @@ impl ApplicationRuntime {
 
 impl Drop for ApplicationRuntime {
     fn drop(&mut self) {
+        let _span = tracing::info_span!("frontend.app.runtime_shutdown").entered();
         let _ = self.handle.sender.send(ApplicationMessage::Shutdown);
         if let Some(join) = self.join.take() {
             let _ = join.join();
@@ -256,7 +292,7 @@ impl Drop for ApplicationRuntime {
 pub struct CooperativeApplicationRuntime {
     model: ApplicationModel,
     backend: Box<dyn Backend>,
-    commands: VecDeque<AppIntent>,
+    commands: VecDeque<QueuedIntent>,
     snapshot: Arc<AppSnapshot>,
     file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
     preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
@@ -319,12 +355,21 @@ impl CooperativeApplicationRuntime {
     }
 
     pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), DispatchError> {
+        let queued = QueuedIntent::new(intent);
+        let span = tracing::debug_span!(
+            "frontend.app.intent_dispatch",
+            intent_id = queued.id,
+            intent = queued.intent.kind(),
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
         if self.commands.len() >= COMMAND_CAPACITY {
+            span.record("outcome", "full");
             if let AppIntent::SetPortConnected {
                 port_id,
                 host_port_id,
                 ..
-            } = intent
+            } = queued.intent
             {
                 self.model
                     .report_connection_saturation(port_id, host_port_id.to_string());
@@ -332,7 +377,8 @@ impl CooperativeApplicationRuntime {
             }
             return Err(DispatchError::Full);
         }
-        self.commands.push_back(intent);
+        self.commands.push_back(queued);
+        span.record("outcome", "queued");
         Ok(())
     }
 
@@ -342,10 +388,10 @@ impl CooperativeApplicationRuntime {
 
     pub fn tick(&mut self, elapsed: Duration) {
         for _ in 0..MAX_COOPERATIVE_COMMANDS_PER_TICK {
-            let Some(intent) = self.commands.pop_front() else {
+            let Some(queued) = self.commands.pop_front() else {
                 break;
             };
-            self.model.handle_intent(&mut *self.backend, intent);
+            handle_queued_intent(&mut self.model, &mut *self.backend, queued);
         }
         update_application(&mut self.model, &mut *self.backend, elapsed, |snapshot| {
             self.snapshot = snapshot
@@ -371,8 +417,22 @@ impl CooperativeApplicationRuntime {
     }
 }
 
+struct QueuedIntent {
+    id: u64,
+    intent: AppIntent,
+}
+
+impl QueuedIntent {
+    fn new(intent: AppIntent) -> Self {
+        Self {
+            id: NEXT_INTENT_ID.fetch_add(1, Ordering::Relaxed),
+            intent,
+        }
+    }
+}
+
 enum ApplicationMessage {
-    Intent(AppIntent),
+    Intent(QueuedIntent),
     Shutdown,
 }
 
@@ -386,7 +446,9 @@ fn run_actor(
     let mut last_update = Instant::now();
     loop {
         match receiver.recv_timeout(POLL_INTERVAL) {
-            Ok(ApplicationMessage::Intent(intent)) => model.handle_intent(&mut *backend, intent),
+            Ok(ApplicationMessage::Intent(queued)) => {
+                handle_queued_intent(&mut model, &mut *backend, queued)
+            }
             Ok(ApplicationMessage::Shutdown) => {
                 model.handle_intent(&mut *backend, AppIntent::Piano(PianoAction::ReleaseAll));
                 break;
@@ -410,13 +472,37 @@ fn run_actor(
     }
 }
 
+fn handle_queued_intent(
+    model: &mut ApplicationModel,
+    backend: &mut dyn Backend,
+    queued: QueuedIntent,
+) {
+    let _span = tracing::debug_span!(
+        "frontend.app.intent_handle",
+        intent_id = queued.id,
+        intent = queued.intent.kind()
+    )
+    .entered();
+    model.handle_intent(backend, queued.intent);
+}
+
 fn update_application(
     model: &mut ApplicationModel,
     backend: &mut dyn Backend,
     elapsed: Duration,
     publish: impl FnOnce(Arc<AppSnapshot>),
 ) {
-    backend.advance(elapsed);
+    let span = tracing::trace_span!(
+        "frontend.app.update",
+        revision = model.revision,
+        elapsed_us = elapsed.as_micros() as u64,
+        outcome = tracing::field::Empty
+    );
+    let _entered = span.enter();
+    {
+        let _span = tracing::trace_span!("frontend.app.backend_advance").entered();
+        backend.advance(elapsed);
+    }
     model.age_pending_connections(elapsed);
     match backend.poll() {
         Ok(snapshot) => model.apply_backend_snapshot(snapshot),
@@ -442,7 +528,17 @@ fn update_application(
         model.notify_error(error);
     }
     model.revision = model.revision.wrapping_add(1);
-    publish(Arc::new(model.snapshot()));
+    {
+        let _span = tracing::trace_span!(
+            "frontend.app.snapshot_publish",
+            revision = model.revision,
+            track_count = model.tracks.len(),
+            loop_count = model.loops.len()
+        )
+        .entered();
+        publish(Arc::new(model.snapshot()));
+    }
+    span.record("outcome", "published");
 }
 
 struct ApplicationModel {
@@ -763,6 +859,14 @@ impl ApplicationModel {
     }
 
     fn handle_intent(&mut self, backend: &mut dyn Backend, intent: AppIntent) {
+        let kind = intent.kind();
+        let span = tracing::debug_span!(
+            "frontend.app.intent_apply",
+            intent = kind,
+            revision = self.revision,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
         let result = match intent {
             AppIntent::Loop {
                 track_id,
@@ -872,7 +976,11 @@ impl ApplicationModel {
             } => self.import_loop_midi(backend, loop_id, name, &bytes, update_loop_length),
         };
         if let Err(error) = result {
+            span.record("outcome", "error");
+            tracing::warn!(intent = kind, error = %error, "frontend.app.intent_failed");
             self.notify_error(error);
+        } else {
+            span.record("outcome", "ok");
         }
     }
 
@@ -3771,6 +3879,14 @@ impl ApplicationModel {
     }
 
     fn apply_backend_snapshot(&mut self, snapshot: BackendSnapshot) {
+        let _span = tracing::trace_span!(
+            "frontend.app.backend_snapshot_apply",
+            callback_count = snapshot.status.callback_count,
+            processed_frames = snapshot.status.processed_frames,
+            track_count = snapshot.tracks.len(),
+            loop_count = snapshot.loops.len()
+        )
+        .entered();
         let switch = self.audio_drivers.switch.clone();
         self.audio_drivers = snapshot.audio_drivers.clone();
         if switch.status != AudioDriverSwitchStatus::Idle {

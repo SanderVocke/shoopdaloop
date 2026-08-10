@@ -27,6 +27,19 @@ pub enum SettingsAction {
     },
 }
 
+impl SettingsAction {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Save(_) => "settings.save",
+            Self::RequestAudioDriverSwitch { .. } => "settings.request_audio_driver_switch",
+            Self::RetryAudioDriverPersistence { .. } => "settings.retry_audio_persistence",
+            Self::RecoverWithDefaults => "settings.recover_defaults",
+            Self::RequestAddUserScript => "settings.add_user_script",
+            Self::RequestReloadUserScript { .. } => "settings.reload_user_script",
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct SettingsDialogResponse {
     pub settings_actions: Vec<SettingsAction>,

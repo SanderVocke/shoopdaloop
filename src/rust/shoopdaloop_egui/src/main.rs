@@ -8,9 +8,11 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 #[cfg(not(target_arch = "wasm32"))]
+use clap::{ArgGroup, Parser};
+#[cfg(not(target_arch = "wasm32"))]
 use std::{
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, Sender},
     time::Instant,
 };
@@ -54,6 +56,81 @@ use shoop_app::{ApplicationHandle, ApplicationRuntime};
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
 const UPDATE_INTERVAL: Duration = Duration::from_millis(16);
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, Parser)]
+#[command(name = "shoopdaloop_egui")]
+#[command(about = "ShoopDaLoop egui application")]
+#[command(group(
+    ArgGroup::new("tracing_mode")
+        .args(["tracing", "tracing_capture"])
+        .multiple(true)
+))]
+struct NativeCli {
+    /// Enable live Tracy profiling.
+    #[arg(long)]
+    tracing: bool,
+
+    /// Capture Tracy profiling data to ./traces with tracy-capture.
+    #[arg(long)]
+    tracing_capture: bool,
+
+    /// Add detailed per-node engine zones. Requires a tracing mode.
+    #[arg(long, requires = "tracing_mode")]
+    tracing_engine_detail: bool,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct NativeTracing {
+    capture_active: bool,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl NativeTracing {
+    fn start(cli: &NativeCli) -> anyhow::Result<Self> {
+        common::tracing_helpers::set_tracing_enabled(cli.tracing || cli.tracing_capture);
+        common::tracing_helpers::set_engine_detail_enabled(cli.tracing_engine_detail);
+        common::init()?;
+
+        let mut tracing = Self {
+            capture_active: false,
+        };
+        if cli.tracing_capture {
+            let tool = common::tracing_capture::resolve_capture_tool(None)?;
+            common::tracing_capture::configure(common::tracing_capture::CaptureConfig::new(
+                tool,
+                PathBuf::from("traces"),
+            ))?;
+            common::tracing_capture::start_default_capture()?;
+            tracing.capture_active = true;
+        }
+        tracing::info!(
+            target: "Frontend.Egui",
+            live = cli.tracing,
+            capture = cli.tracing_capture,
+            engine_detail = cli.tracing_engine_detail,
+            "frontend.egui.tracing_started"
+        );
+        Ok(tracing)
+    }
+
+    fn shutdown(&mut self) -> anyhow::Result<()> {
+        if self.capture_active {
+            self.capture_active = false;
+            common::tracing_capture::shutdown()?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for NativeTracing {
+    fn drop(&mut self) {
+        if let Err(error) = self.shutdown() {
+            eprintln!("Failed to shut down Tracy capture: {error}");
+        }
+    }
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 struct PendingAudioSettings {
@@ -107,6 +184,7 @@ fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsMana
 
 impl UnifiedApp {
     fn new() -> anyhow::Result<Self> {
+        let _span = tracing::info_span!("frontend.egui.initialize").entered();
         #[cfg(not(target_arch = "wasm32"))]
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
         let mut settings_builder = SettingsRegistryBuilder::default();
@@ -151,6 +229,8 @@ impl UnifiedApp {
 impl UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn handle_settings_action(&mut self, action: SettingsAction) {
+        let kind = action.kind();
+        let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
         let result = match action {
             SettingsAction::Save(draft) => validate_script_draft(&draft)
                 .and_then(|()| self.settings.request_save(draft).map_err(Into::into)),
@@ -212,6 +292,8 @@ impl UnifiedApp {
 
     #[cfg(target_arch = "wasm32")]
     fn handle_settings_action(&mut self, action: SettingsAction) {
+        let kind = action.kind();
+        let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
         let result = match action {
             SettingsAction::Save(draft) => self.settings.request_save(draft),
             SettingsAction::RequestAudioDriverSwitch { .. }
@@ -306,6 +388,7 @@ impl UnifiedApp {
     }
 
     fn show(&mut self, ui: &mut egui::Ui) {
+        let _span = tracing::trace_span!("frontend.egui.update").entered();
         self.settings.poll();
         if let Err(error) = self
             .runtime
@@ -369,6 +452,8 @@ impl UnifiedApp {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn handle_ui_intent(&mut self, intent: AppIntent) {
+        let kind = intent.kind();
+        let _span = tracing::debug_span!("frontend.egui.intent_dispatch", intent = kind).entered();
         let intent = match intent {
             AppIntent::RequestLoadSessionPicker => {
                 let path = rfd::FileDialog::new()
@@ -454,6 +539,8 @@ impl UnifiedApp {
 
     #[cfg(target_arch = "wasm32")]
     fn handle_ui_intent(&mut self, intent: AppIntent) {
+        let kind = intent.kind();
+        let _span = tracing::debug_span!("frontend.egui.intent_dispatch", intent = kind).entered();
         match intent {
             AppIntent::RequestLoadSessionPicker => {
                 let pending = Rc::clone(&self.pending_file_intents);
@@ -1073,16 +1160,25 @@ fn create_app(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn main() -> eframe::Result {
+fn main() {
     #[cfg(feature = "native-fx")]
     match shoop_backend::run_carla_worker_if_requested(std::env::args_os()) {
-        Ok(true) => return Ok(()),
+        Ok(true) => return,
         Ok(false) => {}
         Err(error) => {
             eprintln!("Carla worker failed: {error:#}");
             std::process::exit(2);
         }
     }
+
+    let cli = NativeCli::parse();
+    let mut tracing_runtime = match NativeTracing::start(&cli) {
+        Ok(tracing) => tracing,
+        Err(error) => {
+            eprintln!("Could not initialize tracing: {error:#}");
+            std::process::exit(1);
+        }
+    };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("ShoopDaLoop egui (dummy engine)")
@@ -1090,7 +1186,18 @@ fn main() -> eframe::Result {
             .with_min_inner_size([360.0, 200.0]),
         ..Default::default()
     };
-    eframe::run_native("ShoopDaLoop", options, Box::new(create_app))
+    let result = {
+        let _span = tracing::info_span!("app.egui.run").entered();
+        eframe::run_native("ShoopDaLoop", options, Box::new(create_app))
+    };
+    if let Err(error) = tracing_runtime.shutdown() {
+        eprintln!("Failed to shut down Tracy capture: {error:#}");
+        std::process::exit(1);
+    }
+    if let Err(error) = result {
+        eprintln!("ShoopDaLoop egui failed: {error}");
+        std::process::exit(1);
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -2889,6 +2996,33 @@ mod tests {
     };
 
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn native_cli_parses_tracing_modes() {
+        let live = NativeCli::try_parse_from(["shoopdaloop_egui", "--tracing"]).unwrap();
+        assert!(live.tracing);
+        assert!(!live.tracing_capture);
+        assert!(!live.tracing_engine_detail);
+
+        let capture = NativeCli::try_parse_from([
+            "shoopdaloop_egui",
+            "--tracing-capture",
+            "--tracing-engine-detail",
+        ])
+        .unwrap();
+        assert!(!capture.tracing);
+        assert!(capture.tracing_capture);
+        assert!(capture.tracing_engine_detail);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn native_cli_rejects_engine_detail_without_tracing_mode() {
+        assert!(
+            NativeCli::try_parse_from(["shoopdaloop_egui", "--tracing-engine-detail"]).is_err()
+        );
+    }
 
     #[test]
     fn web_shell_targets_the_application_canvas() {

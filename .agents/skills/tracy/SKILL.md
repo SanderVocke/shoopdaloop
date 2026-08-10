@@ -109,6 +109,20 @@ target/debug/shoopdaloop_dev.sh \
 
 Reproduce the issue and quit normally so ShoopDaLoop finalizes the capture. Select the real backend involved in the issue instead of `dummy` when backend behavior matters. `--tracing-capture` enables tracing automatically. Omit engine detail for lower overhead and a smaller coarse trace.
 
+The native egui executable supports the same tracing modes. It resolves `tracy-capture` through `TRACY_CAPTURE_TOOL` or `PATH` and writes captures below `./traces`:
+
+```sh
+# Live profiling.
+cargo run -p shoopdaloop_egui -- --tracing
+
+# Numbered file capture.
+cargo run -p shoopdaloop_egui -- \
+  --tracing-capture \
+  --tracing-engine-detail
+```
+
+Quit normally to finalize an egui capture. `frontend.egui.intent_dispatch` nests `frontend.app.intent_dispatch` on the GUI thread; correlate its `intent_id` with `frontend.app.intent_handle` on the application actor and then inspect nested `engine.control.*` work.
+
 For QML self-tests, combine the capture options with `--self-test`. ShoopDaLoop writes one numbered capture per loaded `tst_*.qml` file, plus `manifest.tsv` and `tracy-capture.log`.
 
 After capture, require all of the following before interpreting it:
@@ -126,7 +140,7 @@ ShoopDaLoop uses fixed, bounded zone names. Runtime labels and audio or MIDI pay
 ### CPU zones
 
 - `app.*`: process startup, configuration, Qt initialization and event loop, crash handling, lifecycle, and shutdown.
-- `frontend.*`: QML and Lua execution, file/session work, control dispatch, rendering, backend state consumption, object updates, and refresh scheduling.
+- `frontend.*`: QML and egui rendering, application intent dispatch/handling, Lua and file/session work, backend state consumption, snapshot publication, object updates, and refresh scheduling. Egui traces use a shared `intent_id` across `frontend.app.intent_dispatch` and `frontend.app.intent_handle` to connect GUI-thread dispatch to actor-thread handling.
 - `engine.control.*`: command enqueueing, queueing, synchronous waits, results, session object creation, loop transitions, and reclamation.
 - `engine.graph.*`: graph topology and processing-order construction, schedule building, arm/apply generations, flushes, and scheduler work.
 - `engine.composite.*`: composite-loop planning and control work.

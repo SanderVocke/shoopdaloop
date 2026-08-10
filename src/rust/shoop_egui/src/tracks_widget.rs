@@ -23,6 +23,12 @@ impl TracksWidget {
         tracks: &[TrackState],
         processors: &[TrackProcessorDescriptor],
     ) -> TracksWidgetResponse {
+        let _span = tracing::trace_span!(
+            "frontend.egui.tracks",
+            track_count = tracks.len(),
+            processor_count = processors.len()
+        )
+        .entered();
         self.track_widgets
             .resize_with(tracks.len(), TrackWidget::default);
         let mut result = TracksWidgetResponse::default();
@@ -98,6 +104,14 @@ impl TracksWidget {
                     });
                 });
             });
+        if result.add_track_requested || !result.intents.is_empty() {
+            tracing::debug!(
+                target: "Frontend.Egui",
+                intent_count = result.intents.len(),
+                add_track_requested = result.add_track_requested,
+                "frontend.egui.tracks_interaction"
+            );
+        }
         result
     }
 }
