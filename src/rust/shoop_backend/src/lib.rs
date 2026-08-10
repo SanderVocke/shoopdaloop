@@ -2486,10 +2486,9 @@ impl Backend for EngineBackend {
                 .session
                 .audio_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing audio channel"))?;
+            let retained_offset = channel.start_offset();
             channel.load_data(&item.samples);
-            if let Some(offset) = item.start_offset {
-                channel.set_start_offset(offset);
-            }
+            channel.set_start_offset(item.start_offset.unwrap_or(retained_offset));
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
             }
@@ -4725,6 +4724,41 @@ mod tests {
             .start_state
             .iter()
             .any(|message| message == &[0xB0, 7, 99]));
+
+        backend
+            .replace_loop_content(
+                target,
+                &BackendLoopContentUpdate {
+                    audio: vec![
+                        BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![1.0, 2.0, 3.0],
+                            start_offset: None,
+                            preplay: None,
+                        },
+                        BackendAudioChannelUpdate {
+                            channel: 1,
+                            samples: vec![10.0, 20.0, 30.0],
+                            start_offset: None,
+                            preplay: None,
+                        },
+                    ],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let retained_settings = backend.capture_session().unwrap();
+        let retained_content = retained_settings
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == target.raw())
+            .unwrap();
+        assert_eq!(retained_content.audio[0].start_offset, -1);
+        assert_eq!(retained_content.audio[0].preplay, 4);
+        assert_eq!(retained_content.audio[1].start_offset, -2);
+        assert_eq!(retained_content.audio[1].preplay, 5);
+        assert_eq!(retained_content.midi[0].events[0].time, 2);
 
         backend
             .transition_loop(sync, BackendLoopMode::Recording, None)
