@@ -397,6 +397,13 @@ mod tests {
         let restored = TinySynthFxControlState::from_encoded(44_100.0, &encoded).unwrap();
         assert_eq!(restored.editor_state(), source.editor_state());
         assert_eq!(restored.encode(), encoded);
+        for (channels, max_frames) in [(0, 17), (1, 64), (7, 257)] {
+            let processor = restored
+                .prepare_processor(44_100.0, channels, max_frames)
+                .unwrap();
+            assert_eq!(processor.logical_channel_count(), channels);
+            assert_eq!(processor.max_frames(), max_frames);
+        }
     }
 
     #[test]
