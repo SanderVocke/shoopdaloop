@@ -6525,6 +6525,10 @@ mod tests {
         assert_eq!(saved.document.fx_states[0].id, take_id);
         assert_eq!(&saved.document.fx_states[0].internal_state, current_state);
 
+        drop(runtime);
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "tiny.shoop".to_owned(),
