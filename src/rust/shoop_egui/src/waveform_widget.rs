@@ -1,9 +1,93 @@
-use crate::{colors, waveform_bins, WaveformChannelState};
+use crate::{colors, waveform::WaveformPyramid, WaveformChannelState};
+use std::sync::Arc;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
+
+#[cfg(not(target_arch = "wasm32"))]
+struct WaveformPreparationRequest {
+    samples: Arc<[f32]>,
+    context: egui::Context,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+struct WaveformPreprocessor {
+    request_sender: Option<SyncSender<WaveformPreparationRequest>>,
+    result_receiver: Option<Receiver<WaveformPyramid>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl std::fmt::Debug for WaveformPreprocessor {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("WaveformPreprocessor")
+            .field("started", &self.request_sender.is_some())
+            .finish()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl WaveformPreprocessor {
+    fn request(&mut self, samples: Arc<[f32]>, context: egui::Context) -> bool {
+        self.ensure_started();
+        let request = WaveformPreparationRequest { samples, context };
+        match self
+            .request_sender
+            .as_ref()
+            .expect("waveform preprocessor was started")
+            .try_send(request)
+        {
+            Ok(()) => true,
+            Err(TrySendError::Full(_)) => false,
+            Err(TrySendError::Disconnected(_)) => {
+                self.request_sender = None;
+                self.result_receiver = None;
+                false
+            }
+        }
+    }
+
+    fn try_receive(&self) -> Option<WaveformPyramid> {
+        match self.result_receiver.as_ref()?.try_recv() {
+            Ok(pyramid) => Some(pyramid),
+            Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
+        }
+    }
+
+    fn ensure_started(&mut self) {
+        if self.request_sender.is_some() {
+            return;
+        }
+        let (request_sender, request_receiver) =
+            mpsc::sync_channel::<WaveformPreparationRequest>(1);
+        let (result_sender, result_receiver) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("egui-waveform".to_owned())
+            .spawn(move || {
+                while let Ok(request) = request_receiver.recv() {
+                    let pyramid = WaveformPyramid::new(request.samples);
+                    if result_sender.send(pyramid).is_err() {
+                        break;
+                    }
+                    request.context.request_repaint();
+                }
+            })
+            .expect("spawn egui waveform preprocessor");
+        self.request_sender = Some(request_sender);
+        self.result_receiver = Some(result_receiver);
+    }
+}
 
 #[derive(Debug)]
 pub struct WaveformWidget {
     zoom: f32,
     offset: usize,
+    pyramid: Option<WaveformPyramid>,
+    #[cfg(not(target_arch = "wasm32"))]
+    requested_samples: Option<Arc<[f32]>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    preprocessor: WaveformPreprocessor,
 }
 
 impl Default for WaveformWidget {
@@ -11,6 +95,11 @@ impl Default for WaveformWidget {
         Self {
             zoom: 1.0,
             offset: 0,
+            pyramid: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            requested_samples: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            preprocessor: WaveformPreprocessor::default(),
         }
     }
 }
@@ -65,13 +154,10 @@ impl WaveformWidget {
         } else {
             self.offset = self.offset.min(max_offset);
         }
-        let end = self.offset + visible_samples;
-        let samples = &channel.samples[self.offset..end];
-        let bins = waveform_bins(samples, rect.width().round().max(1.0) as usize);
 
+        let offset = self.offset;
         let sample_to_x = |sample: i64| {
-            rect.left()
-                + (sample as f32 - self.offset as f32) / visible_samples as f32 * rect.width()
+            rect.left() + (sample as f32 - offset as f32) / visible_samples as f32 * rect.width()
         };
         let loop_start = channel.start_offset;
         let loop_end = loop_start.saturating_add_unsigned(channel.loop_length);
@@ -87,6 +173,27 @@ impl WaveformWidget {
                 colors::WAVEFORM_LOOP_REGION,
             );
         }
+
+        self.update_pyramid(ui.ctx(), &channel.samples);
+        let Some(pyramid) = self
+            .pyramid
+            .as_ref()
+            .filter(|pyramid| pyramid.matches(&channel.samples))
+        else {
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Preparing waveform…",
+                egui::FontId::proportional(12.0),
+                colors::MUTED_FOREGROUND,
+            );
+            return;
+        };
+        let bins = pyramid.bins(
+            self.offset,
+            visible_samples,
+            rect.width().round().max(1.0) as usize,
+        );
 
         let center = rect.center().y;
         let half_height = rect.height() * 0.5 - 2.0;
@@ -112,5 +219,88 @@ impl WaveformWidget {
                 );
             }
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn update_pyramid(&mut self, context: &egui::Context, samples: &Arc<[f32]>) {
+        while let Some(pyramid) = self.preprocessor.try_receive() {
+            if self
+                .requested_samples
+                .as_ref()
+                .is_some_and(|requested| pyramid.matches(requested))
+            {
+                self.requested_samples = None;
+            }
+            if pyramid.matches(samples) {
+                self.pyramid = Some(pyramid);
+            }
+        }
+        if self
+            .pyramid
+            .as_ref()
+            .is_some_and(|pyramid| pyramid.matches(samples))
+            || self
+                .requested_samples
+                .as_ref()
+                .is_some_and(|requested| Arc::ptr_eq(requested, samples))
+        {
+            return;
+        }
+        if self
+            .preprocessor
+            .request(Arc::clone(samples), context.clone())
+        {
+            self.requested_samples = Some(Arc::clone(samples));
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn update_pyramid(&mut self, _context: &egui::Context, samples: &Arc<[f32]>) {
+        if !self
+            .pyramid
+            .as_ref()
+            .is_some_and(|pyramid| pyramid.matches(samples))
+        {
+            self.pyramid = Some(WaveformPyramid::new(Arc::clone(samples)));
+        }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn asynchronously_prepares_and_caches_samples() {
+        let context = egui::Context::default();
+        let samples: Arc<[f32]> = Arc::from(
+            (0..100_000)
+                .map(|index| (index as f32 / 100.0).sin())
+                .collect::<Vec<_>>(),
+        );
+        let mut widget = WaveformWidget::default();
+
+        widget.update_pyramid(&context, &samples);
+        assert!(widget.pyramid.is_none());
+        assert!(widget
+            .requested_samples
+            .as_ref()
+            .is_some_and(|requested| Arc::ptr_eq(requested, &samples)));
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while widget.pyramid.is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+            widget.update_pyramid(&context, &samples);
+        }
+
+        assert!(widget
+            .pyramid
+            .as_ref()
+            .is_some_and(|pyramid| pyramid.matches(&samples)));
+        assert!(widget.requested_samples.is_none());
+
+        widget.update_pyramid(&context, &samples);
+        assert!(widget.requested_samples.is_none());
     }
 }
