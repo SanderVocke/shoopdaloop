@@ -2177,7 +2177,7 @@ impl Backend for EngineBackend {
             .ok_or_else(|| anyhow!("missing MIDI input port"))?;
         for event in events {
             let accepted = match input {
-                Port::DummyMidi(input) => input.queue_msg(0, &event.data),
+                Port::DummyMidi(input) => input.queue_msg_next_cycle(0, &event.data),
                 Port::ExternalMidi(input) => input.push_incoming(0, &event.data),
                 _ => return Err(anyhow!("track MIDI input has an incompatible port type")),
             };
@@ -2909,6 +2909,7 @@ pub struct FakeBackend {
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
     fail_next_session_replace: Option<String>,
+    failed_midi_input_tracks: BTreeSet<BackendTrackId>,
     processor_catalog: Arc<[TrackProcessorDescriptor]>,
     default_fx_state_string: String,
     fail_fx_state_restore: bool,
@@ -2965,6 +2966,7 @@ impl Default for FakeBackend {
             next_port_id: 1,
             fail_track_creation_after: None,
             fail_next_session_replace: None,
+            failed_midi_input_tracks: BTreeSet::new(),
             processor_catalog: Arc::from([]),
             default_fx_state_string: "{}".to_owned(),
             fail_fx_state_restore: false,
@@ -2985,6 +2987,10 @@ impl FakeBackend {
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
         self.fail_track_creation_after = Some(successful_creations);
+    }
+
+    pub fn fail_midi_input_for(&mut self, track_id: BackendTrackId) {
+        self.failed_midi_input_tracks.insert(track_id);
     }
 
     pub fn set_track_processor_catalog(&mut self, catalog: Vec<TrackProcessorDescriptor>) {
@@ -3637,6 +3643,9 @@ impl Backend for FakeBackend {
         events: &[BackendMidiEvent],
     ) -> Result<()> {
         validate_midi_input_events(events)?;
+        if self.failed_midi_input_tracks.contains(&track_id) {
+            return Err(anyhow!("injected fake MIDI input failure {track_id:?}"));
+        }
         let track = self
             .tracks
             .get(&track_id)

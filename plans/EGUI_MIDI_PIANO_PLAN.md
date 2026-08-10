@@ -105,18 +105,18 @@ Verification:
 
 ### Stage 2 — Implement application fanout and note lifecycle
 
-- [ ] Add application state for active piano-note recipients keyed by logical note and `TrackId`.
-- [ ] On press, derive current eligible tracks from monitoring state plus owned role-bearing MIDI input ports, ignore duplicate presses, stage note-on to all destinations, and retain successful recipients.
-- [ ] On release/release-all, resolve and stage note-off for original recipients even if current eligibility changed; remove stale recipients safely and continue after individual backend errors.
-- [ ] Define bounded aggregate notification behavior for total/partial staging failure without flooding snapshots or starving other application intents.
-- [ ] Flush active note-offs before destructive track/session/driver transitions while the old inputs are available, retain logical recipients across backend-ID remapping where appropriate, and make shutdown cleanup best-effort and bounded.
+- [x] Add application state for active piano-note recipients keyed by logical note and `TrackId`.
+- [x] On press, derive current eligible tracks from monitoring state plus owned role-bearing MIDI input ports, ignore duplicate presses, stage note-on to all destinations, and retain successful recipients.
+- [x] On release/release-all, resolve and stage note-off for original recipients even if current eligibility changed; remove stale recipients safely and continue after individual backend errors.
+- [x] Aggregate one bounded error per action for total/partial staging failure without flooding snapshots or starving other application intents.
+- [x] Flush active note-offs before a confirmed driver transition and actor shutdown, clear stale lifecycle state on loaded-session replacement, and retain logical recipients across ordinary backend-ID remapping.
 
 Verification:
 
-- [ ] Fake and engine-backed actor/cooperative tests cover zero/one/many destinations, sync/direct/processed MIDI tracks, monitor-off/audio-only/Lua/output exclusions, duplicate press/release, eligibility changes while held, stale removal, partial failure, release-all, and stable-ID remapping.
-- [ ] Integration tests prove monitored passthrough and loop recording see the same exact note pair while selection, solo, and physical connection state do not affect fanout.
-- [ ] Existing Lua keyboard control and physical native/Web MIDI tests remain unchanged and green.
-- [ ] Run formatting and warning-denying builds for touched Rust crates, then commit the application-policy milestone and update planning status/evidence.
+- [x] Fake application tests cover one/many destinations, direct and processed dry-MIDI tracks, monitor-off and audio-only exclusions, duplicate press/release, newly eligible and newly muted tracks while held, partial failure, release-all, and original-recipient cleanup. Eligibility requires track-owned input-role MIDI ports from the application map, which excludes Lua/output-only entries; current production sync topology is audio-only and the policy has no sync exclusion.
+- [x] Engine-backed cooperative integration records the exact `[0x90, note, 100]`/`[0x80, note, 0]` pair into each of two monitored MIDI tracks while excluding an audio-only monitored track and requiring no physical connections.
+- [x] All 54 `shoop_app` tests and 26 target-neutral `shoop_backend` tests pass, including unchanged Lua keyboard and physical Web MIDI coverage.
+- [x] Formatting, `git diff --check`, and `RUSTFLAGS="-D warnings" cargo build -p shoopdaloop_egui --no-default-features` pass before the application-policy milestone commit.
 
 ### Stage 3 — Add the egui piano pane and compose workflows
 

@@ -17,9 +17,9 @@ use shoop_app_api::{
     ConnectionPolicy, ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId,
     HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
     LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
-    PendingConnectionState, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
-    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
-    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
+    PendingConnectionState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
+    SampleRateWarning, ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState,
+    TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
     TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
@@ -387,7 +387,10 @@ fn run_actor(
     loop {
         match receiver.recv_timeout(POLL_INTERVAL) {
             Ok(ApplicationMessage::Intent(intent)) => model.handle_intent(&mut *backend, intent),
-            Ok(ApplicationMessage::Shutdown) => break,
+            Ok(ApplicationMessage::Shutdown) => {
+                model.handle_intent(&mut *backend, AppIntent::Piano(PianoAction::ReleaseAll));
+                break;
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
@@ -463,6 +466,7 @@ struct ApplicationModel {
     script_last_snapshot: ControlSnapshot,
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
     script_composition_frame_remainder: u128,
+    active_piano_notes: BTreeMap<u8, BTreeSet<TrackId>>,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
     audio_drivers: AudioDriverRuntimeState,
@@ -606,6 +610,18 @@ enum PendingIo {
     },
 }
 
+fn piano_failures(failures: Vec<String>) -> Result<(), String> {
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "could not inject piano MIDI into {} track(s): {}",
+            failures.len(),
+            failures.join("; ")
+        ))
+    }
+}
+
 impl ApplicationModel {
     fn initialize(
         backend: &mut dyn Backend,
@@ -694,6 +710,7 @@ impl ApplicationModel {
             script_last_snapshot: ControlSnapshot::default(),
             script_composition_playback: BTreeMap::new(),
             script_composition_frame_remainder: 0,
+            active_piano_notes: BTreeMap::new(),
             global: Default::default(),
             status: Default::default(),
             audio_drivers: backend.audio_driver_state().unwrap_or_default(),
@@ -753,7 +770,7 @@ impl ApplicationModel {
                 action,
             } => self.handle_loop_action(backend, track_id, loop_id, action),
             AppIntent::Global(action) => self.handle_global_action(backend, action),
-            AppIntent::Piano(_) => Ok(()),
+            AppIntent::Piano(action) => self.handle_piano_action(backend, action),
             AppIntent::Track { track_id, action } => {
                 self.handle_track_action(backend, track_id, action)
             }
@@ -857,6 +874,96 @@ impl ApplicationModel {
         if let Err(error) = result {
             self.notify_error(error);
         }
+    }
+
+    fn handle_piano_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        action: PianoAction,
+    ) -> Result<(), String> {
+        match action {
+            PianoAction::Press(note) => {
+                let note = note.value();
+                if self.active_piano_notes.contains_key(&note) {
+                    return Ok(());
+                }
+                let destinations = self
+                    .tracks
+                    .iter()
+                    .filter(|track| self.piano_track_is_eligible(track))
+                    .map(|track| (track.id, track.backend_id))
+                    .collect::<Vec<_>>();
+                let mut recipients = BTreeSet::new();
+                let mut failures = Vec::new();
+                let event = BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, note, 100],
+                };
+                for (track_id, backend_id) in destinations {
+                    match backend.inject_midi_input(backend_id, std::slice::from_ref(&event)) {
+                        Ok(()) => {
+                            recipients.insert(track_id);
+                        }
+                        Err(error) => failures.push(format!("{track_id}: {error}")),
+                    }
+                }
+                if !recipients.is_empty() {
+                    self.active_piano_notes.insert(note, recipients);
+                }
+                piano_failures(failures)
+            }
+            PianoAction::Release(note) => {
+                let note = note.value();
+                let recipients = self.active_piano_notes.remove(&note).unwrap_or_default();
+                self.release_piano_note(backend, note, recipients)
+            }
+            PianoAction::ReleaseAll => {
+                let active = std::mem::take(&mut self.active_piano_notes);
+                let mut failures = Vec::new();
+                for (note, recipients) in active {
+                    if let Err(error) = self.release_piano_note(backend, note, recipients) {
+                        failures.push(error);
+                    }
+                }
+                piano_failures(failures)
+            }
+        }
+    }
+
+    fn piano_track_is_eligible(&self, track: &TrackModel) -> bool {
+        track.controls.input_monitoring
+            && track.port_ids.iter().any(|port_id| {
+                self.connection_ports.get(port_id).is_some_and(|port| {
+                    port.track_id == track.id
+                        && port.data_type == PortDataType::Midi
+                        && port.direction == PortDirection::Input
+                        && port.role == PortRole::MidiInput
+                })
+            })
+    }
+
+    fn release_piano_note(
+        &self,
+        backend: &mut dyn Backend,
+        note: u8,
+        recipients: BTreeSet<TrackId>,
+    ) -> Result<(), String> {
+        let event = BackendMidiEvent {
+            time: 0,
+            data: vec![0x80, note, 0],
+        };
+        let mut failures = Vec::new();
+        for track_id in recipients {
+            let Some(track) = self.tracks.iter().find(|track| track.id == track_id) else {
+                continue;
+            };
+            if let Err(error) =
+                backend.inject_midi_input(track.backend_id, std::slice::from_ref(&event))
+            {
+                failures.push(format!("{track_id}: {error}"));
+            }
+        }
+        piano_failures(failures)
     }
 
     fn add_script_source(
@@ -1725,6 +1832,9 @@ impl ApplicationModel {
             return Err(error);
         }
         let source = self.audio_drivers.switch.source.clone();
+        if let Err(error) = self.handle_piano_action(backend, PianoAction::ReleaseAll) {
+            self.notify_error(error);
+        }
         self.audio_drivers.switch.status = AudioDriverSwitchStatus::Switching;
         self.audio_drivers.switch.message = "Capturing the current session".to_owned();
         let capture = match backend.capture_session() {
@@ -4701,6 +4811,7 @@ impl ApplicationModel {
         self.loops = loops;
         self.script_composition_playback.clear();
         self.script_composition_frame_remainder = 0;
+        self.active_piano_notes.clear();
         self.connection_ports = connection_ports;
         self.pending_connections.clear();
         self.connection_errors.clear();
@@ -7900,6 +8011,239 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(snapshot.tracks[1..]
             .iter()
             .all(|track| track.loops.len() == 9));
+    }
+
+    #[test]
+    fn piano_fanout_tracks_original_monitored_midi_recipients() {
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+            ),
+            label: "External".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                max_dry_audio_channels: None,
+                max_wet_audio_channels: None,
+                dry_midi: true,
+            },
+            features: shoop_app_api::TrackProcessorFeatures::default(),
+        }]);
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        for (name, audio_channels, midi) in [
+            ("first", 0, true),
+            ("second", 0, true),
+            ("later", 0, true),
+            ("audio", 1, false),
+        ] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi,
+                }),
+            );
+        }
+        model.handle_intent(
+            &mut backend,
+            AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "processed".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 0,
+                    wet_audio_channels: 0,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                    ),
+                },
+            }),
+        );
+        let first = model.tracks[1].id;
+        let second = model.tracks[2].id;
+        let later = model.tracks[3].id;
+        let audio = model.tracks[4].id;
+        let processed = model.tracks[5].id;
+        for track_id in [first, second, audio, processed] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::Track {
+                    track_id,
+                    action: TrackAction::InputMonitoringChanged(true),
+                },
+            );
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let operation_start = backend.operations().len();
+        let note = shoop_app_api::MidiNote::new(60).unwrap();
+        assert!(model
+            .handle_piano_action(&mut backend, PianoAction::Press(note))
+            .is_ok());
+        assert!(model
+            .handle_piano_action(&mut backend, PianoAction::Press(note))
+            .is_ok());
+        let pressed = backend.operations()[operation_start..]
+            .iter()
+            .filter_map(|operation| match operation {
+                shoop_backend::FakeOperation::InjectMidiInput(track, events) => {
+                    Some((*track, events[0].data.clone()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            pressed,
+            vec![
+                (model.tracks[1].backend_id, vec![0x90, 60, 100]),
+                (model.tracks[2].backend_id, vec![0x90, 60, 100]),
+                (model.tracks[5].backend_id, vec![0x90, 60, 100]),
+            ]
+        );
+
+        for (track_id, monitoring) in [(first, false), (later, true)] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::Track {
+                    track_id,
+                    action: TrackAction::InputMonitoringChanged(monitoring),
+                },
+            );
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let release_start = backend.operations().len();
+        assert!(model
+            .handle_piano_action(&mut backend, PianoAction::Release(note))
+            .is_ok());
+        assert!(model
+            .handle_piano_action(&mut backend, PianoAction::Release(note))
+            .is_ok());
+        let released = backend.operations()[release_start..]
+            .iter()
+            .filter_map(|operation| match operation {
+                shoop_backend::FakeOperation::InjectMidiInput(track, events) => {
+                    Some((*track, events[0].data.clone()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            released,
+            vec![
+                (model.tracks[1].backend_id, vec![0x80, 60, 0]),
+                (model.tracks[2].backend_id, vec![0x80, 60, 0]),
+                (model.tracks[5].backend_id, vec![0x80, 60, 0]),
+            ]
+        );
+    }
+
+    #[test]
+    fn piano_partial_failure_keeps_successful_recipients_releasable() {
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        for name in ["fails", "works"] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: 0,
+                    midi: true,
+                }),
+            );
+            let track_id = model.tracks.last().unwrap().id;
+            model.handle_intent(
+                &mut backend,
+                AppIntent::Track {
+                    track_id,
+                    action: TrackAction::InputMonitoringChanged(true),
+                },
+            );
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let failed_backend_id = model.tracks[1].backend_id;
+        let successful_backend_id = model.tracks[2].backend_id;
+        backend.fail_midi_input_for(failed_backend_id);
+        let note = shoop_app_api::MidiNote::new(64).unwrap();
+        let error = model
+            .handle_piano_action(&mut backend, PianoAction::Press(note))
+            .unwrap_err();
+        assert!(error.contains("1 track(s)"));
+        let release_start = backend.operations().len();
+        assert!(model
+            .handle_piano_action(&mut backend, PianoAction::ReleaseAll)
+            .is_ok());
+        assert!(backend.operations()[release_start..].contains(
+            &shoop_backend::FakeOperation::InjectMidiInput(
+                successful_backend_id,
+                vec![BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x80, 64, 0],
+                }],
+            )
+        ));
+        assert!(!model.active_piano_notes.contains_key(&64));
+    }
+
+    #[test]
+    fn engine_backed_piano_fanout_records_into_each_monitored_midi_track() {
+        let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        for (name, midi) in [("first", true), ("second", true), ("audio", false)] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: u32::from(!midi),
+                    midi,
+                }))
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let tracks = runtime.snapshot().tracks[1..].to_vec();
+        for track in &tracks {
+            runtime
+                .dispatch(AppIntent::Track {
+                    track_id: track.id,
+                    action: TrackAction::InputMonitoringChanged(true),
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let midi_loops = runtime.model.tracks[1..3]
+            .iter()
+            .map(|track| runtime.model.loops[&track.loops[0]].backend_id)
+            .collect::<Vec<_>>();
+        for loop_id in &midi_loops {
+            runtime
+                .backend
+                .transition_loop(*loop_id, BackendLoopMode::Recording, None)
+                .unwrap();
+        }
+        let note = shoop_app_api::MidiNote::new(67).unwrap();
+        runtime
+            .dispatch(AppIntent::Piano(PianoAction::Press(note)))
+            .unwrap();
+        runtime.tick(Duration::from_millis(4));
+        runtime
+            .dispatch(AppIntent::Piano(PianoAction::Release(note)))
+            .unwrap();
+        runtime.tick(Duration::from_millis(4));
+        for loop_id in &midi_loops {
+            runtime
+                .backend
+                .transition_loop(*loop_id, BackendLoopMode::Stopped, None)
+                .unwrap();
+        }
+        let captured = runtime.backend.capture_session().unwrap();
+        for track in &captured.tracks[1..3] {
+            let events = &track.loops[0].midi[0].events;
+            assert!(events.iter().any(|event| event.data == [0x90, 67, 100]));
+            assert!(events.iter().any(|event| event.data == [0x80, 67, 0]));
+        }
+        assert!(captured.tracks[3].loops[0].midi.is_empty());
     }
 
     #[test]
