@@ -1818,10 +1818,7 @@ impl BrowserSelfTest {
                             action: shoop_egui::LoopAction::RecordClicked,
                         })
                     })
-                    .map(|()| {
-                        set_browser_web_midi_test_status("awaiting-input");
-                        Self::WaitForWebMidiControl { track_id, loop_id }
-                    })
+                    .map(|()| Self::WaitForWebMidiControl { track_id, loop_id })
             }
             Self::WaitForWebMidiControl { track_id, loop_id } => {
                 let Some(track) = snapshot.tracks.iter().find(|track| track.id == track_id) else {
@@ -1830,9 +1827,11 @@ impl BrowserSelfTest {
                 let Some(loop_state) = track.loops.iter().find(|loop_| loop_.id == loop_id) else {
                     return;
                 };
-                if loop_state.mode != shoop_egui::LoopMode::Recording
-                    || !snapshot.global_controls.solo
-                {
+                if loop_state.mode != shoop_egui::LoopMode::Recording {
+                    return;
+                }
+                set_browser_web_midi_test_status("awaiting-input");
+                if !snapshot.global_controls.solo {
                     return;
                 }
                 runtime
