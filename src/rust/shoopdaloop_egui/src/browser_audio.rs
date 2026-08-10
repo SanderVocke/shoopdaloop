@@ -1975,7 +1975,10 @@ impl Backend for WebAudioBackend {
         for envelope in events {
             match envelope.event {
                 Event::Ack | Event::Stopped => {}
-                Event::Error { message } => return Err(anyhow!(message)),
+                Event::Error { message } => {
+                    self.loop_content_replace = None;
+                    return Err(anyhow!(message));
+                }
                 Event::ConnectionMutationFailed {
                     application_port_id,
                     host_port_id,

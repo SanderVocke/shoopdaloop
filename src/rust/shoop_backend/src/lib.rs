@@ -4657,6 +4657,8 @@ mod tests {
             .unwrap();
         let sync = created.loops[0];
         let target = created.loops[1];
+        backend.set_loop_gain(target, 0.75).unwrap();
+        backend.set_loop_balance(target, -0.25).unwrap();
         backend.set_loop_sync_source(target, Some(sync)).unwrap();
         backend
             .transition_loop(target, BackendLoopMode::Playing, None)
@@ -4699,6 +4701,8 @@ mod tests {
         let snapshot = backend.poll().unwrap();
         assert_eq!(snapshot.loops[&target].mode, BackendLoopMode::Stopped);
         assert_eq!(snapshot.loops[&target].length, 3);
+        assert_eq!(snapshot.loops[&target].gain, 0.75);
+        assert_eq!(snapshot.loops[&target].balance, -0.25);
         let captured = backend.capture_session().unwrap();
         let target_content = captured
             .tracks

@@ -6223,6 +6223,9 @@ mod tests {
         loop_
             .transition(LoopMode::Playing, -1, -1)
             .expect("initial mode");
+        loop_
+            .transition(LoopMode::Stopped, 2, -1)
+            .expect("planned stop");
         sess.shared.flush_graph_changes();
         let scheduler = sess.shared.scheduler.get().expect("scheduler");
         let graph_arms = scheduler.n_arms();
@@ -6276,6 +6279,10 @@ mod tests {
             engine.session().loop_(0).unwrap().mode(),
             engine::LoopMode::Playing
         );
+        assert_eq!(
+            engine.session().loop_(0).unwrap().n_planned_transitions(),
+            1
+        );
 
         engine.pump();
 
@@ -6309,6 +6316,10 @@ mod tests {
         assert_eq!(
             engine.session().loop_(0).unwrap().mode(),
             engine::LoopMode::Stopped
+        );
+        assert_eq!(
+            engine.session().loop_(0).unwrap().n_planned_transitions(),
+            0
         );
         assert_eq!(sess.session_id(), session_id);
         assert_eq!(scheduler.n_arms(), graph_arms);

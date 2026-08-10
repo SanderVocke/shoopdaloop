@@ -2596,7 +2596,7 @@ mod tests {
             runtime.wait();
             let state = runtime.session.get_state();
             assert_eq!(runtime.session.session_id(), session_id);
-            assert!(u64::from(state.cycles) >= callbacks_before);
+            assert!(u64::from(state.cycles) > callbacks_before);
             assert_eq!(state.graph_arms, graph_arms);
             assert_eq!(state.graph_applies, graph_applies);
             assert_eq!(
@@ -2631,7 +2631,7 @@ mod tests {
         runtime.wait();
         let state = runtime.session.get_state();
         assert_eq!(runtime.session.session_id(), session_id);
-        assert!(state.cycles >= cycles_after_update);
+        assert!(state.cycles > cycles_after_update);
         assert_eq!(state.graph_arms, graph_arms);
         assert_eq!(state.graph_applies, graph_applies);
         assert_eq!(
