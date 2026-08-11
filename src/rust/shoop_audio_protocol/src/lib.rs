@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 5;
+pub const PROTOCOL_VERSION: u16 = 6;
 pub const COMMAND_CAPACITY: usize = 256;
-pub const COMMAND_MAX_BYTES: usize = 16 * 1024;
+pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
 pub const SESSION_TRANSFER_MAX_BYTES: usize = 256 * 1024 * 1024;
 pub const WAVEFORM_CHUNK_SAMPLES: usize = 512;
@@ -54,8 +54,7 @@ pub enum Command {
         expected_track_id: u64,
         expected_loop_ids: Vec<u64>,
         port_name_base: String,
-        audio_channels: u32,
-        midi: bool,
+        topology: WireTrackTopology,
     },
     AddLoop {
         track_id: u64,
@@ -64,6 +63,10 @@ pub enum Command {
     SetTrackControl {
         track_id: u64,
         control: WireTrackControl,
+    },
+    SetTrackFxControl {
+        track_id: u64,
+        control: WireTrackFxControl,
     },
     SetLoopGain {
         loop_id: u64,
@@ -87,6 +90,23 @@ pub enum Command {
     },
     ClearLoop {
         loop_id: u64,
+    },
+    SetLoopLength {
+        loop_id: u64,
+        length: u32,
+    },
+    BeginLoopContentReplace {
+        generation: u64,
+        loop_id: u64,
+        total_bytes: usize,
+    },
+    WriteLoopContentReplace {
+        generation: u64,
+        offset: usize,
+        bytes: Vec<u8>,
+    },
+    CommitLoopContentReplace {
+        generation: u64,
     },
     SetPortConnected {
         application_port_id: u64,
@@ -145,6 +165,21 @@ impl Command {
                         == std::mem::discriminant(replacement_control)
             }
             (
+                Self::SetTrackFxControl {
+                    track_id: existing_track,
+                    control: existing_control,
+                },
+                Self::SetTrackFxControl {
+                    track_id: replacement_track,
+                    control: replacement_control,
+                },
+            ) => {
+                existing_track == replacement_track
+                    && existing_control.supersedable_parameter()
+                        == replacement_control.supersedable_parameter()
+                    && replacement_control.supersedable_parameter().is_some()
+            }
+            (
                 Self::SetLoopGain {
                     loop_id: existing_loop,
                     ..
@@ -190,6 +225,16 @@ impl Command {
                 },
                 Self::ClearLoop {
                     loop_id: replacement_loop,
+                },
+            )
+            | (
+                Self::SetLoopLength {
+                    loop_id: existing_loop,
+                    ..
+                },
+                Self::SetLoopLength {
+                    loop_id: replacement_loop,
+                    ..
                 },
             ) => existing_loop == replacement_loop,
             (Self::ConfigureDeviceChannels { .. }, Self::ConfigureDeviceChannels { .. })
@@ -220,6 +265,49 @@ pub enum WireTrackControl {
     InputGainDb(f32),
     InputBalance(f32),
     InputMonitoring(bool),
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum WireTrackTopology {
+    Direct { audio_channels: u32, midi: bool },
+    TinySynthFx { audio_channels: u32 },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "control", content = "value", rename_all = "snake_case")]
+pub enum WireTrackFxControl {
+    SetActive(bool),
+    SetVisible(bool),
+    ToggleOrRecover,
+    RestoreState(String),
+    ClearLogs,
+    TinySelectPreset(String),
+    TinySetMasterGainDb(f32),
+    TinySetReverbEnabled(bool),
+    TinySetReverbAmount(f32),
+    TinySetDistortionEnabled(bool),
+    TinySetDistortionDrive(f32),
+    TinyPanic,
+}
+
+impl WireTrackFxControl {
+    fn supersedable_parameter(&self) -> Option<u8> {
+        Some(match self {
+            Self::SetActive(_) => 0,
+            Self::TinySetMasterGainDb(_) => 1,
+            Self::TinySetReverbAmount(_) => 2,
+            Self::TinySetDistortionDrive(_) => 3,
+            Self::SetVisible(_)
+            | Self::ToggleOrRecover
+            | Self::RestoreState(_)
+            | Self::ClearLogs
+            | Self::TinySelectPreset(_)
+            | Self::TinySetReverbEnabled(_)
+            | Self::TinySetDistortionEnabled(_)
+            | Self::TinyPanic => return None,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
@@ -283,6 +371,9 @@ pub enum Event {
         bytes: Vec<u8>,
     },
     SessionReplaceComplete {
+        generation: u64,
+    },
+    LoopContentReplaceComplete {
         generation: u64,
     },
     SessionTransferAborted {
@@ -376,9 +467,11 @@ pub struct WireMidiOutputEvent {
     pub data: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireTrackState {
     pub id: u64,
+    pub topology: WireTrackTopology,
+    pub fx: Option<WireTrackFxState>,
     pub audio_channels: u32,
     pub midi: bool,
     pub output_gain_db: f32,
@@ -389,6 +482,23 @@ pub struct WireTrackState {
     pub input_monitoring: bool,
     pub input_peaks: Vec<f32>,
     pub output_peaks: Vec<f32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireTrackFxState {
+    pub active: bool,
+    pub visible: bool,
+    pub tiny: WireTinySynthFxState,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireTinySynthFxState {
+    pub selected_preset_id: Option<String>,
+    pub master_gain_db: f32,
+    pub reverb_enabled: bool,
+    pub reverb_amount: f32,
+    pub distortion_enabled: bool,
+    pub distortion_drive: f32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -469,6 +579,37 @@ mod tests {
             input_channels: 0,
             output_channels: 1,
         }));
+        let gain = Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::TinySetMasterGainDb(-12.0),
+        };
+        let replacement_gain = Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::TinySetMasterGainDb(-18.0),
+        };
+        let panic = Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::TinyPanic,
+        };
+        assert!(replacement_gain.supersedes_in_journal(&gain));
+        assert!(!panic.supersedes_in_journal(&gain));
+        assert!(!Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::SetVisible(false),
+        }
+        .supersedes_in_journal(&Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::SetVisible(true),
+        }));
+        assert!(!Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::TinySetReverbEnabled(false),
+        }
+        .supersedes_in_journal(&Command::SetTrackFxControl {
+            track_id: 4,
+            control: WireTrackFxControl::TinySetReverbEnabled(true),
+        }));
+
         assert!(Command::ConfigureMidiEndpoints {
             endpoints: vec![WireHostPort {
                 id: "webmidi:source:new".to_owned(),
@@ -490,8 +631,10 @@ mod tests {
                 expected_track_id: 7,
                 expected_loop_ids: vec![8, 9],
                 port_name_base: "track".to_owned(),
-                audio_channels: 2,
-                midi: false,
+                topology: WireTrackTopology::Direct {
+                    audio_channels: 2,
+                    midi: false,
+                },
             },
         );
         let encoded = serde_json::to_string(&command).unwrap();
@@ -541,5 +684,45 @@ mod tests {
         let encoded = serde_json::to_string(&piano).unwrap();
         let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, piano);
+
+        let tiny_topology = CommandEnvelope::new(
+            46,
+            Command::CreateTrack {
+                expected_track_id: 10,
+                expected_loop_ids: vec![11],
+                port_name_base: "tiny".to_owned(),
+                topology: WireTrackTopology::TinySynthFx { audio_channels: 7 },
+            },
+        );
+        let encoded = serde_json::to_string(&tiny_topology).unwrap();
+        let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, tiny_topology);
+
+        for (index, control) in [
+            WireTrackFxControl::SetActive(false),
+            WireTrackFxControl::SetVisible(true),
+            WireTrackFxControl::RestoreState("state".to_owned()),
+            WireTrackFxControl::TinySelectPreset("pad".to_owned()),
+            WireTrackFxControl::TinySetMasterGainDb(-12.0),
+            WireTrackFxControl::TinySetReverbEnabled(true),
+            WireTrackFxControl::TinySetReverbAmount(0.4),
+            WireTrackFxControl::TinySetDistortionEnabled(true),
+            WireTrackFxControl::TinySetDistortionDrive(8.0),
+            WireTrackFxControl::TinyPanic,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let command = CommandEnvelope::new(
+                47 + index as u64,
+                Command::SetTrackFxControl {
+                    track_id: 10,
+                    control,
+                },
+            );
+            let encoded = serde_json::to_string(&command).unwrap();
+            let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(decoded, command);
+        }
     }
 }

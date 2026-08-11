@@ -64,6 +64,7 @@ impl TrackProcessorTypeId {
     pub const CARLA_RACK: &'static str = "carla_rack";
     pub const CARLA_PATCHBAY: &'static str = "carla_patchbay";
     pub const CARLA_PATCHBAY_16X: &'static str = "carla_patchbay_16x";
+    pub const TINY_SYNTH_FX: &'static str = "tiny_synth_fx";
 
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -84,15 +85,25 @@ impl fmt::Display for TrackProcessorTypeId {
 pub struct TrackProcessorFeatures {
     pub state: bool,
     pub external_ui: bool,
+    pub embedded_ui: bool,
     pub recovery: bool,
     pub logs: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TrackProcessorMidiPolicy {
+    #[default]
+    Unsupported,
+    Optional,
+    Required,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct TrackProcessorConstraints {
     pub max_dry_audio_channels: Option<u32>,
     pub max_wet_audio_channels: Option<u32>,
-    pub dry_midi: bool,
+    pub matching_audio_channels: bool,
+    pub midi: TrackProcessorMidiPolicy,
 }
 
 impl TrackProcessorConstraints {
@@ -102,8 +113,26 @@ impl TrackProcessorConstraints {
             && self
                 .max_wet_audio_channels
                 .is_none_or(|limit| wet_audio_channels <= limit)
-            && (!dry_midi || self.dry_midi)
+            && (!self.matching_audio_channels || dry_audio_channels == wet_audio_channels)
+            && match self.midi {
+                TrackProcessorMidiPolicy::Unsupported => !dry_midi,
+                TrackProcessorMidiPolicy::Optional => true,
+                TrackProcessorMidiPolicy::Required => dry_midi,
+            }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrackProcessorPresetDescriptor {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TrackProcessorEditorDescriptor {
+    TinySynthFx {
+        presets: Arc<[TrackProcessorPresetDescriptor]>,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -114,6 +143,7 @@ pub struct TrackProcessorDescriptor {
     pub unavailable_reason: Option<String>,
     pub constraints: TrackProcessorConstraints,
     pub features: TrackProcessorFeatures,
+    pub editor: Option<TrackProcessorEditorDescriptor>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -136,7 +166,22 @@ pub struct FxGenerationLogState {
     pub dropped_stderr_bytes: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct TinySynthFxState {
+    pub selected_preset_id: Option<String>,
+    pub master_gain_db: f32,
+    pub reverb_enabled: bool,
+    pub reverb_amount: f32,
+    pub distortion_enabled: bool,
+    pub distortion_drive: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TrackProcessorEditorState {
+    TinySynthFx(TinySynthFxState),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TrackFxState {
     pub processor_type: TrackProcessorTypeId,
     pub active: bool,
@@ -145,10 +190,13 @@ pub struct TrackFxState {
     pub generation: u64,
     pub crash_summary: Option<String>,
     pub logs: Arc<[FxGenerationLogState]>,
+    pub editor: Option<TrackProcessorEditorState>,
 }
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
+pub const MIN_TINY_SYNTH_FX_GAIN_DB: f32 = -60.0;
+pub const MAX_TINY_SYNTH_FX_GAIN_DB: f32 = 0.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DefaultRecordingAction {
@@ -1131,6 +1179,17 @@ pub enum LoopAction {
 pub type LoopWidgetAction = LoopAction;
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum TinySynthFxControl {
+    SelectPreset(String),
+    SetMasterGainDb(f32),
+    SetReverbEnabled(bool),
+    SetReverbAmount(f32),
+    SetDistortionEnabled(bool),
+    SetDistortionDrive(f32),
+    Panic,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum TrackAction {
     NameChanged(String),
     OutputGainChanged(f32),
@@ -1144,6 +1203,7 @@ pub enum TrackAction {
     FxToggleOrRecover,
     FxRestoreState(String),
     FxClearLogs,
+    TinySynthFx(TinySynthFxControl),
 }
 
 pub type TrackWidgetAction = TrackAction;
@@ -1459,14 +1519,17 @@ mod tests {
             constraints: TrackProcessorConstraints {
                 max_dry_audio_channels: Some(4),
                 max_wet_audio_channels: Some(2),
-                dry_midi: false,
+                matching_audio_channels: false,
+                midi: TrackProcessorMidiPolicy::Unsupported,
             },
             features: TrackProcessorFeatures {
                 state: true,
                 external_ui: true,
+                embedded_ui: false,
                 recovery: false,
                 logs: false,
             },
+            editor: None,
         }
     }
 
@@ -1512,6 +1575,21 @@ mod tests {
             unsupported.validate(&[processor]),
             Err(TrackSpecError::UnsupportedShape)
         );
+    }
+
+    #[test]
+    fn tiny_synth_fx_constraints_require_matched_audio_and_midi() {
+        let constraints = TrackProcessorConstraints {
+            max_dry_audio_channels: None,
+            max_wet_audio_channels: None,
+            matching_audio_channels: true,
+            midi: TrackProcessorMidiPolicy::Required,
+        };
+        for channels in [0, 1, 2, 7] {
+            assert!(constraints.accepts(channels, channels, true));
+        }
+        assert!(!constraints.accepts(2, 1, true));
+        assert!(!constraints.accepts(1, 1, false));
     }
 
     #[test]

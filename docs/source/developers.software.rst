@@ -28,6 +28,8 @@ Architecture
 
 The front-end prepares configuration and presents observations, while timing-authoritative state machines run in the engine. In particular, composite playlists are compiled off the audio thread into immutable plans and accepted through bounded commands; Qt signals and snapshot polling do not advance them.
 
+Loop content and logical length changes are non-topological. The control side validates and prepares replacement storage, one bounded command commits all affected channels at a callback boundary, and displaced storage is reclaimed off the realtime thread. These operations preserve the backend session and audio driver and do not rebuild the graph; whole-session replacement remains reserved for loading sessions and switching drivers.
+
 The **shoop_engine** crate handles:
 
 * All real-time audio + MIDI processing

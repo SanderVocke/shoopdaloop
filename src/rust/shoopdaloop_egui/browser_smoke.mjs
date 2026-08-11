@@ -180,6 +180,9 @@ try {
     while (Date.now() < deadline) {
       state = await evaluate(statusExpression);
       if (predicate(state)) return state;
+      if (state?.driver === 'Failed') {
+        throw new Error(`${description}: ${JSON.stringify({ state, failures })}`);
+      }
       await delay(100);
     }
     throw new Error(`${description}: ${JSON.stringify(state)}`);
@@ -366,6 +369,7 @@ try {
     webMidiStatus: document.getElementById('enable_midi')?.title,
     webMidiInputConnection: window.__shoopWebMidi?.input.connection,
     webMidiOutputConnection: window.__shoopWebMidi?.output.connection,
+    webMidiInputHandler: typeof window.__shoopWebMidi?.input.onmidimessage === 'function',
     applicationPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-application-ports')),
     hostPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-host-ports')),
     confirmedLinks: Number(document.getElementById('runtime_status')?.getAttribute('data-confirmed-links')),
@@ -483,7 +487,7 @@ try {
         && candidate.selfTest === 'passed',
       'offline dummy session round trip did not finish',
     );
-    if (state.driver !== 'Dummy' || !entryUrl.includes('offline=1') || state.dryWetForm !== 'empty-disabled') {
+    if (state.driver !== 'Dummy' || !entryUrl.includes('offline=1') || state.dryWetForm !== 'tiny-synth-fx') {
       throw new Error(`offline artifact or dry/wet capability evidence was incomplete: ${JSON.stringify(state)}`);
     }
     console.log(`explicit self-contained offline dummy passed at ${browserSize}`);
@@ -586,6 +590,8 @@ try {
         && candidate.webMidiEndpoints === 2
         && candidate.midiHostPorts === 2
         && candidate.webMidiSelfTest === 'awaiting-input'
+        && candidate.webMidiInputConnection === 'open'
+        && candidate.webMidiInputHandler
         && candidate.driver === 'Running',
       'Web MIDI track and control routes were not prepared',
       120_000,
@@ -720,6 +726,7 @@ try {
       'forced worklet failure was not visible during Web MIDI use',
     );
     await clickEnable('enable_output_audio');
+    await delay(250);
     recovered = await waitFor(
       candidate => candidate.driver === 'Running'
         && candidate.generation > generationBeforeRestart
@@ -774,8 +781,8 @@ try {
     if (state.selfTestNonzeroIo !== 'true') {
       throw new Error(`non-zero I/O evidence is missing: ${JSON.stringify(state)}`);
     }
-    if (state.dryWetForm !== 'empty-disabled') {
-      throw new Error(`empty browser dry/wet processor evidence is missing: ${JSON.stringify(state)}`);
+    if (state.dryWetForm !== 'tiny-synth-fx') {
+      throw new Error(`browser Tiny Synth/FX capability evidence is missing: ${JSON.stringify(state)}`);
     }
     if (!(state.sampleRate > 0 && state.quantum === 128 && state.captureChannels > 0)) {
       throw new Error(`context rate/quantum diagnostics are invalid: ${JSON.stringify(state)}`);

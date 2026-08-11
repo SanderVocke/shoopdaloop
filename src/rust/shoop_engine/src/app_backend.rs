@@ -2674,8 +2674,42 @@ impl BackendSession {
         fields(session_id = self.session_id(), chain_type = chain_type as u32)
     )]
     pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
+        self.create_fx_chain_with_channels(chain_type, title, None)
+    }
+
+    pub fn create_tiny_synth_fx_chain(&self, title: &str, channel_count: usize) -> Result<FXChain> {
+        self.create_fx_chain_with_channels(FXChainType::TinySynthFx, title, Some(channel_count))
+    }
+
+    fn create_fx_chain_with_channels(
+        &self,
+        chain_type: FXChainType,
+        title: &str,
+        tiny_channels: Option<usize>,
+    ) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
+            FXChainType::TinySynthFx => {
+                let channels = tiny_channels
+                    .ok_or_else(|| anyhow!("Tiny Synth/FX requires an explicit channel count"))?;
+                let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+                let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
+                let control =
+                    engine::tiny_synth_fx::TinySynthFxControlState::new(sample_rate as f32)?;
+                let processor = control.prepare_processor(
+                    sample_rate as f32,
+                    channels,
+                    buffer_size as usize,
+                )?;
+                let mut pending = Some((title.to_owned(), processor));
+                self.shared
+                    .send_topology(move |session: &mut engine::Session| {
+                        if let Some((title, processor)) = pending.take() {
+                            let _ = session.set_tiny_synth_fx_processor(title, processor);
+                        }
+                    })?;
+                FXChainBackendKind::Tiny(Mutex::new(control))
+            }
             FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
                 #[cfg(feature = "lv2")]
                 {
@@ -2761,6 +2795,7 @@ impl BackendSession {
             chain_type,
             backend,
             state: Arc::new(Mutex::new(FXChainState::default())),
+            tiny_channels: tiny_channels.unwrap_or(0),
             audio_inputs: Vec::new(),
             audio_outputs: Vec::new(),
             midi_inputs: Vec::new(),
@@ -4760,6 +4795,265 @@ impl MidiChannel {
     }
 }
 
+pub struct LoopAudioContentUpdate<'a> {
+    pub channel: &'a AudioChannel,
+    pub samples: &'a [f32],
+    pub start_offset: Option<i32>,
+    pub preplay: Option<u32>,
+}
+
+pub struct LoopMidiContentUpdate<'a> {
+    pub channel: &'a MidiChannel,
+    pub messages: &'a [MidiEvent],
+    pub length: u32,
+    pub start_offset: Option<i32>,
+    pub preplay: Option<u32>,
+}
+
+#[tracing::instrument(
+    name = "engine.control.replace_loop_content",
+    skip_all,
+    fields(
+        session_id = loop_.session_id(),
+        audio_channels = audio.len(),
+        midi_channels = midi.len()
+    )
+)]
+pub fn replace_loop_content(
+    loop_: &Loop,
+    audio: &[LoopAudioContentUpdate<'_>],
+    midi: &[LoopMidiContentUpdate<'_>],
+    length: Option<u32>,
+) -> Result<CommandSequence> {
+    if audio.is_empty() && midi.is_empty() {
+        return Err(anyhow!("loop content update is empty"));
+    }
+    if matches!(
+        loop_.get_state()?.mode,
+        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+    ) {
+        return Err(anyhow!("loop content is changing"));
+    }
+    if audio.iter().any(|item| {
+        item.channel.session_id() != loop_.session_id()
+            || !Arc::ptr_eq(&item.channel.parent, &loop_.control)
+    }) || midi.iter().any(|item| {
+        item.channel.session_id() != loop_.session_id()
+            || !Arc::ptr_eq(&item.channel.parent, &loop_.control)
+    }) {
+        return Err(anyhow!("cannot update channels from another loop"));
+    }
+    let audio_ids = audio
+        .iter()
+        .map(|item| {
+            item.channel
+                .control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .ok_or_else(|| anyhow!("audio channel is not ready"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let midi_ids = midi
+        .iter()
+        .map(|item| {
+            item.channel
+                .control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .ok_or_else(|| anyhow!("MIDI channel is not ready"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if audio_ids.iter().collect::<BTreeSet<_>>().len() != audio_ids.len()
+        || midi_ids.iter().collect::<BTreeSet<_>>().len() != midi_ids.len()
+    {
+        return Err(anyhow!("loop content update contains a duplicate channel"));
+    }
+
+    let mut prepared_audio = Vec::with_capacity(audio.len());
+    let mut prepared_midi = Vec::with_capacity(midi.len());
+    let mut audio_cancellations: Vec<engine::content_snapshot::AudioSnapshotControl> =
+        Vec::with_capacity(audio.len());
+    let mut midi_cancellations: Vec<engine::content_snapshot::MidiSnapshotControl> =
+        Vec::with_capacity(midi.len());
+    for (item, channel_id) in audio.iter().zip(audio_ids) {
+        let owned = item.samples.to_vec();
+        let Some(snapshot) = item
+            .channel
+            .snapshot_control
+            .prepare(&owned, engine::content_snapshot::ContentMutation::Loading)
+        else {
+            for control in audio_cancellations {
+                control.cancel();
+            }
+            return Err(anyhow!("audio snapshot preparation is busy"));
+        };
+        audio_cancellations.push(item.channel.snapshot_control.clone());
+        let mut prepared = engine::PreparedAudioChannelData::new(64, owned.len());
+        prepared.begin_load(owned.len());
+        prepared.write(0, &owned);
+        prepared_audio.push((
+            channel_id,
+            prepared,
+            snapshot,
+            item.start_offset,
+            item.preplay,
+        ));
+    }
+    for (item, channel_id) in midi.iter().zip(midi_ids) {
+        let state = item
+            .messages
+            .iter()
+            .filter(|message| message.time < 0)
+            .map(|message| message.data.clone())
+            .collect::<Vec<_>>();
+        let elements = match item
+            .messages
+            .iter()
+            .filter(|message| message.time >= 0)
+            .map(|message| {
+                engine::midi_storage::MidiStorageElem::new(message.time as u32, &message.data)
+                    .ok_or_else(|| anyhow!("invalid MIDI event"))
+            })
+            .collect::<Result<Vec<_>>>()
+        {
+            Ok(elements) => elements,
+            Err(error) => {
+                for control in audio_cancellations {
+                    control.cancel();
+                }
+                for control in midi_cancellations {
+                    control.cancel();
+                }
+                return Err(error);
+            }
+        };
+        let Some(snapshot) = item.channel.snapshot_control.prepare(
+            item.messages,
+            item.length,
+            engine::content_snapshot::ContentMutation::Loading,
+        ) else {
+            for control in audio_cancellations {
+                control.cancel();
+            }
+            for control in midi_cancellations {
+                control.cancel();
+            }
+            return Err(anyhow!("MIDI snapshot preparation is busy"));
+        };
+        midi_cancellations.push(item.channel.snapshot_control.clone());
+        prepared_midi.push((
+            channel_id,
+            engine::PreparedMidiChannelData::new(
+                &elements,
+                item.length,
+                (!state.is_empty()).then_some(state.as_slice()),
+            ),
+            snapshot,
+            item.start_offset,
+            item.preplay,
+        ));
+    }
+
+    let loop_control = Arc::clone(&loop_.control);
+    let mut prepared_audio = Some(prepared_audio);
+    let mut prepared_midi = Some(prepared_midi);
+    let result = loop_
+        .shared
+        .send_control(move |session: &mut engine::Session| {
+            let Some(loop_id) = loop_control.ready_id().map(ObjectIdentity::index) else {
+                return;
+            };
+            if session.loop_(loop_id).is_none()
+                || prepared_audio.as_ref().is_none_or(|audio| {
+                    audio
+                        .iter()
+                        .any(|(channel_id, ..)| session.audio_channel(*channel_id).is_none())
+                })
+                || prepared_midi.as_ref().is_none_or(|midi| {
+                    midi.iter()
+                        .any(|(channel_id, ..)| session.midi_channel(*channel_id).is_none())
+                })
+            {
+                return;
+            }
+            let Some(mut audio) = prepared_audio.take() else {
+                return;
+            };
+            let Some(mut midi) = prepared_midi.take() else {
+                return;
+            };
+            for (channel_id, prepared, snapshot, offset, preplay) in &mut audio {
+                let channel = session
+                    .audio_channel_mut(*channel_id)
+                    .expect("loop content channels were preflighted");
+                let retained_offset = channel.start_offset();
+                channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
+                channel.set_start_offset(offset.unwrap_or(retained_offset));
+                if let Some(preplay) = preplay {
+                    channel.set_pre_play_samples(*preplay);
+                }
+            }
+            for (channel_id, prepared, snapshot, offset, preplay) in &mut midi {
+                let channel = session
+                    .midi_channel_mut(*channel_id)
+                    .expect("loop content channels were preflighted");
+                channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
+                if let Some(offset) = offset {
+                    channel.set_start_offset(*offset);
+                }
+                if let Some(preplay) = preplay {
+                    channel.set_pre_play_samples(*preplay);
+                }
+            }
+            if let Some(loop_state) = session.loop_mut(loop_id) {
+                loop_state.clear_planned_transitions();
+                loop_state.set_mode(engine::LoopMode::Stopped);
+                if let Some(length) = length {
+                    loop_state.set_length(length);
+                }
+            }
+        });
+    let sequence = match result {
+        Ok(sequence) => sequence,
+        Err(error) => {
+            for control in audio_cancellations {
+                control.cancel();
+            }
+            for control in midi_cancellations {
+                control.cancel();
+            }
+            return Err(error.into());
+        }
+    };
+    loop_.control.mirror.set_mode(LoopMode::Stopped);
+    if let Some(length) = length {
+        loop_.control.mirror.set_length(length);
+    }
+    for item in audio {
+        item.channel
+            .desired_data
+            .store(Arc::new(item.samples.to_vec()));
+        if let Some(offset) = item.start_offset {
+            item.channel.control.mirror.set_start_offset(offset);
+        }
+        if let Some(preplay) = item.preplay {
+            item.channel.control.mirror.set_n_preplay_samples(preplay);
+        }
+    }
+    for item in midi {
+        item.channel
+            .desired_data
+            .store(Arc::new(item.messages.to_vec()));
+        if let Some(offset) = item.start_offset {
+            item.channel.control.mirror.set_start_offset(offset);
+        }
+        if let Some(preplay) = item.preplay {
+            item.channel.control.mirror.set_n_preplay_samples(preplay);
+        }
+    }
+    Ok(sequence)
+}
+
 #[derive(Clone)]
 pub struct AudioPort {
     shared: Arc<SharedSession>,
@@ -5541,6 +5835,7 @@ pub type FXChainState = engine::FXChainState;
 
 enum FXChainBackendKind {
     Test2x2x1,
+    Tiny(Mutex<engine::tiny_synth_fx::TinySynthFxControlState>),
     #[cfg(feature = "lv2")]
     Carla(engine::carla_processor::CarlaControlHandle),
     Unavailable {
@@ -5554,6 +5849,7 @@ pub struct FXChain {
     chain_type: FXChainType,
     backend: FXChainBackendKind,
     state: Arc<Mutex<FXChainState>>,
+    tiny_channels: usize,
     audio_inputs: Vec<AudioPort>,
     audio_outputs: Vec<AudioPort>,
     midi_inputs: Vec<MidiPort>,
@@ -5584,6 +5880,14 @@ impl FXChain {
                     log::error!("could not queue FX active state: {error}");
                 }
             }
+            FXChainBackendKind::Tiny(_) => {
+                let title = self.title.clone();
+                if let Err(error) = self.shared.send_control(move |session| {
+                    session.set_tiny_synth_fx_active(&title, active);
+                }) {
+                    log::error!("could not queue Tiny Synth/FX active state: {error}");
+                }
+            }
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.set_active(active),
             FXChainBackendKind::Unavailable { .. } => {}
@@ -5605,7 +5909,7 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.toggle_or_recover(),
-            FXChainBackendKind::Test2x2x1 => {
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => {
                 self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
                 Ok(())
             }
@@ -5617,7 +5921,7 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.lifecycle(),
-            FXChainBackendKind::Test2x2x1 => {
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => {
                 engine::carla_processor::CarlaProcessorLifecycle::Running
             }
             FXChainBackendKind::Unavailable { .. } => {
@@ -5661,6 +5965,7 @@ impl FXChain {
     pub fn try_get_state_str(&self) -> Result<String> {
         match &self.backend {
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
+            FXChainBackendKind::Tiny(control) => Ok(control.lock().unwrap().encode()),
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.save_state(),
             _ => Ok(String::new()),
@@ -5677,22 +5982,160 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.restore_state(state),
+            FXChainBackendKind::Tiny(control) => {
+                let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+                let replacement = engine::tiny_synth_fx::TinySynthFxControlState::from_encoded(
+                    sample_rate as f32,
+                    state,
+                )?;
+                let processor = replacement.prepare_processor(
+                    sample_rate as f32,
+                    self.tiny_channels,
+                    self.shared.buffer_size.load(Ordering::Relaxed).max(1) as usize,
+                )?;
+                let title = self.title.clone();
+                let displaced = self.shared.query_graph_scheduler_response(move |session| {
+                    session.set_tiny_synth_fx_processor(title, processor)
+                })?;
+                drop(displaced);
+                *control.lock().unwrap() = replacement;
+                Ok(())
+            }
             FXChainBackendKind::Test2x2x1 => Ok(()),
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
         }
     }
 
     pub fn restore_state(&self, state: &str) {
-        #[cfg(feature = "lv2")]
-        if let FXChainBackendKind::Carla(host) = &self.backend {
-            let _ = host.restore_state(state);
-        }
-        #[cfg(not(feature = "lv2"))]
-        let _ = state;
+        let _ = self.try_restore_state(state);
     }
+
+    pub fn tiny_editor_state(&self) -> Option<engine::tiny_synth_fx::TinySynthFxEditorState> {
+        match &self.backend {
+            FXChainBackendKind::Tiny(control) => Some(control.lock().unwrap().editor_state()),
+            _ => None,
+        }
+    }
+
+    pub fn tiny_select_preset(&self, id: &str) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !engine::tiny_synth_fx::available_presets().any(|(preset_id, _)| preset_id == id) {
+            return Err(anyhow!("unknown Tiny Synth/FX preset {id}"));
+        }
+        let title = self.title.clone();
+        let id = id.to_owned();
+        let callback_id = id.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.select_preset(&callback_id);
+            }
+        })?;
+        control.lock().unwrap().select_preset(&id)?;
+        Ok(())
+    }
+
+    pub fn tiny_set_master_gain_db(&self, gain_db: f32) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !gain_db.is_finite()
+            || !(engine::tiny_synth_fx::MIN_MASTER_GAIN_DB
+                ..=engine::tiny_synth_fx::MAX_MASTER_GAIN_DB)
+                .contains(&gain_db)
+        {
+            return Err(anyhow!("invalid Tiny Synth/FX master gain"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_master_gain_db(gain_db);
+            }
+        })?;
+        control.lock().unwrap().set_master_gain_db(gain_db)?;
+        Ok(())
+    }
+
+    pub fn tiny_set_reverb_enabled(&self, enabled: bool) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_reverb_enabled(enabled);
+            }
+        })?;
+        control.lock().unwrap().set_reverb_enabled(enabled);
+        Ok(())
+    }
+
+    pub fn tiny_set_reverb_amount(&self, amount: f32) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !amount.is_finite() || !(0.0..=1.0).contains(&amount) {
+            return Err(anyhow!("invalid Tiny Synth/FX reverb amount"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_reverb_amount(amount);
+            }
+        })?;
+        control.lock().unwrap().set_reverb_amount(amount)?;
+        Ok(())
+    }
+
+    pub fn tiny_set_distortion_enabled(&self, enabled: bool) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_distortion_enabled(enabled);
+            }
+        })?;
+        control.lock().unwrap().set_distortion_enabled(enabled);
+        Ok(())
+    }
+
+    pub fn tiny_set_distortion_drive(&self, drive: f32) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !drive.is_finite() || !(1.0..=20.0).contains(&drive) {
+            return Err(anyhow!("invalid Tiny Synth/FX distortion drive"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_distortion_drive(drive);
+            }
+        })?;
+        control.lock().unwrap().set_distortion_drive(drive)?;
+        Ok(())
+    }
+
+    pub fn tiny_panic(&self) -> Result<()> {
+        if !matches!(&self.backend, FXChainBackendKind::Tiny(_)) {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.panic();
+            }
+        })?;
+        Ok(())
+    }
+
     fn n_audio_input_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
+            FXChainBackendKind::Tiny(_) => self.tiny_channels,
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.info().audio_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -5702,6 +6145,7 @@ impl FXChain {
     fn n_audio_output_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
+            FXChainBackendKind::Tiny(_) => self.tiny_channels,
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.info().audio_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -5709,7 +6153,7 @@ impl FXChain {
     }
     fn n_midi_input_ports(&self) -> usize {
         match &self.backend {
-            FXChainBackendKind::Test2x2x1 => 1,
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => 1,
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.info().midi_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -5718,7 +6162,7 @@ impl FXChain {
 
     fn n_midi_output_ports(&self) -> usize {
         match &self.backend {
-            FXChainBackendKind::Test2x2x1 => 0,
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => 0,
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host.info().midi_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -5961,6 +6405,241 @@ mod tests {
             .expect("command fence");
 
         assert_eq!(scheduler.n_arms(), before);
+    }
+
+    #[test]
+    fn loop_content_commits_atomically_without_rebuilding_the_graph() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        let left = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("left channel");
+        let right = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("right channel");
+        let midi = loop_
+            .add_midi_channel(ChannelMode::Direct)
+            .expect("MIDI channel");
+        left.load_data(&[1.0, 2.0]).expect("initial left");
+        right.load_data(&[3.0, 4.0]).expect("initial right");
+        midi.load_midi_data(&[MidiEvent::new(1, vec![0x90, 60, 100])], 2)
+            .expect("initial MIDI");
+        loop_.set_length(2).expect("initial length");
+        loop_
+            .transition(LoopMode::Playing, -1, -1)
+            .expect("initial mode");
+        loop_
+            .transition(LoopMode::Stopped, 2, -1)
+            .expect("planned stop");
+        sess.shared.flush_graph_changes();
+        let scheduler = sess.shared.scheduler.get().expect("scheduler");
+        let graph_arms = scheduler.n_arms();
+        let graph_applies = scheduler.n_applies();
+        let session_id = sess.session_id();
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+
+        let sequence = replace_loop_content(
+            &loop_,
+            &[
+                LoopAudioContentUpdate {
+                    channel: &left,
+                    samples: &[10.0, 11.0, 12.0],
+                    start_offset: Some(-1),
+                    preplay: Some(5),
+                },
+                LoopAudioContentUpdate {
+                    channel: &right,
+                    samples: &[20.0, 21.0, 22.0],
+                    start_offset: Some(-2),
+                    preplay: Some(6),
+                },
+            ],
+            &[LoopMidiContentUpdate {
+                channel: &midi,
+                messages: &[
+                    MidiEvent::new(-1, vec![0xB0, 7, 99]),
+                    MidiEvent::new(2, vec![0x90, 64, 127]),
+                ],
+                length: 3,
+                start_offset: Some(-3),
+                preplay: Some(7),
+            }],
+            Some(3),
+        )
+        .expect("queue atomic content");
+
+        assert_eq!(
+            sequence.get(),
+            engine.stats().last_applied_command.load(Ordering::Relaxed) + 1
+        );
+        assert_eq!(
+            engine.session().audio_channel(0).unwrap().data(),
+            [1.0, 2.0]
+        );
+        assert_eq!(
+            engine.session().audio_channel(1).unwrap().data(),
+            [3.0, 4.0]
+        );
+        assert_eq!(
+            engine.session().loop_(0).unwrap().mode(),
+            engine::LoopMode::Playing
+        );
+        assert_eq!(
+            engine.session().loop_(0).unwrap().n_planned_transitions(),
+            1
+        );
+
+        engine.pump();
+
+        assert_eq!(
+            engine.session().audio_channel(0).unwrap().data(),
+            [10.0, 11.0, 12.0]
+        );
+        assert_eq!(
+            engine.session().audio_channel(1).unwrap().data(),
+            [20.0, 21.0, 22.0]
+        );
+        assert_eq!(
+            engine.session().audio_channel(0).unwrap().start_offset(),
+            -1
+        );
+        assert_eq!(
+            engine
+                .session()
+                .audio_channel(1)
+                .unwrap()
+                .pre_play_samples(),
+            6
+        );
+        let midi_id = midi.control.ready_id().expect("MIDI identity").index();
+        assert_eq!(engine.session().midi_channel(midi_id).unwrap().length(), 3);
+        assert_eq!(
+            engine.session().midi_channel(midi_id).unwrap().contents()[0].time,
+            2
+        );
+        assert_eq!(engine.session().loop_(0).unwrap().length(), 3);
+        assert_eq!(
+            engine.session().loop_(0).unwrap().mode(),
+            engine::LoopMode::Stopped
+        );
+        assert_eq!(
+            engine.session().loop_(0).unwrap().n_planned_transitions(),
+            0
+        );
+        assert_eq!(sess.session_id(), session_id);
+        assert_eq!(scheduler.n_arms(), graph_arms);
+        assert_eq!(scheduler.n_applies(), graph_applies);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn prepared_content_commit_allocates_and_locks_only_off_realtime() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        let audio = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("audio channel");
+        let midi = loop_
+            .add_midi_channel(ChannelMode::Direct)
+            .expect("MIDI channel");
+        let audio_samples = vec![0.5; 16_384];
+        let audio_snapshot = audio
+            .snapshot_control
+            .prepare(
+                &audio_samples,
+                engine::content_snapshot::ContentMutation::Loading,
+            )
+            .expect("audio snapshot");
+        let mut prepared_audio = engine::PreparedAudioChannelData::new(64, audio_samples.len());
+        prepared_audio.begin_load(audio_samples.len());
+        prepared_audio.write(0, &audio_samples);
+        let midi_messages = vec![MidiEvent::new(8192, vec![0x90, 64, 127])];
+        let midi_snapshot = midi
+            .snapshot_control
+            .prepare(
+                &midi_messages,
+                16_384,
+                engine::content_snapshot::ContentMutation::Loading,
+            )
+            .expect("MIDI snapshot");
+        let elements = vec![engine::MidiStorageElem::new(8192, &[0x90, 64, 127]).unwrap()];
+        let mut prepared_midi = engine::PreparedMidiChannelData::new(&elements, 16_384, None);
+        let audio_id = audio.control.ready_id().expect("audio identity").index();
+        let midi_id = midi.control.ready_id().expect("MIDI identity").index();
+        let loop_id = loop_.control.ready_id().expect("loop identity").index();
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        struct DisableLockGuard;
+        impl Drop for DisableLockGuard {
+            fn drop(&mut self) {
+                crate::realtime_lock_guard::set_enabled(false);
+            }
+        }
+
+        crate::realtime_lock_guard::set_enabled(true);
+        let _disable_lock_guard = DisableLockGuard;
+        assert_no_alloc::assert_no_alloc(|| {
+            crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+                engine
+                    .session_mut()
+                    .audio_channel_mut(audio_id)
+                    .unwrap()
+                    .commit_prepared_data_and_snapshot(&mut prepared_audio, audio_snapshot);
+                engine
+                    .session_mut()
+                    .midi_channel_mut(midi_id)
+                    .unwrap()
+                    .commit_prepared_data_and_snapshot(&mut prepared_midi, midi_snapshot);
+                let loop_ = engine.session_mut().loop_mut(loop_id).unwrap();
+                loop_.clear_planned_transitions();
+                loop_.set_mode(engine::LoopMode::Stopped);
+                loop_.set_length(16_384);
+            });
+        });
+
+        assert_eq!(
+            engine.session().audio_channel(audio_id).unwrap().length(),
+            16_384
+        );
+        assert_eq!(
+            engine.session().midi_channel(midi_id).unwrap().length(),
+            16_384
+        );
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn length_only_update_preserves_content_and_playback_with_modulo_position() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        let audio = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("channel");
+        audio.load_data(&[1.0, 2.0, 3.0, 4.0]).expect("content");
+        loop_.set_length(32).expect("initial length");
+        loop_
+            .transition(LoopMode::Playing, -1, -1)
+            .expect("playing");
+        loop_.set_position(23).expect("position");
+        sess.shared.flush_graph_changes();
+        let scheduler = sess.shared.scheduler.get().expect("scheduler");
+        let graph_arms = scheduler.n_arms();
+        let graph_applies = scheduler.n_applies();
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+
+        loop_.set_length(7).expect("shorter length");
+        engine.pump();
+
+        let state = engine.session().loop_(0).expect("engine loop");
+        assert_eq!(state.length(), 7);
+        assert_eq!(state.position(), 2);
+        assert_eq!(state.mode(), engine::LoopMode::Playing);
+        assert_eq!(
+            engine.session().audio_channel(0).unwrap().data(),
+            [1.0, 2.0, 3.0, 4.0]
+        );
+        assert_eq!(scheduler.n_arms(), graph_arms);
+        assert_eq!(scheduler.n_applies(), graph_applies);
+        sess.shared.return_engine(engine);
     }
 
     #[test]

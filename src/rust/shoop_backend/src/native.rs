@@ -1,6 +1,7 @@
 use super::*;
 use shoop_app_api::{
     CpalAudioDriverConfig, FxGenerationLogState, TrackProcessorConstraints, TrackProcessorFeatures,
+    TrackProcessorMidiPolicy,
 };
 use shoop_engine::app_backend::{
     AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession,
@@ -613,7 +614,7 @@ impl NativeRuntime {
                 state: track.state.clone(),
                 loops,
                 ports,
-                carla_state: processor_state,
+                processor_state: processor_state,
             });
         }
         Ok(BackendSessionData {
@@ -657,7 +658,7 @@ impl NativeRuntime {
             match &source_track.topology {
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     let state = source_track
-                        .carla_state
+                        .processor_state
                         .as_deref()
                         .ok_or_else(|| anyhow!("processed track has no saved processor state"))?;
                     let fx = self
@@ -668,7 +669,7 @@ impl NativeRuntime {
                     fx.chain.try_restore_state(state)?;
                     fx.last_confirmed_state = Some(state.to_owned());
                 }
-                _ if source_track.carla_state.is_some() => {
+                _ if source_track.processor_state.is_some() => {
                     return Err(anyhow!("unprocessed track has processor state"));
                 }
                 _ => {}
@@ -1083,13 +1084,24 @@ impl NativeRuntime {
         };
         let chain_type = processor_chain_type(&processor_type)
             .ok_or_else(|| anyhow!("unknown track processor {processor_type}"))?;
+        if chain_type == FXChainType::TinySynthFx
+            && (dry_audio_channels != wet_audio_channels || !dry_midi)
+        {
+            return Err(anyhow!(
+                "Tiny Synth/FX requires matched audio channels and one MIDI input"
+            ));
+        }
         let ring = self
             .resolved
             .sample_rate
             .saturating_mul(RECORDING_CAPACITY_SECONDS);
-        let chain = self
-            .session
-            .create_fx_chain(chain_type, &request.port_name_base)?;
+        let chain = if chain_type == FXChainType::TinySynthFx {
+            self.session
+                .create_tiny_synth_fx_chain(&request.port_name_base, dry_audio_channels as usize)?
+        } else {
+            self.session
+                .create_fx_chain(chain_type, &request.port_name_base)?
+        };
         let last_confirmed_state = chain.try_get_state_str().ok();
         let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
         let mut audio_sends = Vec::with_capacity(dry_audio_channels as usize);
@@ -1287,6 +1299,30 @@ impl NativeRuntime {
                 fx.last_confirmed_state = Some(state);
             }
             BackendTrackFxControl::ClearLogs => fx.chain.clear_logs(),
+            BackendTrackFxControl::TinySynthFx(control) => {
+                if fx.processor_type.as_str() != TrackProcessorTypeId::TINY_SYNTH_FX {
+                    return Err(anyhow!("track is not a Tiny Synth/FX processor"));
+                }
+                match control {
+                    TinySynthFxControl::SelectPreset(id) => fx.chain.tiny_select_preset(&id)?,
+                    TinySynthFxControl::SetMasterGainDb(value) => {
+                        fx.chain.tiny_set_master_gain_db(value)?
+                    }
+                    TinySynthFxControl::SetReverbEnabled(value) => {
+                        fx.chain.tiny_set_reverb_enabled(value)?
+                    }
+                    TinySynthFxControl::SetReverbAmount(value) => {
+                        fx.chain.tiny_set_reverb_amount(value)?
+                    }
+                    TinySynthFxControl::SetDistortionEnabled(value) => {
+                        fx.chain.tiny_set_distortion_enabled(value)?
+                    }
+                    TinySynthFxControl::SetDistortionDrive(value) => {
+                        fx.chain.tiny_set_distortion_drive(value)?
+                    }
+                    TinySynthFxControl::Panic => fx.chain.tiny_panic()?,
+                }
+            }
         }
         Ok(())
     }
@@ -1606,18 +1642,23 @@ impl Backend for NativeBackend {
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
-        let catalog = vec![TrackProcessorDescriptor {
-            id: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
-            label: "External".to_owned(),
-            available: true,
-            unavailable_reason: None,
-            constraints: TrackProcessorConstraints {
-                max_dry_audio_channels: None,
-                max_wet_audio_channels: None,
-                dry_midi: true,
+        let catalog = vec![
+            TrackProcessorDescriptor {
+                id: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                label: "External".to_owned(),
+                available: true,
+                unavailable_reason: None,
+                constraints: TrackProcessorConstraints {
+                    max_dry_audio_channels: None,
+                    max_wet_audio_channels: None,
+                    matching_audio_channels: false,
+                    midi: TrackProcessorMidiPolicy::Optional,
+                },
+                features: TrackProcessorFeatures::default(),
+                editor: None,
             },
-            features: TrackProcessorFeatures::default(),
-        }];
+            tiny_synth_fx_descriptor(),
+        ];
         #[cfg(feature = "native-fx")]
         let catalog = {
             let mut catalog = catalog;
@@ -1638,14 +1679,17 @@ impl Backend for NativeBackend {
                     constraints: TrackProcessorConstraints {
                         max_dry_audio_channels: Some(max_channels),
                         max_wet_audio_channels: Some(max_channels),
-                        dry_midi: true,
+                        matching_audio_channels: false,
+                        midi: TrackProcessorMidiPolicy::Optional,
                     },
                     features: TrackProcessorFeatures {
                         state: true,
                         external_ui: true,
+                        embedded_ui: false,
                         recovery: true,
                         logs: true,
                     },
+                    editor: None,
                 });
             }
             catalog
@@ -1878,6 +1922,115 @@ impl Backend for NativeBackend {
         Ok(())
     }
 
+    fn replace_loop_content(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<()> {
+        if update.audio.is_empty() && update.midi.is_empty() {
+            return Err(anyhow!("loop content update is empty"));
+        }
+        let runtime = self.runtime_mut()?;
+        let target = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        if matches!(
+            target.handle.get_state()?.mode,
+            shoop_engine::LoopMode::Recording
+                | shoop_engine::LoopMode::Replacing
+                | shoop_engine::LoopMode::RecordingDryIntoWet
+        ) {
+            return Err(anyhow!("loop content is changing"));
+        }
+        let audio = update
+            .audio
+            .iter()
+            .map(|item| {
+                Ok(shoop_engine::app_backend::LoopAudioContentUpdate {
+                    channel: target
+                        .audio
+                        .get(item.channel)
+                        .ok_or_else(|| anyhow!("unknown audio channel {}", item.channel))?,
+                    samples: &item.samples,
+                    start_offset: item.start_offset,
+                    preplay: item.preplay,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_messages = update
+            .midi
+            .iter()
+            .map(|item| {
+                let mut messages = item
+                    .start_state
+                    .iter()
+                    .map(|data| MidiEvent {
+                        time: -1,
+                        data: data.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                for event in &item.events {
+                    messages.push(MidiEvent {
+                        time: i32::try_from(event.time)
+                            .map_err(|_| anyhow!("MIDI event time exceeds native range"))?,
+                        data: event.data.clone(),
+                    });
+                }
+                Ok(messages)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi = update
+            .midi
+            .iter()
+            .zip(&midi_messages)
+            .map(|(item, messages)| {
+                Ok(shoop_engine::app_backend::LoopMidiContentUpdate {
+                    channel: target
+                        .midi
+                        .get(item.channel)
+                        .ok_or_else(|| anyhow!("unknown MIDI channel {}", item.channel))?,
+                    messages,
+                    length: item.length,
+                    start_offset: item.start_offset,
+                    preplay: item.preplay,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let sequence = shoop_engine::app_backend::replace_loop_content(
+            &target.handle,
+            &audio,
+            &midi,
+            update.length,
+        )?;
+        runtime
+            .session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        let track_id = runtime
+            .tracks
+            .iter()
+            .find_map(|(track_id, track)| track.loops.contains(&loop_id).then_some(*track_id));
+        if let Some(track_id) = track_id {
+            runtime.apply_track_routing(track_id)?;
+            runtime.wait();
+        }
+        Ok(())
+    }
+
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        let sequence = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?
+            .handle
+            .set_length(length)?;
+        runtime
+            .session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        Ok(())
+    }
+
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         self.runtime_mut()?.capture_session()
     }
@@ -1938,6 +2091,16 @@ impl Backend for NativeBackend {
                         })
                         .collect::<Vec<_>>()
                         .into(),
+                    editor: fx.chain.tiny_editor_state().map(|editor| {
+                        TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
+                            selected_preset_id: editor.selected_preset_id,
+                            master_gain_db: editor.master_gain_db,
+                            reverb_enabled: editor.reverb_enabled,
+                            reverb_amount: editor.reverb_amount,
+                            distortion_enabled: editor.distortion_enabled,
+                            distortion_drive: editor.distortion_drive,
+                        })
+                    }),
                 }
             });
             state.input_peaks = track
@@ -2238,6 +2401,7 @@ fn fx_lifecycle(lifecycle: shoop_engine::carla_processor::CarlaProcessorLifecycl
 
 fn processor_chain_type(processor_type: &str) -> Option<FXChainType> {
     match processor_type {
+        TrackProcessorTypeId::TINY_SYNTH_FX => Some(FXChainType::TinySynthFx),
         #[cfg(feature = "native-fx")]
         TrackProcessorTypeId::CARLA_RACK => Some(FXChainType::CarlaRack),
         #[cfg(feature = "native-fx")]
@@ -2418,6 +2582,204 @@ mod tests {
     }
 
     #[test]
+    fn targeted_content_update_preserves_native_session_callbacks_sync_and_graph() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 64,
+        }))
+        .unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "targeted-content".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 2,
+            })
+            .unwrap();
+        let sync = created.loops[0];
+        let target = created.loops[1];
+        backend.set_loop_length(sync, 1024).unwrap();
+        backend.set_loop_sync_source(target, Some(sync)).unwrap();
+        backend
+            .transition_loop(sync, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(target, BackendLoopMode::Playing, None)
+            .unwrap();
+        let (
+            session_id,
+            callbacks_before,
+            graph_arms,
+            graph_applies,
+            schedule_request_id,
+            schedule_applied_id,
+        ) = {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.wait();
+            let state = runtime.session.get_state();
+            (
+                runtime.session.session_id(),
+                u64::from(state.cycles),
+                state.graph_arms,
+                state.graph_applies,
+                state.schedule_request_id,
+                state.schedule_applied_id,
+            )
+        };
+
+        backend
+            .replace_loop_content(
+                target,
+                &BackendLoopContentUpdate {
+                    audio: vec![
+                        BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![1.0, 2.0, 3.0, 4.0],
+                            start_offset: Some(-1),
+                            preplay: Some(2),
+                        },
+                        BackendAudioChannelUpdate {
+                            channel: 1,
+                            samples: vec![5.0, 6.0, 7.0, 8.0],
+                            start_offset: Some(-2),
+                            preplay: Some(3),
+                        },
+                    ],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 4,
+                        start_state: vec![vec![0xB0, 7, 100]],
+                        events: vec![BackendMidiEvent {
+                            time: 1,
+                            data: vec![0x90, 64, 127],
+                        }],
+                        start_offset: Some(-3),
+                        preplay: Some(4),
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+
+        let cycles_after_update = {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.wait();
+            let state = runtime.session.get_state();
+            assert_eq!(runtime.session.session_id(), session_id);
+            assert!(u64::from(state.cycles) > callbacks_before);
+            assert_eq!(state.graph_arms, graph_arms);
+            assert_eq!(state.graph_applies, graph_applies);
+            assert_eq!(state.schedule_request_id, schedule_request_id);
+            assert_eq!(state.schedule_applied_id, schedule_applied_id);
+            assert_eq!(
+                runtime.loops[&sync].handle.get_state().unwrap().mode,
+                shoop_engine::LoopMode::Playing
+            );
+            assert_eq!(
+                runtime.loops[&target].handle.get_state().unwrap().mode,
+                shoop_engine::LoopMode::Stopped
+            );
+            assert_eq!(
+                runtime.loops[&target].audio[0].get_data(),
+                [1.0, 2.0, 3.0, 4.0]
+            );
+            assert_eq!(
+                runtime.loops[&target].audio[1].get_data(),
+                [5.0, 6.0, 7.0, 8.0]
+            );
+            assert_eq!(
+                runtime.loops[&target].midi[0].get_all_midi_data()[0].time,
+                -1
+            );
+            state.cycles
+        };
+
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].loops[1].audio[0].samples,
+            [1.0, 2.0, 3.0, 4.0]
+        );
+        let cycles_after_capture = {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.wait();
+            let state = runtime.session.get_state();
+            assert_eq!(runtime.session.session_id(), session_id);
+            assert!(state.cycles > cycles_after_update);
+            assert_eq!(state.graph_arms, graph_arms);
+            assert_eq!(state.graph_applies, graph_applies);
+            assert_eq!(state.schedule_request_id, schedule_request_id);
+            assert_eq!(state.schedule_applied_id, schedule_applied_id);
+            assert_eq!(
+                runtime.loops[&sync].handle.get_state().unwrap().mode,
+                shoop_engine::LoopMode::Playing
+            );
+            state.cycles
+        };
+
+        for generation in 0_u8..8 {
+            let sample = f32::from(generation) / 8.0;
+            backend
+                .replace_loop_content(
+                    target,
+                    &BackendLoopContentUpdate {
+                        audio: vec![
+                            BackendAudioChannelUpdate {
+                                channel: 0,
+                                samples: vec![sample; 16_384],
+                                start_offset: None,
+                                preplay: None,
+                            },
+                            BackendAudioChannelUpdate {
+                                channel: 1,
+                                samples: vec![-sample; 16_384],
+                                start_offset: None,
+                                preplay: None,
+                            },
+                        ],
+                        midi: vec![BackendMidiChannelUpdate {
+                            channel: 0,
+                            length: 16_384,
+                            start_state: vec![vec![0xB0, 7, generation]],
+                            events: (0..1_024)
+                                .map(|index| BackendMidiEvent {
+                                    time: index * 8,
+                                    data: vec![0x90, 64, generation],
+                                })
+                                .collect(),
+                            start_offset: None,
+                            preplay: None,
+                        }],
+                        length: Some(16_384),
+                    },
+                )
+                .unwrap();
+            backend.set_loop_length(target, 8_192).unwrap();
+        }
+
+        let runtime = backend.runtime_mut().unwrap();
+        runtime.wait();
+        let state = runtime.session.get_state();
+        assert_eq!(runtime.session.session_id(), session_id);
+        assert!(state.cycles > cycles_after_capture);
+        assert_eq!(state.graph_arms, graph_arms);
+        assert_eq!(state.graph_applies, graph_applies);
+        assert_eq!(state.schedule_request_id, schedule_request_id);
+        assert_eq!(state.schedule_applied_id, schedule_applied_id);
+        assert_eq!(
+            runtime.loops[&sync].handle.get_state().unwrap().mode,
+            shoop_engine::LoopMode::Playing
+        );
+        assert_eq!(
+            runtime.loops[&target].audio[0].get_data()[0],
+            f32::from(7_u8) / 8.0
+        );
+        assert_eq!(
+            runtime.loops[&target].handle.get_state().unwrap().length,
+            8_192
+        );
+    }
+
+    #[test]
     fn native_dummy_external_track_preserves_roles_media_and_routing() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -2545,13 +2907,17 @@ mod tests {
         }))
         .unwrap();
         let catalog = backend.track_processor_catalog().unwrap();
-        assert_eq!(catalog.len(), 4);
-        for descriptor in &catalog[1..] {
+        assert_eq!(catalog.len(), 5);
+        assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::TINY_SYNTH_FX);
+        for descriptor in &catalog[2..] {
             assert!(descriptor.features.state);
             assert!(descriptor.features.external_ui);
             assert!(descriptor.features.recovery);
             assert!(descriptor.features.logs);
-            assert!(descriptor.constraints.dry_midi);
+            assert_eq!(
+                descriptor.constraints.midi,
+                TrackProcessorMidiPolicy::Optional
+            );
             assert!(descriptor.constraints.max_dry_audio_channels.is_some());
             assert!(descriptor.constraints.max_wet_audio_channels.is_some());
         }
@@ -2620,12 +2986,110 @@ mod tests {
         assert_eq!(output.dummy_dequeue_data(4), vec![0.5, -0.25, 0.125, 0.0]);
 
         let captured = backend.capture_session().unwrap();
-        assert_eq!(captured.tracks[0].carla_state.as_deref(), Some(""));
+        assert_eq!(captured.tracks[0].processor_state.as_deref(), Some(""));
         let mut restored = NativeBackend::new(config).unwrap();
         restored.replace_session(&captured).unwrap();
         assert_eq!(
             restored.capture_session().unwrap().tracks[0].topology,
             captured.tracks[0].topology
+        );
+    }
+
+    #[test]
+    fn native_dummy_tiny_synth_fx_processes_midi_and_round_trips_state() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config.clone()).unwrap();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "tiny".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SelectPreset(
+                    "pad".to_owned(),
+                )),
+            )
+            .unwrap();
+        let _ = backend.poll().unwrap();
+
+        let runtime = backend.runtime_mut().unwrap();
+        runtime.driver.dummy_enter_controlled_mode();
+        let track = &runtime.tracks[&created.track_id];
+        track
+            .midi_input
+            .as_ref()
+            .unwrap()
+            .dummy_queue_msg(&shoop_engine::MidiEvent {
+                time: 0,
+                data: vec![0x90, 69, 127],
+            })
+            .unwrap();
+        let output = track.audio_outputs[0].clone();
+        output.dummy_request_data(128).unwrap();
+        runtime.driver.dummy_request_controlled_frames(128);
+        runtime.driver.dummy_run_requested_frames();
+        assert!(output
+            .dummy_dequeue_data(128)
+            .iter()
+            .any(|sample| sample.abs() > 0.001));
+
+        let captured = backend.capture_session().unwrap();
+        assert!(captured.tracks[0]
+            .processor_state
+            .as_deref()
+            .is_some_and(|state| state.starts_with("shoop-tiny-synth-fx:1:")));
+        backend
+            .switch_audio_driver(
+                &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: 48_000,
+                    buffer_size: 256,
+                }),
+                48_000,
+                &captured,
+            )
+            .unwrap();
+        assert_eq!(
+            backend.capture_session().unwrap().tracks[0].processor_state,
+            captured.tracks[0].processor_state
+        );
+
+        let mut browser = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        browser.replace_session(&captured).unwrap();
+        let browser_state = browser.capture_session().unwrap();
+        assert_eq!(
+            browser_state.tracks[0].topology,
+            captured.tracks[0].topology
+        );
+        assert_eq!(
+            browser_state.tracks[0].processor_state,
+            captured.tracks[0].processor_state
+        );
+
+        let mut restored = NativeBackend::new(config).unwrap();
+        restored.replace_session(&browser_state).unwrap();
+        let restored_state = restored.capture_session().unwrap();
+        assert_eq!(
+            restored_state.tracks[0].topology,
+            captured.tracks[0].topology
+        );
+        assert_eq!(
+            restored_state.tracks[0].processor_state,
+            captured.tracks[0].processor_state
         );
     }
 

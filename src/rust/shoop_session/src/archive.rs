@@ -1,7 +1,7 @@
 use crate::document::{
-    AudioPayload, ChannelModeDocument, DataTypeDocument, FormatVersion, MediaPayload,
-    SessionBundle, SessionDocument, TrackDocument, TrackTopologyDocument, AUDIO_FORMAT,
-    DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_FORMAT,
+    AudioPayload, ChannelModeDocument, DataTypeDocument, FormatVersion, FxChainTypeDocument,
+    MediaPayload, SessionBundle, SessionDocument, TrackDocument, TrackTopologyDocument,
+    AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -641,6 +641,17 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
             "Carla track {} is missing its FX chain",
             track.id
         ))),
+        (TrackTopologyDocument::TinySynthFx { .. }, Some(chain))
+            if chain.chain_type != FxChainTypeDocument::TinySynthFx =>
+        {
+            Err(SessionError::Validation(format!(
+                "Tiny Synth/FX track {} chain type does not match its topology",
+                track.id
+            )))
+        }
+        (TrackTopologyDocument::TinySynthFx { .. }, None) => Err(SessionError::Validation(
+            format!("Tiny Synth/FX track {} is missing its FX chain", track.id),
+        )),
         (TrackTopologyDocument::Trigger, Some(_)) => Err(SessionError::Validation(format!(
             "trigger track {} must not contain an FX chain",
             track.id
@@ -702,6 +713,18 @@ fn validate_track_channel_shape(
             count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == dry_audio_channels
                 && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == wet_audio_channels
                 && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == u32::from(midi)
+                && channels.iter().all(|channel| {
+                    matches!(
+                        channel.mode,
+                        ChannelModeDocument::Dry | ChannelModeDocument::Wet
+                    ) && !(channel.mode == ChannelModeDocument::Wet
+                        && channel.data_type == DataTypeDocument::Midi)
+                })
+        }
+        TrackTopologyDocument::TinySynthFx { audio_channels } => {
+            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == audio_channels
+                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == audio_channels
+                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 1
                 && channels.iter().all(|channel| {
                     matches!(
                         channel.mode,

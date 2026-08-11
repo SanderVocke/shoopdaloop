@@ -24,13 +24,13 @@ use shoop_app_api::{
     TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
-    Backend, BackendAudioContent, BackendChannelMode, BackendConnectionSnapshot,
-    BackendGrabRequest, BackendLoopContent, BackendLoopId, BackendLoopMode, BackendMidiContent,
-    BackendMidiEvent, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortRole, BackendSessionData, BackendSessionPort,
-    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
-    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
-    DirectTrackRequest, TrackRequest,
+    Backend, BackendAudioChannelUpdate, BackendAudioContent, BackendChannelMode,
+    BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
+    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiEvent,
+    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
+    BackendPortRole, BackendSessionData, BackendSessionPort, BackendSessionReplacement,
+    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
+    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -701,7 +701,7 @@ enum PendingIo {
     },
     CommitLoopImport {
         loop_id: LoopId,
-        backend_data: BackendSessionData,
+        update: BackendLoopContentUpdate,
         message: String,
     },
 }
@@ -2819,22 +2819,14 @@ impl ApplicationModel {
                 loop_id,
                 audio,
                 update_loop_length,
-            } => match self.prepare_loop_audio_import(backend, loop_id, &audio, update_loop_length)
-            {
-                Ok(backend_data) => {
+            } => match self.prepare_loop_audio_import(loop_id, &audio, update_loop_length) {
+                Ok(update) => {
                     self.pending_io = Some(PendingIo::CommitLoopImport {
                         loop_id,
-                        backend_data,
+                        update,
                         message: "Loop audio imported".to_owned(),
                     });
                     self.set_io_progress(0.75, "Committing loop audio");
-                }
-                Err(error) if io_pending_error(&error) => {
-                    self.pending_io = Some(PendingIo::PrepareLoopAudioImport {
-                        loop_id,
-                        audio,
-                        update_loop_length,
-                    });
                 }
                 Err(error) => self.fail_io(error),
             },
@@ -2842,90 +2834,76 @@ impl ApplicationModel {
                 loop_id,
                 midi,
                 update_loop_length,
-            } => match self.prepare_loop_midi_import(backend, loop_id, &midi, update_loop_length) {
-                Ok(backend_data) => {
+            } => match self.prepare_loop_midi_import(loop_id, &midi, update_loop_length) {
+                Ok(update) => {
                     self.pending_io = Some(PendingIo::CommitLoopImport {
                         loop_id,
-                        backend_data,
+                        update,
                         message: "Loop MIDI imported".to_owned(),
                     });
                     self.set_io_progress(0.75, "Committing loop MIDI");
                 }
-                Err(error) if io_pending_error(&error) => {
-                    self.pending_io = Some(PendingIo::PrepareLoopMidiImport {
-                        loop_id,
-                        midi,
-                        update_loop_length,
-                    });
-                }
                 Err(error) => self.fail_io(error),
             },
             PendingIo::PrepareGeneratedClickAudio { loop_id, audio } => {
-                match self.prepare_generated_click_audio(backend, loop_id, &audio) {
-                    Ok(backend_data) => {
+                match self.prepare_generated_click_audio(loop_id, &audio) {
+                    Ok(update) => {
                         self.pending_io = Some(PendingIo::CommitLoopImport {
                             loop_id,
-                            backend_data,
+                            update,
                             message: "Audio click track generated".to_owned(),
                         });
                         self.set_io_progress(0.75, "Committing generated click track");
-                    }
-                    Err(error) if io_pending_error(&error) => {
-                        self.pending_io =
-                            Some(PendingIo::PrepareGeneratedClickAudio { loop_id, audio });
                     }
                     Err(error) => self.fail_io(error),
                 }
             }
             PendingIo::PrepareGeneratedClickMidi { loop_id, midi } => {
-                match self.prepare_generated_click_midi(backend, loop_id, &midi) {
-                    Ok(backend_data) => {
+                match self.prepare_generated_click_midi(loop_id, &midi) {
+                    Ok(update) => {
                         self.pending_io = Some(PendingIo::CommitLoopImport {
                             loop_id,
-                            backend_data,
+                            update,
                             message: "MIDI click track generated".to_owned(),
                         });
                         self.set_io_progress(0.75, "Committing generated click track");
-                    }
-                    Err(error) if io_pending_error(&error) => {
-                        self.pending_io =
-                            Some(PendingIo::PrepareGeneratedClickMidi { loop_id, midi });
                     }
                     Err(error) => self.fail_io(error),
                 }
             }
             PendingIo::CommitLoopImport {
                 loop_id,
-                backend_data,
+                update,
                 message,
-            } => match backend.replace_session(&backend_data) {
-                Ok(replacement) => {
-                    let length = self.loops.get(&loop_id).and_then(|model| {
-                        target_length_for_source(&backend_data, model.backend_id.raw())
-                    });
-                    match self.remap_backend_entities(&backend_data, &replacement) {
-                        Ok(()) => {
-                            if let Some(model) = self.loops.get_mut(&loop_id) {
-                                if let Some(length) = length {
-                                    model.length = length;
-                                }
-                                model.state.empty = false;
-                                model.audio_data = None;
+            } => {
+                let backend_loop = self.loops.get(&loop_id).map(|model| model.backend_id);
+                match backend_loop
+                    .ok_or_else(|| anyhow!("stale loop {loop_id}"))
+                    .and_then(|backend_loop| backend.replace_loop_content(backend_loop, &update))
+                {
+                    Ok(()) => {
+                        if let Some(model) = self.loops.get_mut(&loop_id) {
+                            if let Some(length) = update.length {
+                                model.length = length;
                             }
-                            self.finish_io(IoTaskStatus::Completed, &message);
+                            model.state.mode = LoopMode::Stopped;
+                            model.state.next_mode = LoopMode::Unknown;
+                            model.state.next_transition_delay = None;
+                            model.state.empty = false;
+                            model.audio_data = None;
                         }
-                        Err(error) => self.fail_io(error),
+                        self.finish_io(IoTaskStatus::Completed, &message);
                     }
+                    Err(error) if io_pending_error(&error.to_string()) => {
+                        self.pending_io = Some(PendingIo::CommitLoopImport {
+                            loop_id,
+                            update,
+                            message,
+                        });
+                    }
+                    Err(error) => self.fail_io(format!("could not commit loop import: {error}")),
                 }
-                Err(error) if io_pending_error(&error.to_string()) => {
-                    self.pending_io = Some(PendingIo::CommitLoopImport {
-                        loop_id,
-                        backend_data,
-                        message,
-                    });
-                }
-                Err(error) => self.fail_io(format!("could not commit loop import: {error}")),
-            },
+            }
         }
     }
 
@@ -3150,6 +3128,16 @@ impl ApplicationModel {
                 return backend
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::TinySynthFx(control) => {
+                return backend
+                    .set_track_fx_control(
+                        track.backend_id,
+                        BackendTrackFxControl::TinySynthFx(control),
+                    )
+                    .map_err(|error| {
+                        format!("could not update Tiny Synth/FX track {track_id}: {error}")
+                    });
             }
         };
         backend
@@ -4613,17 +4601,30 @@ impl ApplicationModel {
                     let chain_type = fx_chain_type_for_processor(
                         &shoop_app_api::TrackProcessorTypeId::new(processor_type.clone()),
                     )?;
-                    let internal_state = captured.carla_state.clone().ok_or_else(|| {
+                    let internal_state = captured.processor_state.clone().ok_or_else(|| {
                         format!("processed track {} has no captured state", track.id)
                     })?;
-                    (
+                    let topology = if chain_type == FxChainTypeDocument::TinySynthFx {
+                        if dry_audio_channels != wet_audio_channels || !dry_midi {
+                            return Err(format!(
+                                "Tiny Synth/FX track {} has an invalid channel shape",
+                                track.id
+                            ));
+                        }
+                        TrackTopologyDocument::TinySynthFx {
+                            audio_channels: *dry_audio_channels,
+                        }
+                    } else {
                         TrackTopologyDocument::Carla {
                             chain_type,
                             audio_channels: *wet_audio_channels,
                             midi: *dry_midi,
                             dry_audio_channels: Some(*dry_audio_channels),
                             wet_audio_channels: Some(*wet_audio_channels),
-                        },
+                        }
+                    };
+                    (
+                        topology,
                         Some(FxChainDocument {
                             id: track.id.raw(),
                             title: track.name.clone(),
@@ -5034,11 +5035,10 @@ impl ApplicationModel {
 
     fn prepare_loop_audio_import(
         &self,
-        backend: &mut dyn Backend,
         loop_id: LoopId,
         audio: &LoopAudio,
         update_loop_length: bool,
-    ) -> Result<BackendSessionData, String> {
+    ) -> Result<BackendLoopContentUpdate, String> {
         if audio.channels.is_empty() {
             return Err("audio file contains no channels".to_owned());
         }
@@ -5046,91 +5046,92 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let mut capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture target loop: {error}"))?;
-        let target = capture
+        let target_channels = self
             .tracks
-            .iter_mut()
-            .flat_map(|track| &mut track.loops)
-            .find(|loop_| loop_.source_id == model.backend_id.raw())
-            .ok_or_else(|| "backend omitted target loop".to_owned())?;
-        if audio.channels.len() != target.audio.len() {
+            .iter()
+            .find(|track| track.id == model.track_id)
+            .map(|track| track.audio_channels as usize)
+            .ok_or_else(|| "target loop track is unavailable".to_owned())?;
+        if audio.channels.len() != target_channels {
             return Err(format!(
-                "mapped audio has {} channels but the target loop has {}",
-                audio.channels.len(),
-                target.audio.len()
+                "mapped audio has {} channels but the target loop has {target_channels}",
+                audio.channels.len()
             ));
         }
-        for (channel, source) in target.audio.iter_mut().zip(&audio.channels) {
-            channel.samples = source.samples.clone();
-        }
-        if update_loop_length {
-            target.length = target
-                .audio
+        let length = if update_loop_length {
+            Some(
+                audio
+                    .channels
+                    .iter()
+                    .try_fold(0_u32, |longest, channel| {
+                        u32::try_from(channel.samples.len()).map(|length| longest.max(length))
+                    })
+                    .map_err(|_| "audio duration exceeds engine range".to_owned())?,
+            )
+        } else {
+            None
+        };
+        Ok(BackendLoopContentUpdate {
+            audio: audio
+                .channels
                 .iter()
-                .map(|channel| channel.samples.len() as u32)
-                .max()
-                .unwrap_or(0);
-        }
-        Ok(capture)
+                .enumerate()
+                .map(|(channel, source)| BackendAudioChannelUpdate {
+                    channel,
+                    samples: source.samples.clone(),
+                    start_offset: None,
+                    preplay: None,
+                })
+                .collect(),
+            midi: Vec::new(),
+            length,
+        })
     }
 
     fn prepare_loop_midi_import(
         &self,
-        backend: &mut dyn Backend,
         loop_id: LoopId,
         midi: &ExactMidi,
         update_loop_length: bool,
-    ) -> Result<BackendSessionData, String> {
+    ) -> Result<BackendLoopContentUpdate, String> {
         let model = self
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let mut capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture target loop: {error}"))?;
-        let target = capture
-            .tracks
-            .iter_mut()
-            .flat_map(|track| &mut track.loops)
-            .find(|loop_| loop_.source_id == model.backend_id.raw())
-            .ok_or_else(|| "backend omitted target loop".to_owned())?;
-        let channel = target
-            .midi
-            .first_mut()
-            .ok_or_else(|| "target loop has no MIDI channel".to_owned())?;
-        *channel = BackendMidiContent {
-            mode: channel.mode,
-            length: u32::try_from(midi.length_frames)
-                .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
-            start_state: midi.start_state.clone(),
-            events: midi
-                .events
-                .iter()
-                .map(|event| {
-                    Ok(BackendMidiEvent {
-                        time: u32::try_from(event.frame)
-                            .map_err(|_| "MIDI event exceeds engine range".to_owned())?,
-                        data: event.data.clone(),
-                    })
-                })
-                .collect::<Result<Vec<_>, String>>()?,
-            start_offset: channel.start_offset,
-            preplay: channel.preplay,
-        };
-        if update_loop_length {
-            target.length = channel.length;
+        if !model.state.has_midi {
+            return Err("target loop has no MIDI channel".to_owned());
         }
-        Ok(capture)
+        let length = u32::try_from(midi.length_frames)
+            .map_err(|_| "MIDI duration exceeds engine range".to_owned())?;
+        Ok(BackendLoopContentUpdate {
+            audio: Vec::new(),
+            midi: vec![BackendMidiChannelUpdate {
+                channel: 0,
+                length,
+                start_state: midi.start_state.clone(),
+                events: midi
+                    .events
+                    .iter()
+                    .map(|event| {
+                        Ok(BackendMidiEvent {
+                            time: u32::try_from(event.frame)
+                                .map_err(|_| "MIDI event exceeds engine range".to_owned())?,
+                            data: event.data.clone(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, String>>()?,
+                start_offset: None,
+                preplay: None,
+            }],
+            length: update_loop_length.then_some(length),
+        })
     }
 
     fn prepare_generated_click_audio(
         &self,
-        backend: &mut dyn Backend,
         loop_id: LoopId,
         audio: &LoopAudio,
-    ) -> Result<BackendSessionData, String> {
+    ) -> Result<BackendLoopContentUpdate, String> {
         let samples = audio
             .channels
             .first()
@@ -5143,33 +5144,34 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let mut capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture target loop: {error}"))?;
-        let target = capture
+        let target_channels = self
             .tracks
-            .iter_mut()
-            .flat_map(|track| &mut track.loops)
-            .find(|loop_| loop_.source_id == model.backend_id.raw())
-            .ok_or_else(|| "backend omitted target loop".to_owned())?;
-        if target.audio.is_empty() {
+            .iter()
+            .find(|track| track.id == model.track_id)
+            .map(|track| track.audio_channels as usize)
+            .ok_or_else(|| "target loop track is unavailable".to_owned())?;
+        if target_channels == 0 {
             return Err("target loop has no audio channels".to_owned());
         }
-        for channel in &mut target.audio {
-            channel.samples.clone_from(&samples);
-            channel.start_offset = 0;
-            channel.preplay = 0;
-        }
-        target.length = length;
-        Ok(capture)
+        Ok(BackendLoopContentUpdate {
+            audio: (0..target_channels)
+                .map(|channel| BackendAudioChannelUpdate {
+                    channel,
+                    samples: samples.clone(),
+                    start_offset: Some(0),
+                    preplay: Some(0),
+                })
+                .collect(),
+            midi: Vec::new(),
+            length: Some(length),
+        })
     }
 
     fn prepare_generated_click_midi(
         &self,
-        backend: &mut dyn Backend,
         loop_id: LoopId,
         midi: &ExactMidi,
-    ) -> Result<BackendSessionData, String> {
+    ) -> Result<BackendLoopContentUpdate, String> {
         let length = u32::try_from(midi.length_frames)
             .map_err(|_| "generated MIDI exceeds engine range".to_owned())?;
         let events = midi
@@ -5187,30 +5189,21 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let mut capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture target loop: {error}"))?;
-        let target = capture
-            .tracks
-            .iter_mut()
-            .flat_map(|track| &mut track.loops)
-            .find(|loop_| loop_.source_id == model.backend_id.raw())
-            .ok_or_else(|| "backend omitted target loop".to_owned())?;
-        if target.midi.is_empty() {
+        if !model.state.has_midi {
             return Err("target loop has no MIDI channels".to_owned());
         }
-        for channel in &mut target.midi {
-            *channel = BackendMidiContent {
-                mode: channel.mode,
+        Ok(BackendLoopContentUpdate {
+            audio: Vec::new(),
+            midi: vec![BackendMidiChannelUpdate {
+                channel: 0,
                 length,
                 start_state: midi.start_state.clone(),
-                events: events.clone(),
-                start_offset: 0,
-                preplay: 0,
-            };
-        }
-        target.length = length;
-        Ok(capture)
+                events,
+                start_offset: Some(0),
+                preplay: Some(0),
+            }],
+            length: Some(length),
+        })
     }
 
     fn export_loop_audio(
@@ -5442,74 +5435,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    fn import_loop_audio_now(
-        &mut self,
-        backend: &mut dyn Backend,
-        loop_id: LoopId,
-        name: String,
-        bytes: &[u8],
-        update_loop_length: bool,
-    ) -> Result<(), String> {
-        let mut audio = if name.to_ascii_lowercase().ends_with(".wav") {
-            decode_wav(bytes)
-        } else {
-            decode_loop_audio(bytes)
-        }
-        .map_err(|error| error.to_string())?;
-        if audio.sample_rate != self.status.sample_rate {
-            let source = audio.sample_rate;
-            audio = resample_loop_audio(&audio, self.status.sample_rate)
-                .map_err(|error| error.to_string())?;
-            self.notifications.push(AppNotification {
-                level: NotificationLevel::Warning,
-                message: format!(
-                    "Resampled loop audio from {source} Hz to {} Hz",
-                    self.status.sample_rate
-                ),
-            });
-        }
-        if audio.channels.is_empty() {
-            return Err("audio file contains no channels".to_owned());
-        }
-        let model = self
-            .loops
-            .get(&loop_id)
-            .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let mut capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture target loop: {error}"))?;
-        let target = capture
-            .tracks
-            .iter_mut()
-            .flat_map(|track| &mut track.loops)
-            .find(|loop_| loop_.source_id == model.backend_id.raw())
-            .ok_or_else(|| "backend omitted target loop".to_owned())?;
-        for (index, channel) in target.audio.iter_mut().enumerate() {
-            channel.samples = audio.channels[index % audio.channels.len()].samples.clone();
-        }
-        if update_loop_length {
-            target.length = target
-                .audio
-                .iter()
-                .map(|channel| channel.samples.len() as u32)
-                .max()
-                .unwrap_or(0);
-        }
-        let replacement = backend
-            .replace_session(&capture)
-            .map_err(|error| format!("could not commit loop audio: {error}"))?;
-        self.remap_backend_entities(&capture, &replacement)?;
-        if let Some(model) = self.loops.get_mut(&loop_id) {
-            model.length =
-                target_length_for_source(&capture, loop_id.raw()).unwrap_or(model.length);
-            model.state.empty = false;
-            model.audio_data = None;
-        }
-        self.finish_io(IoTaskStatus::Completed, "Loop audio imported");
-        Ok(())
-    }
-
     fn export_loop_midi_now(
         &mut self,
         backend: &mut dyn Backend,
@@ -5580,132 +5505,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    fn import_loop_midi_now(
-        &mut self,
-        backend: &mut dyn Backend,
-        loop_id: LoopId,
-        name: String,
-        bytes: &[u8],
-        update_loop_length: bool,
-    ) -> Result<(), String> {
-        let mut midi = if name.to_ascii_lowercase().ends_with(".mid") {
-            decode_standard_midi(bytes, self.status.sample_rate)
-        } else {
-            decode_exact_midi(bytes)
-        }
-        .map_err(|error| error.to_string())?;
-        if midi.sample_rate != self.status.sample_rate {
-            let source = midi.sample_rate;
-            midi = resample_exact_midi(&midi, self.status.sample_rate)
-                .map_err(|error| error.to_string())?;
-            self.notifications.push(AppNotification {
-                level: NotificationLevel::Warning,
-                message: format!(
-                    "Resampled loop MIDI from {source} Hz to {} Hz",
-                    self.status.sample_rate
-                ),
-            });
-        }
-        let model = self
-            .loops
-            .get(&loop_id)
-            .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let mut capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture target loop: {error}"))?;
-        let target = capture
-            .tracks
-            .iter_mut()
-            .flat_map(|track| &mut track.loops)
-            .find(|loop_| loop_.source_id == model.backend_id.raw())
-            .ok_or_else(|| "backend omitted target loop".to_owned())?;
-        let channel = target
-            .midi
-            .first_mut()
-            .ok_or_else(|| "target loop has no MIDI channel".to_owned())?;
-        *channel = BackendMidiContent {
-            mode: channel.mode,
-            length: u32::try_from(midi.length_frames)
-                .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
-            start_state: midi.start_state,
-            events: midi
-                .events
-                .into_iter()
-                .map(|event| {
-                    Ok(BackendMidiEvent {
-                        time: u32::try_from(event.frame)
-                            .map_err(|_| "MIDI event exceeds engine range".to_owned())?,
-                        data: event.data,
-                    })
-                })
-                .collect::<Result<Vec<_>, String>>()?,
-            start_offset: channel.start_offset,
-            preplay: channel.preplay,
-        };
-        if update_loop_length {
-            target.length = channel.length;
-        }
-        let replacement = backend
-            .replace_session(&capture)
-            .map_err(|error| format!("could not commit loop MIDI: {error}"))?;
-        self.remap_backend_entities(&capture, &replacement)?;
-        if let Some(model) = self.loops.get_mut(&loop_id) {
-            model.length =
-                target_length_for_source(&capture, loop_id.raw()).unwrap_or(model.length);
-            model.state.empty = false;
-        }
-        self.finish_io(IoTaskStatus::Completed, "Loop MIDI imported");
-        Ok(())
-    }
-
-    fn remap_backend_entities(
-        &mut self,
-        source: &BackendSessionData,
-        replacement: &BackendSessionReplacement,
-    ) -> Result<(), String> {
-        let old_track_sources = self
-            .tracks
-            .iter()
-            .map(|track| (track.id, track.backend_id.raw()))
-            .collect::<BTreeMap<_, _>>();
-        let old_loop_sources = self
-            .loops
-            .values()
-            .map(|loop_| (loop_.id, loop_.backend_id.raw()))
-            .collect::<BTreeMap<_, _>>();
-        let old_port_sources = self
-            .connection_ports
-            .values()
-            .map(|port| (port.id, port.backend_id.raw()))
-            .collect::<BTreeMap<_, _>>();
-        for track in &mut self.tracks {
-            let source_id = old_track_sources[&track.id];
-            track.backend_id = replacement
-                .tracks
-                .get(&source_id)
-                .ok_or_else(|| "replacement omitted track mapping".to_owned())?
-                .track_id;
-        }
-        for loop_ in self.loops.values_mut() {
-            let source_id = old_loop_sources[&loop_.id];
-            loop_.backend_id = *replacement
-                .loops
-                .get(&source_id)
-                .ok_or_else(|| "replacement omitted loop mapping".to_owned())?;
-        }
-        for port in self.connection_ports.values_mut() {
-            let source_id = old_port_sources[&port.id];
-            port.backend_id = *replacement
-                .ports
-                .get(&source_id)
-                .ok_or_else(|| "replacement omitted port mapping".to_owned())?;
-            port.candidates.clear();
-        }
-        let _ = source;
-        Ok(())
-    }
-
     fn notify_error(&mut self, message: String) {
         self.notifications.push(AppNotification {
             level: NotificationLevel::Error,
@@ -5761,17 +5560,10 @@ fn safe_file_stem(name: &str) -> String {
     }
 }
 
-fn target_length_for_source(source: &BackendSessionData, loop_source_id: u64) -> Option<u32> {
-    source
-        .tracks
-        .iter()
-        .flat_map(|track| &track.loops)
-        .find(|loop_| loop_.source_id == loop_source_id)
-        .map(|loop_| loop_.length)
-}
-
 fn io_pending_error(message: &str) -> bool {
-    message.contains("session capture pending") || message.contains("session replacement pending")
+    message.contains("session capture pending")
+        || message.contains("session replacement pending")
+        || message.contains("loop content replacement pending")
 }
 
 fn fx_chain_type_for_processor(
@@ -5785,6 +5577,7 @@ fn fx_chain_type_for_processor(
         shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X => {
             Ok(FxChainTypeDocument::CarlaPatchbay16x)
         }
+        shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX => Ok(FxChainTypeDocument::TinySynthFx),
         "test_2x2x1" => Ok(FxChainTypeDocument::Test),
         value => Err(format!(
             "processor {value} has no session FX-chain representation"
@@ -5801,6 +5594,7 @@ fn processor_for_fx_chain_type(
         FxChainTypeDocument::CarlaPatchbay16x => {
             shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X
         }
+        FxChainTypeDocument::TinySynthFx => shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX,
         FxChainTypeDocument::Test => "test_2x2x1",
     })
 }
@@ -5892,6 +5686,35 @@ fn runtime_track_topology(
                 },
                 dry_audio_channels.saturating_add(wet_audio_channels),
                 *midi,
+            ))
+        }
+        TrackTopologyDocument::TinySynthFx { audio_channels } => {
+            let processor = shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX,
+            );
+            validate_loaded_processor(
+                track.id,
+                &processor,
+                *audio_channels,
+                *audio_channels,
+                true,
+                processors,
+            )?;
+            Ok((
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: processor.as_str().to_owned(),
+                    dry_audio_channels: *audio_channels,
+                    wet_audio_channels: *audio_channels,
+                    dry_midi: true,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels: *audio_channels,
+                    wet_audio_channels: *audio_channels,
+                    dry_midi: true,
+                    processor_type: processor,
+                },
+                audio_channels.saturating_mul(2),
+                true,
             ))
         }
         TrackTopologyDocument::Trigger => Err(format!(
@@ -6127,7 +5950,7 @@ fn session_bundle_to_backend(
             state,
             loops,
             ports,
-            carla_state: track
+            processor_state: track
                 .fx_chain
                 .as_ref()
                 .map(|chain| chain.internal_state.clone()),
@@ -6374,14 +6197,17 @@ mod tests {
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: Some(2),
                 max_wet_audio_channels: Some(2),
-                dry_midi: false,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Unsupported,
             },
             features: shoop_app_api::TrackProcessorFeatures {
                 state: true,
                 external_ui: false,
+                embedded_ui: false,
                 recovery: false,
                 logs: false,
             },
+            editor: None,
         };
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![descriptor.clone()]);
@@ -6404,9 +6230,11 @@ mod tests {
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: None,
                 max_wet_audio_channels: None,
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures::default(),
+            editor: None,
         };
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![descriptor]);
@@ -6494,6 +6322,204 @@ mod tests {
     }
 
     #[test]
+    fn tiny_synth_fx_round_trips_controls_and_recorded_state() {
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Tiny".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX,
+                    ),
+                },
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = runtime.snapshot().tracks[1].clone();
+        for control in [
+            shoop_app_api::TinySynthFxControl::SelectPreset("pad".to_owned()),
+            shoop_app_api::TinySynthFxControl::SetMasterGainDb(-12.0),
+            shoop_app_api::TinySynthFxControl::SetReverbEnabled(true),
+            shoop_app_api::TinySynthFxControl::SetReverbAmount(0.4),
+            shoop_app_api::TinySynthFxControl::SetDistortionEnabled(true),
+            shoop_app_api::TinySynthFxControl::SetDistortionDrive(7.0),
+        ] {
+            runtime
+                .dispatch(AppIntent::Track {
+                    track_id: track.id,
+                    action: TrackAction::TinySynthFx(control),
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let loop_id = track.loops[0].id;
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].loops[0].has_recorded_fx_state);
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::FxVisibilityChanged(true),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].fx.as_ref().unwrap().visible);
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        let saved_track = &saved.document.track_groups[1].tracks[0];
+        assert_eq!(
+            saved_track.topology,
+            TrackTopologyDocument::TinySynthFx { audio_channels: 2 }
+        );
+        assert_eq!(
+            saved_track.fx_chain.as_ref().unwrap().chain_type,
+            FxChainTypeDocument::TinySynthFx
+        );
+        let current_state = &saved_track.fx_chain.as_ref().unwrap().internal_state;
+        assert!(!current_state.is_empty());
+        let take_id = saved_track.loops[0]
+            .channels
+            .iter()
+            .find(|channel| channel.mode == ChannelModeDocument::Wet)
+            .unwrap()
+            .recording_fx_state_id
+            .unwrap();
+        assert_eq!(saved.document.fx_states.len(), 1);
+        assert_eq!(saved.document.fx_states[0].id, take_id);
+        assert_eq!(&saved.document.fx_states[0].internal_state, current_state);
+
+        drop(runtime);
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "tiny.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            if runtime.snapshot().io_task.as_ref().is_some_and(|task| {
+                task.status == IoTaskStatus::Completed || task.status == IoTaskStatus::Failed
+            }) {
+                break;
+            }
+        }
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let loaded = runtime.snapshot();
+        assert_eq!(loaded.tracks[1].topology, track.topology);
+        assert!(!loaded.tracks[1].fx.as_ref().unwrap().visible);
+        let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(editor)) = loaded.tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX editor state");
+        };
+        assert_eq!(editor.selected_preset_id.as_deref(), Some("pad"));
+        assert_eq!(editor.master_gain_db, -12.0);
+        assert!(editor.reverb_enabled);
+        assert_eq!(editor.reverb_amount, 0.4);
+        assert!(editor.distortion_enabled);
+        assert_eq!(editor.distortion_drive, 7.0);
+        assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
+        let loaded_track_id = loaded.tracks[1].id;
+        let loaded_loop_id = loaded.tracks[1].loops[0].id;
+
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: loaded_track_id,
+                action: TrackAction::TinySynthFx(
+                    shoop_app_api::TinySynthFxControl::SetMasterGainDb(-18.0),
+                ),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: loaded_track_id,
+                loop_id: loaded_loop_id,
+                action: LoopAction::RestoreRecordedFxState,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let restored = runtime.snapshot();
+        let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(restored_editor)) = restored
+            .tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing restored Tiny Synth/FX editor state");
+        };
+        assert_eq!(restored_editor.master_gain_db, -12.0);
+        assert_eq!(restored_editor.selected_preset_id.as_deref(), Some("pad"));
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 256,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let switched = runtime.snapshot();
+        assert_eq!(switched.status.sample_rate, 44_100);
+        assert_eq!(switched.tracks[1].topology, track.topology);
+        assert!(switched.tracks[1].loops[0].has_recorded_fx_state);
+        let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(switched_editor)) = switched
+            .tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX state after sample-rate switch");
+        };
+        assert_eq!(switched_editor.master_gain_db, -12.0);
+        assert_eq!(switched_editor.selected_preset_id.as_deref(), Some("pad"));
+        assert!(switched_editor.reverb_enabled);
+        assert_eq!(switched_editor.reverb_amount, 0.4);
+        assert!(switched_editor.distortion_enabled);
+        assert_eq!(switched_editor.distortion_drive, 7.0);
+    }
+
+    #[test]
     fn processed_track_session_round_trip_preserves_roles_state_and_recorded_take() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new(
@@ -6505,14 +6531,17 @@ mod tests {
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: Some(2),
                 max_wet_audio_channels: Some(2),
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures {
                 state: true,
                 external_ui: true,
+                embedded_ui: false,
                 recovery: true,
                 logs: true,
             },
+            editor: None,
         };
         let exact_state = "opaque\0state\nユニコード";
         let mut backend = FakeBackend::default();
@@ -6641,14 +6670,17 @@ mod tests {
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: Some(2),
                 max_wet_audio_channels: Some(2),
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures {
                 state: true,
                 external_ui: true,
+                embedded_ui: false,
                 recovery: true,
                 logs: true,
             },
+            editor: None,
         };
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![descriptor]);
@@ -8144,9 +8176,11 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: None,
                 max_wet_audio_channels: None,
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures::default(),
+            editor: None,
         }]);
         let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
         for (name, audio_channels, midi) in [
@@ -9915,6 +9949,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
+        let track_id = runtime.snapshot().tracks[1].id;
         let loop_id = runtime.snapshot().tracks[1].loops[0].id;
         let audio = LoopAudio {
             sample_rate: 32_000,
@@ -10015,6 +10050,21 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             );
         }
         runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
             .dispatch(AppIntent::RequestLoopAudioExport {
                 loop_id,
                 format: LoopAudioExportFormat::Exact,
@@ -10043,6 +10093,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             exported_audio.channels[0].samples,
             exported_audio.channels[1].samples
         );
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
         runtime
             .dispatch(AppIntent::RequestLoopAudioExport {
                 loop_id,
@@ -10068,6 +10122,34 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             assert_eq!(wav.role, exact.role);
             assert_eq!(wav.samples, exact.samples);
         }
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::ImportLoopAudioBytes {
+                loop_id,
+                name: "roundtrip.wav".to_owned(),
+                bytes: output.bytes,
+                update_loop_length: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let mapping_task = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(mapping_task.status, IoTaskStatus::AwaitingChannelMapping);
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelMapping {
+                task_id: mapping_task.id,
+                source_for_destination: mapping_task.audio_channel_mapping.unwrap().default_mapping,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
 
         let midi = ExactMidi {
             sample_rate: 32_000,
@@ -10100,6 +10182,18 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.tick(Duration::ZERO);
         }
         runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
             .dispatch(AppIntent::RequestLoopMidiExport {
                 loop_id,
                 standard: false,
@@ -10112,6 +10206,59 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(exported_midi.sample_rate, 48_000);
         assert_eq!(exported_midi.length_frames, 150);
         assert_eq!(exported_midi.events[0].frame, 75);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::RequestLoopMidiExport {
+                loop_id,
+                standard: true,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        let standard_output = runtime.take_file_output().unwrap();
+        assert!(standard_output.suggested_name.ends_with(".mid"));
+        let standard_midi = decode_standard_midi(&standard_output.bytes, 48_000).unwrap();
+        assert!(standard_midi
+            .events
+            .iter()
+            .any(|event| event.frame == 75 && event.data == [0x90, 60, 100]));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                name: "roundtrip.mid".to_owned(),
+                bytes: standard_output.bytes,
+                update_loop_length: true,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+        runtime
+            .dispatch(AppIntent::RequestLoopMidiExport {
+                loop_id,
+                standard: false,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        let roundtrip = decode_exact_midi(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert!(roundtrip
+            .events
+            .iter()
+            .any(|event| event.frame == 75 && event.data == [0x90, 60, 100]));
     }
 
     #[test]
@@ -10127,9 +10274,11 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: None,
                 max_wet_audio_channels: None,
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures::default(),
+            editor: None,
         }]);
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
         runtime.tick(Duration::ZERO);
@@ -10447,10 +10596,39 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
     }
 
     #[test]
-    fn engine_backed_click_replacement_preserves_mixed_track_topology() {
+    fn engine_backed_click_updates_preserve_running_sync_and_follower_alignment() {
         let backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
         runtime.tick(Duration::ZERO);
+        let sync_track = runtime.snapshot().tracks[0].id;
+        let sync_loop = runtime.snapshot().tracks[0].loops[0].id;
+        let request = ClickTrackRequest {
+            bpm: 600.0,
+            click_count: 2,
+            ..Default::default()
+        };
+        runtime
+            .dispatch(AppIntent::GenerateClickTrack {
+                loop_id: sync_loop,
+                request: request.clone(),
+            })
+            .unwrap();
+        for _ in 0..8 {
+            runtime.tick(Duration::ZERO);
+        }
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: sync_track,
+                loop_id: sync_loop,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(5));
+        assert_eq!(
+            runtime.snapshot().tracks[0].loops[0].mode,
+            LoopMode::Playing
+        );
+
         runtime
             .dispatch(AppIntent::AddTrack(DirectTrackSpec {
                 name: "Mixed click target".to_owned(),
@@ -10459,29 +10637,15 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
+        let track_id = runtime.snapshot().tracks[1].id;
         let loop_id = runtime.snapshot().tracks[1].loops[0].id;
-        let mut request = ClickTrackRequest {
-            bpm: 600.0,
-            click_count: 2,
-            ..Default::default()
-        };
+        let mut midi_request = request;
+        midi_request.kind = ClickTrackKind::Midi;
         runtime
             .dispatch(AppIntent::GenerateClickTrack {
                 loop_id,
-                request: request.clone(),
+                request: midi_request,
             })
-            .unwrap();
-        for _ in 0..8 {
-            runtime.tick(Duration::ZERO);
-        }
-        assert_eq!(
-            runtime.snapshot().io_task.as_ref().unwrap().status,
-            IoTaskStatus::Completed
-        );
-
-        request.kind = ClickTrackKind::Midi;
-        runtime
-            .dispatch(AppIntent::GenerateClickTrack { loop_id, request })
             .unwrap();
         for _ in 0..8 {
             runtime.tick(Duration::ZERO);
@@ -10491,12 +10655,30 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             snapshot.io_task.as_ref().unwrap().status,
             IoTaskStatus::Completed
         );
+        assert_eq!(snapshot.tracks[0].id, sync_track);
+        assert_eq!(snapshot.tracks[0].loops[0].id, sync_loop);
+        assert_eq!(snapshot.tracks[0].loops[0].mode, LoopMode::Playing);
+        assert_eq!(snapshot.tracks[1].id, track_id);
+        assert_eq!(snapshot.tracks[1].loops[0].id, loop_id);
+        assert_eq!(snapshot.tracks[1].loops[0].mode, LoopMode::Stopped);
         assert!(snapshot.tracks[1].loops[0].has_audio);
         assert!(snapshot.tracks[1].loops[0].has_midi);
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let follower = &runtime.snapshot().tracks[1].loops[0];
+        assert_eq!(follower.mode, LoopMode::Stopped);
+        assert_eq!(follower.next_mode, LoopMode::Playing);
     }
 
     #[test]
-    fn generated_click_replacement_resets_target_offsets_and_preserves_other_media() {
+    fn generated_click_update_resets_target_offsets_and_preserves_other_media() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -10515,34 +10697,33 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         model.apply_backend_snapshot(backend.poll().unwrap());
         let loop_id = model.tracks[1].loops[0];
         let backend_loop_id = model.loops[&loop_id].backend_id;
-        let mut seeded = backend.capture_session().unwrap();
-        let seeded_target = seeded
-            .tracks
-            .iter_mut()
-            .flat_map(|track| &mut track.loops)
-            .find(|loop_| loop_.source_id == backend_loop_id.raw())
+        backend
+            .replace_loop_content(
+                backend_loop_id,
+                &BackendLoopContentUpdate {
+                    audio: (0..2)
+                        .map(|channel| BackendAudioChannelUpdate {
+                            channel,
+                            samples: vec![channel as f32 + 0.25; 128],
+                            start_offset: Some(11),
+                            preplay: Some(12),
+                        })
+                        .collect(),
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 128,
+                        start_state: vec![vec![0xB0, 7, 99]],
+                        events: vec![BackendMidiEvent {
+                            time: 64,
+                            data: vec![0x90, 70, 88],
+                        }],
+                        start_offset: Some(13),
+                        preplay: Some(14),
+                    }],
+                    length: Some(128),
+                },
+            )
             .unwrap();
-        for (index, channel) in seeded_target.audio.iter_mut().enumerate() {
-            channel.samples = vec![index as f32 + 0.25; 128];
-            channel.start_offset = 11;
-            channel.preplay = 12;
-        }
-        for channel in &mut seeded_target.midi {
-            *channel = BackendMidiContent {
-                mode: channel.mode,
-                length: 128,
-                start_state: vec![vec![0xB0, 7, 99]],
-                events: vec![BackendMidiEvent {
-                    time: 64,
-                    data: vec![0x90, 70, 88],
-                }],
-                start_offset: 13,
-                preplay: 14,
-            };
-        }
-        seeded_target.length = 128;
-        let replacement = backend.replace_session(&seeded).unwrap();
-        model.remap_backend_entities(&seeded, &replacement).unwrap();
         model.apply_backend_snapshot(backend.poll().unwrap());
 
         let mut request = ClickTrackRequest::default();
@@ -10597,7 +10778,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
     }
 
     #[test]
-    fn click_generation_rejects_conflicts_and_failed_replace_keeps_capture() {
+    fn click_generation_rejects_conflicts_and_failed_update_keeps_content() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -10620,7 +10801,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .begin_generate_click_track(loop_id, ClickTrackRequest::default())
             .unwrap();
         model.advance_io(&mut backend);
-        backend.fail_next_session_replace("injected click replacement failure");
+        backend.fail_next_loop_content_replace("injected click replacement failure");
         model.advance_io(&mut backend);
         assert_eq!(model.io_task.as_ref().unwrap().status, IoTaskStatus::Failed);
         assert_eq!(backend.capture_session().unwrap(), before);
