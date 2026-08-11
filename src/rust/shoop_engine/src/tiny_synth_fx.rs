@@ -8,6 +8,8 @@ use crate::midi_storage::MidiStorageElem;
 pub const MIN_MASTER_GAIN_DB: f32 = -60.0;
 pub const MAX_MASTER_GAIN_DB: f32 = 0.0;
 pub const DEFAULT_MASTER_GAIN_DB: f32 = -6.0;
+pub const MIN_EQ_GAIN_DB: f32 = -12.0;
+pub const MAX_EQ_GAIN_DB: f32 = 12.0;
 const GAIN_SMOOTH_SECONDS: f32 = 0.02;
 const STATE_PREFIX: &str = "shoop-tiny-synth-fx:1:";
 const MAX_PROCESSOR_STATE_BYTES: usize = 256 * 1024;
@@ -21,6 +23,12 @@ pub struct TinySynthFxEditorState {
     pub reverb_amount: f32,
     pub distortion_enabled: bool,
     pub distortion_drive: f32,
+    pub compressor_enabled: bool,
+    pub compressor_amount: f32,
+    pub eq_enabled: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -89,6 +97,12 @@ impl TinySynthFxControlState {
             reverb_amount: settings.reverb_amount,
             distortion_enabled: settings.distortion_enabled,
             distortion_drive: settings.distortion_drive,
+            compressor_enabled: settings.compressor_enabled,
+            compressor_amount: settings.compressor_amount,
+            eq_enabled: settings.eq_enabled,
+            eq_low_db: settings.eq_low_db,
+            eq_mid_db: settings.eq_mid_db,
+            eq_high_db: settings.eq_high_db,
         }
     }
 
@@ -116,6 +130,30 @@ impl TinySynthFxControlState {
 
     pub fn set_distortion_drive(&mut self, drive: f32) -> Result<(), tinyviolin::ProcessError> {
         self.audio.set_distortion_drive(drive)
+    }
+
+    pub fn set_compressor_enabled(&mut self, enabled: bool) {
+        self.audio.set_compressor_enabled(enabled);
+    }
+
+    pub fn set_compressor_amount(&mut self, amount: f32) -> Result<(), tinyviolin::ProcessError> {
+        self.audio.set_compressor_amount(amount)
+    }
+
+    pub fn set_eq_enabled(&mut self, enabled: bool) {
+        self.audio.set_eq_enabled(enabled);
+    }
+
+    pub fn set_eq_low_db(&mut self, gain_db: f32) -> Result<(), tinyviolin::ProcessError> {
+        self.audio.set_eq_low_db(gain_db)
+    }
+
+    pub fn set_eq_mid_db(&mut self, gain_db: f32) -> Result<(), tinyviolin::ProcessError> {
+        self.audio.set_eq_mid_db(gain_db)
+    }
+
+    pub fn set_eq_high_db(&mut self, gain_db: f32) -> Result<(), tinyviolin::ProcessError> {
+        self.audio.set_eq_high_db(gain_db)
     }
 
     pub fn prepare_processor(
@@ -277,6 +315,30 @@ impl TinySynthFxProcessor {
         let _ = self.audio.set_distortion_drive(drive);
     }
 
+    pub fn set_compressor_enabled(&mut self, enabled: bool) {
+        self.audio.set_compressor_enabled(enabled);
+    }
+
+    pub fn set_compressor_amount(&mut self, amount: f32) {
+        let _ = self.audio.set_compressor_amount(amount);
+    }
+
+    pub fn set_eq_enabled(&mut self, enabled: bool) {
+        self.audio.set_eq_enabled(enabled);
+    }
+
+    pub fn set_eq_low_db(&mut self, gain_db: f32) {
+        let _ = self.audio.set_eq_low_db(gain_db);
+    }
+
+    pub fn set_eq_mid_db(&mut self, gain_db: f32) {
+        let _ = self.audio.set_eq_mid_db(gain_db);
+    }
+
+    pub fn set_eq_high_db(&mut self, gain_db: f32) {
+        let _ = self.audio.set_eq_high_db(gain_db);
+    }
+
     pub fn panic(&mut self) {
         self.audio.panic();
     }
@@ -395,6 +457,12 @@ mod tests {
         source.set_reverb_amount(0.4).unwrap();
         source.set_distortion_enabled(true);
         source.set_distortion_drive(8.0).unwrap();
+        source.set_compressor_enabled(true);
+        source.set_compressor_amount(0.6).unwrap();
+        source.set_eq_enabled(true);
+        source.set_eq_low_db(3.0).unwrap();
+        source.set_eq_mid_db(-2.0).unwrap();
+        source.set_eq_high_db(1.5).unwrap();
         let encoded = source.encode();
         let restored = TinySynthFxControlState::from_encoded(44_100.0, &encoded).unwrap();
         assert_eq!(restored.editor_state(), source.editor_state());
@@ -561,6 +629,12 @@ mod tests {
         processor.set_distortion_drive(8.0);
         processor.set_reverb_enabled(true);
         processor.set_reverb_amount(0.5);
+        processor.set_compressor_enabled(true);
+        processor.set_compressor_amount(0.6);
+        processor.set_eq_enabled(true);
+        processor.set_eq_low_db(3.0);
+        processor.set_eq_mid_db(-2.0);
+        processor.set_eq_high_db(1.5);
         processor.process(64, &events[3..]);
         let processed = processor.plane(0, 64).unwrap();
         assert!(processed.iter().all(|sample| sample.is_finite()));
@@ -569,6 +643,43 @@ mod tests {
             .any(|sample| (*sample - 0.2 * db_to_gain(DEFAULT_MASTER_GAIN_DB)).abs() > 0.01));
         processor.panic();
         processor.process(64, &[]);
+    }
+
+    #[test]
+    fn pitch_bend_and_modulation_wheel_reach_tinyviolin() {
+        let control = TinySynthFxControlState::new(48_000.0).unwrap();
+        let note_on = MidiStorageElem::new(0, &[0x90, 69, 127]).unwrap();
+
+        let mut centered = control.prepare_processor(48_000.0, 1, 256).unwrap();
+        centered.process(256, std::slice::from_ref(&note_on));
+        let centered = centered.plane(0, 256).unwrap().to_vec();
+
+        let mut bent = control.prepare_processor(48_000.0, 1, 256).unwrap();
+        bent.process(
+            256,
+            &[
+                MidiStorageElem::new(0, &[0xE0, 0x7F, 0x7F]).unwrap(),
+                note_on.clone(),
+            ],
+        );
+        assert!(bent
+            .plane(0, 256)
+            .unwrap()
+            .iter()
+            .zip(&centered)
+            .any(|(bent, centered)| (*bent - *centered).abs() > 1.0e-4));
+
+        let mut modulated = control.prepare_processor(48_000.0, 1, 256).unwrap();
+        modulated.process(
+            256,
+            &[MidiStorageElem::new(0, &[0xB0, 1, 127]).unwrap(), note_on],
+        );
+        assert!(modulated
+            .plane(0, 256)
+            .unwrap()
+            .iter()
+            .zip(&centered)
+            .any(|(modulated, centered)| (*modulated - *centered).abs() > 1.0e-4));
     }
 
     #[test]
@@ -624,7 +735,8 @@ mod tests {
     #[test]
     fn presets_are_runtime_advertised_with_unique_stable_ids() {
         let presets = available_presets().collect::<Vec<_>>();
-        assert!(!presets.is_empty());
+        assert!(presets.len() >= 12);
+        assert!(presets.iter().any(|preset| preset.0 == "pluck"));
         for (index, (id, name)) in presets.iter().enumerate() {
             assert!(!id.is_empty());
             assert!(!name.is_empty());

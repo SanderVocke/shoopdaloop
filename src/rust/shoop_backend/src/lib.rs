@@ -755,6 +755,12 @@ pub fn encode_tiny_synth_fx_state(sample_rate: f32, state: &TinySynthFxState) ->
     control.set_reverb_amount(state.reverb_amount)?;
     control.set_distortion_enabled(state.distortion_enabled);
     control.set_distortion_drive(state.distortion_drive)?;
+    control.set_compressor_enabled(state.compressor_enabled);
+    control.set_compressor_amount(state.compressor_amount)?;
+    control.set_eq_enabled(state.eq_enabled);
+    control.set_eq_low_db(state.eq_low_db)?;
+    control.set_eq_mid_db(state.eq_mid_db)?;
+    control.set_eq_high_db(state.eq_high_db)?;
     Ok(control.encode())
 }
 
@@ -777,6 +783,12 @@ pub fn default_tiny_synth_fx_state() -> TrackFxState {
             reverb_amount: editor.reverb_amount,
             distortion_enabled: editor.distortion_enabled,
             distortion_drive: editor.distortion_drive,
+            compressor_enabled: editor.compressor_enabled,
+            compressor_amount: editor.compressor_amount,
+            eq_enabled: editor.eq_enabled,
+            eq_low_db: editor.eq_low_db,
+            eq_mid_db: editor.eq_mid_db,
+            eq_high_db: editor.eq_high_db,
         })),
     }
 }
@@ -2295,6 +2307,12 @@ fn engine_tiny_fx_state(fx: &EngineTinyFx) -> TrackFxState {
             reverb_amount: editor.reverb_amount,
             distortion_enabled: editor.distortion_enabled,
             distortion_drive: editor.distortion_drive,
+            compressor_enabled: editor.compressor_enabled,
+            compressor_amount: editor.compressor_amount,
+            eq_enabled: editor.eq_enabled,
+            eq_low_db: editor.eq_low_db,
+            eq_mid_db: editor.eq_mid_db,
+            eq_high_db: editor.eq_high_db,
         })),
     }
 }
@@ -2805,6 +2823,42 @@ impl Backend for EngineBackend {
                     fx.control.set_distortion_drive(value)?;
                     if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
                         processor.set_distortion_drive(value);
+                    }
+                }
+                TinySynthFxControl::SetCompressorEnabled(value) => {
+                    fx.control.set_compressor_enabled(value);
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_compressor_enabled(value);
+                    }
+                }
+                TinySynthFxControl::SetCompressorAmount(value) => {
+                    fx.control.set_compressor_amount(value)?;
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_compressor_amount(value);
+                    }
+                }
+                TinySynthFxControl::SetEqEnabled(value) => {
+                    fx.control.set_eq_enabled(value);
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_eq_enabled(value);
+                    }
+                }
+                TinySynthFxControl::SetEqLowDb(value) => {
+                    fx.control.set_eq_low_db(value)?;
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_eq_low_db(value);
+                    }
+                }
+                TinySynthFxControl::SetEqMidDb(value) => {
+                    fx.control.set_eq_mid_db(value)?;
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_eq_mid_db(value);
+                    }
+                }
+                TinySynthFxControl::SetEqHighDb(value) => {
+                    fx.control.set_eq_high_db(value)?;
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_eq_high_db(value);
                     }
                 }
                 TinySynthFxControl::Panic => {
@@ -6351,18 +6405,23 @@ mod tests {
                 )),
             )
             .unwrap();
-        backend
-            .set_track_fx_control(
-                created.track_id,
-                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetReverbEnabled(true)),
-            )
-            .unwrap();
-        backend
-            .set_track_fx_control(
-                created.track_id,
-                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetReverbAmount(0.4)),
-            )
-            .unwrap();
+        for control in [
+            TinySynthFxControl::SetReverbEnabled(true),
+            TinySynthFxControl::SetReverbAmount(0.4),
+            TinySynthFxControl::SetCompressorEnabled(true),
+            TinySynthFxControl::SetCompressorAmount(0.6),
+            TinySynthFxControl::SetEqEnabled(true),
+            TinySynthFxControl::SetEqLowDb(3.0),
+            TinySynthFxControl::SetEqMidDb(-2.0),
+            TinySynthFxControl::SetEqHighDb(1.5),
+        ] {
+            backend
+                .set_track_fx_control(
+                    created.track_id,
+                    BackendTrackFxControl::TinySynthFx(control),
+                )
+                .unwrap();
+        }
         let state = backend
             .track_fx_state_string(created.track_id)
             .unwrap()
@@ -6401,6 +6460,12 @@ mod tests {
         assert_eq!(editor.selected_preset_id.as_deref(), Some("pad"));
         assert!(editor.reverb_enabled);
         assert_eq!(editor.reverb_amount, 0.4);
+        assert!(editor.compressor_enabled);
+        assert_eq!(editor.compressor_amount, 0.6);
+        assert!(editor.eq_enabled);
+        assert_eq!(editor.eq_low_db, 3.0);
+        assert_eq!(editor.eq_mid_db, -2.0);
+        assert_eq!(editor.eq_high_db, 1.5);
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use crate::{
     TinySynthFxControl, TrackAction, TrackProcessorDescriptor, TrackProcessorEditorDescriptor,
-    TrackProcessorEditorState, TrackState, MAX_TINY_SYNTH_FX_GAIN_DB, MIN_TINY_SYNTH_FX_GAIN_DB,
+    TrackProcessorEditorState, TrackState, MAX_TINY_SYNTH_FX_EQ_GAIN_DB, MAX_TINY_SYNTH_FX_GAIN_DB,
+    MIN_TINY_SYNTH_FX_EQ_GAIN_DB, MIN_TINY_SYNTH_FX_GAIN_DB,
 };
 
 #[derive(Debug, Default)]
@@ -23,6 +24,18 @@ pub(crate) struct TinySynthFxEditor {
     distortion_rect: Option<egui::Rect>,
     #[cfg(test)]
     distortion_drive_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    compressor_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    compressor_amount_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    eq_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    eq_low_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    eq_mid_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    eq_high_rect: Option<egui::Rect>,
 }
 
 impl TinySynthFxEditor {
@@ -169,6 +182,82 @@ impl TinySynthFxEditor {
                         TinySynthFxControl::SetDistortionDrive(distortion_drive),
                     ));
                 }
+
+                let mut compressor_enabled = editor.compressor_enabled;
+                let compressor = ui.checkbox(&mut compressor_enabled, "Compressor");
+                #[cfg(test)]
+                {
+                    self.compressor_rect = Some(compressor.rect);
+                }
+                if compressor.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetCompressorEnabled(compressor_enabled),
+                    ));
+                }
+                let mut compressor_amount = editor.compressor_amount;
+                let compressor_amount_response = ui.add_enabled(
+                    compressor_enabled,
+                    egui::Slider::new(&mut compressor_amount, 0.0..=1.0).text("Amount"),
+                );
+                #[cfg(test)]
+                {
+                    self.compressor_amount_rect = Some(compressor_amount_response.rect);
+                }
+                if compressor_amount_response.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetCompressorAmount(compressor_amount),
+                    ));
+                }
+
+                let mut eq_enabled = editor.eq_enabled;
+                let eq = ui.checkbox(&mut eq_enabled, "Three-band EQ");
+                #[cfg(test)]
+                {
+                    self.eq_rect = Some(eq.rect);
+                }
+                if eq.changed() {
+                    actions.push(TrackAction::TinySynthFx(TinySynthFxControl::SetEqEnabled(
+                        eq_enabled,
+                    )));
+                }
+                for (label, gain, control) in [
+                    (
+                        "Low",
+                        editor.eq_low_db,
+                        TinySynthFxControl::SetEqLowDb as fn(f32) -> TinySynthFxControl,
+                    ),
+                    (
+                        "Mid",
+                        editor.eq_mid_db,
+                        TinySynthFxControl::SetEqMidDb as fn(f32) -> TinySynthFxControl,
+                    ),
+                    (
+                        "High",
+                        editor.eq_high_db,
+                        TinySynthFxControl::SetEqHighDb as fn(f32) -> TinySynthFxControl,
+                    ),
+                ] {
+                    let mut gain = gain;
+                    let response = ui.add_enabled(
+                        eq_enabled,
+                        egui::Slider::new(
+                            &mut gain,
+                            MIN_TINY_SYNTH_FX_EQ_GAIN_DB..=MAX_TINY_SYNTH_FX_EQ_GAIN_DB,
+                        )
+                        .text(label)
+                        .suffix(" dB"),
+                    );
+                    #[cfg(test)]
+                    match label {
+                        "Low" => self.eq_low_rect = Some(response.rect),
+                        "Mid" => self.eq_mid_rect = Some(response.rect),
+                        "High" => self.eq_high_rect = Some(response.rect),
+                        _ => unreachable!(),
+                    }
+                    if response.changed() {
+                        actions.push(TrackAction::TinySynthFx(control(gain)));
+                    }
+                }
             });
         #[cfg(test)]
         {
@@ -226,6 +315,36 @@ impl TinySynthFxEditor {
     pub(crate) fn distortion_drive_rect(&self) -> Option<egui::Rect> {
         self.distortion_drive_rect
     }
+
+    #[cfg(test)]
+    pub(crate) fn compressor_rect(&self) -> Option<egui::Rect> {
+        self.compressor_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compressor_amount_rect(&self) -> Option<egui::Rect> {
+        self.compressor_amount_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn eq_rect(&self) -> Option<egui::Rect> {
+        self.eq_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn eq_low_rect(&self) -> Option<egui::Rect> {
+        self.eq_low_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn eq_mid_rect(&self) -> Option<egui::Rect> {
+        self.eq_mid_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn eq_high_rect(&self) -> Option<egui::Rect> {
+        self.eq_high_rect
+    }
 }
 
 #[cfg(test)]
@@ -268,6 +387,10 @@ mod tests {
                         id: "pad".to_owned(),
                         name: "Pad".to_owned(),
                     },
+                    TrackProcessorPresetDescriptor {
+                        id: "pluck".to_owned(),
+                        name: "Pluck".to_owned(),
+                    },
                 ]),
             }),
         };
@@ -289,6 +412,12 @@ mod tests {
                     reverb_amount: 0.25,
                     distortion_enabled: false,
                     distortion_drive: 4.0,
+                    compressor_enabled: false,
+                    compressor_amount: 0.5,
+                    eq_enabled: false,
+                    eq_low_db: 0.0,
+                    eq_mid_db: 0.0,
+                    eq_high_db: 0.0,
                 })),
             }),
             ..Default::default()
@@ -480,19 +609,19 @@ mod tests {
 
         let preset = editor.preset_rect().unwrap().center();
         assert!(click(&context, &mut editor, &state, &processor, preset).is_empty());
-        let pad = editor.preset_item_rect("pad").unwrap().center();
+        let pluck = editor.preset_item_rect("pluck").unwrap().center();
         let _ = frame(
             &context,
             &mut editor,
             &state,
             &processor,
-            vec![egui::Event::PointerMoved(pad)],
+            vec![egui::Event::PointerMoved(pluck)],
         );
-        let pad = editor.preset_item_rect("pad").unwrap().center();
+        let pluck = editor.preset_item_rect("pluck").unwrap().center();
         assert_eq!(
-            click(&context, &mut editor, &state, &processor, pad),
+            click(&context, &mut editor, &state, &processor, pluck),
             [TrackAction::TinySynthFx(TinySynthFxControl::SelectPreset(
-                "pad".to_owned()
+                "pluck".to_owned()
             ))]
         );
 
@@ -541,6 +670,59 @@ mod tests {
             [TrackAction::TinySynthFx(TinySynthFxControl::SetDistortionDrive(value))]
                 if (1.0..=20.0).contains(value)
         ));
+
+        let compressor = editor.compressor_rect().unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, compressor),
+            [TrackAction::TinySynthFx(
+                TinySynthFxControl::SetCompressorEnabled(true)
+            )]
+        );
+        state_mut(&mut state).compressor_enabled = true;
+        let _ = frame(&context, &mut editor, &state, &processor, Vec::new());
+        let amount_rect = editor.compressor_amount_rect().unwrap();
+        let amount_actions = click(
+            &context,
+            &mut editor,
+            &state,
+            &processor,
+            egui::pos2(amount_rect.left() + 8.0, amount_rect.center().y),
+        );
+        assert!(matches!(
+            amount_actions.as_slice(),
+            [TrackAction::TinySynthFx(TinySynthFxControl::SetCompressorAmount(value))]
+                if (0.0..=1.0).contains(value)
+        ));
+
+        let eq = editor.eq_rect().unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, eq),
+            [TrackAction::TinySynthFx(TinySynthFxControl::SetEqEnabled(
+                true
+            ))]
+        );
+        state_mut(&mut state).eq_enabled = true;
+        let _ = frame(&context, &mut editor, &state, &processor, Vec::new());
+        for (rect, expected) in [
+            (editor.eq_low_rect().unwrap(), "low"),
+            (editor.eq_mid_rect().unwrap(), "mid"),
+            (editor.eq_high_rect().unwrap(), "high"),
+        ] {
+            let actions = click(
+                &context,
+                &mut editor,
+                &state,
+                &processor,
+                egui::pos2(rect.left() + 8.0, rect.center().y),
+            );
+            assert!(matches!(
+                (expected, actions.as_slice()),
+                ("low", [TrackAction::TinySynthFx(TinySynthFxControl::SetEqLowDb(value))])
+                    | ("mid", [TrackAction::TinySynthFx(TinySynthFxControl::SetEqMidDb(value))])
+                    | ("high", [TrackAction::TinySynthFx(TinySynthFxControl::SetEqHighDb(value))])
+                    if (MIN_TINY_SYNTH_FX_EQ_GAIN_DB..=MAX_TINY_SYNTH_FX_EQ_GAIN_DB).contains(value)
+            ));
+        }
 
         let window = editor.window_rect().unwrap();
         let close = egui::pos2(window.right() - 12.0, window.top() + 12.0);

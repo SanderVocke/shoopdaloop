@@ -1320,6 +1320,20 @@ impl NativeRuntime {
                     TinySynthFxControl::SetDistortionDrive(value) => {
                         fx.chain.tiny_set_distortion_drive(value)?
                     }
+                    TinySynthFxControl::SetCompressorEnabled(value) => {
+                        fx.chain.tiny_set_compressor_enabled(value)?
+                    }
+                    TinySynthFxControl::SetCompressorAmount(value) => {
+                        fx.chain.tiny_set_compressor_amount(value)?
+                    }
+                    TinySynthFxControl::SetEqEnabled(value) => {
+                        fx.chain.tiny_set_eq_enabled(value)?
+                    }
+                    TinySynthFxControl::SetEqLowDb(value) => fx.chain.tiny_set_eq_low_db(value)?,
+                    TinySynthFxControl::SetEqMidDb(value) => fx.chain.tiny_set_eq_mid_db(value)?,
+                    TinySynthFxControl::SetEqHighDb(value) => {
+                        fx.chain.tiny_set_eq_high_db(value)?
+                    }
                     TinySynthFxControl::Panic => fx.chain.tiny_panic()?,
                 }
             }
@@ -2099,6 +2113,12 @@ impl Backend for NativeBackend {
                             reverb_amount: editor.reverb_amount,
                             distortion_enabled: editor.distortion_enabled,
                             distortion_drive: editor.distortion_drive,
+                            compressor_enabled: editor.compressor_enabled,
+                            compressor_amount: editor.compressor_amount,
+                            eq_enabled: editor.eq_enabled,
+                            eq_low_db: editor.eq_low_db,
+                            eq_mid_db: editor.eq_mid_db,
+                            eq_high_db: editor.eq_high_db,
                         })
                     }),
                 }

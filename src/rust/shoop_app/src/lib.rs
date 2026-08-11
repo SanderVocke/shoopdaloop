@@ -6348,6 +6348,12 @@ mod tests {
             shoop_app_api::TinySynthFxControl::SetReverbAmount(0.4),
             shoop_app_api::TinySynthFxControl::SetDistortionEnabled(true),
             shoop_app_api::TinySynthFxControl::SetDistortionDrive(7.0),
+            shoop_app_api::TinySynthFxControl::SetCompressorEnabled(true),
+            shoop_app_api::TinySynthFxControl::SetCompressorAmount(0.6),
+            shoop_app_api::TinySynthFxControl::SetEqEnabled(true),
+            shoop_app_api::TinySynthFxControl::SetEqLowDb(3.0),
+            shoop_app_api::TinySynthFxControl::SetEqMidDb(-2.0),
+            shoop_app_api::TinySynthFxControl::SetEqHighDb(1.5),
         ] {
             runtime
                 .dispatch(AppIntent::Track {
@@ -6447,6 +6453,12 @@ mod tests {
         assert_eq!(editor.reverb_amount, 0.4);
         assert!(editor.distortion_enabled);
         assert_eq!(editor.distortion_drive, 7.0);
+        assert!(editor.compressor_enabled);
+        assert_eq!(editor.compressor_amount, 0.6);
+        assert!(editor.eq_enabled);
+        assert_eq!(editor.eq_low_db, 3.0);
+        assert_eq!(editor.eq_mid_db, -2.0);
+        assert_eq!(editor.eq_high_db, 1.5);
         assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
         let loaded_track_id = loaded.tracks[1].id;
         let loaded_loop_id = loaded.tracks[1].loops[0].id;
@@ -6517,6 +6529,12 @@ mod tests {
         assert_eq!(switched_editor.reverb_amount, 0.4);
         assert!(switched_editor.distortion_enabled);
         assert_eq!(switched_editor.distortion_drive, 7.0);
+        assert!(switched_editor.compressor_enabled);
+        assert_eq!(switched_editor.compressor_amount, 0.6);
+        assert!(switched_editor.eq_enabled);
+        assert_eq!(switched_editor.eq_low_db, 3.0);
+        assert_eq!(switched_editor.eq_mid_db, -2.0);
+        assert_eq!(switched_editor.eq_high_db, 1.5);
     }
 
     #[test]

@@ -6119,6 +6119,105 @@ impl FXChain {
         Ok(())
     }
 
+    pub fn tiny_set_compressor_enabled(&self, enabled: bool) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_compressor_enabled(enabled);
+            }
+        })?;
+        control.lock().unwrap().set_compressor_enabled(enabled);
+        Ok(())
+    }
+
+    pub fn tiny_set_compressor_amount(&self, amount: f32) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !amount.is_finite() || !(0.0..=1.0).contains(&amount) {
+            return Err(anyhow!("invalid Tiny Synth/FX compressor amount"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_compressor_amount(amount);
+            }
+        })?;
+        control.lock().unwrap().set_compressor_amount(amount)?;
+        Ok(())
+    }
+
+    pub fn tiny_set_eq_enabled(&self, enabled: bool) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_eq_enabled(enabled);
+            }
+        })?;
+        control.lock().unwrap().set_eq_enabled(enabled);
+        Ok(())
+    }
+
+    pub fn tiny_set_eq_low_db(&self, gain_db: f32) -> Result<()> {
+        self.tiny_set_eq_gain(
+            gain_db,
+            |processor, value| processor.set_eq_low_db(value),
+            |control, value| control.set_eq_low_db(value),
+        )
+    }
+
+    pub fn tiny_set_eq_mid_db(&self, gain_db: f32) -> Result<()> {
+        self.tiny_set_eq_gain(
+            gain_db,
+            |processor, value| processor.set_eq_mid_db(value),
+            |control, value| control.set_eq_mid_db(value),
+        )
+    }
+
+    pub fn tiny_set_eq_high_db(&self, gain_db: f32) -> Result<()> {
+        self.tiny_set_eq_gain(
+            gain_db,
+            |processor, value| processor.set_eq_high_db(value),
+            |control, value| control.set_eq_high_db(value),
+        )
+    }
+
+    fn tiny_set_eq_gain(
+        &self,
+        gain_db: f32,
+        mut update_processor: impl FnMut(&mut engine::tiny_synth_fx::TinySynthFxProcessor, f32)
+            + Send
+            + 'static,
+        update_control: impl FnOnce(
+            &mut engine::tiny_synth_fx::TinySynthFxControlState,
+            f32,
+        ) -> Result<(), tinyviolin::ProcessError>,
+    ) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !gain_db.is_finite()
+            || !(engine::tiny_synth_fx::MIN_EQ_GAIN_DB..=engine::tiny_synth_fx::MAX_EQ_GAIN_DB)
+                .contains(&gain_db)
+        {
+            return Err(anyhow!("invalid Tiny Synth/FX EQ gain"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                update_processor(processor, gain_db);
+            }
+        })?;
+        update_control(&mut control.lock().unwrap(), gain_db)?;
+        Ok(())
+    }
+
     pub fn tiny_panic(&self) -> Result<()> {
         if !matches!(&self.backend, FXChainBackendKind::Tiny(_)) {
             return Err(anyhow!("FX chain is not Tiny Synth/FX"));

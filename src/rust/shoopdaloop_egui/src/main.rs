@@ -2263,6 +2263,24 @@ impl BrowserSelfTest {
                     shoop_egui::TrackAction::TinySynthFx(
                         shoop_egui::TinySynthFxControl::SetDistortionDrive(7.0),
                     ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetCompressorEnabled(true),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetCompressorAmount(0.6),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetEqEnabled(true),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetEqLowDb(3.0),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetEqMidDb(-2.0),
+                    ),
+                    shoop_egui::TrackAction::TinySynthFx(
+                        shoop_egui::TinySynthFxControl::SetEqHighDb(1.5),
+                    ),
                     shoop_egui::TrackAction::TinySynthFx(shoop_egui::TinySynthFxControl::Panic),
                     shoop_egui::TrackAction::FxVisibilityChanged(true),
                     shoop_egui::TrackAction::FxVisibilityChanged(false),
@@ -2687,6 +2705,12 @@ impl BrowserSelfTest {
                     || tiny_state.reverb_amount != 0.4
                     || !tiny_state.distortion_enabled
                     || tiny_state.distortion_drive != 7.0
+                    || !tiny_state.compressor_enabled
+                    || tiny_state.compressor_amount != 0.6
+                    || !tiny_state.eq_enabled
+                    || tiny_state.eq_low_db != 3.0
+                    || tiny_state.eq_mid_db != -2.0
+                    || tiny_state.eq_high_db != 1.5
                 {
                     return self.fail(&format!(
                         "loaded browser Tiny Synth/FX state changed: {tiny_state:?}"

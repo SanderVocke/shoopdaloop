@@ -1433,6 +1433,12 @@ impl WebAudioBackend {
                                         reverb_amount: fx.tiny.reverb_amount,
                                         distortion_enabled: fx.tiny.distortion_enabled,
                                         distortion_drive: fx.tiny.distortion_drive,
+                                        compressor_enabled: fx.tiny.compressor_enabled,
+                                        compressor_amount: fx.tiny.compressor_amount,
+                                        eq_enabled: fx.tiny.eq_enabled,
+                                        eq_low_db: fx.tiny.eq_low_db,
+                                        eq_mid_db: fx.tiny.eq_mid_db,
+                                        eq_high_db: fx.tiny.eq_high_db,
                                     },
                                 )),
                             }),
@@ -1870,6 +1876,21 @@ impl Backend for WebAudioBackend {
                 {
                     return Err(anyhow!("invalid Tiny Synth/FX distortion drive"));
                 }
+                TinySynthFxControl::SetCompressorAmount(value)
+                    if !value.is_finite() || !(0.0..=1.0).contains(value) =>
+                {
+                    return Err(anyhow!("invalid Tiny Synth/FX compressor amount"));
+                }
+                TinySynthFxControl::SetEqLowDb(value)
+                | TinySynthFxControl::SetEqMidDb(value)
+                | TinySynthFxControl::SetEqHighDb(value)
+                    if !value.is_finite()
+                        || !(shoop_egui::MIN_TINY_SYNTH_FX_EQ_GAIN_DB
+                            ..=shoop_egui::MAX_TINY_SYNTH_FX_EQ_GAIN_DB)
+                            .contains(value) =>
+                {
+                    return Err(anyhow!("invalid Tiny Synth/FX EQ gain"));
+                }
                 _ => {}
             }
         }
@@ -1909,6 +1930,16 @@ impl Backend for WebAudioBackend {
                     TinySynthFxControl::SetDistortionDrive(value) => {
                         editor.distortion_drive = value
                     }
+                    TinySynthFxControl::SetCompressorEnabled(value) => {
+                        editor.compressor_enabled = value
+                    }
+                    TinySynthFxControl::SetCompressorAmount(value) => {
+                        editor.compressor_amount = value
+                    }
+                    TinySynthFxControl::SetEqEnabled(value) => editor.eq_enabled = value,
+                    TinySynthFxControl::SetEqLowDb(value) => editor.eq_low_db = value,
+                    TinySynthFxControl::SetEqMidDb(value) => editor.eq_mid_db = value,
+                    TinySynthFxControl::SetEqHighDb(value) => editor.eq_high_db = value,
                     TinySynthFxControl::Panic => {}
                 }
             }
@@ -2445,6 +2476,16 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             TinySynthFxControl::SetDistortionDrive(value) => {
                 WireTrackFxControl::TinySetDistortionDrive(value)
             }
+            TinySynthFxControl::SetCompressorEnabled(value) => {
+                WireTrackFxControl::TinySetCompressorEnabled(value)
+            }
+            TinySynthFxControl::SetCompressorAmount(value) => {
+                WireTrackFxControl::TinySetCompressorAmount(value)
+            }
+            TinySynthFxControl::SetEqEnabled(value) => WireTrackFxControl::TinySetEqEnabled(value),
+            TinySynthFxControl::SetEqLowDb(value) => WireTrackFxControl::TinySetEqLowDb(value),
+            TinySynthFxControl::SetEqMidDb(value) => WireTrackFxControl::TinySetEqMidDb(value),
+            TinySynthFxControl::SetEqHighDb(value) => WireTrackFxControl::TinySetEqHighDb(value),
             TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
         },
     }

@@ -174,6 +174,12 @@ pub struct TinySynthFxState {
     pub reverb_amount: f32,
     pub distortion_enabled: bool,
     pub distortion_drive: f32,
+    pub compressor_enabled: bool,
+    pub compressor_amount: f32,
+    pub eq_enabled: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -197,6 +203,8 @@ pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
 pub const MIN_TINY_SYNTH_FX_GAIN_DB: f32 = -60.0;
 pub const MAX_TINY_SYNTH_FX_GAIN_DB: f32 = 0.0;
+pub const MIN_TINY_SYNTH_FX_EQ_GAIN_DB: f32 = -12.0;
+pub const MAX_TINY_SYNTH_FX_EQ_GAIN_DB: f32 = 12.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DefaultRecordingAction {
@@ -1186,6 +1194,12 @@ pub enum TinySynthFxControl {
     SetReverbAmount(f32),
     SetDistortionEnabled(bool),
     SetDistortionDrive(f32),
+    SetCompressorEnabled(bool),
+    SetCompressorAmount(f32),
+    SetEqEnabled(bool),
+    SetEqLowDb(f32),
+    SetEqMidDb(f32),
+    SetEqHighDb(f32),
     Panic,
 }
 
@@ -1400,6 +1414,12 @@ impl TinySynthFxControl {
             Self::SetReverbAmount(_) => "track.tiny_synth_fx.reverb_amount",
             Self::SetDistortionEnabled(_) => "track.tiny_synth_fx.distortion_enabled",
             Self::SetDistortionDrive(_) => "track.tiny_synth_fx.distortion_drive",
+            Self::SetCompressorEnabled(_) => "track.tiny_synth_fx.compressor_enabled",
+            Self::SetCompressorAmount(_) => "track.tiny_synth_fx.compressor_amount",
+            Self::SetEqEnabled(_) => "track.tiny_synth_fx.eq_enabled",
+            Self::SetEqLowDb(_) => "track.tiny_synth_fx.eq_low",
+            Self::SetEqMidDb(_) => "track.tiny_synth_fx.eq_mid",
+            Self::SetEqHighDb(_) => "track.tiny_synth_fx.eq_high",
             Self::Panic => "track.tiny_synth_fx.panic",
         }
     }
