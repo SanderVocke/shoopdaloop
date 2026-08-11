@@ -337,14 +337,14 @@ The native QML Carla path supplied the frontend-independent hosting-mode, proces
 
 ## Cross-target Tiny Synth/FX processor
 
-The stable processor ID `tiny_synth_fx` and display label **Tiny Synth/FX** identify the dependency-free `tinyviolin 0.1.0` integration. One callback-owned processor handles matched dry/wet audio channels and one MIDI input; MIDI-only zero-audio tracks remain valid. Native and browser compositions share processor state, recorded-take state, routing policy, typed controls, runtime preset discovery, and the embedded egui editor without creating a child window.
+The stable processor ID `tiny_synth_fx` and display label **Tiny Synth/FX** identify the dependency-free `tinyviolin 0.2.0` integration. One callback-owned processor handles matched dry/wet audio channels and one MIDI input; MIDI-only zero-audio tracks remain valid. Native and browser compositions share all twelve runtime-discovered instrument and percussion presets, reverb, distortion, compressor and three-band EQ controls, pitch bend and modulation-wheel MIDI support, processor state, recorded-take state, routing policy, typed controls, and the embedded egui editor without creating a child window.
 
 | ID | Behavior | Status | Evidence |
 | --- | --- | --- | --- |
 | TINY-CAP-001 | Cross-target capability and stable identity | Complete | Native/direct-core/WebAudio catalogs, API constraint tests, warning-free native and Wasm checks |
 | TINY-DSP-001 | Zero/mono/stereo/arbitrary matched audio with sample-timed MIDI and effects | Complete | Engine processor/backend shape and non-zero audio/MIDI tests, first-active-block allocation guard, worklet render test |
 | TINY-STATE-001 | Versioned exact current and recorded-take state | Complete | Strict envelope tests, backend/app/session round trips, transactional malformed-state tests, native dummy restart-style replacement |
-| TINY-WEB-001 | AudioWorklet-owned browser processing and bounded typed protocol | Complete | Protocol v5 round trips/coalescing rules, worklet allocation-guarded Tiny processing/snapshot test, browser proxy mapping and Wasm dependency checks |
+| TINY-WEB-001 | AudioWorklet-owned browser processing and bounded typed protocol | Complete | Protocol v7 round trips/coalescing rules, worklet allocation-guarded Tiny processing/snapshot test, browser proxy mapping and Wasm dependency checks |
 | TINY-PRES-001 | Embedded editor and capability-driven track controls | Complete | Backend-free editor interaction tests, runtime preset descriptors, stable track-ID window key, no `tinyviolin` dependency in `shoop_egui` |
 | TINY-COMPAT-001 | External/Carla/QML and existing session compatibility | Complete | Existing processor/session fixtures, native-FX regressions, integrated MIDI-keyboard paths, 1,294/1,294 Linux workspace tests, 236/236 retained QML cases, the six-case packaged Carla subprocess regression, and all eight authoritative egui CI cells pass. |
 

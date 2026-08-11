@@ -647,6 +647,24 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         WireTrackFxControl::TinySetDistortionDrive(value) => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetDistortionDrive(value))
         }
+        WireTrackFxControl::TinySetCompressorEnabled(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetCompressorEnabled(value))
+        }
+        WireTrackFxControl::TinySetCompressorAmount(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetCompressorAmount(value))
+        }
+        WireTrackFxControl::TinySetEqEnabled(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetEqEnabled(value))
+        }
+        WireTrackFxControl::TinySetEqLowDb(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetEqLowDb(value))
+        }
+        WireTrackFxControl::TinySetEqMidDb(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetEqMidDb(value))
+        }
+        WireTrackFxControl::TinySetEqHighDb(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetEqHighDb(value))
+        }
         WireTrackFxControl::TinyPanic => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
         }
@@ -811,6 +829,12 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                             reverb_amount: editor.reverb_amount,
                             distortion_enabled: editor.distortion_enabled,
                             distortion_drive: editor.distortion_drive,
+                            compressor_enabled: editor.compressor_enabled,
+                            compressor_amount: editor.compressor_amount,
+                            eq_enabled: editor.eq_enabled,
+                            eq_low_db: editor.eq_low_db,
+                            eq_mid_db: editor.eq_mid_db,
+                            eq_high_db: editor.eq_high_db,
                         },
                     })
                 }),
@@ -1149,6 +1173,12 @@ mod tests {
             WireTrackFxControl::TinySetReverbAmount(0.4),
             WireTrackFxControl::TinySetDistortionEnabled(true),
             WireTrackFxControl::TinySetDistortionDrive(7.0),
+            WireTrackFxControl::TinySetCompressorEnabled(true),
+            WireTrackFxControl::TinySetCompressorAmount(0.6),
+            WireTrackFxControl::TinySetEqEnabled(true),
+            WireTrackFxControl::TinySetEqLowDb(3.0),
+            WireTrackFxControl::TinySetEqMidDb(-2.0),
+            WireTrackFxControl::TinySetEqHighDb(1.5),
             WireTrackFxControl::SetVisible(true),
             WireTrackFxControl::TinyPanic,
         ]
@@ -1168,7 +1198,7 @@ mod tests {
                 Event::Ack
             ));
         }
-        let Event::Snapshot(snapshot) = command(&mut host, 19, Command::Poll).event else {
+        let Event::Snapshot(snapshot) = command(&mut host, 25, Command::Poll).event else {
             panic!("missing worklet snapshot");
         };
         assert_eq!(
@@ -1192,6 +1222,12 @@ mod tests {
         assert_eq!(fx.tiny.reverb_amount, 0.4);
         assert!(fx.tiny.distortion_enabled);
         assert_eq!(fx.tiny.distortion_drive, 7.0);
+        assert!(fx.tiny.compressor_enabled);
+        assert_eq!(fx.tiny.compressor_amount, 0.6);
+        assert!(fx.tiny.eq_enabled);
+        assert_eq!(fx.tiny.eq_low_db, 3.0);
+        assert_eq!(fx.tiny.eq_mid_db, -2.0);
+        assert_eq!(fx.tiny.eq_high_db, 1.5);
 
         let session = host.backend.capture_session().unwrap();
         host.backend.replace_session(&session).unwrap();

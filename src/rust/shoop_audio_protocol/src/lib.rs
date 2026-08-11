@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 6;
+pub const PROTOCOL_VERSION: u16 = 7;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -288,6 +288,12 @@ pub enum WireTrackFxControl {
     TinySetReverbAmount(f32),
     TinySetDistortionEnabled(bool),
     TinySetDistortionDrive(f32),
+    TinySetCompressorEnabled(bool),
+    TinySetCompressorAmount(f32),
+    TinySetEqEnabled(bool),
+    TinySetEqLowDb(f32),
+    TinySetEqMidDb(f32),
+    TinySetEqHighDb(f32),
     TinyPanic,
 }
 
@@ -298,6 +304,10 @@ impl WireTrackFxControl {
             Self::TinySetMasterGainDb(_) => 1,
             Self::TinySetReverbAmount(_) => 2,
             Self::TinySetDistortionDrive(_) => 3,
+            Self::TinySetCompressorAmount(_) => 4,
+            Self::TinySetEqLowDb(_) => 5,
+            Self::TinySetEqMidDb(_) => 6,
+            Self::TinySetEqHighDb(_) => 7,
             Self::SetVisible(_)
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
@@ -305,6 +315,8 @@ impl WireTrackFxControl {
             | Self::TinySelectPreset(_)
             | Self::TinySetReverbEnabled(_)
             | Self::TinySetDistortionEnabled(_)
+            | Self::TinySetCompressorEnabled(_)
+            | Self::TinySetEqEnabled(_)
             | Self::TinyPanic => return None,
         })
     }
@@ -499,6 +511,12 @@ pub struct WireTinySynthFxState {
     pub reverb_amount: f32,
     pub distortion_enabled: bool,
     pub distortion_drive: f32,
+    pub compressor_enabled: bool,
+    pub compressor_amount: f32,
+    pub eq_enabled: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -708,6 +726,12 @@ mod tests {
             WireTrackFxControl::TinySetReverbAmount(0.4),
             WireTrackFxControl::TinySetDistortionEnabled(true),
             WireTrackFxControl::TinySetDistortionDrive(8.0),
+            WireTrackFxControl::TinySetCompressorEnabled(true),
+            WireTrackFxControl::TinySetCompressorAmount(0.6),
+            WireTrackFxControl::TinySetEqEnabled(true),
+            WireTrackFxControl::TinySetEqLowDb(3.0),
+            WireTrackFxControl::TinySetEqMidDb(-2.0),
+            WireTrackFxControl::TinySetEqHighDb(1.5),
             WireTrackFxControl::TinyPanic,
         ]
         .into_iter()

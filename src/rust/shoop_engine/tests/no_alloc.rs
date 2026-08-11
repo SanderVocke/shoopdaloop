@@ -243,7 +243,13 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         processor.set_reverb_amount(0.5);
         processor.set_distortion_enabled(true);
         processor.set_distortion_drive(8.0);
-        processor.select_preset("pad");
+        processor.set_compressor_enabled(true);
+        processor.set_compressor_amount(0.6);
+        processor.set_eq_enabled(true);
+        processor.set_eq_low_db(3.0);
+        processor.set_eq_mid_db(-2.0);
+        processor.set_eq_high_db(1.5);
+        processor.select_preset("percussion-kit");
         processor.panic();
         session.process(4);
     });
