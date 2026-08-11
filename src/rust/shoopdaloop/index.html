@@ -8,7 +8,6 @@
     <title>ShoopDaLoop browser audio</title>
     <link data-trunk rel="rust" data-bin="shoopdaloop" />
     <link data-trunk rel="copy-file" href="../../../resources/iconset/icon.png" />
-    <link data-trunk rel="copy-file" href="../../../resources/logo.png" />
     <link data-trunk rel="copy-file" href="audio_worklet.js" />
     <link data-trunk rel="copy-dir" href="generated" />
     <link data-trunk rel="copy-dir" href="../../../resources/fonts/roboto" />
@@ -56,31 +55,6 @@
         height: 100%;
         display: block;
         touch-action: none;
-      }
-
-      #loading_splash {
-        position: fixed;
-        inset: 0;
-        z-index: 20;
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-        padding: 32px;
-        color: #aaa;
-        background: #181818;
-        font-size: 14px;
-      }
-
-      #loading_splash[hidden] {
-        display: none;
-      }
-
-      #loading_splash img {
-        width: min(650px, 80vw);
-        height: auto;
       }
 
       #runtime_status {
@@ -190,21 +164,9 @@
         background: #444;
       }
     </style>
-    <noscript>
-      <style>
-        #loading_splash,
-        #browser_permissions_dialog {
-          display: none;
-        }
-      </style>
-    </noscript>
   </head>
   <body>
     <canvas id="shoop_canvas"></canvas>
-    <div id="loading_splash" role="status" aria-live="polite">
-      <img src="./logo.png" alt="ShoopDaLoop" />
-      <span>Loading ShoopDaLoop…</span>
-    </div>
     <div
       id="browser_permissions_dialog"
       role="dialog"

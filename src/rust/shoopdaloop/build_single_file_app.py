@@ -21,7 +21,6 @@ ROBOTO_FONT_FILES = (
     "Roboto-BoldItalic.ttf",
 )
 ICON_FILE = "icon.png"
-SPLASH_LOGO_FILE = "logo.png"
 
 
 def exactly_one(paths: list[Path], description: str) -> Path:
@@ -75,19 +74,6 @@ def build_single_file(dist: Path, output: Path) -> None:
         raise RuntimeError("could not identify application icon URL")
     encoded_icon = base64.b64encode(icon_path.read_bytes()).decode("ascii")
     html = html.replace(icon_url, f'href="data:image/png;base64,{encoded_icon}"')
-
-    splash_logo_path = dist / SPLASH_LOGO_FILE
-    if not splash_logo_path.is_file():
-        raise RuntimeError(f"missing splash logo: {splash_logo_path}")
-    splash_logo_url = f'src="./{SPLASH_LOGO_FILE}"'
-    if html.count(splash_logo_url) != 1:
-        raise RuntimeError("could not identify splash logo URL")
-    encoded_splash_logo = base64.b64encode(splash_logo_path.read_bytes()).decode(
-        "ascii"
-    )
-    html = html.replace(
-        splash_logo_url, f'src="data:image/png;base64,{encoded_splash_logo}"'
-    )
 
     for name in ROBOTO_FONT_FILES:
         font_path = dist / "roboto" / name
