@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           git clone https://github.com/SanderVocke/tracy-query.git /tmp/tracy-query
-          git -C /tmp/tracy-query checkout b59b6e56db93fd1d8bd9a06d4b348f58717073ab
+          git -C /tmp/tracy-query checkout dc341c8b0f92f23e7dc7f8b0bcc3ff9798cc97c0
           cmake -S /tmp/tracy-query -B /tmp/tracy-query-build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTRACY_QUERY_FULLY_STATIC=OFF
           cmake --build /tmp/tracy-query-build --parallel 2 \
