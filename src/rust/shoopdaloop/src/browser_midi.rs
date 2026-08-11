@@ -869,37 +869,52 @@ mod platform {
             else {
                 return;
             };
-            match self.hub.state() {
+            let permission_status = match self.hub.state() {
                 BrowserMidiState::Unsupported => {
                     button.set_hidden(false);
                     button.set_disabled(true);
                     button.set_text_content(Some("Web MIDI unsupported"));
+                    "Unavailable in this browser"
                 }
                 BrowserMidiState::AwaitingGesture => {
                     button.set_hidden(false);
                     button.set_disabled(false);
                     button.set_text_content(Some("Enable Web MIDI + SysEx"));
+                    "Not granted"
                 }
                 BrowserMidiState::RequestingPermission => {
                     button.set_hidden(false);
                     button.set_disabled(true);
                     button.set_text_content(Some("Requesting Web MIDI…"));
+                    "Requesting permission…"
                 }
                 BrowserMidiState::Running => {
-                    button.set_hidden(false);
+                    button.set_hidden(true);
                     button.set_disabled(true);
-                    let suffix = if self.hub.sysex_enabled() {
-                        "SysEx enabled"
+                    if self.hub.sysex_enabled() {
+                        "Granted (SysEx enabled)"
                     } else {
-                        "SysEx unavailable"
-                    };
-                    button.set_text_content(Some(&format!("Web MIDI enabled ({suffix})")));
+                        "Granted (SysEx unavailable)"
+                    }
                 }
-                BrowserMidiState::Denied | BrowserMidiState::Failed => {
+                BrowserMidiState::Denied => {
                     button.set_hidden(false);
                     button.set_disabled(false);
                     button.set_text_content(Some("Retry Web MIDI + SysEx"));
+                    "Denied"
                 }
+                BrowserMidiState::Failed => {
+                    button.set_hidden(false);
+                    button.set_disabled(false);
+                    button.set_text_content(Some("Retry Web MIDI + SysEx"));
+                    "Failed"
+                }
+            };
+            if let Some(status) = web_sys::window()
+                .and_then(|window| window.document())
+                .and_then(|document| document.get_element_by_id("midi_permission_status"))
+            {
+                status.set_text_content(Some(&permission_status));
             }
             let (dropped, refused_track, refused_control) = self.hub.diagnostics();
             let diagnostics = format!(
