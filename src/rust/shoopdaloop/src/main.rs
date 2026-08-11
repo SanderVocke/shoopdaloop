@@ -89,6 +89,11 @@ struct NativeCli {
     /// Add detailed per-node engine zones. Requires a tracing mode.
     #[arg(long, requires = "tracing_mode")]
     tracing_engine_detail: bool,
+
+    /// Validate the bundled Carla runtime and exit without opening the GUI.
+    #[cfg(feature = "native-fx")]
+    #[arg(long)]
+    probe_carla_native: bool,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1374,6 +1379,19 @@ fn main() {
     }
 
     let cli = NativeCli::parse();
+    #[cfg(feature = "native-fx")]
+    if cli.probe_carla_native {
+        match shoop_backend::smoke_test_carla_runtime() {
+            Ok(()) => {
+                println!("Carla Native runtime is available");
+                return;
+            }
+            Err(error) => {
+                eprintln!("Carla Native runtime probe failed: {error:#}");
+                std::process::exit(3);
+            }
+        }
+    }
     let mut tracing_runtime = match NativeTracing::start(&cli) {
         Ok(tracing) => tracing,
         Err(error) => {

@@ -131,42 +131,81 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            libasound2-dev libjack-jackd2-dev liblilv-dev libgl1-mesa-dev libx11-dev libxcb-render0-dev \
-            libxcb-shape0-dev libxcb-xfixes0-dev libxcursor-dev libxi-dev \
-            libxkbcommon-dev libxrandr-dev libwayland-dev
+            build-essential libasound2-dev libfluidsynth-dev libgl1-mesa-dev libgtk-3-dev \
+            libgtk2.0-dev libjack-jackd2-dev liblo-dev libmagic-dev libpulse-dev \
+            libsndfile1-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcursor-dev libxi-dev libxkbcommon-dev \
+            libxrandr-dev libwayland-dev patchelf python3-venv xvfb
 
       - name: Install web build and test dependencies
         if: matrix.target == 'web' && env.ACT != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev liblilv-dev pulseaudio xvfb
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev pulseaudio xvfb
           if ! command -v trunk >/dev/null 2>&1; then
             cargo install --locked trunk --version 0.21.14
           fi
           trunk --version
 
-      - name: Install macOS native FX build dependency
-        if: matrix.target == 'macos' && env.ACT != 'true'
-        run: brew install lilv pkg-config
+      - name: Build pinned Linux Carla runtime
+        if: matrix.target == 'linux'
+        run: |
+          curl -L --fail --retry 3 -o carla-source.tar.gz https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz
+          echo "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661  carla-source.tar.gz" | sha256sum --check
+          mkdir .carla-source
+          tar -xzf carla-source.tar.gz -C .carla-source --strip-components=1
+          cc -std=c11 -I .carla-source/source/includes third_party/carla/abi_probe.c -o .carla-abi-probe
+          ./.carla-abi-probe > .carla-abi.actual
+          diff -u third_party/carla/abi-x86_64.expected .carla-abi.actual
+          python3 -m venv .carla-venv
+          .carla-venv/bin/pip install --disable-pip-version-check 'cx-Freeze==7.2.7' 'PyQt5==5.15.11'
+          PATH="$PWD/.carla-venv/bin:$PATH" make -C .carla-source -j2 plugin frontend
+          .carla-venv/bin/python scripts/build_carla_linux_ui.py --source .carla-source --output .carla-frozen-ui
+          python3 scripts/carla_runtime.py normalize \
+            --platform linux \
+            --search-root .carla-source/bin \
+            --search-root .carla-frozen-ui \
+            --license .carla-source/doc/GPL.txt \
+            --output .carla-component
+          echo "SHOOP_CARLA_NATIVE_LIBRARY=$PWD/.carla-component/lib/libcarla_native-plugin.so" >> "$GITHUB_ENV"
+          echo "SHOOP_CARLA_RESOURCE_DIR=$PWD/.carla-component/resources" >> "$GITHUB_ENV"
 
-      - name: Install Windows native FX build dependency
-        if: matrix.target == 'windows' && env.ACT != 'true'
+      - name: Prepare pinned Windows Carla runtime
+        if: matrix.target == 'windows'
         shell: pwsh
         run: |
-          $vcpkg = Join-Path $env:VCPKG_INSTALLATION_ROOT "vcpkg.exe"
-          & $vcpkg install lilv:x64-windows pkgconf:x64-windows
-          $installed = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\x64-windows"
-          $pkgconf = Get-ChildItem -Path $installed -Filter pkgconf.exe -Recurse | Select-Object -First 1
-          if (-not $pkgconf) { throw "vcpkg pkgconf.exe was not installed" }
-          "PKG_CONFIG=$($pkgconf.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "PKG_CONFIG_PATH=$installed\lib\pkgconfig;$installed\share\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "$installed\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Invoke-WebRequest -Uri "https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-win64.zip" -OutFile carla-win64.zip
+          $actual = (Get-FileHash carla-win64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "56264cd860b3e6e7b29221fb1e46d7d8a288fb001500f830bcd739ec7b115650") { throw "Carla archive checksum mismatch" }
+          Expand-Archive carla-win64.zip -DestinationPath .carla-upstream
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/falkTX/Carla/v2.5.10/doc/GPL.txt" -OutFile carla-GPL.txt
+          python scripts/carla_runtime.py normalize --platform windows --search-root .carla-upstream --license carla-GPL.txt --output .carla-component
+          "SHOOP_CARLA_NATIVE_LIBRARY=$PWD\.carla-component\lib\libcarla_native-plugin.dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SHOOP_CARLA_RESOURCE_DIR=$PWD\.carla-component\resources" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare pinned macOS Carla runtime
+        if: matrix.target == 'macos'
+        run: |
+          curl -L --fail --retry 3 -o carla.dmg https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-macOS-universal.dmg
+          echo "a30e98409974493ade18f598566628369fee67f179a84e1c2cc3ae46a71808b1  carla.dmg" | shasum -a 256 --check
+          mkdir .carla-volume
+          hdiutil attach carla.dmg -nobrowse -readonly -mountpoint .carla-volume
+          curl -L --fail --retry 3 -o carla-GPL.txt https://raw.githubusercontent.com/falkTX/Carla/v2.5.10/doc/GPL.txt
+          python3 scripts/carla_runtime.py normalize --platform macos --search-root .carla-volume --license carla-GPL.txt --output .carla-component
+          hdiutil detach .carla-volume
+          echo "SHOOP_CARLA_NATIVE_LIBRARY=$PWD/.carla-component/lib/libcarla_native-plugin.dylib" >> "$GITHUB_ENV"
+          echo "SHOOP_CARLA_RESOURCE_DIR=$PWD/.carla-component/resources" >> "$GITHUB_ENV"
 
       - name: Build native application
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings
         run: cargo build --locked -p shoopdaloop ${{ matrix.cargo_args }}
+
+      - name: Probe normalized Carla Native runtime
+        if: matrix.target != 'web'
+        shell: bash
+        run: ./${{ matrix.binary }} --probe-carla-native
 
       - name: Build web application
         if: matrix.target == 'web'
@@ -183,6 +222,7 @@ jobs:
           --arch ${{ matrix.arch }}
           --profile ${{ matrix.profile }}
           --binary ${{ matrix.binary }}
+          --carla-runtime .carla-component
           --output-dir artifacts
 
       - name: Package web application
@@ -252,6 +292,12 @@ jobs:
           RUSTFLAGS: -D warnings
           SHOOP_ALLOW_MISSING_BACKENDS: 1
         run: cargo test --locked --workspace --features shoop_engine/app_backend -- --test-threads=1
+
+      - name: Smoke-test bundled Carla external UI
+        if: matrix.target == 'linux' && env.ACT != 'true'
+        env:
+          SHOOP_TEST_CARLA_UI: 1
+        run: xvfb-run -a cargo test --locked ${{ matrix.cargo_args }} -p shoop_engine --features carla carla_native::tests::shows_and_hides_carla_ui_when_opted_in -- --test-threads=1
 
       - name: Check formatting and tracing inventory
         if: matrix.target == 'linux' && matrix.profile == 'debug'

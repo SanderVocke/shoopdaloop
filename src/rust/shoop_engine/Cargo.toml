@@ -7,11 +7,11 @@ edition = "2021"
 
 [[example]]
 name = "carla_inprocess_benchmark"
-required-features = ["lv2"]
+required-features = ["carla"]
 
 [[example]]
 name = "carla_bridge_benchmark"
-required-features = ["lv2"]
+required-features = ["carla"]
 
 [dependencies]
 thiserror = { workspace = true }
@@ -27,11 +27,10 @@ jack = { workspace = true, optional = true }
 cpal = { workspace = true, optional = true }
 # MIDI for hosts without JACK. Optional for the same reason.
 midir = { workspace = true, optional = true }
-lilv = { workspace = true, optional = true }
-lv2_raw = { workspace = true, optional = true }
 base64 = { workspace = true }
 serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
+libc = { workspace = true, optional = true }
 memmap2 = { workspace = true }
 tempfile = { workspace = true }
 assert_no_alloc = { workspace = true }
@@ -57,7 +56,7 @@ prebuild = []
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
-lv2 = ["dep:lilv", "dep:lv2_raw", "dep:serde_json", "dep:libloading"]
+carla = ["dep:serde_json", "dep:libloading", "dep:libc"]
 native_audio_backend = ["jack", "cpal", "midir"]
 app_backend = ["native_audio_backend"]
 

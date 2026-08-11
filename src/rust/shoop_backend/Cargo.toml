@@ -6,7 +6,7 @@ edition = "2021"
 [features]
 default = []
 native-drivers = ["shoop_engine/native_audio_backend"]
-native-fx = ["native-drivers", "shoop_engine/lv2", "dep:shoop_plugin_protocol"]
+native-fx = ["native-drivers", "shoop_engine/carla", "dep:shoop_plugin_protocol"]
 
 [dependencies]
 anyhow = { workspace = true }

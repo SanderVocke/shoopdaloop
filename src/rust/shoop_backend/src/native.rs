@@ -25,6 +25,11 @@ pub fn configured_carla_hosting_mode() -> shoop_settings::CarlaHostingMode {
 }
 
 #[cfg(feature = "native-fx")]
+pub fn smoke_test_carla_runtime() -> Result<()> {
+    shoop_engine::carla_native::smoke_test_carla_runtime()
+}
+
+#[cfg(feature = "native-fx")]
 pub fn run_carla_worker_if_requested<I, S>(args: I) -> Result<bool>
 where
     I: IntoIterator<Item = S>,
@@ -1691,6 +1696,7 @@ impl Backend for NativeBackend {
         #[cfg(feature = "native-fx")]
         let catalog = {
             let mut catalog = catalog;
+            let carla_availability = shoop_engine::carla_native::carla_runtime_availability();
             for (id, label, max_channels) in [
                 (TrackProcessorTypeId::CARLA_RACK, "Carla Rack", 2),
                 (TrackProcessorTypeId::CARLA_PATCHBAY, "Carla Patchbay", 2),
@@ -1703,8 +1709,8 @@ impl Backend for NativeBackend {
                 catalog.push(TrackProcessorDescriptor {
                     id: TrackProcessorTypeId::new(id),
                     label: label.to_owned(),
-                    available: true,
-                    unavailable_reason: None,
+                    available: carla_availability.is_ok(),
+                    unavailable_reason: carla_availability.as_ref().err().cloned(),
                     constraints: TrackProcessorConstraints {
                         max_dry_audio_channels: Some(max_channels),
                         max_wet_audio_channels: Some(max_channels),
@@ -2944,7 +2950,10 @@ mod tests {
         let catalog = backend.track_processor_catalog().unwrap();
         assert_eq!(catalog.len(), 5);
         assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::TINY_SYNTH_FX);
+        let runtime_available = shoop_engine::carla_native::carla_runtime_availability().is_ok();
         for descriptor in &catalog[2..] {
+            assert_eq!(descriptor.available, runtime_available);
+            assert_eq!(descriptor.unavailable_reason.is_none(), runtime_available);
             assert!(descriptor.features.state);
             assert!(descriptor.features.external_ui);
             assert!(descriptor.features.recovery);

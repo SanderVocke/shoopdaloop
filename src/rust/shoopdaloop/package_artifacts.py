@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import plistlib
+import json
 import re
 import shutil
 import stat
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -22,6 +25,8 @@ ARCHIVE_ROOT = "shoopdaloop"
 PROFILES = ("debug", "release")
 NATIVE_PLATFORMS = ("linux", "windows", "macos")
 APPLICATION_ICON = ROOT / "resources" / "iconset" / "icon.png"
+sys.path.insert(0, str(ROOT / "scripts"))
+from carla_runtime import verify_component  # noqa: E402
 ROBOTO_FILES = (
     "LICENSE.txt",
     "README.md",
@@ -52,7 +57,16 @@ def executable_name(platform: str) -> str:
     return "shoopdaloop.exe" if platform == "windows" else "shoopdaloop"
 
 
-def create_native_stage(platform: str, binary: Path, stage: Path) -> None:
+def stage_carla_runtime(platform: str, component: Path, root: Path) -> None:
+    verify_component(component, platform)
+    if platform == "macos":
+        destination = root / "ShoopDaLoop.app" / "Contents" / "Frameworks" / "carla-runtime"
+    else:
+        destination = root / "carla-runtime"
+    shutil.copytree(component, destination)
+
+
+def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage: Path) -> None:
     root = stage / ARCHIVE_ROOT
     root.mkdir()
     copy_metadata(root)
@@ -86,6 +100,7 @@ def create_native_stage(platform: str, binary: Path, stage: Path) -> None:
         shutil.copy2(binary, target)
         if platform == "linux":
             target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    stage_carla_runtime(platform, carla_runtime, root)
 
 
 def write_tar(source: Path, output: Path) -> None:
@@ -120,7 +135,7 @@ def package_native(args: argparse.Namespace) -> list[Path]:
     output.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="shoop-package-") as temporary:
         stage = Path(temporary)
-        create_native_stage(args.platform, binary, stage)
+        create_native_stage(args.platform, binary, args.carla_runtime.resolve(), stage)
         if args.platform == "windows":
             write_zip(stage / ARCHIVE_ROOT, output)
         else:
@@ -198,6 +213,26 @@ def archive_file(path: Path, name: str) -> bytes:
         return extracted.read()
 
 
+def archive_payloads(path: Path) -> dict[str, bytes]:
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            return {
+                info.filename: archive.read(info)
+                for info in archive.infolist()
+                if not info.is_dir()
+            }
+    with tarfile.open(path, "r:gz") as archive:
+        result = {}
+        for member in archive.getmembers():
+            if not member.isfile():
+                continue
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                raise RuntimeError(f"archive entry is unavailable: {member.name}")
+            result[member.name] = extracted.read()
+        return result
+
+
 def require_application_icon(binary: bytes, artifact: str) -> None:
     if APPLICATION_ICON.read_bytes() not in binary:
         raise RuntimeError(f"{artifact} is missing the embedded application icon")
@@ -213,8 +248,16 @@ def require_click_assets(binary: bytes, artifact: str) -> None:
         raise RuntimeError(f"{artifact} is missing embedded click assets: {missing}")
 
 
+def carla_archive_path(platform: str, relative: str) -> str:
+    root = f"{ARCHIVE_ROOT}/"
+    if platform == "macos":
+        return f"{root}ShoopDaLoop.app/Contents/Frameworks/carla-runtime/{relative}"
+    return f"{root}carla-runtime/{relative}"
+
+
 def verify_native(path: Path, platform: str) -> None:
     names, modes = archive_names(path)
+    payloads = archive_payloads(path)
     root = f"{ARCHIVE_ROOT}/"
     metadata = {f"{root}README.md", f"{root}LICENSE"}
     fonts = {f"{root}roboto/{name}" for name in ROBOTO_FILES}
@@ -226,9 +269,28 @@ def verify_native(path: Path, platform: str) -> None:
             f"{app}Resources/icon.icns",
         }
         executable = f"{app}MacOS/shoopdaloop"
+        component_manifest_path = f"{app}Frameworks/carla-runtime/manifest.json"
     else:
         executable = f"{root}{executable_name(platform)}"
         required = metadata | fonts | {executable}
+        component_manifest_path = f"{root}carla-runtime/manifest.json"
+    try:
+        component_manifest = json.loads(
+            payloads[component_manifest_path].decode("utf-8")
+        )
+    except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("native archive has no valid Carla component manifest") from error
+    if component_manifest.get("platform") != platform:
+        raise RuntimeError("native archive contains the wrong Carla component platform")
+    required.add(component_manifest_path)
+    for entry in component_manifest.get("files", []):
+        archived = carla_archive_path(platform, entry["path"])
+        required.add(archived)
+        payload = payloads[archived]
+        if len(payload) != entry["size"] or hashlib.sha256(payload).hexdigest() != entry["sha256"]:
+            raise RuntimeError(f"packaged Carla checksum mismatch: {archived}")
+        if platform != "windows" and entry["executable"] and modes.get(archived, 0) & 0o111 == 0:
+            raise RuntimeError(f"packaged Carla helper has no execute bit: {archived}")
     if names != required:
         raise RuntimeError(
             f"unexpected {platform} archive manifest; missing={sorted(required - names)}, "
@@ -236,7 +298,7 @@ def verify_native(path: Path, platform: str) -> None:
         )
     if platform != "windows" and modes.get(executable, 0) & 0o111 == 0:
         raise RuntimeError(f"archive executable has no execute bit: {executable}")
-    binary = archive_file(path, executable)
+    binary = payloads[executable]
     require_application_icon(binary, "native executable")
     require_click_assets(binary, "native executable")
 
@@ -324,6 +386,7 @@ def parser() -> argparse.ArgumentParser:
     native.add_argument("--arch", required=True)
     native.add_argument("--profile", choices=PROFILES, required=True)
     native.add_argument("--binary", type=Path, required=True)
+    native.add_argument("--carla-runtime", type=Path, required=True)
     native.add_argument("--output-dir", type=Path, required=True)
     native.set_defaults(function=package_native)
 

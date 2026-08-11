@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
+use shoop_engine::carla_native::CarlaNativeHost;
 use shoop_engine::carla_processor::{spawn_processor_bridge, CarlaProcessor, CarlaProcessorInfo};
 use shoop_engine::carla_subprocess::{SubprocessCarlaProcessor, SupervisedCarlaProcessor};
-use shoop_engine::lv2_carla::CarlaLv2Host;
 use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration};
 use std::path::Path;
@@ -82,8 +82,9 @@ fn main() -> Result<()> {
     ] {
         for frames in [32, 64, 128, 256, 512, 1024] {
             if matches!(selected_mode.as_str(), "all" | "direct") {
-                let direct = CarlaLv2Host::instantiate(chain_type, SAMPLE_RATE, frames as u32)
-                    .with_context(|| format!("could not instantiate direct {chain_name}"))?;
+                let direct =
+                    CarlaNativeHost::instantiate(chain_type, SAMPLE_RATE, frames as u32)
+                        .with_context(|| format!("could not instantiate direct {chain_name}"))?;
                 let (_, values, misses) = measure("direct", Box::new(direct), frames)?;
                 print_row("direct", chain_name, frames, &values, misses);
             }

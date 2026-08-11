@@ -1,5 +1,6 @@
 use anyhow::Result;
-use shoop_engine::lv2_carla::CarlaLv2Host;
+use shoop_engine::carla_native::CarlaNativeHost;
+use shoop_engine::carla_processor::CarlaProcessor;
 use shoop_engine::FXChainType;
 use std::hint::black_box;
 use std::time::Instant;
@@ -10,9 +11,9 @@ const MEASURED_BLOCKS: usize = 2_000;
 const BUFFER_SIZES: [u32; 6] = [32, 64, 128, 256, 512, 1024];
 
 fn benchmark(chain_type: FXChainType, frames: u32) -> Result<()> {
-    let mut host = CarlaLv2Host::instantiate(chain_type, SAMPLE_RATE, frames)?;
+    let mut host = CarlaNativeHost::instantiate(chain_type, SAMPLE_RATE, frames)?;
     host.set_active(true);
-    for channel in 0..host.info.ports.audio_inputs.len() {
+    for channel in 0..host.info().audio_inputs {
         let input = host
             .audio_input_mut(channel)
             .expect("discovered audio input must have storage");
@@ -33,7 +34,7 @@ fn benchmark(chain_type: FXChainType, frames: u32) -> Result<()> {
     let budget_ns = frames as f64 * 1_000_000_000.0 / SAMPLE_RATE as f64;
     println!(
         "chain={chain_type:?} channels={} frames={frames} mean_us={:.3} budget_percent={:.3}",
-        host.info.ports.audio_inputs.len(),
+        host.info().audio_inputs,
         block_ns / 1_000.0,
         block_ns * 100.0 / budget_ns,
     );

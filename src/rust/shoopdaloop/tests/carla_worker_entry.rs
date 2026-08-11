@@ -1,5 +1,6 @@
 #![cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
 
+use shoop_engine::carla_native::carla_runtime_availability;
 use shoop_engine::carla_processor::CarlaProcessor;
 use shoop_engine::carla_subprocess::{CarlaWorkerTestMode, SubprocessCarlaProcessor};
 use shoop_engine::FXChainType;
@@ -25,4 +26,32 @@ fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     worker.set_visible(true).unwrap();
     assert!(worker.is_visible());
     assert_eq!(worker.save_state().unwrap(), "{}");
+}
+
+#[test]
+fn application_worker_hosts_the_real_carla_native_runtime_when_available() {
+    if let Err(reason) = carla_runtime_availability() {
+        eprintln!("skipping real Carla worker test: {reason}");
+        return;
+    }
+    let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
+        .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoopdaloop").into());
+    let mut worker = SubprocessCarlaProcessor::spawn(
+        &executable,
+        FXChainType::CarlaRack,
+        48_000,
+        64,
+        ChainId(42),
+        ProcessGeneration(1),
+    )
+    .expect("application executable should host Carla Native in its worker");
+    worker.set_active(true);
+    worker.audio_input_mut(0).unwrap()[..64].fill(0.125);
+    worker.audio_input_mut(1).unwrap()[..64].fill(-0.125);
+    worker.process(64).unwrap();
+    assert_eq!(&worker.audio_output(0).unwrap()[..64], &[0.125; 64]);
+    let state = worker.save_state().unwrap();
+    assert!(state.starts_with("shoop-carla-native-state:1:"));
+    worker.restore_state(&state).unwrap();
 }

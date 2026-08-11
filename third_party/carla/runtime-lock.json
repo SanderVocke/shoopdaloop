@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "version": "2.5.10",
+  "git_revision": "ad09259060a4e660a5033024406a1c3cc9f9c198",
+  "source": {
+    "url": "https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz",
+    "sha256": "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661",
+    "native_header_sha256": "c1b1a806a95ee2e4935eec9699c233e6a3ee27fcc8da37002bb0034c9d81854f"
+  },
+  "upstream_binaries": {
+    "windows-x86_64": {
+      "url": "https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-win64.zip",
+      "sha256": "56264cd860b3e6e7b29221fb1e46d7d8a288fb001500f830bcd739ec7b115650"
+    },
+    "macos-universal": {
+      "url": "https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-macOS-universal.dmg",
+      "sha256": "a30e98409974493ade18f598566628369fee67f179a84e1c2cc3ae46a71808b1"
+    }
+  },
+  "required_exports": [
+    "carla_get_native_rack_plugin",
+    "carla_get_native_patchbay_plugin",
+    "carla_get_native_patchbay16_plugin"
+  ],
+  "descriptors": {
+    "carlarack": { "audio_inputs": 2, "audio_outputs": 2, "midi_inputs": 1, "midi_outputs": 1 },
+    "carlapatchbay": { "audio_inputs": 2, "audio_outputs": 2, "midi_inputs": 1, "midi_outputs": 1 },
+    "carlapatchbay16": { "audio_inputs": 16, "audio_outputs": 16, "midi_inputs": 1, "midi_outputs": 1 }
+  },
+  "component": {
+    "required_library_stems": ["libcarla_native-plugin"],
+    "required_helpers": ["carla-plugin", "carla-plugin-patchbay", "carla-discovery-native", "carla-bridge-native"],
+    "optional_helper_prefixes": ["carla-bridge-", "carla-discovery-"],
+    "excluded_prefixes": ["carla.lv2", "carla.vst", "CarlaRack", "CarlaPatchbay"]
+  },
+  "license": {
+    "carla": "GPL-2.0-or-later",
+    "project_compatibility": "ShoopDaLoop is GPL-3.0; bundled Carla GPL-2.0-or-later is compatible.",
+    "corresponding_source": "The exact source URL and checksum above are shipped in every normalized runtime component."
+  }
+}

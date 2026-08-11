@@ -43,7 +43,7 @@ fn production_engine_mutexes_use_the_checked_abstraction() {
         );
     }
     assert_eq!(
-        permission_count, 32,
+        permission_count, 28,
         "the explicit realtime lock permission baseline changed"
     );
 }
