@@ -3971,6 +3971,26 @@ impl ApplicationModel {
         self.status.output_peak = snapshot.status.output_peak;
         self.status.render_discontinuities = snapshot.status.render_discontinuities;
         self.status.memory_growths = snapshot.status.memory_growths;
+        let render_memory_growths =
+            if snapshot.status.render_memory_growths >= self.status.render_memory_growths {
+                snapshot
+                    .status
+                    .render_memory_growths
+                    .saturating_sub(self.status.render_memory_growths)
+            } else {
+                snapshot.status.render_memory_growths
+            };
+        self.status.render_memory_growths = snapshot.status.render_memory_growths;
+        if render_memory_growths > 0 {
+            let callback_label = if render_memory_growths == 1 {
+                "callback"
+            } else {
+                "callbacks"
+            };
+            self.notify_warning(format!(
+                "Audio recovered after memory grew during {render_memory_growths} render {callback_label}; timing may have been disrupted"
+            ));
+        }
         self.status.command_overflows = snapshot.status.command_overflows;
         self.status.storage_low_channels = snapshot.status.storage_low_channels;
         self.status.storage_exhaustions = snapshot.status.storage_exhaustions;
@@ -5573,11 +5593,16 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn notify_warning(&mut self, message: String) {
+        self.notify(NotificationLevel::Warning, message);
+    }
+
     fn notify_error(&mut self, message: String) {
-        self.notifications.push(AppNotification {
-            level: NotificationLevel::Error,
-            message,
-        });
+        self.notify(NotificationLevel::Error, message);
+    }
+
+    fn notify(&mut self, level: NotificationLevel, message: String) {
+        self.notifications.push(AppNotification { level, message });
         const MAX_NOTIFICATIONS: usize = 32;
         if self.notifications.len() > MAX_NOTIFICATIONS {
             self.notifications
@@ -11180,6 +11205,31 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         snapshot.status.callback_budget_overruns = 1;
         model.apply_backend_snapshot(snapshot);
         assert_eq!(model.status.xruns, 1);
+    }
+
+    #[test]
+    fn render_memory_growth_is_a_recoverable_warning() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+
+        let mut snapshot = BackendSnapshot::default();
+        snapshot.status.render_memory_growths = 1;
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.render_memory_growths, 1);
+        assert_eq!(model.notifications.len(), 1);
+        assert_eq!(model.notifications[0].level, NotificationLevel::Warning);
+        assert!(model.notifications[0].message.contains("Audio recovered"));
+
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.notifications.len(), 1);
+
+        snapshot.status.render_memory_growths = 3;
+        model.apply_backend_snapshot(snapshot);
+        assert_eq!(model.status.render_memory_growths, 3);
+        assert_eq!(model.notifications.len(), 2);
+        assert!(model.notifications[1].message.contains('2'));
     }
 
     #[test]

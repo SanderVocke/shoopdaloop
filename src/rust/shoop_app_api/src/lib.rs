@@ -452,6 +452,7 @@ pub struct StatusState {
     pub output_peak: f32,
     pub render_discontinuities: u32,
     pub memory_growths: u32,
+    pub render_memory_growths: u32,
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,

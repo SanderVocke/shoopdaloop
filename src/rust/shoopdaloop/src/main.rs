@@ -3706,6 +3706,10 @@ fn set_browser_status(message: &str, snapshot: Option<&AppSnapshot>) {
         );
         let _ = element.set_attribute("data-memory-growths", &status.memory_growths.to_string());
         let _ = element.set_attribute(
+            "data-render-memory-growths",
+            &status.render_memory_growths.to_string(),
+        );
+        let _ = element.set_attribute(
             "data-command-overflows",
             &status.command_overflows.to_string(),
         );
