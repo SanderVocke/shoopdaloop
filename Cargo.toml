@@ -4,6 +4,9 @@ resolver = "2"
 
 members = ["src/rust/*"]
 
+[workspace.package]
+version = "0.3.0"
+
 [workspace.lints.rust]
 unknown_lints = "allow"
 semicolon_in_expressions_from_non_local_macros = "allow"

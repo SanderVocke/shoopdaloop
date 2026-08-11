@@ -1,12 +1,12 @@
 ---
 name: tracy
-description: Capture and investigate native ShoopDaLoop egui Tracy profiles, including GUI/application intent flow, engine control and graph work, realtime audio timing, Tiny Synth/FX processing, queues, scheduling, and state publication from .tracy files.
-compatibility: The native egui app emits Tracy 0.13.1-compatible captures. Querying requires the matching static tracy-query release binary.
+description: Capture and investigate native ShoopDaLoop Tracy profiles, including GUI/application intent flow, engine control and graph work, realtime audio timing, Tiny Synth/FX processing, queues, scheduling, and state publication from .tracy files.
+compatibility: The native application emits Tracy 0.13.1-compatible captures. Querying requires the matching static tracy-query release binary.
 ---
 
-# Debug the ShoopDaLoop egui app with Tracy
+# Debug ShoopDaLoop with Tracy
 
-Use this skill for the native `shoopdaloop_egui` application. It does not describe the legacy frontend, its self-tests, or its CLI and trace data.
+Use this skill for the native `shoopdaloop` application. It does not describe the legacy frontend, its self-tests, or its CLI and trace data.
 
 Use the versioned `tracy-query` skill distributed with `tracy-query` for complete query syntax. This skill covers ShoopDaLoop-specific capture and interpretation.
 
@@ -58,15 +58,15 @@ TRACE="$TRACE_DIR/capture.tracy"
 
 `tracy-query` reads captures; it does not create them.
 
-## Build and run the native egui app
+## Build and run the native application
 
 Build the native application:
 
 ```sh
-cargo build -p shoopdaloop_egui
+cargo build -p shoopdaloop
 ```
 
-The egui executable has three tracing options:
+The application executable has three tracing options:
 
 ```text
 --tracing                enable live Tracy profiling
@@ -74,22 +74,22 @@ The egui executable has three tracing options:
 --tracing-engine-detail  add detailed realtime engine zones; requires either mode
 ```
 
-There are no egui CLI options for selecting the capture executable or output directory. `TRACY_CAPTURE_TOOL` selects the executable; otherwise it is resolved as `tracy-capture` on `PATH`. The output directory is `traces` relative to the application's working directory.
+There are no CLI options for selecting the capture executable or output directory. `TRACY_CAPTURE_TOOL` selects the executable; otherwise it is resolved as `tracy-capture` on `PATH`. The output directory is `traces` relative to the application's working directory.
 
-The audio backend is selected through persisted egui settings, not a `--backend` argument. Reproduce with the configured JACK, CPAL+midir, or dummy backend that matters to the issue.
+The audio backend is selected through persisted application settings, not a `--backend` argument. Reproduce with the configured JACK, CPAL+midir, or dummy backend that matters to the issue.
 
 ### Live profiling
 
 Connect a matching Tracy 0.13.1 profiler, then run:
 
 ```sh
-cargo run -p shoopdaloop_egui -- --tracing
+cargo run -p shoopdaloop -- --tracing
 ```
 
 For detailed engine stages:
 
 ```sh
-cargo run -p shoopdaloop_egui -- \
+cargo run -p shoopdaloop -- \
   --tracing \
   --tracing-engine-detail
 ```
@@ -100,7 +100,7 @@ Install the Tracy 0.13.1 `tracy-capture` executable. It is distinct from `tracy-
 
 ```sh
 TRACY_CAPTURE_TOOL="$(command -v tracy-capture)" \
-  cargo run -p shoopdaloop_egui -- \
+  cargo run -p shoopdaloop -- \
     --tracing-capture \
     --tracing-engine-detail
 ```
@@ -122,13 +122,13 @@ Before interpreting a capture, require all of the following:
 5. Application output and the trace contain no instrumentation-failure diagnostic.
 6. `tracy-query check` succeeds.
 
-## Expected egui trace data
+## Expected application trace data
 
 ShoopDaLoop uses fixed, bounded zone names. User labels, paths, processor state, MIDI payloads, and audio samples do not become hot-zone names.
 
-### Egui and application zones
+### GUI and application zones
 
-Expected native egui zones include:
+Expected native GUI zones include:
 
 - `app.egui.run`: native eframe lifetime.
 - `frontend.egui.initialize`: settings, widget, backend, and runtime initialization.
@@ -149,7 +149,7 @@ Some operations continue in later `frontend.app.update` zones. File import, clic
 
 ### Interaction messages
 
-The egui frontend emits sparse structured Tracy messages when actions occur:
+The GUI layer emits sparse structured Tracy messages when actions occur:
 
 - `frontend.egui.intent_created`: one message per application intent, with stable intent kind and snapshot revision;
 - `frontend.egui.action_batch`: application/settings action counts and revision;
@@ -191,9 +191,9 @@ Coarse tracing contains the callback/session categories. `--tracing-engine-detai
 
 ### Frames and plots
 
-The native egui path emits the `engine.callback` frame set for audio cycles. Use `frontend.egui.frame` or `frontend.egui.update` CPU zones—not a `frontend.refresh` frame set—to align GUI work.
+The native application emits the `engine.callback` frame set for audio cycles. Use `frontend.egui.frame` or `frontend.egui.update` CPU zones—not a `frontend.refresh` frame set—to align GUI work.
 
-Do not expect legacy `BackendWrapper/*` health plots or legacy frontend object plots in an egui capture. Their absence is normal. The egui trace exposes only limited snapshot counts and status fields, so use zone fields, structured messages, shell diagnostics, and adjacent engine command/callback evidence. In particular, the lack of an xrun or DSP-load plot is not evidence that no xrun or load problem occurred.
+Do not expect legacy `BackendWrapper/*` health plots or legacy frontend object plots in an application capture. Their absence is normal. The application trace exposes only limited snapshot counts and status fields, so use zone fields, structured messages, shell diagnostics, and adjacent engine command/callback evidence. In particular, the lack of an xrun or DSP-load plot is not evidence that no xrun or load problem occurred.
 
 ## Tracy message formats
 
@@ -203,7 +203,7 @@ All events emitted through ShoopDaLoop's Tracy event layer begin with an explici
 log.level = <TRACE|DEBUG|INFO|WARN|ERROR>, <event fields>
 ```
 
-Direct `tracing` events from the egui/application path generally look like:
+Direct `tracing` events from the GUI/application path generally look like:
 
 ```text
 log.level = TRACE, message = frontend.egui.intent_created, intent = track.tiny_synth_fx.panic, revision = 42
@@ -228,7 +228,7 @@ The payload may contain commas or equals signs. Anchor metadata on labels and de
 "$TQ" query --kind message \
   --filter 'message.text=^log\.level = (WARN|ERROR)(,|$)' "$TRACE"
 
-# Egui-created intent events.
+# GUI-created intent events.
 "$TQ" query --kind message \
   --filter 'message.text=(^|, )message = frontend\.egui\.intent_created(,|$)' "$TRACE"
 
@@ -255,7 +255,7 @@ Inspect a message sample before relying on a suffix: direct tracing events and b
 
 ## Investigation workflow
 
-Follow the downloaded `tracy-query` skill's validate, inventory, count-first, and narrow-window workflow. For ShoopDaLoop egui:
+Follow the downloaded `tracy-query` skill's validate, inventory, count-first, and narrow-window workflow. For ShoopDaLoop:
 
 1. Inventory `frontend.egui.intent_created` messages for a sparse user-action timeline.
 2. Find the adjacent `frontend.egui.intent_dispatch` and nested `frontend.app.intent_dispatch`.
@@ -265,7 +265,7 @@ Follow the downloaded `tracy-query` skill's validate, inventory, count-first, an
 6. If topology changed, find the corresponding `engine.graph.*` arm and apply generation.
 7. Inspect the next `engine.rt.callback` hierarchy; compare callback duration to the frame budget derived from its frame count and the configured sample rate.
 8. For FX issues, inspect `engine.rt.fx`; with engine detail, distinguish Tiny Synth/FX and Carla/plugin processing stages.
-9. For state visibility, follow `engine.rt.state_publication` into backend snapshot application and `frontend.app.snapshot_publish`, then the next egui frame revision.
+9. For state visibility, follow `engine.rt.state_publication` into backend snapshot application and `frontend.app.snapshot_publish`, then the next GUI frame revision.
 10. For regressions, capture equivalent scenarios and durations and compare identical normalized windows and filters. Counts alone do not establish a performance regression.
 
 For short-session reconstruction, compare snapshot fields and counts before and after each action. Infer topology only from explicit descriptors or bounded creation-zone evidence, and label inferred conclusions as such.

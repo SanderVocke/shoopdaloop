@@ -5,7 +5,7 @@ Architecture
 ~~~~~~~~~~~~
 
 ShoopDaLoop is a Rust workspace with one application composition root:
-``shoopdaloop_egui``.
+``shoopdaloop``.
 
 ``shoop_egui``
   Presentation widgets consume immutable API snapshots and emit typed intents.
@@ -52,7 +52,7 @@ Build and packaging
 ~~~~~~~~~~~~~~~~~~~
 
 Cargo builds the native workspace. Trunk builds the browser UI and dedicated
-AudioWorklet with matching profiles. The egui artifact script emits unsigned
+AudioWorklet with matching profiles. The application artifact script emits unsigned
 native archives, a hosted web archive, and a self-contained HTML file. It does
 not construct installers or native dependency-closure bundles.
 

@@ -1,8 +1,8 @@
-# ShoopDaLoop egui settings format, version 1
+# ShoopDaLoop settings format, version 1
 
 ## Status and identity
 
-This document defines the first application-settings format for the egui application. It is independent from `.shoop` sessions and predecessor settings documents.
+This document defines the first application-settings format. It is independent from `.shoop` sessions and predecessor settings documents.
 
 The application does not search for, read, import, or rewrite predecessor settings. A document without the `format: "shoop-egui-settings"` marker is rejected as a different format.
 
@@ -24,7 +24,7 @@ The resolved path shown by the application is authoritative; environment variabl
 
 Browser builds store the same canonical JSON text in origin-scoped `localStorage` under `org.shoopdaloop.egui.settings`. Different schemes, hosts, ports, browser profiles, and private/direct-file policies may produce separate or unavailable stores. Settings are not synchronized across origins.
 
-These identities are exclusive to the egui settings format.
+These retained identities are part of the settings format's compatibility contract.
 
 ## Version 1 document
 
@@ -121,7 +121,7 @@ Readers parse only the envelope first. No values are applied until format and ve
 - Adding an optional setting normally does not require a document-version change because missing keys default and unknown keys are retained. Change the document version when the envelope or representation of existing values changes.
 - Format and document versions are independent from `.shoop` session versions and predecessor schema names.
 
-There is no pre-v1 egui settings format and therefore no production migration into v1. The ordered dispatcher is tested independently so a future v2 can add a concrete v1-to-v2 step without changing runtime consumers.
+There is no pre-v1 application settings format and therefore no production migration into v1. The ordered dispatcher is tested independently so a future v2 can add a concrete v1-to-v2 step without changing runtime consumers.
 
 ## Loading, saving, and recovery
 

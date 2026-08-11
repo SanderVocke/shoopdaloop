@@ -1,17 +1,17 @@
-# egui application and host port model
+# Application and host port model
 
-The egui application uses one normalized connection model on native and browser targets.
+The application uses one normalized connection model on native and browser targets.
 
 - **Application ports** belong to a stable owner. Track ownership distinguishes sync and main tracks; each active Lua MIDI registration has a deterministic script/registration owner and never requires a fabricated track.
 - **Host ports** are the currently discovered external endpoint inventory. Their stable ID, display name, data type, and direction are independent of application ports. An empty host inventory is valid and does not hide application ports.
 - **Confirmed links** come only from authoritative backend/worklet snapshots.
 - **Pending links** are application-owner requests awaiting confirmation. Rejection, disappearance, saturation, and timeout remain visible without changing confirmed truth.
 
-A link is compatible when data types match and directions oppose. The application/backend boundary validates this before mutation. The egui matrix derives compatible cells from the normalized inventories and emits a typed `HostPortId`; it does not retain a second candidate list.
+A link is compatible when data types match and directions oppose. The application/backend boundary validates this before mutation. The connection matrix derives compatible cells from the normalized inventories and emits a typed `HostPortId`; it does not retain a second candidate list.
 
 Track links are user-managed. Direct tracks publish Audio/MIDI input and output roles. Native External dry/wet tracks publish dry Audio inputs and sends, wet Audio returns and outputs, and optional dry MIDI input/send in deterministic index order. Carla tracks publish only dry inputs, wet outputs, and optional dry MIDI input; Carla's own endpoint ports and internal wiring never enter the host connection matrix. Session capture/restoration retains exact confirmed host IDs for every public role.
 
-Lua control links are owner-managed because script regex/autoconnect policy remains authoritative; egui displays their confirmed host truth but disables competing cell mutation. Script control-port IDs remain stable across stop/restart and disappear while stopped. Browser track and Lua control consumers share canonical `webmidi:source|sink:<MIDIPort.id>` host rows without duplicate namespaced copies. Before permission, denial, or on unsupported browsers, application ports remain visible with an empty MIDI host inventory.
+Lua control links are owner-managed because script regex/autoconnect policy remains authoritative; the GUI displays their confirmed host truth but disables competing cell mutation. Script control-port IDs remain stable across stop/restart and disappear while stopped. Browser track and Lua control consumers share canonical `webmidi:source|sink:<MIDIPort.id>` host rows without duplicate namespaced copies. Before permission, denial, or on unsupported browsers, application ports remain visible with an empty MIDI host inventory.
 
 ## Web Audio endpoints
 

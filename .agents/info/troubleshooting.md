@@ -15,7 +15,7 @@ Do not use that variable when investigating a real JACK, CPAL, midir, or hardwar
 
 ## Native startup
 
-The application starts with persisted audio settings and falls back to dummy/offline with a diagnostic when a saved driver is unavailable. Run it directly with `cargo run -p shoopdaloop_egui`; no generated launcher or source-resource environment is required.
+The application starts with persisted audio settings and falls back to dummy/offline with a diagnostic when a saved driver is unavailable. Run it directly with `cargo run -p shoopdaloop`; no generated launcher or source-resource environment is required.
 
 ## Browser startup
 

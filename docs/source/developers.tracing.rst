@@ -20,12 +20,12 @@ Engine detail
 
 Run a live profile::
 
-  cargo run -p shoopdaloop_egui -- --tracing
+  cargo run -p shoopdaloop -- --tracing
 
 Capture a file using ``TRACY_CAPTURE_TOOL`` or ``tracy-capture`` on ``PATH``::
 
   TRACY_CAPTURE_TOOL="$(command -v tracy-capture)" \
-    cargo run -p shoopdaloop_egui -- \
+    cargo run -p shoopdaloop -- \
       --tracing-capture \
       --tracing-engine-detail
 

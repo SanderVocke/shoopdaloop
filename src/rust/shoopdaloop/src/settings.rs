@@ -1,6 +1,6 @@
 use shoop_settings::{
-    decode_egui_settings, encode_egui_settings, EgSettingsDocument, SettingsDiagnostic,
-    SettingsDraft, SettingsPersistenceState, SettingsRegistry, SettingsSnapshot, SettingsViewState,
+    decode_settings, encode_settings, SettingsDiagnostic, SettingsDocument, SettingsDraft,
+    SettingsPersistenceState, SettingsRegistry, SettingsSnapshot, SettingsViewState,
 };
 use std::error::Error;
 use std::fmt;
@@ -43,13 +43,13 @@ impl Error for SettingsManagerError {}
 
 #[cfg(not(target_arch = "wasm32"))]
 struct PendingNativeSave {
-    receiver: Receiver<Result<EgSettingsDocument, String>>,
+    receiver: Receiver<Result<SettingsDocument, String>>,
 }
 
 pub struct SettingsManager {
     registry: Arc<SettingsRegistry>,
     writer_version: String,
-    document: EgSettingsDocument,
+    document: SettingsDocument,
     active: Arc<SettingsSnapshot>,
     diagnostics: Vec<SettingsDiagnostic>,
     storage_location: String,
@@ -65,7 +65,7 @@ impl SettingsManager {
     #[cfg(all(not(target_arch = "wasm32"), not(test)))]
     pub fn load(registry: SettingsRegistry, writer_version: impl Into<String>) -> Self {
         let writer_version = writer_version.into();
-        match shoop_settings::default_egui_settings_path() {
+        match shoop_settings::default_settings_path() {
             Ok(path) => Self::load_from_path(registry, writer_version, path),
             Err(error) => Self::from_loaded(
                 registry,
@@ -83,8 +83,7 @@ impl SettingsManager {
         writer_version: impl Into<String>,
         path: PathBuf,
     ) -> Self {
-        let loaded =
-            shoop_settings::load_egui_settings_file(&path).map_err(|error| error.to_string());
+        let loaded = shoop_settings::load_settings_file(&path).map_err(|error| error.to_string());
         Self::from_loaded(
             registry,
             writer_version.into(),
@@ -100,10 +99,7 @@ impl SettingsManager {
         Self::from_loaded(
             registry,
             writer_version.into(),
-            format!(
-                "localStorage key {}",
-                shoop_settings::EGUI_SETTINGS_STORAGE_KEY
-            ),
+            format!("localStorage key {}", shoop_settings::SETTINGS_STORAGE_KEY),
             loaded,
         )
     }
@@ -197,7 +193,7 @@ impl SettingsManager {
             .validate_draft(&draft)
             .map_err(|error| SettingsManagerError::InvalidDraft(error.to_string()))?;
         let base = if self.recovery_required {
-            EgSettingsDocument::empty(&self.writer_version)
+            SettingsDocument::empty(&self.writer_version)
         } else {
             self.document.clone()
         };
@@ -205,7 +201,7 @@ impl SettingsManager {
             .registry
             .document_from_draft(&base, &draft, &self.writer_version)
             .map_err(|error| SettingsManagerError::InvalidDraft(error.to_string()))?;
-        let encoded = encode_egui_settings(&document)
+        let encoded = encode_settings(&document)
             .map_err(|error| SettingsManagerError::InvalidDraft(error.to_string()))?;
         self.persistence = SettingsPersistenceState::Saving;
 
@@ -222,7 +218,7 @@ impl SettingsManager {
             std::thread::Builder::new()
                 .name("shoop-settings-save".to_owned())
                 .spawn(move || {
-                    let result = shoop_settings::save_egui_settings_file(&path, &encoded)
+                    let result = shoop_settings::save_settings_file(&path, &encoded)
                         .map(|()| document)
                         .map_err(|error| error.to_string());
                     let _ = sender.send(result);
@@ -270,7 +266,7 @@ impl SettingsManager {
     #[cfg(target_arch = "wasm32")]
     pub fn poll(&mut self) {}
 
-    fn apply_saved(&mut self, document: EgSettingsDocument) {
+    fn apply_saved(&mut self, document: SettingsDocument) {
         let next_revision = self.active.revision().wrapping_add(1);
         let resolved = self.registry.resolve(&document, next_revision);
         self.document = document;
@@ -294,14 +290,14 @@ fn resolve_loaded(
     writer_version: &str,
     loaded: Result<Option<String>, String>,
 ) -> (
-    EgSettingsDocument,
+    SettingsDocument,
     Arc<SettingsSnapshot>,
     Vec<SettingsDiagnostic>,
     bool,
 ) {
     match loaded {
         Ok(None) => {
-            let document = EgSettingsDocument::empty(writer_version);
+            let document = SettingsDocument::empty(writer_version);
             let resolved = registry.resolve(&document, 1);
             (
                 document,
@@ -310,7 +306,7 @@ fn resolve_loaded(
                 false,
             )
         }
-        Ok(Some(contents)) => match decode_egui_settings(&contents) {
+        Ok(Some(contents)) => match decode_settings(&contents) {
             Ok(document) => {
                 let resolved = registry.resolve(&document, 1);
                 (
@@ -321,7 +317,7 @@ fn resolve_loaded(
                 )
             }
             Err(error) => {
-                let document = EgSettingsDocument::empty(writer_version);
+                let document = SettingsDocument::empty(writer_version);
                 let resolved = registry.resolve(&document, 1);
                 (
                     document,
@@ -337,7 +333,7 @@ fn resolve_loaded(
             }
         },
         Err(message) => {
-            let document = EgSettingsDocument::empty(writer_version);
+            let document = SettingsDocument::empty(writer_version);
             let resolved = registry.resolve(&document, 1);
             (
                 document,
@@ -366,7 +362,7 @@ fn browser_storage() -> Result<web_sys::Storage, String> {
 #[cfg(target_arch = "wasm32")]
 fn browser_load() -> Result<Option<String>, String> {
     browser_storage()?
-        .get_item(shoop_settings::EGUI_SETTINGS_STORAGE_KEY)
+        .get_item(shoop_settings::SETTINGS_STORAGE_KEY)
         .map_err(js_error)
 }
 
@@ -379,7 +375,7 @@ fn browser_save(contents: &str) -> Result<(), String> {
         return Err("injected browser settings save failure".to_owned());
     }
     browser_storage()?
-        .set_item(shoop_settings::EGUI_SETTINGS_STORAGE_KEY, contents)
+        .set_item(shoop_settings::SETTINGS_STORAGE_KEY, contents)
         .map_err(js_error)
 }
 
@@ -484,7 +480,7 @@ mod tests {
         wait(&mut manager);
         assert!(!manager.view().recovery_required);
         assert_eq!(manager.active().get(VALUE).unwrap(), 2);
-        assert!(decode_egui_settings(&std::fs::read_to_string(path).unwrap()).is_ok());
+        assert!(decode_settings(&std::fs::read_to_string(path).unwrap()).is_ok());
     }
 
     #[test]
@@ -517,20 +513,20 @@ mod tests {
     fn unknown_values_survive_manager_save() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
-        let document = EgSettingsDocument {
+        let document = SettingsDocument {
             writer_version: "old".to_owned(),
             values: std::collections::BTreeMap::from([
                 (VALUE.id().to_owned(), serde_json::json!(5)),
                 ("future.opaque".to_owned(), serde_json::json!({"x": [1, 2]})),
             ]),
         };
-        std::fs::write(&path, encode_egui_settings(&document).unwrap()).unwrap();
+        std::fs::write(&path, encode_settings(&document).unwrap()).unwrap();
         let mut manager = SettingsManager::load_from_path(registry(), "new", path.clone());
         let mut draft = SettingsDraft::from_snapshot(&manager.active());
         draft.set(VALUE, 6);
         manager.request_save(draft).unwrap();
         wait(&mut manager);
-        let saved = decode_egui_settings(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let saved = decode_settings(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(
             saved.values["future.opaque"],
             serde_json::json!({"x": [1, 2]})

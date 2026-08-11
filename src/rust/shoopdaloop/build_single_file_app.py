@@ -34,10 +34,10 @@ def build_single_file(dist: Path, output: Path) -> None:
     index_path = dist / "index.html"
     html = index_path.read_text(encoding="utf-8")
     js_path = exactly_one(
-        list(dist.glob("shoopdaloop_egui-*.js")), "wasm-bindgen JavaScript file"
+        list(dist.glob("shoopdaloop-*.js")), "wasm-bindgen JavaScript file"
     )
     wasm_path = exactly_one(
-        list(dist.glob("shoopdaloop_egui-*_bg.wasm")), "WebAssembly file"
+        list(dist.glob("shoopdaloop-*_bg.wasm")), "WebAssembly file"
     )
     worklet_script_path = dist / "audio_worklet.js"
     worklet_wasm_path = dist / "generated" / "shoop_audio_worklet.wasm"
@@ -142,10 +142,10 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        help="output file (default: DIST/shoopdaloop_egui.html)",
+        help="output file (default: DIST/shoopdaloop.html)",
     )
     args = parser.parse_args()
-    output = args.output or args.dist / "shoopdaloop_egui.html"
+    output = args.output or args.dist / "shoopdaloop.html"
     build_single_file(args.dist, output)
     print(f"wrote self-contained application: {output} ({output.stat().st_size} bytes)")
 

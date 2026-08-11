@@ -1,6 +1,6 @@
-# egui Lua compatibility contract
+# Shoop Lua compatibility contract
 
-This document defines the Shoop Lua compatibility target for the native and browser egui application. Both use the pinned omniLua 0.7.1 Lua 5.4 runtime described in `omnilua_runtime.md`. The semantic version handshake and script-owned dialog API are specified in `egui_lua_dialog_api.md`.
+This document defines the Shoop Lua compatibility target for the native and browser application. Both use the pinned omniLua 0.7.1 Lua 5.4 runtime described in `omnilua_runtime.md`. The semantic version handshake and script-owned dialog API are specified in `lua_dialog_api.md`.
 
 ## Value and selector rules
 
@@ -84,7 +84,7 @@ The compatibility table contains:
 - stable numeric `Key_*` and `KeyModifier_*` values, including all values used by bundled scripts;
 - `Loop_DontWaitForSync = -1` and `Loop_DontAlignToSyncImmediately = -1`.
 
-The egui key translator must emit these stable numeric values. Unsupported platform keys may be absent from events, but their constants remain available to scripts.
+The GUI key translator must emit these stable numeric values. Unsupported platform keys may be absent from events, but their constants remain available to scripts.
 
 ## Callback payloads and ordering
 
@@ -120,10 +120,10 @@ Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, ex
 - Discovery is repeated or subscribed so disappearance closes only that endpoint connection and reappearance reconnects without recreating the script.
 - Queues are bounded. Overflow, refused oversized messages, connection failures, and send failures are counted and exposed.
 - `msg_rate_limit_hz == 0` is unthrottled. A positive value is an actual maximum dispatch frequency. Delayed control pumps do not catch up by flushing multiple messages in one pump. Correct enforcement is an intentional defect fix to the old implementation, not an API-shape change.
-- egui diagnostics retain aggregate rule/connection/drop/error counts and publish each rule's direction, pattern, matched endpoint names, connected endpoint names, and latest rule-specific failure on native and browser targets.
+- Application diagnostics retain aggregate rule/connection/drop/error counts and publish each rule's direction, pattern, matched endpoint names, connected endpoint names, and latest rule-specific failure on native and browser targets.
 
 ## Lifecycle, settings, sessions, and targets
 
-The native application's `shoop-egui-settings` document stores typed bundled enablement toggles and an ordered user path/enabled list. Both bundled scripts are discoverable on first run and only `keyboard.lua` is enabled by default. The one Settings dialog exposes all script configuration, lifecycle, documentation, logs, and MIDI diagnostics in its **Scripts** tab. Persistent edits apply after Save; Stop, Restart, and Reload are runtime-only. Source-bearing session scripts use `.shoop` `ScriptDocument` entries and never persist machine paths.
+The native application's settings document (identified by `shoop-egui-settings` for compatibility) stores typed bundled enablement toggles and an ordered user path/enabled list. Both bundled scripts are discoverable on first run and only `keyboard.lua` is enabled by default. The one Settings dialog exposes all script configuration, lifecycle, documentation, logs, and MIDI diagnostics in its **Scripts** tab. Persistent edits apply after Save; Stop, Restart, and Reload are runtime-only. Source-bearing session scripts use `.shoop` `ScriptDocument` entries and never persist machine paths.
 
-Browser packages continue to use `wasm32-unknown-unknown` and exclude native MIDI dependencies. The cooperative browser application owner runs the same omniLua scripting manager as native egui: `scripting.supported` is true, embedded keyboard/APC sources are present, keyboard defaults enabled/APC disabled, and source-bearing session scripts use the shared transaction path. Browser settings register only bundled toggles; native user paths/Add-file remain absent. Before permission or on unsupported browsers, active logical registrations remain visible with no hosts. After explicit Web MIDI access, a bounded main-thread service supplies canonical physical endpoints, exact control input/output up to the existing 256-byte limit, hotplug reconnect, and owner-managed confirmed links independently of audio startup. Browser compatibility remains defined here; physical transport behavior is specified by `docs/web_midi_contract.md`.
+Browser packages continue to use `wasm32-unknown-unknown` and exclude native MIDI dependencies. The cooperative browser application owner runs the same omniLua scripting manager as the native application: `scripting.supported` is true, embedded keyboard/APC sources are present, keyboard defaults enabled/APC disabled, and source-bearing session scripts use the shared transaction path. Browser settings register only bundled toggles; native user paths/Add-file remain absent. Before permission or on unsupported browsers, active logical registrations remain visible with no hosts. After explicit Web MIDI access, a bounded main-thread service supplies canonical physical endpoints, exact control input/output up to the existing 256-byte limit, hotplug reconnect, and owner-managed confirmed links independently of audio startup. Browser compatibility remains defined here; physical transport behavior is specified by `docs/web_midi_contract.md`.
