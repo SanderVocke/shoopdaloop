@@ -191,7 +191,9 @@ try {
   async function clickEnable(id = 'enable_audio') {
     const bounds = await evaluate(`(() => {
       document.getElementById('browser_permissions_dialog').hidden = false;
-      const rect = document.getElementById('${id}').getBoundingClientRect();
+      const button = document.getElementById('${id}');
+      button.scrollIntoView({ block: 'center', inline: 'center' });
+      const rect = button.getBoundingClientRect();
       return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
     })()`);
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: bounds.x, y: bounds.y, button: 'left', clickCount: 1 });
