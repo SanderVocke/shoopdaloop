@@ -22,6 +22,7 @@ pub enum SettingsAction {
     },
     RecoverWithDefaults,
     RequestAddUserScript,
+    RequestEphemeralScriptPicker,
     RequestReloadUserScript {
         script_id: ScriptId,
     },
@@ -35,6 +36,7 @@ impl SettingsAction {
             Self::RetryAudioDriverPersistence { .. } => "settings.retry_audio_persistence",
             Self::RecoverWithDefaults => "settings.recover_defaults",
             Self::RequestAddUserScript => "settings.add_user_script",
+            Self::RequestEphemeralScriptPicker => "settings.pick_ephemeral_script",
             Self::RequestReloadUserScript { .. } => "settings.reload_user_script",
         }
     }
@@ -54,6 +56,8 @@ pub struct SettingsDialog {
     audio_target: Option<AudioDriverKind>,
     audio_discovery_key: Option<(AudioDriverKind, String)>,
     #[cfg(test)]
+    ephemeral_picker_rect: Option<egui::Rect>,
+    #[cfg(test)]
     restart_rects: BTreeMap<ScriptId, egui::Rect>,
     #[cfg(test)]
     reload_rects: BTreeMap<ScriptId, egui::Rect>,
@@ -70,6 +74,8 @@ impl SettingsDialog {
             active_category: None,
             audio_target: None,
             audio_discovery_key: None,
+            #[cfg(test)]
+            ephemeral_picker_rect: None,
             #[cfg(test)]
             restart_rects: BTreeMap::new(),
             #[cfg(test)]
@@ -663,8 +669,18 @@ impl SettingsDialog {
             );
             return;
         }
+        let ephemeral_picker = ui.button("Load run-once Lua file…");
+        #[cfg(test)]
+        {
+            self.ephemeral_picker_rect = Some(ephemeral_picker.rect);
+        }
+        if ephemeral_picker.clicked() {
+            response
+                .settings_actions
+                .push(SettingsAction::RequestEphemeralScriptPicker);
+        }
         if self.registry.definition(USER_SCRIPTS.id()).is_some()
-            && ui.button("Add Lua file…").clicked()
+            && ui.button("Add startup Lua file…").clicked()
         {
             response
                 .settings_actions
@@ -687,7 +703,13 @@ impl SettingsDialog {
                         }
                     }
                     ui.strong(&script.name);
-                    ui.label(format!("{:?} · {:?}", script.kind, script.lifecycle));
+                    let kind = match script.kind {
+                        ScriptKind::Bundled => "Built-in",
+                        ScriptKind::User => "User",
+                        ScriptKind::Session => "Session",
+                        ScriptKind::Ephemeral => "Run once",
+                    };
+                    ui.label(format!("{kind} · {:?}", script.lifecycle));
                 });
                 if let Some(path) = script_paths.and_then(|paths| paths.get(&script.id)) {
                     ui.weak(path);
@@ -798,6 +820,11 @@ impl SettingsDialog {
     #[cfg(test)]
     pub(crate) fn select_category(&mut self, category: &str) {
         self.active_category = Some(category.to_owned());
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn ephemeral_picker_rect(&self) -> Option<egui::Rect> {
+        self.ephemeral_picker_rect
     }
 
     #[cfg(test)]
@@ -1051,6 +1078,7 @@ mod tests {
                 midi: Default::default(),
                 logs: Arc::from([]),
             }]),
+            ..Default::default()
         };
         let paths = BTreeMap::from([(script_id, "/tmp/controller.lua".to_owned())]);
         let context = egui::Context::default();
@@ -1070,6 +1098,36 @@ mod tests {
             response
         };
         frame(&mut dialog, Vec::new());
+        let picker = dialog.ephemeral_picker_rect().unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(picker),
+                egui::Event::PointerButton {
+                    pos: picker,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(picker),
+                egui::Event::PointerButton {
+                    pos: picker,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response
+            .settings_actions
+            .iter()
+            .any(|action| matches!(action, SettingsAction::RequestEphemeralScriptPicker)));
+
         let restart = dialog.restart_rect(script_id).unwrap().center();
         frame(
             &mut dialog,

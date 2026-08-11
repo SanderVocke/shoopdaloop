@@ -84,6 +84,10 @@
 -- Upon loading, this LUA script will be executed from top to bottom.
 -- The continued behavior during the lifetime of the script is set up near
 -- the bottom by registering callbacks.
+if shoop_announce_api_version then
+    shoop_announce_api_version(1, 0)
+end
+
 print_debug("Init akai_apc_mini_mk1.lua")
 
 -- Import the necessary modules from the ShoopDaLoop API

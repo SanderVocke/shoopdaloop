@@ -1,4 +1,0 @@
-- Build the whole project with `RUSTFLAGS="-D warnings" cargo build --workspace` at the repository root. If an external dependency or permission issue prevents the build, report the environment problem.
-- Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
-- Run `cargo fmt --all -- --check` and `python3 scripts/check_tracing_coverage.py --require-closed`.
-- For browser changes, run the Wasm, Trunk, artifact, dependency-isolation, and available browser smoke checks documented in `src/rust/shoopdaloop_egui/README.md`.
