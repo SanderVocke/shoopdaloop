@@ -47,6 +47,10 @@
 -- "synchronization active" state. This can be toggled in the UI or momentarily
 -- toggled by holding the Ctrl button.
 
+if shoop_announce_api_version then
+    shoop_announce_api_version(1, 0)
+end
+
 print_debug("Init keyboard.lua")
 
 local shoop_control = require('shoop_control')

@@ -11,6 +11,7 @@ use shoop_app_api::{
     DefaultRecordingAction, LoopId, LoopMode, TrackId, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
 };
 
+use crate::api_version::ApiVersionState;
 use crate::midi::{
     MidiConnectionId, MidiControlService, MidiEndpoint, MidiEndpointDirection,
     MAX_MIDI_MESSAGE_BYTES, MIDI_QUEUE_CAPACITY,
@@ -772,6 +773,7 @@ pub fn install_control_api(
     bridge: SharedControlBridge,
     callbacks: &ScriptCallbacks,
     mark_listening: Rc<dyn Fn()>,
+    api_version: Rc<ApiVersionState>,
 ) -> anyhow::Result<()> {
     let module = (|| -> omnilua::Result<Table> {
         let module = lua.create_table()?;
@@ -783,6 +785,17 @@ pub fn install_control_api(
         install_track_api(lua, &module, &bridge)?;
         install_global_api(lua, &module, &bridge)?;
         install_subscriptions(lua, &module, callbacks, mark_listening)?;
+        for name in CONTROL_FUNCTION_NAMES {
+            let original: Function = module.get(*name)?;
+            let api_version = Rc::clone(&api_version);
+            module.set(
+                *name,
+                lua.create_function(move |_, arguments: Variadic<Value>| {
+                    api_version.require_announced()?;
+                    original.call::<_, Variadic<Value>>(arguments)
+                })?,
+            )?;
+        }
         Ok(module)
     })()
     .map_err(|error| anyhow!("could not install shoop_control API: {error}"))?;
