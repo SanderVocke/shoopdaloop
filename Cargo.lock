@@ -4811,6 +4811,7 @@ dependencies = [
  "shoop_tracing",
  "tempfile",
  "thiserror 2.0.19",
+ "tinyviolin",
  "tracing",
  "tracy-client",
  "uuid",
@@ -5441,6 +5442,12 @@ dependencies = [
  "displaydoc",
  "zerovec",
 ]
+
+[[package]]
+name = "tinyviolin"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90bff3e67abf8fc263f21bc31b83563fc426ca317360877b6162fc9d86859838"
 
 [[package]]
 name = "tokio"

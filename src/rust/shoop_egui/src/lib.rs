@@ -13,6 +13,7 @@ mod loop_widget;
 mod optimistic_value;
 mod piano_pane;
 mod settings_dialog;
+mod tiny_synth_fx_editor;
 mod track_controls;
 mod track_widget;
 mod tracks_widget;

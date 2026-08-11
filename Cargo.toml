@@ -98,6 +98,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-tracy = { version = "0.11", features = ["ondemand"] }
 tracy-client = { version = "0.18.4", features = ["ondemand", "delayed-init", "timer-fallback"] }
 shoop_tracing = { path = "src/rust/shoop_tracing", default-features = false }
+tinyviolin = "=0.1.0"
 
 # cxx-qt =  { path = "C:/sdev/cxx-qt/crates/cxx-qt" }
 # qt-build-utils = { path = "C:/sdev/cxx-qt/crates/qt-build-utils" }

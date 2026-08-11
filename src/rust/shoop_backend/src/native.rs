@@ -1,6 +1,7 @@
 use super::*;
 use shoop_app_api::{
     CpalAudioDriverConfig, FxGenerationLogState, TrackProcessorConstraints, TrackProcessorFeatures,
+    TrackProcessorMidiPolicy,
 };
 use shoop_engine::app_backend::{
     AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession,
@@ -613,7 +614,7 @@ impl NativeRuntime {
                 state: track.state.clone(),
                 loops,
                 ports,
-                carla_state: processor_state,
+                processor_state: processor_state,
             });
         }
         Ok(BackendSessionData {
@@ -657,7 +658,7 @@ impl NativeRuntime {
             match &source_track.topology {
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     let state = source_track
-                        .carla_state
+                        .processor_state
                         .as_deref()
                         .ok_or_else(|| anyhow!("processed track has no saved processor state"))?;
                     let fx = self
@@ -668,7 +669,7 @@ impl NativeRuntime {
                     fx.chain.try_restore_state(state)?;
                     fx.last_confirmed_state = Some(state.to_owned());
                 }
-                _ if source_track.carla_state.is_some() => {
+                _ if source_track.processor_state.is_some() => {
                     return Err(anyhow!("unprocessed track has processor state"));
                 }
                 _ => {}
@@ -1083,13 +1084,24 @@ impl NativeRuntime {
         };
         let chain_type = processor_chain_type(&processor_type)
             .ok_or_else(|| anyhow!("unknown track processor {processor_type}"))?;
+        if chain_type == FXChainType::TinySynthFx
+            && (dry_audio_channels != wet_audio_channels || !dry_midi)
+        {
+            return Err(anyhow!(
+                "Tiny Synth/FX requires matched audio channels and one MIDI input"
+            ));
+        }
         let ring = self
             .resolved
             .sample_rate
             .saturating_mul(RECORDING_CAPACITY_SECONDS);
-        let chain = self
-            .session
-            .create_fx_chain(chain_type, &request.port_name_base)?;
+        let chain = if chain_type == FXChainType::TinySynthFx {
+            self.session
+                .create_tiny_synth_fx_chain(&request.port_name_base, dry_audio_channels as usize)?
+        } else {
+            self.session
+                .create_fx_chain(chain_type, &request.port_name_base)?
+        };
         let last_confirmed_state = chain.try_get_state_str().ok();
         let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
         let mut audio_sends = Vec::with_capacity(dry_audio_channels as usize);
@@ -1287,6 +1299,30 @@ impl NativeRuntime {
                 fx.last_confirmed_state = Some(state);
             }
             BackendTrackFxControl::ClearLogs => fx.chain.clear_logs(),
+            BackendTrackFxControl::TinySynthFx(control) => {
+                if fx.processor_type.as_str() != TrackProcessorTypeId::TINY_SYNTH_FX {
+                    return Err(anyhow!("track is not a Tiny Synth/FX processor"));
+                }
+                match control {
+                    TinySynthFxControl::SelectPreset(id) => fx.chain.tiny_select_preset(&id)?,
+                    TinySynthFxControl::SetMasterGainDb(value) => {
+                        fx.chain.tiny_set_master_gain_db(value)?
+                    }
+                    TinySynthFxControl::SetReverbEnabled(value) => {
+                        fx.chain.tiny_set_reverb_enabled(value)?
+                    }
+                    TinySynthFxControl::SetReverbAmount(value) => {
+                        fx.chain.tiny_set_reverb_amount(value)?
+                    }
+                    TinySynthFxControl::SetDistortionEnabled(value) => {
+                        fx.chain.tiny_set_distortion_enabled(value)?
+                    }
+                    TinySynthFxControl::SetDistortionDrive(value) => {
+                        fx.chain.tiny_set_distortion_drive(value)?
+                    }
+                    TinySynthFxControl::Panic => fx.chain.tiny_panic()?,
+                }
+            }
         }
         Ok(())
     }
@@ -1606,18 +1642,23 @@ impl Backend for NativeBackend {
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
-        let catalog = vec![TrackProcessorDescriptor {
-            id: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
-            label: "External".to_owned(),
-            available: true,
-            unavailable_reason: None,
-            constraints: TrackProcessorConstraints {
-                max_dry_audio_channels: None,
-                max_wet_audio_channels: None,
-                dry_midi: true,
+        let catalog = vec![
+            TrackProcessorDescriptor {
+                id: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                label: "External".to_owned(),
+                available: true,
+                unavailable_reason: None,
+                constraints: TrackProcessorConstraints {
+                    max_dry_audio_channels: None,
+                    max_wet_audio_channels: None,
+                    matching_audio_channels: false,
+                    midi: TrackProcessorMidiPolicy::Optional,
+                },
+                features: TrackProcessorFeatures::default(),
+                editor: None,
             },
-            features: TrackProcessorFeatures::default(),
-        }];
+            tiny_synth_fx_descriptor(),
+        ];
         #[cfg(feature = "native-fx")]
         let catalog = {
             let mut catalog = catalog;
@@ -1638,14 +1679,17 @@ impl Backend for NativeBackend {
                     constraints: TrackProcessorConstraints {
                         max_dry_audio_channels: Some(max_channels),
                         max_wet_audio_channels: Some(max_channels),
-                        dry_midi: true,
+                        matching_audio_channels: false,
+                        midi: TrackProcessorMidiPolicy::Optional,
                     },
                     features: TrackProcessorFeatures {
                         state: true,
                         external_ui: true,
+                        embedded_ui: false,
                         recovery: true,
                         logs: true,
                     },
+                    editor: None,
                 });
             }
             catalog
@@ -2047,6 +2091,16 @@ impl Backend for NativeBackend {
                         })
                         .collect::<Vec<_>>()
                         .into(),
+                    editor: fx.chain.tiny_editor_state().map(|editor| {
+                        TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
+                            selected_preset_id: editor.selected_preset_id,
+                            master_gain_db: editor.master_gain_db,
+                            reverb_enabled: editor.reverb_enabled,
+                            reverb_amount: editor.reverb_amount,
+                            distortion_enabled: editor.distortion_enabled,
+                            distortion_drive: editor.distortion_drive,
+                        })
+                    }),
                 }
             });
             state.input_peaks = track
@@ -2347,6 +2401,7 @@ fn fx_lifecycle(lifecycle: shoop_engine::carla_processor::CarlaProcessorLifecycl
 
 fn processor_chain_type(processor_type: &str) -> Option<FXChainType> {
     match processor_type {
+        TrackProcessorTypeId::TINY_SYNTH_FX => Some(FXChainType::TinySynthFx),
         #[cfg(feature = "native-fx")]
         TrackProcessorTypeId::CARLA_RACK => Some(FXChainType::CarlaRack),
         #[cfg(feature = "native-fx")]
@@ -2852,13 +2907,17 @@ mod tests {
         }))
         .unwrap();
         let catalog = backend.track_processor_catalog().unwrap();
-        assert_eq!(catalog.len(), 4);
-        for descriptor in &catalog[1..] {
+        assert_eq!(catalog.len(), 5);
+        assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::TINY_SYNTH_FX);
+        for descriptor in &catalog[2..] {
             assert!(descriptor.features.state);
             assert!(descriptor.features.external_ui);
             assert!(descriptor.features.recovery);
             assert!(descriptor.features.logs);
-            assert!(descriptor.constraints.dry_midi);
+            assert_eq!(
+                descriptor.constraints.midi,
+                TrackProcessorMidiPolicy::Optional
+            );
             assert!(descriptor.constraints.max_dry_audio_channels.is_some());
             assert!(descriptor.constraints.max_wet_audio_channels.is_some());
         }
@@ -2927,12 +2986,110 @@ mod tests {
         assert_eq!(output.dummy_dequeue_data(4), vec![0.5, -0.25, 0.125, 0.0]);
 
         let captured = backend.capture_session().unwrap();
-        assert_eq!(captured.tracks[0].carla_state.as_deref(), Some(""));
+        assert_eq!(captured.tracks[0].processor_state.as_deref(), Some(""));
         let mut restored = NativeBackend::new(config).unwrap();
         restored.replace_session(&captured).unwrap();
         assert_eq!(
             restored.capture_session().unwrap().tracks[0].topology,
             captured.tracks[0].topology
+        );
+    }
+
+    #[test]
+    fn native_dummy_tiny_synth_fx_processes_midi_and_round_trips_state() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config.clone()).unwrap();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "tiny".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SelectPreset(
+                    "pad".to_owned(),
+                )),
+            )
+            .unwrap();
+        let _ = backend.poll().unwrap();
+
+        let runtime = backend.runtime_mut().unwrap();
+        runtime.driver.dummy_enter_controlled_mode();
+        let track = &runtime.tracks[&created.track_id];
+        track
+            .midi_input
+            .as_ref()
+            .unwrap()
+            .dummy_queue_msg(&shoop_engine::MidiEvent {
+                time: 0,
+                data: vec![0x90, 69, 127],
+            })
+            .unwrap();
+        let output = track.audio_outputs[0].clone();
+        output.dummy_request_data(128).unwrap();
+        runtime.driver.dummy_request_controlled_frames(128);
+        runtime.driver.dummy_run_requested_frames();
+        assert!(output
+            .dummy_dequeue_data(128)
+            .iter()
+            .any(|sample| sample.abs() > 0.001));
+
+        let captured = backend.capture_session().unwrap();
+        assert!(captured.tracks[0]
+            .processor_state
+            .as_deref()
+            .is_some_and(|state| state.starts_with("shoop-tiny-synth-fx:1:")));
+        backend
+            .switch_audio_driver(
+                &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: 48_000,
+                    buffer_size: 256,
+                }),
+                48_000,
+                &captured,
+            )
+            .unwrap();
+        assert_eq!(
+            backend.capture_session().unwrap().tracks[0].processor_state,
+            captured.tracks[0].processor_state
+        );
+
+        let mut browser = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        browser.replace_session(&captured).unwrap();
+        let browser_state = browser.capture_session().unwrap();
+        assert_eq!(
+            browser_state.tracks[0].topology,
+            captured.tracks[0].topology
+        );
+        assert_eq!(
+            browser_state.tracks[0].processor_state,
+            captured.tracks[0].processor_state
+        );
+
+        let mut restored = NativeBackend::new(config).unwrap();
+        restored.replace_session(&browser_state).unwrap();
+        let restored_state = restored.capture_session().unwrap();
+        assert_eq!(
+            restored_state.tracks[0].topology,
+            captured.tracks[0].topology
+        );
+        assert_eq!(
+            restored_state.tracks[0].processor_state,
+            captured.tracks[0].processor_state
         );
     }
 

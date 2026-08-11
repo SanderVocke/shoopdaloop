@@ -136,6 +136,9 @@ pub enum TrackTopologyDocument {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wet_audio_channels: Option<u32>,
     },
+    TinySynthFx {
+        audio_channels: u32,
+    },
     Trigger,
 }
 
@@ -259,6 +262,7 @@ pub enum FxChainTypeDocument {
     CarlaRack,
     CarlaPatchbay,
     CarlaPatchbay16x,
+    TinySynthFx,
     Test,
 }
 

@@ -207,6 +207,30 @@ mod tests {
         SessionBundle { document, media }
     }
 
+    fn tiny_synth_fx_bundle() -> SessionBundle {
+        let mut bundle = direct_bundle(0);
+        let track = &mut bundle.document.track_groups[0].tracks[0];
+        track.name = "Tiny Synth/FX".to_owned();
+        track.port_name_base = "tiny".to_owned();
+        track.topology = TrackTopologyDocument::TinySynthFx { audio_channels: 0 };
+        track.fx_chain = Some(FxChainDocument {
+            id: 800,
+            title: "Tiny Synth/FX".to_owned(),
+            chain_type: FxChainTypeDocument::TinySynthFx,
+            ports: Vec::new(),
+            internal_state: "shoop-tiny-synth-fx:1:c0c00000:VEFT".to_owned(),
+        });
+        let midi = &mut track.loops[0].channels[0];
+        midi.mode = ChannelModeDocument::Dry;
+        midi.recording_fx_state_id = Some(900);
+        bundle.document.fx_states[0] = FxStateDocument {
+            id: 900,
+            chain_type: FxChainTypeDocument::TinySynthFx,
+            internal_state: "shoop-tiny-synth-fx:1:c1000000:VEFT".to_owned(),
+        };
+        bundle
+    }
+
     fn deferred_feature_bundle() -> SessionBundle {
         let mut bundle = direct_bundle(2);
         bundle.document.track_groups[0].tracks.extend([
@@ -397,6 +421,35 @@ mod tests {
             output.write_all(&payload).unwrap();
         }
         output.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn tiny_synth_fx_current_and_recorded_state_round_trip_and_validate_shape() {
+        let bundle = tiny_synth_fx_bundle();
+        let encoded = encode_session(&bundle, "tiny-test").unwrap();
+        assert_eq!(decode_session(&encoded).unwrap(), bundle);
+
+        let mut mismatched = bundle.clone();
+        mismatched.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .chain_type = FxChainTypeDocument::CarlaRack;
+        assert!(matches!(
+            validate_bundle(&mismatched),
+            Err(SessionError::Validation(message))
+                if message.contains("chain type does not match")
+        ));
+
+        let mut missing_midi = bundle;
+        missing_midi.document.track_groups[0].tracks[0].loops[0]
+            .channels
+            .clear();
+        assert!(matches!(
+            validate_bundle(&missing_midi),
+            Err(SessionError::Validation(message))
+                if message.contains("channel shape does not match")
+        ));
     }
 
     #[test]

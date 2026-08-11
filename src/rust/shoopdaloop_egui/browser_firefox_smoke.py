@@ -100,7 +100,7 @@ def main() -> None:
             and state["overflows"] == 0
             and state["budget_overruns"] == 0
             and state["owned_media_tracks"] > 0
-            and state["dry_wet_form"] == "empty-disabled"
+            and state["dry_wet_form"] == "tiny-synth-fx"
             and state["web_midi"] in {"Unsupported", "AwaitingGesture"}
             and unsupported_midi_is_visible
             and state["midi_host_ports"] == 0

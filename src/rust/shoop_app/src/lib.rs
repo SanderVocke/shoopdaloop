@@ -3021,6 +3021,16 @@ impl ApplicationModel {
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
             }
+            TrackAction::TinySynthFx(control) => {
+                return backend
+                    .set_track_fx_control(
+                        track.backend_id,
+                        BackendTrackFxControl::TinySynthFx(control),
+                    )
+                    .map_err(|error| {
+                        format!("could not update Tiny Synth/FX track {track_id}: {error}")
+                    });
+            }
         };
         backend
             .set_track_control(track.backend_id, backend_action)
@@ -4475,17 +4485,30 @@ impl ApplicationModel {
                     let chain_type = fx_chain_type_for_processor(
                         &shoop_app_api::TrackProcessorTypeId::new(processor_type.clone()),
                     )?;
-                    let internal_state = captured.carla_state.clone().ok_or_else(|| {
+                    let internal_state = captured.processor_state.clone().ok_or_else(|| {
                         format!("processed track {} has no captured state", track.id)
                     })?;
-                    (
+                    let topology = if chain_type == FxChainTypeDocument::TinySynthFx {
+                        if dry_audio_channels != wet_audio_channels || !dry_midi {
+                            return Err(format!(
+                                "Tiny Synth/FX track {} has an invalid channel shape",
+                                track.id
+                            ));
+                        }
+                        TrackTopologyDocument::TinySynthFx {
+                            audio_channels: *dry_audio_channels,
+                        }
+                    } else {
                         TrackTopologyDocument::Carla {
                             chain_type,
                             audio_channels: *wet_audio_channels,
                             midi: *dry_midi,
                             dry_audio_channels: Some(*dry_audio_channels),
                             wet_audio_channels: Some(*wet_audio_channels),
-                        },
+                        }
+                    };
+                    (
+                        topology,
                         Some(FxChainDocument {
                             id: track.id.raw(),
                             title: track.name.clone(),
@@ -5438,6 +5461,7 @@ fn fx_chain_type_for_processor(
         shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X => {
             Ok(FxChainTypeDocument::CarlaPatchbay16x)
         }
+        shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX => Ok(FxChainTypeDocument::TinySynthFx),
         "test_2x2x1" => Ok(FxChainTypeDocument::Test),
         value => Err(format!(
             "processor {value} has no session FX-chain representation"
@@ -5454,6 +5478,7 @@ fn processor_for_fx_chain_type(
         FxChainTypeDocument::CarlaPatchbay16x => {
             shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X
         }
+        FxChainTypeDocument::TinySynthFx => shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX,
         FxChainTypeDocument::Test => "test_2x2x1",
     })
 }
@@ -5545,6 +5570,35 @@ fn runtime_track_topology(
                 },
                 dry_audio_channels.saturating_add(wet_audio_channels),
                 *midi,
+            ))
+        }
+        TrackTopologyDocument::TinySynthFx { audio_channels } => {
+            let processor = shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX,
+            );
+            validate_loaded_processor(
+                track.id,
+                &processor,
+                *audio_channels,
+                *audio_channels,
+                true,
+                processors,
+            )?;
+            Ok((
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: processor.as_str().to_owned(),
+                    dry_audio_channels: *audio_channels,
+                    wet_audio_channels: *audio_channels,
+                    dry_midi: true,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels: *audio_channels,
+                    wet_audio_channels: *audio_channels,
+                    dry_midi: true,
+                    processor_type: processor,
+                },
+                audio_channels.saturating_mul(2),
+                true,
             ))
         }
         TrackTopologyDocument::Trigger => Err(format!(
@@ -5780,7 +5834,7 @@ fn session_bundle_to_backend(
             state,
             loops,
             ports,
-            carla_state: track
+            processor_state: track
                 .fx_chain
                 .as_ref()
                 .map(|chain| chain.internal_state.clone()),
@@ -6027,14 +6081,17 @@ mod tests {
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: Some(2),
                 max_wet_audio_channels: Some(2),
-                dry_midi: false,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Unsupported,
             },
             features: shoop_app_api::TrackProcessorFeatures {
                 state: true,
                 external_ui: false,
+                embedded_ui: false,
                 recovery: false,
                 logs: false,
             },
+            editor: None,
         };
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![descriptor.clone()]);
@@ -6057,9 +6114,11 @@ mod tests {
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: None,
                 max_wet_audio_channels: None,
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures::default(),
+            editor: None,
         };
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![descriptor]);
@@ -6147,6 +6206,204 @@ mod tests {
     }
 
     #[test]
+    fn tiny_synth_fx_round_trips_controls_and_recorded_state() {
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Tiny".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX,
+                    ),
+                },
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = runtime.snapshot().tracks[1].clone();
+        for control in [
+            shoop_app_api::TinySynthFxControl::SelectPreset("pad".to_owned()),
+            shoop_app_api::TinySynthFxControl::SetMasterGainDb(-12.0),
+            shoop_app_api::TinySynthFxControl::SetReverbEnabled(true),
+            shoop_app_api::TinySynthFxControl::SetReverbAmount(0.4),
+            shoop_app_api::TinySynthFxControl::SetDistortionEnabled(true),
+            shoop_app_api::TinySynthFxControl::SetDistortionDrive(7.0),
+        ] {
+            runtime
+                .dispatch(AppIntent::Track {
+                    track_id: track.id,
+                    action: TrackAction::TinySynthFx(control),
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let loop_id = track.loops[0].id;
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].loops[0].has_recorded_fx_state);
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::FxVisibilityChanged(true),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].fx.as_ref().unwrap().visible);
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        let saved_track = &saved.document.track_groups[1].tracks[0];
+        assert_eq!(
+            saved_track.topology,
+            TrackTopologyDocument::TinySynthFx { audio_channels: 2 }
+        );
+        assert_eq!(
+            saved_track.fx_chain.as_ref().unwrap().chain_type,
+            FxChainTypeDocument::TinySynthFx
+        );
+        let current_state = &saved_track.fx_chain.as_ref().unwrap().internal_state;
+        assert!(!current_state.is_empty());
+        let take_id = saved_track.loops[0]
+            .channels
+            .iter()
+            .find(|channel| channel.mode == ChannelModeDocument::Wet)
+            .unwrap()
+            .recording_fx_state_id
+            .unwrap();
+        assert_eq!(saved.document.fx_states.len(), 1);
+        assert_eq!(saved.document.fx_states[0].id, take_id);
+        assert_eq!(&saved.document.fx_states[0].internal_state, current_state);
+
+        drop(runtime);
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "tiny.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            if runtime.snapshot().io_task.as_ref().is_some_and(|task| {
+                task.status == IoTaskStatus::Completed || task.status == IoTaskStatus::Failed
+            }) {
+                break;
+            }
+        }
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let loaded = runtime.snapshot();
+        assert_eq!(loaded.tracks[1].topology, track.topology);
+        assert!(!loaded.tracks[1].fx.as_ref().unwrap().visible);
+        let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(editor)) = loaded.tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX editor state");
+        };
+        assert_eq!(editor.selected_preset_id.as_deref(), Some("pad"));
+        assert_eq!(editor.master_gain_db, -12.0);
+        assert!(editor.reverb_enabled);
+        assert_eq!(editor.reverb_amount, 0.4);
+        assert!(editor.distortion_enabled);
+        assert_eq!(editor.distortion_drive, 7.0);
+        assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
+        let loaded_track_id = loaded.tracks[1].id;
+        let loaded_loop_id = loaded.tracks[1].loops[0].id;
+
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: loaded_track_id,
+                action: TrackAction::TinySynthFx(
+                    shoop_app_api::TinySynthFxControl::SetMasterGainDb(-18.0),
+                ),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: loaded_track_id,
+                loop_id: loaded_loop_id,
+                action: LoopAction::RestoreRecordedFxState,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let restored = runtime.snapshot();
+        let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(restored_editor)) = restored
+            .tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing restored Tiny Synth/FX editor state");
+        };
+        assert_eq!(restored_editor.master_gain_db, -12.0);
+        assert_eq!(restored_editor.selected_preset_id.as_deref(), Some("pad"));
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 256,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let switched = runtime.snapshot();
+        assert_eq!(switched.status.sample_rate, 44_100);
+        assert_eq!(switched.tracks[1].topology, track.topology);
+        assert!(switched.tracks[1].loops[0].has_recorded_fx_state);
+        let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(switched_editor)) = switched
+            .tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX state after sample-rate switch");
+        };
+        assert_eq!(switched_editor.master_gain_db, -12.0);
+        assert_eq!(switched_editor.selected_preset_id.as_deref(), Some("pad"));
+        assert!(switched_editor.reverb_enabled);
+        assert_eq!(switched_editor.reverb_amount, 0.4);
+        assert!(switched_editor.distortion_enabled);
+        assert_eq!(switched_editor.distortion_drive, 7.0);
+    }
+
+    #[test]
     fn processed_track_session_round_trip_preserves_roles_state_and_recorded_take() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new(
@@ -6158,14 +6415,17 @@ mod tests {
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: Some(2),
                 max_wet_audio_channels: Some(2),
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures {
                 state: true,
                 external_ui: true,
+                embedded_ui: false,
                 recovery: true,
                 logs: true,
             },
+            editor: None,
         };
         let exact_state = "opaque\0state\nユニコード";
         let mut backend = FakeBackend::default();
@@ -6294,14 +6554,17 @@ mod tests {
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: Some(2),
                 max_wet_audio_channels: Some(2),
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures {
                 state: true,
                 external_ui: true,
+                embedded_ui: false,
                 recovery: true,
                 logs: true,
             },
+            editor: None,
         };
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![descriptor]);
@@ -7797,9 +8060,11 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: None,
                 max_wet_audio_channels: None,
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures::default(),
+            editor: None,
         }]);
         let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
         for (name, audio_channels, midi) in [
@@ -9893,9 +10158,11 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             constraints: shoop_app_api::TrackProcessorConstraints {
                 max_dry_audio_channels: None,
                 max_wet_audio_channels: None,
-                dry_midi: true,
+                matching_audio_channels: false,
+                midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
             },
             features: shoop_app_api::TrackProcessorFeatures::default(),
+            editor: None,
         }]);
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
         runtime.tick(Duration::ZERO);

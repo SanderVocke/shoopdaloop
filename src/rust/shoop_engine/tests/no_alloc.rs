@@ -212,6 +212,44 @@ fn assert_steady_state_is_alloc_free(mut s: Session, n_frames: usize, cycles: us
 }
 
 #[test]
+fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
+    let mut session = Session::default();
+    session.set_sample_rate(48_000);
+    session.set_buffer_size(4);
+    let _input = session.add_port(internal("tiny:audio_in_0", 4));
+    let _processor_output = session.add_port(internal("tiny:audio_out_0", 4));
+    let _wet_output = session.add_port(internal("tiny_audio_wet_out_1", 4));
+    let midi_input = session.add_port(midi_port(4, "tiny:midi_in_0", PortDirection::Input));
+    let control = shoop_engine::tiny_synth_fx::TinySynthFxControlState::new(48_000.0).unwrap();
+    let processor = control.prepare_processor(48_000.0, 1, 4).unwrap();
+    assert!(session
+        .set_tiny_synth_fx_processor("tiny".to_owned(), processor)
+        .is_none());
+    session.apply_graph_changes().unwrap();
+    // Warm the session's target-specific tracing/runtime machinery while the new
+    // processor is still inactive; the first active Tiny block remains guarded.
+    session.process(4);
+    session.set_tiny_synth_fx_active("tiny", true);
+    session
+        .port_mut(midi_input)
+        .unwrap()
+        .as_dummy_midi_mut()
+        .unwrap()
+        .queue_msg(0, &midi::note_on(0, 69, 127));
+    assert_no_alloc(|| {
+        let processor = session.tiny_synth_fx_processor_mut("tiny").unwrap();
+        processor.set_master_gain_db(-12.0);
+        processor.set_reverb_enabled(true);
+        processor.set_reverb_amount(0.5);
+        processor.set_distortion_enabled(true);
+        processor.set_distortion_drive(8.0);
+        processor.select_preset("pad");
+        processor.panic();
+        session.process(4);
+    });
+}
+
+#[test]
 fn composite_state_machine_does_not_allocate_or_free() {
     let source = LoopIdentity {
         slot: 10,

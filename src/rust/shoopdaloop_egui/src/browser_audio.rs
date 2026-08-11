@@ -10,22 +10,25 @@ use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireGrabRequest, WireHostPort,
     WireLoopMode, WireMidiEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTrackControl, COMMAND_CAPACITY, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
-    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
-    WAVEFORM_CHUNK_SAMPLES,
+    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY,
+    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
-    BackendLoopMode, BackendLoopState, BackendMidiEvent, BackendPortDataType,
-    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortRole,
-    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
-    BackendTrackControl, BackendTrackCreation, BackendTrackId, BackendTrackState,
-    DirectTrackRequest,
+    default_tiny_synth_fx_state, encode_tiny_synth_fx_state, tiny_synth_fx_descriptor, Backend,
+    BackendConfirmedLink, BackendConnectionFailure, BackendDriverState, BackendGrabRequest,
+    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendLoopState, BackendMidiEvent, BackendPortDataType, BackendPortDescriptor,
+    BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData,
+    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
+    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
+    BackendTrackTopology, DirectTrackRequest, TinySynthFxControl, TrackProcessorTypeId,
+    TrackRequest,
 };
 use shoop_egui::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    ResolvedAudioDriverConfig,
+    FxLifecycle, ResolvedAudioDriverConfig, TinySynthFxState, TrackFxState,
+    TrackProcessorDescriptor, TrackProcessorEditorState,
 };
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
@@ -899,11 +902,14 @@ struct WaveformAssembly {
     in_flight: bool,
 }
 
+const SESSION_CAPTURE_IN_FLIGHT_LIMIT: usize = 8;
+
 struct SessionCaptureAssembly {
     generation: u64,
     total_bytes: Option<usize>,
     bytes: Vec<u8>,
-    in_flight: bool,
+    next_offset: usize,
+    in_flight: usize,
 }
 
 struct SessionReplaceAssembly {
@@ -1110,24 +1116,30 @@ impl WebAudioBackend {
         self.request_waveform_chunk(loop_id)
     }
 
-    fn request_session_capture_chunk(&mut self) -> Result<()> {
+    fn request_session_capture_chunks(&mut self) -> Result<()> {
         let Some(capture) = self.session_capture.as_mut() else {
             return Ok(());
         };
         let Some(total_bytes) = capture.total_bytes else {
             return Ok(());
         };
-        if capture.in_flight || capture.bytes.len() >= total_bytes {
-            return Ok(());
+        while capture.next_offset < total_bytes
+            && capture.in_flight < SESSION_CAPTURE_IN_FLIGHT_LIMIT
+            && self.transport.borrow().in_flight < COMMAND_CAPACITY / 2
+        {
+            let offset = capture.next_offset;
+            capture.next_offset = offset
+                .saturating_add(SESSION_TRANSFER_CHUNK_BYTES)
+                .min(total_bytes);
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::ReadSessionCapture {
+                    generation: capture.generation,
+                    offset,
+                    max_bytes: SESSION_TRANSFER_CHUNK_BYTES,
+                })?;
+            capture.in_flight += 1;
         }
-        self.transport
-            .borrow_mut()
-            .ephemeral(Command::ReadSessionCapture {
-                generation: capture.generation,
-                offset: capture.bytes.len(),
-                max_bytes: SESSION_TRANSFER_CHUNK_BYTES,
-            })?;
-        capture.in_flight = true;
         Ok(())
     }
 
@@ -1140,8 +1152,9 @@ impl WebAudioBackend {
         }
         capture.total_bytes = Some(total_bytes);
         capture.bytes.reserve(total_bytes);
-        capture.in_flight = false;
-        self.request_session_capture_chunk()
+        capture.next_offset = 0;
+        capture.in_flight = 0;
+        self.request_session_capture_chunks()
     }
 
     fn apply_session_capture_chunk(
@@ -1158,6 +1171,7 @@ impl WebAudioBackend {
         if capture.generation != generation
             || capture.total_bytes != Some(total_bytes)
             || capture.bytes.len() != offset
+            || capture.in_flight == 0
             || bytes.len() > SESSION_TRANSFER_CHUNK_BYTES
             || offset.saturating_add(bytes.len()) > total_bytes
             || final_chunk != (offset.saturating_add(bytes.len()) >= total_bytes)
@@ -1165,8 +1179,8 @@ impl WebAudioBackend {
             return Err(anyhow!("invalid session capture chunk"));
         }
         capture.bytes.extend_from_slice(&bytes);
-        capture.in_flight = false;
-        self.request_session_capture_chunk()
+        capture.in_flight -= 1;
+        self.request_session_capture_chunks()
     }
 
     fn pump_session_replace(&mut self) -> Result<()> {
@@ -1383,10 +1397,45 @@ impl WebAudioBackend {
                     (
                         BackendTrackId::from_raw(track.id),
                         BackendTrackState {
-                            topology: shoop_backend::BackendTrackTopology::Direct {
-                                audio_channels: track.audio_channels,
-                                midi: track.midi,
+                            topology: match track.topology {
+                                WireTrackTopology::Direct {
+                                    audio_channels,
+                                    midi,
+                                } => BackendTrackTopology::Direct {
+                                    audio_channels,
+                                    midi,
+                                },
+                                WireTrackTopology::TinySynthFx { audio_channels } => {
+                                    BackendTrackTopology::DryWetProcessor {
+                                        processor_type: TrackProcessorTypeId::TINY_SYNTH_FX
+                                            .to_owned(),
+                                        dry_audio_channels: audio_channels,
+                                        wet_audio_channels: audio_channels,
+                                        dry_midi: true,
+                                    }
+                                }
                             },
+                            fx: track.fx.map(|fx| TrackFxState {
+                                processor_type: TrackProcessorTypeId::new(
+                                    TrackProcessorTypeId::TINY_SYNTH_FX,
+                                ),
+                                active: fx.active,
+                                visible: fx.visible,
+                                lifecycle: FxLifecycle::Running,
+                                generation: 0,
+                                crash_summary: None,
+                                logs: Arc::from([]),
+                                editor: Some(TrackProcessorEditorState::TinySynthFx(
+                                    TinySynthFxState {
+                                        selected_preset_id: fx.tiny.selected_preset_id,
+                                        master_gain_db: fx.tiny.master_gain_db,
+                                        reverb_enabled: fx.tiny.reverb_enabled,
+                                        reverb_amount: fx.tiny.reverb_amount,
+                                        distortion_enabled: fx.tiny.distortion_enabled,
+                                        distortion_drive: fx.tiny.distortion_drive,
+                                    },
+                                )),
+                            }),
                             audio_channels: track.audio_channels,
                             midi: track.midi,
                             output_gain_db: track.output_gain_db,
@@ -1525,7 +1574,139 @@ fn browser_port_descriptors(
     ports
 }
 
+fn browser_tiny_port_descriptors(
+    base: &str,
+    audio_channels: u32,
+    next_port_id: &mut u64,
+) -> Vec<BackendPortDescriptor> {
+    let mut ports = Vec::with_capacity(audio_channels as usize * 2 + 1);
+    let mut add = |name: String,
+                   data_type: BackendPortDataType,
+                   direction: BackendPortDirection,
+                   role: BackendPortRole| {
+        let id = BackendPortId::from_raw(*next_port_id);
+        *next_port_id = next_port_id.saturating_add(1);
+        ports.push(BackendPortDescriptor {
+            id,
+            name,
+            data_type,
+            direction,
+            role,
+        });
+    };
+    for index in 0..audio_channels {
+        add(
+            format!("{base}_audio_dry_in_{}", index + 1),
+            BackendPortDataType::Audio,
+            BackendPortDirection::Input,
+            BackendPortRole::AudioInput,
+        );
+        add(
+            format!("{base}_audio_wet_out_{}", index + 1),
+            BackendPortDataType::Audio,
+            BackendPortDirection::Output,
+            BackendPortRole::AudioOutput,
+        );
+    }
+    add(
+        format!("{base}_dry_midi_in"),
+        BackendPortDataType::Midi,
+        BackendPortDirection::Input,
+        BackendPortRole::MidiInput,
+    );
+    ports
+}
+
 impl Backend for WebAudioBackend {
+    fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        Ok(vec![tiny_synth_fx_descriptor()].into())
+    }
+
+    fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
+        match &request.topology {
+            BackendTrackTopology::Direct {
+                audio_channels,
+                midi,
+            } => self.create_direct_track(DirectTrackRequest {
+                port_name_base: request.port_name_base,
+                audio_channels: *audio_channels,
+                midi: *midi,
+                initial_loops: request.initial_loops,
+            }),
+            BackendTrackTopology::DryWetProcessor {
+                processor_type,
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi,
+            } if processor_type == TrackProcessorTypeId::TINY_SYNTH_FX
+                && dry_audio_channels == wet_audio_channels
+                && *dry_midi =>
+            {
+                let track_id = BackendTrackId::from_raw(self.next_track_id);
+                let ports = browser_tiny_port_descriptors(
+                    &request.port_name_base,
+                    *dry_audio_channels,
+                    &mut self.next_port_id,
+                );
+                let loops: Vec<_> = (0..request.initial_loops)
+                    .map(|offset| BackendLoopId::from_raw(self.next_loop_id + offset as u64))
+                    .collect();
+                self.submit(Command::CreateTrack {
+                    expected_track_id: track_id.raw(),
+                    expected_loop_ids: loops.iter().map(|id| id.raw()).collect(),
+                    port_name_base: request.port_name_base,
+                    topology: WireTrackTopology::TinySynthFx {
+                        audio_channels: *dry_audio_channels,
+                    },
+                })?;
+                self.next_track_id = self.next_track_id.saturating_add(1);
+                self.next_loop_id = self.next_loop_id.saturating_add(loops.len() as u64);
+                self.snapshot.tracks.insert(
+                    track_id,
+                    BackendTrackState {
+                        topology: request.topology.clone(),
+                        fx: Some(default_tiny_synth_fx_state()),
+                        audio_channels: *wet_audio_channels,
+                        midi: true,
+                        input_peaks: vec![-200.0; *dry_audio_channels as usize],
+                        output_peaks: vec![-200.0; *wet_audio_channels as usize],
+                        ..Default::default()
+                    },
+                );
+                for port in &ports {
+                    self.snapshot
+                        .connections
+                        .application_ports
+                        .insert(port.id, port.clone());
+                }
+                self.snapshot.connections.revision =
+                    self.snapshot.connections.revision.wrapping_add(1);
+                for loop_id in &loops {
+                    self.snapshot.loops.insert(
+                        *loop_id,
+                        BackendLoopState {
+                            mode: BackendLoopMode::Stopped,
+                            stereo: *wet_audio_channels == 2,
+                            gain: 1.0,
+                            audio_peaks: vec![
+                                -200.0;
+                                dry_audio_channels.saturating_add(*wet_audio_channels)
+                                    as usize
+                            ],
+                            ..Default::default()
+                        },
+                    );
+                }
+                Ok(BackendTrackCreation {
+                    track_id,
+                    loops,
+                    ports,
+                })
+            }
+            _ => Err(anyhow!("requested browser track processor is unavailable")),
+        }
+    }
+
     fn create_loop(&mut self) -> Result<BackendLoopId> {
         Err(anyhow!("standalone browser loops are unsupported"))
     }
@@ -1545,8 +1726,10 @@ impl Backend for WebAudioBackend {
             expected_track_id: track_id.raw(),
             expected_loop_ids: loops.iter().map(|id| id.raw()).collect(),
             port_name_base: request.port_name_base.clone(),
-            audio_channels: request.audio_channels,
-            midi: request.midi,
+            topology: WireTrackTopology::Direct {
+                audio_channels: request.audio_channels,
+                midi: request.midi,
+            },
         })?;
         self.next_track_id = self.next_track_id.saturating_add(1);
         self.next_loop_id = self.next_loop_id.saturating_add(loops.len() as u64);
@@ -1636,6 +1819,117 @@ impl Backend for WebAudioBackend {
             BackendTrackControl::InputMonitoring(value) => track.input_monitoring = value,
         }
         Ok(())
+    }
+
+    fn set_track_fx_control(
+        &mut self,
+        track_id: BackendTrackId,
+        control: BackendTrackFxControl,
+    ) -> Result<()> {
+        let fx = self
+            .snapshot
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown browser backend track {track_id:?}"))?
+            .fx
+            .as_ref()
+            .ok_or_else(|| anyhow!("track has no processor"))?;
+        if let BackendTrackFxControl::TinySynthFx(tiny) = &control {
+            if !matches!(
+                fx.editor.as_ref(),
+                Some(TrackProcessorEditorState::TinySynthFx(_))
+            ) {
+                return Err(anyhow!("track has no Tiny Synth/FX editor state"));
+            }
+            match tiny {
+                TinySynthFxControl::SelectPreset(id)
+                    if !matches!(
+                        tiny_synth_fx_descriptor().editor,
+                        Some(shoop_egui::TrackProcessorEditorDescriptor::TinySynthFx {
+                            presets
+                        }) if presets.iter().any(|preset| preset.id == *id)
+                    ) =>
+                {
+                    return Err(anyhow!("unknown Tiny Synth/FX preset {id}"));
+                }
+                TinySynthFxControl::SetMasterGainDb(value)
+                    if !value.is_finite()
+                        || !(shoop_egui::MIN_TINY_SYNTH_FX_GAIN_DB
+                            ..=shoop_egui::MAX_TINY_SYNTH_FX_GAIN_DB)
+                            .contains(value) =>
+                {
+                    return Err(anyhow!("invalid Tiny Synth/FX master gain"));
+                }
+                TinySynthFxControl::SetReverbAmount(value)
+                    if !value.is_finite() || !(0.0..=1.0).contains(value) =>
+                {
+                    return Err(anyhow!("invalid Tiny Synth/FX reverb amount"));
+                }
+                TinySynthFxControl::SetDistortionDrive(value)
+                    if !value.is_finite() || !(1.0..=20.0).contains(value) =>
+                {
+                    return Err(anyhow!("invalid Tiny Synth/FX distortion drive"));
+                }
+                _ => {}
+            }
+        }
+        self.submit(Command::SetTrackFxControl {
+            track_id: track_id.raw(),
+            control: to_wire_track_fx_control(control.clone()),
+        })?;
+
+        let fx = self
+            .snapshot
+            .tracks
+            .get_mut(&track_id)
+            .expect("track checked")
+            .fx
+            .as_mut()
+            .expect("processor checked");
+        match control {
+            BackendTrackFxControl::SetActive(value) => fx.active = value,
+            BackendTrackFxControl::SetVisible(value) => fx.visible = value,
+            BackendTrackFxControl::ToggleOrRecover => fx.visible = !fx.visible,
+            BackendTrackFxControl::RestoreState(_) | BackendTrackFxControl::ClearLogs => {}
+            BackendTrackFxControl::TinySynthFx(tiny) => {
+                let Some(TrackProcessorEditorState::TinySynthFx(editor)) = fx.editor.as_mut()
+                else {
+                    unreachable!("Tiny Synth/FX editor was checked before submission");
+                };
+                match tiny {
+                    TinySynthFxControl::SelectPreset(value) => {
+                        editor.selected_preset_id = Some(value)
+                    }
+                    TinySynthFxControl::SetMasterGainDb(value) => editor.master_gain_db = value,
+                    TinySynthFxControl::SetReverbEnabled(value) => editor.reverb_enabled = value,
+                    TinySynthFxControl::SetReverbAmount(value) => editor.reverb_amount = value,
+                    TinySynthFxControl::SetDistortionEnabled(value) => {
+                        editor.distortion_enabled = value
+                    }
+                    TinySynthFxControl::SetDistortionDrive(value) => {
+                        editor.distortion_drive = value
+                    }
+                    TinySynthFxControl::Panic => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn track_fx_state_string(&mut self, track_id: BackendTrackId) -> Result<Option<String>> {
+        let track = self
+            .snapshot
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown browser backend track {track_id:?}"))?;
+        let Some(fx) = &track.fx else {
+            return Ok(None);
+        };
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = &fx.editor else {
+            return Ok(None);
+        };
+        let sample_rate = self.snapshot.status.sample_rate.max(1) as f32;
+        Ok(Some(encode_tiny_synth_fx_state(sample_rate, editor)?))
     }
 
     fn inject_midi_input(
@@ -1858,7 +2152,7 @@ impl Backend for WebAudioBackend {
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         if let Some(capture) = &self.session_capture {
-            if capture.total_bytes == Some(capture.bytes.len()) && !capture.in_flight {
+            if capture.total_bytes == Some(capture.bytes.len()) && capture.in_flight == 0 {
                 let session = serde_json::from_slice(&capture.bytes)
                     .map_err(|error| anyhow!("invalid worklet session capture: {error}"))?;
                 self.session_capture = None;
@@ -1875,7 +2169,8 @@ impl Backend for WebAudioBackend {
             generation,
             total_bytes: None,
             bytes: Vec::new(),
-            in_flight: true,
+            next_offset: 0,
+            in_flight: 0,
         });
         Err(anyhow!("session capture pending"))
     }
@@ -2123,6 +2418,35 @@ fn to_wire_track_control(control: BackendTrackControl) -> WireTrackControl {
         BackendTrackControl::InputGainDb(value) => WireTrackControl::InputGainDb(value),
         BackendTrackControl::InputBalance(value) => WireTrackControl::InputBalance(value),
         BackendTrackControl::InputMonitoring(value) => WireTrackControl::InputMonitoring(value),
+    }
+}
+
+fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxControl {
+    match control {
+        BackendTrackFxControl::SetActive(value) => WireTrackFxControl::SetActive(value),
+        BackendTrackFxControl::SetVisible(value) => WireTrackFxControl::SetVisible(value),
+        BackendTrackFxControl::ToggleOrRecover => WireTrackFxControl::ToggleOrRecover,
+        BackendTrackFxControl::RestoreState(value) => WireTrackFxControl::RestoreState(value),
+        BackendTrackFxControl::ClearLogs => WireTrackFxControl::ClearLogs,
+        BackendTrackFxControl::TinySynthFx(control) => match control {
+            TinySynthFxControl::SelectPreset(value) => WireTrackFxControl::TinySelectPreset(value),
+            TinySynthFxControl::SetMasterGainDb(value) => {
+                WireTrackFxControl::TinySetMasterGainDb(value)
+            }
+            TinySynthFxControl::SetReverbEnabled(value) => {
+                WireTrackFxControl::TinySetReverbEnabled(value)
+            }
+            TinySynthFxControl::SetReverbAmount(value) => {
+                WireTrackFxControl::TinySetReverbAmount(value)
+            }
+            TinySynthFxControl::SetDistortionEnabled(value) => {
+                WireTrackFxControl::TinySetDistortionEnabled(value)
+            }
+            TinySynthFxControl::SetDistortionDrive(value) => {
+                WireTrackFxControl::TinySetDistortionDrive(value)
+            }
+            TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
+        },
     }
 }
 
