@@ -1101,7 +1101,7 @@ mod tests {
             host.set_active(false);
             host.set_active(true);
             let mut loaded_processed = false;
-            for _ in 0..8 {
+            for _ in 0..100 {
                 for channel in 0..host.info().audio_inputs {
                     host.audio_input_mut(channel).unwrap()[..64].fill(0.25);
                 }
@@ -1117,7 +1117,7 @@ mod tests {
                     break;
                 }
                 host.idle();
-                std::thread::sleep(std::time::Duration::from_millis(25));
+                std::thread::sleep(std::time::Duration::from_millis(20));
             }
             let state = host.save_state().unwrap();
             assert!(
