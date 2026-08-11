@@ -5450,9 +5450,9 @@ dependencies = [
 
 [[package]]
 name = "tinyviolin"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "342a93e896646151693c80052cf7a02070f9770c98b202d6b837636a29e385e2"
+checksum = "e69cf6c01e440dc464f648f0a5cb20ac525d32e854f628456083d2ffbc875dbb"
 
 [[package]]
 name = "tokio"
