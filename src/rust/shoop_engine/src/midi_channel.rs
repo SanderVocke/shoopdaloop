@@ -18,7 +18,6 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::content_snapshot::MidiProcessSnapshotWriter;
 use crate::loop_mode::LoopMode;
-use crate::midi;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
 use crate::state_mirror::MidiChannelStateMirror;
@@ -564,13 +563,13 @@ impl MidiChannel {
             }
         }
 
-        // Anything other than plain forward playback leaves notes hanging.
+        // Anything other than plain forward playback can leave played notes hanging.
         let interrupted = self.prev_process_flags.contains(ProcessFlags::PLAYBACK)
             && (!flags.contains(ProcessFlags::PLAYBACK)
                 || pos_before != self.prev_pos_after as i32);
         if interrupted && n_samples > 0 {
             let time = self.play.map(|p| p.n_frames_processed).unwrap_or(0);
-            self.send_all_sound_off(out, time);
+            self.stop_active_playback_notes(out, time);
         }
 
         let mut adopted_prerecording = false;
@@ -1000,16 +999,20 @@ impl MidiChannel {
         }
     }
 
-    /// arguably it should cover all 16.
-    fn send_all_sound_off(&mut self, out: &mut Vec<MidiStorageElem>, time: u32) {
-        let msg = midi::all_sound_off(0);
-        self.send(out, time, &msg);
+    fn stop_active_playback_notes(&mut self, out: &mut Vec<MidiStorageElem>, time: u32) {
+        let mut cleanup = std::mem::take(&mut self.restore_scratch);
+        self.output_state.all_notes_off_into(&mut cleanup);
+        for message in &cleanup {
+            self.send(out, time, message.data());
+        }
+        self.restore_scratch = cleanup;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::midi;
     use assert2::{check, let_assert};
 
     use ChannelMode as C;
@@ -1463,7 +1466,31 @@ mod tests {
     }
 
     #[test]
-    fn interrupting_playback_sends_all_sound_off() {
+    fn loop_wrap_stops_only_notes_owned_by_playback() {
+        let mut ch = channel();
+        ch.set_contents(&[ev(0, &midi::note_on(0, 60, 100))], 4, None);
+        let mut mixed_state = MidiStateTracker::new(TrackWhat::ALL);
+        mixed_state.process(&midi::note_on(0, 64, 100));
+        for message in cycle(&mut ch, L::Playing, 4, 0, 4, &[]) {
+            mixed_state.process(message.data());
+        }
+
+        let out = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        for message in &out {
+            mixed_state.process(message.data());
+        }
+        check!(out.len() == 2);
+        check!(out[0].data() == midi::note_off(0, 60, 0).as_slice());
+        check!(out[1].data() == midi::note_on(0, 60, 100).as_slice());
+        check!(!out
+            .iter()
+            .any(|message| midi::all_sound_off_channel(message.data()).is_some()));
+        check!(mixed_state.note_velocity(0, 60) == Some(100));
+        check!(mixed_state.note_velocity(0, 64) == Some(100));
+    }
+
+    #[test]
+    fn interrupting_playback_stops_its_active_notes() {
         let mut ch = channel();
         cycle(
             &mut ch,
@@ -1477,7 +1504,7 @@ mod tests {
         // Stopping mid-playback must silence anything left sounding.
         let out = cycle(&mut ch, L::Stopped, 4, 0, 4, &[]);
         check!(out.len() == 1);
-        check!(midi::all_sound_off_channel(out[0].data()) == Some(0));
+        check!(out[0].data() == midi::note_off(0, 60, 0).as_slice());
     }
 
     #[test]
@@ -1496,11 +1523,11 @@ mod tests {
         let out = cycle(&mut ch, L::Playing, 4, 6, 8, &[]);
         check!(out
             .iter()
-            .any(|m| midi::all_sound_off_channel(m.data()) == Some(0)));
+            .any(|message| message.data() == midi::note_off(0, 60, 0).as_slice()));
     }
 
     #[test]
-    fn uninterrupted_forward_playback_sends_no_all_sound_off() {
+    fn uninterrupted_forward_playback_sends_no_cleanup() {
         let mut ch = channel();
         cycle(
             &mut ch,
@@ -1515,9 +1542,6 @@ mod tests {
         );
         cycle(&mut ch, L::Playing, 4, 0, 8, &[]);
         let out = cycle(&mut ch, L::Playing, 4, 4, 8, &[]);
-        check!(!out
-            .iter()
-            .any(|m| midi::all_sound_off_channel(m.data()) == Some(0)));
         check!(times(&out) == vec![1]); // frame 5 is buffer-relative frame 1
     }
 

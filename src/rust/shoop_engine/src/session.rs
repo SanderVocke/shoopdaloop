@@ -500,7 +500,7 @@ pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionErr
     // Scratch sized for the widest loop, so a cycle neither searches nor grows a buffer.
     // Room inside each buffer as well as for the buffers themselves: a cycle pushing its
     // first message into a zero-capacity vector would allocate on the audio thread, and a
-    // loop wrap alone emits All Sound Off, so even an idle playing loop needs room.
+    // playback interruption may emit targeted note-offs.
     let widest = midi_by_loop.iter().map(|v| v.len()).max().unwrap_or(0);
     let mut midi_in_scratch: Vec<Vec<MidiStorageElem>> = Vec::with_capacity(widest);
     let mut midi_out_scratch: Vec<Vec<MidiStorageElem>> = Vec::with_capacity(widest);

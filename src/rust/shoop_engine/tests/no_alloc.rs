@@ -140,6 +140,52 @@ fn midi_replacement_is_allocation_free() {
 }
 
 #[test]
+fn interrupting_midi_playback_is_allocation_free() {
+    let mut channel =
+        shoop_engine::midi_channel::MidiChannel::with_capacity_elems(1, ChannelMode::Direct);
+    channel.set_contents(
+        &[MidiStorageElem::new(0, &midi::note_on(0, 60, 100)).unwrap()],
+        4,
+        None,
+    );
+    let mut output = Vec::with_capacity(2);
+    channel.set_playback_buffer(4);
+    channel
+        .process(
+            LoopMode::Playing,
+            LoopMode::Unknown,
+            None,
+            None,
+            4,
+            0,
+            4,
+            4,
+            &[],
+            &mut output,
+        )
+        .unwrap();
+    output.clear();
+    channel.set_playback_buffer(4);
+
+    assert_no_alloc(|| {
+        channel
+            .process(
+                LoopMode::Playing,
+                LoopMode::Unknown,
+                None,
+                None,
+                4,
+                0,
+                4,
+                4,
+                &[],
+                &mut output,
+            )
+            .unwrap();
+    });
+}
+
+#[test]
 fn midi_passthrough_cleanup_is_allocation_free() {
     let mut session = Session::default();
     let source = session.add_port(midi_port(1, "source", PortDirection::Input));

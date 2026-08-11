@@ -625,13 +625,11 @@ fn midi_corner_case_note_started_before_loop_boundary() {
     // not reassigned, so times continue from 30.
     let out = process(&mut l, 30, &source);
     let played: Vec<(u32, Vec<u8>)> = out.iter().map(as_pair).collect();
-    check!(played.len() == 5);
-    // A loop wrap counts as a playback interruption, so All Sound Off leads.
-    check!(midi::is_cc(&played[0].1));
-    check!(played[1] == (30, midi::note_on(0, 100, 90).to_vec()));
-    check!(played[2] == (38, midi::note_off(0, 100, 80).to_vec()));
-    check!(played[3] == (48, midi::note_on(0, 100, 70).to_vec()));
-    check!(played[4] == (58, midi::note_off(0, 100, 60).to_vec()));
+    check!(played.len() == 4);
+    check!(played[0] == (30, midi::note_on(0, 100, 90).to_vec()));
+    check!(played[1] == (38, midi::note_off(0, 100, 80).to_vec()));
+    check!(played[2] == (48, midi::note_on(0, 100, 70).to_vec()));
+    check!(played[3] == (58, midi::note_off(0, 100, 60).to_vec()));
 }
 
 ///
@@ -769,16 +767,14 @@ fn midi_corner_case_note_started_during_pre_play() {
     check!(played[1] == (17, midi::note_on(0, 100, 70).to_vec()));
     check!(played[2] == (19, midi::note_off(0, 100, 60).to_vec()));
 
-    // Another cycle. There is no pre-play left, so the wrap emits All Sound Off and
-    // the note-on has to be inserted.
+    // Another cycle. There is no pre-play left, so the note-on is inserted.
     let out = process_synced(&mut l, &mut sync_source, 10, &source);
     let played: Vec<(u32, Vec<u8>)> = out.iter().map(as_pair).collect();
-    check!(played.len() == 5);
-    check!(midi::is_cc(&played[0].1));
-    check!(played[1] == (20, midi::note_on(0, 100, 90).to_vec()));
-    check!(played[2] == (25, midi::note_off(0, 100, 80).to_vec()));
-    check!(played[3] == (27, midi::note_on(0, 100, 70).to_vec()));
-    check!(played[4] == (29, midi::note_off(0, 100, 60).to_vec()));
+    check!(played.len() == 4);
+    check!(played[0] == (20, midi::note_on(0, 100, 90).to_vec()));
+    check!(played[1] == (25, midi::note_off(0, 100, 80).to_vec()));
+    check!(played[2] == (27, midi::note_on(0, 100, 70).to_vec()));
+    check!(played[3] == (29, midi::note_off(0, 100, 60).to_vec()));
 }
 
 #[test]
@@ -858,12 +854,11 @@ fn midi_corner_case_note_pre_recorded_but_no_preplay() {
 
     let out = process_synced(&mut l, &mut sync_source, 10, &source);
     let played: Vec<(u32, Vec<u8>)> = out.iter().map(as_pair).collect();
-    check!(played.len() == 5);
-    check!(midi::is_cc(&played[0].1));
-    check!(played[1] == (20, midi::note_on(0, 100, 90).to_vec()));
-    check!(played[2] == (25, midi::note_off(0, 100, 80).to_vec()));
-    check!(played[3] == (27, midi::note_on(0, 100, 70).to_vec()));
-    check!(played[4] == (29, midi::note_off(0, 100, 60).to_vec()));
+    check!(played.len() == 4);
+    check!(played[0] == (20, midi::note_on(0, 100, 90).to_vec()));
+    check!(played[1] == (25, midi::note_off(0, 100, 80).to_vec()));
+    check!(played[2] == (27, midi::note_on(0, 100, 70).to_vec()));
+    check!(played[3] == (29, midi::note_off(0, 100, 60).to_vec()));
 }
 
 #[test]
