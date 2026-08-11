@@ -3036,6 +3036,25 @@ mod tests {
         backend
             .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
             .unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            let wet = runtime.loops[&created.loops[0]].audio[2].clone();
+            assert!(matches!(
+                wet.try_get_current_data_snapshot(),
+                Err(
+                    shoop_engine::content_snapshot::CurrentDataError::MutationActive(
+                        shoop_engine::content_snapshot::ContentMutation::Recording
+                    )
+                )
+            ));
+            runtime.driver.dummy_request_controlled_frames(1);
+            runtime.driver.dummy_run_requested_frames();
+            let deadline = std::time::Instant::now() + Duration::from_secs(1);
+            while wet.try_get_current_data_snapshot().is_err() {
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::yield_now();
+            }
+        }
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].loops[0].audio[2].samples,
