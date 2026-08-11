@@ -5,9 +5,9 @@
 
 # ShoopDaLoop — Limitless Looping
 
-ShoopDaLoop is a cross-platform live-looping application for audio and MIDI. Its egui interface organizes loops into a track grid and supports free-form jamming, controller-driven workflows, and prepared performances.
+ShoopDaLoop is a playful cross-platform (including web) live-looping application for audio and MIDI. It organizes loops into a track grid and supports free-form jamming, controller-driven workflows, and prepared performances.
 
-The application is feature-complete for its current design. Releases before 1.0 remain development releases: test them before relying on them in a performance.
+The application is feature-complete for its current design. Releases before 1.0 remain development releases: test them thoroughly before relying on them in a performance.
 
 [User and developer documentation](https://sandervocke.github.io/shoopdaloop/) is published from this repository.
 
@@ -16,11 +16,11 @@ The application is feature-complete for its current design. Releases before 1.0 
 - Audio and MIDI loops in aligned track columns.
 - A sync loop, synchronized or immediate transitions, fixed-cycle recording, selection, targeting, solo behavior, and retroactive grab recording.
 - Regular tracks and dry/wet tracks with independent audio/MIDI topology.
-- External processing, built-in Tiny Synth/FX, and native Carla Rack/Patchbay hosting when native FX support is enabled.
+- External FX/synth processing, built-in Tiny Synth/FX, and native Carla Rack/Patchbay hosting when native FX support is enabled.
 - JACK, CPAL+midir, and dummy/offline drivers on desktop.
 - Web Audio/AudioWorklet and permission-gated Web MIDI in supported browsers.
 - Connection management for application and host audio/MIDI ports.
-- Versioned `.shoop` sessions plus loop audio/MIDI import and export.
+- Session load/save plus loop audio/MIDI import and export.
 - Generated audio or MIDI click tracks.
 - Embedded Lua scripting, keyboard control, and an APC Mini controller script.
 - Native and browser settings with explicit save, validation, and recovery behavior.
@@ -56,12 +56,6 @@ See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The applica
 ## Builds and platforms
 
 The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a hosted bundle and a self-contained HTML file. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
-
-## Project status
-
-The current egui application—not an earlier interface—is the supported ShoopDaLoop product. Missing capabilities are ordinary future enhancements, not a compatibility or feature-parity requirement.
-
-Issues and contributions are welcome through GitHub.
 
 ## License and credits
 
