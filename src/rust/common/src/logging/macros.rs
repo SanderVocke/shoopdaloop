@@ -31,7 +31,7 @@ macro_rules! shoop_log_unit {
         use ctor::ctor;
         use log;
         pub(crate) const SHOOP_LOG_UNIT: &str = $name;
-        #[ctor]
+        #[ctor(unsafe)]
         fn init_logging() {
             $crate::logging::register_log_module(SHOOP_LOG_UNIT);
         }
