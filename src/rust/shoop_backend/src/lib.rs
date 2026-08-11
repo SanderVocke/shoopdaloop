@@ -1480,12 +1480,13 @@ impl EngineBackend {
                 BackendChannelMode::Wet => ChannelMode::Wet,
             };
             let channel = if self.mode == EngineBackendMode::Physical {
-                self.session.add_audio_channel_with_bounded_capacity(
-                    engine_loop,
-                    RECORDING_CHUNK_SIZE,
-                    self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize,
-                    engine_mode,
-                )?
+                self.session
+                    .add_audio_channel_with_bounded_capacity_unprepared(
+                        engine_loop,
+                        RECORDING_CHUNK_SIZE,
+                        self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize,
+                        engine_mode,
+                    )?
             } else {
                 self.session
                     .add_audio_channel(engine_loop, 64, engine_mode)?
@@ -2128,6 +2129,25 @@ impl EngineBackend {
         }
         staged.apply_graph_changes()?;
         Ok((staged, replacement))
+    }
+
+    fn prepare_recording_storage(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        if self.mode != EngineBackendMode::Physical {
+            return Ok(());
+        }
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing loop channels"))?
+            .audio
+            .clone();
+        for channel in channels {
+            self.session
+                .audio_channel_mut(channel)
+                .ok_or_else(|| anyhow!("missing audio loop channel"))?
+                .prepare_bounded_capacity();
+        }
+        Ok(())
     }
 
     fn apply_graph_changes(&mut self) -> Result<()> {
@@ -2908,6 +2928,7 @@ impl Backend for EngineBackend {
         let mut audio_requests = Vec::with_capacity(requests.len());
         let mut midi_captures = Vec::new();
         for request in requests {
+            self.prepare_recording_storage(request.loop_id)?;
             let engine_loop = self.engine_loop_index(request.loop_id)?;
             audio_requests.push(shoop_engine::session::AudioRingbufferAdoption {
                 loop_idx: engine_loop,
@@ -3044,6 +3065,14 @@ impl Backend for EngineBackend {
         cycles_delay: Option<u32>,
     ) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            self.prepare_recording_storage(loop_id)?;
+        }
         if let Some(delay) = cycles_delay {
             self.session
                 .loop_mut(engine_loop)
@@ -3064,6 +3093,14 @@ impl Backend for EngineBackend {
         align_to_sync_at: Option<u32>,
     ) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            self.prepare_recording_storage(loop_id)?;
+        }
         self.session
             .loop_mut(engine_loop)
             .ok_or_else(|| anyhow!("missing engine loop"))?
