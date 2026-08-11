@@ -1,5 +1,6 @@
 [package]
-name = "shoopdaloop_egui"
+name = "shoopdaloop"
+version.workspace = true
 edition = "2021"
 
 [features]
@@ -17,7 +18,7 @@ tracing = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap = { workspace = true }
-common = { path = "../common" }
+shoop_common = { path = "../shoop_common" }
 shoop_backend = { path = "../shoop_backend", features = ["native-drivers"] }
 shoop_settings = { path = "../shoop_settings", features = ["native-store"] }
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }

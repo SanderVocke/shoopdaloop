@@ -17,7 +17,7 @@ equals the host major and its minor is no newer than the host minor. Missing,
 malformed, repeated, or incompatible announcements cancel initial execution
 before versioned side effects. The global two-integer signature is independent
 of modules and reserved to remain stable across future API versions. See
-``docs/egui_lua_dialog_api.md`` for the compatibility and migration contract.
+``docs/lua_dialog_api.md`` for the compatibility and migration contract.
 
 The sandbox exposes selected standard-library functions and ShoopDaLoop modules.
 It prevents ordinary module/file access but should still be treated as a
@@ -74,7 +74,7 @@ Built-in modules
   and labeled buttons, and buttons may retain script callbacks. Scripts may
   request opening at startup or from callbacks; users retain window visibility
   and current-page control. Dialogs are destroyed with their owning runtime.
-  See ``docs/egui_lua_dialog_api.md`` for constructors, style fields, examples,
+  See ``docs/lua_dialog_api.md`` for constructors, style fields, examples,
   errors, and lifecycle behavior.
 
 ``shoop_control``

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package and verify standalone ShoopDaLoop egui CI artifacts."""
+"""Package and verify standalone ShoopDaLoop CI artifacts."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from build_single_file_app import build_single_file
 
 PACKAGE = Path(__file__).resolve().parent
 ROOT = PACKAGE.parents[2]
-ARCHIVE_ROOT = "shoopdaloop-egui"
+ARCHIVE_ROOT = "shoopdaloop"
 PROFILES = ("debug", "release")
 NATIVE_PLATFORMS = ("linux", "windows", "macos")
 ROBOTO_FILES = (
@@ -38,7 +38,7 @@ WEB_REQUIRED_FILES = (
 
 
 def artifact_stem(platform: str, arch: str, profile: str) -> str:
-    return f"shoopdaloop-egui-{platform}-{arch}-{profile}"
+    return f"shoopdaloop-{platform}-{arch}-{profile}"
 
 
 def copy_metadata(destination: Path) -> None:
@@ -47,7 +47,7 @@ def copy_metadata(destination: Path) -> None:
 
 
 def executable_name(platform: str) -> str:
-    return "shoopdaloop_egui.exe" if platform == "windows" else "shoopdaloop_egui"
+    return "shoopdaloop.exe" if platform == "windows" else "shoopdaloop"
 
 
 def create_native_stage(platform: str, binary: Path, stage: Path) -> None:
@@ -57,7 +57,7 @@ def create_native_stage(platform: str, binary: Path, stage: Path) -> None:
     shutil.copytree(ROOT / "resources" / "fonts" / "roboto", root / "roboto")
 
     if platform == "macos":
-        contents = root / "ShoopDaLoop egui.app" / "Contents"
+        contents = root / "ShoopDaLoop.app" / "Contents"
         executable_dir = contents / "MacOS"
         resources = contents / "Resources"
         executable_dir.mkdir(parents=True)
@@ -67,11 +67,11 @@ def create_native_stage(platform: str, binary: Path, stage: Path) -> None:
         target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         shutil.copy2(ROOT / "resources" / "iconset" / "icon.icns", resources / "icon.icns")
         plist = {
-            "CFBundleDisplayName": "ShoopDaLoop egui",
+            "CFBundleDisplayName": "ShoopDaLoop",
             "CFBundleExecutable": executable_name(platform),
             "CFBundleIconFile": "icon.icns",
-            "CFBundleIdentifier": "org.shoopdaloop.egui",
-            "CFBundleName": "ShoopDaLoop egui",
+            "CFBundleIdentifier": "org.shoopdaloop.app",
+            "CFBundleName": "ShoopDaLoop",
             "CFBundlePackageType": "APPL",
             "CFBundleVersion": "0",
             "LSMinimumSystemVersion": "11.0",
@@ -116,7 +116,7 @@ def package_native(args: argparse.Namespace) -> list[Path]:
     suffix = ".zip" if args.platform == "windows" else ".tar.gz"
     output = args.output_dir / f"{stem}{suffix}"
     output.unlink(missing_ok=True)
-    with tempfile.TemporaryDirectory(prefix="shoop-egui-package-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="shoop-package-") as temporary:
         stage = Path(temporary)
         create_native_stage(args.platform, binary, stage)
         if args.platform == "windows":
@@ -140,8 +140,8 @@ def package_web(args: argparse.Namespace) -> list[Path]:
     for relative in WEB_REQUIRED_FILES:
         if not (dist / relative).is_file():
             raise RuntimeError(f"hosted web bundle is missing {relative}")
-    glue = find_one(dist, "shoopdaloop_egui-*.js")
-    wasm = find_one(dist, "shoopdaloop_egui-*_bg.wasm")
+    glue = find_one(dist, "shoopdaloop-*.js")
+    wasm = find_one(dist, "shoopdaloop-*_bg.wasm")
     allowed = [dist / relative for relative in WEB_REQUIRED_FILES] + [glue, wasm]
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -152,7 +152,7 @@ def package_web(args: argparse.Namespace) -> list[Path]:
     html.unlink(missing_ok=True)
     build_single_file(dist, html)
 
-    with tempfile.TemporaryDirectory(prefix="shoop-egui-web-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="shoop-web-") as temporary:
         root = Path(temporary) / ARCHIVE_ROOT
         for source in allowed:
             relative = source.relative_to(dist)
@@ -212,13 +212,13 @@ def verify_native(path: Path, platform: str) -> None:
     metadata = {f"{root}README.md", f"{root}LICENSE"}
     fonts = {f"{root}roboto/{name}" for name in ROBOTO_FILES}
     if platform == "macos":
-        app = f"{root}ShoopDaLoop egui.app/Contents/"
+        app = f"{root}ShoopDaLoop.app/Contents/"
         required = metadata | fonts | {
             f"{app}Info.plist",
-            f"{app}MacOS/shoopdaloop_egui",
+            f"{app}MacOS/shoopdaloop",
             f"{app}Resources/icon.icns",
         }
-        executable = f"{app}MacOS/shoopdaloop_egui"
+        executable = f"{app}MacOS/shoopdaloop"
     else:
         executable = f"{root}{executable_name(platform)}"
         required = metadata | fonts | {executable}
@@ -236,8 +236,8 @@ def verify_web(bundle: Path, html: Path) -> None:
     names, _ = archive_names(bundle)
     root = f"{ARCHIVE_ROOT}/"
     fixed = {f"{root}{relative}" for relative in WEB_REQUIRED_FILES}
-    glue = [name for name in names if name.startswith(f"{root}shoopdaloop_egui-") and name.endswith(".js")]
-    wasm = [name for name in names if name.startswith(f"{root}shoopdaloop_egui-") and name.endswith("_bg.wasm")]
+    glue = [name for name in names if name.startswith(f"{root}shoopdaloop-") and name.endswith(".js")]
+    wasm = [name for name in names if name.startswith(f"{root}shoopdaloop-") and name.endswith("_bg.wasm")]
     required = fixed | set(glue) | set(wasm)
     if len(glue) != 1 or len(wasm) != 1 or names != required:
         raise RuntimeError(f"unexpected hosted web archive manifest: {sorted(names)}")

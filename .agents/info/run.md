@@ -3,7 +3,7 @@
 Native development:
 
 ```sh
-cargo run -p shoopdaloop_egui
+cargo run -p shoopdaloop
 ```
 
 The first launch uses the dummy/offline driver. Configure JACK or CPAL+midir under **Settings → Audio**.
@@ -11,7 +11,7 @@ The first launch uses the dummy/offline driver. Configure JACK or CPAL+midir und
 Browser development:
 
 ```sh
-cd src/rust/shoopdaloop_egui
+cd src/rust/shoopdaloop
 trunk serve --open
 ```
 

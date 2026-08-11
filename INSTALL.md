@@ -6,9 +6,9 @@ ShoopDaLoop is distributed as unsigned native application archives and browser a
 
 The cross-platform workflow produces:
 
-- Linux x86_64: `.tar.gz` archives containing `shoopdaloop_egui`.
-- Windows x86_64: `.zip` archives containing `shoopdaloop_egui.exe`.
-- macOS arm64: `.tar.gz` archives containing `ShoopDaLoop egui.app`.
+- Linux x86_64: `.tar.gz` archives containing `shoopdaloop`.
+- Windows x86_64: `.zip` archives containing `shoopdaloop.exe`.
+- macOS arm64: `.tar.gz` archives containing `ShoopDaLoop.app`.
 - WebAssembly: a hosted bundle `.zip` and a self-contained `.html` file.
 
 Native archives do not bundle a complete native-library dependency closure and are not installers. They are unsigned; the operating system may require explicit approval before first launch. Release and workflow artifacts should be treated as development software and tested before performance use.
@@ -51,12 +51,12 @@ From the repository root:
 
 ```sh
 # Native drivers and LV2/Carla hosting.
-cargo build -p shoopdaloop_egui
-cargo run -p shoopdaloop_egui
+cargo build -p shoopdaloop
+cargo run -p shoopdaloop
 
 # Build and run without native FX dependencies.
-cargo build -p shoopdaloop_egui --no-default-features
-cargo run -p shoopdaloop_egui --no-default-features
+cargo build -p shoopdaloop --no-default-features
+cargo run -p shoopdaloop --no-default-features
 ```
 
 The executable is written to `target/debug/` or `target/release/`. No generated launcher is needed.
@@ -70,7 +70,7 @@ Install the WebAssembly target and the Trunk version used by CI:
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install --locked trunk --version 0.21.14
-cd src/rust/shoopdaloop_egui
+cd src/rust/shoopdaloop
 trunk serve --open
 ```
 

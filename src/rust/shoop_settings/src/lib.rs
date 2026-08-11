@@ -1,10 +1,10 @@
-mod egui_settings;
 #[cfg(all(not(target_arch = "wasm32"), feature = "native-store"))]
 mod native_store;
+mod settings;
 
-pub use egui_settings::*;
 #[cfg(all(not(target_arch = "wasm32"), feature = "native-store"))]
 pub use native_store::*;
+pub use settings::*;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;

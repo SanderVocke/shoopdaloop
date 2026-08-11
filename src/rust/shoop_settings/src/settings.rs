@@ -6,12 +6,12 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-pub const EGUI_SETTINGS_FORMAT: &str = "shoop-egui-settings";
-pub const EGUI_SETTINGS_FORMAT_MAJOR: u16 = 1;
-pub const EGUI_SETTINGS_FORMAT_MINOR: u16 = 0;
-pub const EGUI_SETTINGS_DOCUMENT_VERSION: u16 = 1;
-pub const EGUI_SETTINGS_STORAGE_KEY: &str = "org.shoopdaloop.egui.settings";
-pub const EGUI_SETTINGS_FILENAME: &str = "settings.json";
+pub const SETTINGS_FORMAT: &str = "shoop-egui-settings";
+pub const SETTINGS_FORMAT_MAJOR: u16 = 1;
+pub const SETTINGS_FORMAT_MINOR: u16 = 0;
+pub const SETTINGS_DOCUMENT_VERSION: u16 = 1;
+pub const SETTINGS_STORAGE_KEY: &str = "org.shoopdaloop.egui.settings";
+pub const SETTINGS_FILENAME: &str = "settings.json";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SettingsFormatVersion {
@@ -20,12 +20,12 @@ pub struct SettingsFormatVersion {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct EgSettingsDocument {
+pub struct SettingsDocument {
     pub writer_version: String,
     pub values: BTreeMap<String, Value>,
 }
 
-impl EgSettingsDocument {
+impl SettingsDocument {
     pub fn empty(writer_version: impl Into<String>) -> Self {
         Self {
             writer_version: writer_version.into(),
@@ -95,20 +95,20 @@ struct MigrationStep {
 
 const MIGRATIONS: &[MigrationStep] = &[];
 
-pub fn decode_egui_settings(input: &str) -> Result<EgSettingsDocument, SettingsDocumentError> {
+pub fn decode_settings(input: &str) -> Result<SettingsDocument, SettingsDocumentError> {
     let mut value: Value = serde_json::from_str(input)
         .map_err(|error| SettingsDocumentError::Malformed(error.to_string()))?;
     let format = value
         .get("format")
         .and_then(Value::as_str)
         .unwrap_or("<missing>");
-    if format != EGUI_SETTINGS_FORMAT {
+    if format != SETTINGS_FORMAT {
         return Err(SettingsDocumentError::UnsupportedFormat(format.to_owned()));
     }
     let envelope: SettingsEnvelope = serde_json::from_value(value.clone())
         .map_err(|error| SettingsDocumentError::Malformed(error.to_string()))?;
-    if envelope.format_version.major != EGUI_SETTINGS_FORMAT_MAJOR
-        || envelope.format_version.minor > EGUI_SETTINGS_FORMAT_MINOR
+    if envelope.format_version.major != SETTINGS_FORMAT_MAJOR
+        || envelope.format_version.minor > SETTINGS_FORMAT_MINOR
     {
         return Err(SettingsDocumentError::UnsupportedFormatVersion {
             major: envelope.format_version.major,
@@ -118,22 +118,20 @@ pub fn decode_egui_settings(input: &str) -> Result<EgSettingsDocument, SettingsD
     value = run_migrations(envelope.document_version, value, MIGRATIONS)?;
     let document: SettingsDocumentV1 = serde_json::from_value(value)
         .map_err(|error| SettingsDocumentError::Malformed(error.to_string()))?;
-    Ok(EgSettingsDocument {
+    Ok(SettingsDocument {
         writer_version: document.writer_version,
         values: document.values,
     })
 }
 
-pub fn encode_egui_settings(
-    document: &EgSettingsDocument,
-) -> Result<String, SettingsDocumentError> {
+pub fn encode_settings(document: &SettingsDocument) -> Result<String, SettingsDocumentError> {
     let encoded = EncodedSettingsDocument {
-        format: EGUI_SETTINGS_FORMAT,
+        format: SETTINGS_FORMAT,
         format_version: SettingsFormatVersion {
-            major: EGUI_SETTINGS_FORMAT_MAJOR,
-            minor: EGUI_SETTINGS_FORMAT_MINOR,
+            major: SETTINGS_FORMAT_MAJOR,
+            minor: SETTINGS_FORMAT_MINOR,
         },
-        document_version: EGUI_SETTINGS_DOCUMENT_VERSION,
+        document_version: SETTINGS_DOCUMENT_VERSION,
         writer_version: &document.writer_version,
         values: &document.values,
     };
@@ -148,10 +146,10 @@ fn run_migrations(
     mut document: Value,
     migrations: &[MigrationStep],
 ) -> Result<Value, SettingsDocumentError> {
-    if version > EGUI_SETTINGS_DOCUMENT_VERSION {
+    if version > SETTINGS_DOCUMENT_VERSION {
         return Err(SettingsDocumentError::UnsupportedDocumentVersion(version));
     }
-    while version < EGUI_SETTINGS_DOCUMENT_VERSION {
+    while version < SETTINGS_DOCUMENT_VERSION {
         let step = migrations
             .iter()
             .find(|step| step.from == version && step.to == version.saturating_add(1))
@@ -701,7 +699,7 @@ impl SettingsRegistry {
         }
     }
 
-    pub fn resolve(&self, document: &EgSettingsDocument, revision: u64) -> ResolvedSettings {
+    pub fn resolve(&self, document: &SettingsDocument, revision: u64) -> ResolvedSettings {
         let mut values = BTreeMap::new();
         let mut diagnostics = Vec::new();
         for definition in self.definitions.iter() {
@@ -754,10 +752,10 @@ impl SettingsRegistry {
 
     pub fn document_from_draft(
         &self,
-        base: &EgSettingsDocument,
+        base: &SettingsDocument,
         draft: &SettingsDraft,
         writer_version: impl Into<String>,
-    ) -> Result<EgSettingsDocument, SettingsDraftError> {
+    ) -> Result<SettingsDocument, SettingsDraftError> {
         self.validate_draft(draft)?;
         let mut document = base.clone();
         document.writer_version = writer_version.into();
@@ -1005,7 +1003,7 @@ mod tests {
 
     fn current_document(values: Value) -> String {
         serde_json::json!({
-            "format": EGUI_SETTINGS_FORMAT,
+            "format": SETTINGS_FORMAT,
             "format_version": {"major": 1, "minor": 0},
             "document_version": 1,
             "writer_version": "test",
@@ -1016,26 +1014,26 @@ mod tests {
 
     #[test]
     fn current_document_is_deterministic_and_round_trips() {
-        let document = EgSettingsDocument {
+        let document = SettingsDocument {
             writer_version: "test".to_owned(),
             values: BTreeMap::from([
                 ("z.last".to_owned(), Value::Bool(true)),
                 ("a.first".to_owned(), Value::from(2)),
             ]),
         };
-        let first = encode_egui_settings(&document).unwrap();
-        let second = encode_egui_settings(&document).unwrap();
+        let first = encode_settings(&document).unwrap();
+        let second = encode_settings(&document).unwrap();
         assert_eq!(first, second);
         assert!(first.find("a.first").unwrap() < first.find("z.last").unwrap());
         assert!(first.ends_with('\n'));
-        assert_eq!(decode_egui_settings(&first).unwrap(), document);
+        assert_eq!(decode_settings(&first).unwrap(), document);
     }
 
     #[test]
     fn format_and_every_version_boundary_are_checked_before_values() {
         let predecessor = r#"{"schema":"settings.1","configuration":{}}"#;
         assert_eq!(
-            decode_egui_settings(predecessor).unwrap_err(),
+            decode_settings(predecessor).unwrap_err(),
             SettingsDocumentError::UnsupportedFormat("<missing>".to_owned())
         );
 
@@ -1043,14 +1041,14 @@ mod tests {
             serde_json::from_str(&current_document(Value::Object(Default::default()))).unwrap();
         value["format"] = Value::String("other".to_owned());
         assert_eq!(
-            decode_egui_settings(&value.to_string()).unwrap_err(),
+            decode_settings(&value.to_string()).unwrap_err(),
             SettingsDocumentError::UnsupportedFormat("other".to_owned())
         );
         for (major, minor) in [(0, 0), (2, 0), (1, 1)] {
-            value["format"] = Value::String(EGUI_SETTINGS_FORMAT.to_owned());
+            value["format"] = Value::String(SETTINGS_FORMAT.to_owned());
             value["format_version"] = serde_json::json!({"major": major, "minor": minor});
             assert_eq!(
-                decode_egui_settings(&value.to_string()).unwrap_err(),
+                decode_settings(&value.to_string()).unwrap_err(),
                 SettingsDocumentError::UnsupportedFormatVersion { major, minor }
             );
         }
@@ -1058,7 +1056,7 @@ mod tests {
         for version in [0, 2] {
             value["document_version"] = Value::from(version);
             assert_eq!(
-                decode_egui_settings(&value.to_string()).unwrap_err(),
+                decode_settings(&value.to_string()).unwrap_err(),
                 SettingsDocumentError::UnsupportedDocumentVersion(version)
             );
         }
@@ -1135,7 +1133,7 @@ mod tests {
     #[test]
     fn resolution_uses_defaults_warns_for_invalid_and_preserves_unknown() {
         let registry = registry();
-        let document = decode_egui_settings(&current_document(serde_json::json!({
+        let document = decode_settings(&current_document(serde_json::json!({
             "test.count": 99,
             "unknown.future": {"opaque": [1, 2, 3]},
             "scripting.user_scripts": [{"value": "/controller.lua", "enabled": true}]
@@ -1200,7 +1198,7 @@ mod tests {
             ))
             .unwrap();
         let registry = builder.finish();
-        let document = decode_egui_settings(&current_document(serde_json::json!({
+        let document = decode_settings(&current_document(serde_json::json!({
             "test.scripts": [
                 {"value": "/first.lua", "enabled": true},
                 {"value": "/second.lua", "enabled": false}
@@ -1255,7 +1253,7 @@ mod tests {
             );
         }
 
-        let malformed = decode_egui_settings(&current_document(serde_json::json!({
+        let malformed = decode_settings(&current_document(serde_json::json!({
             "test.scripts": [{"value": "/bad.lua", "enabled": "yes"}]
         })))
         .unwrap();

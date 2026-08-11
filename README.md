@@ -1,6 +1,6 @@
 ![Logo](./resources/logo-small.png)
 
-[![Build](https://github.com/SanderVocke/shoopdaloop/actions/workflows/build_and_test_egui.yml/badge.svg)](https://github.com/SanderVocke/shoopdaloop/actions/workflows/build_and_test_egui.yml)
+[![Build](https://github.com/SanderVocke/shoopdaloop/actions/workflows/build_and_test.yml/badge.svg)](https://github.com/SanderVocke/shoopdaloop/actions/workflows/build_and_test.yml)
 [![Docs](https://github.com/SanderVocke/shoopdaloop/actions/workflows/docs.yml/badge.svg)](https://github.com/SanderVocke/shoopdaloop/actions/workflows/docs.yml)
 
 # ShoopDaLoop — Limitless Looping
@@ -36,10 +36,10 @@ The repository currently retains an older interface screenshot while updated scr
 
 ```sh
 # Native application with native FX support.
-cargo run -p shoopdaloop_egui
+cargo run -p shoopdaloop
 
 # Native application without LV2/Carla dependencies.
-cargo run -p shoopdaloop_egui --no-default-features
+cargo run -p shoopdaloop --no-default-features
 ```
 
 For browser development:
@@ -47,11 +47,11 @@ For browser development:
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install --locked trunk --version 0.21.14
-cd src/rust/shoopdaloop_egui
+cd src/rust/shoopdaloop
 trunk serve --open
 ```
 
-See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The application-specific [technical README](src/rust/shoopdaloop_egui/README.md) documents settings, drivers, browser permissions, files, CI, and verification workflows.
+See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The application-specific [technical README](src/rust/shoopdaloop/README.md) documents settings, drivers, browser permissions, files, CI, and verification workflows.
 
 ## Builds and platforms
 
