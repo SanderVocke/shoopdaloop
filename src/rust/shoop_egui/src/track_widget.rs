@@ -212,6 +212,9 @@ impl TrackWidget {
             self.show_width_resize_handle(ui, frame.response.rect, "content_width_resize");
         }
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
+        result
+            .actions
+            .extend(self.tiny_synth_fx_editor.show(ui.ctx(), state, processor));
         if !result.actions.is_empty()
             || !result.loop_actions.is_empty()
             || !result.io_intents.is_empty()
@@ -227,9 +230,6 @@ impl TrackWidget {
                 "frontend.egui.track_interaction"
             );
         }
-        result
-            .actions
-            .extend(self.tiny_synth_fx_editor.show(ui.ctx(), state, processor));
         result
     }
 

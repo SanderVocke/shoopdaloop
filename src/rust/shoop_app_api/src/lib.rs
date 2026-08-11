@@ -1391,6 +1391,20 @@ impl LoopAction {
     }
 }
 
+impl TinySynthFxControl {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::SelectPreset(_) => "track.tiny_synth_fx.select_preset",
+            Self::SetMasterGainDb(_) => "track.tiny_synth_fx.master_gain",
+            Self::SetReverbEnabled(_) => "track.tiny_synth_fx.reverb_enabled",
+            Self::SetReverbAmount(_) => "track.tiny_synth_fx.reverb_amount",
+            Self::SetDistortionEnabled(_) => "track.tiny_synth_fx.distortion_enabled",
+            Self::SetDistortionDrive(_) => "track.tiny_synth_fx.distortion_drive",
+            Self::Panic => "track.tiny_synth_fx.panic",
+        }
+    }
+}
+
 impl TrackAction {
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -1406,6 +1420,7 @@ impl TrackAction {
             Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
+            Self::TinySynthFx(control) => control.kind(),
         }
     }
 }
@@ -1684,6 +1699,22 @@ mod tests {
                 loop_id,
                 action: LoopAction::IconClicked(SelectionModifiers { additive: true }),
             }
+        );
+    }
+
+    #[test]
+    fn tiny_synth_controls_have_stable_intent_kinds() {
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::SelectPreset("pad".to_owned())).kind(),
+            "track.tiny_synth_fx.select_preset"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::SetDistortionDrive(4.0)).kind(),
+            "track.tiny_synth_fx.distortion_drive"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::Panic).kind(),
+            "track.tiny_synth_fx.panic"
         );
     }
 
