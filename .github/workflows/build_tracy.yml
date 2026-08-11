@@ -35,7 +35,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Install dependencies (Linux)
       if: runner.os == 'Linux'
@@ -149,7 +149,7 @@ jobs:
         Compress-Archive -Path dist/* -DestinationPath ${{ matrix.artifact }}
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact }}
         path: ${{ matrix.artifact }}
