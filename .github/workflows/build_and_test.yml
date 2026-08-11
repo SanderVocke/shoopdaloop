@@ -203,9 +203,16 @@ jobs:
         run: cargo build --locked -p shoopdaloop ${{ matrix.cargo_args }}
 
       - name: Probe normalized Carla Native runtime
-        if: matrix.target != 'web'
+        if: matrix.target != 'web' && matrix.target != 'windows'
         shell: bash
         run: ./${{ matrix.binary }} --probe-carla-native
+
+      - name: Probe normalized Carla Native runtime on Windows
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          & ".\\${{ matrix.binary }}" --probe-carla-native
+          if ($LASTEXITCODE -ne 0) { throw "Carla Native probe failed with exit code $LASTEXITCODE" }
 
       - name: Build web application
         if: matrix.target == 'web'
