@@ -114,6 +114,8 @@ jobs:
           prefix-key: egui-v1
           shared-key: ${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}
           cache-targets: "true"
+          cache-all-crates: "true"
+          cache-on-failure: "true"
           cache-bin: ${{ matrix.target == 'web' }}
 
       - name: Check local act prerequisites
