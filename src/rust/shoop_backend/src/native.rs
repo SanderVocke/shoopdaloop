@@ -30,6 +30,11 @@ pub fn smoke_test_carla_runtime() -> Result<()> {
 }
 
 #[cfg(feature = "native-fx")]
+pub fn carla_runtime_path() -> Result<std::path::PathBuf> {
+    shoop_engine::carla_native::carla_runtime_path()
+}
+
+#[cfg(feature = "native-fx")]
 pub fn run_carla_worker_if_requested<I, S>(args: I) -> Result<bool>
 where
     I: IntoIterator<Item = S>,

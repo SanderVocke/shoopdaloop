@@ -1383,7 +1383,10 @@ fn main() {
     if cli.probe_carla_native {
         match shoop_backend::smoke_test_carla_runtime() {
             Ok(()) => {
-                println!("Carla Native runtime is available");
+                let path = shoop_backend::carla_runtime_path()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|_| "<unknown>".to_owned());
+                println!("Carla Native runtime is available: {path}");
                 return;
             }
             Err(error) => {

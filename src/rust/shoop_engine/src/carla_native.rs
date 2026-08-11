@@ -230,6 +230,7 @@ unsafe extern "C" fn process_state_free(pointer: *mut c_void) {
 }
 
 struct CarlaRuntime {
+    library_path: PathBuf,
     _library: Library,
     _state_allocator_library: Option<Library>,
     state_free: StateFree,
@@ -247,6 +248,7 @@ impl std::fmt::Debug for CarlaRuntime {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("CarlaRuntime")
+            .field("library_path", &self.library_path)
             .field("resource_dir", &self.resource_dir)
             .field("binary_dir", &self.binary_dir)
             .finish_non_exhaustive()
@@ -427,6 +429,7 @@ fn load_runtime() -> Result<Arc<CarlaRuntime>> {
             validate_descriptor(patchbay, "carlapatchbay", 2)?;
             validate_descriptor(patchbay16, "carlapatchbay16", 16)?;
             Ok(CarlaRuntime {
+                library_path: canonical.clone(),
                 _library: library,
                 _state_allocator_library: state_allocator_library,
                 state_free,
@@ -461,6 +464,10 @@ fn runtime() -> Result<Arc<CarlaRuntime>> {
 
 pub fn carla_runtime_availability() -> std::result::Result<(), String> {
     runtime().map(|_| ()).map_err(|error| error.to_string())
+}
+
+pub fn carla_runtime_path() -> Result<PathBuf> {
+    Ok(runtime()?.library_path.clone())
 }
 
 pub fn smoke_test_carla_runtime() -> Result<()> {
@@ -1013,10 +1020,15 @@ mod tests {
     }
 
     #[test]
-    fn legacy_lv2_chunk_decodes_to_native_state() {
-        let state = include_str!("../test_data/carla_legacy_rack_state.json");
-        let project = include_bytes!("../test_data/carla_legacy_rack_project.xml");
-        assert_eq!(decode_state(state).unwrap(), project);
+    fn legacy_lv2_chunks_for_every_descriptor_decode_to_native_state() {
+        let project = include_bytes!("../test_data/carla_legacy_loaded_project.xml");
+        for state in [
+            include_str!("../test_data/carla_legacy_rack_loaded_state.json"),
+            include_str!("../test_data/carla_legacy_patchbay_loaded_state.json"),
+            include_str!("../test_data/carla_legacy_patchbay16_loaded_state.json"),
+        ] {
+            assert_eq!(decode_state(state).unwrap(), project);
+        }
     }
 
     #[test]
@@ -1026,33 +1038,97 @@ mod tests {
             return;
         }
         let _exclusive = lock_carla_test();
-        let mut host = CarlaNativeHost::instantiate(FXChainType::CarlaRack, 48_000, 64)
-            .expect("Carla runtime required for opted-in UI smoke test");
-        host.set_visible(true).expect("show Carla UI");
-        for _ in 0..20 {
-            host.idle();
-            std::thread::sleep(std::time::Duration::from_millis(25));
+        for chain_type in [
+            FXChainType::CarlaRack,
+            FXChainType::CarlaPatchbay,
+            FXChainType::CarlaPatchbay16x,
+        ] {
+            let mut host = CarlaNativeHost::instantiate(chain_type, 48_000, 64)
+                .expect("Carla runtime required for opted-in UI smoke test");
+            for _ in 0..2 {
+                host.set_visible(true).expect("show Carla UI");
+                for _ in 0..20 {
+                    host.idle();
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+                assert!(host.is_visible());
+                host.set_visible(false).expect("hide Carla UI");
+                assert!(!host.is_visible());
+            }
+            unsafe { host_ui_closed(host.host_descriptor.handle) };
+            assert!(!host.is_visible());
         }
-        assert!(host.is_visible());
-        host.set_visible(false).expect("hide Carla UI");
-        assert!(!host.is_visible());
     }
 
     #[test]
     fn probes_and_runs_installed_carla_when_available() {
         let _exclusive = lock_carla_test();
-        let Ok(mut host) = CarlaNativeHost::instantiate(FXChainType::CarlaRack, 48_000, 64) else {
-            eprintln!("skipping Carla Native runtime test; runtime is unavailable");
-            return;
-        };
-        host.set_active(true);
-        host.audio_input_mut(0).unwrap()[..64].fill(0.25);
-        host.audio_input_mut(1).unwrap()[..64].fill(-0.25);
-        host.process(64).unwrap();
-        assert_eq!(&host.audio_output(0).unwrap()[..64], &[0.25; 64]);
-        host.restore_state(include_str!("../test_data/carla_legacy_rack_state.json"))
-            .unwrap();
-        let state = host.save_state().unwrap();
-        host.restore_state(&state).unwrap();
+        let fixtures = [
+            (
+                FXChainType::CarlaRack,
+                include_str!("../test_data/carla_legacy_rack_loaded_state.json"),
+            ),
+            (
+                FXChainType::CarlaPatchbay,
+                include_str!("../test_data/carla_legacy_patchbay_loaded_state.json"),
+            ),
+            (
+                FXChainType::CarlaPatchbay16x,
+                include_str!("../test_data/carla_legacy_patchbay16_loaded_state.json"),
+            ),
+        ];
+        for (chain_type, fixture) in fixtures {
+            let Ok(mut host) = CarlaNativeHost::instantiate(chain_type, 48_000, 64) else {
+                eprintln!("skipping Carla Native runtime test; runtime is unavailable");
+                return;
+            };
+            host.set_active(true);
+            for channel in 0..host.info().audio_inputs {
+                host.audio_input_mut(channel).unwrap()[..64].fill(0.25);
+            }
+            host.set_midi_input_events(0, &[(7, &[0x90, 60, 100])])
+                .unwrap();
+            host.process(64).unwrap();
+            if chain_type == FXChainType::CarlaRack {
+                assert_eq!(&host.audio_output(0).unwrap()[..64], &[0.25; 64]);
+                assert_eq!(
+                    host.midi_output_events(0).unwrap(),
+                    vec![(7, vec![0x90, 60, 100])]
+                );
+            }
+
+            host.restore_state(fixture).unwrap();
+            host.set_active(false);
+            host.set_active(true);
+            let mut loaded_processed = false;
+            for _ in 0..8 {
+                for channel in 0..host.info().audio_inputs {
+                    host.audio_input_mut(channel).unwrap()[..64].fill(0.25);
+                }
+                host.set_midi_input_events(0, &[(7, &[0x90, 60, 100])])
+                    .unwrap();
+                host.process(64).unwrap();
+                if host.audio_output(0).unwrap()[..64]
+                    .iter()
+                    .any(|sample| sample.abs() > 0.1)
+                    && host.midi_output_events(0).unwrap() == vec![(7, vec![0x90, 60, 100])]
+                {
+                    loaded_processed = true;
+                    break;
+                }
+                host.idle();
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            let state = host.save_state().unwrap();
+            assert!(
+                loaded_processed,
+                "{chain_type:?} loaded plugin routing did not process; state={}",
+                String::from_utf8_lossy(&decode_state(&state).unwrap())
+            );
+            let state_xml = String::from_utf8(decode_state(&state).unwrap()).unwrap();
+            assert!(state_xml.contains("<Label>audiogain_s</Label>"));
+            assert!(state_xml.contains("<Label>midithrough</Label>"));
+            host.restore_state(&state).unwrap();
+        }
     }
 }

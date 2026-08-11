@@ -1,2 +1,1 @@
-src/rust/shoop_engine/test_data/carla_legacy_rack_project.xml text eol=lf
-src/rust/shoop_engine/test_data/carla_legacy_rack_state.json text eol=lf
+src/rust/shoop_engine/test_data/* text eol=lf

@@ -199,6 +199,27 @@ jobs:
           echo "SHOOP_CARLA_NATIVE_LIBRARY=$PWD/.carla-component/lib/libcarla_native-plugin.dylib" >> "$GITHUB_ENV"
           echo "SHOOP_CARLA_RESOURCE_DIR=$PWD/.carla-component/resources" >> "$GITHUB_ENV"
 
+      - name: Audit Linux Carla runtime linkage
+        if: matrix.target == 'linux'
+        run: |
+          readelf -h .carla-component/lib/libcarla_native-plugin.so | grep 'Advanced Micro Devices X86-64'
+          ! ldd .carla-component/lib/libcarla_native-plugin.so | grep 'not found'
+          ! ldd .carla-component/resources/lib/PyQt5/Qt5/plugins/platforms/libqxcb.so | grep 'not found'
+          test -n "$(patchelf --print-rpath .carla-component/lib/libcarla_native-plugin.so)"
+
+      - name: Audit Windows Carla runtime linkage
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          dumpbin /headers .carla-component/lib/libcarla_native-plugin.dll | Select-String 'machine \(x64\)'
+          dumpbin /dependents .carla-component/lib/libcarla_native-plugin.dll
+
+      - name: Audit macOS Carla runtime linkage
+        if: matrix.target == 'macos'
+        run: |
+          lipo -verify_arch arm64 .carla-component/lib/libcarla_native-plugin.dylib
+          otool -L .carla-component/lib/libcarla_native-plugin.dylib
+
       - name: Build native application
         if: matrix.target != 'web'
         env:
@@ -280,6 +301,40 @@ jobs:
           python3 src/rust/shoopdaloop/package_artifacts.py verify
           --platform ${{ matrix.target }}
           --artifact artifacts/${{ matrix.artifact }}
+
+      - name: Probe extracted Linux application archive
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          destination="$RUNNER_TEMP/Shoop Δ ${{ matrix.profile }}"
+          mkdir -p "$destination"
+          tar -xzf "artifacts/${{ matrix.artifact }}" -C "$destination"
+          env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR \
+            "$destination/shoopdaloop/shoopdaloop" --probe-carla-native \
+            | grep '/carla-runtime/lib/libcarla_native-plugin.so'
+
+      - name: Probe extracted macOS application archive
+        if: matrix.target == 'macos'
+        shell: bash
+        run: |
+          destination="$RUNNER_TEMP/Shoop Δ ${{ matrix.profile }}"
+          mkdir -p "$destination"
+          tar -xzf "artifacts/${{ matrix.artifact }}" -C "$destination"
+          env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR \
+            "$destination/shoopdaloop/ShoopDaLoop.app/Contents/MacOS/shoopdaloop" --probe-carla-native \
+            | grep '/Frameworks/carla-runtime/lib/libcarla_native-plugin.dylib'
+
+      - name: Probe extracted Windows application archive
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP "Shoop Δ ${{ matrix.profile }}"
+          Expand-Archive "artifacts/${{ matrix.artifact }}" -DestinationPath $destination
+          Remove-Item Env:SHOOP_CARLA_NATIVE_LIBRARY
+          Remove-Item Env:SHOOP_CARLA_RESOURCE_DIR
+          $output = & "$destination\shoopdaloop\shoopdaloop.exe" --probe-carla-native
+          if ($LASTEXITCODE -ne 0) { throw "Extracted Carla probe failed with exit code $LASTEXITCODE" }
+          if ($output -notmatch 'carla-runtime\\lib\\libcarla_native-plugin.dll') { throw "Extracted probe did not load bundled Carla: $output" }
 
       - name: Test native application path
         if: matrix.target != 'web' && (matrix.target != 'linux' || matrix.profile != 'debug')
