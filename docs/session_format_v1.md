@@ -2,7 +2,7 @@
 
 ## Status
 
-This document freezes the first persistence format for the pure-egui application. It is a fresh design. QML-era `.shl`, `session.1`, tar archives, and JSON `.smf` are intentionally unsupported.
+This document defines the first persistence format for the egui application. Predecessor `.shl`, `session.1`, tar archives, and JSON `.smf` are intentionally unsupported.
 
 ## Common rules
 
@@ -100,4 +100,4 @@ Malformed paths, duplicate entries, unknown/undeclared payloads, count/size over
 
 The current egui application can instantiate direct and Tiny Synth/FX sync/main track topology plus source-bearing session scripts on native and browser targets. Native builds additionally instantiate External and advertised Carla Rack/Patchbay/Patchbay16x dry/wet tracks, preserve role-bearing media and links across driver switches, and restore current and compatible recorded-take processor state before publication. Script source is syntax-checked before commit, activated only after the shared session replacement commits, and captured exactly on save. Version-1 documents now write `connection_model_version: 1`; a missing/zero value identifies a pre-normalized document. On browser load only, that marker migrates the former implicit Web Audio mapping to explicit default routes. New documents persist exact confirmed host IDs, including intentional disconnections, so session replacement removes startup defaults before restoring saved links. Deferred buses, generic MIDI-control configuration, and session-local settings remain codec-representable but cause a capability error if runtime instantiation would be required. Unknown or unavailable track processors likewise fail transactionally rather than flattening to direct topology.
 
-QML-era `.shl`, `session.1`, tar/JSON/FLAC archives, and JSON `.smf` are not sniffed or migrated. They produce an unsupported-format error and leave the running session unchanged.
+Predecessor `.shl`, `session.1`, tar/JSON/FLAC archives, and JSON `.smf` are not sniffed or migrated. They produce an unsupported-format error and leave the running session unchanged.

@@ -1,183 +1,55 @@
-Controlling Loops
------------------
+Loops
+-----
 
-Loops in ShoopDaLoop can be controlled by mouse, keyboard or MIDI controllers. There are also several **global controls** that affect each command given to a loop.
+Transitions
+~~~~~~~~~~~
 
-Global Controls
-^^^^^^^^^^^^^^^^
+Primitive loops can play, record, stop, and grab. Dry/wet loops additionally
+support playing recorded dry content through the processor and recording that
+processed result into wet content. Synchronized actions wait for the sync or
+target loop; immediate actions do not.
 
-.. figure:: resources/global_controls.png
-   :width: 400px
-   :alt: Global controls
+Selection applies a transition to multiple loops. Solo mode stops competing
+loops in affected tracks. Auto-play determines whether a completed recording or
+grab starts playback. The record-cycle control sets a fixed duration; zero is
+unbounded.
 
-   The global controls bar.
+Playback controls
+~~~~~~~~~~~~~~~~~
 
-The global controls groups and their contents, from left to right, are:
-
-* **menu**
-* **action buttons**:
-     * **stop all**
-     * **deselect all**
-     * **clear multiple**
-* **controls**:
-     * **default record action**
-     * **auto-play recorded**
-     * **sync mode**
-     * **solo mode**
-     * **record cycles**
-
-Hovering over any of these buttons shows their function in a tooltip.
-Some of these are *toggleable*. These can be clicked to toggle them, and some also have a keyboard mapping to momentarily invert them.
-
-Some details:
-
-* **default record action**: *toggleable* (no mapped key). Chooses the preferred method of recording ("record" or "grab"). This affects default behavior or some buttons / MIDI inputs (such as the spacebar).
-* **auto-play recorded**: *toggleable* (``Alt`` key). If active (highlighted), the default trigger after recording a loop is to play it back. That includes the behavior when doing a default trigger on a loop (spacebar / MIDI controller), but also affects what happens after triggering a fixed-length recording (playback or stop). It also affects the **grab** button (explained below).
-* **sync mode**: *toggleable* (``Ctrl`` key). Affects the timing of loop triggers. If sync is not active (exclamation symbol), loop triggers such as play, stop, record execute immediately. If sync is active (hourglass symbol), such commands happen at the first upcoming restart of the **sync loop**.
-* **solo mode**: *toggleable* (``Shift`` key). If active (highlighted), commands such as play and record will stop all other loops in the same track(s).
-* **record cycles**: Numeric control. Change by pressing the number keys on the keyboard at any time, or clicking the +/- controls. Setting to 0 sets it to *infinite*. This affects recording commands. If set to *infinite*, triggering a recording will record the loop until another trigger is given. However, if set to a specific number, the recording will last N sync loop cycles before going to playback/stop. This also affects the **grab** button (explained below).
-
-Loop Controls
-^^^^^^^^^^^^^
-
-.. figure:: resources/loop_controls.png
-   :width: 300px
-   :alt: Loop controls
-
-   The loop controls as seen when hovering over a loop with the mouse.
-
-The icon in the left-hand side of a loop displays its current state. It is also an area where you can grab and drag the loop to another location, or right-click it to open a context menu. The rest of the icons shown here appear when hovered with the mouse.
-
-Loops support several kinds of triggers. **play** (green), **record** (red, rendered partly green if **auto-play recorded** is active) and **stop** do what you would expect. Note that playback is always looping once started. Also note that by default, playback happens from the *wet* recording for **dry/wet tracks**, meaning that the audio recorded from the FX/synth output is played back.
-
-There is an individual **volume dial** for the loop playback, as well as a **balance dial** for stereo loops (appears when hovered over the volume dial).
-
-Generating click loops
-^^^^^^^^^^^^^^^^^^^^^^^
-
-Right-click a primitive audio or MIDI loop and choose **Generate click track...** to fill it with generated click content. Audio loops can alternate a primary sound with a configurable number of secondary sounds. MIDI loops generate note-on/note-off pairs on channel 1. Both kinds support fractional clicks-per-minute values, a click count, and delaying odd clicks by a percentage of one interval. The generated grid sets the loop length; audio or MIDI content of the other kind is preserved on mixed loops.
-
-The defaults produce four clicks at 100 clicks per minute, using ``click_high`` followed by three ``click_low`` sounds, or MIDI note 64 with velocity 127 and a 0.1-second duration. **Fill loop length** derives the tempo needed to fit the selected click count into a non-empty loop. Audio **Preview** is non-mutating: it plays the current draft without loading it into the loop. Native preview uses the system default playback output and is disabled with an explanation when no default output is available. Browser preview uses the running Web Audio context when available and otherwise attempts a gesture-authorized preview context; browser autoplay policy can refuse that fallback and the error remains visible.
-
-Generation is limited to 4,096 clicks and 10,000,000 output frames. Click tails are truncated at the loop boundary, and a final MIDI note-off is kept inside the loop to avoid a stuck note. Generated content saves and loads as ordinary loop media; the generator settings themselves are not stored in the session.
-
-The orange variants of the **play** and **record** commands are present for loops on **dry/wet tracks**, and are referred to as **play dry** and **re-record dry**:
-
-* **play dry** is equivalent to **play**, except that instead if playing back the *wet* recording, we play back the *dry* recording through the synth/FX. That means you can tweak the instrument/effects and hear the result. Be aware that all loops in the same track share a single FX/synth, so using **play dry** on multiple loops simultaneously may give unexpected-sounding results because the dry signals will merge together - especially when using MIDI signals.
-* **re-record dry** is meant for when you have changed the FX/synth settings, and want to re-record your *wet* recording to make it permanent. When clicked, the loop will play back its *dry* signal through the track's FX/synth, and simultaneously record the *wet* signal. When played back once, it will stop or playback again.
-
-Finally, there is the **grab** button (downward-pointing arrow, partly green if **auto-play recorded** is active). This is explained below.
-
-Grabbing (always-on recording)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Having to manually trigger recordings ahead of time can cost focus and break your flow. It also gets annoying when you make a mistake while recording - you have to re-trigger the recording again. Alternatively, "grabbing" means to instantly capture a recording in hindsight. It is made possible because ShoopDaLoop is always recording in the background. Usin this is the most intuitive way to record in most cases: you don't have to prepare or trigger anything for recording. Instead, just play, and once you are satisfied with what you played, grab it into a loop.
-
-The main thing to get used to with grabbing is that you need to instruct ShoopDaLoop:
-
-* how many cycles to grab;
-* how many cycles ago did the recording of interest start.
-
-For this, the global controls are used:
-
-* By default, if **sync mode** is on and **record cycles** is 1 or "infinite", a single sync loop cycle's worth of data will be grabbed, and it will be the part that was played during the *most recently completed* sync loop. In other words, if you play something, wait for the sync loop to restart, and then grab, what you played is captured. Note that if **auto-play recorded** is active, it will also start playing immediately when grabbed.
-* Changing **record cycles** affects the grabbed amount of cycles. The alignment is still such that the last grabbed cycle aligns with the last completed sync loop cycle.
-* When **sync mode** is off (immediate), the behavior slightly changes. The currently playing sync loop cycle will be included in the grab. Because the cycle is not yet finished, the loop will also immediately go into "record" mode to record the remainder, and then automatically go to playback/stop afterward. This is useful if you want the playback to start seamlessly - after all, when grabbing in hindsight, you only hear the playback after grabbing.
-* Grabbing works nicely together with **loop targeting**. If you have targeted another loop (details below), grab will behave as if that loop was the sync loop. In other words: if you target a loop that is playing back, play a second part together with it, and then grab afterward, your recording will line up with the targeted loop.
-
-Grabbing also works on composite loops, in which case the behavior is slightly different - see below in the composite loop section for details.
-
-Selecting and Targeting
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Loops can be **selected** (yellow border) by clicking their icon next to the buttons on the left-hand side. Selection is useful for triggering multiple loops together. Performing a transition on any loop will also perform the same transition on all currently selected loops. The selection can be moved by the keyboard keys. Multiple loops can be selected by holding the ``Ctrl`` button and clicking more loops or pressing arrow keys.
-
-A single loop can be **targeted** (orange border) by double-clicking it or pressing ``T``. The behavior of certain loop transitions is different if another loop is currently targeted. Generally speaking, the idea of targeting is: *let ShoopDaLoop pretend that loop is the sync loop*. So most actions/triggers will sync to the restart of the targeted loop. This is particularly useful if you want to record multiple parts that are more than 1 cycle long - you don't have to think about how many cycles to record, or when to trigger exactly.
-
-
-Pre-recording
-^^^^^^^^^^^^^^^
-
-Oftentimes, a catchy hook or riff will start before the "1" of the music. Or, the loop starts on 1 but you want to start it will e.g. a small fill the first time. This makes it complicated to loop sometimes, because you would need to anticipate one sync loop cycle earlier than the actual looping part starts, and also start playback earlier.
-
-For this reason, loops in **ShoopDaLoop** are already **pre-recording** in the before the real recording starts. You normally won't notice this because the data for this part is stored but usually never played. Also when **grabbing**, additional cycles of data are stored before the "actually grabbed" part, so that pre-recording data is available.
-
-To hear the pre-recorded part back, you need to enable **pre-playback**. This is done in the loop details window (opened from the loop context menu when right-clicking it). There, you can define a "pre-play range". The way this behaves is that when a loop is stopped, and playback is triggered, the pre-play range will play back *before* the loop playback starts. In other words, your drum fill going into the loop will be heard. When the loop is already playing back, the pre-play part is *not* played again on every cycle - only the first time.
-
-MIDI looping
-^^^^^^^^^^^^
-
-In principle, MIDI loops work the same as audio loops. However, playing back a MIDI signal will not always result in the exact same sound as the first recording, because:
-
-* The audio synthesis (in plugin or external JACK application) may have internal state that is not directly controlled by MIDI;
-* MIDI has a state, which includes all CC values, pitch bend, notes already active at recording start, etc.
-
-The way ShoopDaLoop approaches MIDI playback is to approximate the state at the start of recording as closely as possible. That means:
-
-* ShoopDaLoop will restore states like CCs (including sustain pedal, mod wheel, pitch) to the state they were in when recording started, at the start of every playback loop.
-* If a note was already active when recording started, ShoopDaLoop will remember this and play the same note at the start of every playback loop. One advantage of this is if a note was played just slightly before recording start, it will sound indistinguishable in most cases. Note that this does not in include notes that are finished (on + off) just before recording start.
-
-Composite Loops
-^^^^^^^^^^^^^^^
-
-A **composite loop** can be created by selecting an empty slot, then holding **Alt** and clicking another loop. The other loop is added to the composite loop composition:
-
-* Normally at the end of the current sequence. Note that the same loop may also be clicked multiple times to add it repeatedly.
-* If **Ctrl** is also held, it is added in parallel of the current sequence.
-
-Note that **Alt** + click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt** - click will add an additional loop to play right after the short one.
-
-Use the loop details window for advanced editing. It supports sequential and parallel timelines, delays, duplication, explicit cycle counts, and regular/script modes.
-
-Composite loops are shown in pink; if a composite loop is (solely) selected, all its sub-loops are highlighted with a pink border.
-
-..
-    TODO: pictures
-
-Playback
-""""""""
-
-Playing back a composite loop will play the loops as sequenced. Empty sub-loops remain idle but reserve their scheduled duration. The progress indicator on the composite loop shows the total progress. Regular composites cycle back around to the start; script composites run once.
-
-Once a composition or control is accepted by the engine, iteration, nesting, child transitions, and recording decisions run on the audio timeline. GUI or display updates may lag without changing those boundaries.
-
-
-Recording
-"""""""""
-
-Pressing "record" on the composite loop will re-record the subloops in sequence.
-
-Loops are recorded based on their current length. For empty loops, the application assumes that they will be **n cycles** long (referring to the global **n cycles control**).
-
-Note that there is a special case if the same subloop is sequenced multiple times. It will not re-record multiple times. Instead, after re-recording it the first time, additional occurrences in the sequence are skipped with the subloop idle.
+Each loop has playback gain and, for stereo content, balance. The status area
+shows current mode, pending transitions, selection, targeting, and loop
+progress. A double click on the status area targets a loop.
 
 Grabbing
-""""""""
+~~~~~~~~
 
-A composite loop can also be grabbed. Instead of grabbing audio data into the composite loop, instead this will cause the child loops to each grab their portion.
+Grab copies recent input from bounded always-on recording buffers. In
+synchronized mode it ends at the most recently completed sync boundary. In
+immediate mode it includes the current interval and records its remainder. A
+targeted loop can provide alignment instead of the global sync loop.
 
-This can be a powerful tool for structuring your looping session. Let's illustrate with an example.
+Click-track generation
+~~~~~~~~~~~~~~~~~~~~~~
 
-Say you've reserved your 1st and 2nd rows of loops in the session for two different "scenes" (or sections of the song). And let's say these two scenes need different basslines, which you want to record in one go.
+Right-click a primitive audio or MIDI loop and choose **Generate click
+track...**. The dialog supports primary/secondary audio sounds or MIDI notes,
+fractional tempo, click count, odd-click delay, and fitting to an existing loop
+length. Preview is non-mutating. Generated media is saved as ordinary loop
+content.
 
-One thing you could do is define a composite loop which is a sequence of the bass loops in scene 1 and 2 (e.g. by using Alt+click while the composite slot is selected).
+Files
+~~~~~
 
-Now, you can play your two basslines directly after one another on the instrument without touching a thing, then use Grab on the composite loop. Each bassline will be grabbed into its respective slot instantly, and the sequence of these two basslines will start playing if **play after record** is enabled.
+The main menu saves and loads versioned ``.shoop`` sessions. Loop context menus
+import or export exact ``.shoop-audio``/``.shoop-midi``, float WAV, and standard
+MIDI. Different sample rates require confirmation before deterministic timing
+and media conversion.
 
-Generally speaking, grabbing on composite loops does what you would expect given the behavior described in the loop controls section. But there are some differences for composite loops:
+On-screen MIDI piano
+~~~~~~~~~~~~~~~~~~~~
 
-* Grabbing a composite loop does not respect the global **n cycles** control or the **targeted loop** for synchronization and length of the grab. Instead:
-  
-  * The total length of the grab is always the already calculated composite loop length. Child loops which do not have an explicit length are assumed to be **n cycles** (global control) sync cycle long.
-  * The alignment of the grab is as follows:
-
-    * If the global **sync control** is active, the last completed sync cycle is mapped to the last cycle of the composite loop.
-    * If the global **sync control** is inactive, the currently running sync cycle is mapped to the last cycle of the composite loop. The remainder of the current sync cycle will keep recording into the last part.
-
-Note that only regular composite loops can be grabbed. Nested compositions are flattened before acceptance, and all affected primitive children adopt their captured ranges in one bounded engine transaction.
-
-Editing a running composition
-"""""""""""""""""""""
-
-Edits that retain the same composite dependency structure activate at the next iteration-zero boundary. An edit that changes nested dependencies activates as a complete callback-boundary restart: old children stop, retained running composites restart at iteration zero, and pending countdowns are canceled. The UI may observe the result one update later.
-
+The bottom **piano** pane spans MIDI notes 0–127. Pointer presses send channel-1
+notes to every monitored track with a MIDI input. Releases follow the tracks
+that received the press, including after monitoring changes; pane closure and
+focus loss release held notes.

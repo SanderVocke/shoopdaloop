@@ -1,6 +1,3 @@
-[unstable]
-bindeps = true
-
 [env]
 # Some build hosts report far more logical CPUs than the job's actual allocation. Bounding libtest
 # workers avoids oversubscribing process-global audio/plugin test resources while retaining parallelism.

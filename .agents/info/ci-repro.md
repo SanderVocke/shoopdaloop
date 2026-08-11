@@ -44,7 +44,7 @@ Pin the test to a small CPU set so all relevant threads compete for the same
 cores.
 
 ```bash
-QT_QPA_PLATFORM=offscreen taskset -c 0-1 <test-cmd>
+taskset -c 0-1 <test-cmd>
 ```
 
 If the test framework itself launches multiple workers, also reduce its worker
@@ -59,7 +59,7 @@ but simple busy loops work when it is unavailable.
 # Simple substitute for stress-ng
 for i in 1 2 3; do (yes > /dev/null) & done
 
-QT_QPA_PLATFORM=offscreen taskset -c 0-3 <test-cmd>
+taskset -c 0-3 <test-cmd>
 
 # Clean up background jobs from this shell
 kill %1 %2 %3
@@ -77,7 +77,7 @@ For example, on systems with `systemd-run`:
 systemd-run --user --scope \
   --property CPUQuota=200% \
   --property MemoryMax=4G \
-  bash -c 'QT_QPA_PLATFORM=offscreen <test-cmd>'
+  bash -c '<test-cmd>'
 ```
 
 Equivalent limits can be applied with raw cgroups, container flags, or OS-specific

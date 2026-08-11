@@ -1,6 +1,6 @@
 # omniLua runtime contract and audit
 
-ShoopDaLoop uses **omniLua 0.7.1** as its only embedded Lua runtime. The workspace pins the exact pre-1.0 release and uses Lua 5.4 semantics (`Lua::new()`). Runtime upgrades are deliberate compatibility changes: they require the complete `shoop_scripting`, frontend/QML, native egui, and browser Wasm evidence to be rerun before the pin changes.
+ShoopDaLoop uses **omniLua 0.7.1** as its only embedded Lua runtime. The workspace pins the exact pre-1.0 release and uses Lua 5.4 semantics (`Lua::new()`). Runtime upgrades are deliberate compatibility changes: they require the complete `shoop_scripting`, native application, and browser Wasm evidence to be rerun before the pin changes.
 
 ## Configuration and sandbox profile
 
@@ -18,9 +18,8 @@ The lean configuration avoids omniLua's package, debug, UTF-8, bit32, derive, se
 
 - Each egui script owns one application-thread-confined `omnilua::Lua` state. Lua never enters an audio callback.
 - omniLua values, tables, functions, and strings are owned GC-rooted handles. Cloning a callback clones its root; dropping the last handle queues the external root for removal.
-- The retained frontend continues to use explicit `Arc<Lua>`/`Weak<Lua>` owner identity. Stored callback handles never authorize a callback after the frontend owner weak reference has expired.
 - Rust callback panics are caught by omniLua and become Lua runtime errors. Shoop additionally prevents recursive script callback dispatch and records callback errors script-locally.
-- omniLua is single-threaded and its error values are correspondingly not `Send + Sync`. Frontend boundaries convert them immediately to owned diagnostic strings before entering `anyhow::Error`; rooted Lua errors are never sent across threads.
+- omniLua is single-threaded and its error values are correspondingly not `Send + Sync`. Application boundaries convert them immediately to owned diagnostic strings before entering `anyhow::Error`; rooted Lua errors are never sent across threads.
 - Script callback, timer, MIDI, and application-operation pumps retain their existing bounds. Garbage collection and Lua allocation occur only on the control/application side.
 
 ## Reviewed API adaptations
@@ -31,7 +30,6 @@ omniLua intentionally resembles but is not source-compatible with the former emb
 - `u8` and `f32` conversions range-check through `i64` and `f64` respectively;
 - sequence/table helpers are implemented with omniLua `Table::get`, `Table::set`, and `raw_pairs`;
 - callbacks with more than three typed parameters parse an exact `Variadic<Value>` tail;
-- frontend bare-expression evaluation compiles the source as a chunk without executing it, then compiles `return <expression>` only when chunk compilation fails, avoiding double execution;
 - implementation-specific conversion errors are emitted as equivalent runtime diagnostics because omniLua has no public conversion-error variants.
 
 These are embedding adaptations, not changes to the Lua API frozen in `docs/egui_lua_compatibility_contract.md`.

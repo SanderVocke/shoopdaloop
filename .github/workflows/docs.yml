@@ -12,22 +12,14 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v3
-
-      - name: Cache apt packages
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: graphviz plantuml
-          version: 1.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
 
       - name: Install dependencies
-        run: |
-          pip install sphinx sphinx-material sphinxcontrib.fulltoc sphinxcontrib.plantuml
+        run: pip install sphinx
 
       - name: Sphinx build
-        run: |
-          sphinx-build docs/source _build
+        run: sphinx-build -W --keep-going docs/source _build
       
       - name: Store HTML as artifact
         uses: actions/upload-artifact@v4

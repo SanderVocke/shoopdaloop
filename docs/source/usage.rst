@@ -1,10 +1,9 @@
 Usage
-================
+=====
 
-General
--------
-
-Many buttons in **ShoopDaLoop** have tooltips on mouse hover to explain their functionality. Some buttons have special functionalities on "click and hold".
+ShoopDaLoop buttons provide tooltips for their current action. Context menus on
+tracks and loops expose operations that apply to that object. The main menu
+contains session, connection, and application settings actions.
 
 .. include:: usage.loopcontrols.rst
 .. include:: usage.trackcontrols.rst

@@ -1,51 +1,38 @@
-Controlling Tracks
---------------------
+Tracks
+------
 
+Adding a track
+~~~~~~~~~~~~~~
 
-Gain Controls
-^^^^^^^^^^^^^^^^^^^^^^^^^
+Use **Add Track** to create either a **Regular** or **Dry + Wet** track. The
+dialog configures the display name, audio-channel counts, optional MIDI, and,
+for processed tracks, the processor kind.
 
-**ShoopDaLoop** tracks have two gain controls:
+Native processor choices are External, Tiny Synth/FX, and feature-dependent
+Carla modes. Browser builds offer Tiny Synth/FX. Tiny Synth/FX requires matched
+dry/wet audio counts and one MIDI input; External and Carla tracks allow
+independent dry and wet counts.
 
-* The **input gain** governs gain of the track's input ports. All incoming signals are attenuated by this gain. This means it affects both monitoring and recording.
-* The **output gain** governs gain of the track's output ports. All outgoing signals are attenuated by this gain. This means it affects both monitoring and playback.
+Track controls
+~~~~~~~~~~~~~~
 
-Both gain controls come with:
+Input gain affects monitored and recorded input. Input mute disables monitoring
+without discarding recording input. Output gain and mute affect monitored and
+played-back output. Stereo sides expose balance controls. Meters and MIDI
+activity indicators summarize applicable ports.
 
-* A **balance knob** if the in-/outputs are stereo for this track.
-* A **mute button** to mute the track's in-/outputs. For the input this differs from the gain fader in that it only affects monitoring, not recording.
+A track title can be edited after creation. Its stable port-name base does not
+change when the title changes.
 
-Track Configuration
-^^^^^^^^^^^^^^^^^^^^
+Connections and processors
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When a new track is added using the **add track button**, you are presented with the **Add Track Dialog**:
+Open **Connections...** from a track menu for a track-scoped port matrix, or use
+the main-menu Connections action for all tracks. External dry/wet tracks expose
+dry input/send and wet return/output ports. Hosted processors keep their
+internal endpoints private while exposing applicable dry inputs, wet outputs,
+and dry MIDI.
 
-.. image:: resources/add_track_dialog.png
-   :width: 300px
-   :align: center
-
-The available settings are:
-
-* **Name**: the display name of the track. Also determines the base name of the track's ports, which won't be renamed if the track is renamed.
-* **Type**: the type of track. Two options are available:
-
-  * **Direct**: Direct looping. Audio/MIDI inputs are routed to the loops, and loops are routed to Audio/MIDI outputs.
-  * **Dry/Wet**: Dry/Wet looping. Audio/MIDI inputs are routed to the dry loop, and the dry loop is routed to the wet loop. The wet loop is routed to the Audio/MIDI outputs.
-
-* **Processing Kind**: Only applicable to dry/wet loops. Determines the signal path from dry to wet. There are several options:
-
-  * **External (JACK)**: Create additional ports such that an external FX/synth chain can be connected. It is up to the user to connect an external application from the **send** to the **return** ports.
-  * **Carla (Rack)**: Host FX/synth internally in **Carla** as a plugin. Carla is run in **Rack** mode (straightforward FX chain).
-  * **Carla (Patchbay)**: Host FX/synth internally in **Carla** as a plugin. Carla is run in **Patchbay** mode (processing graph).
-
-* **(dry/wet/direct) Audio**: Number of audio channels for the track's loops. The egui **Dry + Wet** form configures dry and wet counts independently; unequal counts connect only matching processor endpoints.
-* **(dry/direct) MIDI**: Whether to enable a MIDI channel. For direct tracks, this will loop MIDI with a MIDI output. For Dry/Wet tracks, MIDI is only supported on the dry side (the expectation being that the FX to wet includes some kind of synthesis to audio).
-
-Processing choices are runtime capabilities. Native egui builds advertise External and the installed Carla modes. Browser builds retain the complete Dry + Wet form but currently show an empty processing selector and disable acceptance; browser capture/destination ports are not an external effects host.
-
-External tracks expose dry input/send and wet return/output roles in the Connections dialog. Carla tracks expose dry inputs and wet outputs while keeping Carla's internal ports hidden. Processed track headers provide the advertised FX UI/recovery/status/log controls, and a wet recording's loop menu can restore its compatible recorded Carla state.
-
-Port Connections
-^^^^^^^^^^^^^^^^^
-
-Connections to a track's ports can be managed using the **Connections Dialog**. It can be found under the track settings menu dropdown (**Connections...**).
+Processed-track controls show only capabilities advertised by the selected
+processor. Tiny Synth/FX uses an embedded editor. Carla tracks expose lifecycle,
+UI, recovery, state, and bounded process-log controls when available.

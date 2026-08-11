@@ -60,10 +60,9 @@ TRACE="$TRACE_DIR/capture.tracy"
 
 ## Build and run the native egui app
 
-Initialize submodules and build:
+Build the native application:
 
 ```sh
-git submodule update --init --recursive
 cargo build -p shoopdaloop_egui
 ```
 
@@ -111,7 +110,7 @@ TRACY_CAPTURE_TOOL="$(command -v tracy-capture)" \
 A capture run creates:
 
 - a non-empty numbered file such as `traces/0001-application.tracy`;
-- `traces/manifest.tsv`, with an `application` source row (the historical source-column header may still say `source_qml`);
+- `traces/manifest.tsv`, with an `application` label row;
 - `traces/tracy-capture.log`.
 
 Before interpreting a capture, require all of the following:

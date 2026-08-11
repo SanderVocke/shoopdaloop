@@ -100,9 +100,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust nightly
+      - name: Install Rust stable
         if: env.ACT != 'true'
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_targets }}
           components: rustfmt
