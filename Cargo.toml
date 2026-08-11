@@ -58,7 +58,7 @@ thiserror = "2.0"
 sha2 = "0.10"
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
 hound = "3.5"
-rfd = { version = "0.15", default-features = false }
+rfd = { version = "0.16", default-features = false }
 tracing = "0.1"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
