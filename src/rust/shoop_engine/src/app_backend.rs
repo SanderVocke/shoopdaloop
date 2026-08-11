@@ -37,6 +37,7 @@ pub use engine::{CommandSequence, SendError};
 const COMMAND_QUEUE_CAPACITY: usize = 4096;
 const INVALID_OBJECT_INDEX: usize = usize::MAX;
 static NEXT_BACKEND_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+#[cfg(feature = "lv2")]
 static NEXT_CARLA_CHAIN_ID: AtomicU64 = AtomicU64::new(1);
 static CARLA_HOSTING_MODE: AtomicU8 = AtomicU8::new(0);
 

@@ -86,11 +86,12 @@ The current Cargo graph shows that the egui/native/WebAssembly closure does not 
 
 ### Stage 5 — Final repository and end-to-end validation
 
-- [ ] Prove the removed trees, packages, features, workflows, actions, scripts, schemas, Dockerfiles, dependency lists, vcpkg overlays, Qt Material Design Icons submodule/gitlink metadata, and `plans/` directory are absent with `git ls-files --stage`, `git submodule status`, `cargo metadata`, `cargo tree`, and targeted `rg` audits.
-- [ ] Run `cargo fmt --all -- --check`, `RUSTFLAGS="-D warnings" cargo build --workspace`, and the complete retained workspace test suite with the application backend feature and serialized tests.
-- [ ] Run warning-denying native `shoopdaloop_egui` default/no-default-feature builds and tests, artifact packaging/verification, and an offline/dummy application startup smoke test.
-- [ ] Run the WebAssembly checks for `shoopdaloop_egui` and `shoop_audio_worklet`, Trunk debug/release builds, hosted/self-contained artifact verification, dependency-isolation scans, and available Chrome/Firefox smoke workflows.
-- [ ] Rebuild Sphinx with warnings as errors and rerun the closed tracing inventory check after all source/document moves.
+- [x] Prove the removed trees, packages, features, workflows, actions, scripts, schemas, Dockerfiles, dependency lists, vcpkg overlays, Qt Material Design Icons submodule/gitlink metadata, and `plans/` directory are absent with `git ls-files --stage`, `git submodule status`, `cargo metadata`, `cargo tree`, and targeted `rg` audits.
+- [x] Run `cargo fmt --all -- --check`, `RUSTFLAGS="-D warnings" cargo build --workspace`, and the complete retained workspace test suite with the application backend feature and serialized tests.
+- [x] Run warning-denying native `shoopdaloop_egui` default/no-default-feature builds and tests, artifact packaging/verification, and an offline/dummy application startup smoke test.
+- [x] Run the WebAssembly checks for `shoopdaloop_egui` and `shoop_audio_worklet`, Trunk debug/release builds, hosted/self-contained artifact verification, and dependency-isolation scans.
+- [ ] Run the available Firefox smoke workflow against the hosted and self-contained web artifacts. The local headless attempt reached Firefox but could not initialize WebGL without a virtual display; use the workflow's `xvfb-run` environment as the authoritative result.
+- [x] Rebuild Sphinx with warnings as errors and rerun the closed tracing inventory check after all source/document moves.
 - [ ] Require the authoritative GitHub egui workflow to pass all eight Linux/Windows/macOS/WebAssembly debug/release cells before merge; record any hardware-only checks as environment limitations rather than restoring QML tests.
 
 ## Execution contract
