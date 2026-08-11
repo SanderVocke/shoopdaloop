@@ -11,7 +11,7 @@ semicolon_in_expressions_from_non_local_macros = "allow"
 [workspace.dependencies]
 anyhow = "1.0"
 log = "0.4"
-colored = "2.1"
+colored = "3.1"
 humantime = "2.1"
 lazy_static = "1.5"
 ctor = "0.2"
