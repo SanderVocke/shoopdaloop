@@ -60,11 +60,11 @@ The current Cargo graph shows that the egui/native/WebAssembly closure does not 
 
 ### Stage 2 — Remove legacy packaging, dependencies, scripts, and assets
 
-- [ ] Repoint `src/rust/shoopdaloop_egui/package_artifacts.py` from `distribution/macos/icon.icns` to the identical retained icon under `resources/iconset/` (or another egui-owned resource location), then delete all of `distribution/`.
-- [ ] Delete the repository-local `vcpkg/` overlays/manifest/triplets and `scripts/vcpkg_prebuild.py`; retain only the runner-provided Windows egui CI install step while it remains necessary for native FX.
-- [ ] Remove scripts whose only callers were the deleted workflow/actions/packager. Retain `scripts/check_tracing_coverage.py` and any other script only when a surviving egui workflow, source path, or maintained document has a concrete caller.
-- [ ] Remove unreferenced QML-only resources and generated/build support after a tracked-file reference audit. Preserve the old documentation screenshots as permitted, and preserve Lua, click, font, logo, and icon assets consumed by egui.
-- [ ] Verify a native egui build and `package_artifacts.py native`/`verify` round trip on the host platform; inspect the archive manifest and ensure no deleted distribution/config/QML path is embedded or required.
+- [x] Repoint `src/rust/shoopdaloop_egui/package_artifacts.py` from `distribution/macos/icon.icns` to the identical retained icon under `resources/iconset/` (or another egui-owned resource location), then delete all of `distribution/`.
+- [x] Delete the repository-local `vcpkg/` overlays/manifest/triplets and `scripts/vcpkg_prebuild.py`; retain only the runner-provided Windows egui CI install step while it remains necessary for native FX.
+- [x] Remove scripts whose only callers were the deleted workflow/actions/packager. Retain `scripts/check_tracing_coverage.py` and any other script only when a surviving egui workflow, source path, or maintained document has a concrete caller.
+- [x] Remove unreferenced QML-only resources and generated/build support after a tracked-file reference audit. Preserve the old documentation screenshots as permitted, and preserve Lua, click, font, logo, and icon assets consumed by egui.
+- [x] Verify a native egui build and `package_artifacts.py native`/`verify` round trip on the host platform; inspect the archive manifest and ensure no deleted distribution/config/QML path is embedded or required.
 
 ### Stage 3 — Make egui CI and repository automation canonical
 

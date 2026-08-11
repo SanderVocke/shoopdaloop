@@ -1,6 +1,0 @@
-qml_dir = "$ROOT/qml"
-lua_dir = "$ROOT/lua"
-resource_dir = "$ROOT/resources"
-schemas_dir = "$ROOT/session_schemas"
-qt_plugins_dir = "$ROOT/Qt6/plugins"
-dynlibpaths = ["$ROOT/lib"]
