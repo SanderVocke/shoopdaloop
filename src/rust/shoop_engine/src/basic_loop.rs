@@ -516,7 +516,11 @@ impl BasicLoop {
         }
         self.length = length;
         if self.position >= length {
-            self.set_position(if length == 0 { 0 } else { length - 1 });
+            self.set_position(if length == 0 {
+                0
+            } else {
+                self.position % length
+            });
         }
         self.next_poi = None;
         self.next_trigger = None;

@@ -1922,6 +1922,115 @@ impl Backend for NativeBackend {
         Ok(())
     }
 
+    fn replace_loop_content(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<()> {
+        if update.audio.is_empty() && update.midi.is_empty() {
+            return Err(anyhow!("loop content update is empty"));
+        }
+        let runtime = self.runtime_mut()?;
+        let target = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        if matches!(
+            target.handle.get_state()?.mode,
+            shoop_engine::LoopMode::Recording
+                | shoop_engine::LoopMode::Replacing
+                | shoop_engine::LoopMode::RecordingDryIntoWet
+        ) {
+            return Err(anyhow!("loop content is changing"));
+        }
+        let audio = update
+            .audio
+            .iter()
+            .map(|item| {
+                Ok(shoop_engine::app_backend::LoopAudioContentUpdate {
+                    channel: target
+                        .audio
+                        .get(item.channel)
+                        .ok_or_else(|| anyhow!("unknown audio channel {}", item.channel))?,
+                    samples: &item.samples,
+                    start_offset: item.start_offset,
+                    preplay: item.preplay,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_messages = update
+            .midi
+            .iter()
+            .map(|item| {
+                let mut messages = item
+                    .start_state
+                    .iter()
+                    .map(|data| MidiEvent {
+                        time: -1,
+                        data: data.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                for event in &item.events {
+                    messages.push(MidiEvent {
+                        time: i32::try_from(event.time)
+                            .map_err(|_| anyhow!("MIDI event time exceeds native range"))?,
+                        data: event.data.clone(),
+                    });
+                }
+                Ok(messages)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi = update
+            .midi
+            .iter()
+            .zip(&midi_messages)
+            .map(|(item, messages)| {
+                Ok(shoop_engine::app_backend::LoopMidiContentUpdate {
+                    channel: target
+                        .midi
+                        .get(item.channel)
+                        .ok_or_else(|| anyhow!("unknown MIDI channel {}", item.channel))?,
+                    messages,
+                    length: item.length,
+                    start_offset: item.start_offset,
+                    preplay: item.preplay,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let sequence = shoop_engine::app_backend::replace_loop_content(
+            &target.handle,
+            &audio,
+            &midi,
+            update.length,
+        )?;
+        runtime
+            .session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        let track_id = runtime
+            .tracks
+            .iter()
+            .find_map(|(track_id, track)| track.loops.contains(&loop_id).then_some(*track_id));
+        if let Some(track_id) = track_id {
+            runtime.apply_track_routing(track_id)?;
+            runtime.wait();
+        }
+        Ok(())
+    }
+
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        let sequence = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?
+            .handle
+            .set_length(length)?;
+        runtime
+            .session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        Ok(())
+    }
+
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         self.runtime_mut()?.capture_session()
     }
@@ -2470,6 +2579,204 @@ mod tests {
             })
             .unwrap();
         assert_injected_note_reaches_output(&mut backend, &created, 60);
+    }
+
+    #[test]
+    fn targeted_content_update_preserves_native_session_callbacks_sync_and_graph() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 64,
+        }))
+        .unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "targeted-content".to_owned(),
+                audio_channels: 2,
+                midi: true,
+                initial_loops: 2,
+            })
+            .unwrap();
+        let sync = created.loops[0];
+        let target = created.loops[1];
+        backend.set_loop_length(sync, 1024).unwrap();
+        backend.set_loop_sync_source(target, Some(sync)).unwrap();
+        backend
+            .transition_loop(sync, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_loop(target, BackendLoopMode::Playing, None)
+            .unwrap();
+        let (
+            session_id,
+            callbacks_before,
+            graph_arms,
+            graph_applies,
+            schedule_request_id,
+            schedule_applied_id,
+        ) = {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.wait();
+            let state = runtime.session.get_state();
+            (
+                runtime.session.session_id(),
+                u64::from(state.cycles),
+                state.graph_arms,
+                state.graph_applies,
+                state.schedule_request_id,
+                state.schedule_applied_id,
+            )
+        };
+
+        backend
+            .replace_loop_content(
+                target,
+                &BackendLoopContentUpdate {
+                    audio: vec![
+                        BackendAudioChannelUpdate {
+                            channel: 0,
+                            samples: vec![1.0, 2.0, 3.0, 4.0],
+                            start_offset: Some(-1),
+                            preplay: Some(2),
+                        },
+                        BackendAudioChannelUpdate {
+                            channel: 1,
+                            samples: vec![5.0, 6.0, 7.0, 8.0],
+                            start_offset: Some(-2),
+                            preplay: Some(3),
+                        },
+                    ],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 4,
+                        start_state: vec![vec![0xB0, 7, 100]],
+                        events: vec![BackendMidiEvent {
+                            time: 1,
+                            data: vec![0x90, 64, 127],
+                        }],
+                        start_offset: Some(-3),
+                        preplay: Some(4),
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+
+        let cycles_after_update = {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.wait();
+            let state = runtime.session.get_state();
+            assert_eq!(runtime.session.session_id(), session_id);
+            assert!(u64::from(state.cycles) > callbacks_before);
+            assert_eq!(state.graph_arms, graph_arms);
+            assert_eq!(state.graph_applies, graph_applies);
+            assert_eq!(state.schedule_request_id, schedule_request_id);
+            assert_eq!(state.schedule_applied_id, schedule_applied_id);
+            assert_eq!(
+                runtime.loops[&sync].handle.get_state().unwrap().mode,
+                shoop_engine::LoopMode::Playing
+            );
+            assert_eq!(
+                runtime.loops[&target].handle.get_state().unwrap().mode,
+                shoop_engine::LoopMode::Stopped
+            );
+            assert_eq!(
+                runtime.loops[&target].audio[0].get_data(),
+                [1.0, 2.0, 3.0, 4.0]
+            );
+            assert_eq!(
+                runtime.loops[&target].audio[1].get_data(),
+                [5.0, 6.0, 7.0, 8.0]
+            );
+            assert_eq!(
+                runtime.loops[&target].midi[0].get_all_midi_data()[0].time,
+                -1
+            );
+            state.cycles
+        };
+
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].loops[1].audio[0].samples,
+            [1.0, 2.0, 3.0, 4.0]
+        );
+        let cycles_after_capture = {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.wait();
+            let state = runtime.session.get_state();
+            assert_eq!(runtime.session.session_id(), session_id);
+            assert!(state.cycles > cycles_after_update);
+            assert_eq!(state.graph_arms, graph_arms);
+            assert_eq!(state.graph_applies, graph_applies);
+            assert_eq!(state.schedule_request_id, schedule_request_id);
+            assert_eq!(state.schedule_applied_id, schedule_applied_id);
+            assert_eq!(
+                runtime.loops[&sync].handle.get_state().unwrap().mode,
+                shoop_engine::LoopMode::Playing
+            );
+            state.cycles
+        };
+
+        for generation in 0_u8..8 {
+            let sample = f32::from(generation) / 8.0;
+            backend
+                .replace_loop_content(
+                    target,
+                    &BackendLoopContentUpdate {
+                        audio: vec![
+                            BackendAudioChannelUpdate {
+                                channel: 0,
+                                samples: vec![sample; 16_384],
+                                start_offset: None,
+                                preplay: None,
+                            },
+                            BackendAudioChannelUpdate {
+                                channel: 1,
+                                samples: vec![-sample; 16_384],
+                                start_offset: None,
+                                preplay: None,
+                            },
+                        ],
+                        midi: vec![BackendMidiChannelUpdate {
+                            channel: 0,
+                            length: 16_384,
+                            start_state: vec![vec![0xB0, 7, generation]],
+                            events: (0..1_024)
+                                .map(|index| BackendMidiEvent {
+                                    time: index * 8,
+                                    data: vec![0x90, 64, generation],
+                                })
+                                .collect(),
+                            start_offset: None,
+                            preplay: None,
+                        }],
+                        length: Some(16_384),
+                    },
+                )
+                .unwrap();
+            backend.set_loop_length(target, 8_192).unwrap();
+        }
+
+        let runtime = backend.runtime_mut().unwrap();
+        runtime.wait();
+        let state = runtime.session.get_state();
+        assert_eq!(runtime.session.session_id(), session_id);
+        assert!(state.cycles > cycles_after_capture);
+        assert_eq!(state.graph_arms, graph_arms);
+        assert_eq!(state.graph_applies, graph_applies);
+        assert_eq!(state.schedule_request_id, schedule_request_id);
+        assert_eq!(state.schedule_applied_id, schedule_applied_id);
+        assert_eq!(
+            runtime.loops[&sync].handle.get_state().unwrap().mode,
+            shoop_engine::LoopMode::Playing
+        );
+        assert_eq!(
+            runtime.loops[&target].audio[0].get_data()[0],
+            f32::from(7_u8) / 8.0
+        );
+        assert_eq!(
+            runtime.loops[&target].handle.get_state().unwrap().length,
+            8_192
+        );
     }
 
     #[test]

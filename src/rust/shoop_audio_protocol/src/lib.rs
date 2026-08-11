@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 5;
+pub const PROTOCOL_VERSION: u16 = 6;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -90,6 +90,23 @@ pub enum Command {
     },
     ClearLoop {
         loop_id: u64,
+    },
+    SetLoopLength {
+        loop_id: u64,
+        length: u32,
+    },
+    BeginLoopContentReplace {
+        generation: u64,
+        loop_id: u64,
+        total_bytes: usize,
+    },
+    WriteLoopContentReplace {
+        generation: u64,
+        offset: usize,
+        bytes: Vec<u8>,
+    },
+    CommitLoopContentReplace {
+        generation: u64,
     },
     SetPortConnected {
         application_port_id: u64,
@@ -208,6 +225,16 @@ impl Command {
                 },
                 Self::ClearLoop {
                     loop_id: replacement_loop,
+                },
+            )
+            | (
+                Self::SetLoopLength {
+                    loop_id: existing_loop,
+                    ..
+                },
+                Self::SetLoopLength {
+                    loop_id: replacement_loop,
+                    ..
                 },
             ) => existing_loop == replacement_loop,
             (Self::ConfigureDeviceChannels { .. }, Self::ConfigureDeviceChannels { .. })
@@ -344,6 +371,9 @@ pub enum Event {
         bytes: Vec<u8>,
     },
     SessionReplaceComplete {
+        generation: u64,
+    },
+    LoopContentReplaceComplete {
         generation: u64,
     },
     SessionTransferAborted {
