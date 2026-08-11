@@ -2668,6 +2668,44 @@ impl BackendSession {
         Ok(version)
     }
 
+    pub fn register_external_processor(
+        &self,
+        title: &str,
+        audio_sends: &[AudioPort],
+        audio_returns: &[AudioPort],
+        midi_sends: &[MidiPort],
+    ) -> Result<CommandSequence> {
+        let title = title.to_owned();
+        let audio_sends = audio_sends
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let audio_returns = audio_returns
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let midi_sends = midi_sends
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        Ok(self.shared.send_topology(move |session| {
+            session.set_external_processor(title.clone());
+            let audio_inputs = audio_sends
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let audio_outputs = audio_returns
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let midi_inputs = midi_sends
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let _ = session.set_processor_ports(&title, audio_inputs, audio_outputs, midi_inputs);
+        })?)
+    }
+
     #[tracing::instrument(
         name = "engine.control.create_fx",
         skip_all,
@@ -2789,6 +2827,12 @@ impl BackendSession {
                 }
             }
         };
+        if matches!(backend, FXChainBackendKind::Test2x2x1) {
+            let title = title.to_owned();
+            self.shared.send_topology(move |session| {
+                session.set_test_fx_active(title.clone(), false);
+            })?;
+        }
         let mut chain = FXChain {
             shared: self.shared.clone(),
             title: title.to_string(),
@@ -2802,6 +2846,7 @@ impl BackendSession {
             midi_outputs: Vec::new(),
         };
         chain.create_ports_once();
+        chain.bind_processor_ports()?;
         Ok(chain)
     }
     pub fn get_profiling_report(&self) -> ProfilingReport {
@@ -6343,6 +6388,44 @@ impl FXChain {
             name,
         })
     }
+    fn bind_processor_ports(&self) -> Result<()> {
+        if matches!(self.backend, FXChainBackendKind::Unavailable { .. }) {
+            return Ok(());
+        }
+        let title = self.title.clone();
+        let audio_inputs = self
+            .audio_inputs
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let audio_outputs = self
+            .audio_outputs
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let midi_inputs = self
+            .midi_inputs
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        self.shared.send_topology(move |session| {
+            let audio_inputs = audio_inputs
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let audio_outputs = audio_outputs
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let midi_inputs = midi_inputs
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let _ = session.set_processor_ports(&title, audio_inputs, audio_outputs, midi_inputs);
+        })?;
+        Ok(())
+    }
+
     fn create_ports_once(&mut self) {
         for idx in 0..self.n_audio_input_ports() {
             if let Some(port) = self.make_audio_port(
@@ -7773,6 +7856,81 @@ mod tests {
             engine.stats().commands_applied.load(Ordering::Relaxed),
             commands
         );
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn test_fx_chain_runs_as_a_scheduled_processor_node() {
+        let sess = BackendSession::new().expect("session");
+        let chain = sess
+            .create_fx_chain(FXChainType::Test2x2x1, "scheduled-fx")
+            .expect("chain");
+        chain.set_active(true);
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        engine.pump();
+        let input = chain
+            .get_audio_input_port(0)
+            .unwrap()
+            .control
+            .ready_id()
+            .unwrap()
+            .index();
+        let output = chain
+            .get_audio_output_port(0)
+            .unwrap()
+            .control
+            .ready_id()
+            .unwrap()
+            .index();
+        let source = engine.session_mut().add_port(engine::session::Port::Dummy(
+            engine::DummyAudioPort::new(
+                engine::PortId(800),
+                "source",
+                engine::PortDirection::Input,
+                4,
+            ),
+        ));
+        let sink = engine.session_mut().add_port(engine::session::Port::Dummy(
+            engine::DummyAudioPort::new(
+                engine::PortId(801),
+                "sink",
+                engine::PortDirection::Output,
+                4,
+            ),
+        ));
+        engine
+            .session_mut()
+            .connect_ports_internal(source, input)
+            .unwrap();
+        engine
+            .session_mut()
+            .connect_ports_internal(output, sink)
+            .unwrap();
+        engine.session_mut().apply_graph_changes().unwrap();
+        engine
+            .session_mut()
+            .port_mut(source)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&[2.0, 4.0, 6.0, 8.0]);
+        engine
+            .session_mut()
+            .port_mut(sink)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        engine.session_mut().process(4);
+        let output = engine
+            .session_mut()
+            .port_mut(sink)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(4)
+            .unwrap();
+        assert_eq!(output, vec![1.0, 2.0, 3.0, 4.0]);
         sess.shared.return_engine(engine);
     }
 

@@ -177,35 +177,6 @@ impl ExternalAudioPort {
         self.processed_len = 0;
     }
 
-    /// Adds output generated after this port's scheduled process step.
-    ///
-    /// The synthetic test FX shim runs after graph processing so its input ports already
-    /// contain routed data. Keep the current-cycle dummy capture coherent by adding the
-    /// same contribution to the samples that `process` captured earlier in the cycle.
-    pub fn add_late_output(&mut self, samples: &[f32]) {
-        if self.buffer.len() < samples.len() {
-            crate::realtime_allow_alloc_once!("ExternalAudioPort::add_late_output resize", || {
-                self.buffer.resize(samples.len(), 0.0)
-            });
-        }
-        for (output, sample) in self.buffer.iter_mut().zip(samples) {
-            *output += *sample;
-        }
-        if self.capture_output && self.direction == PortDirection::Output {
-            let mut outgoing = crate::realtime_allow_lock!(
-                "external audio late output capture",
-                self.outgoing.lock()
-            )
-            .unwrap_or_else(|e| e.into_inner());
-            if outgoing.len() >= samples.len() {
-                let start = outgoing.len() - samples.len();
-                for (output, sample) in outgoing[start..].iter_mut().zip(samples) {
-                    *output += *sample;
-                }
-            }
-        }
-    }
-
     // --- port interface ---
 
     /// The port's buffer, grown if this cycle needs more room.
@@ -372,19 +343,6 @@ mod tests {
         p.buffer(3).copy_from_slice(&[0.0, 1.0, 2.0]);
         p.process(3);
         check!(p.output(3) == [0.0, 0.0, 0.0]);
-    }
-
-    #[test]
-    fn late_output_updates_the_current_dummy_capture() {
-        let mut p = out_port();
-        p.clear_output_queue();
-        p.prepare(3);
-        p.process(3);
-
-        p.add_late_output(&[0.25, 0.5, 0.75]);
-
-        check!(p.output(3) == [0.25, 0.5, 0.75]);
-        check!(p.dequeue_output(3) == [0.25, 0.5, 0.75]);
     }
 
     #[test]

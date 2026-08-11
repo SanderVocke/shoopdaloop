@@ -13,6 +13,7 @@ use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::content_snapshot::ContentSnapshotRuntime;
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
+use shoop_engine::external_audio_port::ExternalAudioPort;
 use shoop_engine::internal_audio_port::InternalAudioPort;
 use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi;
@@ -262,15 +263,22 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
     let mut session = Session::default();
     session.set_sample_rate(48_000);
     session.set_buffer_size(4);
-    let _input = session.add_port(internal("tiny:audio_in_0", 4));
-    let _processor_output = session.add_port(internal("tiny:audio_out_0", 4));
-    let _wet_output = session.add_port(internal("tiny_audio_wet_out_1", 4));
+    let input = session.add_port(internal("tiny:audio_in_0", 4));
+    let processor_output = session.add_port(internal("tiny:audio_out_0", 4));
     let midi_input = session.add_port(midi_port(4, "tiny:midi_in_0", PortDirection::Input));
     let control = shoop_engine::tiny_synth_fx::TinySynthFxControlState::new(48_000.0).unwrap();
     let processor = control.prepare_processor(48_000.0, 1, 4).unwrap();
     assert!(session
         .set_tiny_synth_fx_processor("tiny".to_owned(), processor)
         .is_none());
+    session
+        .set_processor_ports(
+            "tiny",
+            vec![input],
+            vec![processor_output],
+            vec![midi_input],
+        )
+        .unwrap();
     session.apply_graph_changes().unwrap();
     // Warm the session's target-specific tracing/runtime machinery while the new
     // processor is still inactive; the first active Tiny block remains guarded.
@@ -299,6 +307,42 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         processor.panic();
         session.process(4);
     });
+}
+
+#[test]
+fn test_and_external_processor_nodes_are_allocation_free() {
+    let mut test = Session::default();
+    test.set_buffer_size(4);
+    let input = test.add_port(internal("test:audio_in_0", 4));
+    let output = test.add_port(internal("test:audio_out_0", 4));
+    test.set_test_fx_active("test", false);
+    test.set_processor_ports("test", vec![input], vec![output], vec![])
+        .unwrap();
+    test.apply_graph_changes().unwrap();
+    test.process(4);
+    test.set_test_fx_active("test", true);
+    assert_no_alloc(|| test.process(4));
+
+    let mut external = Session::default();
+    external.set_buffer_size(4);
+    let return_ = external.add_port(Port::External(ExternalAudioPort::new(
+        "return",
+        PortDirection::Input,
+        4,
+    )));
+    external.set_external_processor("external");
+    external
+        .set_processor_ports("external", vec![], vec![return_], vec![])
+        .unwrap();
+    external.apply_graph_changes().unwrap();
+    external.process(4);
+    external
+        .port_mut(return_)
+        .unwrap()
+        .as_external_mut()
+        .unwrap()
+        .stage_input(&[1.0; 4]);
+    assert_no_alloc(|| external.process(4));
 }
 
 #[test]

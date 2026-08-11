@@ -53,10 +53,10 @@ Processor output must be produced at the graph position consumed by wet loop rec
 
 ### Stage 1 — Pin the regression and processor contract
 
-- [ ] Add a concise processor-route contract in engine types covering explicit audio/MIDI inputs and outputs plus external send/return boundary data.
-- [ ] Add failing graph-order tests demonstrating that a processor must run after all required inputs and before processor-output port processing and wet-channel finalization.
-- [ ] Add focused failing backend reproductions for monitored and unmonitored test-processor wet recording, including the original “audible sustained output but isolated click/silence in wet data” class of mismatch.
-- [ ] Document the deterministic test processor mapping used by assertions: corresponding audio input at half gain plus note-on velocity contribution at the event frame on both outputs, with explicit inactive behavior.
+- [x] Add a concise processor-route contract in engine types covering explicit audio/MIDI inputs and outputs plus external send/return boundary data.
+- [x] Add failing graph-order tests demonstrating that a processor must run after all required inputs and before processor-output port processing and wet-channel finalization.
+- [x] Add focused failing backend reproductions for monitored and unmonitored test-processor wet recording, including the original “audible sustained output but isolated click/silence in wet data” class of mismatch.
+- [x] Document the deterministic test processor mapping used by assertions: corresponding audio input at half gain plus note-on velocity contribution at the event frame on both outputs, with explicit inactive behavior.
 
 Verification:
 
@@ -65,11 +65,11 @@ Verification:
 
 ### Stage 2 — Add first-class processor nodes to graph construction
 
-- [ ] Extend `GraphDesc`, `NodeMap`, topology snapshots, prepared schedules, and realtime `NodeAction` dispatch with processor descriptors and processor-node indices.
-- [ ] Lower explicit processor dependencies into graph edges for audio input, MIDI input, processor output preparation, output processing/propagation, and loop-channel consumers.
-- [ ] Resolve scheduled processor actions to stable processor arena entries and preserve safe behavior across asynchronous graph rebuild/install and processor replacement.
-- [ ] Add graph unit tests for mono, stereo/multi-port, MIDI-only, missing-port rejection, parallel processor isolation, processor-to-loop paths, and cycle detection.
-- [ ] Add schedule inspection/tracing coverage so processor nodes are visible as bounded `engine.rt.fx.*` work nested at their scheduled position.
+- [x] Extend `GraphDesc`, `NodeMap`, topology snapshots, prepared schedules, and realtime `NodeAction` dispatch with processor descriptors and processor-node indices.
+- [x] Lower explicit processor dependencies into graph edges for audio input, MIDI input, processor output preparation, output processing/propagation, and loop-channel consumers.
+- [x] Resolve scheduled processor actions to stable processor arena entries and preserve safe behavior across asynchronous graph rebuild/install and processor replacement.
+- [x] Add graph unit tests for mono, stereo/multi-port, MIDI-only, missing-port rejection, parallel processor isolation, processor-to-loop paths, and cycle detection.
+- [x] Add schedule inspection/tracing coverage so processor nodes are visible as bounded `engine.rt.fx.*` work nested at their scheduled position.
 
 Verification:
 
@@ -79,21 +79,21 @@ Verification:
 
 ### Stage 3 — Move the deterministic test processor onto the common node path
 
-- [ ] Implement `Test2x2x1` as an explicit processor implementation invoked only by its registered processor node.
-- [ ] Delete the port-name-driven `fill_test2x2x1_fx_output`, per-port synthetic processing, end-of-cycle synthetic output pass, and permissive default activation behavior.
-- [ ] Publish test-processor results into its internal processor output buffers and let ordinary port propagation feed wet channels and track outputs.
-- [ ] Add exact sample tests for:
-  - [ ] live audio and timestamped MIDI processing;
-  - [ ] monitored and unmonitored initial recording;
-  - [ ] normal stored-wet playback without dry reprocessing;
-  - [ ] monitored playback mixed with live processed input;
-  - [ ] `PlayingDryThroughWet`;
-  - [ ] `RecordingDryIntoWet` wet replacement;
-  - [ ] synchronized record/start/stop and dry-to-wet boundaries, including the first and last callback;
-  - [ ] one loop recording while another plays stored wet audio;
-  - [ ] inactive/reactivated routing, output mute/gain, and no contamination between two processors;
-  - [ ] mono/subset channel mappings and the full 2x2x1 mapping.
-- [ ] Exercise the scenarios at engine level and through the native dummy backend; retain or consolidate equivalent higher-level tests rather than duplicating assertions unnecessarily.
+- [x] Implement `Test2x2x1` as an explicit processor implementation invoked only by its registered processor node.
+- [x] Delete the port-name-driven `fill_test2x2x1_fx_output`, per-port synthetic processing, end-of-cycle synthetic output pass, and permissive default activation behavior.
+- [x] Publish test-processor results into its internal processor output buffers and let ordinary port propagation feed wet channels and track outputs.
+- [x] Add exact sample tests for:
+  - [x] live audio and timestamped MIDI processing;
+  - [x] monitored and unmonitored initial recording;
+  - [x] normal stored-wet playback without dry reprocessing;
+  - [x] monitored playback mixed with live processed input;
+  - [x] `PlayingDryThroughWet`;
+  - [x] `RecordingDryIntoWet` wet replacement;
+  - [x] synchronized record/start/stop and dry-to-wet boundaries, including the first and last callback;
+  - [x] one loop recording while another plays stored wet audio;
+  - [x] inactive/reactivated routing, output mute/gain, and no contamination between two processors;
+  - [x] mono/subset channel mappings and the full 2x2x1 mapping.
+- [x] Exercise the scenarios at engine level and through the native dummy backend; retain or consolidate equivalent higher-level tests rather than duplicating assertions unnecessarily.
 
 Verification:
 
@@ -102,14 +102,14 @@ Verification:
 
 ### Stage 4 — Migrate Tiny Synth/FX and Carla to the common node path
 
-- [ ] Adapt Tiny Synth/FX to consume graph-routed audio/MIDI and write all logical channels to internal processor output ports during its scheduled action.
-- [ ] Preserve preset/control/state replacement and MIDI playback behavior without scanning loops or ports by name in the callback.
-- [ ] Adapt the Carla realtime endpoint—both in-process and subprocess hosting—to the same processor-node input/output contract for Rack, Patchbay, and Patchbay 16x layouts.
-- [ ] Remove the global post-schedule Tiny and Carla passes and all direct late writes to wet device outputs.
-- [ ] Ensure inactive, unavailable, crashed, recovered, and replaced processors have explicit safe output behavior and cannot leave stale buffer contents.
-- [ ] Add Tiny smoke tests for live monitoring, wet recording, MIDI note duration, normal wet playback, dry-through-wet playback, dry-into-wet replacement, and state restoration across buffer-size/backend replacement.
-- [ ] Add deterministic fake-Carla node tests that run without plugin discovery and cover audio/MIDI routing, inactive state, wet recording, and bridge realtime constraints.
-- [ ] Keep optional real-Carla tests for all available layouts finite-output/lifecycle smoke only; return a reported skip when the host/plugin is unavailable.
+- [x] Adapt Tiny Synth/FX to consume graph-routed audio/MIDI and write all logical channels to internal processor output ports during its scheduled action.
+- [x] Preserve preset/control/state replacement and MIDI playback behavior without scanning loops or ports by name in the callback.
+- [x] Adapt the Carla realtime endpoint—both in-process and subprocess hosting—to the same processor-node input/output contract for Rack, Patchbay, and Patchbay 16x layouts.
+- [x] Remove the global post-schedule Tiny and Carla passes and all direct late writes to wet device outputs.
+- [x] Ensure inactive, unavailable, crashed, recovered, and replaced processors have explicit safe output behavior and cannot leave stale buffer contents.
+- [x] Add Tiny smoke tests for live monitoring, wet recording, MIDI note duration, normal wet playback, dry-through-wet playback, dry-into-wet replacement, and state restoration across buffer-size/backend replacement.
+- [x] Add deterministic fake-Carla node tests that run without plugin discovery and cover audio/MIDI routing, inactive state, wet recording, and bridge realtime constraints.
+- [x] Keep optional real-Carla tests for all available layouts finite-output/lifecycle smoke only; return a reported skip when the host/plugin is unavailable.
 
 Verification:
 
@@ -120,11 +120,11 @@ Verification:
 
 ### Stage 5 — Represent external processing through the same graph contract
 
-- [ ] Register external dry/wet tracks as explicit external processor nodes rather than unrelated send/return passthrough conventions.
-- [ ] Model current-callback dry sends and driver-staged wet returns as separate sides of the external boundary, preserving real round-trip latency and avoiding a false same-callback dependency.
-- [ ] Route staged wet return through the processor output consumed by wet recording and monitoring, with the same downstream ordering as hosted processors.
-- [ ] Add deterministic dummy-driver tests for audio-only, MIDI-only, and mixed external processing; monitored/unmonitored recording; normal wet playback; dry-through-wet; dry-into-wet; synchronized transitions; and disconnected/missing returns.
-- [ ] Verify existing external connection descriptors and saved connections remain unchanged at the application/session-document boundary.
+- [x] Register external dry/wet tracks as explicit external processor nodes rather than unrelated send/return passthrough conventions.
+- [x] Model current-callback dry sends and driver-staged wet returns as separate sides of the external boundary, preserving real round-trip latency and avoiding a false same-callback dependency.
+- [x] Route staged wet return through the processor output consumed by wet recording and monitoring, with the same downstream ordering as hosted processors.
+- [x] Add deterministic dummy-driver tests for audio-only, MIDI-only, and mixed external processing; monitored/unmonitored recording; normal wet playback; dry-through-wet; dry-into-wet; synchronized transitions; and disconnected/missing returns.
+- [x] Verify existing external connection descriptors and saved connections remain unchanged at the application/session-document boundary.
 
 Verification:
 
@@ -133,10 +133,10 @@ Verification:
 
 ### Stage 6 — Realtime, integration, and cleanup validation
 
-- [ ] Extend no-allocation/no-lock tests to first activation and steady-state processing for test, Tiny, fake Carla, and external processor nodes, including maximum configured channels and callback size.
-- [ ] Verify graph rebuilds, processor insertion/replacement/removal, driver switching, session save/load, and stale-schedule cycles do not leak old processor routes or produce unsafe output.
-- [ ] Update Tracy stage assertions/instrumentation expectations to show processor work at graph-scheduled positions, without user-controlled zone names.
-- [ ] Remove obsolete route rebuilds, naming conventions used only for runtime discovery, late-output helpers if no remaining caller needs them, and redundant tests of the superseded paths.
+- [x] Extend no-allocation/no-lock tests to first activation and steady-state processing for test, Tiny, fake Carla, and external processor nodes, including maximum configured channels and callback size.
+- [x] Verify graph rebuilds, processor insertion/replacement/removal, driver switching, session save/load, and stale-schedule cycles do not leak old processor routes or produce unsafe output.
+- [x] Update Tracy stage assertions/instrumentation expectations to show processor work at graph-scheduled positions, without user-controlled zone names.
+- [x] Remove obsolete route rebuilds, naming conventions used only for runtime discovery, late-output helpers if no remaining caller needs them, and redundant tests of the superseded paths.
 - [ ] Run formatting, warnings-as-errors builds, targeted suites, workspace suites, and frontend dry/wet integration tests.
 
 Verification:
