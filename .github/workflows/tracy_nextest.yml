@@ -28,15 +28,16 @@ jobs:
       - name: Install pinned cargo-nextest
         shell: bash
         run: |
-          curl -LsSf https://get.nexte.st/0.9.116/linux | tar zxf - -C "${CARGO_HOME}/bin"
-          cargo nextest --version | grep 'cargo-nextest 0.9.116'
+          mkdir -p /tmp/cargo-nextest-bin
+          curl -LsSf https://get.nexte.st/0.9.116/linux | tar zxf - -C /tmp/cargo-nextest-bin
+          /tmp/cargo-nextest-bin/cargo-nextest --version | grep 'cargo-nextest 0.9.116'
 
       - name: Build pinned Tracy collector and query tools
         shell: bash
         run: |
           set -euo pipefail
           git clone https://github.com/SanderVocke/tracy-query.git /tmp/tracy-query
-          git -C /tmp/tracy-query checkout 7d964dc9c48ae022a290b198142b6a28a221b27d
+          git -C /tmp/tracy-query checkout ac4159ace5dba56d8a067da210ef8f40effcceac
           cmake -S /tmp/tracy-query -B /tmp/tracy-query-build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTRACY_QUERY_FULLY_STATIC=OFF
           cmake --build /tmp/tracy-query-build --parallel 2 \
@@ -49,7 +50,7 @@ jobs:
           python3 scripts/run_tracy_nextest.py
           --collector /tmp/tracy-query-build/tracy-collector
           --query /tmp/tracy-query-build/tracy-query
-          --nextest "${CARGO_HOME}/bin/cargo-nextest"
+          --nextest /tmp/cargo-nextest-bin/cargo-nextest
           --output artifacts/tracy-nextest
           --expect-controlled-failures
 

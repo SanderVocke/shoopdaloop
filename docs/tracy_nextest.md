@@ -9,7 +9,7 @@ nextest discovery/listing, and every other test executable neither initializes
 Tracy nor contacts a collector.
 
 The job pins cargo-nextest 0.9.116 and tracy-query commit
-`7d964dc9c48ae022a290b198142b6a28a221b27d` (the collector implementation under
+`ac4159ace5dba56d8a067da210ef8f40effcceac` (the collector implementation under
 review in `SanderVocke/tracy-query#1`). Replace that source pin with the first
 released collector asset after the upstream PR is merged; the orchestration
 command already accepts arbitrary released `--collector` and `--query` paths.
