@@ -1,6 +1,4 @@
 const MAX_CHANNELS = 2;
-const MAX_COMMAND_BYTES = 16 * 1024;
-const PROTOCOL_VERSION = 5;
 
 function encodeUtf8(value) {
   const bytes = [];
@@ -41,8 +39,10 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     this.memoryGrowths = 0;
     this.expectedFrame = null;
     try {
-      const { wasmModule, maxQuantum } = options.processorOptions;
+      const { wasmModule, maxQuantum, protocolVersion, commandMaxBytes } = options.processorOptions;
       this.maxQuantum = maxQuantum;
+      this.protocolVersion = protocolVersion;
+      this.commandMaxBytes = commandMaxBytes;
       this.instance = new WebAssembly.Instance(wasmModule, {});
       this.exports = this.instance.exports;
       this.host = this.exports.shoop_worklet_create(sampleRate, maxQuantum);
@@ -77,16 +77,16 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
   handleCommandInner(message) {
     if (typeof message !== 'string') {
       this.port.postMessage(JSON.stringify({
-        version: PROTOCOL_VERSION,
+        version: this.protocolVersion,
         sequence: 0,
         event: { kind: 'error', message: 'worklet commands must be JSON strings' },
       }));
       return;
     }
     const encoded = encodeUtf8(message);
-    if (encoded.length > MAX_COMMAND_BYTES) {
+    if (encoded.length > this.commandMaxBytes) {
       this.port.postMessage(JSON.stringify({
-        version: PROTOCOL_VERSION,
+        version: this.protocolVersion,
         sequence: 0,
         event: { kind: 'error', message: 'worklet command exceeds capacity' },
       }));
@@ -124,7 +124,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     if (!this.failureMessage) {
       this.failureMessage = message;
       this.port.postMessage(JSON.stringify({
-        version: PROTOCOL_VERSION,
+        version: this.protocolVersion,
         sequence: 0,
         event: { kind: 'error', message },
       }));

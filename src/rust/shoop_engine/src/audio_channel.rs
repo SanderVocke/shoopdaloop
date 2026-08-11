@@ -179,11 +179,27 @@ impl AudioChannel {
     }
 
     pub fn with_bounded_capacity(chunk_size: usize, capacity: usize, mode: ChannelMode) -> Self {
+        let mut channel = Self::with_bounded_capacity_unprepared(chunk_size, capacity, mode);
+        channel.prepare_bounded_capacity();
+        channel
+    }
+
+    pub fn with_bounded_capacity_unprepared(
+        chunk_size: usize,
+        capacity: usize,
+        mode: ChannelMode,
+    ) -> Self {
         let mut channel = Self::with_chunk_size(chunk_size, mode);
-        channel.buffers = ChunkedSamples::with_bounded_capacity(chunk_size, capacity);
-        channel.prerecord_buffers = ChunkedSamples::with_bounded_capacity(chunk_size, capacity);
+        channel.buffers = ChunkedSamples::with_bounded_capacity_unprepared(chunk_size, capacity);
+        channel.prerecord_buffers =
+            ChunkedSamples::with_bounded_capacity_unprepared(chunk_size, capacity);
         channel.storage_capacity = Some(capacity.max(1));
         channel
+    }
+
+    pub fn prepare_bounded_capacity(&mut self) {
+        self.buffers.prepare_bounded_capacity();
+        self.prerecord_buffers.prepare_bounded_capacity();
     }
 
     pub fn with_chunk_size_state_and_snapshots(

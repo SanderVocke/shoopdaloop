@@ -76,6 +76,20 @@ impl AudioMidiLoop {
         self.audio_channels.len() - 1
     }
 
+    pub fn add_audio_channel_with_bounded_capacity_unprepared(
+        &mut self,
+        chunk_size: usize,
+        capacity: usize,
+        mode: ChannelMode,
+    ) -> usize {
+        self.audio_channels
+            .push(AudioChannel::with_bounded_capacity_unprepared(
+                chunk_size, capacity, mode,
+            ));
+        self.resync_poi();
+        self.audio_channels.len() - 1
+    }
+
     pub fn add_audio_channel_with_state_and_snapshots(
         &mut self,
         chunk_size: usize,
