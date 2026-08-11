@@ -798,7 +798,7 @@ impl ApplicationModel {
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
                 supported: true,
-                scripts: Arc::from([]),
+                ..Default::default()
             }),
             track_processors: backend
                 .track_processor_catalog()
@@ -899,6 +899,9 @@ impl ApplicationModel {
             }
             AppIntent::StopScript { script_id } => self.stop_script(script_id),
             AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
+            AppIntent::InvokeScriptDialogButton { .. } => {
+                Err("script dialogs are not available".to_owned())
+            }
             AppIntent::SetPortConnected {
                 port_id,
                 host_port_id,
@@ -1854,6 +1857,7 @@ impl ApplicationModel {
         self.scripting_view = Arc::new(ScriptingState {
             supported: true,
             scripts: self.script_manager.states().into(),
+            ..Default::default()
         });
         if !self.connection_view.loading {
             self.rebuild_connection_view();

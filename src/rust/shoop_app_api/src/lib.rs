@@ -36,6 +36,8 @@ entity_id!(PortId);
 entity_id!(ChannelId);
 entity_id!(TaskId);
 entity_id!(ScriptId);
+entity_id!(ScriptDialogId);
+entity_id!(ScriptDialogButtonId);
 
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct HostPortId(String);
@@ -862,6 +864,20 @@ pub struct KeyEvent {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LuaApiVersion {
+    pub major: u32,
+    pub minor: u32,
+}
+
+impl LuaApiVersion {
+    pub const fn accepts(self, requested: Self) -> bool {
+        requested.major == self.major && requested.minor <= self.minor
+    }
+}
+
+pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 0 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
     Bundled,
     User,
@@ -933,6 +949,48 @@ pub struct ScriptMidiDiagnostics {
     pub rule_states: Arc<[ScriptMidiRuleDiagnostics]>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ScriptDialogRichTextStyle {
+    pub strong: bool,
+    pub italics: bool,
+    pub monospace: bool,
+    pub underline: bool,
+    pub strikethrough: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ScriptDialogElement {
+    RichText {
+        text: String,
+        style: ScriptDialogRichTextStyle,
+    },
+    Button {
+        id: Option<ScriptDialogButtonId>,
+        label: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptDialogContent {
+    pub elements: Arc<[ScriptDialogElement]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ScriptDialogKind {
+    Simple(ScriptDialogContent),
+    Paged(Arc<[ScriptDialogContent]>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptDialogState {
+    pub id: ScriptDialogId,
+    pub owner_script_id: ScriptId,
+    pub owner_script_name: String,
+    pub name: String,
+    pub kind: ScriptDialogKind,
+    pub open_request: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScriptState {
     pub id: ScriptId,
@@ -950,14 +1008,18 @@ pub struct ScriptState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScriptingState {
     pub supported: bool,
+    pub api_version: LuaApiVersion,
     pub scripts: Arc<[ScriptState]>,
+    pub dialogs: Arc<[ScriptDialogState]>,
 }
 
 impl Default for ScriptingState {
     fn default() -> Self {
         Self {
             supported: false,
+            api_version: LUA_API_VERSION,
             scripts: Arc::from([]),
+            dialogs: Arc::from([]),
         }
     }
 }
@@ -1300,6 +1362,11 @@ pub enum AppIntent {
     ForgetScript {
         script_id: ScriptId,
     },
+    InvokeScriptDialogButton {
+        script_id: ScriptId,
+        dialog_id: ScriptDialogId,
+        button_id: ScriptDialogButtonId,
+    },
     SetPortConnected {
         port_id: PortId,
         host_port_id: HostPortId,
@@ -1488,6 +1555,7 @@ impl AppIntent {
             Self::ReplaceScriptSource { .. } => "scripting.replace_source",
             Self::StopScript { .. } => "scripting.stop",
             Self::ForgetScript { .. } => "scripting.forget",
+            Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
             Self::SetPortConnected { .. } => "connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
             Self::RequestAudioDriverSwitch { .. } => "audio_driver.request_switch",
@@ -1736,6 +1804,61 @@ mod tests {
         assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::Panic).kind(),
             "track.tiny_synth_fx.panic"
+        );
+    }
+
+    #[test]
+    fn lua_api_versions_use_major_equality_and_minor_backwards_compatibility() {
+        let host = LuaApiVersion { major: 2, minor: 4 };
+        assert!(host.accepts(LuaApiVersion { major: 2, minor: 0 }));
+        assert!(host.accepts(host));
+        assert!(!host.accepts(LuaApiVersion { major: 2, minor: 5 }));
+        assert!(!host.accepts(LuaApiVersion { major: 1, minor: 4 }));
+        assert!(!host.accepts(LuaApiVersion { major: 3, minor: 0 }));
+        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 0 });
+    }
+
+    #[test]
+    fn dialog_contract_preserves_plain_order_and_callback_identity() {
+        let script_id = ScriptId::from_raw(8);
+        let dialog_id = ScriptDialogId::from_raw(12);
+        let button_id = ScriptDialogButtonId::from_raw(14);
+        let state = ScriptDialogState {
+            id: dialog_id,
+            owner_script_id: script_id,
+            owner_script_name: "owner.lua".to_owned(),
+            name: "Help".to_owned(),
+            kind: ScriptDialogKind::Simple(ScriptDialogContent {
+                elements: Arc::from([
+                    ScriptDialogElement::RichText {
+                        text: "First".to_owned(),
+                        style: ScriptDialogRichTextStyle {
+                            strong: true,
+                            ..Default::default()
+                        },
+                    },
+                    ScriptDialogElement::Button {
+                        id: Some(button_id),
+                        label: "Run".to_owned(),
+                    },
+                ]),
+            }),
+            open_request: 3,
+        };
+        let ScriptDialogKind::Simple(content) = &state.kind else {
+            panic!("expected simple dialog");
+        };
+        assert_eq!(content.elements.len(), 2);
+        assert_eq!(state.owner_script_id, script_id);
+        assert_eq!(state.open_request, 3);
+        assert_eq!(
+            AppIntent::InvokeScriptDialogButton {
+                script_id,
+                dialog_id,
+                button_id,
+            }
+            .kind(),
+            "scripting.dialog_button"
         );
     }
 

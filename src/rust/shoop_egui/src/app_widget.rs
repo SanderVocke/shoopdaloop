@@ -2030,6 +2030,7 @@ mod tests {
                         message: "warning log".to_owned(),
                     }]),
                 }]),
+                ..Default::default()
             }
             .into(),
             ..Default::default()

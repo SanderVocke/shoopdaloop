@@ -1051,6 +1051,7 @@ mod tests {
                 midi: Default::default(),
                 logs: Arc::from([]),
             }]),
+            ..Default::default()
         };
         let paths = BTreeMap::from([(script_id, "/tmp/controller.lua".to_owned())]);
         let context = egui::Context::default();
