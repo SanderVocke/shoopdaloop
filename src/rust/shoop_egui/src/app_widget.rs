@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    click_track_dialog::ClickTrackDialog, colors, AppAction, AppState, AudioDriverConfig,
-    AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig, DetailsPane,
-    DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane, SettingsAction,
-    SettingsDialog, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
-    TrackWidget, TracksWidget,
+    click_track_dialog::ClickTrackDialog, colors, script_dialogs::ScriptDialogs, AppAction,
+    AppState, AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope,
+    CpalAudioDriverConfig, DetailsPane, DummyAudioDriverConfig, GlobalControls,
+    JackAudioDriverConfig, PianoPane, SettingsAction, SettingsDialog, TrackProcessorDescriptor,
+    TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
@@ -475,6 +475,7 @@ pub struct AppWidget {
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
+    script_dialogs: ScriptDialogs,
     bottom_pane: Option<BottomPane>,
     add_track_open: bool,
     add_track_name: String,
@@ -522,6 +523,7 @@ impl AppWidget {
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
+            script_dialogs: ScriptDialogs::default(),
             bottom_pane: None,
             add_track_open: false,
             add_track_name: String::new(),
@@ -612,24 +614,29 @@ impl AppWidget {
                     .id_salt("global_controls_scroll")
                     .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
-                        actions.extend(
-                            self.global_controls
-                                .show(ui, &state.global_controls)
-                                .into_iter()
-                                .map(AppAction::Global),
-                        );
-                        if self.global_controls.take_connections_requested() {
-                            self.connections.open(ConnectionScope::AllTracks);
-                        }
-                        if self.global_controls.take_save_session_requested() {
-                            actions.push(AppAction::RequestSaveSession);
-                        }
-                        if self.global_controls.take_load_session_requested() {
-                            actions.push(AppAction::RequestLoadSessionPicker);
-                        }
-                        if self.global_controls.take_settings_requested() {
-                            self.settings.open(settings_state);
-                        }
+                        ui.horizontal(|ui| {
+                            actions.extend(
+                                self.global_controls
+                                    .show(ui, &state.global_controls)
+                                    .into_iter()
+                                    .map(AppAction::Global),
+                            );
+                            if self.global_controls.take_connections_requested() {
+                                self.connections.open(ConnectionScope::AllTracks);
+                            }
+                            if self.global_controls.take_save_session_requested() {
+                                actions.push(AppAction::RequestSaveSession);
+                            }
+                            if self.global_controls.take_load_session_requested() {
+                                actions.push(AppAction::RequestLoadSessionPicker);
+                            }
+                            if self.global_controls.take_settings_requested() {
+                                self.settings.open(settings_state);
+                            }
+                            ui.separator();
+                            self.script_dialogs
+                                .show_control(ui, &state.scripting.dialogs);
+                        });
                     });
             });
 
@@ -782,6 +789,10 @@ impl AppWidget {
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
+        actions.extend(
+            self.script_dialogs
+                .show_windows(ui.ctx(), &state.scripting.dialogs),
+        );
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,
