@@ -20,6 +20,7 @@ ROBOTO_FONT_FILES = (
     "Roboto-Bold.ttf",
     "Roboto-BoldItalic.ttf",
 )
+ICON_FILE = "icon.png"
 
 
 def exactly_one(paths: list[Path], description: str) -> Path:
@@ -33,10 +34,10 @@ def build_single_file(dist: Path, output: Path) -> None:
     index_path = dist / "index.html"
     html = index_path.read_text(encoding="utf-8")
     js_path = exactly_one(
-        list(dist.glob("shoopdaloop_egui-*.js")), "wasm-bindgen JavaScript file"
+        list(dist.glob("shoopdaloop-*.js")), "wasm-bindgen JavaScript file"
     )
     wasm_path = exactly_one(
-        list(dist.glob("shoopdaloop_egui-*_bg.wasm")), "WebAssembly file"
+        list(dist.glob("shoopdaloop-*_bg.wasm")), "WebAssembly file"
     )
     worklet_script_path = dist / "audio_worklet.js"
     worklet_wasm_path = dist / "generated" / "shoop_audio_worklet.wasm"
@@ -64,6 +65,15 @@ def build_single_file(dist: Path, output: Path) -> None:
         html, count = preload.subn("", html)
         if count != 1:
             raise RuntimeError(f"could not remove preload for {asset}")
+
+    icon_path = dist / ICON_FILE
+    if not icon_path.is_file():
+        raise RuntimeError(f"missing application icon: {icon_path}")
+    icon_url = f'href="./{ICON_FILE}"'
+    if html.count(icon_url) != 1:
+        raise RuntimeError("could not identify application icon URL")
+    encoded_icon = base64.b64encode(icon_path.read_bytes()).decode("ascii")
+    html = html.replace(icon_url, f'href="data:image/png;base64,{encoded_icon}"')
 
     for name in ROBOTO_FONT_FILES:
         font_path = dist / "roboto" / name
@@ -132,10 +142,10 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        help="output file (default: DIST/shoopdaloop_egui.html)",
+        help="output file (default: DIST/shoopdaloop.html)",
     )
     args = parser.parse_args()
-    output = args.output or args.dist / "shoopdaloop_egui.html"
+    output = args.output or args.dist / "shoopdaloop.html"
     build_single_file(args.dist, output)
     print(f"wrote self-contained application: {output} ({output.stat().st_size} bytes)")
 

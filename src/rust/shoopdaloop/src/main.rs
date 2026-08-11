@@ -55,12 +55,23 @@ use shoop_app::{ApplicationHandle, ApplicationRuntime};
 
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
+#[cfg(not(target_arch = "wasm32"))]
+const APPLICATION_ICON_PNG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../resources/iconset/icon.png"
+));
 const UPDATE_INTERVAL: Duration = Duration::from_millis(16);
 
 #[cfg(not(target_arch = "wasm32"))]
+fn application_icon() -> egui::IconData {
+    eframe::icon_data::from_png_bytes(APPLICATION_ICON_PNG)
+        .expect("embedded application icon must be valid PNG")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Parser)]
-#[command(name = "shoopdaloop_egui")]
-#[command(about = "ShoopDaLoop egui application")]
+#[command(name = "shoopdaloop")]
+#[command(about = "ShoopDaLoop application")]
 #[command(group(
     ArgGroup::new("tracing_mode")
         .args(["tracing", "tracing_capture"])
@@ -88,20 +99,19 @@ struct NativeTracing {
 #[cfg(not(target_arch = "wasm32"))]
 impl NativeTracing {
     fn start(cli: &NativeCli) -> anyhow::Result<Self> {
-        common::tracing_helpers::set_tracing_enabled(cli.tracing || cli.tracing_capture);
-        common::tracing_helpers::set_engine_detail_enabled(cli.tracing_engine_detail);
-        common::init()?;
+        shoop_common::tracing_helpers::set_tracing_enabled(cli.tracing || cli.tracing_capture);
+        shoop_common::tracing_helpers::set_engine_detail_enabled(cli.tracing_engine_detail);
+        shoop_common::init()?;
 
         let mut tracing = Self {
             capture_active: false,
         };
         if cli.tracing_capture {
-            let tool = common::tracing_capture::resolve_capture_tool(None)?;
-            common::tracing_capture::configure(common::tracing_capture::CaptureConfig::new(
-                tool,
-                PathBuf::from("traces"),
-            ))?;
-            common::tracing_capture::start_default_capture()?;
+            let tool = shoop_common::tracing_capture::resolve_capture_tool(None)?;
+            shoop_common::tracing_capture::configure(
+                shoop_common::tracing_capture::CaptureConfig::new(tool, PathBuf::from("traces")),
+            )?;
+            shoop_common::tracing_capture::start_default_capture()?;
             tracing.capture_active = true;
         }
         tracing::info!(
@@ -117,7 +127,7 @@ impl NativeTracing {
     fn shutdown(&mut self) -> anyhow::Result<()> {
         if self.capture_active {
             self.capture_active = false;
-            common::tracing_capture::shutdown()?;
+            shoop_common::tracing_capture::shutdown()?;
         }
         Ok(())
     }
@@ -179,7 +189,7 @@ fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsMana
     static NEXT_TEST_SETTINGS: AtomicU64 = AtomicU64::new(1);
     let id = NEXT_TEST_SETTINGS.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "shoopdaloop-egui-test-settings-{}-{id}.json",
+        "shoopdaloop-test-settings-{}-{id}.json",
         std::process::id()
     ));
     let _ = std::fs::remove_file(&path);
@@ -1361,7 +1371,8 @@ fn main() {
     };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("ShoopDaLoop egui (dummy engine)")
+            .with_title("ShoopDaLoop (dummy engine)")
+            .with_icon(application_icon())
             .with_inner_size([1000.0, 700.0])
             .with_min_inner_size([360.0, 200.0]),
         ..Default::default()
@@ -1375,7 +1386,7 @@ fn main() {
         std::process::exit(1);
     }
     if let Err(error) = result {
-        eprintln!("ShoopDaLoop egui failed: {error}");
+        eprintln!("ShoopDaLoop failed: {error}");
         std::process::exit(1);
     }
 }
@@ -3772,14 +3783,24 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
+    fn application_icon_is_embedded() {
+        let icon = application_icon();
+        assert_eq!((icon.width, icon.height), (256, 256));
+        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
+        assert!(icon.rgba.chunks_exact(4).any(|pixel| pixel[3] == 0));
+        assert!(icon.rgba.chunks_exact(4).any(|pixel| pixel[3] == 255));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
     fn native_cli_parses_tracing_modes() {
-        let live = NativeCli::try_parse_from(["shoopdaloop_egui", "--tracing"]).unwrap();
+        let live = NativeCli::try_parse_from(["shoopdaloop", "--tracing"]).unwrap();
         assert!(live.tracing);
         assert!(!live.tracing_capture);
         assert!(!live.tracing_engine_detail);
 
         let capture = NativeCli::try_parse_from([
-            "shoopdaloop_egui",
+            "shoopdaloop",
             "--tracing-capture",
             "--tracing-engine-detail",
         ])
@@ -3792,9 +3813,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn native_cli_rejects_engine_detail_without_tracing_mode() {
-        assert!(
-            NativeCli::try_parse_from(["shoopdaloop_egui", "--tracing-engine-detail"]).is_err()
-        );
+        assert!(NativeCli::try_parse_from(["shoopdaloop", "--tracing-engine-detail"]).is_err());
     }
 
     #[test]
@@ -4084,7 +4103,7 @@ mod tests {
         draft.set(shoop_egui::JACK_CLIENT_NAME, String::new());
         let document = registry
             .document_from_draft(
-                &shoop_settings::EgSettingsDocument::empty("test"),
+                &shoop_settings::SettingsDocument::empty("test"),
                 &draft,
                 "test",
             )
@@ -4163,7 +4182,7 @@ mod tests {
         );
         let document = registry
             .document_from_draft(
-                &shoop_settings::EgSettingsDocument::empty("test"),
+                &shoop_settings::SettingsDocument::empty("test"),
                 &draft,
                 "test",
             )

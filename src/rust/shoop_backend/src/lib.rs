@@ -713,7 +713,7 @@ fn validate_midi_input_events(events: &[BackendMidiEvent]) -> Result<()> {
 }
 pub const MAX_WEB_AUDIO_QUANTUM: u32 = 2048;
 pub const RECORDING_CAPACITY_SECONDS: u32 = 120;
-pub const INPUT_CAPTURE_CAPACITY_SECONDS: u32 = 10;
+pub const INPUT_CAPTURE_CAPACITY_SECONDS: u32 = 30;
 pub const WEB_MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
 
 pub fn tiny_synth_fx_descriptor() -> TrackProcessorDescriptor {
@@ -1606,13 +1606,17 @@ impl EngineBackend {
                 shoop_engine::PortConnectability::INTERNAL,
                 0,
             )));
-            let receive = self.session.add_port(Port::Internal(InternalAudioPort::new(
+            let mut receive = InternalAudioPort::new(
                 format!("{}:audio_out_{index}", request.port_name_base),
                 self.buffer_size as usize,
                 shoop_engine::PortConnectability::INTERNAL,
                 shoop_engine::PortConnectability::INTERNAL,
-                0,
-            )));
+                capture_block_size,
+            );
+            receive
+                .audio_mut()
+                .set_ringbuffer_n_samples(capture_samples);
+            let receive = self.session.add_port(Port::Internal(receive));
             self.session.connect_ports_internal(input, send)?;
             self.session.connect_ports_internal(receive, output)?;
             ports.push(self.register_connection_port(
@@ -5101,6 +5105,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_input_capture_is_thirty_seconds() {
+        assert_eq!(INPUT_CAPTURE_CAPACITY_SECONDS, 30);
+    }
+
+    #[test]
     fn dry_wet_processor_mapping_is_ordered_and_clamps_unequal_shapes() {
         assert_eq!(
             dry_wet_processor_mapping(4, 1, true, 2, 16, true),
@@ -6932,7 +6941,7 @@ mod tests {
             .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
             .unwrap();
         let mut output = vec![0.0; 256];
-        for _ in 0..8 {
+        for _ in 0..INPUT_CAPTURE_CAPACITY_SECONDS - 2 {
             backend
                 .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 2, 128)
                 .unwrap();

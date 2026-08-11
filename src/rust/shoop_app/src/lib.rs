@@ -5864,7 +5864,9 @@ fn session_bundle_to_backend(
         || !bundle.document.midi_control.bindings.is_empty()
         || !bundle.document.settings.is_empty()
     {
-        return Err("session requires a feature not yet available in the egui runtime".to_owned());
+        return Err(
+            "session requires a feature not yet available in the application runtime".to_owned(),
+        );
     }
     let mut tracks = Vec::new();
     for track in bundle

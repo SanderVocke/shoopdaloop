@@ -1644,7 +1644,7 @@ mod tests {
 
         let mut draft = SettingsDraft::from_snapshot(&defaults);
         draft.set(CARLA_HOSTING_MODE, "subprocess".to_owned());
-        let mut base = shoop_settings::EgSettingsDocument::empty("test");
+        let mut base = shoop_settings::SettingsDocument::empty("test");
         base.values.insert(
             "future.setting".to_owned(),
             serde_json::Value::String("preserved".to_owned()),
@@ -2328,7 +2328,7 @@ mod tests {
         draft.set(DEFAULT_NEW_TRACK_MIDI, true);
         let document = registry
             .document_from_draft(
-                &shoop_settings::EgSettingsDocument::empty("test"),
+                &shoop_settings::SettingsDocument::empty("test"),
                 &draft,
                 "test",
             )

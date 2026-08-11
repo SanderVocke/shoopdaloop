@@ -1,5 +1,6 @@
 [package]
 name = "shoop_tracing"
+version.workspace = true
 edition = "2021"
 
 [lib]

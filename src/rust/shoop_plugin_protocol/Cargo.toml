@@ -1,5 +1,6 @@
 [package]
 name = "shoop_plugin_protocol"
+version.workspace = true
 edition = "2021"
 
 [dependencies]

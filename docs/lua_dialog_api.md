@@ -1,10 +1,10 @@
-# egui Lua API version and dialog contract
+# Shoop Lua API version and dialog contract
 
-This contract applies to Lua scripts run by `shoopdaloop_egui` on native and browser targets.
+This contract applies to Lua scripts run by `shoopdaloop` on native and browser targets.
 
 ## API version announcement
 
-The current egui Lua API version is **1.0**. Every script must make this its first Shoop API call:
+The current Shoop Lua API version is **1.0**. Every script must make this its first Shoop API call:
 
 ```lua
 shoop_announce_api_version(1, 0)

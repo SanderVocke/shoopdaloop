@@ -2672,12 +2672,27 @@ impl BackendSession {
         skip_all,
         fields(session_id = self.session_id(), chain_type = chain_type as u32)
     )]
-    pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
-        self.create_fx_chain_with_channels(chain_type, title, None)
+    pub fn create_fx_chain(
+        &self,
+        chain_type: FXChainType,
+        title: &str,
+        output_ringbuffer_n_samples: u32,
+    ) -> Result<FXChain> {
+        self.create_fx_chain_with_channels(chain_type, title, None, output_ringbuffer_n_samples)
     }
 
-    pub fn create_tiny_synth_fx_chain(&self, title: &str, channel_count: usize) -> Result<FXChain> {
-        self.create_fx_chain_with_channels(FXChainType::TinySynthFx, title, Some(channel_count))
+    pub fn create_tiny_synth_fx_chain(
+        &self,
+        title: &str,
+        channel_count: usize,
+        output_ringbuffer_n_samples: u32,
+    ) -> Result<FXChain> {
+        self.create_fx_chain_with_channels(
+            FXChainType::TinySynthFx,
+            title,
+            Some(channel_count),
+            output_ringbuffer_n_samples,
+        )
     }
 
     fn create_fx_chain_with_channels(
@@ -2685,6 +2700,7 @@ impl BackendSession {
         chain_type: FXChainType,
         title: &str,
         tiny_channels: Option<usize>,
+        output_ringbuffer_n_samples: u32,
     ) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
@@ -2800,6 +2816,7 @@ impl BackendSession {
             backend,
             state: Arc::new(Mutex::new(FXChainState::default())),
             tiny_channels: tiny_channels.unwrap_or(0),
+            output_ringbuffer_n_samples: output_ringbuffer_n_samples as usize,
             audio_inputs: Vec::new(),
             audio_outputs: Vec::new(),
             midi_inputs: Vec::new(),
@@ -5850,6 +5867,7 @@ pub struct FXChain {
     backend: FXChainBackendKind,
     state: Arc<Mutex<FXChainState>>,
     tiny_channels: usize,
+    output_ringbuffer_n_samples: usize,
     audio_inputs: Vec<AudioPort>,
     audio_outputs: Vec<AudioPort>,
     midi_inputs: Vec<MidiPort>,
@@ -6268,7 +6286,12 @@ impl FXChain {
         }
     }
     /// Queues an internal chain port and immediately returns its pending handle.
-    fn make_audio_port(&self, name: String, direction: PortDirection) -> Option<AudioPort> {
+    fn make_audio_port(
+        &self,
+        name: String,
+        direction: PortDirection,
+        ringbuffer_n_samples: usize,
+    ) -> Option<AudioPort> {
         let control = Arc::new(
             ObjectControl::<AudioPortId, engine::AudioPortStateMirror>::pending(
                 self.shared.session_id,
@@ -6284,13 +6307,21 @@ impl FXChain {
                 };
                 let Some(owned) = owned.take() else { return };
                 let n_frames = s.buffer_size().max(1) as usize;
-                let port = engine::session::Port::Internal(engine::InternalAudioPort::new(
+                let ringbuffer_buffer_size = if ringbuffer_n_samples == 0 {
+                    0
+                } else {
+                    ringbuffer_n_samples.div_ceil(32).max(n_frames)
+                };
+                let mut port = engine::InternalAudioPort::new(
                     owned,
                     n_frames,
                     engine::PortConnectability::INTERNAL,
                     engine::PortConnectability::INTERNAL,
-                    0,
-                ));
+                    ringbuffer_buffer_size,
+                );
+                port.audio_mut()
+                    .set_ringbuffer_n_samples(ringbuffer_n_samples);
+                let port = engine::session::Port::Internal(port);
                 match s.add_audio_port_with_state(port, Arc::clone(&control.mirror)) {
                     Ok(idx) => control.mark_ready(AudioPortId(idx)),
                     Err(error) => control.mark_failed(error.to_string()),
@@ -6386,6 +6417,7 @@ impl FXChain {
             if let Some(port) = self.make_audio_port(
                 format!("{}:audio_in_{}", self.title, idx),
                 PortDirection::Output,
+                0,
             ) {
                 self.audio_inputs.push(port);
             }
@@ -6394,6 +6426,7 @@ impl FXChain {
             if let Some(port) = self.make_audio_port(
                 format!("{}:audio_out_{}", self.title, idx),
                 PortDirection::Input,
+                self.output_ringbuffer_n_samples,
             ) {
                 self.audio_outputs.push(port);
             }
@@ -7789,7 +7822,7 @@ mod tests {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
         let chain = sess
-            .create_fx_chain(FXChainType::Test2x2x1, "stable-fx")
+            .create_fx_chain(FXChainType::Test2x2x1, "stable-fx", 0)
             .expect("chain");
         let first = chain.get_audio_input_port(0).expect("first handle");
         let again = chain.get_audio_input_port(0).expect("same handle");
@@ -7815,10 +7848,45 @@ mod tests {
     }
 
     #[test]
+    fn fx_output_capture_uses_bounded_chunks() {
+        const CAPTURE_SAMPLES: u32 = 480_000;
+
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let chain = sess
+            .create_fx_chain(FXChainType::Test2x2x1, "capturing-fx", CAPTURE_SAMPLES)
+            .expect("chain");
+        engine.pump();
+        let input = chain
+            .get_audio_input_port(0)
+            .unwrap()
+            .control
+            .ready_id()
+            .unwrap()
+            .index();
+        let output = chain
+            .get_audio_output_port(0)
+            .unwrap()
+            .control
+            .ready_id()
+            .unwrap()
+            .index();
+        let input = engine.session().port(input).unwrap().audio().unwrap();
+        let output = engine.session().port(output).unwrap().audio().unwrap();
+        let chunk_size = output.ringbuffer_contents().buffer_size;
+
+        assert_eq!(input.ringbuffer_capacity(), 0);
+        assert!(chunk_size >= (CAPTURE_SAMPLES as usize).div_ceil(32));
+        assert!(output.ringbuffer_capacity() >= CAPTURE_SAMPLES as usize);
+        assert!(output.ringbuffer_capacity() < CAPTURE_SAMPLES as usize + chunk_size);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
     fn test_fx_chain_runs_as_a_scheduled_processor_node() {
         let sess = BackendSession::new().expect("session");
         let chain = sess
-            .create_fx_chain(FXChainType::Test2x2x1, "scheduled-fx")
+            .create_fx_chain(FXChainType::Test2x2x1, "scheduled-fx", 0)
             .expect("chain");
         chain.set_active(true);
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7894,7 +7962,7 @@ mod tests {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
         let chain = sess
-            .create_fx_chain(FXChainType::Test2x2x1, "captured-fx")
+            .create_fx_chain(FXChainType::Test2x2x1, "captured-fx", 0)
             .expect("chain");
         let midi_input = chain.get_midi_input_port(0).expect("MIDI input");
         engine.pump();
@@ -7987,7 +8055,7 @@ mod tests {
     fn current_fx_chain_handle_controls_visibility_activity_and_ports() {
         let sess = BackendSession::new().expect("session");
         let chain = sess
-            .create_fx_chain(FXChainType::Test2x2x1, "test_fx")
+            .create_fx_chain(FXChainType::Test2x2x1, "test_fx", 0)
             .expect("fx chain");
 
         assert!(chain.available());
@@ -8032,7 +8100,7 @@ mod tests {
         let _exclusive = engine::lv2_carla::lock_carla_test();
         let sess = BackendSession::new().expect("session");
         let chain = sess
-            .create_fx_chain(FXChainType::CarlaRack, "carla")
+            .create_fx_chain(FXChainType::CarlaRack, "carla", 0)
             .expect("chain handle");
         if !chain.available() {
             eprintln!(

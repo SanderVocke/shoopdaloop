@@ -41,8 +41,8 @@ if (settingsUnavailable && !settingsOnly) {
   throw new Error('SETTINGS_UNAVAILABLE requires SETTINGS_ONLY=1');
 }
 const selfContainedPath = process.env.SELF_CONTAINED_PATH
-  || join(process.cwd(), 'dist', 'shoopdaloop_egui.html');
-const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-egui-chrome-'));
+  || join(process.cwd(), 'dist', 'shoopdaloop.html');
+const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-chrome-'));
 const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
 

@@ -785,6 +785,7 @@ impl NativeRuntime {
             .resolved
             .sample_rate
             .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
+        let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
         for index in 0..request.audio_channels {
             let suffix = if request.audio_channels == 1 {
                 String::new()
@@ -798,7 +799,7 @@ impl NativeRuntime {
                 &self.driver,
                 &input_name,
                 &PortDirection::Input,
-                ring,
+                capture_block_size,
             )?;
             input.set_passthrough_muted(true)?;
             input.set_ringbuffer_n_samples(ring)?;
@@ -918,6 +919,7 @@ impl NativeRuntime {
             .resolved
             .sample_rate
             .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
+        let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
         let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
         let mut audio_sends = Vec::with_capacity(dry_audio_channels as usize);
         let mut audio_returns = Vec::with_capacity(wet_audio_channels as usize);
@@ -931,7 +933,7 @@ impl NativeRuntime {
                 &self.driver,
                 &input_name,
                 &PortDirection::Input,
-                ring,
+                capture_block_size,
             )?;
             input.set_passthrough_muted(true)?;
             input.set_ringbuffer_n_samples(ring)?;
@@ -968,7 +970,7 @@ impl NativeRuntime {
                 &self.driver,
                 &return_name,
                 &PortDirection::Input,
-                ring,
+                capture_block_size,
             )?;
             return_.set_passthrough_muted(true)?;
             return_.set_ringbuffer_n_samples(ring)?;
@@ -1104,12 +1106,16 @@ impl NativeRuntime {
             .resolved
             .sample_rate
             .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
+        let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
         let chain = if chain_type == FXChainType::TinySynthFx {
-            self.session
-                .create_tiny_synth_fx_chain(&request.port_name_base, dry_audio_channels as usize)?
+            self.session.create_tiny_synth_fx_chain(
+                &request.port_name_base,
+                dry_audio_channels as usize,
+                ring,
+            )?
         } else {
             self.session
-                .create_fx_chain(chain_type, &request.port_name_base)?
+                .create_fx_chain(chain_type, &request.port_name_base, ring)?
         };
         let last_confirmed_state = chain.try_get_state_str().ok();
         let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
@@ -1124,7 +1130,7 @@ impl NativeRuntime {
                 &self.driver,
                 &input_name,
                 &PortDirection::Input,
-                ring,
+                capture_block_size,
             )?;
             input.set_passthrough_muted(true)?;
             input.set_ringbuffer_n_samples(ring)?;
@@ -3042,6 +3048,155 @@ mod tests {
             restored.capture_session().unwrap().tracks[0].topology,
             captured.tracks[0].topology
         );
+    }
+
+    #[test]
+    fn native_dummy_grab_captures_processed_dry_wet_audio_and_midi() {
+        const FRAMES: u32 = 128;
+        const NOTE_FRAME: usize = 16;
+        const NOTE_VELOCITY: u8 = 102;
+
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: FRAMES,
+        }))
+        .unwrap();
+        let sync = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "grab_sync".to_owned(),
+                audio_channels: 0,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let target = backend
+            .create_track(TrackRequest {
+                port_name_base: "grab_processed".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: "test_2x2x1".to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend.set_loop_length(sync.loops[0], FRAMES).unwrap();
+        backend
+            .transition_loop(sync.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .set_loop_sync_source(target.loops[0], Some(sync.loops[0]))
+            .unwrap();
+        backend
+            .set_track_control(target.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+
+        let dry_left = vec![0.25; FRAMES as usize];
+        let dry_right = vec![-0.5; FRAMES as usize];
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            let track = &runtime.tracks[&target.track_id];
+            for input in &track.audio_inputs {
+                input.set_ringbuffer_n_samples(FRAMES).unwrap();
+            }
+            track
+                .midi_input
+                .as_ref()
+                .unwrap()
+                .set_ringbuffer_n_samples(FRAMES)
+                .unwrap();
+            runtime.loops[&sync.loops[0]]
+                .handle
+                .set_position(0)
+                .unwrap();
+            runtime.wait();
+
+            let track = &runtime.tracks[&target.track_id];
+            let left_input = track.audio_inputs[0].clone();
+            let right_input = track.audio_inputs[1].clone();
+            let midi_input = track.midi_input.as_ref().unwrap().clone();
+            for sequence in [
+                left_input.dummy_queue_data(&dry_left).unwrap(),
+                right_input.dummy_queue_data(&dry_right).unwrap(),
+                midi_input
+                    .dummy_queue_msgs(vec![
+                        MidiEvent::new(NOTE_FRAME as i32, vec![0x90, 64, NOTE_VELOCITY]),
+                        MidiEvent::new(64, vec![0x80, 64, 0]),
+                    ])
+                    .unwrap(),
+            ] {
+                runtime
+                    .session
+                    .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)
+                    .unwrap();
+            }
+            runtime.driver.dummy_request_controlled_frames(FRAMES);
+            runtime.driver.dummy_run_requested_frames();
+        }
+
+        backend
+            .grab_loops(&[BackendGrabRequest {
+                loop_id: target.loops[0],
+                reverse_start_cycle: Some(1),
+                cycles_length: Some(1),
+                go_to_cycle: Some(0),
+                go_to_mode: BackendLoopMode::Playing,
+            }])
+            .unwrap();
+
+        let captured = backend.capture_session().unwrap();
+        let target_loop = &captured
+            .tracks
+            .iter()
+            .find(|track| track.source_id == target.track_id.raw())
+            .unwrap()
+            .loops[0];
+        assert_eq!(target_loop.length, FRAMES);
+        assert_eq!(target_loop.audio[0].samples, dry_left);
+        assert_eq!(target_loop.audio[1].samples, dry_right);
+        assert_eq!(
+            target_loop.midi[0].events,
+            vec![
+                BackendMidiEvent {
+                    time: NOTE_FRAME as u32,
+                    data: vec![0x90, 64, NOTE_VELOCITY],
+                },
+                BackendMidiEvent {
+                    time: 64,
+                    data: vec![0x80, 64, 0],
+                },
+            ]
+        );
+
+        let mut expected_left = vec![0.125; FRAMES as usize];
+        let mut expected_right = vec![-0.25; FRAMES as usize];
+        let note_impulse = f32::from(NOTE_VELOCITY) / 255.0;
+        expected_left[NOTE_FRAME] += note_impulse;
+        expected_right[NOTE_FRAME] += note_impulse;
+        for (frame, (actual, expected)) in target_loop.audio[2]
+            .samples
+            .iter()
+            .zip(&expected_left)
+            .enumerate()
+        {
+            assert!(
+                (*actual - *expected).abs() < 1.0e-6,
+                "left wet sample {frame}: expected {expected}, got {actual}"
+            );
+        }
+        for (frame, (actual, expected)) in target_loop.audio[3]
+            .samples
+            .iter()
+            .zip(&expected_right)
+            .enumerate()
+        {
+            assert!(
+                (*actual - *expected).abs() < 1.0e-6,
+                "right wet sample {frame}: expected {expected}, got {actual}"
+            );
+        }
     }
 
     #[test]

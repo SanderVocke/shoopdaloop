@@ -6,10 +6,10 @@ use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration};
 
 #[test]
-fn egui_executable_serves_the_hidden_fake_carla_worker_entry() {
-    let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop_egui")
-        .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop_egui"))
-        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoopdaloop_egui").into());
+fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
+    let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
+        .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoopdaloop").into());
     let mut worker = SubprocessCarlaProcessor::spawn_test_worker(
         &executable,
         FXChainType::CarlaRack,
@@ -19,7 +19,7 @@ fn egui_executable_serves_the_hidden_fake_carla_worker_entry() {
         ProcessGeneration(1),
         CarlaWorkerTestMode::Fake,
     )
-    .expect("egui executable should complete the worker handshake");
+    .expect("application executable should complete the worker handshake");
     assert!(worker.is_ready());
     worker.set_active(true);
     worker.set_visible(true).unwrap();

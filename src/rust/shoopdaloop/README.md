@@ -1,6 +1,6 @@
-# ShoopDaLoop egui application
+# ShoopDaLoop application
 
-This is the shared native and browser composition root for the egui application.
+This is the shared native and browser application composition root.
 
 - Native builds use the existing threaded JACK, CPAL+midir, or dummy/offline engine backend selected from persistent settings and provide actor-owned Lua scripting, keyboard control, and script-created native MIDI control ports.
 - Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action and run the same omniLua-backed scripting manager cooperatively on the application owner.
@@ -12,35 +12,35 @@ From the repository root:
 
 ```sh
 # Native drivers with LV2/Carla FX hosting (default).
-cargo run -p shoopdaloop_egui
+cargo run -p shoopdaloop
 
 # Native drivers without LV2/Carla FX dependencies.
-cargo run -p shoopdaloop_egui --no-default-features
+cargo run -p shoopdaloop --no-default-features
 ```
 
 Live profiling requires a Tracy 0.13.1 profiler:
 
 ```sh
-cargo run -p shoopdaloop_egui -- --tracing
+cargo run -p shoopdaloop -- --tracing
 ```
 
 To write a capture, install the Tracy 0.13.1 `tracy-capture` executable on `PATH` or select it with `TRACY_CAPTURE_TOOL`. Captures are written below `./traces` and finalized after the application exits normally:
 
 ```sh
-cargo run -p shoopdaloop_egui -- \
+cargo run -p shoopdaloop -- \
   --tracing-capture \
   --tracing-engine-detail
 ```
 
 `--tracing-engine-detail` requires either `--tracing` or `--tracing-capture` and increases callback overhead and capture volume.
 
-On first run this starts the dummy/offline engine. Open **Settings** and select **Audio** to configure every driver family supported by the build and currently discovered JACK/CPAL devices, then use **Switch** for a confirmation-gated runtime change. The warning identifies the resolved source and target rates; a changed rate explicitly resamples all loop audio, exact MIDI, lengths, offsets, preplay, ring-buffer durations, and cycle timing through the session resampler. Successful switches are saved for the next launch, while unavailable saved drivers fall back to dummy with a diagnostic without overwriting the preference. Native MIDI controller discovery uses the host MIDI service. Select **Scripts** to manage the embedded keyboard/APC scripts or path-based user scripts. This is the only script-management dialog. ``keyboard.lua`` is enabled on first run; bundled toggles and ordered user path/enabled entries are preserved in the fresh egui settings document after **Save**. Runtime-only Stop, Restart, and Reload controls plus lifecycle, documentation, logs, callbacks/timers, MIDI connections, dropped messages, and failures are visible in the same tab.
+On first run this starts the dummy/offline engine. Open **Settings** and select **Audio** to configure every driver family supported by the build and currently discovered JACK/CPAL devices, then use **Switch** for a confirmation-gated runtime change. The warning identifies the resolved source and target rates; a changed rate explicitly resamples all loop audio, exact MIDI, lengths, offsets, preplay, ring-buffer durations, and cycle timing through the session resampler. Successful switches are saved for the next launch, while unavailable saved drivers fall back to dummy with a diagnostic without overwriting the preference. Native MIDI controller discovery uses the host MIDI service. Select **Scripts** to manage the embedded keyboard/APC scripts or path-based user scripts. This is the only script-management dialog. ``keyboard.lua`` is enabled on first run; bundled toggles and ordered user path/enabled entries are preserved in the application settings document after **Save**. Runtime-only Stop, Restart, and Reload controls plus lifecycle, documentation, logs, callbacks/timers, MIDI connections, dropped messages, and failures are visible in the same tab.
 
-The **Add Track** dialog offers **Regular** and **Dry + Wet**. Native capabilities always advertise External and **Tiny Synth/FX**; builds with `native-fx` also advertise Carla Rack, Patchbay, and Patchbay 16x. External and Carla retain independent dry/wet audio counts and optional dry MIDI. Tiny Synth/FX enforces equal audio counts and one MIDI input, including MIDI-only zero-audio tracks. External tracks expose dry input/send and wet return/output ports in **Connections**; hosted processors keep FX endpoints internal and expose dry inputs, wet outputs, and dry MIDI. Processed track headers show only capabilities the descriptor advertises. Tiny Synth/FX opens an embedded egui editor with runtime-discovered presets, Panic, smoothed master gain, reverb, and distortion; it never creates a native child window. Loop playback can use recorded wet content or route recorded dry content through the processor, and wet recordings retain compatible restorable processor state.
+The **Add Track** dialog offers **Regular** and **Dry + Wet**. Native capabilities always advertise External and **Tiny Synth/FX**; builds with `native-fx` also advertise Carla Rack, Patchbay, and Patchbay 16x. External and Carla retain independent dry/wet audio counts and optional dry MIDI. Tiny Synth/FX enforces equal audio counts and one MIDI input, including MIDI-only zero-audio tracks. External tracks expose dry input/send and wet return/output ports in **Connections**; hosted processors keep FX endpoints internal and expose dry inputs, wet outputs, and dry MIDI. Processed track headers show only capabilities the descriptor advertises. Tiny Synth/FX opens an embedded editor with runtime-discovered presets, Panic, smoothed master gain, reverb, and distortion; it never creates a native child window. Loop playback can use recorded wet content or route recorded dry content through the processor, and wet recordings retain compatible restorable processor state.
 
 Bundled Lua sources are compiled into the native binary, so packaged startup does not depend on the source checkout. User-file reads and settings writes stay in this composition root. Source-bearing session scripts are staged before transactional session commit and round-trip in ``.shoop`` files without embedding machine-wide paths.
 
-The egui Lua API is versioned at major/minor ``1.0``. Every egui script must begin its Shoop API use with ``shoop_announce_api_version(1, 0)``; equal-major scripts with an equal or older minor run, while different majors, newer minors, missing calls, and malformed/repeated calls are cancelled before versioned side effects. Scripts may require ``shoop_dialog`` to create any number of named simple or paged egui windows containing portable rich text and optional-callback buttons. The top bar lists every active definition with a count. Scripts can request opening at startup or from callbacks; users control closing, reopening, and page selection until the owning script stops. See ``../../../docs/egui_lua_dialog_api.md``.
+The Shoop Lua API is versioned at major/minor ``1.0``. Every script must begin its Shoop API use with ``shoop_announce_api_version(1, 0)``; equal-major scripts with an equal or older minor run, while different majors, newer minors, missing calls, and malformed/repeated calls are cancelled before versioned side effects. Scripts may require ``shoop_dialog`` to create any number of named simple or paged windows containing portable rich text and optional-callback buttons. The top bar lists every active definition with a count. Scripts can request opening at startup or from callbacks; users control closing, reopening, and page selection until the owning script stops. See ``../../../docs/lua_dialog_api.md``.
 
 ## Application settings
 
@@ -48,9 +48,9 @@ Choose **Settings** from the main menu to edit application-wide preferences. The
 
 The track defaults control the audio channel count and MIDI state used the next time the Add Track dialog opens. They do not alter existing tracks, an Add Track draft that is already open, or `.shoop` session data. The dialog keeps edits in a draft until **Save**; **Cancel** or closing it discards the draft, and reset actions restore registered defaults.
 
-Native builds store fresh egui settings in `settings.json` below the OS configuration directory resolved for the `org` / `ShoopDaLoop` / `ShoopDaLoop egui` application identity. The dialog displays the authoritative resolved path. Browser builds use origin-scoped `localStorage` key `org.shoopdaloop.egui.settings`; direct-file persistence is browser-policy-dependent and must not be assumed to carry across URLs or origins.
+Native builds store application settings in `settings.json` below the OS configuration directory resolved using the retained `org` / `ShoopDaLoop` / `ShoopDaLoop egui` compatibility identity. The dialog displays the authoritative resolved path. Browser builds use origin-scoped `localStorage` key `org.shoopdaloop.egui.settings`; direct-file persistence is browser-policy-dependent and must not be assumed to carry across URLs or origins.
 
-Missing settings use stereo/MIDI-off defaults. Invalid known values use their defaults with a warning. Malformed, unreadable, or unsupported-version documents are not overwritten automatically; use the explicit replacement action after reviewing the diagnostic. The egui app never imports predecessor settings formats. See `../../../docs/settings_format_v1.md` for the format, locations, migration boundary, and recovery contract.
+Missing settings use stereo/MIDI-off defaults. Invalid known values use their defaults with a warning. Malformed, unreadable, or unsupported-version documents are not overwritten automatically; use the explicit replacement action after reviewing the diagnostic. The application never imports predecessor settings formats. See `../../../docs/settings_format_v1.md` for the format, locations, migration boundary, and recovery contract.
 
 ## Hosted browser audio
 
@@ -64,7 +64,7 @@ cargo install --locked trunk --version 0.21.14
 Serve the application from localhost:
 
 ```sh
-cd src/rust/shoopdaloop_egui
+cd src/rust/shoopdaloop
 trunk serve --open
 ```
 
@@ -72,13 +72,13 @@ For reliable browser behavior, use HTTPS or `localhost`, which browsers treat as
 
 The self-contained HTML embeds the application and AudioWorklet Wasm modules plus the worklet script. It may be opened directly through `file:` and attempts both output-only and microphone modes without rejecting the URL. Browser security and media-permission behavior for local files varies, so HTTPS or `localhost` remains the portable option. Both physical-audio modes still require an explicit click because of browser autoplay policies.
 
-The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. The Connections dialog shows normalized application ports separately from negotiated `webaudio:capture_N`, `webaudio:destination_N`, and stable `webmidi:source|sink:<MIDIPort.id>` host ports. Audio and track-MIDI connection commands mutate authoritative worklet routes. Web MIDI input is assigned to frame zero of the next available quantum and output preserves engine order with browser scheduling latency; sample-exact timing is not claimed. All routed audio tracks sum with final clipping to `[-1, 1]`; input monitoring defaults off. See `../../../docs/egui_port_model.md` and `../../../docs/web_midi_contract.md`.
+The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. The Connections dialog shows normalized application ports separately from negotiated `webaudio:capture_N`, `webaudio:destination_N`, and stable `webmidi:source|sink:<MIDIPort.id>` host ports. Audio and track-MIDI connection commands mutate authoritative worklet routes. Web MIDI input is assigned to frame zero of the next available quantum and output preserves engine order with browser scheduling latency; sample-exact timing is not claimed. All routed audio tracks sum with final clipping to `[-1, 1]`; input monitoring defaults off. See `../../../docs/port_model.md` and `../../../docs/web_midi_contract.md`.
 
 The browser renders the same Regular/Dry + Wet form and advertises **Tiny Synth/FX** from the AudioWorklet-backed processor catalog. It uses the same matched-channel/required-MIDI contract and embedded editor as native builds, while arbitrary internal channel counts remain independent of the physical Web Audio host boundary. Capture/destination ports are not presented as an External processor. Loading External, Carla, or another unavailable processor fails capability validation before worklet mutation and retains tracks, media, routes, and callback progress. Tiny Synth/FX sessions and compatible recorded-take state transfer unchanged between browser and native builds.
 
 Browser recording storage is hard-bounded per channel to 120 seconds at the actual sample rate. Its full reserve is prepared on the worklet control path when a loop is armed for recording, so dormant loop slots do not exhaust Wasm memory. Exhaustion stops further channel recording work and is reported in diagnostics instead of growing Wasm memory in the render callback. Unexpected render-time memory growth is reported as a warning and the worklet rebinds its audio views without stopping the backend.
 
-The browser application embeds omniLua, Shoop's Lua modules, `keyboard.lua`, and the APC Mini script. Keyboard control is enabled by default and receives egui press/release events independently of audio permission. The APC script is embedded but disabled by default; after Web MIDI access it autoconnects matching physical endpoints through the same bounded control contract as native. The Scripts settings tab persists those bundled toggles in `localStorage` and reconciles runtime state only after a successful save; path-based startup scripts remain native-only. Native and browser builds can load a UTF-8 `.lua` file through the run-once picker or OS drag and drop after explicit confirmation. Native Wayland drag and drop is unavailable until winit ships Wayland file-drop support; the picker remains available. Run-once sources remain restartable in memory, are independent of session replacement and serialization, and disappear at app shutdown. Loading another version with the same source name stops active matching versions and retains each version under a unique display suffix. Source-bearing `.shoop` scripts use the same syntax-check/transaction/save path as native egui. API-version rejection and `shoop_dialog` definitions/opening/button callbacks use the same application-owner implementation and ordinary egui windows as native; no browser popup API is used.
+The browser application embeds omniLua, Shoop's Lua modules, `keyboard.lua`, and the APC Mini script. Keyboard control is enabled by default and receives GUI press/release events independently of audio permission. The APC script is embedded but disabled by default; after Web MIDI access it autoconnects matching physical endpoints through the same bounded control contract as native. The Scripts settings tab persists those bundled toggles in `localStorage` and reconciles runtime state only after a successful save; path-based startup scripts remain native-only. Native and browser builds can load a UTF-8 `.lua` file through the run-once picker or OS drag and drop after explicit confirmation. Native Wayland drag and drop is unavailable until winit ships Wayland file-drop support; the picker remains available. Run-once sources remain restartable in memory, are independent of session replacement and serialization, and disappear at app shutdown. Loading another version with the same source name stops active matching versions and retains each version under a unique display suffix. Source-bearing `.shoop` scripts use the same syntax-check/transaction/save path as native builds. API-version rejection and `shoop_dialog` definitions/opening/button callbacks use the same application-owner implementation and ordinary application windows as native; no browser popup API is used.
 
 ## On-screen MIDI piano
 
@@ -101,7 +101,7 @@ Native picker reads and atomic temporary-file replacement run outside the applic
 Trunk builds the UI and dedicated worklet with matching profiles:
 
 ```sh
-cd src/rust/shoopdaloop_egui
+cd src/rust/shoopdaloop
 trunk build                 # debug UI and worklet
 trunk build --release       # release UI and worklet
 python3 build_single_file_app.py dist
@@ -111,11 +111,11 @@ CI application archives can also be produced locally from already-built outputs:
 
 ```sh
 # From the repository root after a native debug build.
-python3 src/rust/shoopdaloop_egui/package_artifacts.py native \
+python3 src/rust/shoopdaloop/package_artifacts.py native \
   --platform linux --arch x86_64 --profile debug \
-  --binary target/debug/shoopdaloop_egui --output-dir artifacts
+  --binary target/debug/shoopdaloop --output-dir artifacts
 
-# From src/rust/shoopdaloop_egui after a Trunk debug build.
+# From src/rust/shoopdaloop after a Trunk debug build.
 python3 package_artifacts.py web \
   --profile debug --dist dist --output-dir ../../../artifacts
 ```
@@ -126,16 +126,16 @@ Generated `dist`, worklet, staging, and artifact files are not committed.
 
 ## Cross-target CI
 
-`.github/workflows/build_and_test_egui.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a hosted bundle archive and a separately downloadable self-contained HTML file. The matrix has no coverage flavor yet.
+`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a hosted bundle archive and a separately downloadable self-contained HTML file. The matrix has no coverage flavor yet.
 
 For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
 
 ```sh
-act pull_request -W .github/workflows/build_and_test_egui.yml \
+act pull_request -W .github/workflows/build_and_test.yml \
   -j build_and_test --matrix target:linux --matrix profile:debug \
   -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
 
-act pull_request -W .github/workflows/build_and_test_egui.yml \
+act pull_request -W .github/workflows/build_and_test.yml \
   -j build_and_test --matrix target:web --matrix profile:debug \
   -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
 ```
@@ -171,6 +171,6 @@ The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or 
 Compiler-only checks from the repository root:
 
 ```sh
-cargo check -p shoopdaloop_egui --no-default-features --target wasm32-unknown-unknown
+cargo check -p shoopdaloop --no-default-features --target wasm32-unknown-unknown
 cargo build -p shoop_audio_worklet --target wasm32-unknown-unknown --release
 ```

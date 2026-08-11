@@ -1,4 +1,4 @@
-name: Build and Test ShoopDaLoop egui
+name: Build and Test ShoopDaLoop
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: egui-${{ github.workflow }}-${{ github.ref }}
+  group: build-and-test-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref_type == 'branch' }}
 
 env:
@@ -36,48 +36,48 @@ jobs:
             profile: debug
             cargo_args: ""
             rust_targets: ""
-            binary: target/debug/shoopdaloop_egui
-            artifact: shoopdaloop-egui-linux-x86_64-debug.tar.gz
+            binary: target/debug/shoopdaloop
+            artifact: shoopdaloop-linux-x86_64-debug.tar.gz
           - target: linux
             os: ubuntu-24.04
             arch: x86_64
             profile: release
             cargo_args: --release
             rust_targets: ""
-            binary: target/release/shoopdaloop_egui
-            artifact: shoopdaloop-egui-linux-x86_64-release.tar.gz
+            binary: target/release/shoopdaloop
+            artifact: shoopdaloop-linux-x86_64-release.tar.gz
           - target: windows
             os: windows-2022
             arch: x86_64
             profile: debug
             cargo_args: ""
             rust_targets: x86_64-pc-windows-msvc
-            binary: target/debug/shoopdaloop_egui.exe
-            artifact: shoopdaloop-egui-windows-x86_64-debug.zip
+            binary: target/debug/shoopdaloop.exe
+            artifact: shoopdaloop-windows-x86_64-debug.zip
           - target: windows
             os: windows-2022
             arch: x86_64
             profile: release
             cargo_args: --release
             rust_targets: x86_64-pc-windows-msvc
-            binary: target/release/shoopdaloop_egui.exe
-            artifact: shoopdaloop-egui-windows-x86_64-release.zip
+            binary: target/release/shoopdaloop.exe
+            artifact: shoopdaloop-windows-x86_64-release.zip
           - target: macos
             os: macos-15
             arch: arm64
             profile: debug
             cargo_args: ""
             rust_targets: aarch64-apple-darwin
-            binary: target/debug/shoopdaloop_egui
-            artifact: shoopdaloop-egui-macos-arm64-debug.tar.gz
+            binary: target/debug/shoopdaloop
+            artifact: shoopdaloop-macos-arm64-debug.tar.gz
           - target: macos
             os: macos-15
             arch: arm64
             profile: release
             cargo_args: --release
             rust_targets: aarch64-apple-darwin
-            binary: target/release/shoopdaloop_egui
-            artifact: shoopdaloop-egui-macos-arm64-release.tar.gz
+            binary: target/release/shoopdaloop
+            artifact: shoopdaloop-macos-arm64-release.tar.gz
           - target: web
             os: ubuntu-24.04
             arch: wasm32
@@ -85,8 +85,8 @@ jobs:
             cargo_args: --no-default-features
             trunk_args: ""
             rust_targets: wasm32-unknown-unknown
-            artifact: shoopdaloop-egui-web-wasm32-debug.zip
-            html_artifact: shoopdaloop-egui-web-wasm32-debug.html
+            artifact: shoopdaloop-web-wasm32-debug.zip
+            html_artifact: shoopdaloop-web-wasm32-debug.html
           - target: web
             os: ubuntu-24.04
             arch: wasm32
@@ -94,8 +94,8 @@ jobs:
             cargo_args: --release --no-default-features
             trunk_args: --release
             rust_targets: wasm32-unknown-unknown
-            artifact: shoopdaloop-egui-web-wasm32-release.zip
-            html_artifact: shoopdaloop-egui-web-wasm32-release.html
+            artifact: shoopdaloop-web-wasm32-release.zip
+            html_artifact: shoopdaloop-web-wasm32-release.html
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -111,7 +111,7 @@ jobs:
         if: env.ACT != 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: egui-v1
+          prefix-key: app-v1
           shared-key: ${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}
           cache-targets: "true"
           cache-all-crates: "true"
@@ -166,11 +166,11 @@ jobs:
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings
-        run: cargo build --locked -p shoopdaloop_egui ${{ matrix.cargo_args }}
+        run: cargo build --locked -p shoopdaloop ${{ matrix.cargo_args }}
 
       - name: Build web application
         if: matrix.target == 'web'
-        working-directory: src/rust/shoopdaloop_egui
+        working-directory: src/rust/shoopdaloop
         env:
           RUSTFLAGS: -D warnings
         run: trunk build ${{ matrix.trunk_args }}
@@ -178,7 +178,7 @@ jobs:
       - name: Package native application
         if: matrix.target != 'web'
         run: >-
-          python3 src/rust/shoopdaloop_egui/package_artifacts.py native
+          python3 src/rust/shoopdaloop/package_artifacts.py native
           --platform ${{ matrix.target }}
           --arch ${{ matrix.arch }}
           --profile ${{ matrix.profile }}
@@ -188,9 +188,9 @@ jobs:
       - name: Package web application
         if: matrix.target == 'web'
         run: >-
-          python3 src/rust/shoopdaloop_egui/package_artifacts.py web
+          python3 src/rust/shoopdaloop/package_artifacts.py web
           --profile ${{ matrix.profile }}
-          --dist src/rust/shoopdaloop_egui/dist
+          --dist src/rust/shoopdaloop/dist
           --output-dir artifacts
 
       - name: Upload native application
@@ -227,7 +227,7 @@ jobs:
       - name: Verify native application archive
         if: matrix.target != 'web'
         run: >-
-          python3 src/rust/shoopdaloop_egui/package_artifacts.py verify
+          python3 src/rust/shoopdaloop/package_artifacts.py verify
           --platform ${{ matrix.target }}
           --artifact artifacts/${{ matrix.artifact }}
 
@@ -243,7 +243,7 @@ jobs:
           -p shoop_backend
           -p shoop_app
           -p shoop_egui
-          -p shoopdaloop_egui
+          -p shoopdaloop
           -- --test-threads=1
 
       - name: Test complete retained workspace
@@ -262,7 +262,7 @@ jobs:
       - name: Verify web application artifacts
         if: matrix.target == 'web'
         run: >-
-          python3 src/rust/shoopdaloop_egui/package_artifacts.py verify
+          python3 src/rust/shoopdaloop/package_artifacts.py verify
           --platform web
           --artifact artifacts/${{ matrix.artifact }}
           --html artifacts/${{ matrix.html_artifact }}
@@ -276,28 +276,28 @@ jobs:
           -p shoop_audio_protocol
           -p shoop_audio_worklet
           -p shoop_egui
-          -p shoopdaloop_egui
+          -p shoopdaloop
 
       - name: Check WebAssembly packages
         if: matrix.target == 'web'
         env:
           RUSTFLAGS: -D warnings
         run: |
-          cargo check --locked ${{ matrix.cargo_args }} -p shoopdaloop_egui --target wasm32-unknown-unknown
+          cargo check --locked ${{ matrix.cargo_args }} -p shoopdaloop --target wasm32-unknown-unknown
           cargo build --locked ${{ matrix.cargo_args }} -p shoop_audio_worklet --target wasm32-unknown-unknown
 
       - name: Inspect browser dependency isolation
         if: matrix.target == 'web'
         run: |
           cargo tree -p shoop_audio_worklet --target wasm32-unknown-unknown > /tmp/worklet-tree.txt
-          cargo tree -p shoopdaloop_egui --target wasm32-unknown-unknown --no-default-features > /tmp/browser-tree.txt
+          cargo tree -p shoopdaloop --target wasm32-unknown-unknown --no-default-features > /tmp/browser-tree.txt
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/worklet-tree.txt; then exit 1; fi
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
-          node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop_egui/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
+          node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
 
       - name: Run core hosted Web Audio workflows
         if: matrix.target == 'web' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop_egui
+        working-directory: src/rust/shoopdaloop
         run: |
           BROWSER_SIZE=360,200 node --experimental-websocket browser_smoke.mjs
           BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
@@ -308,7 +308,7 @@ jobs:
 
       - name: Run self-contained web workflows
         if: matrix.target == 'web' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop_egui
+        working-directory: src/rust/shoopdaloop
         env:
           SELF_CONTAINED_PATH: ../../../artifacts/${{ matrix.html_artifact }}
         run: |
@@ -320,7 +320,7 @@ jobs:
 
       - name: Run extended Chrome Web Audio workflows
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop_egui
+        working-directory: src/rust/shoopdaloop
         run: |
           DENY_FIRST=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           WEB_MIDI=1 WEB_MIDI_DENY_FIRST=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
@@ -353,5 +353,5 @@ jobs:
 
       - name: Run Firefox Web Audio workflow
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop_egui
+        working-directory: src/rust/shoopdaloop
         run: xvfb-run -a python3 browser_firefox_smoke.py

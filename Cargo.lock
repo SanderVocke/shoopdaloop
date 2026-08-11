@@ -765,28 +765,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "colored",
- "ctor",
- "humantime",
- "lazy_static",
- "libc",
- "log",
- "shoop_tracing",
- "tempfile",
- "thiserror 2.0.20",
- "toml",
- "tracing",
- "tracing-log",
- "tracing-subscriber",
- "tracing-tracy",
- "tracy-client",
-]
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3706,7 +3684,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shoop_app"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "midir",
@@ -3719,11 +3697,11 @@ dependencies = [
 
 [[package]]
 name = "shoop_app_api"
-version = "0.0.0"
+version = "0.3.0"
 
 [[package]]
 name = "shoop_audio_protocol"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3731,7 +3709,7 @@ dependencies = [
 
 [[package]]
 name = "shoop_audio_worklet"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "assert_no_alloc",
  "serde_json",
@@ -3741,7 +3719,7 @@ dependencies = [
 
 [[package]]
 name = "shoop_backend"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_no_alloc",
@@ -3753,8 +3731,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_common"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "colored",
+ "ctor",
+ "humantime",
+ "lazy_static",
+ "libc",
+ "log",
+ "shoop_tracing",
+ "tempfile",
+ "thiserror 2.0.20",
+ "toml",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+ "tracing-tracy",
+ "tracy-client",
+]
+
+[[package]]
 name = "shoop_egui"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "egui",
  "egui_material_icons",
@@ -3767,7 +3767,7 @@ dependencies = [
 
 [[package]]
 name = "shoop_engine"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3801,7 +3801,7 @@ dependencies = [
 
 [[package]]
 name = "shoop_plugin_protocol"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3809,7 +3809,7 @@ dependencies = [
 
 [[package]]
 name = "shoop_scripting"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "midir",
@@ -3820,7 +3820,7 @@ dependencies = [
 
 [[package]]
 name = "shoop_session"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "hound",
  "midly",
@@ -3834,7 +3834,7 @@ dependencies = [
 
 [[package]]
 name = "shoop_settings"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "directories",
@@ -3845,19 +3845,18 @@ dependencies = [
 
 [[package]]
 name = "shoop_tracing"
-version = "0.0.0"
+version = "0.3.0"
 dependencies = [
  "assert_no_alloc",
  "tracy-client",
 ]
 
 [[package]]
-name = "shoopdaloop_egui"
-version = "0.0.0"
+name = "shoopdaloop"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
- "common",
  "eframe",
  "js-sys",
  "log",
@@ -3867,6 +3866,7 @@ dependencies = [
  "shoop_app",
  "shoop_audio_protocol",
  "shoop_backend",
+ "shoop_common",
  "shoop_egui",
  "shoop_engine",
  "shoop_plugin_protocol",
