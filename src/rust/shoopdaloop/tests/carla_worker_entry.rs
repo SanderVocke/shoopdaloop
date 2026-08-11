@@ -51,7 +51,12 @@ fn application_worker_hosts_the_real_carla_native_runtime_when_available() {
     for _ in 0..8 {
         worker.audio_input_mut(0).unwrap()[..64].fill(0.125);
         worker.audio_input_mut(1).unwrap()[..64].fill(-0.125);
-        worker.process(64).unwrap();
+        if let Err(error) = worker.process(64) {
+            panic!(
+                "Carla worker process failed: {error:#}; logs: {:?}",
+                worker.generation_logs()
+            );
+        }
         if worker.audio_output(0).unwrap()[..64] == [0.125; 64] {
             processed = true;
             break;

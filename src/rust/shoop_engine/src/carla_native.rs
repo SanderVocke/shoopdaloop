@@ -222,9 +222,17 @@ struct NativePluginDescriptor {
 }
 
 type GetDescriptor = unsafe extern "C" fn() -> *const NativePluginDescriptor;
+type StateFree = unsafe extern "C" fn(*mut c_void);
+
+#[cfg(not(target_os = "windows"))]
+unsafe extern "C" fn process_state_free(pointer: *mut c_void) {
+    libc::free(pointer);
+}
 
 struct CarlaRuntime {
     _library: Library,
+    _state_allocator_library: Option<Library>,
+    state_free: StateFree,
     rack: NonNull<NativePluginDescriptor>,
     patchbay: NonNull<NativePluginDescriptor>,
     patchbay16: NonNull<NativePluginDescriptor>,
@@ -392,6 +400,19 @@ fn load_runtime() -> Result<Arc<CarlaRuntime>> {
             };
             let library = unsafe { Library::new(&canonical) }
                 .with_context(|| format!("loading {}", canonical.display()))?;
+            #[cfg(target_os = "windows")]
+            let (state_allocator_library, state_free) = {
+                // Carla's official Windows build allocates get_state() with
+                // msvcrt.dll, while Rust uses the Universal CRT. Crossing
+                // those heaps corrupts memory, so resolve Carla's allocator.
+                let allocator = unsafe { Library::new("msvcrt.dll") }?;
+                let free: libloading::Symbol<StateFree> = unsafe { allocator.get(b"free\0")? };
+                let free = *free;
+                (Some(allocator), free)
+            };
+            #[cfg(not(target_os = "windows"))]
+            let (state_allocator_library, state_free) =
+                (None::<Library>, process_state_free as StateFree);
             unsafe fn get(
                 library: &Library,
                 symbol: &[u8],
@@ -407,6 +428,8 @@ fn load_runtime() -> Result<Arc<CarlaRuntime>> {
             validate_descriptor(patchbay16, "carlapatchbay16", 16)?;
             Ok(CarlaRuntime {
                 _library: library,
+                _state_allocator_library: state_allocator_library,
+                state_free,
                 rack,
                 patchbay,
                 patchbay16,
@@ -838,7 +861,7 @@ impl CarlaProcessor for CarlaNativeHost {
         let bytes = unsafe { CStr::from_ptr(state.as_ptr()) }
             .to_bytes()
             .to_vec();
-        unsafe { libc::free(state.as_ptr().cast()) };
+        unsafe { (self.runtime.state_free)(state.as_ptr().cast()) };
         encode_state(&bytes)
     }
 
