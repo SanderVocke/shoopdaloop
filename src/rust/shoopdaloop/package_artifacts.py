@@ -22,6 +22,7 @@ ARCHIVE_ROOT = "shoopdaloop"
 PROFILES = ("debug", "release")
 NATIVE_PLATFORMS = ("linux", "windows", "macos")
 APPLICATION_ICON = ROOT / "resources" / "iconset" / "icon.png"
+SPLASH_LOGO = ROOT / "resources" / "logo.png"
 ROBOTO_FILES = (
     "LICENSE.txt",
     "README.md",
@@ -33,6 +34,7 @@ ROBOTO_FILES = (
 WEB_REQUIRED_FILES = (
     "index.html",
     "icon.png",
+    "logo.png",
     "audio_worklet.js",
     "generated/shoop_audio_worklet.wasm",
     *(f"roboto/{name}" for name in ROBOTO_FILES),
@@ -255,6 +257,9 @@ def verify_web(bundle: Path, html: Path) -> None:
     icon = archive_file(bundle, f"{root}icon.png")
     if icon != APPLICATION_ICON.read_bytes():
         raise RuntimeError("hosted web archive contains the wrong application icon")
+    logo = archive_file(bundle, f"{root}logo.png")
+    if logo != SPLASH_LOGO.read_bytes():
+        raise RuntimeError("hosted web archive contains the wrong splash logo")
     require_click_assets(archive_file(bundle, wasm[0]), "hosted application Wasm")
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
@@ -282,6 +287,13 @@ def verify_web(bundle: Path, html: Path) -> None:
         embedded_icon.group(1), validate=True
     ) != APPLICATION_ICON.read_bytes():
         raise RuntimeError("self-contained HTML does not contain the application icon")
+    embedded_logo = re.search(
+        r'src="data:image/png;base64,([A-Za-z0-9+/=]+)"', text
+    )
+    if not embedded_logo or base64.b64decode(
+        embedded_logo.group(1), validate=True
+    ) != SPLASH_LOGO.read_bytes():
+        raise RuntimeError("self-contained HTML does not contain the splash logo")
     application_binary = None
     for variable in ("shoopWasmBinary", "shoopAudioWorkletBinary"):
         match = re.search(rf'const {variable} = atob\("([A-Za-z0-9+/=]+)"\);', text)
