@@ -32,15 +32,17 @@ pub struct ProfilingReport {
 pub enum Stage {
     PortPrepare,
     PortProcess,
+    ProcessorProcess,
     ChannelPrepare,
     ChannelProcess,
     LoopProcess,
 }
 
 impl Stage {
-    pub const ALL: [Stage; 5] = [
+    pub const ALL: [Stage; 6] = [
         Stage::PortPrepare,
         Stage::PortProcess,
+        Stage::ProcessorProcess,
         Stage::ChannelPrepare,
         Stage::ChannelProcess,
         Stage::LoopProcess,
@@ -50,6 +52,7 @@ impl Stage {
         match self {
             Stage::PortPrepare => "port prepare",
             Stage::PortProcess => "port process",
+            Stage::ProcessorProcess => "processor process",
             Stage::ChannelPrepare => "channel prepare",
             Stage::ChannelProcess => "channel process",
             Stage::LoopProcess => "loop process",
@@ -60,9 +63,10 @@ impl Stage {
         match self {
             Stage::PortPrepare => 0,
             Stage::PortProcess => 1,
-            Stage::ChannelPrepare => 2,
-            Stage::ChannelProcess => 3,
-            Stage::LoopProcess => 4,
+            Stage::ProcessorProcess => 2,
+            Stage::ChannelPrepare => 3,
+            Stage::ChannelProcess => 4,
+            Stage::LoopProcess => 5,
         }
     }
 }
@@ -92,7 +96,7 @@ struct StageCounters {
 #[derive(Debug, Default)]
 pub struct Profiler {
     enabled: AtomicBool,
-    stages: [StageCounters; 5],
+    stages: [StageCounters; 6],
 }
 
 impl Profiler {

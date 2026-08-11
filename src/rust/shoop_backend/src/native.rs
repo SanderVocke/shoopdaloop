@@ -1035,6 +1035,15 @@ impl NativeRuntime {
         } else {
             (None, None)
         };
+        let processor_audio_sends = audio_sends.iter().flatten().cloned().collect::<Vec<_>>();
+        let processor_audio_returns = audio_returns.iter().flatten().cloned().collect::<Vec<_>>();
+        let processor_midi_sends = midi_output.iter().cloned().collect::<Vec<_>>();
+        self.session.register_external_processor(
+            &request.port_name_base,
+            &processor_audio_sends,
+            &processor_audio_returns,
+            &processor_midi_sends,
+        )?;
         let track_id = BackendTrackId::from_raw(self.next_track_id);
         self.next_track_id = self.next_track_id.saturating_add(1);
         self.tracks.insert(
@@ -2995,17 +3004,37 @@ mod tests {
                 .visible
         );
 
-        let runtime = backend.runtime_mut().unwrap();
-        runtime.driver.dummy_enter_controlled_mode();
-        let input = runtime.tracks[&created.track_id].audio_inputs[0].clone();
-        let output = runtime.tracks[&created.track_id].audio_outputs[0].clone();
-        input.dummy_queue_data(&[1.0, -0.5, 0.25, 0.0]).unwrap();
-        output.dummy_request_data(4).unwrap();
-        runtime.driver.dummy_request_controlled_frames(4);
-        runtime.driver.dummy_run_requested_frames();
-        assert_eq!(output.dummy_dequeue_data(4), vec![0.5, -0.25, 0.125, 0.0]);
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            let input = runtime.tracks[&created.track_id].audio_inputs[0].clone();
+            let output = runtime.tracks[&created.track_id].audio_outputs[0].clone();
+            input.dummy_queue_data(&[1.0, -0.5, 0.25, 0.0]).unwrap();
+            output.dummy_request_data(4).unwrap();
+            runtime.driver.dummy_request_controlled_frames(4);
+            runtime.driver.dummy_run_requested_frames();
+            assert_eq!(output.dummy_dequeue_data(4), vec![0.5, -0.25, 0.125, 0.0]);
+        }
 
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.poll().unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            let input = runtime.tracks[&created.track_id].audio_inputs[0].clone();
+            input.dummy_queue_data(&[2.0, 4.0, 6.0, 8.0]).unwrap();
+            runtime.driver.dummy_request_controlled_frames(4);
+            runtime.driver.dummy_run_requested_frames();
+        }
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
         let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].loops[0].audio[2].samples,
+            vec![1.0, 2.0, 3.0, 4.0]
+        );
         assert_eq!(captured.tracks[0].processor_state.as_deref(), Some(""));
         let mut restored = NativeBackend::new(config).unwrap();
         restored.replace_session(&captured).unwrap();
@@ -3047,28 +3076,71 @@ mod tests {
             .unwrap();
         let _ = backend.poll().unwrap();
 
-        let runtime = backend.runtime_mut().unwrap();
-        runtime.driver.dummy_enter_controlled_mode();
-        let track = &runtime.tracks[&created.track_id];
-        track
-            .midi_input
-            .as_ref()
-            .unwrap()
-            .dummy_queue_msg(&shoop_engine::MidiEvent {
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            let track = &runtime.tracks[&created.track_id];
+            track
+                .midi_input
+                .as_ref()
+                .unwrap()
+                .dummy_queue_msg(&shoop_engine::MidiEvent {
+                    time: 0,
+                    data: vec![0x90, 69, 127],
+                })
+                .unwrap();
+            let output = track.audio_outputs[0].clone();
+            output.dummy_request_data(128).unwrap();
+            runtime.driver.dummy_request_controlled_frames(128);
+            runtime.driver.dummy_run_requested_frames();
+            assert!(output
+                .dummy_dequeue_data(128)
+                .iter()
+                .any(|sample| sample.abs() > 0.001));
+        }
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic),
+            )
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.poll().unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            let midi = runtime.tracks[&created.track_id]
+                .midi_input
+                .as_ref()
+                .unwrap()
+                .clone();
+            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
                 time: 0,
                 data: vec![0x90, 69, 127],
             })
             .unwrap();
-        let output = track.audio_outputs[0].clone();
-        output.dummy_request_data(128).unwrap();
-        runtime.driver.dummy_request_controlled_frames(128);
-        runtime.driver.dummy_run_requested_frames();
-        assert!(output
-            .dummy_dequeue_data(128)
-            .iter()
-            .any(|sample| sample.abs() > 0.001));
+            for _ in 0..8 {
+                runtime.driver.dummy_request_controlled_frames(128);
+                runtime.driver.dummy_run_requested_frames();
+            }
+            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
+                time: 0,
+                data: vec![0x80, 69, 0],
+            })
+            .unwrap();
+            for _ in 0..2 {
+                runtime.driver.dummy_request_controlled_frames(128);
+                runtime.driver.dummy_run_requested_frames();
+            }
+        }
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
 
         let captured = backend.capture_session().unwrap();
+        let wet = &captured.tracks[0].loops[0].audio[1].samples;
+        assert!(wet.iter().filter(|sample| sample.abs() > 1.0e-7).count() > wet.len() / 2);
         assert!(captured.tracks[0]
             .processor_state
             .as_deref()

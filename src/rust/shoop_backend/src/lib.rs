@@ -1721,6 +1721,12 @@ impl EngineBackend {
         let _ = self
             .session
             .set_tiny_synth_fx_processor(request.port_name_base.clone(), processor);
+        self.session.set_processor_ports(
+            &request.port_name_base,
+            audio_sends.clone(),
+            audio_returns.clone(),
+            vec![midi_target],
+        )?;
         let track_id = BackendTrackId::from_raw(self.next_track_id);
         self.next_track_id = self.next_track_id.saturating_add(1);
         self.tracks.insert(
@@ -6504,6 +6510,131 @@ mod tests {
         assert_eq!(editor.eq_low_db, 3.0);
         assert_eq!(editor.eq_mid_db, -2.0);
         assert_eq!(editor.eq_high_db, 1.5);
+    }
+
+    #[test]
+    fn tiny_synth_fx_records_the_same_sustained_wet_signal_that_is_monitored() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 1).unwrap();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "tiny_recording".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.poll().unwrap();
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, 69, 127],
+                }],
+            )
+            .unwrap();
+
+        let mut monitored = Vec::new();
+        for _ in 0..16 {
+            let mut output = vec![0.0; 128];
+            backend
+                .process_audio_quantum(&[], 0, &mut output, 1, 128)
+                .unwrap();
+            monitored.extend(output);
+        }
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x80, 69, 0],
+                }],
+            )
+            .unwrap();
+        for _ in 0..4 {
+            let mut output = vec![0.0; 128];
+            backend
+                .process_audio_quantum(&[], 0, &mut output, 1, 128)
+                .unwrap();
+            monitored.extend(output);
+        }
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+
+        let channels = backend.loop_audio_data(created.loops[0]).unwrap().unwrap();
+        let wet = &channels[1];
+        assert_eq!(wet.len(), monitored.len());
+        assert!(wet.iter().filter(|sample| sample.abs() > 1.0e-7).count() > wet.len() / 2);
+        assert!(wet
+            .iter()
+            .zip(&monitored)
+            .all(|(recorded, heard)| (*recorded - *heard).abs() < 1.0e-6));
+
+        backend
+            .set_track_control(
+                created.track_id,
+                BackendTrackControl::InputMonitoring(false),
+            )
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend.poll().unwrap();
+        let mut wet_playback = vec![0.0; 128];
+        backend
+            .process_audio_quantum(&[], 0, &mut wet_playback, 1, 128)
+            .unwrap();
+        assert!(wet_playback
+            .iter()
+            .zip(&wet[..128])
+            .all(|(played, recorded)| (*played - *recorded).abs() < 1.0e-6));
+
+        backend
+            .transition_loop(
+                created.loops[0],
+                BackendLoopMode::PlayingDryThroughWet,
+                None,
+            )
+            .unwrap();
+        backend.poll().unwrap();
+        let mut dry_through_wet = vec![0.0; 128];
+        backend
+            .process_audio_quantum(&[], 0, &mut dry_through_wet, 1, 128)
+            .unwrap();
+        assert!(dry_through_wet.iter().any(|sample| sample.abs() > 1.0e-7));
+
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::RecordingDryIntoWet, None)
+            .unwrap();
+        backend.poll().unwrap();
+        for _ in 0..20 {
+            backend
+                .process_audio_quantum(&[], 0, &mut vec![0.0; 128], 1, 128)
+                .unwrap();
+        }
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let rerecorded = backend.loop_audio_data(created.loops[0]).unwrap().unwrap();
+        assert!(
+            rerecorded[1]
+                .iter()
+                .filter(|sample| sample.abs() > 1.0e-7)
+                .count()
+                > rerecorded[1].len() / 2
+        );
     }
 
     #[test]

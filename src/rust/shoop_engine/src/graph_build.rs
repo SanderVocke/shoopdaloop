@@ -17,6 +17,9 @@ use crate::graph::{NodeIdx, NodeSpec};
 /// Index into the described ports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PortIdx(pub usize);
+/// Index into the described processors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProcessorIdx(pub usize);
 /// Index into the described loops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LoopIdx(pub usize);
@@ -29,6 +32,13 @@ pub struct PortDesc {
     pub name: String,
     /// Ports this one passes its output through to.
     pub internal_connections: Vec<PortIdx>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessorDesc {
+    pub name: String,
+    pub input_ports: Vec<PortIdx>,
+    pub output_ports: Vec<PortIdx>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -49,6 +59,7 @@ pub struct ChannelDesc {
 pub struct NodeMap {
     pub port_prepare: Vec<NodeIdx>,
     pub port_process: Vec<NodeIdx>,
+    pub processor_process: Vec<NodeIdx>,
     pub loop_process: Vec<NodeIdx>,
     pub channel_prepare: Vec<NodeIdx>,
     pub channel_process: Vec<NodeIdx>,
@@ -57,6 +68,7 @@ pub struct NodeMap {
 #[derive(Debug, Clone, Default)]
 pub struct GraphDesc {
     pub ports: Vec<PortDesc>,
+    pub processors: Vec<ProcessorDesc>,
     pub loops: Vec<LoopDesc>,
     pub channels: Vec<ChannelDesc>,
 }
@@ -79,6 +91,9 @@ impl GraphDesc {
         for _ in &self.ports {
             map.port_prepare.push(alloc());
             map.port_process.push(alloc());
+        }
+        for _ in &self.processors {
+            map.processor_process.push(alloc());
         }
         for _ in &self.loops {
             map.loop_process.push(alloc());
@@ -103,6 +118,18 @@ impl GraphDesc {
                 // into them, and its processing must follow ours.
                 specs[process.0].incoming.push(map.port_prepare[target.0]);
                 specs[process.0].outgoing.push(map.port_process[target.0]);
+            }
+        }
+
+        for (i, processor) in self.processors.iter().enumerate() {
+            let node = map.processor_process[i];
+            specs[node.0].name = format!("processor::{}", processor.name);
+            for input in &processor.input_ports {
+                specs[node.0].incoming.push(map.port_process[input.0]);
+            }
+            for output in &processor.output_ports {
+                specs[node.0].incoming.push(map.port_prepare[output.0]);
+                specs[node.0].outgoing.push(map.port_process[output.0]);
             }
         }
 
@@ -158,6 +185,14 @@ mod tests {
         }
     }
 
+    fn processor(name: &str, inputs: &[usize], outputs: &[usize]) -> ProcessorDesc {
+        ProcessorDesc {
+            name: name.to_string(),
+            input_ports: inputs.iter().copied().map(PortIdx).collect(),
+            output_ports: outputs.iter().copied().map(PortIdx).collect(),
+        }
+    }
+
     fn names(specs: &[NodeSpec], schedule: &[Vec<NodeIdx>]) -> Vec<Vec<String>> {
         schedule
             .iter()
@@ -195,6 +230,7 @@ mod tests {
     fn direct_loop() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -222,6 +258,7 @@ mod tests {
     fn two_direct_loops_co_processed() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
+            processors: vec![],
             loops: vec![
                 LoopDesc {
                     co_process_with: vec![LoopIdx(0), LoopIdx(1)],
@@ -323,6 +360,7 @@ mod tests {
     fn a_channel_declares_its_full_edge_set() {
         let desc = GraphDesc {
             ports: vec![port("in", &[]), port("out", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -356,9 +394,74 @@ mod tests {
     }
 
     #[test]
+    fn a_processor_orders_dry_playback_before_wet_recording() {
+        let desc = GraphDesc {
+            ports: vec![port("dry-send", &[]), port("wet-return", &[])],
+            processors: vec![processor("fx", &[0], &[1])],
+            loops: vec![LoopDesc::default()],
+            channels: vec![
+                ChannelDesc {
+                    loop_idx: LoopIdx(0),
+                    input_port: None,
+                    output_port: Some(PortIdx(0)),
+                },
+                ChannelDesc {
+                    loop_idx: LoopIdx(0),
+                    input_port: Some(PortIdx(1)),
+                    output_port: None,
+                },
+            ],
+        };
+        let (specs, map) = desc.build();
+        let_assert!(Ok(schedule) = processing_order(&specs));
+        let pos = |node: NodeIdx| {
+            schedule
+                .iter()
+                .position(|step| step.contains(&node))
+                .unwrap()
+        };
+        check!(pos(map.channel_process[0]) < pos(map.port_process[0]));
+        check!(pos(map.port_process[0]) < pos(map.processor_process[0]));
+        check!(pos(map.processor_process[0]) < pos(map.port_process[1]));
+        check!(pos(map.port_process[1]) < pos(map.channel_process[1]));
+    }
+
+    #[test]
+    fn a_processor_waits_for_all_inputs_and_prepares_all_outputs() {
+        let desc = GraphDesc {
+            ports: vec![
+                port("audio-in", &[]),
+                port("midi-in", &[]),
+                port("left-out", &[]),
+                port("right-out", &[]),
+            ],
+            processors: vec![processor("fx", &[0, 1], &[2, 3])],
+            ..Default::default()
+        };
+        let (specs, map) = desc.build();
+        check!(
+            incoming_names(&specs, map.processor_process[0])
+                == vec![
+                    "audio-in::process_and_internal_connections".to_string(),
+                    "left-out::prepare".to_string(),
+                    "midi-in::process_and_internal_connections".to_string(),
+                    "right-out::prepare".to_string(),
+                ]
+        );
+        check!(
+            outgoing_names(&specs, map.processor_process[0])
+                == vec![
+                    "left-out::process_and_internal_connections".to_string(),
+                    "right-out::process_and_internal_connections".to_string(),
+                ]
+        );
+    }
+
+    #[test]
     fn a_loop_declares_no_edges_of_its_own() {
         let desc = GraphDesc {
             ports: vec![],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![],
         };
@@ -381,6 +484,7 @@ mod tests {
     fn node_map_covers_every_entity() {
         let desc = GraphDesc {
             ports: vec![port("a", &[]), port("b", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -414,6 +518,7 @@ mod tests {
     fn a_channel_without_ports_still_orders_around_its_loop() {
         let desc = GraphDesc {
             ports: vec![],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -457,6 +562,7 @@ mod tests {
     fn a_recording_channel_follows_its_input_ports_processing() {
         let desc = GraphDesc {
             ports: vec![port("in", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -475,6 +581,7 @@ mod tests {
     fn a_playing_channel_precedes_its_output_ports_processing() {
         let desc = GraphDesc {
             ports: vec![port("out", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -492,6 +599,7 @@ mod tests {
     fn co_processed_loops_share_one_step() {
         let desc = GraphDesc {
             ports: vec![],
+            processors: vec![],
             loops: vec![
                 LoopDesc {
                     co_process_with: vec![LoopIdx(1)],
@@ -514,6 +622,7 @@ mod tests {
     fn several_channels_on_one_loop_all_gate_it() {
         let desc = GraphDesc {
             ports: vec![],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![
                 ChannelDesc {

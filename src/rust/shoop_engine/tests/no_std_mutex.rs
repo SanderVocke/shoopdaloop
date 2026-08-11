@@ -43,24 +43,25 @@ fn production_engine_mutexes_use_the_checked_abstraction() {
         );
     }
     assert_eq!(
-        permission_count, 33,
+        permission_count, 32,
         "the explicit realtime lock permission baseline changed"
     );
 }
 
 #[test]
-fn carla_callback_owns_a_lock_free_endpoint() {
+fn processor_callback_owns_lock_free_endpoints() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let session = fs::read_to_string(source_root.join("session.rs")).expect("read session source");
     let callback = session
-        .split("fn process_carla_fx_chains")
+        .split("fn process_processor")
         .nth(1)
         .and_then(|tail| tail.split("fn synth_prerecorded_midi_playback").next())
-        .expect("Carla callback body");
+        .expect("processor callback body");
     assert!(!callback.contains(".lock("));
     assert!(!callback.contains("Arc::clone"));
     assert!(!callback.contains("format!("));
-    assert!(callback.contains("std::mem::take(&mut self.carla_fx_routes)"));
+    assert!(callback.contains("std::mem::take(&mut self.processors)"));
+    assert!(callback.contains("ProcessorBackend::Carla"));
 
     let processor = fs::read_to_string(source_root.join("carla_processor.rs"))
         .expect("read Carla processor source");
