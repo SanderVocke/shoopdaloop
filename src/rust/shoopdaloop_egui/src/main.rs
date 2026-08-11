@@ -141,6 +141,12 @@ struct PendingAudioSettings {
     retry_requested: bool,
 }
 
+#[cfg(target_arch = "wasm32")]
+struct BrowserEphemeralFile {
+    name: String,
+    bytes: Vec<u8>,
+}
+
 struct UnifiedApp {
     runtime: Runtime,
     widget: AppWidget,
@@ -154,6 +160,8 @@ struct UnifiedApp {
     browser_settings_test: BrowserSettingsSelfTest,
     #[cfg(target_arch = "wasm32")]
     pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
+    #[cfg(target_arch = "wasm32")]
+    pending_ephemeral_files: Rc<RefCell<VecDeque<BrowserEphemeralFile>>>,
     #[cfg(not(target_arch = "wasm32"))]
     pending_file_intent_tx: Sender<AppIntent>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -219,6 +227,8 @@ impl UnifiedApp {
             browser_settings_test: BrowserSettingsSelfTest::from_location(),
             #[cfg(target_arch = "wasm32")]
             pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
+            #[cfg(target_arch = "wasm32")]
+            pending_ephemeral_files: Rc::new(RefCell::new(VecDeque::new())),
             #[cfg(not(target_arch = "wasm32"))]
             pending_file_intent_tx,
             #[cfg(not(target_arch = "wasm32"))]
@@ -278,6 +288,17 @@ impl UnifiedApp {
                         .map_err(anyhow::Error::msg)
                 })
             }
+            SettingsAction::RequestEphemeralScriptPicker => {
+                let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Lua script", &["lua"])
+                    .pick_file()
+                else {
+                    return;
+                };
+                load_ephemeral_script_path(&path).map(|(name, source)| {
+                    self.widget.queue_ephemeral_script(name, source);
+                })
+            }
             SettingsAction::RequestReloadUserScript { script_id } => {
                 self.runtime.reload_user_script(script_id)
             }
@@ -301,6 +322,22 @@ impl UnifiedApp {
                 return;
             }
             SettingsAction::RecoverWithDefaults => self.settings.request_recovery(),
+            SettingsAction::RequestEphemeralScriptPicker => {
+                let pending = Rc::clone(&self.pending_ephemeral_files);
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter("Lua script", &["lua"])
+                        .pick_file()
+                        .await
+                    {
+                        pending.borrow_mut().push_back(BrowserEphemeralFile {
+                            name: file.file_name(),
+                            bytes: file.read().await,
+                        });
+                    }
+                });
+                return;
+            }
             SettingsAction::RequestAddUserScript
             | SettingsAction::RequestReloadUserScript { .. } => {
                 self.settings.report_action_error(
@@ -401,6 +438,87 @@ impl UnifiedApp {
         self.pending_audio_settings = Some(pending);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn queue_ephemeral_script_bytes(&mut self, name: String, bytes: &[u8]) {
+        match load_ephemeral_script_bytes(name, bytes) {
+            Ok((name, source)) => self.widget.queue_ephemeral_script(name, source),
+            Err(error) => {
+                let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
+                    task_id: None,
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn handle_dropped_files(&mut self, context: &egui::Context) {
+        let files = context.input(|input| input.raw.dropped_files.clone());
+        for file in files {
+            let Some(path) = file.path else {
+                continue;
+            };
+            if !path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(is_lua_file_name)
+            {
+                continue;
+            }
+            match load_ephemeral_script_path(&path) {
+                Ok((name, source)) => self.widget.queue_ephemeral_script(name, source),
+                Err(error) => {
+                    let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
+                        task_id: None,
+                        message: error.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn handle_dropped_files(&mut self, context: &egui::Context) {
+        let files = context.input(|input| input.raw.dropped_files.clone());
+        for file in files {
+            if !is_lua_file_name(&file.name) {
+                continue;
+            }
+            if let Some(bytes) = file.bytes {
+                self.queue_ephemeral_script_bytes(file.name, &bytes);
+            }
+        }
+    }
+
+    fn show_file_drop_overlay(&self, context: &egui::Context) {
+        let hovering = context.input(|input| {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                input.raw.hovered_files.iter().any(|file| {
+                    file.path
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .and_then(|name| name.to_str())
+                        .is_some_and(is_lua_file_name)
+                })
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                !input.raw.hovered_files.is_empty()
+            }
+        });
+        if hovering {
+            egui::Area::new(egui::Id::new("lua_file_drop_overlay"))
+                .order(egui::Order::Foreground)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(context, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.heading("Drop Lua script to load it for this app run");
+                    });
+                });
+        }
+    }
+
     fn show(&mut self, ui: &mut egui::Ui) {
         let _span = tracing::trace_span!("frontend.egui.update").entered();
         self.settings.poll();
@@ -415,6 +533,18 @@ impl UnifiedApp {
         self.last_update = now;
         self.runtime.tick(elapsed);
         self.runtime.process_audio_previews();
+
+        #[cfg(target_arch = "wasm32")]
+        let ephemeral_files: Vec<_> = self
+            .pending_ephemeral_files
+            .borrow_mut()
+            .drain(..)
+            .collect();
+        #[cfg(target_arch = "wasm32")]
+        for file in ephemeral_files {
+            self.queue_ephemeral_script_bytes(file.name, &file.bytes);
+        }
+        self.handle_dropped_files(ui.ctx());
 
         #[cfg(target_arch = "wasm32")]
         let pending: Vec<_> = self.pending_file_intents.borrow_mut().drain(..).collect();
@@ -448,6 +578,7 @@ impl UnifiedApp {
         for action in response.settings_actions {
             self.handle_settings_action(action);
         }
+        self.show_file_drop_overlay(ui.ctx());
         #[cfg(not(target_arch = "wasm32"))]
         let drain_file_outputs = true;
         #[cfg(target_arch = "wasm32")]
@@ -631,6 +762,32 @@ impl UnifiedApp {
             }
         }
     }
+}
+
+fn is_lua_file_name(name: &str) -> bool {
+    name.rsplit_once('.')
+        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("lua"))
+}
+
+fn load_ephemeral_script_bytes(
+    name: String,
+    bytes: &[u8],
+) -> anyhow::Result<(String, std::sync::Arc<str>)> {
+    if !is_lua_file_name(&name) {
+        anyhow::bail!("{name} is not a Lua file");
+    }
+    let source = std::str::from_utf8(bytes)
+        .map_err(|error| anyhow::anyhow!("could not decode {name} as UTF-8: {error}"))?;
+    shoop_scripting::LuaRuntime::new()?.check_syntax(&name, source)?;
+    Ok((name, std::sync::Arc::from(source)))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_ephemeral_script_path(path: &Path) -> anyhow::Result<(String, std::sync::Arc<str>)> {
+    let name = file_name(path);
+    let bytes = std::fs::read(path)
+        .map_err(|error| anyhow::anyhow!("could not read {}: {error}", path.display()))?;
+    load_ephemeral_script_bytes(name, &bytes)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1438,7 +1595,7 @@ fn set_browser_settings_test_status(status: &str, channels: u32, midi: bool, rec
 const BROWSER_SESSION_SCRIPT_NAME: &str = "browser-self-test-session.lua";
 #[cfg(target_arch = "wasm32")]
 const BROWSER_SESSION_SCRIPT_SOURCE: &str =
-    "local shoop_control = require('shoop_control'); shoop_control.register_keyboard_event_cb(function(_) end)";
+    "shoop_announce_api_version(1, 0); local shoop_control = require('shoop_control'); shoop_control.register_keyboard_event_cb(function(_) end)";
 
 #[cfg(target_arch = "wasm32")]
 fn browser_unsupported_session_bytes(
@@ -1642,6 +1799,15 @@ enum BrowserSelfTest {
         audio_progress_before: u64,
         external: bool,
     },
+    AddLuaVersionChecks,
+    WaitForLuaVersionChecks,
+    WaitForLuaDialogs,
+    WaitForLuaDialogCallback {
+        script_id: shoop_egui::ScriptId,
+        welcome: shoop_egui::ScriptDialogId,
+        guide: shoop_egui::ScriptDialogId,
+    },
+    WaitForLuaDialogsStopped,
     Complete,
     Failed,
 }
@@ -3194,10 +3360,163 @@ impl BrowserSelfTest {
                     return self.fail("processed-session rejection removed direct loop media");
                 }
                 if external {
-                    Ok(Self::Complete)
+                    Ok(Self::AddLuaVersionChecks)
                 } else {
                     Ok(Self::RejectExternalSession)
                 }
+            }
+            Self::AddLuaVersionChecks => runtime
+                .dispatch(AppIntent::Global(
+                    shoop_egui::GlobalControlAction::SetSolo(false),
+                ))
+                .and_then(|()| {
+                    [
+                        (
+                            "lua-api-higher-minor.lua",
+                            "shoop_announce_api_version(1, 1); require('shoop_control').set_solo(true)",
+                        ),
+                        (
+                            "lua-api-lower-major.lua",
+                            "shoop_announce_api_version(0, 0); require('shoop_control').set_solo(true)",
+                        ),
+                        (
+                            "lua-api-higher-major.lua",
+                            "shoop_announce_api_version(2, 0); require('shoop_control').set_solo(true)",
+                        ),
+                        (
+                            "lua-api-unannounced.lua",
+                            "require('shoop_control').set_solo(true)",
+                        ),
+                    ]
+                    .into_iter()
+                    .try_for_each(|(name, source)| {
+                        runtime.dispatch(AppIntent::AddScriptSource {
+                            name: name.to_owned(),
+                            source: std::sync::Arc::from(source),
+                            kind: ScriptKind::User,
+                            enabled: true,
+                        })
+                    })
+                })
+                .map(|()| Self::WaitForLuaVersionChecks),
+            Self::WaitForLuaVersionChecks => {
+                let rejected = snapshot
+                    .scripting
+                    .scripts
+                    .iter()
+                    .filter(|script| script.name.starts_with("lua-api-"))
+                    .collect::<Vec<_>>();
+                if rejected.len() != 4
+                    || rejected.iter().any(|script| {
+                        script.lifecycle != shoop_egui::ScriptLifecycle::Error
+                            || script.latest_error.is_none()
+                    })
+                    || snapshot.global_controls.solo
+                    || !snapshot.scripting.dialogs.is_empty()
+                {
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::AddScriptSource {
+                        name: "dialogs.lua".to_owned(),
+                        source: std::sync::Arc::from(shoop_scripting::DIALOG_EXAMPLE_SCRIPT),
+                        kind: ScriptKind::User,
+                        enabled: true,
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::AddScriptSource {
+                            name: "dialog-survivor.lua".to_owned(),
+                            source: std::sync::Arc::from(
+                                "shoop_announce_api_version(1, 0); local d=require('shoop_dialog'); d.simple('Survivor', {d.rich_text('Still active')})",
+                            ),
+                            kind: ScriptKind::User,
+                            enabled: true,
+                        })
+                    })
+                    .map(|()| Self::WaitForLuaDialogs)
+            }
+            Self::WaitForLuaDialogs => {
+                let Some(welcome) = snapshot
+                    .scripting
+                    .dialogs
+                    .iter()
+                    .find(|dialog| dialog.name == "Lua dialog example")
+                else {
+                    return;
+                };
+                let Some(guide) = snapshot
+                    .scripting
+                    .dialogs
+                    .iter()
+                    .find(|dialog| dialog.name == "Lua dialog guide")
+                else {
+                    return;
+                };
+                if snapshot.scripting.dialogs.len() != 3
+                    || widget.browser_test_lua_dialog_count() != 3
+                    || widget.browser_test_lua_dialog_state(welcome.id) != Some((true, 0))
+                    || widget.browser_test_lua_dialog_state(guide.id) != Some((false, 0))
+                {
+                    return;
+                }
+                let shoop_egui::ScriptDialogKind::Simple(content) = &welcome.kind else {
+                    return self.fail("browser Lua simple dialog has the wrong flavor");
+                };
+                let Some(button_id) = content.elements.iter().find_map(|element| match element {
+                    shoop_egui::ScriptDialogElement::Button { id, .. } => *id,
+                    _ => None,
+                }) else {
+                    return self.fail("browser Lua dialog callback button is missing");
+                };
+                widget.browser_test_close_lua_dialog(welcome.id);
+                widget.browser_test_set_lua_dialog_page(guide.id, 1);
+                runtime
+                    .dispatch(AppIntent::InvokeScriptDialogButton {
+                        script_id: welcome.owner_script_id,
+                        dialog_id: welcome.id,
+                        button_id,
+                    })
+                    .map(|()| Self::WaitForLuaDialogCallback {
+                        script_id: welcome.owner_script_id,
+                        welcome: welcome.id,
+                        guide: guide.id,
+                    })
+            }
+            Self::WaitForLuaDialogCallback {
+                script_id,
+                welcome,
+                guide,
+            } => {
+                let guide_opened = snapshot
+                    .scripting
+                    .dialogs
+                    .iter()
+                    .find(|dialog| dialog.id == guide)
+                    .is_some_and(|dialog| dialog.open_request == 1);
+                if !snapshot.global_controls.solo
+                    || !guide_opened
+                    || widget.browser_test_lua_dialog_state(welcome) != Some((false, 0))
+                    || widget.browser_test_lua_dialog_state(guide) != Some((true, 1))
+                {
+                    return;
+                }
+                widget.browser_test_close_lua_dialog(guide);
+                widget.browser_test_open_lua_dialog_from_list(guide);
+                if widget.browser_test_lua_dialog_state(guide) != Some((true, 1)) {
+                    return self.fail("browser Lua dialog page state did not survive close/reopen");
+                }
+                runtime
+                    .dispatch(AppIntent::StopScript { script_id })
+                    .map(|()| Self::WaitForLuaDialogsStopped)
+            }
+            Self::WaitForLuaDialogsStopped => {
+                if snapshot.scripting.dialogs.len() != 1
+                    || snapshot.scripting.dialogs[0].name != "Survivor"
+                    || widget.browser_test_lua_dialog_count() != 1
+                {
+                    return;
+                }
+                Ok(Self::Complete)
             }
         };
 
@@ -3794,10 +4113,31 @@ mod tests {
     }
 
     #[test]
+    fn ephemeral_script_files_require_lua_utf8_and_valid_syntax() {
+        assert!(is_lua_file_name("controller.lua"));
+        assert!(is_lua_file_name("controller.LUA"));
+        assert!(!is_lua_file_name("controller.txt"));
+        let (name, source) = load_ephemeral_script_bytes(
+            "controller.lua".to_owned(),
+            b"shoop_announce_api_version(1, 0); print('loaded')",
+        )
+        .unwrap();
+        assert_eq!(name, "controller.lua");
+        assert!(source.contains("loaded"));
+        assert!(load_ephemeral_script_bytes("controller.txt".to_owned(), b"return").is_err());
+        assert!(load_ephemeral_script_bytes("controller.lua".to_owned(), &[0xff]).is_err());
+        assert!(load_ephemeral_script_bytes("controller.lua".to_owned(), b"function(").is_err());
+    }
+
+    #[test]
     fn startup_script_adapter_resolves_typed_bundles_files_and_missing_paths() {
         let directory = tempfile::tempdir().unwrap();
         let user_script = directory.path().join("user.lua");
-        std::fs::write(&user_script, "print('user')").unwrap();
+        std::fs::write(
+            &user_script,
+            "shoop_announce_api_version(1, 0); print('user')",
+        )
+        .unwrap();
         let missing = directory.path().join("missing.lua");
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -3844,7 +4184,11 @@ mod tests {
     fn committed_settings_reconcile_scripts_and_failed_save_leaves_runtime_unchanged() {
         let directory = tempfile::tempdir().unwrap();
         let script_path = directory.path().join("controller.lua");
-        std::fs::write(&script_path, "print('controller')").unwrap();
+        std::fs::write(
+            &script_path,
+            "shoop_announce_api_version(1, 0); print('controller')",
+        )
+        .unwrap();
         let settings_directory = directory.path().join("configuration");
         let settings_path = settings_directory.join("settings.json");
         let mut builder = SettingsRegistryBuilder::default();
@@ -4027,6 +4371,145 @@ mod tests {
                 |ui| app.show(ui),
             );
             assert!(!output.shapes.is_empty());
+        }
+    }
+
+    #[test]
+    fn unified_native_app_runs_paints_invokes_and_removes_lua_dialogs() {
+        let context = egui::Context::default();
+        shoop_egui::initialize(&context);
+        let mut app = UnifiedApp::new().unwrap();
+        for (name, source) in [
+            (
+                "lua-api-higher-minor.lua",
+                "shoop_announce_api_version(1, 1); require('shoop_control').set_solo(true)",
+            ),
+            (
+                "lua-api-lower-major.lua",
+                "shoop_announce_api_version(0, 0); require('shoop_control').set_solo(true)",
+            ),
+            (
+                "lua-api-higher-major.lua",
+                "shoop_announce_api_version(2, 0); require('shoop_control').set_solo(true)",
+            ),
+            (
+                "lua-api-unannounced.lua",
+                "require('shoop_control').set_solo(true)",
+            ),
+        ] {
+            app.runtime
+                .dispatch(AppIntent::AddScriptSource {
+                    name: name.to_owned(),
+                    source: std::sync::Arc::from(source),
+                    kind: ScriptKind::User,
+                    enabled: true,
+                })
+                .unwrap();
+        }
+        let started = Instant::now();
+        loop {
+            let snapshot = app.runtime.snapshot();
+            let rejected = snapshot
+                .scripting
+                .scripts
+                .iter()
+                .filter(|script| script.name.starts_with("lua-api-"))
+                .collect::<Vec<_>>();
+            if rejected.len() == 4
+                && rejected.iter().all(|script| {
+                    script.lifecycle == shoop_egui::ScriptLifecycle::Error
+                        && script.latest_error.is_some()
+                })
+            {
+                assert!(!snapshot.global_controls.solo);
+                assert!(snapshot.scripting.dialogs.is_empty());
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        }
+        app.runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "dialogs.lua".to_owned(),
+                source: std::sync::Arc::from(shoop_scripting::DIALOG_EXAMPLE_SCRIPT),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        app.runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "dialog-survivor.lua".to_owned(),
+                source: std::sync::Arc::from(
+                    "shoop_announce_api_version(1, 0); local d=require('shoop_dialog'); d.simple('Survivor', {d.rich_text('Still active')})",
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        let snapshot = loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot.scripting.dialogs.len() == 3 {
+                break snapshot;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(snapshot.scripting.dialogs[0].open_request, 1);
+        let owner = snapshot.scripting.dialogs[0].owner_script_id;
+        let dialog_id = snapshot.scripting.dialogs[0].id;
+        let shoop_egui::ScriptDialogKind::Simple(content) = &snapshot.scripting.dialogs[0].kind
+        else {
+            panic!("expected simple dialog");
+        };
+        let shoop_egui::ScriptDialogElement::Button {
+            id: Some(button_id),
+            ..
+        } = &content.elements[1]
+        else {
+            panic!("expected callback button");
+        };
+        let output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| app.show(ui),
+        );
+        assert!(!output.shapes.is_empty());
+        app.runtime
+            .dispatch(AppIntent::InvokeScriptDialogButton {
+                script_id: owner,
+                dialog_id,
+                button_id: *button_id,
+            })
+            .unwrap();
+        let updated = loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot.global_controls.solo && snapshot.scripting.dialogs[1].open_request == 1 {
+                break snapshot;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(
+            updated.scripting.dialogs[0].owner_script_name,
+            "dialogs.lua"
+        );
+        app.runtime
+            .dispatch(AppIntent::StopScript { script_id: owner })
+            .unwrap();
+        loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot.scripting.dialogs.len() == 1
+                && snapshot.scripting.dialogs[0].name == "Survivor"
+            {
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
         }
     }
 

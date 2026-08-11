@@ -1,11 +1,12 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use crate::{
-    click_track_dialog::ClickTrackDialog, colors, AppAction, AppState, AudioDriverConfig,
-    AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig, DetailsPane,
-    DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane, SettingsAction,
-    SettingsDialog, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
-    TrackWidget, TracksWidget,
+    click_track_dialog::ClickTrackDialog, colors, ephemeral_script_display_name,
+    is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
+    AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
+    DetailsPane, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
+    SettingsAction, SettingsDialog, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec,
+    TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
@@ -466,6 +467,12 @@ pub struct AppWidgetResponse {
     pub settings_actions: Vec<SettingsAction>,
 }
 
+#[derive(Clone)]
+struct PendingEphemeralScript {
+    name: String,
+    source: Arc<str>,
+}
+
 pub struct AppWidget {
     tracks: TracksWidget,
     global_controls: GlobalControls,
@@ -475,6 +482,7 @@ pub struct AppWidget {
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
+    script_dialogs: ScriptDialogs,
     bottom_pane: Option<BottomPane>,
     add_track_open: bool,
     add_track_name: String,
@@ -489,6 +497,11 @@ pub struct AppWidget {
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
     pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
+    pending_ephemeral_scripts: VecDeque<PendingEphemeralScript>,
+    #[cfg(test)]
+    ephemeral_script_accept_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    ephemeral_script_cancel_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -522,6 +535,7 @@ impl AppWidget {
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
+            script_dialogs: ScriptDialogs::default(),
             bottom_pane: None,
             add_track_open: false,
             add_track_name: String::new(),
@@ -536,6 +550,11 @@ impl AppWidget {
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
             pressed_script_keys: BTreeMap::new(),
+            pending_ephemeral_scripts: VecDeque::new(),
+            #[cfg(test)]
+            ephemeral_script_accept_rect: None,
+            #[cfg(test)]
+            ephemeral_script_cancel_rect: None,
             #[cfg(test)]
             add_track_accept_rect: None,
             #[cfg(test)]
@@ -568,6 +587,11 @@ impl AppWidget {
 
     pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
         self.settings.add_user_script_path(path)
+    }
+
+    pub fn queue_ephemeral_script(&mut self, name: String, source: Arc<str>) {
+        self.pending_ephemeral_scripts
+            .push_back(PendingEphemeralScript { name, source });
     }
 
     pub fn open_connection_scope(&self) -> Option<ConnectionScope> {
@@ -612,24 +636,29 @@ impl AppWidget {
                     .id_salt("global_controls_scroll")
                     .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
-                        actions.extend(
-                            self.global_controls
-                                .show(ui, &state.global_controls)
-                                .into_iter()
-                                .map(AppAction::Global),
-                        );
-                        if self.global_controls.take_connections_requested() {
-                            self.connections.open(ConnectionScope::AllTracks);
-                        }
-                        if self.global_controls.take_save_session_requested() {
-                            actions.push(AppAction::RequestSaveSession);
-                        }
-                        if self.global_controls.take_load_session_requested() {
-                            actions.push(AppAction::RequestLoadSessionPicker);
-                        }
-                        if self.global_controls.take_settings_requested() {
-                            self.settings.open(settings_state);
-                        }
+                        ui.horizontal(|ui| {
+                            actions.extend(
+                                self.global_controls
+                                    .show(ui, &state.global_controls)
+                                    .into_iter()
+                                    .map(AppAction::Global),
+                            );
+                            if self.global_controls.take_connections_requested() {
+                                self.connections.open(ConnectionScope::AllTracks);
+                            }
+                            if self.global_controls.take_save_session_requested() {
+                                actions.push(AppAction::RequestSaveSession);
+                            }
+                            if self.global_controls.take_load_session_requested() {
+                                actions.push(AppAction::RequestLoadSessionPicker);
+                            }
+                            if self.global_controls.take_settings_requested() {
+                                self.settings.open(settings_state);
+                            }
+                            ui.separator();
+                            self.script_dialogs
+                                .show_control(ui, &state.scripting.dialogs);
+                        });
                     });
             });
 
@@ -782,6 +811,10 @@ impl AppWidget {
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
+        actions.extend(
+            self.script_dialogs
+                .show_windows(ui.ctx(), &state.scripting.dialogs),
+        );
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,
@@ -791,6 +824,7 @@ impl AppWidget {
         );
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
+        self.show_ephemeral_script_confirmation(ui.ctx(), state, &mut actions);
         if !actions.is_empty() || !settings_actions.is_empty() {
             tracing::debug!(
                 target: "Frontend.Egui",
@@ -812,6 +846,85 @@ impl AppWidget {
             app_actions: actions,
             settings_actions,
         }
+    }
+
+    fn show_ephemeral_script_confirmation(
+        &mut self,
+        context: &egui::Context,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        let Some(pending) = self.pending_ephemeral_scripts.front().cloned() else {
+            return;
+        };
+        let matching = state
+            .scripting
+            .scripts
+            .iter()
+            .filter(|script| is_ephemeral_script_version(&script.name, &pending.name))
+            .collect::<Vec<_>>();
+        let display_name = ephemeral_script_display_name(
+            &pending.name,
+            state
+                .scripting
+                .scripts
+                .iter()
+                .map(|script| script.name.as_str()),
+        );
+        let mut accept = false;
+        let mut cancel = false;
+        egui::Window::new("Run Lua script?")
+            .id(egui::Id::new("ephemeral_script_confirmation"))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .collapsible(false)
+            .resizable(false)
+            .show(context, |ui| {
+                ui.label(format!("Load and run {:?}?", pending.name));
+                ui.label(
+                    "Run-once scripts stay in memory for restart, are independent of the session, and disappear when the app closes.",
+                );
+                if !matching.is_empty() {
+                    ui.add_space(4.0);
+                    ui.colored_label(
+                        colors::WARNING,
+                        "A same-named script is already listed. Loading this version will stop the current same-named script.",
+                    );
+                    ui.label(format!("The new version will appear as {:?}.", display_name));
+                }
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let run = ui.button("Run once");
+                    #[cfg(test)]
+                    {
+                        self.ephemeral_script_accept_rect = Some(run.rect);
+                    }
+                    if run.clicked() {
+                        accept = true;
+                    }
+                    let cancel_button = ui.button("Cancel");
+                    #[cfg(test)]
+                    {
+                        self.ephemeral_script_cancel_rect = Some(cancel_button.rect);
+                    }
+                    if cancel_button.clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if accept {
+            actions.push(self.accept_ephemeral_script().unwrap());
+        } else if cancel {
+            self.pending_ephemeral_scripts.pop_front();
+        }
+    }
+
+    fn accept_ephemeral_script(&mut self) -> Option<AppAction> {
+        self.pending_ephemeral_scripts
+            .pop_front()
+            .map(|pending| AppAction::AddEphemeralScript {
+                name: pending.name,
+                source: pending.source,
+            })
     }
 
     fn open_add_track_dialog(
@@ -886,6 +999,39 @@ impl AppWidget {
     ) -> bool {
         self.settings
             .browser_test_open_category(settings_state, "Scripts")
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_lua_dialog_state(
+        &self,
+        id: crate::ScriptDialogId,
+    ) -> Option<(bool, usize)> {
+        self.script_dialogs.browser_test_state(id)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_close_lua_dialog(&mut self, id: crate::ScriptDialogId) {
+        self.script_dialogs.browser_test_close(id);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_open_lua_dialog_from_list(&mut self, id: crate::ScriptDialogId) {
+        self.script_dialogs.browser_test_open_from_list(id);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_set_lua_dialog_page(&mut self, id: crate::ScriptDialogId, page: usize) {
+        self.script_dialogs.browser_test_set_page(id, page);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_lua_dialog_count(&self) -> usize {
+        self.script_dialogs.browser_test_count()
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1600,6 +1746,75 @@ mod tests {
     }
 
     #[test]
+    fn ephemeral_script_load_waits_for_confirmation_and_emits_source() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState {
+            scripting: Arc::new(crate::ScriptingState {
+                supported: true,
+                scripts: Arc::from([crate::ScriptState {
+                    id: crate::ScriptId::from_raw(1),
+                    name: "controller.lua".to_owned(),
+                    kind: crate::ScriptKind::Bundled,
+                    enabled: true,
+                    lifecycle: crate::ScriptLifecycle::Listening,
+                    documentation: None,
+                    latest_error: None,
+                    activity: Default::default(),
+                    midi: Default::default(),
+                    logs: Arc::from([]),
+                }]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        widget.queue_ephemeral_script(
+            "controller.lua".to_owned(),
+            Arc::from("shoop_announce_api_version(1, 0); print('loaded')"),
+        );
+        assert!(frame(&context, &mut widget, &state, Vec::new()).is_empty());
+        assert!(frame(&context, &mut widget, &state, Vec::new()).is_empty());
+        let accept = widget.ephemeral_script_accept_rect.unwrap().center();
+        let mut actions = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(accept),
+                egui::Event::PointerButton {
+                    pos: accept,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        actions.extend(frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(accept),
+                egui::Event::PointerButton {
+                    pos: accept,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        ));
+        assert_eq!(
+            actions,
+            [AppAction::AddEphemeralScript {
+                name: "controller.lua".to_owned(),
+                source: Arc::from("shoop_announce_api_version(1, 0); print('loaded')"),
+            }]
+        );
+        assert!(widget.pending_ephemeral_scripts.is_empty());
+    }
+
+    #[test]
     fn xrun_reset_button_emits_one_reset_action() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2030,6 +2245,7 @@ mod tests {
                         message: "warning log".to_owned(),
                     }]),
                 }]),
+                ..Default::default()
             }
             .into(),
             ..Default::default()

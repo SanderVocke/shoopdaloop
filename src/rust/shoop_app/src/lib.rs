@@ -19,9 +19,10 @@ use shoop_app_api::{
     HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
     LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
     PendingConnectionState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
-    SampleRateWarning, ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState,
-    TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
-    TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
+    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
+    ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId, TrackAction, TrackControlState,
+    TrackId, TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology,
+    TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioChannelUpdate, BackendAudioContent, BackendChannelMode,
@@ -798,7 +799,7 @@ impl ApplicationModel {
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
                 supported: true,
-                scripts: Arc::from([]),
+                ..Default::default()
             }),
             track_processors: backend
                 .track_processor_catalog()
@@ -890,6 +891,9 @@ impl ApplicationModel {
                 kind,
                 enabled,
             } => self.add_script_source(backend, name, source, kind, enabled),
+            AppIntent::AddEphemeralScript { name, source } => {
+                self.add_ephemeral_script(backend, name, source)
+            }
             AppIntent::SetScriptEnabled { script_id, enabled } => {
                 self.set_script_enabled(backend, script_id, enabled)
             }
@@ -899,6 +903,11 @@ impl ApplicationModel {
             }
             AppIntent::StopScript { script_id } => self.stop_script(script_id),
             AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
+            AppIntent::InvokeScriptDialogButton {
+                script_id,
+                dialog_id,
+                button_id,
+            } => self.invoke_script_dialog_button(backend, script_id, dialog_id, button_id),
             AppIntent::SetPortConnected {
                 port_id,
                 host_port_id,
@@ -1099,6 +1108,23 @@ impl ApplicationModel {
         result
     }
 
+    fn add_ephemeral_script(
+        &mut self,
+        backend: &mut dyn Backend,
+        name: String,
+        source: Arc<str>,
+    ) -> Result<(), String> {
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .add_ephemeral(name, source.to_string())
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
+    }
+
     fn set_script_enabled(
         &mut self,
         backend: &mut dyn Backend,
@@ -1158,6 +1184,23 @@ impl ApplicationModel {
             .map_err(|error| error.to_string());
         self.refresh_scripting_view();
         result
+    }
+
+    fn invoke_script_dialog_button(
+        &mut self,
+        backend: &mut dyn Backend,
+        script_id: ScriptId,
+        dialog_id: ScriptDialogId,
+        button_id: ScriptDialogButtonId,
+    ) -> Result<(), String> {
+        self.prepare_script_invocation();
+        let callback_result = self
+            .script_manager
+            .invoke_dialog_button(script_id, dialog_id, button_id)
+            .map_err(|error| error.to_string());
+        let operation_result = self.apply_script_operations(backend);
+        self.refresh_scripting_view();
+        callback_result.and(operation_result)
     }
 
     fn handle_script_key_event(
@@ -1854,6 +1897,8 @@ impl ApplicationModel {
         self.scripting_view = Arc::new(ScriptingState {
             supported: true,
             scripts: self.script_manager.states().into(),
+            dialogs: self.script_manager.dialogs().into(),
+            ..Default::default()
         });
         if !self.connection_view.loading {
             self.rebuild_connection_view();
@@ -6979,6 +7024,42 @@ mod tests {
     }
 
     #[test]
+    fn midi_callback_can_request_script_dialog_opening() {
+        let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
+        midi_control.set_endpoints(vec![shoop_scripting::MidiEndpoint {
+            id: "controller-source".to_owned(),
+            name: "Controller".to_owned(),
+            direction: shoop_scripting::MidiEndpointDirection::Output,
+        }]);
+        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+            Box::new(FakeBackend::default()),
+            Box::new(midi),
+        )
+        .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "midi-dialog.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+shoop_announce_api_version(1, 0)
+local c=require('shoop_control')
+local d=require('shoop_dialog')
+d.simple('MIDI',{d.rich_text('Received')})
+c.auto_open_device_specific_midi_control_input('Controller', function() d.open('MIDI') end)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(runtime.snapshot().scripting.dialogs[0].open_request, 0);
+        midi_control.push_input("controller-source", vec![0x90, 60, 100]);
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(runtime.snapshot().scripting.dialogs[0].open_request, 1);
+    }
+
+    #[test]
     fn web_midi_track_and_control_views_share_canonical_host_rows() {
         let backend = FakeBackend::default();
         let backend_control = backend.connection_control();
@@ -7070,7 +7151,7 @@ mod tests {
         handle
             .dispatch(AppIntent::AddScriptSource {
                 name: "user.lua".to_owned(),
-                source: Arc::from("-- User docs\nprint('ready')"),
+                source: Arc::from("-- User docs\nshoop_announce_api_version(1, 0)\nprint('ready')"),
                 kind: ScriptKind::User,
                 enabled: true,
             })
@@ -7113,6 +7194,85 @@ mod tests {
     }
 
     #[test]
+    fn threaded_actor_routes_script_dialog_callbacks_and_teardown() {
+        let runtime = ApplicationRuntime::start_with_scripts(
+            Box::new(FakeBackend::default()),
+            vec![StartupScript {
+                name: "actor-dialog.lua".to_owned(),
+                source: r#"
+shoop_announce_api_version(1, 0)
+local c=require('shoop_control')
+local d=require('shoop_dialog')
+d.simple('Actor dialog',{d.button('Apply',function() c.set_solo(true) end)})
+d.open('Actor dialog')
+"#
+                .to_owned(),
+                kind: ScriptKind::User,
+                enabled: true,
+            }],
+        )
+        .unwrap();
+        let handle = runtime.handle();
+        let initial = handle.snapshot();
+        assert_eq!(initial.scripting.dialogs.len(), 1);
+        assert_eq!(initial.scripting.dialogs[0].open_request, 1);
+        let dialog = &initial.scripting.dialogs[0];
+        let shoop_app_api::ScriptDialogKind::Simple(content) = &dialog.kind else {
+            panic!("expected simple dialog");
+        };
+        let shoop_app_api::ScriptDialogElement::Button {
+            id: Some(button_id),
+            ..
+        } = &content.elements[0]
+        else {
+            panic!("expected callback button");
+        };
+        handle
+            .dispatch(AppIntent::InvokeScriptDialogButton {
+                script_id: dialog.owner_script_id,
+                dialog_id: dialog.id,
+                button_id: *button_id,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| snapshot.global_controls.solo);
+        handle
+            .dispatch(AppIntent::StopScript {
+                script_id: dialog.owner_script_id,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| snapshot.scripting.dialogs.is_empty());
+    }
+
+    #[test]
+    fn incompatible_script_version_is_published_as_error_without_side_effects() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "future.lua".to_owned(),
+                source: Arc::from(
+                    "shoop_announce_api_version(1, 1); __shoop_control.set_solo(true)",
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        assert!(!snapshot.global_controls.solo);
+        assert!(snapshot.scripting.dialogs.is_empty());
+        assert_eq!(
+            snapshot.scripting.scripts[0].lifecycle,
+            shoop_app_api::ScriptLifecycle::Error
+        );
+        let error = snapshot.scripting.scripts[0]
+            .latest_error
+            .as_deref()
+            .unwrap();
+        assert!(error.contains("script requests 1.1, host supports 1.0"));
+    }
+
+    #[test]
     fn lua_control_batches_use_authoritative_application_and_backend_paths() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -7121,6 +7281,7 @@ mod tests {
                 name: "control.lua".to_owned(),
                 source: Arc::from(
                     r#"
+shoop_announce_api_version(1, 0)
 local c = require('shoop_control')
 c.set_solo(true)
 c.loop_select({-1, 0}, true)
@@ -7152,6 +7313,7 @@ c.loop_set_gain({-1, 0}, 0.25)
                 name: "events.lua".to_owned(),
                 source: Arc::from(
                     r#"
+shoop_announce_api_version(1, 0)
 local c = require('shoop_control')
 c.register_keyboard_event_cb(function(event)
     if event.type == c.constants.KeyEventType_Pressed and event.key == c.constants.Key_Space then
@@ -7202,6 +7364,115 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         });
         thread::sleep(Duration::from_millis(50));
         assert_eq!(handle.snapshot().scripting.scripts[0].logs.len(), 1);
+    }
+
+    #[test]
+    fn script_dialogs_publish_open_in_callbacks_invoke_exact_buttons_and_teardown() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "owner.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+shoop_announce_api_version(1, 0)
+local c = require('shoop_control')
+local d = require('shoop_dialog')
+d.simple('Main', {
+    d.rich_text('Ready', {strong=true}),
+    d.button('Apply', function() c.set_solo(true); d.open('Other') end),
+})
+d.simple('Other', {d.rich_text('More')})
+d.open('Main')
+c.register_one_shot_timer_cb(1, function() d.open('Other') end)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let initial = runtime.snapshot();
+        assert_eq!(
+            initial.scripting.api_version,
+            shoop_app_api::LUA_API_VERSION
+        );
+        assert_eq!(initial.scripting.dialogs.len(), 2);
+        assert_eq!(initial.scripting.dialogs[0].name, "Main");
+        assert_eq!(initial.scripting.dialogs[0].open_request, 1);
+        assert_eq!(initial.scripting.dialogs[1].open_request, 0);
+        let owner = initial.scripting.dialogs[0].owner_script_id;
+        let dialog_id = initial.scripting.dialogs[0].id;
+        let shoop_app_api::ScriptDialogKind::Simple(content) = &initial.scripting.dialogs[0].kind
+        else {
+            panic!("expected simple dialog");
+        };
+        let shoop_app_api::ScriptDialogElement::Button {
+            id: Some(button_id),
+            ..
+        } = &content.elements[1]
+        else {
+            panic!("expected callback button");
+        };
+
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(runtime.snapshot().scripting.dialogs[1].open_request, 1);
+        runtime
+            .dispatch(AppIntent::InvokeScriptDialogButton {
+                script_id: owner,
+                dialog_id,
+                button_id: *button_id,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().global_controls.solo);
+        assert_eq!(runtime.snapshot().scripting.dialogs[1].open_request, 2);
+
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "other.lua".to_owned(),
+                source: Arc::from(
+                    "shoop_announce_api_version(1, 0); local d=require('shoop_dialog'); d.simple('Main',{d.rich_text('independent')})",
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(runtime.snapshot().scripting.dialogs.len(), 3);
+        assert_ne!(
+            runtime.snapshot().scripting.dialogs[0].id,
+            runtime.snapshot().scripting.dialogs[2].id
+        );
+
+        runtime
+            .dispatch(AppIntent::RestartScript { script_id: owner })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let restarted = runtime.snapshot();
+        assert_eq!(restarted.scripting.dialogs.len(), 3);
+        assert_ne!(restarted.scripting.dialogs[0].id, dialog_id);
+        runtime
+            .dispatch(AppIntent::InvokeScriptDialogButton {
+                script_id: owner,
+                dialog_id,
+                button_id: *button_id,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().notifications.iter().any(|notification| {
+            notification
+                .message
+                .contains("stale or unknown script dialog button")
+        }));
+
+        runtime
+            .dispatch(AppIntent::StopScript { script_id: owner })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let stopped = runtime.snapshot();
+        assert_eq!(stopped.scripting.dialogs.len(), 1);
+        assert_eq!(stopped.scripting.dialogs[0].owner_script_name, "other.lua");
     }
 
     #[test]
@@ -7719,7 +7990,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .dispatch(AppIntent::AddScriptSource {
                 name: "composition.lua".to_owned(),
                 source: Arc::from(
-                    "local c=require('shoop_control'); c.loop_compose_add_to_end({0,0},{1,0},false); c.loop_compose_add_to_end({0,0},{2,0},true); c.loop_trigger({0,0},c.constants.LoopMode_Playing)",
+                    "shoop_announce_api_version(1, 0); local c=require('shoop_control'); c.loop_compose_add_to_end({0,0},{1,0},false); c.loop_compose_add_to_end({0,0},{2,0},true); c.loop_trigger({0,0},c.constants.LoopMode_Playing)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -9716,9 +9987,16 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "machine.lua".to_owned(),
-                source: Arc::from("print('machine')"),
+                source: Arc::from("shoop_announce_api_version(1, 0); print('machine')"),
                 kind: ScriptKind::User,
                 enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddEphemeralScript {
+                name: "run-once.lua".to_owned(),
+                source: Arc::from("shoop_announce_api_version(1, 0); print('run once')"),
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -9726,7 +10004,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         document.scripts.push(ScriptDocument {
             id: 77,
             name: "session.lua".to_owned(),
-            source: "require('shoop_control').set_solo(true)".to_owned(),
+            source: "shoop_announce_api_version(1, 0); require('shoop_control').set_solo(true)"
+                .to_owned(),
             enabled: true,
         });
         runtime
@@ -9739,7 +10018,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let loaded = runtime.snapshot();
-        assert_eq!(loaded.scripting.scripts.len(), 2);
+        assert_eq!(loaded.scripting.scripts.len(), 3);
         assert!(loaded
             .scripting
             .scripts
@@ -9750,6 +10029,9 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .scripts
             .iter()
             .any(|script| { script.name == "session.lua" && script.kind == ScriptKind::Session }));
+        assert!(loaded.scripting.scripts.iter().any(|script| {
+            script.name == "run-once.lua" && script.kind == ScriptKind::Ephemeral
+        }));
         assert!(loaded.global_controls.solo);
 
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
@@ -9761,7 +10043,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let before = runtime.snapshot().scripting.clone();
         let mut cancelled = document.clone();
         cancelled.sample_rate = 32_000;
-        cancelled.scripts[0].source = "require('shoop_control').set_solo(false)".to_owned();
+        cancelled.scripts[0].source =
+            "shoop_announce_api_version(1, 0); require('shoop_control').set_solo(false)".to_owned();
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "cancelled.shoop".to_owned(),
@@ -9812,8 +10095,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let scripts = &runtime.snapshot().scripting.scripts;
-        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts.len(), 2);
         assert_eq!(scripts[0].name, "machine.lua");
+        assert_eq!(scripts[1].name, "run-once.lua");
+        assert_eq!(scripts[1].kind, ScriptKind::Ephemeral);
     }
 
     #[test]

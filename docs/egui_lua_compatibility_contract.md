@@ -1,6 +1,6 @@
 # egui Lua compatibility contract
 
-This document defines the Shoop Lua compatibility target for the native and browser egui application. Both use the pinned omniLua 0.7.1 Lua 5.4 runtime described in `omnilua_runtime.md`.
+This document defines the Shoop Lua compatibility target for the native and browser egui application. Both use the pinned omniLua 0.7.1 Lua 5.4 runtime described in `omnilua_runtime.md`. The semantic version handshake and script-owned dialog API are specified in `egui_lua_dialog_api.md`.
 
 ## Value and selector rules
 
