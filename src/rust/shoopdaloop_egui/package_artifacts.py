@@ -21,6 +21,7 @@ ROOT = PACKAGE.parents[2]
 ARCHIVE_ROOT = "shoopdaloop-egui"
 PROFILES = ("debug", "release")
 NATIVE_PLATFORMS = ("linux", "windows", "macos")
+APPLICATION_ICON = ROOT / "resources" / "iconset" / "icon.png"
 ROBOTO_FILES = (
     "LICENSE.txt",
     "README.md",
@@ -31,6 +32,7 @@ ROBOTO_FILES = (
 )
 WEB_REQUIRED_FILES = (
     "index.html",
+    "icon.png",
     "audio_worklet.js",
     "generated/shoop_audio_worklet.wasm",
     *(f"roboto/{name}" for name in ROBOTO_FILES),
@@ -196,6 +198,11 @@ def archive_file(path: Path, name: str) -> bytes:
         return extracted.read()
 
 
+def require_application_icon(binary: bytes, artifact: str) -> None:
+    if APPLICATION_ICON.read_bytes() not in binary:
+        raise RuntimeError(f"{artifact} is missing the embedded application icon")
+
+
 def require_click_assets(binary: bytes, artifact: str) -> None:
     missing = [
         name
@@ -229,7 +236,9 @@ def verify_native(path: Path, platform: str) -> None:
         )
     if platform != "windows" and modes.get(executable, 0) & 0o111 == 0:
         raise RuntimeError(f"archive executable has no execute bit: {executable}")
-    require_click_assets(archive_file(path, executable), "native executable")
+    binary = archive_file(path, executable)
+    require_application_icon(binary, "native executable")
+    require_click_assets(binary, "native executable")
 
 
 def verify_web(bundle: Path, html: Path) -> None:
@@ -243,6 +252,9 @@ def verify_web(bundle: Path, html: Path) -> None:
         raise RuntimeError(f"unexpected hosted web archive manifest: {sorted(names)}")
     if any("preview" in name.lower() for name in names):
         raise RuntimeError("hosted web archive contains a preview-named file")
+    icon = archive_file(bundle, f"{root}icon.png")
+    if icon != APPLICATION_ICON.read_bytes():
+        raise RuntimeError("hosted web archive contains the wrong application icon")
     require_click_assets(archive_file(bundle, wasm[0]), "hosted application Wasm")
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
@@ -263,6 +275,13 @@ def verify_web(bundle: Path, html: Path) -> None:
         raise RuntimeError("self-contained HTML contains an external Roboto font URL")
     if text.count('url("data:font/ttf;base64,') != 4:
         raise RuntimeError("self-contained HTML does not contain every embedded Roboto font face")
+    embedded_icon = re.search(
+        r'href="data:image/png;base64,([A-Za-z0-9+/=]+)"', text
+    )
+    if not embedded_icon or base64.b64decode(
+        embedded_icon.group(1), validate=True
+    ) != APPLICATION_ICON.read_bytes():
+        raise RuntimeError("self-contained HTML does not contain the application icon")
     application_binary = None
     for variable in ("shoopWasmBinary", "shoopAudioWorkletBinary"):
         match = re.search(rf'const {variable} = atob\("([A-Za-z0-9+/=]+)"\);', text)

@@ -55,7 +55,18 @@ use shoop_app::{ApplicationHandle, ApplicationRuntime};
 
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
+#[cfg(not(target_arch = "wasm32"))]
+const APPLICATION_ICON_PNG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../resources/iconset/icon.png"
+));
 const UPDATE_INTERVAL: Duration = Duration::from_millis(16);
+
+#[cfg(not(target_arch = "wasm32"))]
+fn application_icon() -> egui::IconData {
+    eframe::icon_data::from_png_bytes(APPLICATION_ICON_PNG)
+        .expect("embedded application icon must be valid PNG")
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Parser)]
@@ -1362,6 +1373,7 @@ fn main() {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("ShoopDaLoop egui (dummy engine)")
+            .with_icon(application_icon())
             .with_inner_size([1000.0, 700.0])
             .with_min_inner_size([360.0, 200.0]),
         ..Default::default()
@@ -3765,6 +3777,16 @@ mod tests {
     };
 
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn application_icon_is_embedded() {
+        let icon = application_icon();
+        assert_eq!((icon.width, icon.height), (256, 256));
+        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
+        assert!(icon.rgba.chunks_exact(4).any(|pixel| pixel[3] == 0));
+        assert!(icon.rgba.chunks_exact(4).any(|pixel| pixel[3] == 255));
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
