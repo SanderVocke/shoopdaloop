@@ -90,16 +90,20 @@ impl ScriptDialogs {
                 .default_width(420.0)
                 .default_height(220.0)
                 .show(context, |ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let _help = ui
-                            .small_button(ICON_QUESTION_MARK.rich_text())
-                            .on_hover_text(format!(
-                                "Owned by Lua script: {}",
-                                dialog.owner_script_name
-                            ));
-                        #[cfg(test)]
-                        self.help_rects.insert(dialog.id, _help.rect);
-                    });
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), ui.spacing().interact_size.y),
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            let _help = ui
+                                .small_button(ICON_QUESTION_MARK.rich_text())
+                                .on_hover_text(format!(
+                                    "Owned by Lua script: {}",
+                                    dialog.owner_script_name
+                                ));
+                            #[cfg(test)]
+                            self.help_rects.insert(dialog.id, _help.rect);
+                        },
+                    );
                     ui.separator();
                     match &dialog.kind {
                         ScriptDialogKind::Simple(content) => {
@@ -654,6 +658,38 @@ mod tests {
         );
         assert_eq!(component.states[&dialogs[0].id].page, 0);
         assert!(!component.states[&dialogs[0].id].open);
+    }
+
+    #[test]
+    fn script_dialog_height_stabilizes_across_frames() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let dialogs = [simple(19, 1, "Stable dialog", 1)];
+        let mut component = ScriptDialogs::default();
+        let window_id = egui::Id::new(("script_dialog", dialogs[0].id.raw()));
+        let mut heights = Vec::new();
+        for _ in 0..8 {
+            frame(
+                &context,
+                &mut component,
+                &dialogs,
+                Vec::new(),
+                egui::vec2(900.0, 600.0),
+            );
+            heights.push(
+                context
+                    .memory(|memory| memory.area_rect(window_id))
+                    .unwrap()
+                    .height(),
+            );
+        }
+        let settled = &heights[3..];
+        assert!(
+            settled
+                .windows(2)
+                .all(|pair| (pair[0] - pair[1]).abs() < 0.1),
+            "script dialog kept changing height: {heights:?}"
+        );
     }
 
     #[test]
