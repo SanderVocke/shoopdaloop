@@ -94,7 +94,7 @@ Archive/codec/resampling/filesystem work never runs in `process()`. Native sessi
 
 ## Limits, recovery, and compatibility
 
-Default archive limits are 1,000,000 entries and 16 GiB total declared uncompressed payload. Each declared size is checked before allocation; actual practical memory and browser transfer limits may be lower and fail explicitly. AudioWorklet recording storage remains hard-bounded to the documented ten seconds per channel. The format itself uses `u32` channel counts and has no ten-channel persistence limit; the physical Web Audio device boundary remains negotiated separately and the engine deterministically mixes all loop channels to its stereo destination.
+Default archive limits are 1,000,000 entries and 16 GiB total declared uncompressed payload. Each declared size is checked before allocation; actual practical memory and browser transfer limits may be lower and fail explicitly. AudioWorklet recording storage remains hard-bounded to the documented 120 seconds per channel. The format itself uses `u32` channel counts and has no ten-channel persistence limit; the physical Web Audio device boundary remains negotiated separately and the engine deterministically mixes all loop channels to its stereo destination.
 
 Malformed paths, duplicate entries, unknown/undeclared payloads, count/size overflow, CRC/SHA mismatch, unsupported version/capability, and interrupted staged replacement fail without publishing a partial session. Retry by correcting/selecting another file. Cancellation before commit leaves the prior model/backend mapping intact. A save request made during recording/replacement is explicitly rejected until content settles; playing does not block saving and is not transitioned.
 

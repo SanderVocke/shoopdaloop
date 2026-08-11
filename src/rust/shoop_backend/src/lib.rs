@@ -711,7 +711,8 @@ fn validate_midi_input_events(events: &[BackendMidiEvent]) -> Result<()> {
     Ok(())
 }
 pub const MAX_WEB_AUDIO_QUANTUM: u32 = 2048;
-pub const RECORDING_CAPACITY_SECONDS: u32 = 10;
+pub const RECORDING_CAPACITY_SECONDS: u32 = 120;
+pub const INPUT_CAPTURE_CAPACITY_SECONDS: u32 = 10;
 pub const WEB_MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
 
 pub fn tiny_synth_fx_descriptor() -> TrackProcessorDescriptor {
@@ -1551,7 +1552,7 @@ impl EngineBackend {
             ));
         }
         let channel_count = dry_audio_channels as usize;
-        let capture_samples = self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize;
+        let capture_samples = self.sample_rate as usize * INPUT_CAPTURE_CAPACITY_SECONDS as usize;
         let capture_block_size = capture_samples.div_ceil(32).max(self.buffer_size as usize);
         let mut audio_inputs = Vec::with_capacity(channel_count);
         let mut audio_outputs = Vec::with_capacity(channel_count);
@@ -2417,7 +2418,7 @@ impl Backend for EngineBackend {
         let mut audio_inputs = Vec::with_capacity(audio_channels);
         let mut audio_outputs = Vec::with_capacity(audio_channels);
         let mut ports = Vec::with_capacity(port_capacity);
-        let capture_samples = self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize;
+        let capture_samples = self.sample_rate as usize * INPUT_CAPTURE_CAPACITY_SECONDS as usize;
         let capture_block_size = capture_samples.div_ceil(32).max(self.buffer_size as usize);
         for index in 0..request.audio_channels {
             let suffix = if request.audio_channels == 1 {

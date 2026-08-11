@@ -497,6 +497,8 @@ pub struct AppWidget {
     details_toggle_rect: Option<egui::Rect>,
     #[cfg(test)]
     piano_toggle_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    reset_xruns_rect: Option<egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -542,6 +544,8 @@ impl AppWidget {
             details_toggle_rect: None,
             #[cfg(test)]
             piano_toggle_rect: None,
+            #[cfg(test)]
+            reset_xruns_rect: None,
         }
     }
 
@@ -704,7 +708,7 @@ impl AppWidget {
                     .id_salt("status_and_sync_scroll")
                     .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
-                        self.show_logo_and_status(ui, state);
+                        self.show_logo_and_status(ui, state, &mut actions);
                         if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
                             ui.add_space(8.0);
                             ui.separator();
@@ -1333,7 +1337,12 @@ impl AppWidget {
         self.logo = Some(context.load_texture("shoopdaloop-logo", color_image, Default::default()));
     }
 
-    fn show_logo_and_status(&self, ui: &mut egui::Ui, state: &AppState) {
+    fn show_logo_and_status(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
         ui.vertical_centered(|ui| {
             if let Some(logo) = &self.logo {
                 let size = logo.size_vec2();
@@ -1354,7 +1363,17 @@ impl AppWidget {
             egui::ProgressBar::new((state.status.dsp_load_percent / 100.0).clamp(0.0, 1.0))
                 .text(format!("{:.1}%", state.status.dsp_load_percent)),
         );
-        ui.label(format!("xruns: {}", state.status.xruns));
+        ui.horizontal(|ui| {
+            ui.label(format!("xruns: {}", state.status.xruns));
+            let reset = ui.small_button("reset");
+            #[cfg(test)]
+            {
+                self.reset_xruns_rect = Some(reset.rect);
+            }
+            if reset.clicked() {
+                actions.push(AppAction::ResetXruns);
+            }
+        });
         ui.label(format!("audio: {:?}", state.status.audio_driver));
         if state.status.callback_count > 0 {
             ui.label(format!("callbacks: {}", state.status.callback_count));
@@ -1363,16 +1382,14 @@ impl AppWidget {
                 state.status.input_peak, state.status.output_peak
             ));
         }
-        if state.status.callback_budget_overruns > 0
-            || state.status.command_overflows > 0
+        if state.status.command_overflows > 0
             || state.status.storage_low_channels > 0
             || state.status.storage_exhaustions > 0
         {
             ui.colored_label(
                 colors::WARNING,
                 format!(
-                    "audio limits: budget {} / queue {} / storage low {} / exhausted {}",
-                    state.status.callback_budget_overruns,
+                    "audio limits: queue {} / storage low {} / exhausted {}",
                     state.status.command_overflows,
                     state.status.storage_low_channels,
                     state.status.storage_exhaustions
@@ -1580,6 +1597,26 @@ mod tests {
                 },
             ],
         )
+    }
+
+    #[test]
+    fn xrun_reset_button_emits_one_reset_action() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState {
+            status: crate::StatusState {
+                xruns: 4,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        let reset = widget.reset_xruns_rect.unwrap().center();
+        assert_eq!(
+            click(&context, &mut widget, &state, reset),
+            vec![AppAction::ResetXruns]
+        );
     }
 
     #[test]

@@ -68,9 +68,7 @@ def main() -> None:
                 "output_peak": float(status.get_attribute("data-output-peak") or 0),
                 "quantum": int(status.get_attribute("data-render-quantum") or 0),
                 "overflows": int(status.get_attribute("data-command-overflows") or 0),
-                "budget_overruns": int(
-                    status.get_attribute("data-callback-budget-overruns") or 0
-                ),
+                "xruns": int(status.get_attribute("data-xruns") or 0),
                 "owned_media_tracks": int(
                     status.get_attribute("data-owned-media-tracks") or 0
                 ),
@@ -98,7 +96,7 @@ def main() -> None:
             and state["output_peak"] > 0
             and state["quantum"] > 0
             and state["overflows"] == 0
-            and state["budget_overruns"] == 0
+            and state["xruns"] == 0
             and state["owned_media_tracks"] > 0
             and state["dry_wet_form"] == "tiny-synth-fx"
             and state["web_midi"] in {"Unsupported", "AwaitingGesture"}

@@ -3328,10 +3328,6 @@ fn set_browser_status(message: &str, snapshot: Option<&AppSnapshot>) {
         let _ = element.set_attribute("data-render-quantum", &status.buffer_size.to_string());
         let _ = element.set_attribute("data-xruns", &status.xruns.to_string());
         let _ = element.set_attribute(
-            "data-callback-budget-overruns",
-            &status.callback_budget_overruns.to_string(),
-        );
-        let _ = element.set_attribute(
             "data-render-discontinuities",
             &status.render_discontinuities.to_string(),
         );
