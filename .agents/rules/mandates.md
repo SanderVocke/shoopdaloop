@@ -14,3 +14,7 @@
 # When encountering a situation where the instructions given were plainly wrong w.r.t the codebase content
 
 - Stop and notify the user.
+
+# Overriding
+
+- These rules may be overruled by the user instructions. If you see a strong reason to overrule them yourself, ask explicit permission from the user.

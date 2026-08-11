@@ -1,19 +1,21 @@
 ---
 name: tracy
-description: Capture and investigate ShoopDaLoop Tracy profiles, including live tracing, application and QML-test captures, ShoopDaLoop-specific zones and plots, and analysis with tracy-query. Use when debugging timing, realtime audio, frontend refresh, engine graph/control, scheduling, state publication, xrun, queue, or performance issues from .tracy files.
-compatibility: ShoopDaLoop emits Tracy 0.13.1-compatible captures. Querying requires the matching static tracy-query release binary.
+description: Capture and investigate native ShoopDaLoop egui Tracy profiles, including GUI/application intent flow, engine control and graph work, realtime audio timing, Tiny Synth/FX processing, queues, scheduling, and state publication from .tracy files.
+compatibility: The native egui app emits Tracy 0.13.1-compatible captures. Querying requires the matching static tracy-query release binary.
 ---
 
-# Debug ShoopDaLoop with Tracy
+# Debug the ShoopDaLoop egui app with Tracy
 
-Use this skill to acquire a representative ShoopDaLoop trace and interpret its application-specific instrumentation. Use the versioned `tracy-query` skill distributed with `tracy-query` for the query CLI's complete command semantics.
+Use this skill for the native `shoopdaloop_egui` application. It does not describe the legacy frontend, its self-tests, or its CLI and trace data.
+
+Use the versioned `tracy-query` skill distributed with `tracy-query` for complete query syntax. This skill covers ShoopDaLoop-specific capture and interpretation.
 
 ## Obtain `tracy-query` and its skill
 
 Download both from the `tracy-query` v0.1.0 release:
 
 - Release page: <https://github.com/SanderVocke/tracy-query/releases/tag/v0.1.0>
-- Released query skill: <https://github.com/SanderVocke/tracy-query/releases/download/v0.1.0/SKILL.md>
+- Query skill: <https://github.com/SanderVocke/tracy-query/releases/download/v0.1.0/SKILL.md>
 
 Choose the static binary for the current platform:
 
@@ -24,7 +26,7 @@ Choose the static binary for the current platform:
 - `tracy-query-windows-x86_64.exe`
 - `tracy-query-windows-arm64.exe`
 
-The GitHub CLI can download the binary and its matching skill alongside a trace:
+For example:
 
 ```sh
 TRACE_DIR=traces/investigation
@@ -39,9 +41,9 @@ gh release download v0.1.0 \
 chmod +x "$TRACE_DIR/$ASSET"
 ```
 
-Read the downloaded `SKILL.md` before querying. It is the authoritative guide for validating traces, discovering sources, narrowing time ranges, filtering records, comparing captures, and avoiding interpretation errors. Keep the binary and downloaded skill with investigation artifacts or in a temporary tools directory; do not commit release binaries to the repository.
+Read the downloaded `SKILL.md` before querying. Keep downloaded binaries with investigation artifacts or in a temporary tools directory; do not commit them.
 
-Set a convenient path and validate the tool and capture before analysis:
+Validate the tool and capture before analysis:
 
 ```sh
 TQ="$TRACE_DIR/$ASSET"
@@ -54,196 +56,220 @@ TRACE="$TRACE_DIR/capture.tracy"
 "$TQ" sources --count "$TRACE"
 ```
 
-`tracy-query` reads existing Tracy 0.13.1-compatible captures; it does not create them. Follow the released skill for all further query syntax.
+`tracy-query` reads captures; it does not create them.
 
-## Build and run ShoopDaLoop with tracing
+## Build and run the native egui app
 
-Initialize submodules and build the development launcher:
+Initialize submodules and build:
 
 ```sh
 git submodule update --init --recursive
-cargo build
+cargo build -p shoopdaloop_egui
 ```
 
-Run through `target/debug/shoopdaloop_dev.sh` so in-source resources and QML are available.
+The egui executable has three tracing options:
 
-### Live Tracy profiling
-
-Use `--tracing` while a matching Tracy 0.13.1 profiler connects to the application:
-
-```sh
-target/debug/shoopdaloop_dev.sh \
-  --backend dummy \
-  --tracing
+```text
+--tracing                enable live Tracy profiling
+--tracing-capture        start tracy-capture and write below ./traces
+--tracing-engine-detail  add detailed realtime engine zones; requires either mode
 ```
 
-Add `--tracing-engine-detail` when per-node engine work is needed:
+There are no egui CLI options for selecting the capture executable or output directory. `TRACY_CAPTURE_TOOL` selects the executable; otherwise it is resolved as `tracy-capture` on `PATH`. The output directory is `traces` relative to the application's working directory.
+
+The audio backend is selected through persisted egui settings, not a `--backend` argument. Reproduce with the configured JACK, CPAL+midir, or dummy backend that matters to the issue.
+
+### Live profiling
+
+Connect a matching Tracy 0.13.1 profiler, then run:
 
 ```sh
-target/debug/shoopdaloop_dev.sh \
-  --backend dummy \
+cargo run -p shoopdaloop_egui -- --tracing
+```
+
+For detailed engine stages:
+
+```sh
+cargo run -p shoopdaloop_egui -- \
   --tracing \
   --tracing-engine-detail
 ```
 
-`--tracing-engine-detail` requires either `--tracing` or `--tracing-capture`. It increases callback overhead and trace volume.
-
 ### Capture a `.tracy` file
 
-Install the Tracy 0.13.1 `tracy-capture` executable. This is a different program from `tracy-query`. ShoopDaLoop can find it on `PATH`, through `TRACY_CAPTURE_TOOL`, or through `--tracing-capture-tool`.
-
-Capture an application run into a dedicated investigation directory:
+Install the Tracy 0.13.1 `tracy-capture` executable. It is distinct from `tracy-query`.
 
 ```sh
-TRACE_DIR=traces/investigation
-mkdir -p "$TRACE_DIR"
-
-target/debug/shoopdaloop_dev.sh \
-  --backend dummy \
-  --no-crash-handling \
-  --tracing-capture \
-  --tracing-engine-detail \
-  --tracing-capture-tool "$(command -v tracy-capture)" \
-  --tracing-capture-output-dir "$TRACE_DIR"
+TRACY_CAPTURE_TOOL="$(command -v tracy-capture)" \
+  cargo run -p shoopdaloop_egui -- \
+    --tracing-capture \
+    --tracing-engine-detail
 ```
 
-Reproduce the issue and quit normally so ShoopDaLoop finalizes the capture. Select the real backend involved in the issue instead of `dummy` when backend behavior matters. `--tracing-capture` enables tracing automatically. Omit engine detail for lower overhead and a smaller coarse trace.
+`--tracing-capture` enables tracing automatically. Omit engine detail for lower callback overhead and smaller captures. Quit normally so the capture can disconnect and finalize.
 
-For QML self-tests, combine the capture options with `--self-test`. ShoopDaLoop writes one numbered capture per loaded `tst_*.qml` file, plus `manifest.tsv` and `tracy-capture.log`.
+A capture run creates:
 
-After capture, require all of the following before interpreting it:
+- a non-empty numbered file such as `traces/0001-application.tracy`;
+- `traces/manifest.tsv`, with an `application` source row (the historical source-column header may still say `source_qml`);
+- `traces/tracy-capture.log`.
 
-1. ShoopDaLoop exited normally and logged `Finalized Tracy capture`.
-2. The `.tracy` file is non-empty.
-3. `tracy-capture.log` reports that the trace was saved.
-4. Application output contains no `Instrumentation failure`.
-5. `tracy-query check` succeeds.
+Before interpreting a capture, require all of the following:
 
-## Instrumentation published by ShoopDaLoop
+1. Application output reports `Finalized Tracy capture`.
+2. The selected `.tracy` file is non-empty.
+3. `manifest.tsv` has the corresponding successful application row.
+4. `tracy-capture.log` reports that Tracy saved the trace.
+5. Application output and the trace contain no instrumentation-failure diagnostic.
+6. `tracy-query check` succeeds.
 
-ShoopDaLoop uses fixed, bounded zone names. Runtime labels and audio or MIDI payloads do not become hot-zone names. Coarse tracing covers application/frontend spans, engine control and graph work, and bounded realtime categories. Engine detail adds static per-node and routing stages.
+## Expected egui trace data
 
-### CPU zones
+ShoopDaLoop uses fixed, bounded zone names. User labels, paths, processor state, MIDI payloads, and audio samples do not become hot-zone names.
 
-- `app.*`: process startup, configuration, Qt initialization and event loop, crash handling, lifecycle, and shutdown.
-- `frontend.*`: QML and Lua execution, file/session work, control dispatch, rendering, backend state consumption, object updates, and refresh scheduling.
-- `engine.control.*`: command enqueueing, queueing, synchronous waits, results, session object creation, loop transitions, and reclamation.
-- `engine.graph.*`: graph topology and processing-order construction, schedule building, arm/apply generations, flushes, and scheduler work.
-- `engine.composite.*`: composite-loop planning and control work.
-- `engine.rt.*`: realtime driver, callback, cycle, session, loop, FX, and state-publication hierarchy.
-- `worker.*`: graph scheduler, dummy driver, plugin UI, MIDI connection, and other background workers.
-- `tool.*`: instrumented support and packaging tool work when present.
+### Egui and application zones
 
-A typical dummy realtime hierarchy is:
+Expected native egui zones include:
+
+- `app.egui.run`: native eframe lifetime.
+- `frontend.egui.initialize`: settings, widget, backend, and runtime initialization.
+- `frontend.egui.update`: one top-level GUI update.
+- `frontend.egui.frame`: widget rendering, with revision and bounded state counts.
+- `frontend.egui.tracks` and `frontend.egui.track`: track collection and per-track rendering.
+- `frontend.egui.intent_dispatch`: composition-root handling of a GUI intent.
+- `frontend.egui.settings_action`: native settings actions.
+- `frontend.app.intent_dispatch`: application queue submission, with `intent_id`, intent kind, and queue outcome.
+- `frontend.app.intent_handle`: actor-side handling with the same `intent_id` and intent kind.
+- `frontend.app.intent_apply`: model mutation, revision, and success/error outcome.
+- `frontend.app.update`, `frontend.app.backend_advance`, `frontend.app.backend_snapshot_apply`, and `frontend.app.snapshot_publish`: polling, state application, and publication.
+- `frontend.app.runtime_start`, `frontend.app.runtime_shutdown`, and `worker.application`: actor lifecycle.
+
+A UI intent normally nests `frontend.app.intent_dispatch` inside `frontend.egui.intent_dispatch` on the GUI thread. Join only the app dispatch zone to `frontend.app.intent_handle` by `intent_id`; the egui zone itself does not carry that ID. `frontend.app.intent_apply` then contains the resulting backend and `engine.control.*` work when it is synchronous.
+
+Some operations continue in later `frontend.app.update` zones. File import, click generation, session I/O, and driver switching therefore need not remain nested under the original intent. Correlate their status messages, revisions, and later engine-control zones rather than assuming one synchronous span.
+
+### Interaction messages
+
+The egui frontend emits sparse structured Tracy messages when actions occur:
+
+- `frontend.egui.intent_created`: one message per application intent, with stable intent kind and snapshot revision;
+- `frontend.egui.action_batch`: application/settings action counts and revision;
+- `frontend.egui.track_interaction` and `frontend.egui.tracks_interaction`: bounded track-level interaction counts;
+- `frontend.app.intent_failed`: failed model application with intent kind and error;
+- `frontend.egui.tracing_started`: selected tracing modes.
+
+Intent kinds include stable categories such as `loop.play`, `track.output_gain`, `session.request_save`, and Tiny Synth/FX controls under `track.tiny_synth_fx.*`. Interaction messages do not always include a target object ID. Never invent a track or loop target from the intent kind alone.
+
+UI-only actions such as opening a dialog may have an interaction message but no application intent. Conversely, asynchronous file completion creates a later app intent outside the original UI dispatch span.
+
+### Engine zones
+
+Expected engine categories include:
+
+- `engine.control.*`: command submission, queue/results, waits, object creation, loop transitions, targeted loop-content replacement, reclamation, and graph queries;
+- `engine.graph.*`: topology/schedule construction, scheduler start, arm/apply generations, and flushes;
+- `engine.driver.*`: non-realtime driver creation, startup, and controlled waits;
+- `engine.rt.*`: realtime driver, callback, command, graph-state, cycle, session, loop, FX, and state-publication hierarchy;
+- `worker.*`: application actor, graph scheduler, dummy driver, connection caches, plugin UI, and other background work;
+- `engine.plugin.*`: non-realtime plugin discovery, state, and UI operations when Carla/LV2 is enabled.
+
+A typical dummy hierarchy is:
 
 ```text
 engine.rt.driver
   engine.rt.driver.dummy
     engine.rt.callback
+      engine.rt.commands
+      engine.rt.graph_state
       engine.rt.cycle
         engine.rt.session
+          engine.rt.loops
+          engine.rt.fx
+          engine.rt.state_publication
 ```
 
-Coarse session categories include loops, FX, and state publication. `--tracing-engine-detail` adds fixed `ports.*`, `channels.*`, `composites.*`, `midi.*`, external-routing, and plugin-processing zones. Numeric zone values carry bounded context such as driver kind, frame count, or arena index.
+Coarse tracing contains the callback/session categories. `--tracing-engine-detail` adds fixed per-port/channel, composite timeline, MIDI playback, external routing, trace publication, plugin-processing, and `engine.rt.fx.tiny_synth_process` zones. Numeric zone values carry bounded context such as driver kind, frame count, or arena index.
 
-### Frame sets and plots
+### Frames and plots
 
-Frame marks align the audio and frontend timelines:
+The native egui path emits the `engine.callback` frame set for audio cycles. Use `frontend.egui.frame` or `frontend.egui.update` CPU zones—not a `frontend.refresh` frame set—to align GUI work.
 
-- `engine.callback`: audio processing cycles.
-- `frontend.refresh`: GUI/backend-state refreshes.
+Do not expect legacy `BackendWrapper/*` health plots or legacy frontend object plots in an egui capture. Their absence is normal. The egui trace exposes only limited snapshot counts and status fields, so use zone fields, structured messages, shell diagnostics, and adjacent engine command/callback evidence. In particular, the lack of an xrun or DSP-load plot is not evidence that no xrun or load problem occurred.
 
-`BackendWrapper/*` plots expose engine health and control-flow state, including:
+## Tracy message formats
 
-- callback last/worst duration and callback-budget overruns;
-- cycles, processed frames, sample rate, buffer size, and update interval;
-- pending/applied commands and command sequence;
-- schedule request/applied generation, stale or stuck cycles, and sub-block count;
-- graph arms/applies and dropped trace snapshots;
-- capture underruns/overruns, xruns, and DSP load;
-- audio buffer pool creation and availability.
-
-Object-state plots describe the most recently consumed state:
-
-- `engine.loop.*`: mode, position, length, and iteration-related state.
-- `engine.composite.*`: mode, iteration, position, and length-related state.
-- `engine.port.*`: input/output peaks and event activity.
-- `engine.channel.*`: mode, length, position, and data state.
-- `engine.fx.*`: FX-chain state and load-related values.
-
-Several objects may update during one frontend refresh. Correlate object plots with adjacent object update zones rather than assuming a plot identifies one particular object.
-
-### Shoop log messages
-
-Most Rust `log` records appear in Tracy as a `message` whose `text` field has this form:
+All events emitted through ShoopDaLoop's Tracy event layer begin with an explicit severity:
 
 ```text
-log.level = <TRACE|DEBUG|INFO|WARN|ERROR>, message = <payload>, log.target = <logical target>, log.module_path = <Rust module>, log.file = <source path>, log.line = <line>
+log.level = <TRACE|DEBUG|INFO|WARN|ERROR>, <event fields>
 ```
 
-For example:
+Direct `tracing` events from the egui/application path generally look like:
 
 ```text
-log.level = INFO, message = Transitioning 1 loops to 2 with delay -1, sync at cycle -1, log.target = Frontend.Loop, log.module_path = frontend::cxx_qt_shoop::rust::qobj_loop_gui, log.file = src/rust/frontend/src/cxx_qt_shoop/rust/qobj_loop_gui.rs, log.line = 477
+log.level = TRACE, message = frontend.egui.intent_created, intent = track.tiny_synth_fx.panic, revision = 42
 ```
 
-The embedded metadata is not promoted to separate `tracy-query` fields; filter it through `message.text`. Anchor metadata values on their labels and delimiters because the payload may itself contain commas or equals signs:
+Field order follows the emitting event and should not be used as a schema. Filter on anchored labels. The Rust tracing metadata target (for example `Frontend.Egui`) is not automatically added to direct-event message text.
+
+Records bridged from the Rust `log` facade include call-site metadata and generally look like:
+
+```text
+log.level = INFO, message = <payload>, log.target = <logical target>, log.module_path = <Rust module>, log.file = <source path>, log.line = <line>
+```
+
+The payload may contain commas or equals signs. Anchor metadata on labels and delimiters:
 
 ```sh
-# One exact severity.
+# Exact severity.
 "$TQ" query --kind message \
   --filter 'message.text=^log\.level = ERROR(,|$)' "$TRACE"
 
-# Warning or error severity.
+# Warnings or errors.
 "$TQ" query --kind message \
   --filter 'message.text=^log\.level = (WARN|ERROR)(,|$)' "$TRACE"
 
-# Severity and logical logging target/category. Repeated filters are ANDed.
+# Egui-created intent events.
 "$TQ" query --kind message \
-  --filter 'message.text=^log\.level = (DEBUG|INFO)(,|$)' \
-  --filter 'message.text=(^|, )log\.target = Frontend\.Loop(,|$)' "$TRACE"
+  --filter 'message.text=(^|, )message = frontend\.egui\.intent_created(,|$)' "$TRACE"
 
-# Rust module path.
+# One stable intent family.
 "$TQ" query --kind message \
-  --filter 'message.text=(^|, )log\.module_path = frontend::cxx_qt_shoop::rust::qobj_loop_gui(,|$)' "$TRACE"
+  --filter 'message.text=(^|, )intent = track\.tiny_synth_fx\.' "$TRACE"
 
-# Source tree or one source file.
+# Bridged log target, when that suffix is present.
 "$TQ" query --kind message \
-  --filter 'message.text=(^|, )log\.file = src/rust/frontend/src/' \
-  --filter 'message.text=qobj_loop_gui\.rs(,|$)' "$TRACE"
-
-# Exact source line.
-"$TQ" query --kind message \
-  --filter 'message.text=(^|, )log\.line = 477(,|$)' "$TRACE"
+  --filter 'message.text=(^|, )log\.target = Backend(\.|,|$)' "$TRACE"
 ```
 
-`log.level` is the event severity. `log.target` is the stable logical category normally shown as names such as `Frontend.Loop` or `Frontend.BackendWrapper`. `log.module_path` is the Rust module that emitted the record. `log.file` and `log.line` identify the call site. Prefer the logical target for durable investigations; module paths and source lines are more exact but change during refactoring.
+Do not treat Tracy's message `color` as severity. Shoop records severity in `message.text`; red may instead indicate an instrumentation diagnostic. Do not infer a level by searching payload words such as `warn`, `error`, or `failed`.
 
-Do not treat the Tracy message `color` field as severity. Shoop encodes severity explicitly in `message.text`; ordinary records normally use the default color, while red may indicate an instrumentation failure from the Tracy integration. Searching the payload for words such as `warn`, `error`, or `failed` is likewise not a level filter.
-
-The companion application output remains formatted as:
+Shell output uses:
 
 ```text
-[<RFC3339 timestamp>] [<thread name/id>] [<logical target>] [TRACE|DEBUG|INFO|WARN|ERROR] <payload>
+[<RFC3339 timestamp>] [<thread name/id>] [<target>] [TRACE|DEBUG|INFO|WARN|ERROR] <fields/message>
 ```
 
-`SHOOP_LOG`, or `RUST_LOG` when `SHOOP_LOG` is unset, controls that shell output. For example, `SHOOP_LOG='info,Frontend.Loop=debug'` enables general info output and debug output for that target. Tracy event capture is filtered independently and does not change the shell format.
+`SHOOP_LOG`, or `RUST_LOG` when `SHOOP_LOG` is unset, filters shell output. Tracy event capture is filtered independently, so changing the shell filter does not remove enabled Tracy events.
 
-Captures made before severity was added have messages beginning with `message =` instead of `log.level =` and cannot be filtered reliably by level after capture.
+Inspect a message sample before relying on a suffix: direct tracing events and bridged log records intentionally have different fields.
 
-Not every Tracy message must follow the Rust-log suffix format. QML, support tools, or instrumentation diagnostics may emit different text. Inspect a small sample before applying suffix-specific filters. Sampling, scheduler, lock, memory, and hardware-counter collections likewise depend on what Tracy recorded; an absent category is not proof that the corresponding behavior did not occur.
+## Investigation workflow
 
-## ShoopDaLoop investigation workflow
+Follow the downloaded `tracy-query` skill's validate, inventory, count-first, and narrow-window workflow. For ShoopDaLoop egui:
 
-Use the released `tracy-query` skill's validate, inventory, count-first, and narrow-window workflow. Apply ShoopDaLoop's instrumentation in this order:
+1. Inventory `frontend.egui.intent_created` messages for a sparse user-action timeline.
+2. Find the adjacent `frontend.egui.intent_dispatch` and nested `frontend.app.intent_dispatch`.
+3. Join app dispatch to `frontend.app.intent_handle` by `intent_id`.
+4. Inspect `frontend.app.intent_apply` and nested `engine.control.*` queue/wait outcomes.
+5. For asynchronous I/O or driver operations, follow later `frontend.app.update` spans, messages, and snapshot revisions.
+6. If topology changed, find the corresponding `engine.graph.*` arm and apply generation.
+7. Inspect the next `engine.rt.callback` hierarchy; compare callback duration to the frame budget derived from its frame count and the configured sample rate.
+8. For FX issues, inspect `engine.rt.fx`; with engine detail, distinguish Tiny Synth/FX and Carla/plugin processing stages.
+9. For state visibility, follow `engine.rt.state_publication` into backend snapshot application and `frontend.app.snapshot_publish`, then the next egui frame revision.
+10. For regressions, capture equivalent scenarios and durations and compare identical normalized windows and filters. Counts alone do not establish a performance regression.
 
-1. Identify the symptom and normalized time window from messages, frames, or a health plot.
-2. Correlate a `frontend.*` control span with its `engine.control.*` command sequence and queue or wait result.
-3. If topology changed, find the corresponding `engine.graph.*` arm and apply generation.
-4. Inspect the next `engine.rt.callback` hierarchy and compare its duration with callback-budget, xrun, schedule-generation, stale/stuck, and sub-block plots.
-5. Follow `engine.rt.state_publication` into `frontend.refresh.run`, then inspect object update zones and object/health plots.
-6. For realtime overruns, compare coarse and detailed captures. Detailed tracing perturbs the callback more and must not be treated as transparent timing.
-7. For regressions, capture equivalent scenarios and durations, assign stable trace labels, and compare identical windows and filters. Counts alone do not establish a performance regression.
+For short-session reconstruction, compare snapshot fields and counts before and after each action. Infer topology only from explicit descriptors or bounded creation-zone evidence, and label inferred conclusions as such.
 
 Distinguish observed records from interpretation. Report the exact capture, query command, normalized range, filters, and relevant output behind each conclusion.
 
@@ -251,4 +277,4 @@ Distinguish observed records from interpretation. Report the exact capture, quer
 
 Tracing is a debugging mode, not a transparent realtime measurement mode. Tracy calls may allocate, initialize thread-local state, grow queues, or lock internally. Driver-owned callback threads cannot always be prewarmed. Tracing can cause xruns and alter callback timing.
 
-Use `--rt-alloc-guard` as a diagnostic aid where appropriate, but do not infer uninstrumented performance from traced callback durations. Prefer coarse tracing first and enable engine detail only when the additional stage resolution is necessary. Use the capture's timer resolution when interpreting short zones.
+Prefer coarse tracing first. Enable engine detail only when per-stage resolution is necessary, and do not compare detailed callback durations directly with an untraced run. Use the capture's timer resolution when interpreting short zones.

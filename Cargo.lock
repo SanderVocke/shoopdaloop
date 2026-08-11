@@ -4734,6 +4734,7 @@ dependencies = [
  "shoop_backend",
  "shoop_scripting",
  "shoop_session",
+ "tracing",
 ]
 
 [[package]]
@@ -4781,6 +4782,7 @@ dependencies = [
  "serde_json",
  "shoop_app_api",
  "shoop_settings",
+ "tracing",
 ]
 
 [[package]]
@@ -4906,6 +4908,8 @@ name = "shoopdaloop_egui"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "clap",
+ "common",
  "eframe",
  "js-sys",
  "log",
@@ -4922,6 +4926,7 @@ dependencies = [
  "shoop_session",
  "shoop_settings",
  "tempfile",
+ "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

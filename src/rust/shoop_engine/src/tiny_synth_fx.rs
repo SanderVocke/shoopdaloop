@@ -216,6 +216,8 @@ impl TinySynthFxProcessor {
     }
 
     pub fn process(&mut self, frames: usize, events: &[MidiStorageElem]) {
+        let _span =
+            shoop_tracing::realtime_span_detail!("engine.rt.fx.tiny_synth_process", value = frames);
         let frames = frames.min(self.planes.max_frames);
         let mut cursor = 0;
         for event in events {

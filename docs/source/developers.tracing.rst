@@ -60,8 +60,13 @@ plugin state, or user labels in hot-zone names.
   and shutdown.
 
 ``frontend.*``
-  QML/Lua/file/session operations, control dispatch, rendering, object-state
-  consumption, and refresh scheduling.
+  QML and egui rendering, application intent dispatch and handling, Lua and
+  file/session operations, object-state consumption, snapshot publication, and
+  refresh scheduling. Egui-generated intents nest
+  ``frontend.egui.intent_dispatch`` and ``frontend.app.intent_dispatch`` on the
+  GUI thread. The latter and ``frontend.app.intent_handle`` share an
+  ``intent_id`` field across the application actor queue, while the nested
+  ``engine.control.*`` zones show the resulting engine work.
 
 ``engine.control.*``, ``engine.graph.*``, ``engine.composite.*``
   Non-realtime command queue, synchronous waits, graph construction/application,
@@ -104,6 +109,28 @@ tracing enables its port/channel/loop stage clocks and the frontend report uses
 nanoseconds (latest cycle total, per-call average, and worst cycle). Tracy zones
 do not replace its counters or semantics; agreement between profiler/state
 reports and trace plots is a validation check.
+
+Egui profiling and capture
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The native egui executable supports live Tracy profiling::
+
+  cargo run -p shoopdaloop_egui -- --tracing
+
+It can also start ``tracy-capture`` itself. The tool is resolved from
+``TRACY_CAPTURE_TOOL`` or ``PATH``, and the numbered capture is written below
+``./traces``::
+
+  cargo run -p shoopdaloop_egui -- \
+    --tracing-capture \
+    --tracing-engine-detail
+
+Quit normally so the capture process disconnects and the trace is finalized.
+The capture should contain ``frontend.egui.*`` rendering and action spans,
+``frontend.app.*`` actor/update/publication spans, and the existing
+``engine.control.*``, ``engine.graph.*``, and ``engine.rt.*`` zones. Use the
+shared ``intent_id`` on app dispatch and handling spans to correlate work
+across threads. ``--tracing-engine-detail`` requires either tracing mode.
 
 QML capture files
 ~~~~~~~~~~~~~~~~~

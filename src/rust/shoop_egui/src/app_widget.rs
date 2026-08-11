@@ -577,6 +577,13 @@ impl AppWidget {
         settings_state: &SettingsViewState,
         script_paths: Option<&BTreeMap<crate::ScriptId, String>>,
     ) -> AppWidgetResponse {
+        let _span = tracing::trace_span!(
+            "frontend.egui.frame",
+            revision = state.revision,
+            track_count = state.tracks.len(),
+            notification_count = state.notifications.len()
+        )
+        .entered();
         self.ensure_logo(ui.ctx());
         let events = ui.ctx().input(|input| input.events.clone());
         let text_entry_active = ui.ctx().egui_wants_keyboard_input();
@@ -780,6 +787,23 @@ impl AppWidget {
         );
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
+        if !actions.is_empty() || !settings_actions.is_empty() {
+            tracing::debug!(
+                target: "Frontend.Egui",
+                app_action_count = actions.len(),
+                settings_action_count = settings_actions.len(),
+                revision = state.revision,
+                "frontend.egui.action_batch"
+            );
+            for action in &actions {
+                tracing::trace!(
+                    target: "Frontend.Egui",
+                    intent = action.kind(),
+                    revision = state.revision,
+                    "frontend.egui.intent_created"
+                );
+            }
+        }
         AppWidgetResponse {
             app_actions: actions,
             settings_actions,

@@ -8,6 +8,7 @@ shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend" }
 shoop_session = { path = "../shoop_session" }
 shoop_scripting = { path = "../shoop_scripting" }
+tracing = { workspace = true }
 
 [dev-dependencies]
 midir = { workspace = true }

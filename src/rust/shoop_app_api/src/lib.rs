@@ -1373,6 +1373,129 @@ pub enum AppIntent {
     },
 }
 
+impl LoopAction {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::IconClicked(_) => "loop.icon_clicked",
+            Self::IconDoubleClicked => "loop.icon_double_clicked",
+            Self::PlayClicked => "loop.play",
+            Self::PlayDryClicked => "loop.play_dry",
+            Self::RecordClicked => "loop.record",
+            Self::GrabClicked => "loop.grab",
+            Self::RerecordClicked => "loop.rerecord",
+            Self::StopClicked => "loop.stop",
+            Self::GainChanged(_) => "loop.gain",
+            Self::BalanceChanged(_) => "loop.balance",
+            Self::RestoreRecordedFxState => "loop.restore_recorded_fx",
+        }
+    }
+}
+
+impl TinySynthFxControl {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::SelectPreset(_) => "track.tiny_synth_fx.select_preset",
+            Self::SetMasterGainDb(_) => "track.tiny_synth_fx.master_gain",
+            Self::SetReverbEnabled(_) => "track.tiny_synth_fx.reverb_enabled",
+            Self::SetReverbAmount(_) => "track.tiny_synth_fx.reverb_amount",
+            Self::SetDistortionEnabled(_) => "track.tiny_synth_fx.distortion_enabled",
+            Self::SetDistortionDrive(_) => "track.tiny_synth_fx.distortion_drive",
+            Self::Panic => "track.tiny_synth_fx.panic",
+        }
+    }
+}
+
+impl TrackAction {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::NameChanged(_) => "track.name",
+            Self::OutputGainChanged(_) => "track.output_gain",
+            Self::OutputBalanceChanged(_) => "track.output_balance",
+            Self::OutputMuteChanged(_) => "track.output_mute",
+            Self::InputGainChanged(_) => "track.input_gain",
+            Self::InputBalanceChanged(_) => "track.input_balance",
+            Self::InputMonitoringChanged(_) => "track.input_monitoring",
+            Self::FxActiveChanged(_) => "track.fx_active",
+            Self::FxVisibilityChanged(_) => "track.fx_visibility",
+            Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
+            Self::FxRestoreState(_) => "track.fx_restore_state",
+            Self::FxClearLogs => "track.fx_clear_logs",
+            Self::TinySynthFx(control) => control.kind(),
+        }
+    }
+}
+
+impl GlobalControlAction {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::StopAll => "global.stop_all",
+            Self::DeselectAll => "global.deselect_all",
+            Self::ClearRecordings { .. } => "global.clear_recordings",
+            Self::ClearAll { .. } => "global.clear_all",
+            Self::SetDefaultRecordingAction(_) => "global.default_recording_action",
+            Self::SetPlayAfterRecord(_) => "global.play_after_record",
+            Self::SetSync(_) => "global.sync",
+            Self::SetSolo(_) => "global.solo",
+            Self::SetApplyNCycles(_) => "global.apply_n_cycles",
+        }
+    }
+}
+
+impl PianoAction {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Press(_) => "piano.press",
+            Self::Release(_) => "piano.release",
+            Self::ReleaseAll => "piano.release_all",
+        }
+    }
+}
+
+impl AppIntent {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Loop { action, .. } => action.kind(),
+            Self::Track { action, .. } => action.kind(),
+            Self::Global(action) => action.kind(),
+            Self::Piano(action) => action.kind(),
+            Self::AddTrack(_) => "track.add_direct",
+            Self::AddTrackWithTopology(_) => "track.add_with_topology",
+            Self::AddLoop { .. } => "loop.add_row",
+            Self::KeyEvent(_) => "scripting.key_event",
+            Self::AddScriptSource { .. } => "scripting.add_source",
+            Self::SetScriptEnabled { .. } => "scripting.set_enabled",
+            Self::RestartScript { .. } => "scripting.restart",
+            Self::ReplaceScriptSource { .. } => "scripting.replace_source",
+            Self::StopScript { .. } => "scripting.stop",
+            Self::ForgetScript { .. } => "scripting.forget",
+            Self::SetPortConnected { .. } => "connection.set",
+            Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
+            Self::RequestAudioDriverSwitch { .. } => "audio_driver.request_switch",
+            Self::ConfirmAudioDriverSwitch { .. } => "audio_driver.confirm_switch",
+            Self::CompleteAudioDriverSwitchPersistence { .. } => {
+                "audio_driver.complete_persistence"
+            }
+            Self::RequestSaveSession => "session.request_save",
+            Self::RequestLoadSessionPicker => "session.request_load_picker",
+            Self::LoadSessionBytes { .. } => "session.load_bytes",
+            Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
+            Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
+            Self::ConfirmAudioChannelSelection { .. } => "io.confirm_channel_selection",
+            Self::CancelIoTask { .. } => "io.cancel",
+            Self::ReportFileIoError { .. } => "io.report_error",
+            Self::PreviewClickTrack { .. } => "click_track.preview",
+            Self::CompleteClickTrackPreview { .. } => "click_track.complete_preview",
+            Self::GenerateClickTrack { .. } => "click_track.generate",
+            Self::RequestLoopAudioExport { .. } => "loop_audio.request_export",
+            Self::RequestLoopAudioImportPicker { .. } => "loop_audio.request_import_picker",
+            Self::ImportLoopAudioBytes { .. } => "loop_audio.import_bytes",
+            Self::RequestLoopMidiExport { .. } => "loop_midi.request_export",
+            Self::RequestLoopMidiImportPicker { .. } => "loop_midi.request_import_picker",
+            Self::ImportLoopMidiBytes { .. } => "loop_midi.import_bytes",
+        }
+    }
+}
+
 pub type AppAction = AppIntent;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1568,6 +1691,7 @@ mod tests {
             loop_id,
             action: LoopAction::IconClicked(SelectionModifiers { additive: true }),
         };
+        assert_eq!(intent.kind(), "loop.icon_clicked");
         assert_eq!(
             intent,
             AppIntent::Loop {
@@ -1575,6 +1699,22 @@ mod tests {
                 loop_id,
                 action: LoopAction::IconClicked(SelectionModifiers { additive: true }),
             }
+        );
+    }
+
+    #[test]
+    fn tiny_synth_controls_have_stable_intent_kinds() {
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::SelectPreset("pad".to_owned())).kind(),
+            "track.tiny_synth_fx.select_preset"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::SetDistortionDrive(4.0)).kind(),
+            "track.tiny_synth_fx.distortion_drive"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::Panic).kind(),
+            "track.tiny_synth_fx.panic"
         );
     }
 

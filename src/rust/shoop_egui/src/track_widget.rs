@@ -135,6 +135,13 @@ impl TrackWidget {
         show_add_loop: bool,
         min_height: f32,
     ) -> TrackWidgetResponse {
+        let _span = tracing::trace_span!(
+            "frontend.egui.track",
+            track_id = state.id.raw(),
+            loop_count = state.loops.len(),
+            is_sync = state.is_sync
+        )
+        .entered();
         self.loop_widgets
             .retain(|id, _| state.loops.iter().any(|loop_state| loop_state.id == *id));
         if self
@@ -208,6 +215,21 @@ impl TrackWidget {
         result
             .actions
             .extend(self.tiny_synth_fx_editor.show(ui.ctx(), state, processor));
+        if !result.actions.is_empty()
+            || !result.loop_actions.is_empty()
+            || !result.io_intents.is_empty()
+            || result.add_loop_requested
+        {
+            tracing::debug!(
+                target: "Frontend.Egui",
+                track_id = state.id.raw(),
+                track_action_count = result.actions.len(),
+                loop_action_count = result.loop_actions.len(),
+                io_intent_count = result.io_intents.len(),
+                add_loop_requested = result.add_loop_requested,
+                "frontend.egui.track_interaction"
+            );
+        }
         result
     }
 
