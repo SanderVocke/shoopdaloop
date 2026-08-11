@@ -10,7 +10,7 @@ use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireGrabRequest, WireHostPort,
     WireLoopMode, WireMidiEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY,
+    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, COMMAND_MAX_BYTES,
     MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
     SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
@@ -602,6 +602,16 @@ async fn start_audio_graph(
         &processor_options,
         &"maxQuantum".into(),
         &JsValue::from_f64(MAX_QUANTUM as f64),
+    )?;
+    Reflect::set(
+        &processor_options,
+        &"protocolVersion".into(),
+        &JsValue::from_f64(PROTOCOL_VERSION as f64),
+    )?;
+    Reflect::set(
+        &processor_options,
+        &"commandMaxBytes".into(),
+        &JsValue::from_f64(COMMAND_MAX_BYTES as f64),
     )?;
     let options = AudioWorkletNodeOptions::new();
     options.set_number_of_inputs(if stream.is_some() { 1 } else { 0 });

@@ -57,11 +57,30 @@ impl<T: Copy + Default> ChunkedSamples<T> {
 
     /// Preallocates a hard-bounded store that never grows beyond `capacity` samples.
     pub fn with_bounded_capacity(chunk_size: usize, capacity: usize) -> Self {
+        let mut result = Self::with_bounded_capacity_unprepared(chunk_size, capacity);
+        result.prepare_bounded_capacity();
+        result
+    }
+
+    /// Creates a hard-bounded store while deferring its sample reserve.
+    pub fn with_bounded_capacity_unprepared(chunk_size: usize, capacity: usize) -> Self {
         let chunk_size = chunk_size.max(1);
         let n_chunks = capacity.max(1).div_ceil(chunk_size);
-        let mut result = Self::with_reserve(chunk_size, n_chunks.saturating_sub(1));
+        let mut result = Self::with_reserve(chunk_size, 0);
+        result.chunks.reserve(n_chunks.saturating_sub(1));
+        result.spare.reserve(n_chunks.saturating_sub(1));
         result.max_chunks = Some(n_chunks);
         result
+    }
+
+    /// Allocates every chunk permitted by a bounded store.
+    pub fn prepare_bounded_capacity(&mut self) {
+        let Some(max_chunks) = self.max_chunks else {
+            return;
+        };
+        let missing = max_chunks.saturating_sub(self.chunks.len() + self.spare.len());
+        self.spare
+            .extend((0..missing).map(|_| vec![T::default(); self.chunk_size]));
     }
 
     pub fn chunk_size(&self) -> usize {
@@ -350,6 +369,19 @@ mod tests {
         assert!(!samples.ensure_available(8));
         assert_eq!(samples.n_chunks(), 2);
         assert_eq!(samples.n_allocations(), allocations);
+    }
+
+    #[test]
+    fn bounded_capacity_can_be_prepared_on_demand() {
+        let mut samples = ChunkedSamples::<f32>::with_bounded_capacity_unprepared(4, 12);
+        assert_eq!(samples.n_chunks(), 1);
+        assert_eq!(samples.n_spare(), 0);
+
+        samples.prepare_bounded_capacity();
+        assert_eq!(samples.n_spare(), 2);
+        samples.ensure_available(11);
+        assert_eq!(samples.n_chunks(), 3);
+        assert_eq!(samples.n_allocations(), 0);
     }
 
     #[test]
