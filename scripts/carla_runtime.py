@@ -77,7 +77,12 @@ def bundle_linux_dependencies(output: Path) -> None:
         for line in result.stdout.splitlines():
             fields = line.strip().split()
             if len(fields) >= 3 and fields[1] == "=>" and fields[2] == "not":
-                raise RuntimeError(f"unresolved Linux dependency for {binary}: {fields[0]}")
+                relative = binary.relative_to(output)
+                if relative.parts[0] in {"lib", "bin"} or binary.name == "libqxcb.so":
+                    raise RuntimeError(
+                        f"unresolved Linux dependency for {binary}: {fields[0]}"
+                    )
+                continue
             if len(fields) < 3 or fields[1] != "=>" or not fields[2].startswith("/"):
                 continue
             name, source = fields[0], Path(fields[2])

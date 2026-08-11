@@ -268,6 +268,19 @@ fn run_shared_worker(
         }));
         match result {
             Ok(Ok(())) => {}
+            Ok(Err(error))
+                if matches!(
+                    error.downcast_ref::<crate::carla_shared_memory::SharedBlockError>(),
+                    Some(
+                        crate::carla_shared_memory::SharedBlockError::DeadlineMiss
+                            | crate::carla_shared_memory::SharedBlockError::StaleCompletion
+                    )
+                ) =>
+            {
+                // The parent owns deadline accounting and bounded fallback.
+                // A stale realtime block is recoverable and must not turn one
+                // scheduling miss into a supervised-process crash.
+            }
             Ok(Err(error)) => {
                 eprintln!("Carla shared-memory worker failed: {error:#}");
                 std::process::exit(70);
