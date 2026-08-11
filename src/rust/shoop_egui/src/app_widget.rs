@@ -901,6 +901,39 @@ impl AppWidget {
 
     #[cfg(target_arch = "wasm32")]
     #[doc(hidden)]
+    pub fn browser_test_lua_dialog_state(
+        &self,
+        id: crate::ScriptDialogId,
+    ) -> Option<(bool, usize)> {
+        self.script_dialogs.browser_test_state(id)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_close_lua_dialog(&mut self, id: crate::ScriptDialogId) {
+        self.script_dialogs.browser_test_close(id);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_open_lua_dialog_from_list(&mut self, id: crate::ScriptDialogId) {
+        self.script_dialogs.browser_test_open_from_list(id);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_set_lua_dialog_page(&mut self, id: crate::ScriptDialogId, page: usize) {
+        self.script_dialogs.browser_test_set_page(id, page);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_lua_dialog_count(&self) -> usize {
+        self.script_dialogs.browser_test_count()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
     pub fn browser_test_open_global_connections(&mut self) {
         self.connections.open(ConnectionScope::AllTracks);
     }

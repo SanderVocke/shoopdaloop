@@ -38,6 +38,7 @@ pub use midi::{
 pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");
 pub const AKAI_APC_MINI_MK1_SCRIPT: &str =
     include_str!("../../../lua/builtins/akai_apc_mini_mk1.lua");
+pub const DIALOG_EXAMPLE_SCRIPT: &str = include_str!("../../../lua/examples/dialogs.lua");
 const SANDBOX_SOURCE: &str = include_str!("../../../lua/system/sandbox.lua");
 const MAX_LOG_ENTRIES: usize = 100;
 
@@ -904,6 +905,9 @@ mod tests {
             .unwrap();
         runtime
             .check_syntax("akai_apc_mini_mk1.lua", AKAI_APC_MINI_MK1_SCRIPT)
+            .unwrap();
+        runtime
+            .check_syntax("dialogs.lua", DIALOG_EXAMPLE_SCRIPT)
             .unwrap();
         for (name, source) in BUILTIN_LIBRARIES {
             runtime.check_syntax(name, source).unwrap();

@@ -147,6 +147,37 @@ impl ScriptDialogs {
         actions
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn browser_test_state(&self, id: ScriptDialogId) -> Option<(bool, usize)> {
+        self.states.get(&id).map(|state| (state.open, state.page))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn browser_test_close(&mut self, id: ScriptDialogId) {
+        if let Some(state) = self.states.get_mut(&id) {
+            state.open = false;
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn browser_test_open_from_list(&mut self, id: ScriptDialogId) {
+        if let Some(state) = self.states.get_mut(&id) {
+            state.open = true;
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn browser_test_set_page(&mut self, id: ScriptDialogId, page: usize) {
+        if let Some(state) = self.states.get_mut(&id) {
+            state.page = page;
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn browser_test_count(&self) -> usize {
+        self.states.len()
+    }
+
     fn synchronize(&mut self, dialogs: &[ScriptDialogState]) {
         self.states
             .retain(|id, _| dialogs.iter().any(|dialog| dialog.id == *id));

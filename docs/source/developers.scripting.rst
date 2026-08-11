@@ -5,10 +5,19 @@ Lua scripting
 Runtime and ownership
 ~~~~~~~~~~~~~~~~~~~~~
 
-ShoopDaLoop embeds pinned omniLua with Lua 5.4 semantics. Each script has an
-isolated state owned by the application runtime. Stopping or restarting a script
-removes its callbacks, timers, logical MIDI ports, connections, and queued
-output.
+ShoopDaLoop embeds pinned omniLua with Lua 5.4 semantics. Native and browser
+builds run the same bundled libraries, ``keyboard.lua``, and APC Mini script.
+Each script has an isolated state owned by the application runtime. Stopping or
+restarting a script removes its callbacks, timers, logical MIDI ports,
+connections, queued output, and script-owned dialogs.
+
+Every script must make ``shoop_announce_api_version(major, minor)`` its first
+Shoop API call. The current version is ``1.0``. A script runs only when its major
+equals the host major and its minor is no newer than the host minor. Missing,
+malformed, repeated, or incompatible announcements cancel initial execution
+before versioned side effects. The global two-integer signature is independent
+of modules and reserved to remain stable across future API versions. See
+``docs/egui_lua_dialog_api.md`` for the compatibility and migration contract.
 
 The sandbox exposes selected standard-library functions and ShoopDaLoop modules.
 It prevents ordinary module/file access but should still be treated as a
@@ -29,6 +38,11 @@ Restart, and Reload do not alter the settings draft. Source-bearing scripts in a
 ``.shoop`` session are syntax-checked before transactional session commit and
 round-trip without machine paths.
 
+Browser builds target ``wasm32-unknown-unknown`` and run the same pure-Rust
+omniLua scripting manager cooperatively. Version checks, script-owned dialogs,
+keyboard callbacks, session scripts, and permission-gated Web MIDI control use
+the shared cross-target contracts.
+
 MIDI rules
 ~~~~~~~~~~
 
@@ -38,8 +52,26 @@ paced without catch-up bursts. Native services use JACK or midir. Browser
 services use explicitly enabled Web MIDI. Per-rule endpoint and failure state is
 published to the Scripts tab.
 
+Global APIs
+~~~~~~~~~~~
+
+``shoop_announce_api_version(major, minor)``
+  Mandatory first Shoop API call. Announces the non-negative integer major and
+  minor version for which the script was designed.
+
+``print(msg)``, ``print_debug(msg)``, ``print_error(msg)``, ``print_info(msg)``
+  Add a message at the corresponding level to the script log.
+
 Built-in modules
 ~~~~~~~~~~~~~~~~
+
+``shoop_dialog``
+  Script-owned simple and paged dialogs. Contents are ordered portable rich text
+  and labeled buttons, and buttons may retain script callbacks. Scripts may
+  request opening at startup or from callbacks; users retain window visibility
+  and current-page control. Dialogs are destroyed with their owning runtime.
+  See ``docs/egui_lua_dialog_api.md`` for constructors, style fields, examples,
+  errors, and lifecycle behavior.
 
 ``shoop_control``
   Synchronous queries and typed mutations for loops, tracks, global controls,

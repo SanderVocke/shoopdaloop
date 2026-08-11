@@ -1,6 +1,6 @@
 # egui Lua API version and dialog contract
 
-This contract applies to Lua scripts run by `shoopdaloop_egui` on native and browser targets. The retained QML application has a separate, unversioned legacy Lua surface and does not provide script-owned dialogs.
+This contract applies to Lua scripts run by `shoopdaloop_egui` on native and browser targets.
 
 ## API version announcement
 
@@ -19,15 +19,7 @@ A host at `Hmajor.Hminor` accepts a script designed for `Smajor.Sminor` exactly 
 
 The host rejects a different major or a script minor newer than its own. It also rejects a missing, repeated, negative, non-integer, or otherwise malformed announcement. Rejection cancels initial script execution at the announcement call, before versioned Shoop APIs can register callbacks, timers, MIDI rules, dialogs, or application mutations. The script's lifecycle and error text report the incompatibility without affecting other scripts.
 
-Existing egui user and session scripts must add the announcement. Sources intentionally shared with the retained QML runtime may guard the call only for that legacy compatibility case:
-
-```lua
-if shoop_announce_api_version then
-    shoop_announce_api_version(1, 0)
-end
-```
-
-The egui host still verifies that the call occurred.
+Existing user and session scripts must add the announcement. The host verifies that the call occurred before allowing versioned Shoop API use.
 
 ## `shoop_dialog`
 
