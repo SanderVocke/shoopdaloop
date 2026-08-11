@@ -154,6 +154,13 @@ def normalize(args: argparse.Namespace) -> None:
     if args.platform == "linux":
         bundle_linux_dependencies(output)
 
+    # Carla's frozen external UI resolves libcarla_utils and its dependency
+    # closure from the runtime root (the parent of resources), while the host
+    # library and discovery helpers use lib/. Keep both layouts explicit.
+    for library in (output / "lib").iterdir():
+        if library.is_file():
+            shutil.copy2(library, output / library.name)
+
     (output / "licenses").mkdir()
     shutil.copy2(LOCK, output / "runtime-lock.json")
     shutil.copy2(ROOT / "third_party" / "carla" / "README.md", output / "licenses" / "README.md")
