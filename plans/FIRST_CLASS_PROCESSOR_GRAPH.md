@@ -137,7 +137,7 @@ Verification:
 - [x] Verify graph rebuilds, processor insertion/replacement/removal, driver switching, session save/load, and stale-schedule cycles do not leak old processor routes or produce unsafe output.
 - [x] Update Tracy stage assertions/instrumentation expectations to show processor work at graph-scheduled positions, without user-controlled zone names.
 - [x] Remove obsolete route rebuilds, naming conventions used only for runtime discovery, late-output helpers if no remaining caller needs them, and redundant tests of the superseded paths.
-- [ ] Run formatting, warnings-as-errors builds, targeted suites, workspace suites, and frontend dry/wet integration tests.
+- [x] Run formatting, warnings-as-errors builds, targeted suites, workspace suites, and frontend dry/wet integration tests.
 
 Verification:
 
@@ -149,11 +149,11 @@ Verification:
 
 ## Final end-to-end validation
 
-- [ ] Reproduce the original workflow with a synchronized click loop and a Tiny Synth/FX dry+wet track: record a sustained MIDI phrase, verify normal wet playback matches the monitored performance, and verify dry-through-wet remains correct.
-- [ ] Repeat the mode matrix with `Test2x2x1` and inspect exact wet sample data at synchronization boundaries.
-- [ ] Exercise an external staged-return track and, when locally available, one real Carla track; absence of Carla is recorded as a skip rather than a failure.
-- [ ] Capture a detailed Tracy trace for one test/Tiny run and confirm processor execution is graph-ordered between input preparation and wet recording/output propagation, with no post-graph Tiny/Carla FX pass.
-- [ ] Confirm no new warnings, realtime allocation/lock diagnostics, xruns attributable to processor scheduling, or regressions in direct tracks, session persistence, driver switching, and multi-loop playback.
+- [x] Reproduce the original workflow with a synchronized click loop and a Tiny Synth/FX dry+wet track: record a sustained MIDI phrase, verify normal wet playback matches the monitored performance, and verify dry-through-wet remains correct.
+- [x] Repeat the mode matrix with `Test2x2x1` and inspect exact wet sample data at synchronization boundaries.
+- [x] Exercise an external staged-return track and, when locally available, one real Carla track; absence of Carla is recorded as a skip rather than a failure.
+- [x] Capture a detailed Tracy trace for one test/Tiny run and confirm processor execution is graph-ordered between input preparation and wet recording/output propagation, with no post-graph Tiny/Carla FX pass.
+- [x] Confirm no new warnings, realtime allocation/lock diagnostics, xruns attributable to processor scheduling, or regressions in direct tracks, session persistence, driver switching, and multi-loop playback.
 
 ## Execution contract
 
