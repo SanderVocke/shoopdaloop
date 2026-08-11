@@ -173,7 +173,8 @@ def main():
         })
         traced_start = time.monotonic()
         nextest = subprocess.run(
-            [str(args.nextest.resolve()), "nextest", "run", "--profile",
+            [str(args.nextest.resolve()), "nextest", "run", "--config-file",
+             str(root / ".config/tracy-nextest.toml"), "--profile",
              "tracy-collector", "--no-fail-fast", "-p", "shoop_engine",
              "--test", "tracy_collector_contract"],
             cwd=root, env=env, capture_output=True, text=True, timeout=180)

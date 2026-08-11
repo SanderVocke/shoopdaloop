@@ -1,0 +1,10 @@
+nextest-version = { required = "0.9.116" }
+
+[profile.tracy-collector]
+fail-fast = false
+test-threads = 1
+retries = 0
+slow-timeout = { period = "8s", terminate-after = 1 }
+junit = { path = "junit.xml" }
+success-output = "never"
+failure-output = "immediate-final"
