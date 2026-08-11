@@ -3799,10 +3799,13 @@ fn main() {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("#shoop_canvas is not a canvas");
 
-        match eframe::WebRunner::new()
+        let result = eframe::WebRunner::new()
             .start(canvas, eframe::WebOptions::default(), Box::new(create_app))
-            .await
-        {
+            .await;
+        if let Some(splash) = document.get_element_by_id("loading_splash") {
+            let _ = splash.set_attribute("hidden", "");
+        }
+        match result {
             Ok(()) => set_browser_status("Awaiting browser audio enable action", None),
             Err(error) => {
                 let message = format!("Browser application failed: {error:?}");
@@ -3864,6 +3867,9 @@ mod tests {
         let html = include_str!("../index.html");
         assert!(html.contains("data-trunk"));
         assert!(html.contains(&format!("id=\"{WEB_CANVAS_ID}\"")));
+        assert!(html.contains("id=\"loading_splash\""));
+        assert!(html.contains("src=\"./logo.png\""));
+        assert!(html.contains("Loading ShoopDaLoop…"));
         assert!(html.contains("id=\"browser_permissions_dialog\""));
         assert!(html.contains("Browser audio and MIDI permissions"));
         assert!(html.contains("Enable microphone audio"));

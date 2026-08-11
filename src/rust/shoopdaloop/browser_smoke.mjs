@@ -885,6 +885,12 @@ try {
     }
     console.log(`${selfContained ? 'direct-file' : 'hosted'} browser Web Audio self-test passed at ${browserSize}, callback ${state.callbacks}`);
   }
+  const splashHidden = await evaluate(
+    "document.getElementById('loading_splash')?.hidden === true",
+  );
+  if (!splashHidden) {
+    throw new Error('loading splash remained visible after application startup');
+  }
   if (failures.length > 0) {
     throw new Error(`browser reported runtime errors: ${JSON.stringify(failures)}`);
   }
