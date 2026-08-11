@@ -56,7 +56,7 @@ lv2_raw = "0.2"
 rubato = "0.16"
 thiserror = "2.0"
 sha2 = "0.10"
-zip = { version = "2.4", default-features = false, features = ["deflate"] }
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
 hound = "3.5"
 rfd = { version = "0.15", default-features = false }
 tracing = "0.1"
