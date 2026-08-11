@@ -133,9 +133,12 @@ jobs:
           sudo apt-get install --yes \
             build-essential libasound2-dev libfluidsynth-dev libgl1-mesa-dev libgtk-3-dev \
             libgtk2.0-dev libjack-jackd2-dev liblo-dev libmagic-dev libpulse-dev \
-            libsndfile1-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev \
-            libxcb-xfixes0-dev libxcursor-dev libxi-dev libxkbcommon-dev \
-            libxrandr-dev libwayland-dev patchelf python3-venv xvfb
+            libsndfile1-dev libx11-dev libxcb-icccm4-dev libxcb-image0-dev \
+            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
+            libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev \
+            patchelf python3-venv xvfb
 
       - name: Install web build and test dependencies
         if: matrix.target == 'web' && env.ACT != 'true'

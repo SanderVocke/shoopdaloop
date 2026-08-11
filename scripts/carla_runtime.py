@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import stat
 import subprocess
@@ -61,7 +62,7 @@ def find_one(roots: list[Path], name: str) -> Path:
 
 def bundle_linux_dependencies(output: Path) -> None:
     queue = [
-        path for root in (output / "lib", output / "bin")
+        path for root in (output / "lib", output / "bin", output / "resources")
         for path in root.rglob("*") if path.is_file()
     ]
     inspected: set[Path] = set()
@@ -75,6 +76,8 @@ def bundle_linux_dependencies(output: Path) -> None:
             continue
         for line in result.stdout.splitlines():
             fields = line.strip().split()
+            if len(fields) >= 3 and fields[1] == "=>" and fields[2] == "not":
+                raise RuntimeError(f"unresolved Linux dependency for {binary}: {fields[0]}")
             if len(fields) < 3 or fields[1] != "=>" or not fields[2].startswith("/"):
                 continue
             name, source = fields[0], Path(fields[2])
@@ -87,14 +90,21 @@ def bundle_linux_dependencies(output: Path) -> None:
     patchelf = shutil.which("patchelf")
     if not patchelf:
         raise RuntimeError("patchelf is required to normalize a Linux Carla runtime")
-    for root, rpath in ((output / "lib", "$ORIGIN"), (output / "bin", "$ORIGIN/../lib")):
+    for root in (output / "lib", output / "bin", output / "resources"):
         for binary in root.rglob("*"):
             if not binary.is_file():
                 continue
-            probe = subprocess.run(["patchelf", "--print-rpath", str(binary)], capture_output=True)
-            if probe.returncode == 0:
-                binary.chmod(binary.stat().st_mode | stat.S_IWUSR)
-                subprocess.run(["patchelf", "--set-rpath", rpath, str(binary)], check=True)
+            probe = subprocess.run(
+                ["patchelf", "--print-rpath", str(binary)], text=True, capture_output=True
+            )
+            if probe.returncode != 0:
+                continue
+            relative_lib = os.path.relpath(output / "lib", binary.parent)
+            component_rpath = "$ORIGIN" if relative_lib == "." else f"$ORIGIN/{relative_lib}"
+            original_rpath = probe.stdout.strip()
+            rpath = ":".join(filter(None, (original_rpath, component_rpath)))
+            binary.chmod(binary.stat().st_mode | stat.S_IWUSR)
+            subprocess.run(["patchelf", "--set-rpath", rpath, str(binary)], check=True)
 
 
 def normalize(args: argparse.Namespace) -> None:
