@@ -1,5 +1,5 @@
-// Generated from the retained Qt key ABI. Do not renumber existing entries.
-pub const LEGACY_KEY_CONSTANTS: &[(&str, i64)] = &[
+// Stable script API values. Do not renumber existing entries.
+pub const KEY_CONSTANTS: &[(&str, i64)] = &[
     ("Key_Space", 32),
     ("Key_Exclam", 33),
     ("Key_QuoteDbl", 34),
@@ -473,7 +473,7 @@ pub const LEGACY_KEY_CONSTANTS: &[(&str, i64)] = &[
     ("Key_mu", 181),
 ];
 
-pub const LEGACY_MODIFIER_CONSTANTS: &[(&str, i64)] = &[
+pub const MODIFIER_CONSTANTS: &[(&str, i64)] = &[
     ("KeyModifier_NoModifier", 0),
     ("KeyModifier_ShiftModifier", 33554432),
     ("KeyModifier_ControlModifier", 67108864),

@@ -4,7 +4,6 @@ edition = "2021"
 
 [features]
 default = []
-legacy = ["native-store"]
 native-store = ["dep:anyhow", "dep:directories", "dep:tempfile"]
 
 [dependencies]

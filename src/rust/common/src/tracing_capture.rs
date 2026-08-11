@@ -92,7 +92,7 @@ impl CaptureConfig {
 
 #[derive(Clone, Debug)]
 pub struct CapturedTrace {
-    pub source_label: String,
+    pub label: String,
     pub path: PathBuf,
 }
 
@@ -143,7 +143,7 @@ pub enum CaptureError {
 
 struct ActiveCapture {
     child: Child,
-    source_label: String,
+    label: String,
     path: PathBuf,
     started_at: SystemTime,
     #[cfg(windows)]
@@ -404,7 +404,7 @@ impl CaptureController {
 
         self.active = Some(ActiveCapture {
             child,
-            source_label: label.to_string(),
+            label: label.to_string(),
             path: path.clone(),
             started_at: SystemTime::now(),
             #[cfg(windows)]
@@ -516,7 +516,7 @@ impl CaptureController {
         append_manifest(
             &config.output_dir,
             self.sequence,
-            &active.source_label,
+            &active.label,
             &active.path,
             active.started_at,
             SystemTime::now(),
@@ -525,7 +525,7 @@ impl CaptureController {
         )?;
         info!("Finalized Tracy capture {}", active.path.display());
         Ok(Some(CapturedTrace {
-            source_label: active.source_label.clone(),
+            label: active.label.clone(),
             path: active.path.clone(),
         }))
     }
@@ -538,7 +538,7 @@ fn initialize_output_files(output_dir: &Path) -> Result<(), CaptureError> {
             .map_err(|error| io_error("create capture manifest", &manifest_path, error))?;
         writeln!(
             manifest,
-            "sequence\tsource_qml\tcapture_file\tstarted_unix_ms\tended_unix_ms\tstatus\ttest_outcome"
+            "sequence\tlabel\tcapture_file\tstarted_unix_ms\tended_unix_ms\tstatus\toutcome"
         )
         .map_err(|error| io_error("write capture manifest", &manifest_path, error))?;
     }
@@ -687,9 +687,9 @@ mod tests {
 
     #[test]
     fn sanitizes_capture_labels() {
-        assert_eq!(sanitize_label("/tmp/tst_Two Loops.qml"), "tst_Two_Loops");
-        assert_eq!(sanitize_label("../../evil.qml"), "evil");
-        assert_eq!(sanitize_label("💥.qml"), "_");
+        assert_eq!(sanitize_label("/tmp/main capture.trace"), "main_capture");
+        assert_eq!(sanitize_label("../../unsafe.trace"), "unsafe");
+        assert_eq!(sanitize_label("💥.trace"), "_");
         assert_eq!(sanitize_label(".."), "unknown");
         assert_eq!(sanitize_label(""), "unknown");
     }
@@ -709,7 +709,7 @@ mod tests {
     fn starting_without_configuration_is_rejected() {
         let mut controller = CaptureController::default();
         assert!(matches!(
-            controller.start("test.qml"),
+            controller.start("test capture"),
             Err(CaptureError::NotConfigured)
         ));
     }
@@ -718,10 +718,10 @@ mod tests {
     fn capture_paths_are_unique_and_confined_to_output_directory() {
         let temporary_dir = tempfile::tempdir().expect("create temporary directory");
         let mut controller = CaptureController::default();
-        let first = controller.next_capture_path(temporary_dir.path(), "../../unsafe name.qml");
+        let first = controller.next_capture_path(temporary_dir.path(), "../../unsafe name.trace");
         assert_eq!(first, temporary_dir.path().join("0001-unsafe_name.tracy"));
         std::fs::write(&first, b"existing trace").expect("reserve first trace name");
-        let second = controller.next_capture_path(temporary_dir.path(), "../../unsafe name.qml");
+        let second = controller.next_capture_path(temporary_dir.path(), "../../unsafe name.trace");
         assert_eq!(second, temporary_dir.path().join("0002-unsafe_name.tracy"));
         assert_eq!(second.parent(), Some(temporary_dir.path()));
     }
@@ -743,7 +743,7 @@ mod tests {
         config.connect_timeout = Duration::from_millis(50);
         config.stop_timeout = Duration::from_millis(50);
         configure(config).expect("configure fake capture");
-        let result = start_named_capture("../../unsafe name.qml");
+        let result = start_named_capture("../../unsafe name.trace");
         assert!(matches!(result, Err(CaptureError::ConnectTimeout(_))));
         assert!(stop_capture()
             .expect("capture process was reaped")

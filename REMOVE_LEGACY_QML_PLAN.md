@@ -51,12 +51,12 @@ The current Cargo graph shows that the egui/native/WebAssembly closure does not 
 
 ### Stage 1 — Remove the QML application and reduce the Cargo workspace
 
-- [ ] Remove the `src/qml/third_party/QtMaterialDesignIcons` git submodule cleanly (gitlink and submodule metadata), delete the now-empty `.gitmodules`, then delete the rest of `src/qml/` and the legacy-only crates `src/rust/{config,crashhandling,cxx_qt_lib_shoop,frontend,macros,midi_processing,packaging,qt_header_bindings,shoopdaloop}`.
-- [ ] Delete `src/session_schemas/`; the egui `.shoop` and settings formats remain owned by `shoop_session` and `shoop_settings`.
-- [ ] Remove the `shoop_settings` `legacy` feature, `legacy_settings.rs`, and legacy-only conditional branches/tests while retaining the egui native store.
-- [ ] Audit retained crates module-by-module for QML-only branches, helpers, test fixtures, comments, trace names, and public APIs. Remove dead paths; generalize surviving `common::tracing_capture`, engine/backend, scripting-key, and test-adapter terminology around the egui application.
-- [ ] Prune root workspace dependencies made unreachable by the deleted crates (including the Qt/cxx-qt/bindgen/codegen, legacy crash, schema, and old packager dependency groups), remove obsolete commented Qt overrides, and regenerate `Cargo.lock`.
-- [ ] Verify with `cargo metadata --no-deps`, native and Wasm `cargo tree` inspection, `RUSTFLAGS="-D warnings" cargo build --workspace`, and `cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`. Confirm the removed package names and Qt/cxx-qt crates are absent from the retained application trees.
+- [x] Remove the `src/qml/third_party/QtMaterialDesignIcons` git submodule cleanly (gitlink and submodule metadata), delete the now-empty `.gitmodules`, then delete the rest of `src/qml/` and the legacy-only crates `src/rust/{config,crashhandling,cxx_qt_lib_shoop,frontend,macros,midi_processing,packaging,qt_header_bindings,shoopdaloop}`.
+- [x] Delete `src/session_schemas/`; the egui `.shoop` and settings formats remain owned by `shoop_session` and `shoop_settings`.
+- [x] Remove the `shoop_settings` `legacy` feature, `legacy_settings.rs`, and legacy-only conditional branches/tests while retaining the egui native store.
+- [x] Audit retained crates module-by-module for QML-only branches, helpers, test fixtures, comments, trace names, and public APIs. Remove dead paths; generalize surviving `common::tracing_capture`, engine/backend, scripting-key, and test-adapter terminology around the egui application.
+- [x] Prune root workspace dependencies made unreachable by the deleted crates (including the Qt/cxx-qt/bindgen/codegen, legacy crash, schema, and old packager dependency groups), remove obsolete commented Qt overrides, and regenerate `Cargo.lock`.
+- [x] Verify with `cargo metadata --no-deps`, native and Wasm `cargo tree` inspection, `RUSTFLAGS="-D warnings" cargo build --workspace`, and `cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`. Confirm the removed package names and Qt/cxx-qt crates are absent from the retained application trees.
 
 ### Stage 2 — Remove legacy packaging, dependencies, scripts, and assets
 

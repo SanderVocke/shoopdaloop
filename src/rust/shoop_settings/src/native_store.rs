@@ -111,11 +111,9 @@ mod tests {
     }
 
     #[test]
-    fn default_path_uses_independent_egui_identity() {
+    fn default_path_uses_egui_identity() {
         let path = default_egui_settings_path().unwrap();
         assert_eq!(path.file_name().unwrap(), EGUI_SETTINGS_FILENAME);
         assert!(path.to_string_lossy().to_lowercase().contains("egui"));
-        #[cfg(feature = "legacy")]
-        assert_ne!(path, crate::default_settings_path().unwrap());
     }
 }

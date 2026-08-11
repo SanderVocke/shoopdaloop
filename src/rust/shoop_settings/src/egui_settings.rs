@@ -1033,9 +1033,9 @@ mod tests {
 
     #[test]
     fn format_and_every_version_boundary_are_checked_before_values() {
-        let legacy = r#"{"schema":"settings.1","configuration":{}}"#;
+        let predecessor = r#"{"schema":"settings.1","configuration":{}}"#;
         assert_eq!(
-            decode_egui_settings(legacy).unwrap_err(),
+            decode_egui_settings(predecessor).unwrap_err(),
             SettingsDocumentError::UnsupportedFormat("<missing>".to_owned())
         );
 

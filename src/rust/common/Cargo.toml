@@ -11,7 +11,6 @@ humantime = { workspace = true }
 lazy_static = { workspace = true }
 anyhow = { workspace = true }
 ctor = { workspace = true }
-walkdir = { workspace = true }
 tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true }
