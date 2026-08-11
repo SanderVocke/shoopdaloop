@@ -57,6 +57,8 @@ See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The applica
 
 The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a hosted bundle and a self-contained HTML file. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
 
+A separate opt-in [failure-only Tracy nextest lane](docs/tracy_nextest.md) profiles a small engine subset without changing the ordinary cargo-test correctness jobs.
+
 ## License and credits
 
 Copyright © Sander Vocke (2023–present) and other credited contributors. See [LICENSE](LICENSE).

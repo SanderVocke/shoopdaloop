@@ -1,0 +1,88 @@
+name: Failure-only Tracy nextest
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/tracy_nextest.yml'
+      - '.config/nextest.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/run_tracy_nextest.py'
+      - 'src/rust/shoop_engine/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tracy-nextest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  traced-engine-subset:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pinned cargo-nextest
+        shell: bash
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.116/linux | tar zxf - -C "${CARGO_HOME}/bin"
+          cargo nextest --version | grep 'cargo-nextest 0.9.116'
+
+      - name: Build pinned Tracy collector and query tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/SanderVocke/tracy-query.git /tmp/tracy-query
+          git -C /tmp/tracy-query checkout 7d964dc9c48ae022a290b198142b6a28a221b27d
+          cmake -S /tmp/tracy-query -B /tmp/tracy-query-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTRACY_QUERY_FULLY_STATIC=OFF
+          cmake --build /tmp/tracy-query-build --parallel 2 \
+            --target tracy-query tracy-collector
+          /tmp/tracy-query-build/tracy-query --version
+          /tmp/tracy-query-build/tracy-collector --version
+
+      - name: Run and validate controlled traced subset
+        run: >-
+          python3 scripts/run_tracy_nextest.py
+          --collector /tmp/tracy-query-build/tracy-collector
+          --query /tmp/tracy-query-build/tracy-query
+          --nextest "${CARGO_HOME}/bin/cargo-nextest"
+          --output artifacts/tracy-nextest
+          --expect-controlled-failures
+
+      - name: Reject partial or successful-attempt captures
+        if: always()
+        shell: bash
+        run: |
+          if compgen -G 'artifacts/tracy-nextest/traces/*.partial' >/dev/null; then
+            echo 'partial capture leaked' >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('artifacts/tracy-nextest/traces/manifest.json')
+          if not path.exists():
+              raise SystemExit('manifest missing')
+          manifest = json.loads(path.read_text())
+          for record in manifest['sessions']:
+              if record['state'] == 'discarded' and record['output_name']:
+                  raise SystemExit('discarded attempt names a capture')
+          PY
+
+      - name: Upload finalized failure evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shoop-tracy-nextest-evidence
+          path: |
+            artifacts/tracy-nextest/junit.xml
+            artifacts/tracy-nextest/metrics.json
+            artifacts/tracy-nextest/collector.log
+            artifacts/tracy-nextest/nextest.*.log
+            artifacts/tracy-nextest/traces/manifest.json
+            artifacts/tracy-nextest/traces/*.tracy
+          if-no-files-found: error

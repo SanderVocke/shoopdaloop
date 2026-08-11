@@ -1,3 +1,5 @@
+nextest-version = { required = "0.9.116" }
+
 # Carla worker integration tests spawn full child processes and include paced
 # scheduler measurements. Running them against each other distorts deadlines
 # and can make an OS kill an otherwise independent sibling under runner load.
@@ -12,3 +14,12 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = 'test(/carla_processor::tests::bridge_/)'
 threads-required = "num-test-threads"
+
+[profile.tracy-collector]
+fail-fast = false
+test-threads = 1
+retries = 0
+slow-timeout = { period = "8s", terminate-after = 1 }
+junit = { path = "junit.xml" }
+success-output = "never"
+failure-output = "immediate-final"
