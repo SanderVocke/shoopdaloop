@@ -1,11 +1,11 @@
 use shoop_audio_protocol::{
-    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireApplicationPort,
-    WireConfirmedLink, WireHostPort, WireLoopMode, WireLoopState, WireMidiOutputEvent,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxState,
-    WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
-    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, PROTOCOL_VERSION,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
-    WAVEFORM_CHUNK_SAMPLES,
+    Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
+    WireApplicationPort, WireChannelMode, WireConfirmedLink, WireHostPort, WireLoopMode,
+    WireLoopState, WireMidiOutputEvent, WirePortDataType, WirePortDirection, WirePortRole,
+    WireSnapshot, WireTinySynthFxState, WireTrackControl, WireTrackFxControl, WireTrackFxState,
+    WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate,
@@ -456,6 +456,66 @@ impl WorkletHost {
                     final_chunk: chunk.offset.saturating_add(chunk.samples.len())
                         >= chunk.total_samples,
                     samples: chunk.samples,
+                }))
+            }
+            Command::RequestMidiData {
+                loop_id,
+                generation,
+                channel,
+                offset,
+                max_events,
+            } => {
+                if generation == 0 || max_events == 0 {
+                    return Err("invalid MIDI detail request".to_owned());
+                }
+                let data = self
+                    .backend
+                    .loop_midi_data(BackendLoopId::from_raw(loop_id))
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "MIDI detail data is not ready".to_owned())?;
+                let channel_count = data.channels.len();
+                if channel_count == 0 {
+                    return Ok(Event::MidiData(MidiDataChunk {
+                        loop_id,
+                        generation,
+                        final_chunk: true,
+                        ..Default::default()
+                    }));
+                }
+                let channel_data = data
+                    .channels
+                    .get(channel)
+                    .ok_or_else(|| "unknown MIDI detail channel".to_owned())?;
+                if offset > channel_data.events.len() {
+                    return Err("invalid MIDI detail event offset".to_owned());
+                }
+                let end = offset
+                    .saturating_add(max_events.min(MIDI_DETAIL_CHUNK_EVENTS))
+                    .min(channel_data.events.len());
+                Ok(Event::MidiData(MidiDataChunk {
+                    loop_id,
+                    generation,
+                    content_revision: channel_data.content_revision,
+                    mode: match channel_data.mode {
+                        shoop_backend::BackendChannelMode::Direct => WireChannelMode::Direct,
+                        shoop_backend::BackendChannelMode::Dry => WireChannelMode::Dry,
+                        shoop_backend::BackendChannelMode::Wet => WireChannelMode::Wet,
+                    },
+                    channel,
+                    channel_count,
+                    offset,
+                    total_events: channel_data.events.len(),
+                    length: channel_data.length,
+                    start_offset: channel_data.start_offset,
+                    preplay: channel_data.preplay,
+                    final_chunk: end >= channel_data.events.len(),
+                    events: channel_data.events[offset..end]
+                        .iter()
+                        .map(|event| shoop_audio_protocol::WireMidiEvent {
+                            frame: event.time,
+                            data: event.data.clone(),
+                        })
+                        .collect(),
                 }))
             }
             Command::BeginSessionCapture { generation } => {
@@ -1067,6 +1127,105 @@ mod tests {
             panic!("expected snapshot");
         };
         assert_eq!(snapshot.loops[0].balance, 0.5);
+    }
+
+    #[test]
+    fn midi_details_are_bounded_and_chunked_without_session_capture() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "midi_details".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 0,
+                        midi: true,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let events = (0..200)
+            .map(|index| BackendMidiEvent {
+                time: index,
+                data: vec![0x90, (index % 128) as u8, 100],
+            })
+            .collect::<Vec<_>>();
+        host.backend
+            .replace_loop_content(
+                BackendLoopId::from_raw(1),
+                &BackendLoopContentUpdate {
+                    midi: vec![shoop_backend::BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 256,
+                        start_state: Vec::new(),
+                        events,
+                        start_offset: Some(-2),
+                        preplay: Some(3),
+                    }],
+                    length: Some(256),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let Event::MidiData(first) = command(
+            &mut host,
+            2,
+            Command::RequestMidiData {
+                loop_id: 1,
+                generation: 7,
+                channel: 0,
+                offset: 0,
+                max_events: usize::MAX,
+            },
+        )
+        .event
+        else {
+            panic!("expected MIDI data");
+        };
+        assert_eq!(first.events.len(), MIDI_DETAIL_CHUNK_EVENTS);
+        assert_eq!(first.total_events, 200);
+        assert!(!first.final_chunk);
+        assert_eq!(first.start_offset, -2);
+        let Event::MidiData(second) = command(
+            &mut host,
+            3,
+            Command::RequestMidiData {
+                loop_id: 1,
+                generation: 7,
+                channel: 0,
+                offset: first.events.len(),
+                max_events: MIDI_DETAIL_CHUNK_EVENTS,
+            },
+        )
+        .event
+        else {
+            panic!("expected MIDI data");
+        };
+        assert_eq!(second.events.len(), MIDI_DETAIL_CHUNK_EVENTS);
+        assert!(!second.final_chunk);
+        let Event::MidiData(last) = command(
+            &mut host,
+            4,
+            Command::RequestMidiData {
+                loop_id: 1,
+                generation: 7,
+                channel: 0,
+                offset: 192,
+                max_events: MIDI_DETAIL_CHUNK_EVENTS,
+            },
+        )
+        .event
+        else {
+            panic!("expected MIDI data");
+        };
+        assert_eq!(last.events.len(), 8);
+        assert!(last.final_chunk);
+        assert!(host.capture_bytes.is_empty());
     }
 
     #[test]
