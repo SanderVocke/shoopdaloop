@@ -379,29 +379,34 @@ impl BrowserAudioController {
             let _ =
                 element.set_attribute("data-owned-media-tracks", &owned_media_tracks.to_string());
         }
-        let active = matches!(
+        let busy = matches!(
             state,
-            BackendDriverState::RequestingPermission
-                | BackendDriverState::Starting
-                | BackendDriverState::Running
-                | BackendDriverState::Suspended
+            BackendDriverState::RequestingPermission | BackendDriverState::Starting
         );
-        for (button, mode, enable_text, retry_text) in [
+        let output_enabled = matches!(
+            state,
+            BackendDriverState::Running | BackendDriverState::Suspended
+        );
+        let microphone_enabled = output_enabled && input_mode == Some(AudioInputMode::Microphone);
+        for (button, mode, enabled, enable_text, retry_text) in [
             (
                 microphone_enable_button(),
                 AudioInputMode::Microphone,
+                microphone_enabled,
                 "Enable microphone audio",
                 "Retry microphone audio",
             ),
             (
                 output_enable_button(),
                 AudioInputMode::OutputOnly,
+                output_enabled,
                 "Enable output-only audio",
                 "Retry output-only audio",
             ),
         ] {
             if let Ok(button) = button {
-                button.set_hidden(active);
+                button.set_hidden(enabled);
+                button.set_disabled(busy || state == BackendDriverState::Unsupported);
                 button.set_text_content(Some(
                     if input_mode == Some(mode)
                         && matches!(
@@ -418,6 +423,28 @@ impl BrowserAudioController {
                 ));
             }
         }
+        let output_status = match state {
+            BackendDriverState::RequestingPermission | BackendDriverState::Starting => "Starting…",
+            BackendDriverState::Running => "Enabled",
+            BackendDriverState::Suspended => "Enabled (suspended)",
+            BackendDriverState::Unsupported => "Unavailable in this browser",
+            BackendDriverState::Failed => "Failed",
+            _ => "Not enabled",
+        };
+        let microphone_status = match (state, input_mode) {
+            (BackendDriverState::RequestingPermission, Some(AudioInputMode::Microphone)) => {
+                "Requesting permission…"
+            }
+            (BackendDriverState::Starting, Some(AudioInputMode::Microphone))
+            | (BackendDriverState::Running, Some(AudioInputMode::Microphone))
+            | (BackendDriverState::Suspended, Some(AudioInputMode::Microphone)) => "Granted",
+            (BackendDriverState::Denied, Some(AudioInputMode::Microphone)) => "Denied",
+            (BackendDriverState::Failed, Some(AudioInputMode::Microphone)) => "Failed",
+            (BackendDriverState::Unsupported, _) => "Unavailable in this browser",
+            _ => "Not granted",
+        };
+        set_permission_status("audio_output_permission_status", output_status);
+        set_permission_status("microphone_permission_status", microphone_status);
     }
 
     pub fn shutdown(&self) {
@@ -468,14 +495,37 @@ fn output_enable_button() -> Result<HtmlButtonElement> {
     audio_button("enable_output_audio")
 }
 
+fn set_permission_status(id: &str, status: &str) {
+    if let Some(element) = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id(id))
+    {
+        element.set_text_content(Some(status));
+    }
+}
+
 fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>, input_mode: AudioInputMode) {
+    let (state, current_mode) = {
+        let inner = inner.borrow();
+        let state = inner.transport.borrow().driver_state;
+        (state, inner.input_mode)
+    };
+    let microphone_upgrade = matches!(
+        (state, current_mode, input_mode),
+        (
+            BackendDriverState::Running | BackendDriverState::Suspended,
+            Some(AudioInputMode::OutputOnly),
+            AudioInputMode::Microphone
+        )
+    );
     if matches!(
-        inner.borrow().transport.borrow().driver_state,
+        state,
         BackendDriverState::RequestingPermission
             | BackendDriverState::Starting
             | BackendDriverState::Running
             | BackendDriverState::Suspended
-    ) {
+    ) && !microphone_upgrade
+    {
         return;
     }
     let Some(window) = web_sys::window() else {

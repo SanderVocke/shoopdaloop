@@ -190,11 +190,13 @@ try {
 
   async function clickEnable(id = 'enable_audio') {
     const bounds = await evaluate(`(() => {
+      document.getElementById('browser_permissions_dialog').hidden = false;
       const rect = document.getElementById('${id}').getBoundingClientRect();
       return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
     })()`);
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: bounds.x, y: bounds.y, button: 'left', clickCount: 1 });
     await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bounds.x, y: bounds.y, button: 'left', clickCount: 1 });
+    await evaluate("document.getElementById('browser_permissions_dialog').hidden = true");
   }
 
   await call('Runtime.enable');
@@ -504,8 +506,8 @@ try {
     if (!(state.frames >= state.callbacks * 128 && state.quantum === 128)) {
       throw new Error(`output-only callback evidence is invalid: ${JSON.stringify(state)}`);
     }
-    if (state.ownedMediaTracks !== 0 || !state.enableHidden || !state.outputEnableHidden) {
-      throw new Error(`output-only mode acquired input or left enable actions visible: ${JSON.stringify(state)}`);
+    if (state.ownedMediaTracks !== 0 || state.enableHidden || !state.outputEnableHidden) {
+      throw new Error(`output-only mode acquired input or hid the microphone upgrade action: ${JSON.stringify(state)}`);
     }
     console.log(`${selfContained ? 'direct-file' : 'hosted'} output-only audio passed at ${browserSize}`);
   } else if (webMidi) {

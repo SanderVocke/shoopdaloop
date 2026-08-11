@@ -281,6 +281,11 @@ impl UnifiedApp {
                     .ok_or_else(|| anyhow::anyhow!("stale audio settings retry {request_id}"));
                 pending.map(|pending| pending.retry_requested = true)
             }
+            SettingsAction::RequestBrowserPermissions => {
+                self.settings
+                    .report_action_error("Browser permissions are unavailable in native builds");
+                return;
+            }
             SettingsAction::RecoverWithDefaults => {
                 self.settings.request_recovery().map_err(Into::into)
             }
@@ -329,6 +334,12 @@ impl UnifiedApp {
                 self.settings.report_action_error(
                     "Native audio-driver switching is unavailable in browser builds",
                 );
+                return;
+            }
+            SettingsAction::RequestBrowserPermissions => {
+                if let Err(error) = open_browser_permissions_dialog() {
+                    self.settings.report_action_error(error.to_string());
+                }
                 return;
             }
             SettingsAction::RecoverWithDefaults => self.settings.request_recovery(),
@@ -1198,6 +1209,7 @@ impl Runtime {
         if offline {
             let mut backend = shoop_backend::EngineBackend::new_dummy(48_000, 256)?;
             backend.remove_all_external_mock_ports();
+            set_offline_audio_permission_presentation();
             return Ok(Self {
                 runtime: CooperativeApplicationRuntime::start_with_scripts_and_midi(
                     Box::new(backend),
@@ -3601,6 +3613,37 @@ fn first_mixed_main_loop(
 }
 
 #[cfg(target_arch = "wasm32")]
+fn open_browser_permissions_dialog() -> anyhow::Result<()> {
+    let dialog = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("browser_permissions_dialog"))
+        .ok_or_else(|| anyhow::anyhow!("browser permissions dialog is unavailable"))?;
+    dialog
+        .remove_attribute("hidden")
+        .map_err(|error| anyhow::anyhow!("could not open browser permissions: {error:?}"))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn set_offline_audio_permission_presentation() {
+    let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+        return;
+    };
+    for id in ["enable_audio", "enable_output_audio"] {
+        if let Some(button) = document.get_element_by_id(id) {
+            let _ = button.set_attribute("hidden", "");
+        }
+    }
+    for id in [
+        "audio_output_permission_status",
+        "microphone_permission_status",
+    ] {
+        if let Some(status) = document.get_element_by_id(id) {
+            status.set_text_content(Some("Unavailable in offline mode"));
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 fn browser_status_element() -> Option<web_sys::Element> {
     web_sys::window()
         .and_then(|window| window.document())
@@ -3817,6 +3860,8 @@ mod tests {
         let html = include_str!("../index.html");
         assert!(html.contains("data-trunk"));
         assert!(html.contains(&format!("id=\"{WEB_CANVAS_ID}\"")));
+        assert!(html.contains("id=\"browser_permissions_dialog\""));
+        assert!(html.contains("Browser audio and MIDI permissions"));
         assert!(html.contains("Enable microphone audio"));
         assert!(html.contains("Enable output-only audio"));
         assert!(html.contains("audio_worklet.js"));

@@ -20,6 +20,7 @@ pub enum SettingsAction {
     RetryAudioDriverPersistence {
         request_id: u64,
     },
+    RequestBrowserPermissions,
     RecoverWithDefaults,
     RequestAddUserScript,
     RequestEphemeralScriptPicker,
@@ -34,6 +35,7 @@ impl SettingsAction {
             Self::Save(_) => "settings.save",
             Self::RequestAudioDriverSwitch { .. } => "settings.request_audio_driver_switch",
             Self::RetryAudioDriverPersistence { .. } => "settings.retry_audio_persistence",
+            Self::RequestBrowserPermissions => "settings.request_browser_permissions",
             Self::RecoverWithDefaults => "settings.recover_defaults",
             Self::RequestAddUserScript => "settings.add_user_script",
             Self::RequestEphemeralScriptPicker => "settings.pick_ephemeral_script",
@@ -262,6 +264,10 @@ impl SettingsDialog {
                 categories.push(definition.category().to_owned());
             }
         }
+        #[cfg(target_arch = "wasm32")]
+        if !categories.iter().any(|category| category == "Audio") {
+            categories.insert(0, "Audio".to_owned());
+        }
         categories
     }
 
@@ -337,7 +343,23 @@ impl SettingsDialog {
         audio: &AudioDriverRuntimeState,
         response: &mut SettingsDialogResponse,
     ) {
-        if !audio.supported {
+        if !audio.supported || cfg!(target_arch = "wasm32") {
+            #[cfg(target_arch = "wasm32")]
+            {
+                ui.heading("Browser audio and MIDI");
+                ui.label(
+                    "Browser permissions control physical audio and Web MIDI access for this app run.",
+                );
+                if ui
+                    .button("Manage browser audio and MIDI permissions…")
+                    .clicked()
+                {
+                    response
+                        .settings_actions
+                        .push(SettingsAction::RequestBrowserPermissions);
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             ui.colored_label(
                 colors::WARNING,
                 "Native runtime driver switching is unavailable in this build.",
