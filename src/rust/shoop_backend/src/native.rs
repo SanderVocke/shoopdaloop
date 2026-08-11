@@ -784,7 +784,7 @@ impl NativeRuntime {
         let ring = self
             .resolved
             .sample_rate
-            .saturating_mul(RECORDING_CAPACITY_SECONDS);
+            .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
         for index in 0..request.audio_channels {
             let suffix = if request.audio_channels == 1 {
                 String::new()
@@ -917,7 +917,7 @@ impl NativeRuntime {
         let ring = self
             .resolved
             .sample_rate
-            .saturating_mul(RECORDING_CAPACITY_SECONDS);
+            .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
         let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
         let mut audio_sends = Vec::with_capacity(dry_audio_channels as usize);
         let mut audio_returns = Vec::with_capacity(wet_audio_channels as usize);
@@ -1094,7 +1094,7 @@ impl NativeRuntime {
         let ring = self
             .resolved
             .sample_rate
-            .saturating_mul(RECORDING_CAPACITY_SECONDS);
+            .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
         let chain = if chain_type == FXChainType::TinySynthFx {
             self.session
                 .create_tiny_synth_fx_chain(&request.port_name_base, dry_audio_channels as usize)?

@@ -565,6 +565,7 @@ struct ApplicationModel {
     active_piano_notes: BTreeMap<u8, BTreeSet<TrackId>>,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
+    last_callback_budget_overruns: u32,
     audio_drivers: AudioDriverRuntimeState,
     click_track: ClickTrackState,
     next_preview_request_id: u64,
@@ -809,6 +810,7 @@ impl ApplicationModel {
             active_piano_notes: BTreeMap::new(),
             global: Default::default(),
             status: Default::default(),
+            last_callback_budget_overruns: 0,
             audio_drivers: backend.audio_driver_state().unwrap_or_default(),
             click_track: ClickTrackState {
                 sounds: click_sound_ids()
@@ -921,6 +923,10 @@ impl ApplicationModel {
                 success,
                 message,
             } => self.complete_audio_driver_persistence(request_id, success, message),
+            AppIntent::ResetXruns => {
+                self.status.xruns = 0;
+                Ok(())
+            }
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
             | AppIntent::RequestLoopAudioImportPicker { .. }
@@ -3883,7 +3889,21 @@ impl ApplicationModel {
             self.audio_drivers.switch = switch;
         }
         self.status.dsp_load_percent = snapshot.status.dsp_load_percent;
-        self.status.xruns = self.status.xruns.saturating_add(snapshot.status.xruns);
+        let callback_xruns =
+            if snapshot.status.callback_budget_overruns >= self.last_callback_budget_overruns {
+                snapshot
+                    .status
+                    .callback_budget_overruns
+                    .saturating_sub(self.last_callback_budget_overruns)
+            } else {
+                snapshot.status.callback_budget_overruns
+            };
+        self.last_callback_budget_overruns = snapshot.status.callback_budget_overruns;
+        self.status.xruns = self
+            .status
+            .xruns
+            .saturating_add(snapshot.status.xruns)
+            .saturating_add(callback_xruns);
         self.status.buffer_size = snapshot.status.buffer_size;
         self.status.sample_rate = snapshot.status.sample_rate;
         self.status.audio_driver = match snapshot.status.driver_state {
@@ -3904,7 +3924,6 @@ impl ApplicationModel {
         self.status.processed_frames = snapshot.status.processed_frames;
         self.status.input_peak = snapshot.status.input_peak;
         self.status.output_peak = snapshot.status.output_peak;
-        self.status.callback_budget_overruns = snapshot.status.callback_budget_overruns;
         self.status.render_discontinuities = snapshot.status.render_discontinuities;
         self.status.memory_growths = snapshot.status.memory_growths;
         self.status.command_overflows = snapshot.status.command_overflows;
@@ -10843,6 +10862,37 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let follower = &runtime.snapshot().tracks[1].loops[0];
         assert_eq!(follower.mode, LoopMode::Stopped);
         assert_eq!(follower.next_mode, LoopMode::Playing);
+    }
+
+    #[test]
+    fn callback_overruns_are_accumulated_as_resettable_xruns() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+
+        let mut snapshot = BackendSnapshot::default();
+        snapshot.status.xruns = 2;
+        snapshot.status.callback_budget_overruns = 3;
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.xruns, 5);
+
+        snapshot.status.xruns = 0;
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.xruns, 5);
+
+        snapshot.status.callback_budget_overruns = 5;
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.xruns, 7);
+
+        model.handle_intent(&mut backend, AppIntent::ResetXruns);
+        assert_eq!(model.status.xruns, 0);
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.xruns, 0);
+
+        snapshot.status.callback_budget_overruns = 1;
+        model.apply_backend_snapshot(snapshot);
+        assert_eq!(model.status.xruns, 1);
     }
 
     #[test]

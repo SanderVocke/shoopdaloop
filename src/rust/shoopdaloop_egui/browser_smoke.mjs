@@ -356,7 +356,7 @@ try {
     sampleRate: Number(document.getElementById('runtime_status')?.getAttribute('data-sample-rate')),
     captureChannels: Number(document.getElementById('runtime_status')?.getAttribute('data-capture-channels')),
     quantum: Number(document.getElementById('runtime_status')?.getAttribute('data-render-quantum')),
-    budgetOverruns: Number(document.getElementById('runtime_status')?.getAttribute('data-callback-budget-overruns')),
+    xruns: Number(document.getElementById('runtime_status')?.getAttribute('data-xruns')),
     discontinuities: Number(document.getElementById('runtime_status')?.getAttribute('data-render-discontinuities')),
     memoryGrowths: Number(document.getElementById('runtime_status')?.getAttribute('data-memory-growths')),
     overflows: Number(document.getElementById('runtime_status')?.getAttribute('data-command-overflows')),
@@ -791,7 +791,7 @@ try {
       throw new Error(`audio generation does not own a live media track: ${JSON.stringify(state)}`);
     }
     if (
-      state.budgetOverruns !== 0
+      state.xruns !== 0
       || state.overflows !== 0
       || !Number.isFinite(state.memoryGrowths)
       || state.memoryGrowths > 32

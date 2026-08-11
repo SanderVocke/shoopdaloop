@@ -938,6 +938,7 @@ pub struct WebAudioBackend {
     next_loop_id: u64,
     next_port_id: u64,
     last_poll: Instant,
+    last_wire_xruns: u32,
     waveform_revisions: BTreeMap<BackendLoopId, u64>,
     waveforms: BTreeMap<BackendLoopId, WaveformAssembly>,
     next_session_generation: u64,
@@ -980,6 +981,7 @@ impl WebAudioBackend {
                 next_loop_id: 1,
                 next_port_id: 1,
                 last_poll: Instant::now(),
+                last_wire_xruns: 0,
                 waveform_revisions: BTreeMap::new(),
                 waveforms: BTreeMap::new(),
                 next_session_generation: 1,
@@ -1325,6 +1327,12 @@ impl WebAudioBackend {
 
     fn apply_wire_snapshot(&mut self, wire: WireSnapshot) {
         let state = self.transport.borrow().driver_state;
+        let xruns = if wire.xruns >= self.last_wire_xruns {
+            wire.xruns.saturating_sub(self.last_wire_xruns)
+        } else {
+            wire.xruns
+        };
+        self.last_wire_xruns = wire.xruns;
         self.snapshot.status = BackendStatus {
             sample_rate: wire.sample_rate,
             buffer_size: wire.quantum,
@@ -1332,7 +1340,7 @@ impl WebAudioBackend {
             processed_frames: wire.processed_frames,
             input_peak: wire.input_peak,
             output_peak: wire.output_peak,
-            xruns: wire.xruns,
+            xruns,
             callback_budget_overruns: wire.callback_budget_overruns,
             render_discontinuities: wire.render_discontinuities,
             memory_growths: wire.memory_growths,
@@ -2409,7 +2417,9 @@ impl Backend for WebAudioBackend {
         if let Some(error) = self.transport.borrow_mut().error.take() {
             return Err(anyhow!(error));
         }
-        Ok(self.snapshot.clone())
+        let snapshot = self.snapshot.clone();
+        self.snapshot.status.xruns = 0;
+        Ok(snapshot)
     }
 
     fn wait_idle(&mut self) {}

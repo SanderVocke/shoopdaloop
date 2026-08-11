@@ -448,7 +448,6 @@ pub struct StatusState {
     pub processed_frames: u64,
     pub input_peak: f32,
     pub output_peak: f32,
-    pub callback_budget_overruns: u32,
     pub render_discontinuities: u32,
     pub memory_growths: u32,
     pub command_overflows: u32,
@@ -1321,6 +1320,7 @@ pub enum AppIntent {
         success: bool,
         message: String,
     },
+    ResetXruns,
     RequestSaveSession,
     RequestLoadSessionPicker,
     LoadSessionBytes {
@@ -1495,6 +1495,7 @@ impl AppIntent {
             Self::CompleteAudioDriverSwitchPersistence { .. } => {
                 "audio_driver.complete_persistence"
             }
+            Self::ResetXruns => "audio.reset_xruns",
             Self::RequestSaveSession => "session.request_save",
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
