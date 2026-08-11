@@ -37,6 +37,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     this.renderDiscontinuities = 0;
     this.callbackBudgetOverruns = 0;
     this.memoryGrowths = 0;
+    this.renderMemoryGrowths = 0;
     this.expectedFrame = null;
     try {
       const { wasmModule, maxQuantum, protocolVersion, commandMaxBytes } = options.processorOptions;
@@ -106,11 +107,12 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       event.event.render_discontinuities = this.renderDiscontinuities;
       event.event.callback_budget_overruns = this.callbackBudgetOverruns;
       event.event.memory_growths = this.memoryGrowths;
+      event.event.render_memory_growths = this.renderMemoryGrowths;
       response = JSON.stringify(event);
     }
     // A response lookup can cause Rust allocator bookkeeping to acquire another
-    // Wasm page after the command itself. Refresh only on this control callback;
-    // the render callback must never allocate replacement typed-array views.
+    // Wasm page after the command itself. Refresh eagerly here so render-time
+    // rebinding remains an exceptional recovery path.
     if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
     this.port.postMessage(response);
     if (typeof queueMicrotask === 'function') {
@@ -145,7 +147,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     if (frames > this.maxQuantum) return this.fail(`render quantum ${frames} exceeds ${this.maxQuantum}`);
     // Control-path topology/state preparation may grow linear memory between
     // callbacks. Rebind the two bounded host views before entering Rust; growth
-    // after this point is still a fatal realtime violation.
+    // after this point is a realtime violation that requires recovery.
     if (this.exports.memory.buffer !== this.memoryBuffer) {
       try {
         this.refreshViews();
@@ -172,7 +174,12 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       return this.fail(`Rust worklet host rejected ${nInputs}x${nOutputs}x${frames} quantum`);
     }
     if (this.exports.memory.buffer !== this.memoryBuffer) {
-      return this.fail('worklet Wasm memory grew in the render callback');
+      this.renderMemoryGrowths += 1;
+      try {
+        this.refreshViews();
+      } catch (error) {
+        return this.fail(`worklet view recovery failed: ${error?.stack || error}`);
+      }
     }
     for (let channel = 0; channel < nOutputs; channel += 1) {
       const destination = outputChannels[channel];

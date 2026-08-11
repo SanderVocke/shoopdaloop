@@ -808,6 +808,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         callback_budget_overruns: snapshot.status.callback_budget_overruns,
         render_discontinuities: snapshot.status.render_discontinuities,
         memory_growths: snapshot.status.memory_growths,
+        render_memory_growths: snapshot.status.render_memory_growths,
         command_overflows: snapshot.status.command_overflows,
         storage_low_channels: snapshot.status.storage_low_channels,
         storage_exhaustions: snapshot.status.storage_exhaustions,

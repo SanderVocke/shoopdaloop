@@ -359,6 +359,7 @@ try {
     xruns: Number(document.getElementById('runtime_status')?.getAttribute('data-xruns')),
     discontinuities: Number(document.getElementById('runtime_status')?.getAttribute('data-render-discontinuities')),
     memoryGrowths: Number(document.getElementById('runtime_status')?.getAttribute('data-memory-growths')),
+    renderMemoryGrowths: Number(document.getElementById('runtime_status')?.getAttribute('data-render-memory-growths')),
     overflows: Number(document.getElementById('runtime_status')?.getAttribute('data-command-overflows')),
     webMidi: document.getElementById('runtime_status')?.getAttribute('data-web-midi'),
     webMidiEndpoints: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-endpoints')),
@@ -795,6 +796,8 @@ try {
       || state.overflows !== 0
       || !Number.isFinite(state.memoryGrowths)
       || state.memoryGrowths > 32
+      || !Number.isFinite(state.renderMemoryGrowths)
+      || state.renderMemoryGrowths > 32
       || state.webMidi !== 'AwaitingGesture'
     ) {
       throw new Error(`render, memory-growth, protocol, or Web MIDI diagnostics are invalid: ${JSON.stringify(state)}`);

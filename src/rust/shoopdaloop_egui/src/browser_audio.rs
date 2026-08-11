@@ -1354,6 +1354,7 @@ impl WebAudioBackend {
             callback_budget_overruns: wire.callback_budget_overruns,
             render_discontinuities: wire.render_discontinuities,
             memory_growths: wire.memory_growths,
+            render_memory_growths: wire.render_memory_growths,
             command_overflows: wire
                 .command_overflows
                 .saturating_add(self.transport.borrow().overflows),

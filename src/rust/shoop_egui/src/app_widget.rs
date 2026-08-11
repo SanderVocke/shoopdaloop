@@ -1383,14 +1383,16 @@ impl AppWidget {
             ));
         }
         if state.status.command_overflows > 0
+            || state.status.render_memory_growths > 0
             || state.status.storage_low_channels > 0
             || state.status.storage_exhaustions > 0
         {
             ui.colored_label(
                 colors::WARNING,
                 format!(
-                    "audio limits: queue {} / storage low {} / exhausted {}",
+                    "audio warnings: queue {} / render memory {} / storage low {} / exhausted {}",
                     state.status.command_overflows,
+                    state.status.render_memory_growths,
                     state.status.storage_low_channels,
                     state.status.storage_exhaustions
                 ),
