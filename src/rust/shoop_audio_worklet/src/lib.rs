@@ -7,10 +7,10 @@ use shoop_audio_protocol::{
     TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopId, BackendLoopMode,
-    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortRole,
-    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest,
-    EngineBackend, MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate,
+    BackendLoopId, BackendLoopMode, BackendMidiEvent, BackendPortDataType, BackendPortDirection,
+    BackendPortId, BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
+    BackendTrackId, DirectTrackRequest, EngineBackend, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -30,6 +30,10 @@ pub struct WorkletHost {
     replace_generation: Option<u64>,
     replace_expected_bytes: usize,
     replace_bytes: Vec<u8>,
+    loop_content_generation: Option<u64>,
+    loop_content_id: Option<BackendLoopId>,
+    loop_content_expected_bytes: usize,
+    loop_content_bytes: Vec<u8>,
 }
 
 impl WorkletHost {
@@ -58,6 +62,10 @@ impl WorkletHost {
             replace_generation: None,
             replace_expected_bytes: 0,
             replace_bytes: Vec::new(),
+            loop_content_generation: None,
+            loop_content_id: None,
+            loop_content_expected_bytes: 0,
+            loop_content_bytes: Vec::new(),
         })
     }
 
@@ -122,7 +130,7 @@ impl WorkletHost {
             event,
         })
         .unwrap_or_else(|_| {
-            r#"{"version":4,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
+            r#"{"version":6,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
                 .to_owned()
         });
         &self.response
@@ -335,6 +343,65 @@ impl WorkletHost {
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
+            Command::SetLoopLength { loop_id, length } => {
+                self.backend
+                    .set_loop_length(BackendLoopId::from_raw(loop_id), length)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::BeginLoopContentReplace {
+                generation,
+                loop_id,
+                total_bytes,
+            } => {
+                if generation == 0 || total_bytes > SESSION_TRANSFER_MAX_BYTES {
+                    return Err("invalid loop content replacement size or generation".to_owned());
+                }
+                self.loop_content_generation = Some(generation);
+                self.loop_content_id = Some(BackendLoopId::from_raw(loop_id));
+                self.loop_content_expected_bytes = total_bytes;
+                self.loop_content_bytes = Vec::with_capacity(total_bytes);
+                Ok(Event::Ack)
+            }
+            Command::WriteLoopContentReplace {
+                generation,
+                offset,
+                bytes,
+            } => {
+                if self.loop_content_generation != Some(generation) {
+                    return Err("stale loop content replacement generation".to_owned());
+                }
+                if bytes.len() > SESSION_TRANSFER_CHUNK_BYTES
+                    || offset != self.loop_content_bytes.len()
+                    || self.loop_content_bytes.len().saturating_add(bytes.len())
+                        > self.loop_content_expected_bytes
+                {
+                    return Err("invalid loop content replacement chunk".to_owned());
+                }
+                self.loop_content_bytes.extend_from_slice(&bytes);
+                Ok(Event::Ack)
+            }
+            Command::CommitLoopContentReplace { generation } => {
+                if self.loop_content_generation != Some(generation)
+                    || self.loop_content_bytes.len() != self.loop_content_expected_bytes
+                {
+                    return Err("loop content replacement is incomplete or stale".to_owned());
+                }
+                let update: BackendLoopContentUpdate =
+                    serde_json::from_slice(&self.loop_content_bytes)
+                        .map_err(|error| format!("invalid prepared loop content: {error}"))?;
+                let loop_id = self
+                    .loop_content_id
+                    .ok_or_else(|| "loop content replacement omitted its target".to_owned())?;
+                self.backend
+                    .replace_loop_content(loop_id, &update)
+                    .map_err(|error| error.to_string())?;
+                self.loop_content_generation = None;
+                self.loop_content_id = None;
+                self.loop_content_expected_bytes = 0;
+                self.loop_content_bytes.clear();
+                Ok(Event::LoopContentReplaceComplete { generation })
+            }
             Command::SetPortConnected {
                 application_port_id,
                 host_port_id,
@@ -480,6 +547,12 @@ impl WorkletHost {
                     self.replace_expected_bytes = 0;
                     self.replace_bytes.clear();
                 }
+                if self.loop_content_generation == Some(generation) {
+                    self.loop_content_generation = None;
+                    self.loop_content_id = None;
+                    self.loop_content_expected_bytes = 0;
+                    self.loop_content_bytes.clear();
+                }
                 Ok(Event::SessionTransferAborted { generation })
             }
             Command::Poll => {
@@ -499,6 +572,10 @@ impl WorkletHost {
                 self.replace_generation = None;
                 self.replace_expected_bytes = 0;
                 self.replace_bytes.clear();
+                self.loop_content_generation = None;
+                self.loop_content_id = None;
+                self.loop_content_expected_bytes = 0;
+                self.loop_content_bytes.clear();
                 Ok(Event::Stopped)
             }
         }
@@ -1369,6 +1446,174 @@ mod tests {
             panic!("expected snapshot")
         };
         assert_eq!(snapshot.loops[0].length, 4);
+    }
+
+    #[test]
+    fn targeted_loop_content_transfer_commits_once_without_stopping_callbacks() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let mut sequence = 1_u64;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "targeted".to_owned(),
+                    audio_channels: 2,
+                    midi: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        let update = BackendLoopContentUpdate {
+            audio: vec![
+                shoop_backend::BackendAudioChannelUpdate {
+                    channel: 0,
+                    samples: vec![0.25; 1024],
+                    start_offset: Some(-1),
+                    preplay: Some(2),
+                },
+                shoop_backend::BackendAudioChannelUpdate {
+                    channel: 1,
+                    samples: vec![0.5; 1024],
+                    start_offset: Some(-2),
+                    preplay: Some(3),
+                },
+            ],
+            midi: vec![shoop_backend::BackendMidiChannelUpdate {
+                channel: 0,
+                length: 1024,
+                start_state: vec![vec![0xB0, 7, 99]],
+                events: vec![BackendMidiEvent {
+                    time: 512,
+                    data: vec![0x90, 64, 127],
+                }],
+                start_offset: Some(-3),
+                preplay: Some(4),
+            }],
+            length: Some(1024),
+        };
+        let bytes = serde_json::to_vec(&update).unwrap();
+        assert!(bytes.len() > SESSION_TRANSFER_CHUNK_BYTES);
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::BeginLoopContentReplace {
+                    generation: 9,
+                    loop_id: 1,
+                    total_bytes: bytes.len(),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::WriteLoopContentReplace {
+                    generation: 8,
+                    offset: 0,
+                    bytes: vec![0],
+                },
+            )
+            .event,
+            Event::Error { .. }
+        ));
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::CommitLoopContentReplace { generation: 9 },
+            )
+            .event,
+            Event::Error { .. }
+        ));
+        sequence += 1;
+        for (index, chunk) in bytes.chunks(SESSION_TRANSFER_CHUNK_BYTES).enumerate() {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::WriteLoopContentReplace {
+                        generation: 9,
+                        offset: index * SESSION_TRANSFER_CHUNK_BYTES,
+                        bytes: chunk.to_vec(),
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+            sequence += 1;
+            assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+        }
+        let Event::Snapshot(before) = command(&mut host, sequence, Command::Poll).event else {
+            panic!("expected snapshot")
+        };
+        assert_eq!(before.loops[0].length, 0);
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::CommitLoopContentReplace { generation: 9 },
+            )
+            .event,
+            Event::LoopContentReplaceComplete { generation: 9 }
+        ));
+        sequence += 1;
+        let captured = host.backend.capture_session().unwrap();
+        assert_eq!(captured.tracks[0].source_id, 1);
+        assert_eq!(captured.tracks[0].loops[0].source_id, 1);
+        assert_eq!(
+            captured.tracks[0].loops[0].audio[0].samples,
+            vec![0.25; 1024]
+        );
+        assert_eq!(
+            captured.tracks[0].loops[0].audio[1].samples,
+            vec![0.5; 1024]
+        );
+        assert_eq!(captured.tracks[0].loops[0].midi[0].events[0].time, 512);
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Playing,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::SetLoopLength {
+                    loop_id: 1,
+                    length: 2048,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+        let Event::Snapshot(after) = command(&mut host, sequence, Command::Poll).event else {
+            panic!("expected snapshot")
+        };
+        assert!(after.callback_count > before.callback_count);
+        assert_eq!(after.loops[0].mode, WireLoopMode::Playing);
+        assert_eq!(after.loops[0].length, 2048);
     }
 
     #[test]
