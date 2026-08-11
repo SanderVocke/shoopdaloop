@@ -1269,8 +1269,10 @@ impl ApplicationModel {
                     id: model.id,
                     coords: [index, row as i64],
                     mode: model.state.mode,
-                    next_mode: (model.state.next_mode != LoopMode::Unknown)
-                        .then_some(model.state.next_mode),
+                    next_mode: model.state.next_transition_delay.and_then(|_| {
+                        (model.state.next_mode != LoopMode::Unknown)
+                            .then_some(model.state.next_mode)
+                    }),
                     next_mode_delay: model.state.next_transition_delay,
                     length: model.length,
                     gain: model.state.gain,
@@ -4056,15 +4058,17 @@ impl ApplicationModel {
                     (
                         source.state.mode,
                         source.state.next_mode,
+                        source.state.next_transition_delay,
                         section_offset.saturating_add(source.position),
                     )
                 });
             if let Some(model) = self.loops.get_mut(&target) {
                 model.length = length;
                 model.state.empty = false;
-                if let Some((mode, next_mode, position)) = source_state {
+                if let Some((mode, next_mode, next_transition_delay, position)) = source_state {
                     model.state.mode = mode;
                     model.state.next_mode = next_mode;
+                    model.state.next_transition_delay = next_transition_delay;
                     model.position = position.min(length);
                     model.state.position = if length == 0 {
                         0.0
@@ -7402,6 +7406,152 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(runtime.snapshot().scripting.scripts[0]
             .latest_error
             .is_none());
+    }
+
+    #[test]
+    fn script_snapshot_distinguishes_current_and_planned_modes_for_loops_and_composites() {
+        let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Track".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loop_id = runtime.model.tracks[1].loops[0];
+        let backend_id = runtime.model.loops[&loop_id].backend_id;
+
+        runtime.backend.set_loop_length(backend_id, 480).unwrap();
+        runtime
+            .backend
+            .transition_loop(backend_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let stable = runtime
+            .model
+            .script_control_snapshot()
+            .loops
+            .into_iter()
+            .find(|loop_| loop_.id == loop_id)
+            .unwrap();
+        assert_eq!(stable.mode, LoopMode::Playing);
+        assert_eq!(stable.next_mode, None);
+        assert_eq!(stable.next_mode_delay, None);
+
+        let composite_id = runtime.model.tracks[1].loops[1];
+        runtime
+            .model
+            .apply_script_operation(
+                &mut *runtime.backend,
+                ControlOperation::ComposeAddToEnd {
+                    target: composite_id,
+                    add: vec![loop_id],
+                    parallel: false,
+                },
+            )
+            .unwrap();
+        runtime
+            .backend
+            .transition_loop(backend_id, BackendLoopMode::Recording, Some(2))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let planned = runtime
+            .model
+            .script_control_snapshot()
+            .loops
+            .into_iter()
+            .find(|loop_| loop_.id == loop_id)
+            .unwrap();
+        assert_eq!(planned.mode, LoopMode::Playing);
+        assert_eq!(planned.next_mode, Some(LoopMode::Recording));
+        assert_eq!(planned.next_mode_delay, Some(2));
+        let composite = runtime
+            .model
+            .script_control_snapshot()
+            .loops
+            .into_iter()
+            .find(|loop_| loop_.id == composite_id)
+            .unwrap();
+        assert_eq!(composite.mode, LoopMode::Playing);
+        assert_eq!(composite.next_mode, Some(LoopMode::Recording));
+        assert_eq!(composite.next_mode_delay, Some(2));
+    }
+
+    #[test]
+    fn production_keyboard_plays_manual_recording_on_next_sync_cycle() {
+        let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
+            Box::new(backend),
+            vec![StartupScript {
+                name: "keyboard.lua".to_owned(),
+                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            }],
+        )
+        .unwrap();
+        let sync_backend_id = runtime
+            .model
+            .loops
+            .get(&runtime.model.tracks[0].loops[0])
+            .unwrap()
+            .backend_id;
+        runtime
+            .backend
+            .set_loop_length(sync_backend_id, 480)
+            .unwrap();
+        runtime
+            .backend
+            .transition_loop(sync_backend_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Track".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = runtime.snapshot().tracks[1].clone();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id: track.loops[0].id,
+                action: LoopAction::IconClicked(SelectionModifiers::default()),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().global_controls.play_after_record);
+
+        let space = |runtime: &mut CooperativeApplicationRuntime| {
+            for event_type in [KeyEventType::Pressed, KeyEventType::Released] {
+                runtime
+                    .dispatch(AppIntent::KeyEvent(KeyEvent {
+                        event_type,
+                        key: 32,
+                        modifiers: 0,
+                    }))
+                    .unwrap();
+                runtime.tick(Duration::ZERO);
+                runtime.tick(Duration::ZERO);
+            }
+        };
+        space(&mut runtime);
+        runtime.tick(Duration::from_millis(11));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Recording
+        );
+
+        space(&mut runtime);
+        runtime.tick(Duration::from_millis(10));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
     }
 
     #[test]
