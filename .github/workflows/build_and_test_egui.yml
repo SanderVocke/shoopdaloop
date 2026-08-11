@@ -98,7 +98,7 @@ jobs:
             html_artifact: shoopdaloop-egui-web-wasm32-release.html
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust stable
         if: env.ACT != 'true'

@@ -12,8 +12,8 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
 
       - name: Install dependencies
         run: pip install sphinx
@@ -22,13 +22,13 @@ jobs:
         run: sphinx-build -W --keep-going docs/source _build
       
       - name: Store HTML as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: html
           path: _build/
 
       - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         with:
           publish_branch: gh-pages
