@@ -211,13 +211,16 @@ jobs:
         if: matrix.target == 'windows'
         shell: pwsh
         run: |
-          dumpbin /headers .carla-component/lib/libcarla_native-plugin.dll | Select-String 'machine \(x64\)'
-          dumpbin /dependents .carla-component/lib/libcarla_native-plugin.dll
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $visualStudio = & $vswhere -latest -property installationPath
+          $developerShell = Join-Path $visualStudio "Common7\Tools\VsDevCmd.bat"
+          cmd /c "`"$developerShell`" -arch=x64 && dumpbin /headers .carla-component\lib\libcarla_native-plugin.dll && dumpbin /dependents .carla-component\lib\libcarla_native-plugin.dll"
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin audit failed" }
 
       - name: Audit macOS Carla runtime linkage
         if: matrix.target == 'macos'
         run: |
-          lipo -verify_arch arm64 .carla-component/lib/libcarla_native-plugin.dylib
+          lipo .carla-component/lib/libcarla_native-plugin.dylib -verify_arch arm64
           otool -L .carla-component/lib/libcarla_native-plugin.dylib
 
       - name: Build native application
