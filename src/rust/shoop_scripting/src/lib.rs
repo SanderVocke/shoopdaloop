@@ -6,6 +6,7 @@ use std::rc::Rc;
 use anyhow::{anyhow, bail};
 use omnilua::{Function, Lua, Value};
 use shoop_app_api::{
+    ephemeral_script_display_name, is_ephemeral_script_version,
     ScriptActivityDiagnostics as ApiScriptActivityDiagnostics, ScriptDialogButtonId,
     ScriptDialogId, ScriptDialogState, ScriptId, ScriptKind, ScriptLifecycle,
     ScriptLogLevel as ApiScriptLogLevel, ScriptLogState, ScriptMidiDiagnostics,
@@ -541,6 +542,36 @@ impl ScriptManager {
             let _ = self.start(id);
         }
         Ok(id)
+    }
+
+    pub fn add_ephemeral(
+        &mut self,
+        source_name: impl Into<String>,
+        source: impl Into<String>,
+    ) -> anyhow::Result<ScriptId> {
+        let source_name = source_name.into();
+        let source = source.into();
+        LuaRuntime::new()?.check_syntax(&source_name, &source)?;
+        let display_name = ephemeral_script_display_name(
+            &source_name,
+            self.scripts.values().map(|record| record.name.as_str()),
+        );
+        let active_versions = self
+            .scripts
+            .values()
+            .filter(|record| {
+                is_ephemeral_script_version(&record.name, &source_name)
+                    && matches!(
+                        record.lifecycle,
+                        ScriptLifecycle::Running | ScriptLifecycle::Listening
+                    )
+            })
+            .map(|record| record.id)
+            .collect::<Vec<_>>();
+        for id in active_versions {
+            self.stop(id)?;
+        }
+        self.add(display_name, source, ScriptKind::Ephemeral, true)
     }
 
     #[cfg(test)]
@@ -1655,6 +1686,48 @@ if not c.get_solo() then error('solo') end
         );
         manager.forget(failed).unwrap();
         assert_eq!(manager.states().len(), 2);
+    }
+
+    #[test]
+    fn ephemeral_versions_stop_active_names_and_retain_restartable_sources() {
+        let mut manager = ScriptManager::new();
+        let listener =
+            "local c=require('shoop_control'); c.register_global_event_cb(function() end)";
+        let builtin = manager
+            .add_announced("controller.lua", listener, ScriptKind::Bundled, true)
+            .unwrap();
+        let second = manager
+            .add_ephemeral(
+                "controller.lua",
+                format!("shoop_announce_api_version(1, 0)\n{listener}"),
+            )
+            .unwrap();
+        let states = manager.states();
+        assert_eq!(states[0].id, builtin);
+        assert_eq!(states[0].lifecycle, ScriptLifecycle::Inactive);
+        assert_eq!(states[1].id, second);
+        assert_eq!(states[1].name, "controller.lua (run once 2)");
+        assert_eq!(states[1].kind, ScriptKind::Ephemeral);
+        assert_eq!(states[1].lifecycle, ScriptLifecycle::Listening);
+
+        assert!(manager
+            .add_ephemeral("controller.lua", "function(")
+            .is_err());
+        assert_eq!(manager.states()[1].lifecycle, ScriptLifecycle::Listening);
+
+        let third = manager
+            .add_ephemeral(
+                "controller.lua",
+                "shoop_announce_api_version(1, 0); print('new')",
+            )
+            .unwrap();
+        let states = manager.states();
+        assert_eq!(states[1].lifecycle, ScriptLifecycle::Inactive);
+        assert_eq!(states[2].id, third);
+        assert_eq!(states[2].name, "controller.lua (run once 3)");
+        assert_eq!(states[2].lifecycle, ScriptLifecycle::Finished);
+        manager.start(second).unwrap();
+        assert_eq!(manager.states()[1].lifecycle, ScriptLifecycle::Listening);
     }
 
     #[test]

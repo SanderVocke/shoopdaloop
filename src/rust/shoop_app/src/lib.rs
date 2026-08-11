@@ -891,6 +891,9 @@ impl ApplicationModel {
                 kind,
                 enabled,
             } => self.add_script_source(backend, name, source, kind, enabled),
+            AppIntent::AddEphemeralScript { name, source } => {
+                self.add_ephemeral_script(backend, name, source)
+            }
             AppIntent::SetScriptEnabled { script_id, enabled } => {
                 self.set_script_enabled(backend, script_id, enabled)
             }
@@ -1098,6 +1101,23 @@ impl ApplicationModel {
         let result = self
             .script_manager
             .add(name, source.to_string(), kind, enabled)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
+    }
+
+    fn add_ephemeral_script(
+        &mut self,
+        backend: &mut dyn Backend,
+        name: String,
+        source: Arc<str>,
+    ) -> Result<(), String> {
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .add_ephemeral(name, source.to_string())
             .map(|_| ())
             .map_err(|error| error.to_string())
             .and_then(|()| self.apply_script_operations(backend));
@@ -9973,6 +9993,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddEphemeralScript {
+                name: "run-once.lua".to_owned(),
+                source: Arc::from("shoop_announce_api_version(1, 0); print('run once')"),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         let mut document = SessionDocument::empty(48_000);
         document.scripts.push(ScriptDocument {
             id: 77,
@@ -9991,7 +10018,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let loaded = runtime.snapshot();
-        assert_eq!(loaded.scripting.scripts.len(), 2);
+        assert_eq!(loaded.scripting.scripts.len(), 3);
         assert!(loaded
             .scripting
             .scripts
@@ -10002,6 +10029,9 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .scripts
             .iter()
             .any(|script| { script.name == "session.lua" && script.kind == ScriptKind::Session }));
+        assert!(loaded.scripting.scripts.iter().any(|script| {
+            script.name == "run-once.lua" && script.kind == ScriptKind::Ephemeral
+        }));
         assert!(loaded.global_controls.solo);
 
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
@@ -10065,8 +10095,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let scripts = &runtime.snapshot().scripting.scripts;
-        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts.len(), 2);
         assert_eq!(scripts[0].name, "machine.lua");
+        assert_eq!(scripts[1].name, "run-once.lua");
+        assert_eq!(scripts[1].kind, ScriptKind::Ephemeral);
     }
 
     #[test]

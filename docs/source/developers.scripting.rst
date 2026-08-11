@@ -30,7 +30,11 @@ Script management
 Open **Settings → Scripts** to inspect lifecycle, errors, help, activity, logs,
 and MIDI diagnostics. Native builds can add, reload, and remove user script
 files. Browser builds manage bundled scripts and sources embedded in sessions,
-without machine path actions.
+without machine path actions. Both targets can load a UTF-8 ``.lua`` file from
+the run-once picker or by OS drag and drop after confirmation. Run-once sources
+remain restartable in memory, are independent of session replacement and
+serialization, and disappear when the app closes. Loading a same-named version
+stops the active version and retains both entries under unique display names.
 
 ``keyboard.lua`` is enabled on first run. The APC Mini script is available but
 disabled by default. Persistent changes apply after **Save**; runtime Stop,

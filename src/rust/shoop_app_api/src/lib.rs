@@ -882,6 +882,38 @@ pub enum ScriptKind {
     Bundled,
     User,
     Session,
+    Ephemeral,
+}
+
+pub fn is_ephemeral_script_version(display_name: &str, source_name: &str) -> bool {
+    if display_name == source_name {
+        return true;
+    }
+    display_name
+        .strip_prefix(source_name)
+        .and_then(|suffix| suffix.strip_prefix(" (run once "))
+        .and_then(|suffix| suffix.strip_suffix(')'))
+        .and_then(|version| version.parse::<u32>().ok())
+        .is_some_and(|version| version >= 2)
+}
+
+pub fn ephemeral_script_display_name<'a>(
+    source_name: &str,
+    existing_names: impl IntoIterator<Item = &'a str>,
+) -> String {
+    let existing_names = existing_names
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    if !existing_names.contains(source_name) {
+        return source_name.to_owned();
+    }
+    for version in 2_u32.. {
+        let candidate = format!("{source_name} (run once {version})");
+        if !existing_names.contains(candidate.as_str()) {
+            return candidate;
+        }
+    }
+    unreachable!("u32 script version space exhausted")
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1345,6 +1377,10 @@ pub enum AppIntent {
         kind: ScriptKind,
         enabled: bool,
     },
+    AddEphemeralScript {
+        name: String,
+        source: Arc<str>,
+    },
     SetScriptEnabled {
         script_id: ScriptId,
         enabled: bool,
@@ -1550,6 +1586,7 @@ impl AppIntent {
             Self::AddLoop { .. } => "loop.add_row",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
+            Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
             Self::SetScriptEnabled { .. } => "scripting.set_enabled",
             Self::RestartScript { .. } => "scripting.restart",
             Self::ReplaceScriptSource { .. } => "scripting.replace_source",
@@ -1603,6 +1640,33 @@ pub struct AppNotification {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ephemeral_script_names_track_source_versions_without_colliding() {
+        assert!(is_ephemeral_script_version(
+            "controller.lua",
+            "controller.lua"
+        ));
+        assert!(is_ephemeral_script_version(
+            "controller.lua (run once 2)",
+            "controller.lua"
+        ));
+        assert!(!is_ephemeral_script_version(
+            "controller.lua (copy)",
+            "controller.lua"
+        ));
+        assert_eq!(
+            ephemeral_script_display_name("controller.lua", std::iter::empty()),
+            "controller.lua"
+        );
+        assert_eq!(
+            ephemeral_script_display_name(
+                "controller.lua",
+                ["controller.lua", "controller.lua (run once 2)"]
+            ),
+            "controller.lua (run once 3)"
+        );
+    }
 
     #[test]
     fn ids_retain_raw_identity_and_invalid_is_distinct() {

@@ -141,6 +141,12 @@ struct PendingAudioSettings {
     retry_requested: bool,
 }
 
+#[cfg(target_arch = "wasm32")]
+struct BrowserEphemeralFile {
+    name: String,
+    bytes: Vec<u8>,
+}
+
 struct UnifiedApp {
     runtime: Runtime,
     widget: AppWidget,
@@ -154,6 +160,8 @@ struct UnifiedApp {
     browser_settings_test: BrowserSettingsSelfTest,
     #[cfg(target_arch = "wasm32")]
     pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
+    #[cfg(target_arch = "wasm32")]
+    pending_ephemeral_files: Rc<RefCell<VecDeque<BrowserEphemeralFile>>>,
     #[cfg(not(target_arch = "wasm32"))]
     pending_file_intent_tx: Sender<AppIntent>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -219,6 +227,8 @@ impl UnifiedApp {
             browser_settings_test: BrowserSettingsSelfTest::from_location(),
             #[cfg(target_arch = "wasm32")]
             pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
+            #[cfg(target_arch = "wasm32")]
+            pending_ephemeral_files: Rc::new(RefCell::new(VecDeque::new())),
             #[cfg(not(target_arch = "wasm32"))]
             pending_file_intent_tx,
             #[cfg(not(target_arch = "wasm32"))]
@@ -278,6 +288,17 @@ impl UnifiedApp {
                         .map_err(anyhow::Error::msg)
                 })
             }
+            SettingsAction::RequestEphemeralScriptPicker => {
+                let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Lua script", &["lua"])
+                    .pick_file()
+                else {
+                    return;
+                };
+                load_ephemeral_script_path(&path).map(|(name, source)| {
+                    self.widget.queue_ephemeral_script(name, source);
+                })
+            }
             SettingsAction::RequestReloadUserScript { script_id } => {
                 self.runtime.reload_user_script(script_id)
             }
@@ -301,6 +322,22 @@ impl UnifiedApp {
                 return;
             }
             SettingsAction::RecoverWithDefaults => self.settings.request_recovery(),
+            SettingsAction::RequestEphemeralScriptPicker => {
+                let pending = Rc::clone(&self.pending_ephemeral_files);
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter("Lua script", &["lua"])
+                        .pick_file()
+                        .await
+                    {
+                        pending.borrow_mut().push_back(BrowserEphemeralFile {
+                            name: file.file_name(),
+                            bytes: file.read().await,
+                        });
+                    }
+                });
+                return;
+            }
             SettingsAction::RequestAddUserScript
             | SettingsAction::RequestReloadUserScript { .. } => {
                 self.settings.report_action_error(
@@ -401,6 +438,87 @@ impl UnifiedApp {
         self.pending_audio_settings = Some(pending);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn queue_ephemeral_script_bytes(&mut self, name: String, bytes: &[u8]) {
+        match load_ephemeral_script_bytes(name, bytes) {
+            Ok((name, source)) => self.widget.queue_ephemeral_script(name, source),
+            Err(error) => {
+                let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
+                    task_id: None,
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn handle_dropped_files(&mut self, context: &egui::Context) {
+        let files = context.input(|input| input.raw.dropped_files.clone());
+        for file in files {
+            let Some(path) = file.path else {
+                continue;
+            };
+            if !path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(is_lua_file_name)
+            {
+                continue;
+            }
+            match load_ephemeral_script_path(&path) {
+                Ok((name, source)) => self.widget.queue_ephemeral_script(name, source),
+                Err(error) => {
+                    let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
+                        task_id: None,
+                        message: error.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn handle_dropped_files(&mut self, context: &egui::Context) {
+        let files = context.input(|input| input.raw.dropped_files.clone());
+        for file in files {
+            if !is_lua_file_name(&file.name) {
+                continue;
+            }
+            if let Some(bytes) = file.bytes {
+                self.queue_ephemeral_script_bytes(file.name, &bytes);
+            }
+        }
+    }
+
+    fn show_file_drop_overlay(&self, context: &egui::Context) {
+        let hovering = context.input(|input| {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                input.raw.hovered_files.iter().any(|file| {
+                    file.path
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .and_then(|name| name.to_str())
+                        .is_some_and(is_lua_file_name)
+                })
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                !input.raw.hovered_files.is_empty()
+            }
+        });
+        if hovering {
+            egui::Area::new(egui::Id::new("lua_file_drop_overlay"))
+                .order(egui::Order::Foreground)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(context, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.heading("Drop Lua script to load it for this app run");
+                    });
+                });
+        }
+    }
+
     fn show(&mut self, ui: &mut egui::Ui) {
         let _span = tracing::trace_span!("frontend.egui.update").entered();
         self.settings.poll();
@@ -415,6 +533,18 @@ impl UnifiedApp {
         self.last_update = now;
         self.runtime.tick(elapsed);
         self.runtime.process_audio_previews();
+
+        #[cfg(target_arch = "wasm32")]
+        let ephemeral_files: Vec<_> = self
+            .pending_ephemeral_files
+            .borrow_mut()
+            .drain(..)
+            .collect();
+        #[cfg(target_arch = "wasm32")]
+        for file in ephemeral_files {
+            self.queue_ephemeral_script_bytes(file.name, &file.bytes);
+        }
+        self.handle_dropped_files(ui.ctx());
 
         #[cfg(target_arch = "wasm32")]
         let pending: Vec<_> = self.pending_file_intents.borrow_mut().drain(..).collect();
@@ -448,6 +578,7 @@ impl UnifiedApp {
         for action in response.settings_actions {
             self.handle_settings_action(action);
         }
+        self.show_file_drop_overlay(ui.ctx());
         #[cfg(not(target_arch = "wasm32"))]
         let drain_file_outputs = true;
         #[cfg(target_arch = "wasm32")]
@@ -631,6 +762,32 @@ impl UnifiedApp {
             }
         }
     }
+}
+
+fn is_lua_file_name(name: &str) -> bool {
+    name.rsplit_once('.')
+        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("lua"))
+}
+
+fn load_ephemeral_script_bytes(
+    name: String,
+    bytes: &[u8],
+) -> anyhow::Result<(String, std::sync::Arc<str>)> {
+    if !is_lua_file_name(&name) {
+        anyhow::bail!("{name} is not a Lua file");
+    }
+    let source = std::str::from_utf8(bytes)
+        .map_err(|error| anyhow::anyhow!("could not decode {name} as UTF-8: {error}"))?;
+    shoop_scripting::LuaRuntime::new()?.check_syntax(&name, source)?;
+    Ok((name, std::sync::Arc::from(source)))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_ephemeral_script_path(path: &Path) -> anyhow::Result<(String, std::sync::Arc<str>)> {
+    let name = file_name(path);
+    let bytes = std::fs::read(path)
+        .map_err(|error| anyhow::anyhow!("could not read {}: {error}", path.display()))?;
+    load_ephemeral_script_bytes(name, &bytes)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -3953,6 +4110,23 @@ mod tests {
             settings.get(shoop_egui::SELECTED_AUDIO_DRIVER).unwrap(),
             "jack"
         );
+    }
+
+    #[test]
+    fn ephemeral_script_files_require_lua_utf8_and_valid_syntax() {
+        assert!(is_lua_file_name("controller.lua"));
+        assert!(is_lua_file_name("controller.LUA"));
+        assert!(!is_lua_file_name("controller.txt"));
+        let (name, source) = load_ephemeral_script_bytes(
+            "controller.lua".to_owned(),
+            b"shoop_announce_api_version(1, 0); print('loaded')",
+        )
+        .unwrap();
+        assert_eq!(name, "controller.lua");
+        assert!(source.contains("loaded"));
+        assert!(load_ephemeral_script_bytes("controller.txt".to_owned(), b"return").is_err());
+        assert!(load_ephemeral_script_bytes("controller.lua".to_owned(), &[0xff]).is_err());
+        assert!(load_ephemeral_script_bytes("controller.lua".to_owned(), b"function(").is_err());
     }
 
     #[test]
