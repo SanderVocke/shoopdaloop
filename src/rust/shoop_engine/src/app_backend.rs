@@ -1,11 +1,8 @@
-//! Application-facing backend handles used by the QML/frontend layer.
+//! Application-facing backend handles used by the native application runtime.
 //!
-//! This module is the compatibility boundary between the CXX-Qt frontend objects and
-//! the Rust engine.  It owns driver/session handles, port/channel/loop handles and
-//! the small amount of JACK/CPAL/midir routing glue the GUI expects, while all actual
-//! loop, graph, port, MIDI and FX processing stays in the core engine modules.
-
-#![allow(dead_code)]
+//! This module owns driver/session handles, port/channel/loop handles, and the
+//! JACK/CPAL/midir routing glue used by the application. All loop, graph, port,
+//! MIDI, and FX processing stays in the core engine modules.
 
 use crate as engine;
 use crate::graph_scheduler::{GraphScheduler, DEFAULT_WINDOW};
@@ -40,6 +37,7 @@ pub use engine::{CommandSequence, SendError};
 const COMMAND_QUEUE_CAPACITY: usize = 4096;
 const INVALID_OBJECT_INDEX: usize = usize::MAX;
 static NEXT_BACKEND_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+#[cfg(feature = "lv2")]
 static NEXT_CARLA_CHAIN_ID: AtomicU64 = AtomicU64::new(1);
 static CARLA_HOSTING_MODE: AtomicU8 = AtomicU8::new(0);
 
@@ -246,11 +244,6 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
 
     fn acknowledged_data_sequence(&self) -> u64 {
         self.acknowledged_data_sequence.load(Ordering::Relaxed)
-    }
-
-    fn acknowledge_data_sequence(&self, sequence: u64) {
-        self.acknowledged_data_sequence
-            .store(sequence, Ordering::Relaxed);
     }
 
     fn error(&self) -> Option<String> {
@@ -514,14 +507,6 @@ struct CpalBackend {
     _input: Option<cpal::Stream>,
     sample_rate: u32,
     configured_buffer_size: u32,
-    input_ring: Option<Arc<Mutex<VecDeque<f32>>>>,
-    input_channels: usize,
-    output_channels: usize,
-    playback_names: Vec<String>,
-    capture_names: Vec<String>,
-    midi_inputs: Arc<Mutex<Vec<CpalMidiInputEndpoint>>>,
-    midi_outputs: Arc<Mutex<Vec<CpalMidiOutputEndpoint>>>,
-    decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
     last_processed: Arc<AtomicU32>,
     xruns: Arc<AtomicU32>,
 }
@@ -957,8 +942,6 @@ impl CpalBackend {
         let midi_inputs_cb = Arc::new(Mutex::new(midi_inputs));
         let midi_outputs_cb = Arc::new(Mutex::new(midi_outputs));
         let decoupled_cb = decoupled_midi_ports.clone();
-        let midi_inputs_ret = midi_inputs_cb.clone();
-        let midi_outputs_ret = midi_outputs_cb.clone();
         let external_cb = external.clone();
         let capture_underruns_cb = capture_underruns.clone();
         let capture_overruns_cb = capture_overruns.clone();
@@ -1141,14 +1124,6 @@ impl CpalBackend {
             _input: input_stream,
             sample_rate,
             configured_buffer_size: settings.buffer_size,
-            input_ring,
-            input_channels,
-            output_channels,
-            playback_names,
-            capture_names,
-            midi_inputs: midi_inputs_ret,
-            midi_outputs: midi_outputs_ret,
-            decoupled_midi_ports,
             last_processed,
             xruns,
         })
@@ -1160,7 +1135,7 @@ impl CpalBackend {
     fn start_with_mock(
         settings: &CpalMidiAudioDriverSettings,
         external: Arc<Mutex<engine::DummyExternalConnections>>,
-        decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
+        _decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
         _maybe_process_callback: Option<ProcessCallback>,
     ) -> Result<Self> {
         use crate::cpal_mock::MockHost;
@@ -1178,19 +1153,17 @@ impl CpalBackend {
             .map(|c| format!("cpal:{output_device_name}:playback_{}", c + 1))
             .collect();
 
-        let (input_channels, capture_names) = if settings.input_device == "none" {
-            (0, Vec::new())
+        let capture_names = if settings.input_device == "none" {
+            Vec::new()
         } else {
             let input_device = host.default_input_device().expect("mock input device");
-            let input_config = input_device.default_input_config()?;
-            let input_channels = input_config.channels() as usize;
+            let input_channels = input_device.default_input_config()?.channels() as usize;
             let input_device_name = input_device
                 .name()
                 .unwrap_or_else(|_| "mock-input".to_string());
-            let capture_names = (0..input_channels)
+            (0..input_channels)
                 .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
-                .collect();
-            (input_channels, capture_names)
+                .collect()
         };
 
         {
@@ -1218,16 +1191,8 @@ impl CpalBackend {
             stale_graph_cycles: Arc::new(AtomicU32::new(0)),
             _output: None,
             _input: None,
-            input_ring: None,
-            input_channels,
             sample_rate,
             configured_buffer_size: 0,
-            output_channels,
-            playback_names,
-            capture_names,
-            midi_inputs: Arc::new(Mutex::new(vec![])),
-            midi_outputs: Arc::new(Mutex::new(vec![])),
-            decoupled_midi_ports,
             last_processed,
             xruns,
         })
@@ -1725,10 +1690,6 @@ impl SharedSession {
     fn jack(&self) -> Option<Arc<Mutex<JackBackend>>> {
         self.jack.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
-    fn cpal(&self) -> Option<Arc<Mutex<CpalBackend>>> {
-        self.cpal.lock().unwrap_or_else(|e| e.into_inner()).clone()
-    }
-
     fn connections_state(
         &self,
         name: &str,
@@ -2836,7 +2797,6 @@ impl BackendSession {
         let mut chain = FXChain {
             shared: self.shared.clone(),
             title: title.to_string(),
-            chain_type,
             backend,
             state: Arc::new(Mutex::new(FXChainState::default())),
             tiny_channels: tiny_channels.unwrap_or(0),
@@ -3281,10 +3241,8 @@ impl AudioDriver {
                             let interval = Duration::from_micros(micros);
 
                             // Sleep in slices, draining control work between cycles rather than
-                            // through them. A blocking read from the GUI thread would otherwise wait
-                            // out the whole cycle interval, and the QML suite makes thousands of them:
-                            // sleeping the interval in one go made the suite several times slower for
-                            // no reason other than latency. Only pumps when something is actually
+                            // through them. A blocking read from the application thread would otherwise
+                            // wait out the whole cycle interval. Only pump when something is actually
                             // queued, so an idle driver still sleeps.
                             const SLICE: Duration = Duration::from_micros(100);
                             while started.elapsed() < interval {
@@ -3530,10 +3488,8 @@ impl AudioDriver {
         self.inner.lock().unwrap().dummy.mode() == engine::DriverMode::Controlled
     }
     pub fn dummy_wait_controlled_mode(&self) {
-        // Synchronously drain all pending controlled frames.
-        // Unlike the QML wait_controlled_mode which relies on the async
-        // update pipeline (UpdatedOnGuiThread signal), this directly polls
-        // the driver state, which is reliable across test-file reloads.
+        // Synchronously drain all pending controlled frames by polling the
+        // driver state directly.
         self.wait_process();
         while {
             let i = self.inner.lock().unwrap();
@@ -5891,7 +5847,6 @@ enum FXChainBackendKind {
 pub struct FXChain {
     shared: Arc<SharedSession>,
     title: String,
-    chain_type: FXChainType,
     backend: FXChainBackendKind,
     state: Arc<Mutex<FXChainState>>,
     tiny_channels: usize,

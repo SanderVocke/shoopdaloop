@@ -17,14 +17,14 @@ pub fn translate_events(
                 modifiers,
                 ..
             } => {
-                let Some(key_value) = qt_key(*key) else {
+                let Some(key_value) = script_key(*key) else {
                     continue;
                 };
                 if *is_pressed {
                     if text_entry_active || *repeat || pressed.contains_key(key) {
                         continue;
                     }
-                    let modifiers = qt_modifiers(*modifiers);
+                    let modifiers = script_modifiers(*modifiers);
                     pressed.insert(*key, (key_value, modifiers));
                     translated.push(KeyEvent {
                         event_type: KeyEventType::Pressed,
@@ -35,7 +35,7 @@ pub fn translate_events(
                     translated.push(KeyEvent {
                         event_type: KeyEventType::Released,
                         key: key_value,
-                        modifiers: qt_modifiers(*modifiers),
+                        modifiers: script_modifiers(*modifiers),
                     });
                 }
             }
@@ -54,7 +54,7 @@ pub fn translate_events(
     translated
 }
 
-fn qt_modifiers(modifiers: egui::Modifiers) -> i64 {
+fn script_modifiers(modifiers: egui::Modifiers) -> i64 {
     let mut value = 0;
     if modifiers.shift {
         value |= 33_554_432;
@@ -71,7 +71,7 @@ fn qt_modifiers(modifiers: egui::Modifiers) -> i64 {
     value
 }
 
-fn qt_key(key: egui::Key) -> Option<i64> {
+fn script_key(key: egui::Key) -> Option<i64> {
     Some(match key {
         egui::Key::Space => 32,
         egui::Key::Period => 46,
@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn translates_qt_values_modifiers_and_suppresses_repeats() {
+    fn translates_script_values_modifiers_and_suppresses_repeats() {
         let mut pressed = BTreeMap::new();
         let modifiers = egui::Modifiers {
             shift: true,

@@ -1,4 +1,4 @@
-//! Pure composite-plan and state-machine coverage, independent of Qt and audio routing.
+//! Pure composite-plan and state-machine coverage, independent of UI and audio routing.
 
 use shoop_engine::*;
 

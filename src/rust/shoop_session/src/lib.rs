@@ -769,7 +769,7 @@ mod tests {
     #[test]
     fn old_non_zip_and_resource_limit_fail_without_decoding() {
         assert!(matches!(
-            decode_session(b"old qml tar bytes"),
+            decode_session(b"unsupported predecessor archive"),
             Err(SessionError::UnsupportedFormat)
         ));
         let bytes = encode_session(&direct_bundle(1), "test").unwrap();

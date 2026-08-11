@@ -1,11 +1,11 @@
-name: Build and test egui
+name: Build and Test ShoopDaLoop egui
 
 on:
   push:
-    branches: ["master", "egui", "rust_backend_new"]
+    branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "egui", "rust_backend_new"]
+    branches: ["master"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
   schedule:
@@ -100,9 +100,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust nightly
+      - name: Install Rust stable
         if: env.ACT != 'true'
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_targets }}
           components: rustfmt
@@ -229,8 +229,8 @@ jobs:
           --platform ${{ matrix.target }}
           --artifact artifacts/${{ matrix.artifact }}
 
-      - name: Test native egui application path
-        if: matrix.target != 'web'
+      - name: Test native application path
+        if: matrix.target != 'web' && (matrix.target != 'linux' || matrix.profile != 'debug')
         env:
           RUSTFLAGS: -D warnings
           SHOOP_ALLOW_MISSING_BACKENDS: 1
@@ -244,9 +244,18 @@ jobs:
           -p shoopdaloop_egui
           -- --test-threads=1
 
-      - name: Check formatting
+      - name: Test complete retained workspace
         if: matrix.target == 'linux' && matrix.profile == 'debug'
-        run: cargo fmt --all -- --check
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_ALLOW_MISSING_BACKENDS: 1
+        run: cargo test --locked --workspace --features shoop_engine/app_backend -- --test-threads=1
+
+      - name: Check formatting and tracing inventory
+        if: matrix.target == 'linux' && matrix.profile == 'debug'
+        run: |
+          cargo fmt --all -- --check
+          python3 scripts/check_tracing_coverage.py --require-closed
 
       - name: Verify web application artifacts
         if: matrix.target == 'web'
@@ -280,8 +289,8 @@ jobs:
         run: |
           cargo tree -p shoop_audio_worklet --target wasm32-unknown-unknown > /tmp/worklet-tree.txt
           cargo tree -p shoopdaloop_egui --target wasm32-unknown-unknown --no-default-features > /tmp/browser-tree.txt
-          if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|frontend|cxx-qt|firewheel) v|\(.*src/rust/frontend\))' /tmp/worklet-tree.txt; then exit 1; fi
-          if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|frontend|cxx-qt|firewheel) v|\(.*src/rust/frontend\))' /tmp/browser-tree.txt; then exit 1; fi
+          if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/worklet-tree.txt; then exit 1; fi
+          if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop_egui/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
 
       - name: Run core hosted Web Audio workflows

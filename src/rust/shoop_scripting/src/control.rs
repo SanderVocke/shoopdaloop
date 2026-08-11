@@ -15,7 +15,7 @@ use crate::midi::{
     MidiConnectionId, MidiControlService, MidiEndpoint, MidiEndpointDirection,
     MAX_MIDI_MESSAGE_BYTES, MIDI_QUEUE_CAPACITY,
 };
-use crate::{install_compatibility_value, LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
+use crate::{install_compatibility_value, KEY_CONSTANTS, MODIFIER_CONSTANTS};
 
 pub const MAX_SCRIPT_CALLBACKS_PER_PUMP: usize = 256;
 pub const LOOP_DONT_WAIT_FOR_SYNC: i64 = -1;
@@ -814,10 +814,7 @@ fn install_constants(constants: &Table) -> omnilua::Result<()> {
     ] {
         constants.set(name, value)?;
     }
-    for &(name, value) in LEGACY_KEY_CONSTANTS
-        .iter()
-        .chain(LEGACY_MODIFIER_CONSTANTS.iter())
-    {
+    for &(name, value) in KEY_CONSTANTS.iter().chain(MODIFIER_CONSTANTS.iter()) {
         constants.set(name, value)?;
     }
     Ok(())

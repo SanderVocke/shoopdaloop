@@ -1,10 +1,8 @@
 #![cfg(not(feature = "prebuild"))]
 
-pub mod env;
 pub mod logging;
 pub mod tracing_capture;
 pub mod tracing_helpers;
-pub mod util;
 use anyhow::Context;
 
 pub fn init() -> Result<(), anyhow::Error> {

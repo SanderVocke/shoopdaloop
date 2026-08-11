@@ -1,12 +1,8 @@
 mod egui_settings;
-#[cfg(all(not(target_arch = "wasm32"), feature = "legacy"))]
-mod legacy_settings;
 #[cfg(all(not(target_arch = "wasm32"), feature = "native-store"))]
 mod native_store;
 
 pub use egui_settings::*;
-#[cfg(all(not(target_arch = "wasm32"), feature = "legacy"))]
-pub use legacy_settings::*;
 #[cfg(all(not(target_arch = "wasm32"), feature = "native-store"))]
 pub use native_store::*;
 

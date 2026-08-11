@@ -1,6 +1,6 @@
 # egui Lua compatibility contract
 
-This document freezes the Shoop Lua compatibility target. Native egui and the retained QML frontend now share the pinned omniLua 0.7.1 Lua 5.4 runtime described in `omnilua_runtime.md`; retained QML behavior and its tests remain an oracle until each cross-target replacement test exists.
+This document defines the Shoop Lua compatibility target for the native and browser egui application. Both use the pinned omniLua 0.7.1 Lua 5.4 runtime described in `omnilua_runtime.md`.
 
 ## Value and selector rules
 
@@ -81,10 +81,10 @@ The compatibility table contains:
 - `LoopEventType_ModeChanged`, `LengthChanged`, `SelectedChanged`, `TargetedChanged`, and `CoordsChanged`;
 - `GlobalEventType_GlobalControlChanged`;
 - `KeyEventType_Pressed` and `KeyEventType_Released`;
-- the retained Qt numeric `Key_*` and `KeyModifier_*` values, including all values used by bundled scripts;
+- stable numeric `Key_*` and `KeyModifier_*` values, including all values used by bundled scripts;
 - `Loop_DontWaitForSync = -1` and `Loop_DontAlignToSyncImmediately = -1`.
 
-The egui key translator must emit the retained numeric values. Unsupported platform keys may be absent from events, but their constants remain available to scripts.
+The egui key translator must emit these stable numeric values. Unsupported platform keys may be absent from events, but their constants remain available to scripts.
 
 ## Callback payloads and ordering
 
@@ -108,7 +108,7 @@ Each script gets its own Lua 5.4 state. Runtime or callback failure changes only
 | `keyboard.lua` | Selection/target queries and mutations; mode query/trigger; clear/grab/record-with-target; global cycle count; keyboard subscription. | Stable coordinates, synchronized and immediate transitions, selection movement, target recording, fixed cycles, and press/release sampler state from `shoop_helpers`. |
 | `akai_apc_mini_mk1.lua` | Loop trigger/clear/grab/select/target/composition; track gain/balance; global controls; loop/global callbacks; timer; MIDI auto-open input/output. | Full grid and sync coordinate mapping, regular composition append/parallel execution, event-driven LEDs, delayed reset, input hotplug, output broadcast/throttling, and controller reconnect. |
 
-The shared APC source contains one retained-runtime defect fix: N-cycle selection now indexes the coordinate pair as `coords[1]`/`coords[2]`. The former nested numeric indexing raised a Lua error in both frontends. This is a shared script correction, not an egui-only fork or API change.
+The APC source indexes coordinate pairs as `coords[1]`/`coords[2]`; nested numeric indexing is invalid. This behavior is part of the shared script contract.
 
 Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, explicit transition, repeat-sync, and track mute/input-mute APIs to the required set.
 
@@ -124,6 +124,6 @@ Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, ex
 
 ## Lifecycle, settings, sessions, and targets
 
-The native application's fresh `shoop-egui-settings` document stores typed bundled enablement toggles and an ordered user path/enabled list. Both bundled scripts are discoverable on first run and only `keyboard.lua` is enabled by default. The one Settings dialog exposes all script configuration, lifecycle, documentation, logs, and MIDI diagnostics in its **Scripts** tab. Persistent edits apply after Save; Stop, Restart, and Reload are runtime-only. Retained QML `script_settings.1` is not imported or rewritten. Source-bearing session scripts use `.shoop` `ScriptDocument` entries and never persist machine paths.
+The native application's `shoop-egui-settings` document stores typed bundled enablement toggles and an ordered user path/enabled list. Both bundled scripts are discoverable on first run and only `keyboard.lua` is enabled by default. The one Settings dialog exposes all script configuration, lifecycle, documentation, logs, and MIDI diagnostics in its **Scripts** tab. Persistent edits apply after Save; Stop, Restart, and Reload are runtime-only. Source-bearing session scripts use `.shoop` `ScriptDocument` entries and never persist machine paths.
 
-Browser packages continue to use `wasm32-unknown-unknown` and exclude native MIDI dependencies. The cooperative browser application owner runs the same omniLua scripting manager as native egui: `scripting.supported` is true, embedded keyboard/APC sources are present, keyboard defaults enabled/APC disabled, and source-bearing session scripts use the shared transaction path. Browser settings register only bundled toggles; native user paths/Add-file remain absent. Before permission or on unsupported browsers, active logical registrations remain visible with no hosts. After explicit Web MIDI access, a bounded main-thread service supplies canonical physical endpoints, exact control input/output up to the existing 256-byte limit, hotplug reconnect, and owner-managed confirmed links independently of audio startup. Browser compatibility remains defined here; physical transport evidence is tracked by `plans/EGUI_WASM_WEBMIDI_PLAN.md` and `docs/web_midi_contract.md`.
+Browser packages continue to use `wasm32-unknown-unknown` and exclude native MIDI dependencies. The cooperative browser application owner runs the same omniLua scripting manager as native egui: `scripting.supported` is true, embedded keyboard/APC sources are present, keyboard defaults enabled/APC disabled, and source-bearing session scripts use the shared transaction path. Browser settings register only bundled toggles; native user paths/Add-file remain absent. Before permission or on unsupported browsers, active logical registrations remain visible with no hosts. After explicit Web MIDI access, a bounded main-thread service supplies canonical physical endpoints, exact control input/output up to the existing 256-byte limit, hotplug reconnect, and owner-managed confirmed links independently of audio startup. Browser compatibility remains defined here; physical transport behavior is specified by `docs/web_midi_contract.md`.

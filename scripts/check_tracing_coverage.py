@@ -23,8 +23,9 @@ def source_modules() -> set[str]:
     modules: set[str] = set()
     for path in (ROOT / "src" / "rust").rglob("*.rs"):
         relative = path.relative_to(ROOT)
-        # Cargo integration tests are validation code, not production modules.
-        if "tests" in relative.parts:
+        # Cargo integration tests and benchmark/example binaries are validation
+        # tools, not production application modules.
+        if "tests" in relative.parts or "examples" in relative.parts:
             continue
         modules.add(relative.as_posix())
     return modules

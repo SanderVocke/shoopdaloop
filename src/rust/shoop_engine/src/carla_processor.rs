@@ -349,8 +349,8 @@ mod bridge {
 
         pub fn set_active(&self, active: bool) {
             // Publish desired activity immediately, then apply it in FIFO order on
-            // the bridge thread. This keeps QML state deterministic without sharing
-            // the callback endpoint or making the callback consume control traffic.
+            // the bridge thread. This keeps application state deterministic without
+            // sharing the callback endpoint or making it consume control traffic.
             self.control
                 .snapshot
                 .active

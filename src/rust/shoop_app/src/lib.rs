@@ -8693,7 +8693,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
     }
 
     #[test]
-    fn expanded_loop_actions_route_qml_equivalent_modes_grab_and_balance() {
+    fn expanded_loop_actions_route_modes_grab_and_balance() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
             &mut backend,
@@ -9977,7 +9977,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "old.shl".to_owned(),
-                bytes: Arc::from(&b"old qml archive"[..]),
+                bytes: Arc::from(&b"unsupported predecessor archive"[..]),
             })
             .unwrap();
         runtime.tick(Duration::ZERO);

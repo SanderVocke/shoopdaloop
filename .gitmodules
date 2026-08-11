@@ -1,3 +1,0 @@
-[submodule "src/qml/third_party/QtMaterialDesignIcons"]
-	path = src/qml/third_party/QtMaterialDesignIcons
-	url = https://github.com/sthlm58/QtMaterialDesignIcons.git

@@ -12,7 +12,7 @@ use shoop_app_api::{
 };
 
 mod control;
-mod legacy_key_constants;
+mod key_constants;
 mod midi;
 
 use control::{install_control_api, MidiRuleRuntimeDirection, ScriptCallbacks};
@@ -21,7 +21,7 @@ pub use control::{
     MidiRuntimeDiagnostics, ScriptActivityDiagnostics, ScriptKeyEvent, ScriptLoopEvent,
     SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
-use legacy_key_constants::{LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
+use key_constants::{KEY_CONSTANTS, MODIFIER_CONSTANTS};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi::NativeMidiService;
 pub use midi::{
@@ -805,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_control_surface_is_installed_with_legacy_constants() {
+    fn complete_control_surface_is_installed_with_stable_constants() {
         let runtime = LuaRuntime::new().unwrap();
         let module: omnilua::Table = runtime
             .run_sandboxed
@@ -826,10 +826,7 @@ mod tests {
             67_108_864
         );
         assert_eq!(constants.get::<_, i64>("LoopMode_Playing").unwrap(), 2);
-        for &(name, expected) in LEGACY_KEY_CONSTANTS
-            .iter()
-            .chain(LEGACY_MODIFIER_CONSTANTS.iter())
-        {
+        for &(name, expected) in KEY_CONSTANTS.iter().chain(MODIFIER_CONSTANTS.iter()) {
             assert_eq!(constants.get::<_, i64>(name).unwrap(), expected, "{name}");
         }
         for (name, expected) in [
@@ -855,7 +852,7 @@ mod tests {
         }
         assert_eq!(
             constants.clone().pairs().unwrap().count(),
-            LEGACY_KEY_CONSTANTS.len() + LEGACY_MODIFIER_CONSTANTS.len() + 17
+            KEY_CONSTANTS.len() + MODIFIER_CONSTANTS.len() + 17
         );
     }
 

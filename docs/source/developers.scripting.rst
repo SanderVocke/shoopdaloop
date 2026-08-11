@@ -1,62 +1,63 @@
-Lua Scripting
------------------
+Lua scripting
+-------------
 .. _lua_scripting:
 
-Introduction
-^^^^^^^^^^^^^^^^^^^^^^^^
+Runtime and ownership
+~~~~~~~~~~~~~~~~~~~~~
 
-**ShoopDaLoop** supports embedded **Lua scripts** for querying and controlling the application. For example, these are used to define how **ShoopDaLoop** reacts to control MIDI events.
-Lua scripts can be provided by the user and don't require a re-installation of the software. Native egui builds run the same bundled libraries, ``keyboard.lua``, and APC Mini script as the retained QML frontend. Each script has an isolated Lua state owned by the application actor; stopping or restarting it removes its callbacks, timers, MIDI rules, connections, and queued output.
+ShoopDaLoop embeds pinned omniLua with Lua 5.4 semantics. Each script has an
+isolated state owned by the application runtime. Stopping or restarting a script
+removes its callbacks, timers, logical MIDI ports, connections, and queued
+output.
 
-**Lua** inside **ShoopDaLoop** is sandboxed for compatibility and to keep scripts isolated, making a large part of the standard library unavailable. Only a whitelisted list of functions can be used. See **sandbox.lua** for details. Most notably, arbitrary modules cannot be imported through **require**; only **ShoopDaLoop**-provided modules can be used. Scripts should nevertheless be treated as trusted local code rather than as a hardened security boundary.
+The sandbox exposes selected standard-library functions and ShoopDaLoop modules.
+It prevents ordinary module/file access but should still be treated as a
+compatibility boundary for trusted local scripts, not as a hardened security
+boundary.
 
-Native egui script management
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Script management
+~~~~~~~~~~~~~~~~~
 
-Open **Settings** and select the **Scripts** tab to inspect lifecycle state, errors, help text, callback/timer activity, logs, and MIDI diagnostics. This is the only script-management surface: it can enable, stop, restart, add, reload, and remove user scripts. Bundled startup toggles and the ordered user path/enabled list are stored in the native ``shoop-egui-settings`` document. Persistent edits apply only after **Save**; **Stop**, **Restart**, and **Reload** affect the runtime without changing the draft. Only ``keyboard.lua`` is enabled on first run. The egui app does not import retained QML ``script_settings.1``. Source-bearing scripts inside a ``.shoop`` session are syntax-checked before session commit and are saved back with that session; machine paths are never embedded implicitly.
+Open **Settings → Scripts** to inspect lifecycle, errors, help, activity, logs,
+and MIDI diagnostics. Native builds can add, reload, and remove user script
+files. Browser builds manage bundled scripts and sources embedded in sessions,
+without machine path actions.
 
-Native MIDI autoconnect uses an anchored full-name regular expression. Logical inputs connect to matching external outputs, and logical outputs connect to matching external inputs. Discovery is hotplug-aware, queues are bounded, and positive output-rate limits are enforced per logical output without delayed-pump catch-up bursts. Per-rule patterns, matched and connected endpoint names, and latest failures are published alongside aggregate connection, error, and drop counters. Connection, send, regex, queue-drop, and callback failures remain visible in script status. Stopping a script closes everything it owns.
+``keyboard.lua`` is enabled on first run. The APC Mini script is available but
+disabled by default. Persistent changes apply after **Save**; runtime Stop,
+Restart, and Reload do not alter the settings draft. Source-bearing scripts in a
+``.shoop`` session are syntax-checked before transactional session commit and
+round-trip without machine paths.
 
-Browser builds target ``wasm32-unknown-unknown`` and intentionally do not link ``mlua``, native MIDI, or ``shoop_scripting``. Their Settings dialog omits the **Scripts** tab, and script-bearing sessions are capability-rejected rather than partially executed.
+MIDI rules
+~~~~~~~~~~
 
-API and Libraries
-^^^^^^^^^^^^^^^^^
+Scripts create logical input/output ports with full-name regular expressions.
+Discovery is hotplug-aware, queues are bounded, and positive output rates are
+paced without catch-up bursts. Native services use JACK or midir. Browser
+services use explicitly enabled Web MIDI. Per-rule endpoint and failure state is
+published to the Scripts tab.
 
-The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the `require` function. Check `src/lua/builtins/keyboard.lua` for an example.
+Built-in modules
+~~~~~~~~~~~~~~~~
 
-Globally available APIs
-"""""""""""""""""""""""
+``shoop_control``
+  Synchronous queries and typed mutations for loops, tracks, global controls,
+  callbacks, timers, and logical MIDI ports. Stable ``Key_*``,
+  ``KeyModifier_*``, loop-mode, event-type, and sentinel constants are exposed
+  for bundled and user scripts.
 
-* **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
-
-module: shoop_control
-"""""""""""""""""""""
-
-Provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
-
-.. shoop_function_docstrings::
-   src/rust/frontend/src/cxx_qt_shoop/rust/qobj_session_control_handler.rs
-
-module: shoop_coords
-""""""""""""""""""""
-
-Provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
+``shoop_coords``
 
 .. shoop_function_docstrings::
    src/lua/lib/shoop_coords.lua
 
-module: shoop_helpers
-"""""""""""""""""""""
-
-Provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
+``shoop_helpers``
 
 .. shoop_function_docstrings::
    src/lua/lib/shoop_helpers.lua
 
-module: shoop_format
-""""""""""""""""""""
-
-Provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
+``shoop_format``
 
 .. shoop_function_docstrings::
    src/lua/lib/shoop_format.lua

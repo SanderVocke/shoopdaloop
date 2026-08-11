@@ -65,7 +65,7 @@ def create_native_stage(platform: str, binary: Path, stage: Path) -> None:
         target = executable_dir / executable_name(platform)
         shutil.copy2(binary, target)
         target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        shutil.copy2(ROOT / "distribution" / "macos" / "icon.icns", resources / "icon.icns")
+        shutil.copy2(ROOT / "resources" / "iconset" / "icon.icns", resources / "icon.icns")
         plist = {
             "CFBundleDisplayName": "ShoopDaLoop egui",
             "CFBundleExecutable": executable_name(platform),
