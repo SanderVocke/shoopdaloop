@@ -20,6 +20,7 @@ ROBOTO_FONT_FILES = (
     "Roboto-Bold.ttf",
     "Roboto-BoldItalic.ttf",
 )
+ICON_FILE = "icon.png"
 
 
 def exactly_one(paths: list[Path], description: str) -> Path:
@@ -64,6 +65,15 @@ def build_single_file(dist: Path, output: Path) -> None:
         html, count = preload.subn("", html)
         if count != 1:
             raise RuntimeError(f"could not remove preload for {asset}")
+
+    icon_path = dist / ICON_FILE
+    if not icon_path.is_file():
+        raise RuntimeError(f"missing application icon: {icon_path}")
+    icon_url = f'href="./{ICON_FILE}"'
+    if html.count(icon_url) != 1:
+        raise RuntimeError("could not identify application icon URL")
+    encoded_icon = base64.b64encode(icon_path.read_bytes()).decode("ascii")
+    html = html.replace(icon_url, f'href="data:image/png;base64,{encoded_icon}"')
 
     for name in ROBOTO_FONT_FILES:
         font_path = dist / "roboto" / name
