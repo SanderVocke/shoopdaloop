@@ -314,6 +314,7 @@ ShoopTestFile {
                     clear()
 
                     s().queue_set_length(100)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
 
                     testcase.wait_updated(session.backend)
 
@@ -326,6 +327,8 @@ ShoopTestFile {
                         ]
                     })
 
+                    testcase.wait_updated(session.backend)
+                    testcase.wait(250)
                     testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Stopped,
@@ -346,6 +349,7 @@ ShoopTestFile {
                     verify_eq(l0().next_mode, ShoopRustConstants.LoopMode.Recording)
 
                     process(100) // middle of 1st step
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Recording, // l0
@@ -356,6 +360,7 @@ ShoopTestFile {
                                 100, 50, 0, 0, 400)
 
                     process(100) // middle of 2nd step
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Recording, // l0
@@ -366,6 +371,7 @@ ShoopTestFile {
                                 100, 150, 0, 0, 400)
 
                     process(100) // middle of 3rd step (delay)
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Stopped,   // l0
@@ -376,6 +382,7 @@ ShoopTestFile {
                                 100, 200, 0, 0, 400)
 
                     process(100) // middle of 4th step (record 2nd loop)
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Stopped,   // l0
@@ -386,6 +393,7 @@ ShoopTestFile {
                                 100, 200, 50, 0, 400)
 
                     process(100) // middle of 5th step (whole thing starts playing after finish recording)
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Playing,   // l0
@@ -645,12 +653,9 @@ ShoopTestFile {
 
                     c().on_play_clicked()
                     s().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
-                    testcase.wait_updated(session.backend)
 
-                    verify_eq(c().mode, ShoopRustConstants.LoopMode.Stopped)
-                    verify_eq(c().next_mode, ShoopRustConstants.LoopMode.Playing)
-                    verify_eq(c().next_transition_delay, 0)
-
+                    // Start processing and block immediately, without a frontend refresh between
+                    // accepting the controls and stalling the GUI.
                     start_process_async(42000)
                     // We started the process helper to process. Now, freeze the GUI
                     // while the loops continue in the background.
@@ -940,6 +945,54 @@ ShoopTestFile {
                     verify_true(l0().maybe_composite_loop)
                 },
 
+                'test_running_dependency_topology_edit_restarts_in_engine': () => {
+                    check_backend()
+                    clear()
+
+                    s().queue_set_length(100)
+                    s().create_backend_loop()
+                    l0().create_backend_loop()
+                    l1().create_backend_loop()
+                    l0().queue_set_length(100)
+                    l1().queue_set_length(100)
+                    l2().create_composite_loop({
+                        'playlists': [[
+                            [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                        ]]
+                    })
+                    c().create_composite_loop({
+                        'playlists': [[
+                            [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                        ]]
+                    })
+                    testcase.wait_condition(
+                        () => l0().length === 100 && l1().length === 100 &&
+                              l2().length === 100 && c().length === 100,
+                        5000,
+                        "composite topology did not settle")
+
+                    s().transition(ShoopRustConstants.LoopMode.Playing,
+                                   ShoopRustConstants.DontWaitForSync,
+                                   ShoopRustConstants.DontAlignToSyncImmediately)
+                    process(50)
+                    c().on_play_clicked()
+                    process(100)
+                    verify_eq(c().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(l0().mode, ShoopRustConstants.LoopMode.Playing)
+
+                    c().maybe_composite_loop.playlists_in = [[
+                        [{ 'loop_id': l2().obj_id, 'delay': 0 }],
+                    ]]
+                    testcase.wait_updated(session.backend)
+                    process(1, 1)
+
+                    verify_eq(c().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(c().maybe_loop.iteration, 0)
+                    verify_eq(l0().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(l2().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(l1().mode, ShoopRustConstants.LoopMode.Playing)
+                },
+
                 'test_circular_composite_self': () => {
                     check_backend()
                     clear()
@@ -1149,6 +1202,7 @@ ShoopTestFile {
                                   50, 0, 0, 50, 550)
 
                     process(100) // first cycle of next composite iteration
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // s
                                   ShoopRustConstants.LoopMode.Playing, // l0
@@ -1252,6 +1306,8 @@ ShoopTestFile {
                     })
 
                     testcase.wait_updated(session.backend)
+                    testcase.wait(250)
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Stopped,
                                 ShoopRustConstants.LoopMode.Stopped,
@@ -1281,6 +1337,7 @@ ShoopTestFile {
                                   100, 100, 50, 0, 200)
 
                     process(100) // first cycle of next composite iteration
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing,   // s
                                   ShoopRustConstants.LoopMode.Playing,   // l0
@@ -1348,6 +1405,7 @@ ShoopTestFile {
                                   100, 100, 50, 0, 200)
 
                     process(100) // first cycle of next composite iteration
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing,   // s
                                   ShoopRustConstants.LoopMode.Stopped,   // l0
@@ -1454,6 +1512,51 @@ ShoopTestFile {
                     let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                     verify_markers_at(l1_data, [50, 51])
                     verify_markers_at(l2_data, [80, 99])
+                },
+
+                'test_grab_ringbuffer_nested_composite_transaction': () => {
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    s().queue_set_length(100)
+                    s().create_backend_loop()
+                    s().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+                    run_with_marker_samples(550, [350, 351, 480, 499])
+
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
+                    l2().create_composite_loop({
+                        'playlists': [[
+                            [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                            [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                        ]]
+                    })
+                    c().create_composite_loop({
+                        'playlists': [[
+                            [{ 'loop_id': l2().obj_id, 'delay': 0 }],
+                        ]]
+                    })
+                    testcase.wait_updated(session.backend)
+
+                    c().on_grab_clicked()
+                    // The adoption itself is the useful fence here. A completed adoption can
+                    // leave no subsequent global update signal on a slow update thread.
+                    testcase.wait_condition(
+                        () => l0().length === 100 && l1().length === 100,
+                        10000,
+                        "nested composite ringbuffer adoption did not settle")
+
+                    verify_eq(l0().length, 100)
+                    verify_eq(l1().length, 100)
+                    verify_eq(l2().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(c().mode, ShoopRustConstants.LoopMode.Stopped)
+                    let first = l0().get_audio_channels()[0]
+                    let second = l1().get_audio_channels()[0]
+                    verify_markers_at(first.get_data().slice(0, 100), [50, 51])
+                    verify_markers_at(second.get_data().slice(0, 100), [80, 99])
                 },
 
                 'test_grab_ringbuffer_synced_fixed_length': () => {

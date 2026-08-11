@@ -562,6 +562,12 @@ Item {
                                 }
                             }
 
+                            ShoopMenuItem {
+                                text: "Carla Process Logs..."
+                                shown: root.maybe_fx_chain != undefined
+                                onClicked: root.maybe_fx_chain.open_process_logs()
+                            }
+
                             Menu {
                                 id: restore_submenu
                                 title: "Restore FX State"
@@ -592,7 +598,11 @@ Item {
                     }
 
                     ExtendedButton {
-                        tooltip: "Open FX chain GUI if ready. Red = not ready. Grey = bypassed."
+                        tooltip: root.maybe_fx_chain == undefined ? '' :
+                            root.maybe_fx_chain.process_lifecycle === 3 ? 'Carla worker crashed. Click to restart and open the UI.' :
+                            root.maybe_fx_chain.process_lifecycle === 5 ? 'Carla worker unavailable. Click to retry and open the UI.' :
+                            root.maybe_fx_chain.process_lifecycle === 1 || root.maybe_fx_chain.process_lifecycle === 4 ? 'Carla worker is starting.' :
+                            'Open FX chain GUI if ready. Grey = bypassed.'
                         id: fxuibutton
                         visible: root.maybe_fx_chain != undefined
 
@@ -607,16 +617,19 @@ Item {
                         Label {
                             text: "FX"
                             font.pixelSize: 10
-                            color: (!root.fx_ready) ? "red" :
-                                   root.fx_active ? Material.foreground :
-                                   "grey"
+                            color: root.maybe_fx_chain == undefined ? "red" :
+                                   root.maybe_fx_chain.process_lifecycle === 3 ||
+                                   root.maybe_fx_chain.process_lifecycle === 5 ? "red" :
+                                   root.maybe_fx_chain.process_lifecycle === 1 ||
+                                   root.maybe_fx_chain.process_lifecycle === 4 ? "orange" :
+                                   root.fx_active ? Material.foreground : "grey"
                             anchors {
                                 verticalCenter: parent.verticalCenter
                                 horizontalCenter: parent.horizontalCenter
                             }
                         }
 
-                        onClicked: { if (root.maybe_fx_chain != undefined) { root.maybe_fx_chain.push_ui_visible(!root.maybe_fx_chain.ui_visible) } }
+                        onClicked: { if (root.maybe_fx_chain != undefined) { root.maybe_fx_chain.toggle_or_recover() } }
                     }
 
                 }

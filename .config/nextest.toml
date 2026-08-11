@@ -1,0 +1,14 @@
+# Carla worker integration tests spawn full child processes and include paced
+# scheduler measurements. Running them against each other distorts deadlines
+# and can make an OS kill an otherwise independent sibling under runner load.
+[test-groups]
+carla-worker = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary_id(shoopdaloop::carla_worker)'
+test-group = 'carla-worker'
+threads-required = "num-test-threads"
+
+[[profile.default.overrides]]
+filter = 'test(/carla_processor::tests::bridge_/)'
+threads-required = "num-test-threads"

@@ -37,7 +37,7 @@ pub struct ExternalPortDescriptor {
 }
 
 /// Registry of mock external ports and who is connected to them.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct DummyExternalConnections {
     mock_ports: Vec<ExternalPortDescriptor>,
     /// (port, external port name) pairs, in the order they were made.
@@ -87,6 +87,12 @@ impl DummyExternalConnections {
     /// cannot reveal duplicates.
     pub fn n_connections(&self) -> usize {
         self.connections.len()
+    }
+
+    pub fn is_connected(&self, port: PortId, external: &str) -> bool {
+        self.connections
+            .iter()
+            .any(|candidate| candidate.0 == port && candidate.1 == external)
     }
 
     /// All external port names currently connected to `port`.

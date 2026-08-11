@@ -65,6 +65,7 @@ impl GraphDesc {
     /// Lowers the description to scheduler nodes.
     ///
     /// unions both directions, so the result is identical either way.
+    #[tracing::instrument(name = "engine.graph.build_topology", skip_all)]
     pub fn build(&self) -> (Vec<NodeSpec>, NodeMap) {
         let mut map = NodeMap::default();
         let mut next = 0usize;

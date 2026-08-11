@@ -6,6 +6,7 @@ use std::process::Command;
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
+#[tracing::instrument(name = "tool.packaging.build_appimage", skip_all)]
 pub fn build_appimage(
     appimagetool: &str,
     appdir: &Path,

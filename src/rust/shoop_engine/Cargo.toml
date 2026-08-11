@@ -4,10 +4,20 @@ edition = "2021"
 
 [lib]
 
+[[example]]
+name = "carla_inprocess_benchmark"
+required-features = ["lv2"]
+
+[[example]]
+name = "carla_bridge_benchmark"
+required-features = ["lv2"]
+
 [dependencies]
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+log = { workspace = true }
 regex = { workspace = true }
+arc-swap = { workspace = true }
 rtrb = { workspace = true }
 rubato = { workspace = true }
 # Optional so the engine builds and tests without libjack present.
@@ -18,12 +28,25 @@ cpal = { workspace = true, optional = true }
 midir = { workspace = true, optional = true }
 lilv = { workspace = true, optional = true }
 lv2_raw = { workspace = true, optional = true }
-base64 = { workspace = true, optional = true }
+base64 = { workspace = true }
 serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
+memmap2 = { workspace = true }
+tempfile = { workspace = true }
 assert_no_alloc = { workspace = true }
+shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
+shoop_settings = { path = "../shoop_settings" }
+tracing = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
+tinyviolin = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_tracing = { workspace = true, features = ["tracy"] }
+uuid = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+shoop_tracing = { workspace = true, default-features = false }
 
 [lints]
 workspace = true
@@ -33,9 +56,11 @@ prebuild = []
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
-lv2 = ["dep:lilv", "dep:lv2_raw", "dep:base64", "dep:serde_json", "dep:libloading"]
-app_backend = ["jack", "cpal", "midir", "lv2"]
+lv2 = ["dep:lilv", "dep:lv2_raw", "dep:serde_json", "dep:libloading"]
+native_audio_backend = ["jack", "cpal", "midir"]
+app_backend = ["native_audio_backend"]
 
 [dev-dependencies]
 assert2 = { workspace = true }
 rtrb = { workspace = true }
+tracy-client = { workspace = true }

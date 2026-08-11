@@ -2,6 +2,9 @@ use anyhow::anyhow;
 use cxx_qt_lib::QVariant;
 use cxx_qt_lib_shoop::{
     qobject::QObject,
+    qpointer::{
+        qpointer_from_qobject, qpointer_to_qobject, qvariant_from_qpointer, QPointerQObject,
+    },
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::{
         qobject_ptr_to_qvariant, qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
@@ -46,6 +49,40 @@ impl ReferencesQObject for *mut QObject {
 
     fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
         Ok(qvariant_to_qobject_ptr(qvariant)?)
+    }
+}
+
+impl ReferencesQObject for cxx::UniquePtr<QPointerQObject> {
+    fn as_qobject_ptr(&mut self) -> *mut QObject {
+        self.as_ref()
+            .map(|pointer| unsafe { qpointer_to_qobject(pointer) })
+            .unwrap_or(std::ptr::null_mut())
+    }
+
+    fn as_qobject_ref(&self) -> *const QObject {
+        self.as_ref()
+            .map(|pointer| unsafe { qpointer_to_qobject(pointer) } as *const QObject)
+            .unwrap_or(std::ptr::null())
+    }
+
+    fn copy(&self) -> Self {
+        self.as_ref()
+            .map(|pointer| unsafe { qpointer_from_qobject(qpointer_to_qobject(pointer)) })
+            .unwrap_or_else(cxx::UniquePtr::null)
+    }
+
+    fn to_qvariant(&self) -> Result<QVariant, anyhow::Error> {
+        self.as_ref()
+            .map(|pointer| unsafe { qvariant_from_qpointer(pointer) })
+            .ok_or_else(|| anyhow!("empty QPointer"))
+    }
+
+    fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
+        let object = qvariant_to_qobject_ptr(qvariant)?;
+        if object.is_null() {
+            return Err(anyhow!("null QObject"));
+        }
+        Ok(unsafe { qpointer_from_qobject(object) })
     }
 }
 

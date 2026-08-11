@@ -4,10 +4,16 @@ use std::path::Path;
 use walkdir::WalkDir;
 
 pub fn copy_dir_merge(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<(), anyhow::Error> {
+    let span = tracing::info_span!("app.common.copy_dir_merge", entries = tracing::field::Empty);
+    let _entered = span.enter();
     let src = src.as_ref();
     let dst = dst.as_ref();
+    let mut entries = 0_u64;
 
-    for entry in WalkDir::new(src) {
+    // Qt/Nix trees commonly expose QML module directories through symlinks.
+    // Portable packages need the target contents, not a host-store symlink.
+    for entry in WalkDir::new(src).follow_links(true) {
+        entries += 1;
         let entry = entry?;
         let rel_path = entry
             .path()
@@ -29,5 +35,6 @@ pub fn copy_dir_merge(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()
                 .with_context(|| format!("Failed to copy file for {}", dest_path.display()))?;
         }
     }
+    span.record("entries", entries);
     Ok(())
 }

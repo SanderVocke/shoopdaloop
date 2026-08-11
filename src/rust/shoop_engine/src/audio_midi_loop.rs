@@ -9,10 +9,13 @@
 use crate::audio_channel::{AudioChannel, ChannelError};
 use crate::basic_loop::{BasicLoop, SyncSourceState};
 use crate::channel_mode::ChannelMode;
+use crate::content_snapshot::{AudioProcessSnapshotWriter, MidiProcessSnapshotWriter};
 use crate::loop_mode::LoopMode;
 use crate::midi_channel::{MidiChannel, MidiChannelError};
 use crate::midi_storage::MidiStorageElem;
+use crate::state_mirror::{AudioChannelStateMirror, LoopStateMirror, MidiChannelStateMirror};
 
+use std::sync::Arc;
 use thiserror::Error;
 
 /// A channel failed while the loop itself advanced.
@@ -32,12 +35,58 @@ pub struct AudioMidiLoop {
 }
 
 impl AudioMidiLoop {
+    pub fn with_state_mirror(state: Arc<LoopStateMirror>) -> Self {
+        Self {
+            loop_: BasicLoop::with_state_mirror(state),
+            ..Default::default()
+        }
+    }
+
     // --- channels ---
 
     /// Adds an audio channel and returns its index.
     pub fn add_audio_channel(&mut self, chunk_size: usize, mode: ChannelMode) -> usize {
+        self.add_audio_channel_with_state(
+            chunk_size,
+            mode,
+            Arc::new(AudioChannelStateMirror::default()),
+        )
+    }
+
+    pub fn add_audio_channel_with_state(
+        &mut self,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+    ) -> usize {
+        self.add_audio_channel_with_state_and_snapshots(chunk_size, mode, state, None)
+    }
+
+    pub fn add_audio_channel_with_bounded_capacity(
+        &mut self,
+        chunk_size: usize,
+        capacity: usize,
+        mode: ChannelMode,
+    ) -> usize {
         self.audio_channels
-            .push(AudioChannel::with_chunk_size(chunk_size, mode));
+            .push(AudioChannel::with_bounded_capacity(
+                chunk_size, capacity, mode,
+            ));
+        self.resync_poi();
+        self.audio_channels.len() - 1
+    }
+
+    pub fn add_audio_channel_with_state_and_snapshots(
+        &mut self,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+        snapshots: Option<AudioProcessSnapshotWriter>,
+    ) -> usize {
+        self.audio_channels
+            .push(AudioChannel::with_chunk_size_state_and_snapshots(
+                chunk_size, mode, state, snapshots,
+            ));
         self.resync_poi();
         self.audio_channels.len() - 1
     }
@@ -63,8 +112,36 @@ impl AudioMidiLoop {
 
     /// Adds a MIDI channel and returns its index.
     pub fn add_midi_channel(&mut self, capacity_elems: usize, mode: ChannelMode) -> usize {
+        self.add_midi_channel_with_state(
+            capacity_elems,
+            mode,
+            Arc::new(MidiChannelStateMirror::default()),
+        )
+    }
+
+    pub fn add_midi_channel_with_state(
+        &mut self,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+    ) -> usize {
+        self.add_midi_channel_with_state_and_snapshots(capacity_elems, mode, state, None)
+    }
+
+    pub fn add_midi_channel_with_state_and_snapshots(
+        &mut self,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+        snapshots: Option<MidiProcessSnapshotWriter>,
+    ) -> usize {
         self.midi_channels
-            .push(MidiChannel::with_capacity_elems(capacity_elems, mode));
+            .push(MidiChannel::with_capacity_state_and_snapshots(
+                capacity_elems,
+                mode,
+                state,
+                snapshots,
+            ));
         self.resync_poi();
         self.midi_channels.len() - 1
     }
@@ -111,8 +188,14 @@ impl AudioMidiLoop {
     pub fn as_sync_source_state(&self) -> SyncSourceState {
         self.loop_.as_sync_source_state()
     }
+    pub fn state_mirror(&self) -> &Arc<LoopStateMirror> {
+        self.loop_.state_mirror()
+    }
     pub fn first_planned_transition(&self) -> Option<(LoopMode, u32)> {
         self.loop_.first_planned_transition()
+    }
+    pub(crate) fn publish_state_with_transition(&self, transition: Option<(LoopMode, u32)>) {
+        self.loop_.publish_state_with_transition(transition);
     }
     pub fn n_planned_transitions(&self) -> usize {
         self.loop_.n_planned_transitions()
@@ -277,6 +360,21 @@ impl AudioMidiLoop {
                 }
             }
         });
+        if matches!(
+            err,
+            Some(LoopError::Audio(ChannelError::StorageExhausted { .. }))
+        ) {
+            let retained = self
+                .audio_channels
+                .iter()
+                .map(AudioChannel::length)
+                .min()
+                .unwrap_or(0)
+                .min(u32::MAX as usize) as u32;
+            self.loop_.set_length(retained);
+            self.loop_.set_position(0);
+            self.loop_.set_mode(LoopMode::Stopped);
+        }
         self.resync_poi();
         match err {
             Some(e) => Err(e),
@@ -432,6 +530,26 @@ mod tests {
 
     /// channel is the one case where the loop can outrun a channel's input buffer.
     /// The channel reports it rather than overrunning, and the loop still advances.
+    #[test]
+    fn bounded_audio_exhaustion_stops_recording_without_partial_growth() {
+        let mut loop_ = AudioMidiLoop::default();
+        loop_.add_audio_channel_with_bounded_capacity(4, 4, C::Direct);
+        loop_.set_mode(L::Recording);
+        let channel = loop_.audio_channel_mut(0).unwrap();
+        channel.set_recording_buffer_size(8);
+        channel.set_playback_buffer_size(8);
+        loop_.resync_poi();
+        assert_eq!(
+            loop_.process(8, &[] as &[&[MidiStorageElem]], &mut []),
+            Err(LoopError::Audio(ChannelError::StorageExhausted {
+                capacity: 4
+            }))
+        );
+        assert_eq!(loop_.mode(), L::Stopped);
+        assert_eq!(loop_.length(), 0);
+        assert_eq!(loop_.audio_channel(0).unwrap().length(), 0);
+    }
+
     #[test]
     fn process_reports_channel_errors_without_stopping_the_loop() {
         let mut l = loop_with_channel();

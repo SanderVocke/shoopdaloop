@@ -50,6 +50,13 @@ pub fn is_all_sound_off(msg_data: &[u8]) -> bool {
 }
 
 pub fn msgs_to_notes(msgs: impl Iterator<Item = MidiEvent>) -> Vec<Note> {
+    let span = tracing::debug_span!(
+        "app.midi.messages_to_notes",
+        messages = tracing::field::Empty,
+        notes = tracing::field::Empty
+    );
+    let _entered = span.enter();
+    let mut message_count = 0_u64;
     let mut active_note_times: Vec<Option<i32>> = Vec::default();
     active_note_times.resize(128 * 16, None); // Track all notes per channel
     let mut notes: Vec<Note> = Vec::default();
@@ -108,6 +115,7 @@ pub fn msgs_to_notes(msgs: impl Iterator<Item = MidiEvent>) -> Vec<Note> {
     }
 
     for event in msgs {
+        message_count += 1;
         if is_note_on(&event.data) && !is_note_active(&event, &mut active_note_times) {
             active_note_times[note_idx(&event)] = Some(event.time);
         } else if is_note_off(&event.data) && is_note_active(&event, &mut active_note_times) {
@@ -124,6 +132,8 @@ pub fn msgs_to_notes(msgs: impl Iterator<Item = MidiEvent>) -> Vec<Note> {
         }
     }
 
+    span.record("messages", message_count);
+    span.record("notes", notes.len());
     notes
 }
 

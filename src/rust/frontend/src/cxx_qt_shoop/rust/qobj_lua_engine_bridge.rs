@@ -210,20 +210,20 @@ impl cxx_qt_lib_shoop::qobject::FromQObject for LuaEngine {
 impl cxx_qt_lib_shoop::qquickitem::IsQQuickItem for LuaEngine {}
 
 pub struct RustToLuaCallback {
-    pub callback: mlua::Function,
-    pub weak_lua: Weak<mlua::Lua>,
+    pub callback: omnilua::Function,
+    pub weak_lua: Weak<omnilua::Lua>,
 }
 
 pub struct WrappedLuaCallbackRust {
     pub callback: RefCell<Option<RustToLuaCallback>>,
-    pub stored_arg: mlua::MultiValue,
+    pub stored_arg: omnilua::Variadic<omnilua::Value>,
 }
 
 impl Default for WrappedLuaCallbackRust {
     fn default() -> Self {
         Self {
             callback: RefCell::new(None),
-            stored_arg: mlua::MultiValue::new(),
+            stored_arg: omnilua::Variadic::<omnilua::Value>::new(),
         }
     }
 }

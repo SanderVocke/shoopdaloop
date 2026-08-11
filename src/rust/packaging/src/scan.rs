@@ -66,21 +66,8 @@ pub fn windows_search_dirs(
     if use_cmake_prefix_path {
         if let Some(prefixes) = std::env::var_os("CMAKE_PREFIX_PATH") {
             for prefix in std::env::split_paths(&prefixes) {
-                // Release before debug, deliberately.
-                //
-                // rustc on MSVC always links the release CRT -- there is no
-                // `/MDd` equivalent -- so a debug-built C++ dependency can never
-                // match the Rust side. Non-Qt vcpkg libraries have the same file
-                // name in `bin` and `debug/bin` (zlib1.dll, harfbuzz.dll, ...), so
-                // search order alone decides which flavour gets bundled.
-                //
-                // This list is in priority order. The previous code passed the
-                // same names to `add_lib_search_path`, which *prepends*, so its
-                // effective order was the reverse -- release first. Reading the
-                // array as priority order silently inverted that and put 28
-                // debug-built libraries plus the debug CRT into the release
-                // package.
-                for relative in ["bin", "debug/bin", "lib", "debug/lib"] {
+                // Same order the packaging flow has always used.
+                for relative in ["debug/bin", "bin", "debug/lib", "lib"] {
                     let path = prefix.join(relative);
                     if path.is_dir() {
                         dirs.push((path, SearchDirKind::Vcpkg));
@@ -416,6 +403,7 @@ pub fn log_report_summary(report: &ScanReport) {
 }
 
 #[cfg(windows)]
+#[tracing::instrument(name = "tool.packaging.scan", skip_all)]
 pub fn run_scan(options: &ScanOptions) -> Result<ScanReport, anyhow::Error> {
     if !options.folder.is_dir() {
         return Err(anyhow!("Not a directory: {:?}", options.folder));
@@ -469,6 +457,7 @@ pub fn run_scan(options: &ScanOptions) -> Result<ScanReport, anyhow::Error> {
 }
 
 #[cfg(not(windows))]
+#[tracing::instrument(name = "tool.packaging.scan", skip_all)]
 pub fn run_scan(_options: &ScanOptions) -> Result<ScanReport, anyhow::Error> {
     Err(anyhow!(
         "scan-dependencies is currently implemented for Windows only"

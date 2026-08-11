@@ -28,36 +28,45 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
 
 impl ffi::RenderAudioWaveform {
     pub fn preprocess(mut self: Pin<&mut Self>) {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            // Move the shared data into a preprocessing task, along with a shared
-            // mutable pointer to our pyramid data used for painting.
-            let self_qobj = unsafe {
-                render_audio_waveform_to_qobject(self.as_mut().get_unchecked_mut() as *mut Self)
-            };
-            let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
-            let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
-            pin_async_task.as_mut().set_cpp_ownership();
+        if let Err(e) =
+            || -> Result<(), anyhow::Error> {
+                // Move the shared data into a preprocessing task, along with a shared
+                // mutable pointer to our pyramid data used for painting.
+                let self_qobj = unsafe {
+                    render_audio_waveform_to_qobject(self.as_mut().get_unchecked_mut() as *mut Self)
+                };
+                let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+                let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+                pin_async_task.as_mut().set_cpp_ownership();
 
-            let shared_pyramid = self.rust().pyramid.clone();
-            let shared_data = self.input_data.clone();
-            let notifier_shared;
-            unsafe {
-                let notifier = make_raw_update_notifier();
-                let notifier = update_notifier_to_qobject(notifier);
-                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier)
-                    .map_err(|e| anyhow!("Could not make shared ptr: {e}"))?;
+                let shared_pyramid = self.rust().pyramid.clone();
+                let shared_data = self.input_data.clone();
+                let notifier_shared;
+                unsafe {
+                    let notifier = make_raw_update_notifier();
+                    let notifier = update_notifier_to_qobject(notifier);
+                    notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier)
+                        .map_err(|e| anyhow!("Could not make shared ptr: {e}"))?;
 
-                connect_or_report(
-                    &*notifier,
-                    "notify_done()",
-                    &*self_qobj,
-                    "update()",
-                    connection_types::QUEUED_CONNECTION,
-                );
-            }
+                    connect_or_report(
+                        &*notifier,
+                        "notify_done()",
+                        &*self_qobj,
+                        "update()",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                }
 
-            std::thread::spawn(move || unsafe {
-                if let Err(e) = || -> Result<(), anyhow::Error> {
+                let queued_at = std::time::Instant::now();
+                let _ = std::thread::Builder::new()
+                .name("frontend-waveform".to_string())
+                .spawn(move || unsafe {
+                    let _span = tracing::info_span!(
+                        "worker.frontend.waveform",
+                        handoff_us = queued_at.elapsed().as_micros() as u64
+                    )
+                    .entered();
+                    if let Err(e) = || -> Result<(), anyhow::Error> {
                     let shared_data = qvariant_to_qsharedpointer_qvector_qvariant(&shared_data)
                         .map_err(|e| {
                             anyhow!("Could not convert input data to shared QVector: {e}")
@@ -94,13 +103,15 @@ impl ffi::RenderAudioWaveform {
                     )?;
 
                     Ok(())
-                }() {
-                    error!("Failed to preprocess input data: {e}")
-                }
-            });
+                    }() {
+                        error!("Failed to preprocess input data: {e}")
+                    }
+                })
+                .expect("spawn frontend waveform worker");
 
-            Ok(())
-        }() {
+                Ok(())
+            }()
+        {
             error!("Could not preprocess input data: {e}")
         }
     }
@@ -114,6 +125,7 @@ impl ffi::RenderAudioWaveform {
     }
 
     pub unsafe fn paint(self: Pin<&mut Self>, painter: *mut ffi::QPainter) {
+        let _span = tracing::trace_span!("frontend.render.waveform").entered();
         trace!(
             "paint (offset {}, scale {})",
             self.samples_offset,

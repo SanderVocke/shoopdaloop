@@ -5,6 +5,8 @@
 //! afterwards; realtime processing/state/UI instantiation can build on this without
 //! making frontend code depend on Lilv lifetimes.
 
+use crate::carla_processor::{CarlaProcessor, CarlaProcessorInfo};
+use crate::realtime_lock_guard::Mutex;
 use crate::FXChainType;
 use anyhow::{anyhow, Result};
 use base64::Engine;
@@ -13,9 +15,19 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_uint, c_void};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
+
+#[cfg(test)]
+static CARLA_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn lock_carla_test() -> impl Drop {
+    CARLA_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 use lv2_raw::atom::{
     LV2Atom, LV2AtomEvent, LV2AtomSequence, LV2AtomSequenceBody, LV2_ATOM__SEQUENCE,
@@ -166,8 +178,9 @@ impl Drop for CarlaUiRuntime {
 }
 
 pub struct CarlaLv2Host {
-    _world: lilv::World,
     pub info: CarlaPluginInfo,
+    // Fields drop in declaration order: the instance must run its plugin cleanup
+    // before the Lilv world unloads the plugin library (notably on macOS).
     instance: Option<lilv::instance::Instance>,
     state_interface: Option<NonNull<Lv2StateInterface>>,
     audio_inputs: Vec<Vec<f32>>,
@@ -180,12 +193,23 @@ pub struct CarlaLv2Host {
     ui_runtime: Option<CarlaUiRuntime>,
     active: bool,
     visible: bool,
+    _world: lilv::World,
 }
 
 // Carla's LV2 instance is owned by this host object and only accessed through
 // mutable methods; app/session users wrap it in a Mutex before sharing it with
 // callback threads.
 unsafe impl Send for CarlaLv2Host {}
+
+impl Drop for CarlaLv2Host {
+    fn drop(&mut self) {
+        // The UI may hold LV2 instance-access pointers, and the instance invokes
+        // plugin code during cleanup. Tear both down while the Lilv world still
+        // owns the loaded module instead of relying on incidental field order.
+        self.ui_runtime.take();
+        self.instance.take();
+    }
+}
 
 impl std::fmt::Debug for CarlaLv2Host {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -197,6 +221,11 @@ impl std::fmt::Debug for CarlaLv2Host {
 }
 
 impl CarlaLv2Host {
+    #[tracing::instrument(
+        name = "engine.plugin.instantiate",
+        skip_all,
+        fields(chain_type = chain_type as u32, sample_rate, buffer_size)
+    )]
     pub fn instantiate(
         chain_type: FXChainType,
         sample_rate: u32,
@@ -332,6 +361,7 @@ impl CarlaLv2Host {
         self.active
     }
 
+    #[tracing::instrument(name = "engine.plugin.set_visible", skip_all, fields(visible))]
     pub fn set_visible(&mut self, visible: bool) -> Result<()> {
         self.refresh_ui_closed();
         if visible {
@@ -374,22 +404,28 @@ impl CarlaLv2Host {
                 let widget = runtime.widget as usize;
                 let stop = runtime.stop.clone();
                 let closed = (&*runtime.closed as *const AtomicBool) as usize;
-                runtime.thread = Some(thread::spawn(move || {
-                    while !stop.load(Ordering::Relaxed) {
-                        let widget = widget as *const LV2UIExternalUIWidget;
-                        if widget.is_null() {
-                            break;
-                        }
-                        if (*(closed as *const AtomicBool)).load(Ordering::Relaxed) {
-                            break;
-                        }
-                        if let Some(run) = (*widget).run {
-                            run(widget);
-                        }
-                        let next = Instant::now() + Duration::from_millis(30);
-                        thread::sleep(next.saturating_duration_since(Instant::now()));
-                    }
-                }));
+                runtime.thread = Some(
+                    thread::Builder::new()
+                        .name("engine-plugin-ui".to_string())
+                        .spawn(move || {
+                            let _span = tracing::info_span!("worker.engine.plugin_ui").entered();
+                            while !stop.load(Ordering::Relaxed) {
+                                let widget = widget as *const LV2UIExternalUIWidget;
+                                if widget.is_null() {
+                                    break;
+                                }
+                                if (*(closed as *const AtomicBool)).load(Ordering::Relaxed) {
+                                    break;
+                                }
+                                if let Some(run) = (*widget).run {
+                                    run(widget);
+                                }
+                                let next = Instant::now() + Duration::from_millis(30);
+                                thread::sleep(next.saturating_duration_since(Instant::now()));
+                            }
+                        })
+                        .expect("spawn plugin UI worker"),
+                );
             }
         }
         self.visible = true;
@@ -498,6 +534,8 @@ impl CarlaLv2Host {
         if !self.active {
             return Ok(());
         }
+        let _span =
+            shoop_tracing::realtime_span_detail!("engine.rt.fx.plugin_process", value = frames);
         if frames > CARLA_MAX_BUFFER_SIZE {
             return Err(anyhow!(
                 "Carla processing chain: requesting to process more than buffer size ({frames} vs. {CARLA_MAX_BUFFER_SIZE})"
@@ -551,6 +589,18 @@ impl CarlaLv2Host {
             .midi_events()
     }
 
+    pub fn fill_midi_output_events(
+        &mut self,
+        idx: usize,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        self.midi_outputs
+            .get_mut(idx)
+            .ok_or_else(|| anyhow!("No Carla MIDI output port {idx}"))?
+            .fill_midi_events(destination)
+    }
+
+    #[tracing::instrument(name = "engine.plugin.save_state", skip_all)]
     pub fn save_state_string(&mut self) -> Result<String> {
         let state_interface = self
             .state_interface
@@ -576,6 +626,11 @@ impl CarlaLv2Host {
         state.serialize(&self._urid_mapper)
     }
 
+    #[tracing::instrument(
+        name = "engine.plugin.restore_state",
+        skip_all,
+        fields(state_bytes = s.len())
+    )]
     pub fn restore_state_string(&mut self, s: &str) -> Result<()> {
         let state_interface = self
             .state_interface
@@ -644,6 +699,74 @@ impl CarlaLv2Host {
     }
 }
 
+impl CarlaProcessor for CarlaLv2Host {
+    fn info(&self) -> CarlaProcessorInfo {
+        CarlaProcessorInfo {
+            chain_type: self.info.chain_type,
+            audio_inputs: self.info.ports.audio_inputs.len(),
+            audio_outputs: self.info.ports.audio_outputs.len(),
+            midi_inputs: self.info.ports.midi_inputs.len(),
+            midi_outputs: self.info.ports.midi_outputs.len(),
+        }
+    }
+
+    fn set_active(&mut self, active: bool) {
+        CarlaLv2Host::set_active(self, active);
+    }
+
+    fn is_active(&self) -> bool {
+        CarlaLv2Host::is_active(self)
+    }
+
+    fn set_visible(&mut self, visible: bool) -> Result<()> {
+        CarlaLv2Host::set_visible(self, visible)
+    }
+
+    fn is_visible(&mut self) -> bool {
+        CarlaLv2Host::is_visible(self)
+    }
+
+    fn save_state(&mut self) -> Result<String> {
+        self.save_state_string()
+    }
+
+    fn restore_state(&mut self, state: &str) -> Result<()> {
+        self.restore_state_string(state)
+    }
+
+    fn audio_input_mut(&mut self, index: usize) -> Option<&mut [f32]> {
+        CarlaLv2Host::audio_input_mut(self, index)
+    }
+
+    fn audio_output(&self, index: usize) -> Option<&[f32]> {
+        CarlaLv2Host::audio_output(self, index)
+    }
+
+    fn set_midi_input_events(&mut self, index: usize, events: &[(u32, &[u8])]) -> Result<()> {
+        CarlaLv2Host::set_midi_input_events(
+            self,
+            index,
+            events.iter().map(|(offset, data)| (*offset, *data)),
+        )
+    }
+
+    fn midi_output_events(&mut self, index: usize) -> Result<Vec<(u32, Vec<u8>)>> {
+        CarlaLv2Host::midi_output_events(self, index)
+    }
+
+    fn fill_midi_output_events(
+        &mut self,
+        index: usize,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        CarlaLv2Host::fill_midi_output_events(self, index, destination)
+    }
+
+    fn process(&mut self, frames: usize) -> Result<()> {
+        CarlaLv2Host::process(self, frames)
+    }
+}
+
 struct AtomSequenceBuffer {
     bytes: Vec<u8>,
     sequence_type: LV2Urid,
@@ -701,6 +824,34 @@ impl AtomSequenceBuffer {
             }
         }
         self.as_mut_sequence().atom.size += padded_size as u32;
+        Ok(())
+    }
+
+    fn fill_midi_events(
+        &mut self,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        destination.clear();
+        let seq = self.as_mut_sequence();
+        let atom_size = seq.atom.size as usize;
+        let mut offset = std::mem::size_of::<LV2AtomSequence>();
+        let end = std::mem::size_of::<LV2Atom>() + atom_size;
+        while offset + std::mem::size_of::<LV2AtomEvent>() <= end {
+            let event = unsafe { &*(self.bytes.as_ptr().add(offset).cast::<LV2AtomEvent>()) };
+            let data_len = event.body.size as usize;
+            let data_at = offset + std::mem::size_of::<LV2AtomEvent>();
+            if data_at + data_len > self.bytes.len() || data_at + data_len > end {
+                return Err(anyhow!("Invalid Carla MIDI atom sequence event"));
+            }
+            if event.body.mytype == self.midi_event_type {
+                destination.push(
+                    event.time_in_frames.max(0) as u32,
+                    &self.bytes[data_at..data_at + data_len],
+                )?;
+            }
+            offset +=
+                lv2_atom_pad_size((std::mem::size_of::<LV2AtomEvent>() + data_len) as u32) as usize;
+        }
         Ok(())
     }
 
@@ -876,15 +1027,15 @@ impl UridMapper {
     }
 
     fn map_str(&self, uri: &str) -> LV2Urid {
-        let mut by_uri = self.by_uri.lock().unwrap_or_else(|e| e.into_inner());
+        let mut by_uri = crate::realtime_allow_lock!("LV2 URID map", self.by_uri.lock())
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(id) = by_uri.get(uri) {
             *id
         } else {
             let id = by_uri.len() as LV2Urid + 1;
             by_uri.insert(uri.to_string(), id);
             drop(by_uri);
-            self.by_id
-                .lock()
+            crate::realtime_allow_lock!("LV2 URID reverse map update", self.by_id.lock())
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(id, CString::new(uri).unwrap_or_default());
             id
@@ -892,8 +1043,7 @@ impl UridMapper {
     }
 
     fn unmap(&self, urid: LV2Urid) -> Option<String> {
-        self.by_id
-            .lock()
+        crate::realtime_allow_lock!("LV2 URID unmap", self.by_id.lock())
             .unwrap_or_else(|e| e.into_inner())
             .get(&urid)
             .map(|s| s.to_string_lossy().to_string())
@@ -914,9 +1064,7 @@ extern "C" fn unmap_urid(handle: LV2UridMapHandle, urid: LV2Urid) -> *const c_ch
         return std::ptr::null();
     }
     let mapper = unsafe { &*(handle.cast::<UridMapper>()) };
-    mapper
-        .by_id
-        .lock()
+    crate::realtime_allow_lock!("LV2 URID callback unmap", mapper.by_id.lock())
         .unwrap_or_else(|e| e.into_inner())
         .get(&urid)
         .map(|s| s.as_ptr())
@@ -935,7 +1083,7 @@ pub fn carla_plugin_uri(chain_type: FXChainType) -> Option<&'static str> {
         FXChainType::CarlaRack => Some(CARLA_RACK_URI),
         FXChainType::CarlaPatchbay => Some(CARLA_PATCHBAY_URI),
         FXChainType::CarlaPatchbay16x => Some(CARLA_PATCHBAY_16_URI),
-        FXChainType::Test2x2x1 => None,
+        FXChainType::Test2x2x1 | FXChainType::TinySynthFx => None,
     }
 }
 
@@ -943,10 +1091,15 @@ pub fn carla_audio_port_count(chain_type: FXChainType) -> Option<usize> {
     match chain_type {
         FXChainType::CarlaRack | FXChainType::CarlaPatchbay => Some(2),
         FXChainType::CarlaPatchbay16x => Some(16),
-        FXChainType::Test2x2x1 => None,
+        FXChainType::Test2x2x1 | FXChainType::TinySynthFx => None,
     }
 }
 
+#[tracing::instrument(
+    name = "engine.plugin.discover",
+    skip_all,
+    fields(chain_type = chain_type as u32)
+)]
 pub fn discover_carla_plugin(chain_type: FXChainType) -> Result<CarlaPluginInfo> {
     let plugin_uri = carla_plugin_uri(chain_type)
         .ok_or_else(|| anyhow!("{chain_type:?} is not a Carla LV2 chain type"))?;
@@ -1123,6 +1276,7 @@ mod tests {
 
     #[test]
     fn discovers_installed_carla_plugin_ports_when_available() {
+        let _exclusive = lock_carla_test();
         let Ok(info) = discover_carla_plugin(FXChainType::CarlaRack) else {
             eprintln!("skipping Carla LV2 discovery test; Carla Rack is not installed in LV2_PATH");
             return;
@@ -1187,6 +1341,7 @@ mod tests {
 
     #[test]
     fn shows_and_hides_carla_external_ui_when_opted_in() {
+        let _exclusive = lock_carla_test();
         if std::env::var_os("SHOOP_TEST_CARLA_UI").is_none() {
             eprintln!(
                 "skipping Carla UI smoke test; set SHOOP_TEST_CARLA_UI=1 to open the real UI"
@@ -1208,6 +1363,7 @@ mod tests {
 
     #[test]
     fn instantiates_and_runs_installed_carla_rack_when_available() {
+        let _exclusive = lock_carla_test();
         let mut host = match CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) {
             Ok(host) => host,
             Err(e) => {

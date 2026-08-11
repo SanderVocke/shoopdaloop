@@ -1,4 +1,5 @@
 use clap::{Args, Parser};
+use std::path::PathBuf;
 
 /// An Audio+MIDI looper with DAW features
 #[derive(Parser, Debug)]
@@ -44,6 +45,34 @@ pub struct CliArgs {
 
     #[clap(flatten)]
     pub self_test_options: SelfTestOptions,
+
+    #[clap(flatten)]
+    pub carla_worker_options: CarlaWorkerOptions,
+}
+
+#[derive(Args, Debug)]
+#[group()]
+pub struct CarlaWorkerOptions {
+    #[clap(long, hide = true)]
+    pub carla_worker: bool,
+
+    #[clap(long, hide = true, requires = "carla_worker")]
+    pub carla_worker_address: Option<String>,
+
+    #[clap(long, hide = true, requires = "carla_worker")]
+    pub carla_worker_nonce: Option<String>,
+
+    #[clap(long, hide = true, requires = "carla_worker")]
+    pub carla_worker_chain_id: Option<u64>,
+
+    #[clap(long, hide = true, requires = "carla_worker")]
+    pub carla_worker_generation: Option<u64>,
+
+    #[clap(long, hide = true, requires = "carla_worker")]
+    pub carla_worker_shared_memory: Option<PathBuf>,
+
+    #[clap(long, hide = true, requires = "carla_worker")]
+    pub carla_worker_test_mode: Option<shoop_engine::carla_subprocess::CarlaWorkerTestMode>,
 }
 
 /// CPAL/midir backend options.
@@ -172,9 +201,43 @@ pub struct DeveloperOptions {
     #[clap(long = "rt-alloc-guard", help_heading = "Developer options")]
     pub rt_alloc_guard: bool,
 
+    /// Abort on an unapproved project-owned mutex acquisition in realtime processing.
+    #[clap(long = "rt-lock-guard", help_heading = "Developer options")]
+    pub rt_lock_guard: bool,
+
     // Disables the crash handler.
     #[clap(long = "no-crash-handling", help_heading = "Developer options")]
     pub no_crash_handling: bool,
+
+    /// Enable Tracy profiling.
+    #[clap(long = "tracing", help_heading = "Developer options")]
+    pub tracing: bool,
+
+    /// Add detailed per-node engine zones. Requires tracing or tracing capture.
+    #[clap(long = "tracing-engine-detail", help_heading = "Developer options")]
+    pub tracing_engine_detail: bool,
+
+    /// Capture Tracy profiling data with an external tracy-capture process.
+    #[clap(long = "tracing-capture", help_heading = "Developer options")]
+    pub tracing_capture: bool,
+
+    /// Path to a tracy-capture executable. Defaults to TRACY_CAPTURE_TOOL or PATH.
+    #[clap(
+        long = "tracing-capture-tool",
+        value_name = "PATH",
+        help_heading = "Developer options",
+        requires = "tracing_capture"
+    )]
+    pub tracing_capture_tool: Option<std::path::PathBuf>,
+
+    /// Directory in which Tracy capture files are written. Defaults to ./traces.
+    #[clap(
+        long = "tracing-capture-output-dir",
+        value_name = "DIRECTORY",
+        help_heading = "Developer options",
+        requires = "tracing_capture"
+    )]
+    pub tracing_capture_output_dir: Option<std::path::PathBuf>,
 }
 
 /// Developer options group.
@@ -209,6 +272,9 @@ pub struct SelfTestOptions {
     /// Output file path for JUnit XML test report
     #[clap(long = "junit-xml", help_heading = "Self-test options")]
     pub junit_xml: Option<String>,
+
+    #[clap(long, hide = true)]
+    pub carla_hosting_mode_for_test: Option<String>,
 }
 
 // This function will be the entry point for parsing arguments.
@@ -219,4 +285,50 @@ where
     I::Item: Into<std::ffi::OsString> + Clone,
 {
     CliArgs::parse_from(args_iter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn realtime_lock_guard_is_disabled_by_default_and_can_be_enabled() {
+        let defaults = parse_arguments(["shoopdaloop"]);
+        assert!(!defaults.developer_options.rt_lock_guard);
+
+        let enabled = parse_arguments(["shoopdaloop", "--rt-lock-guard"]);
+        assert!(enabled.developer_options.rt_lock_guard);
+    }
+
+    #[test]
+    fn hidden_carla_worker_arguments_preserve_launch_identity() {
+        let parsed = parse_arguments([
+            "shoopdaloop",
+            "--carla-worker",
+            "--carla-worker-address",
+            "127.0.0.1:1234",
+            "--carla-worker-nonce",
+            "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+            "--carla-worker-chain-id",
+            "7",
+            "--carla-worker-generation",
+            "3",
+            "--carla-worker-shared-memory",
+            "/tmp/Shoop ü space/carla.ipc",
+        ]);
+        assert!(parsed.carla_worker_options.carla_worker);
+        assert_eq!(
+            parsed.carla_worker_options.carla_worker_address.as_deref(),
+            Some("127.0.0.1:1234")
+        );
+        assert_eq!(parsed.carla_worker_options.carla_worker_chain_id, Some(7));
+        assert_eq!(parsed.carla_worker_options.carla_worker_generation, Some(3));
+        assert_eq!(
+            parsed
+                .carla_worker_options
+                .carla_worker_shared_memory
+                .as_deref(),
+            Some(std::path::Path::new("/tmp/Shoop ü space/carla.ipc"))
+        );
+    }
 }

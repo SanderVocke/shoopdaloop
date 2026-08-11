@@ -226,6 +226,9 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
+                    // Channel data is mirrored off the realtime thread. Fence publication before
+                    // taking snapshots so a slow runner cannot observe the preceding test's data.
+                    testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_audio_data(4)
                     let out2 = output_port_2.dummy_dequeue_audio_data(4)
@@ -782,9 +785,23 @@ ShoopTestFile {
                     verify_eq(out2, [40, 35, 30, 25])
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
-                    verify_eq(wet1, [25, 30, 35, 40])
-                    verify_eq(wet2, [40, 35, 30, 25])
+                    // Content snapshots stay on the last complete generation while replacing.
+                    verify_eq(wet1, [5, 6, 7, 8])
+                    verify_eq(wet2, [8, 7, 6, 5])
+                    let busy_replacement_filename = ShoopRustFileIO.generate_temporary_filename() + '.wav'
+                    verify_true(!ShoopRustFileIO.save_channels_to_soundfile(
+                                     busy_replacement_filename,
+                                     session.backend.sample_rate,
+                                     wet_channels()))
+                    verify_true(!ShoopRustFileIO.exists(busy_replacement_filename))
 
+                    lut.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(1)
+                    session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
+                    verify_eq(wet_channels()[0].get_data(), [25, 30, 35, 40])
+                    verify_eq(wet_channels()[1].get_data(), [40, 35, 30, 25])
                 },
 
                 'test_drywet_midi_rerecord_no_monitor': () => {
@@ -849,9 +866,18 @@ ShoopTestFile {
                     verify_approx(out2, elems_add(synthed_chan, [40, 35, 30, 25]))
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
-                    verify_approx(wet1, elems_add(synthed_chan, [25, 30, 35, 40]))
-                    verify_approx(wet2, elems_add(synthed_chan, [40, 35, 30, 25]))
+                    // Content snapshots stay on the last complete generation while replacing.
+                    verify_eq(wet1, [5, 6, 7, 8])
+                    verify_eq(wet2, [8, 7, 6, 5])
                     verify_eq(midi, midichan, null, true)
+
+                    lut.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(1)
+                    session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
+                    verify_approx(wet_channels()[0].get_data(), elems_add(synthed_chan, [25, 30, 35, 40]))
+                    verify_approx(wet_channels()[1].get_data(), elems_add(synthed_chan, [40, 35, 30, 25]))
                 },
 
                 'test_drywet_audio_rerecord_monitor': () => {
@@ -888,9 +914,17 @@ ShoopTestFile {
                     verify_eq(out2, [40, 35, 30, 25])
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
-                    verify_eq(wet1, [25, 30, 35, 40])
-                    verify_eq(wet2, [40, 35, 30, 25])
+                    // Content snapshots stay on the last complete generation while replacing.
+                    verify_eq(wet1, [5, 6, 7, 8])
+                    verify_eq(wet2, [8, 7, 6, 5])
 
+                    lut.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(1)
+                    session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
+                    verify_eq(wet_channels()[0].get_data(), [25, 30, 35, 40])
+                    verify_eq(wet_channels()[1].get_data(), [40, 35, 30, 25])
                 },
 
                 'test_drywet_midi_rerecord_monitor': () => {
@@ -956,9 +990,18 @@ ShoopTestFile {
                     verify_approx(out2, elems_add(synthed_chan, [40, 35, 30, 25]))
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
-                    verify_approx(wet1, elems_add(synthed_chan, [25, 30, 35, 40]))
-                    verify_approx(wet2, elems_add(synthed_chan, [40, 35, 30, 25]))
+                    // Content snapshots stay on the last complete generation while replacing.
+                    verify_eq(wet1, [5, 6, 7, 8])
+                    verify_eq(wet2, [8, 7, 6, 5])
                     verify_eq(midi, midichan, null, true)
+
+                    lut.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(1)
+                    session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
+                    verify_approx(wet_channels()[0].get_data(), elems_add(synthed_chan, [25, 30, 35, 40]))
+                    verify_approx(wet_channels()[1].get_data(), elems_add(synthed_chan, [40, 35, 30, 25]))
                 },
             })
         }

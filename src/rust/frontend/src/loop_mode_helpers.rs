@@ -1,9 +1,5 @@
 use shoop_engine::LoopMode;
 
-pub fn is_playing_mode(mode: LoopMode) -> bool {
-    matches!(mode, LoopMode::Playing | LoopMode::PlayingDryThroughWet)
-}
-
 pub fn is_recording_mode(mode: LoopMode) -> bool {
     matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet)
 }

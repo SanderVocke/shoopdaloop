@@ -9,7 +9,8 @@ crate-type = ["lib"]
 [dependencies]
 macros = { path = "../macros" }
 common = { path = "../common" }
-shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
+shoop_engine = { path = "../shoop_engine", features = ["app_backend", "lv2"] }
+shoop_scripting = { path = "../shoop_scripting" }
 crashhandling = { path = "../crashhandling" }
 config = { path = "../config" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
@@ -35,12 +36,14 @@ serde = { workspace = true }
 sndfile = { workspace = true }
 json = { workspace = true }
 midly = { workspace = true }
-mlua = { workspace = true }
+omnilua = { workspace = true }
 itertools = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 jsonschema = { workspace = true }
 rodio = { workspace = true }
+tracing = { workspace = true }
+tracy-client = { workspace = true }
 
 [lints]
 workspace = true

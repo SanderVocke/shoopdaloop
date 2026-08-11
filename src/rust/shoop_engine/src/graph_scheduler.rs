@@ -22,7 +22,8 @@
 //! runs the last-applied schedule and counts the cycle, so the window costs slightly stale
 //! routing rather than dropped audio.
 
-use std::sync::{Arc, Condvar, Mutex};
+use crate::realtime_lock_guard::Mutex;
+use std::sync::{Arc, Condvar};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -68,6 +69,11 @@ pub struct GraphScheduler {
 impl GraphScheduler {
     /// Starts the worker. `apply` is called with no lock held by this module.
     pub fn start(window: Duration, apply: Box<dyn Fn() + Send>) -> Self {
+        let _span = tracing::info_span!(
+            "engine.graph.scheduler_start",
+            window_us = window.as_micros() as u64
+        )
+        .entered();
         let shared = Arc::new(Shared {
             state: Mutex::new(State::default()),
             cv: Condvar::new(),
@@ -87,6 +93,7 @@ impl GraphScheduler {
     }
 
     fn run(shared: Arc<Shared>, apply: Box<dyn Fn() + Send>) {
+        let _worker_span = tracing::info_span!("worker.engine.graph_scheduler").entered();
         loop {
             let covering_gen = {
                 let mut state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -118,7 +125,11 @@ impl GraphScheduler {
                 }
             };
 
-            apply();
+            {
+                let _span =
+                    tracing::info_span!("engine.graph.apply", generation = covering_gen).entered();
+                apply();
+            }
 
             let mut state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
             state.applied_gen = state.applied_gen.max(covering_gen);
@@ -133,6 +144,13 @@ impl GraphScheduler {
     /// the deadline does **not** move.
     pub fn arm(&self) {
         let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        let coalesced = state.deadline.is_some();
+        let _span = tracing::trace_span!(
+            "engine.graph.arm",
+            generation = state.dirty_gen.wrapping_add(1),
+            coalesced
+        )
+        .entered();
         // Always, even when a batch is already pending: this is what tells a later flush
         // that a change exists which no in-flight apply can have seen.
         state.dirty_gen += 1;
@@ -147,6 +165,7 @@ impl GraphScheduler {
     /// For the points where a caller needs the schedule to be current before it goes on:
     /// startup, driver activation, and the test suite's "let everything settle" call.
     pub fn flush_blocking(&self) {
+        let _span = tracing::info_span!("engine.graph.flush").entered();
         let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         let target = state.dirty_gen;
         if state.applied_gen >= target {
@@ -168,6 +187,15 @@ impl GraphScheduler {
         }
     }
 
+    /// Notifications received since start. Diagnostics and tests.
+    pub fn n_arms(&self) -> u64 {
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .dirty_gen
+    }
+
     /// Applies performed since start. Diagnostics and tests.
     pub fn n_applies(&self) -> u64 {
         self.shared
@@ -186,7 +214,13 @@ impl Drop for GraphScheduler {
             self.shared.cv.notify_all();
         }
         if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
+            // The apply closure upgrades the session's last weak reference. If that is
+            // released on this worker, scheduler destruction also runs here; joining the
+            // current thread would panic with EDEADLK. Dropping its handle safely detaches
+            // the already-stopping worker instead.
+            if worker.thread().id() != thread::current().id() {
+                let _ = worker.join();
+            }
         }
     }
 }
@@ -235,28 +269,40 @@ mod tests {
         for _ in 0..100 {
             s.arm();
         }
-        thread::sleep(Duration::from_millis(150));
+        // Force the pending batch and wait for completion instead of relying on the worker
+        // receiving CPU within a fixed wall-clock interval on loaded CI hosts.
+        s.flush_blocking();
         check!(n.load(Ordering::Relaxed) == 1);
         drop(s);
     }
 
     /// The property that makes this starvation-free: continued churn must not push the
-    /// deadline out. An idle-debounce would apply zero times here.
+    /// deadline out. An idle-debounce would replace the first deadline on every arm.
     #[test]
     fn continuous_churn_does_not_postpone_the_deadline() {
         let (n, apply) = counter();
-        let window = Duration::from_millis(10);
-        let s = GraphScheduler::start(window, apply);
+        let s = GraphScheduler::start(Duration::from_secs(30), apply);
 
-        let start = Instant::now();
-        while start.elapsed() < Duration::from_millis(120) {
+        s.arm();
+        let first_deadline = s
+            .shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .deadline;
+        for _ in 0..100 {
             s.arm();
-            thread::sleep(Duration::from_millis(1));
         }
-        thread::sleep(Duration::from_millis(40));
+        let deadline_after_churn = s
+            .shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .deadline;
 
-        // Bounded below: staleness never exceeded one window despite unbroken churn.
-        check!(n.load(Ordering::Relaxed) >= 2);
+        check!(deadline_after_churn == first_deadline);
+        s.flush_blocking();
+        check!(n.load(Ordering::Relaxed) == 1);
         drop(s);
     }
 

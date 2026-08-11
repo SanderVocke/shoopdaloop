@@ -26,7 +26,9 @@ Architecture
     frontend - extensions
     frontend ..> scripting : embeds
 
-The split between front-end and engine is not entirely pure, as different parts of the functionality are implemented in the layer where it is most convenient.
+The front-end prepares configuration and presents observations, while timing-authoritative state machines run in the engine. In particular, composite playlists are compiled off the audio thread into immutable plans and accepted through bounded commands; Qt signals and snapshot polling do not advance them.
+
+Loop content and logical length changes are non-topological. The control side validates and prepares replacement storage, one bounded command commits all affected channels at a callback boundary, and displaced storage is reclaimed off the realtime thread. These operations preserve the backend session and audio driver and do not rebuild the graph; whole-session replacement remains reserved for loading sessions and switching drivers.
 
 The **shoop_engine** crate handles:
 
@@ -34,20 +36,34 @@ The **shoop_engine** crate handles:
 * Interconnections of ports, loop channels and FX
 * JACK, CPAL and MIDI driver integration
 * Logging and profiling
-* Basic loop synchronization (loop transitions)
+* Basic and composite loop synchronization, sample-boundary event resolution, and nested propagation
+* Bounded composite command, plan-reclamation, fault, trace, and snapshot transport
 
 The **front-end + extensions** handle:
 
 * The user interface
 * Session saving/loading
-* Advanced loop synchronization (scheduling loop transitions over multiple sync loop cycles)
-* Composite loops
-* Thread-decoupled forwarding of UI events to/from the engine
+* Composite authoring, validation feedback, and session persistence
+* Translation of UI references into stable engine identities and prepared plans
+* Thread-decoupled command submission and observational snapshot display
 
 The **LUA scripts** are meant for parts that may need to be added/modified by individual users, such as:
 
 * MIDI controller profiles
 * Keyboard control
+
+Carla subprocess architecture
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Carla hosting is separated into a frontend-independent processor contract, a versioned control protocol, process supervision, and realtime block transport. The installed ShoopDaLoop executable starts itself in a hidden worker mode before constructing Qt. Each worker authenticates a loopback control connection with a random nonce and maps a generation-specific temporary block area.
+
+Control messages carry chain, request, protocol, and process-generation identity. Carla LV2 creation, state access, and external-UI hosting remain in the worker. Audio and MIDI use three ownership-tracked shared-memory slots with fixed channel, frame, event, and byte bounds. A parent deadline can abandon a slot without reusing memory that a late worker may still access; stale generations cannot publish into a replacement mapping. Control, state, logs, launch, and process destruction remain outside block transport.
+
+The session owns a unique ``CarlaRealtimeProcessor`` endpoint. It contains only preallocated buffers, shared-memory state, atomics, and a pre-created bridge-thread wake handle; it does not share an ordinary mutex or control socket with the UI. A bounded command channel and atomic snapshot connect frontend operations to the non-realtime bridge owner. The local bridge uses ``Thread::unpark`` notification. A subprocess bridge wakes its worker with a nonce-derived fixed-size loopback UDP datagram; only notification identity crosses that socket, never audio or MIDI payloads. Tracy zones cover bridge submission, notification, waiting, completion/fallback, and worker plugin processing.
+
+The parent supervisor retains the last confirmed state and desired activity independently from the child. The bounded checkpoint policy refreshes only after a complete explicit save or successful restore; loading a session restores its state before recovery is offered, and failed or partial operations leave the previous checkpoint intact. It also drains stdout and stderr into separate fixed-capacity generation records. A restart creates a new mapping and process generation before restoring state and activity. The direct host implements the same high-level processor contract and remains the compatibility path when isolation is disabled.
+
+The protocol and settings crates contain no Qt or egui dependency. Frontends adapt published lifecycle, generation, diagnostics, and recovery operations rather than implementing process or transport behavior themselves. ``CARLA_SUBPROCESS_BENCHMARK.md`` records the benchmark contract, Linux percentile/deadline/CPU results, native Windows/Linux/macOS direct-versus-subprocess matrices, and the exact release commands used for transport tuning.
 
 Build And Packaging
 ^^^^^^^^^^^^^^^^^^^^

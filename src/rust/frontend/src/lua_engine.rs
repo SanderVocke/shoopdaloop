@@ -2,11 +2,13 @@ use anyhow::anyhow;
 use std::{
     cell::RefCell,
     collections::HashMap,
+    rc::Rc,
     sync::{Arc, Weak},
 };
 
 use common::logging::macros::*;
-use mlua;
+use omnilua;
+use shoop_scripting::CompatibilityPrintLevel;
 
 use crate::lua_callback::LuaCallback;
 shoop_log_unit!("Frontend.LuaEngine");
@@ -19,10 +21,10 @@ pub enum LuaScope {
 
 pub struct LuaEngineImpl {
     weak_self: Weak<RefCell<LuaEngineImpl>>,
-    pub lua: Arc<mlua::Lua>,
+    pub lua: Arc<omnilua::Lua>,
     preloaded_libs: HashMap<String, String>,
-    run_sandboxed: Option<mlua::Function>,
-    require: Option<mlua::Function>,
+    run_sandboxed: Option<omnilua::Function>,
+    require: Option<omnilua::Function>,
     get_builtin_script_fn: Option<Box<dyn Fn(&str) -> Result<String, anyhow::Error>>>,
 }
 
@@ -35,7 +37,7 @@ impl Default for LuaEngine {
         let rval = Self {
             lua: Arc::new(RefCell::new(LuaEngineImpl {
                 weak_self: Weak::new(),
-                lua: Arc::new(mlua::Lua::new()),
+                lua: Arc::new(omnilua::Lua::new()),
                 preloaded_libs: HashMap::default(),
                 run_sandboxed: None,
                 require: None,
@@ -50,76 +52,16 @@ impl Default for LuaEngine {
 
 impl LuaEngineImpl {
     fn register_print_functions(&mut self) -> Result<(), anyhow::Error> {
-        let globals = self.lua.globals();
-
-        globals
-            .set(
-                "__shoop_print",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        info!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_trace",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        trace!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_debug",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        debug!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_info",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        info!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_warning",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        warn!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_error",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        error!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-
-        Ok(())
+        shoop_scripting::install_print_functions(
+            &self.lua,
+            Rc::new(|level, msg| match level {
+                CompatibilityPrintLevel::Trace => trace!("{msg}"),
+                CompatibilityPrintLevel::Debug => debug!("{msg}"),
+                CompatibilityPrintLevel::Info => info!("{msg}"),
+                CompatibilityPrintLevel::Warning => warn!("{msg}"),
+                CompatibilityPrintLevel::Error => error!("{msg}"),
+            }),
+        )
     }
 
     pub fn execute_builtin_script(
@@ -137,56 +79,49 @@ impl LuaEngineImpl {
     }
 
     pub fn prepare_sandbox(&mut self) -> Result<(), anyhow::Error> {
-        let sandbox_script: &'static str = include_str!("../../../lua/system/sandbox.lua");
-        self.execute(sandbox_script, Some("sandbox.lua"), false)?;
-        {
-            let globals = self.lua.globals();
-            self.run_sandboxed = Some(
-                globals
-                    .get("__shoop_run_sandboxed")
-                    .map_err(|e| anyhow!("failed to get __shoop_run_sandboxed: {e}"))?,
-            );
+        self.run_sandboxed = Some(shoop_scripting::prepare_compatibility_environment(
+            &self.lua,
+        )?);
 
-            let weak_self = self.weak_self.clone();
-            self.require = Some(
-                self.lua
-                    .create_function(move |_, (name,): (String,)| {
-                        match || -> Result<mlua::Value, anyhow::Error> {
-                            let strong_self = weak_self
-                                .upgrade()
-                                .ok_or(anyhow!("Lua went out of scope"))?;
-                            let strong_self = strong_self.borrow();
-                            let lib_content = strong_self
-                                .preloaded_libs
-                                .get(&name)
-                                .ok_or(anyhow!("Lib not found: {name}"))?;
-                            strong_self
-                                .evaluate(&lib_content, Some(&name), true)
-                                .map_err(|e| anyhow!("Could not import lib {name}: {e}"))
-                        }() {
-                            Ok(result) => Ok(result),
-                            Err(e) => {
-                                error!("Could not require lib '{name}': {e}");
-                                Ok(mlua::Value::default())
-                            }
+        let weak_self = self.weak_self.clone();
+        self.require = Some(
+            self.lua
+                .create_function(move |_, name: String| {
+                    match || -> Result<omnilua::Value, anyhow::Error> {
+                        let strong_self = weak_self
+                            .upgrade()
+                            .ok_or(anyhow!("Lua went out of scope"))?;
+                        let strong_self = strong_self.borrow();
+                        let lib_content = strong_self
+                            .preloaded_libs
+                            .get(&name)
+                            .ok_or(anyhow!("Lib not found: {name}"))?;
+                        strong_self
+                            .evaluate(lib_content, Some(&name), true)
+                            .map_err(|e| anyhow!("Could not import lib {name}: {e}"))
+                    }() {
+                        Ok(result) => Ok(result),
+                        Err(e) => {
+                            error!("Could not require lib '{name}': {e}");
+                            Ok(omnilua::Value::Nil)
                         }
-                    })
-                    .map_err(|e| anyhow!("Could not create require function: {e}"))?,
-            );
-        }
+                    }
+                })
+                .map_err(|e| anyhow!("Could not create require function: {e}"))?,
+        );
         let require = self.require.clone();
         self.set_toplevel("require", require)?;
         Ok(())
     }
 
-    pub fn require(&self, name: &str) -> Result<mlua::Value, anyhow::Error> {
+    pub fn require(&self, name: &str) -> Result<omnilua::Value, anyhow::Error> {
         if name == "shoop_control" {
             // Special built-in library which is always loaded
             return self
                 .lua
                 .load("__shoop_control_interface")
                 .set_name("get control interface")
-                .eval::<mlua::Value>()
+                .eval::<omnilua::Value>()
                 .map_err(|e| anyhow!("could not get control interface: {e}"));
         }
         if !self.preloaded_libs.contains_key(name) {
@@ -198,7 +133,7 @@ impl LuaEngineImpl {
                     .get(name)
                     .ok_or(anyhow!("No such builtin script: {name}"))?,
             )
-            .eval::<mlua::Value>()
+            .eval::<omnilua::Value>()
             .map_err(|e| anyhow!("could not evaluate required builtin script {name}: {e}"))
     }
 
@@ -209,24 +144,36 @@ impl LuaEngineImpl {
         sandboxed: bool,
     ) -> Result<R, anyhow::Error>
     where
-        R: mlua::FromLuaMulti,
+        R: omnilua::FromLuaMulti,
     {
+        let _span = tracing::info_span!(
+            "frontend.lua.evaluate",
+            sandboxed,
+            code_bytes = code.len(),
+            named_script = script_name.is_some()
+        )
+        .entered();
         trace!(
-            "evaluate (sandboxed: {sandboxed}, name: {}):\n{code}",
-            script_name.unwrap_or("(none)")
+            "evaluate Lua code (sandboxed: {sandboxed}, bytes: {})",
+            code.len()
         );
         match sandboxed {
             true => self
                 .run_sandboxed
                 .as_ref()
                 .ok_or(anyhow!("no sandbox function set"))?
-                .call::<R>((code,))
+                .call::<_, R>(code)
                 .map_err(|e| anyhow!("Could not evaluate sandboxed: {e}")),
-            false => self
-                .lua
-                .load(code)
-                .eval::<R>()
-                .map_err(|e| anyhow!("Could not evaluate unsandboxed: {e}")),
+            false => match self.lua.load(code).into_function() {
+                Ok(function) => function
+                    .call::<_, R>(())
+                    .map_err(|error| anyhow!("Could not evaluate unsandboxed: {error}")),
+                Err(_) => self
+                    .lua
+                    .load(format!("return {code}"))
+                    .eval::<R>()
+                    .map_err(|error| anyhow!("Could not evaluate unsandboxed: {error}")),
+            },
         }
     }
 
@@ -242,16 +189,15 @@ impl LuaEngineImpl {
     pub fn set_toplevel(
         &mut self,
         key: &str,
-        value: impl mlua::IntoLua,
+        value: impl omnilua::IntoLua,
     ) -> Result<(), anyhow::Error> {
-        self.evaluate::<mlua::Function>(
-            &format!("return function(value) {} = value end", key),
-            Some("registrar"),
-            true,
+        shoop_scripting::install_compatibility_value(
+            self.run_sandboxed
+                .as_ref()
+                .ok_or(anyhow!("no sandbox function set"))?,
+            key,
+            value,
         )
-        .map_err(|e| anyhow!("Could not create registrar: {e}"))?
-        .call((value,))
-        .map_err(|e| anyhow!("Could not set {key}: {e}"))
     }
 
     pub fn initialize(
@@ -259,6 +205,11 @@ impl LuaEngineImpl {
         get_builtin_script_fn: impl Fn(&str) -> Result<String, anyhow::Error> + 'static,
         builtin_libs: HashMap<String, String>,
     ) -> Result<(), anyhow::Error> {
+        let _span = tracing::info_span!(
+            "frontend.lua.initialize",
+            builtin_libraries = builtin_libs.len()
+        )
+        .entered();
         debug!("Initializing engine");
 
         self.preloaded_libs = builtin_libs;
@@ -274,14 +225,19 @@ impl LuaEngineImpl {
         &mut self,
         name: &str,
         callback: &Arc<Box<dyn LuaCallback>>,
-    ) -> Result<mlua::Function, anyhow::Error> {
+    ) -> Result<omnilua::Function, anyhow::Error> {
         let weak = Arc::downgrade(callback);
         let name = name.to_string();
         let weak_self = self.weak_self.clone();
         self.lua
             .create_function(
-                move |_, (multi,): (mlua::MultiValue,)| -> Result<mlua::Value, mlua::Error> {
-                    match || -> Result<mlua::Value, anyhow::Error> {
+                move |_,
+                      multi: omnilua::Variadic<omnilua::Value>|
+                      -> Result<omnilua::Value, omnilua::Error> {
+                    let _span =
+                        tracing::debug_span!("frontend.lua.callback", arguments = multi.len())
+                            .entered();
+                    match || -> Result<omnilua::Value, anyhow::Error> {
                         let strong_cb = weak
                             .upgrade()
                             .ok_or(anyhow!("callback went out of scope"))?;
@@ -294,7 +250,7 @@ impl LuaEngineImpl {
                         Ok(result) => Ok(result),
                         Err(e) => {
                             error!("Could not call callback '{}': {e}", name);
-                            Ok(mlua::Value::default())
+                            Ok(omnilua::Value::Nil)
                         }
                     }
                 },
@@ -367,7 +323,7 @@ impl LuaEngine {
             .execute_builtin_script(script_subpath, sandboxed)
     }
 
-    pub fn require(&self, name: &str) -> Result<mlua::Value, anyhow::Error> {
+    pub fn require(&self, name: &str) -> Result<omnilua::Value, anyhow::Error> {
         self.lua.borrow().require(name)
     }
 
@@ -378,7 +334,7 @@ impl LuaEngine {
         sandboxed: bool,
     ) -> Result<R, anyhow::Error>
     where
-        R: mlua::FromLuaMulti,
+        R: omnilua::FromLuaMulti,
     {
         self.lua.borrow().evaluate(code, script_name, sandboxed)
     }
@@ -395,7 +351,7 @@ impl LuaEngine {
     pub fn set_toplevel(
         &mut self,
         key: &str,
-        value: impl mlua::IntoLua,
+        value: impl omnilua::IntoLua,
     ) -> Result<(), anyhow::Error> {
         self.lua.borrow_mut().set_toplevel(key, value)
     }
@@ -436,7 +392,7 @@ impl LuaEngine {
         &mut self,
         name: &str,
         callback: &Arc<Box<dyn LuaCallback>>,
-    ) -> Result<mlua::Function, anyhow::Error> {
+    ) -> Result<omnilua::Function, anyhow::Error> {
         self.lua.borrow_mut().create_callback_fn(name, callback)
     }
 }
@@ -444,6 +400,20 @@ impl LuaEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    trait ValueTestExt {
+        fn as_i64(&self) -> Option<i64>;
+    }
+
+    impl ValueTestExt for omnilua::Value {
+        fn as_i64(&self) -> Option<i64> {
+            match self {
+                omnilua::Value::Integer(value) => Some(*value),
+                omnilua::Value::Number(value) if value.fract() == 0.0 => Some(*value as i64),
+                _ => None,
+            }
+        }
+    }
 
     const HELLO_WORLD_IMPL: &'static str = r#"
 function test_hello_world()
@@ -522,23 +492,23 @@ return test_hello_world()
         impl LuaCallback for TestCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a + b))
+                Ok(omnilua::Value::Integer(a + b))
             }
         }
 
@@ -561,23 +531,23 @@ return test_hello_world()
         impl LuaCallback for TestCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a + b))
+                Ok(omnilua::Value::Integer(a + b))
             }
         }
 
@@ -600,46 +570,46 @@ return test_hello_world()
         impl LuaCallback for TestAddCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a + b))
+                Ok(omnilua::Value::Integer(a + b))
             }
         }
         struct TestSubtractCallback {}
         impl LuaCallback for TestSubtractCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a - b))
+                Ok(omnilua::Value::Integer(a - b))
             }
         }
 
@@ -675,46 +645,46 @@ return test_hello_world()
         impl LuaCallback for TestAddCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a + b))
+                Ok(omnilua::Value::Integer(a + b))
             }
         }
         struct TestSubtractCallback {}
         impl LuaCallback for TestSubtractCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a - b))
+                Ok(omnilua::Value::Integer(a - b))
             }
         }
 

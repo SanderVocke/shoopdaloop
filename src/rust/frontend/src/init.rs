@@ -67,5 +67,5 @@ pub extern "C" fn init(config: &ShoopConfig) {
     }
     register_metatypes();
     register_qml_types_and_singletons();
-    crate::engine_update_thread::init();
+    crate::frontend_refresh::init();
 }

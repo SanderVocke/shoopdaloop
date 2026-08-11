@@ -63,6 +63,7 @@ fn generate_click_track_timings(
     }
 }
 
+#[tracing::instrument(name = "frontend.click_track.midi", skip_all)]
 fn generate_click_track_midi(
     notes: Vec<u8>,
     channels: Vec<u8>,
@@ -152,6 +153,7 @@ fn scan_available_clicks() -> BTreeMap<String, PathBuf> {
     rval
 }
 
+#[tracing::instrument(name = "frontend.click_track.audio", skip_all)]
 fn generate_click_track_audio(
     clicks: &[String],
     bpm: f64,
@@ -425,24 +427,34 @@ impl ClickTrackGenerator {
                 sample_rate as usize,
             )?;
 
-            std::thread::spawn(move || {
-                if let Err(e) = || -> Result<(), anyhow::Error> {
-                    let mut stream_handle = rodio::OutputStreamBuilder::open_default_stream()
-                        .map_err(|e| anyhow!("Failed to open rodio stream: {e}"))?;
-                    stream_handle.log_on_drop(false);
-                    let sink = rodio::Sink::connect_new(&stream_handle.mixer());
-                    let source = rodio::buffer::SamplesBuffer::new(1, sample_rate as u32, wave);
+            let queued_at = std::time::Instant::now();
+            let _ = std::thread::Builder::new()
+                .name("frontend-click-preview".to_string())
+                .spawn(move || {
+                    let _span = tracing::info_span!(
+                        "worker.frontend.click_preview",
+                        handoff_us = queued_at.elapsed().as_micros() as u64
+                    )
+                    .entered();
+                    if let Err(e) = || -> Result<(), anyhow::Error> {
+                        let mut stream_handle =
+                            rodio::OutputStreamBuilder::open_default_stream()
+                                .map_err(|e| anyhow!("Failed to open rodio stream: {e}"))?;
+                        stream_handle.log_on_drop(false);
+                        let sink = rodio::Sink::connect_new(&stream_handle.mixer());
+                        let source = rodio::buffer::SamplesBuffer::new(1, sample_rate as u32, wave);
 
-                    // Append the source to the sink
-                    sink.append(source);
-                    sink.play();
-                    sink.sleep_until_end();
+                        // Append the source to the sink
+                        sink.append(source);
+                        sink.play();
+                        sink.sleep_until_end();
 
-                    Ok(())
-                }() {
-                    error!("Failed to playback click track: {e}");
-                }
-            });
+                        Ok(())
+                    }() {
+                        error!("Failed to playback click track: {e}");
+                    }
+                })
+                .expect("spawn frontend click preview");
 
             Ok(())
         }() {

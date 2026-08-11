@@ -38,7 +38,8 @@ def find_qmake(directory, is_debug_build):
     Non-Windows platforms already behaved this way: the debug branch this replaces
     was guarded on win32, so plain `qmake` was picked up unconditionally there.
 
-    The trade-off is deliberate; see MIXED_CRTS.md.
+    The trade-off is deliberate: Windows debug CI must use release Qt so all
+    Rust and C++ components agree on the release CRT.
     """
     del is_debug_build  # release qmake regardless -- see above
 

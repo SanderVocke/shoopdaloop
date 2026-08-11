@@ -2,8 +2,10 @@
 //! trigger propagation and planned mode transitions.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 use crate::loop_mode::LoopMode;
+use crate::state_mirror::LoopStateMirror;
 
 /// Bit flags marking why a point of interest exists. Several can coincide.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -81,9 +83,36 @@ pub struct BasicLoop {
     already_triggered: bool,
     length: u32,
     position: u32,
+    cycle_count: u64,
+    state: Arc<LoopStateMirror>,
 }
 
 impl BasicLoop {
+    pub fn with_state_mirror(state: Arc<LoopStateMirror>) -> Self {
+        Self {
+            state,
+            ..Default::default()
+        }
+    }
+
+    pub fn state_mirror(&self) -> &Arc<LoopStateMirror> {
+        &self.state
+    }
+
+    fn publish_state(&self) {
+        self.publish_state_with_transition(self.first_planned_transition());
+    }
+
+    pub(crate) fn publish_state_with_transition(&self, transition: Option<(LoopMode, u32)>) {
+        self.state.publish(
+            self.mode,
+            self.length,
+            self.position,
+            self.cycle_count,
+            transition,
+        );
+    }
+
     // --- queries ---
 
     pub fn mode(&self) -> LoopMode {
@@ -224,6 +253,7 @@ impl BasicLoop {
         if changed {
             self.update_poi();
             self.update_trigger_eta();
+            self.publish_state();
         }
     }
 
@@ -251,6 +281,7 @@ impl BasicLoop {
 
         if self.mode.is_playing_mode() && self.position >= self.length {
             self.position = 0;
+            self.cycle_count = self.cycle_count.saturating_add(1);
         }
 
         for c in self.planned_countdowns.iter_mut() {
@@ -262,6 +293,7 @@ impl BasicLoop {
             self.planned_countdowns.pop_front();
             self.planned_modes.pop_front();
         }
+        self.publish_state();
     }
 
     pub fn handle_sync(&mut self) {
@@ -292,6 +324,7 @@ impl BasicLoop {
         self.next_poi = None;
         self.update_poi();
         self.update_trigger_eta();
+        self.publish_state();
     }
 
     // --- processing ---
@@ -368,6 +401,7 @@ impl BasicLoop {
             };
         }
         self.handle_poi();
+        self.publish_state();
     }
 
     // --- planned transitions ---
@@ -398,6 +432,7 @@ impl BasicLoop {
     pub fn clear_planned_transitions(&mut self) {
         self.planned_modes.clear();
         self.planned_countdowns.clear();
+        self.publish_state();
     }
 
     /// First planned transition, or `None` when nothing is queued.
@@ -458,6 +493,7 @@ impl BasicLoop {
             }
         }
         self.update_trigger_eta();
+        self.publish_state();
     }
 
     // --- setters ---
@@ -471,6 +507,7 @@ impl BasicLoop {
         self.position = position;
         self.update_poi();
         self.update_trigger_eta();
+        self.publish_state();
     }
 
     pub fn set_length(&mut self, length: u32) {
@@ -479,12 +516,17 @@ impl BasicLoop {
         }
         self.length = length;
         if self.position >= length {
-            self.set_position(if length == 0 { 0 } else { length - 1 });
+            self.set_position(if length == 0 {
+                0
+            } else {
+                self.position % length
+            });
         }
         self.next_poi = None;
         self.next_trigger = None;
         self.update_poi();
         self.update_trigger_eta();
+        self.publish_state();
     }
 
     pub fn set_mode(&mut self, mode: LoopMode) {
@@ -708,10 +750,12 @@ mod tests {
 
         l.process(1);
         check!(l.is_triggering_now() == true);
+        check!(l.state_mirror().read().cycle_count == 1);
 
         l.handle_poi();
 
         check!(l.position() == 0);
+        check!(l.state_mirror().read().cycle_count == 1);
 
         l.process(5);
 

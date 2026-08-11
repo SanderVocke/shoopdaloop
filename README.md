@@ -91,6 +91,12 @@ As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offe
 
 See the Releases page and [INSTALL](INSTALL.md) for details.
 
+# egui application
+
+The pure-egui application uses persisted native JACK, CPAL+midir, or dummy/offline drivers on desktop and a direct Web Audio/AudioWorklet driver in hosted secure browser runs. Browser audio and Web MIDI have independent explicit enable actions. Supported browsers expose physical Web MIDI endpoints for direct-track recording/playback and Lua controller ports; unavailable or denied Web MIDI leaves the rest of the application usable. The production web application includes the normal tracks/loops workspace and connections dialog. Direct-file audio, storage, and Web MIDI remain subject to browser policy, with explicit offline dummy mode available.
+
+The dedicated egui workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native targets emit unsigned application archives; each web profile emits a hosted bundle archive plus a self-contained HTML file. Coverage is not part of this matrix yet. See [`src/rust/shoopdaloop_egui/README.md`](src/rust/shoopdaloop_egui/README.md) for native, hosted browser, secure-context, artifact, local `act`, and verification instructions.
+
 # Packages / Packaging
 
 Apart from portable folders, I provide a [Nix package](https://github.com/SanderVocke/shoopdaloop-nix). This can serve as an example for anyone trying to package for other distros.
@@ -98,7 +104,7 @@ Apart from portable folders, I provide a [Nix package](https://github.com/Sander
 # License / Copyright
 
 Other than Git submodules and files which explicitly mention a different copyright owner, copyright owner for all files in this repo is Sander Vocke (2023).
-For copying, see LICENSE.txt.
+For copying, see [LICENSE](LICENSE).
 
 # Credits
 

@@ -16,11 +16,14 @@
 //! interest.
 
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
+use crate::content_snapshot::MidiProcessSnapshotWriter;
 use crate::loop_mode::LoopMode;
 use crate::midi;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
+use crate::state_mirror::MidiChannelStateMirror;
 
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -33,6 +36,10 @@ pub enum MidiChannelError {
     NoRecordingBuffer,
     #[error("no playback buffer assigned")]
     NoPlaybackBuffer,
+    #[error("MIDI replacement needs {required} event slots but capacity is {capacity}")]
+    ReplaceCapacity { required: usize, capacity: usize },
+    #[error("invalid MIDI replacement interval or event ordering")]
+    InvalidReplacement,
 }
 
 /// How much of the cycle's input buffer has been consumed.
@@ -61,6 +68,50 @@ impl OutBuf {
     }
 }
 
+fn snapshot_mutation(flags: ProcessFlags) -> Option<crate::content_snapshot::ContentMutation> {
+    if flags.contains(ProcessFlags::REPLACE) {
+        Some(crate::content_snapshot::ContentMutation::Replacing)
+    } else if flags.contains(ProcessFlags::RECORD) {
+        Some(crate::content_snapshot::ContentMutation::Recording)
+    } else if flags.contains(ProcessFlags::PRE_RECORD) {
+        Some(crate::content_snapshot::ContentMutation::PreRecording)
+    } else {
+        None
+    }
+}
+
+#[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
+#[derive(Debug)]
+pub struct PreparedMidiChannelData {
+    storage: MidiStorage,
+    prerecord_storage: MidiStorage,
+    length: u32,
+    start_state: MidiStateTracker,
+    start_state_valid: bool,
+}
+
+#[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
+impl PreparedMidiChannelData {
+    pub fn new(messages: &[MidiStorageElem], length: u32, start_state: Option<&[Vec<u8>]>) -> Self {
+        let capacity = messages.len().max(1);
+        let mut storage = MidiStorage::with_capacity_elems(capacity);
+        for message in messages {
+            storage.append(message.time, message.data(), false, None);
+        }
+        let mut state = MidiStateTracker::new(TrackWhat::ALL);
+        for message in start_state.unwrap_or(&[]) {
+            state.process(message);
+        }
+        Self {
+            storage,
+            prerecord_storage: MidiStorage::with_capacity_elems(capacity),
+            length,
+            start_state: state,
+            start_state_valid: start_state.is_some(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct MidiChannel {
     storage: MidiStorage,
@@ -84,6 +135,9 @@ pub struct MidiChannel {
     /// Target state to restore before the first audible playback message.
     pending_playback_state: MidiStateTracker,
     pending_playback_valid: bool,
+    /// Loaded contents use the regular playback path and do not need the session's
+    /// legacy pre-record fallback.
+    loaded_contents: bool,
 
     mode: ChannelMode,
     start_offset: i32,
@@ -99,13 +153,38 @@ pub struct MidiChannel {
     /// Reused for state-restoration messages, sized to the worst case so playback
     /// never grows it.
     restore_scratch: Vec<MidiStorageElem>,
+    /// Incoming replacement events rebased to loop time without allocating.
+    replace_scratch: Vec<MidiStorageElem>,
+    state: Arc<MidiChannelStateMirror>,
+    content_snapshots: Option<MidiProcessSnapshotWriter>,
 }
 
 impl MidiChannel {
     pub fn with_capacity_elems(capacity: usize, mode: ChannelMode) -> Self {
+        Self::with_capacity_elems_and_state(
+            capacity,
+            mode,
+            Arc::new(MidiChannelStateMirror::default()),
+        )
+    }
+
+    pub fn with_capacity_elems_and_state(
+        capacity: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+    ) -> Self {
+        Self::with_capacity_state_and_snapshots(capacity, mode, state, None)
+    }
+
+    pub fn with_capacity_state_and_snapshots(
+        capacity: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+        content_snapshots: Option<MidiProcessSnapshotWriter>,
+    ) -> Self {
         let storage = MidiStorage::with_capacity_elems(capacity);
         let playback_cursor = storage.create_cursor();
-        Self {
+        let channel = Self {
             storage,
             data_length: 0,
             prerecord_storage: MidiStorage::with_capacity_elems(capacity),
@@ -119,6 +198,7 @@ impl MidiChannel {
             temp_prerecording_valid: false,
             pending_playback_state: MidiStateTracker::new(TrackWhat::ALL),
             pending_playback_valid: false,
+            loaded_contents: false,
             mode,
             start_offset: 0,
             pre_play_samples: 0,
@@ -130,7 +210,50 @@ impl MidiChannel {
             rec: None,
             play: None,
             restore_scratch: Vec::with_capacity(MAX_DIFF_MESSAGES),
+            replace_scratch: Vec::with_capacity(capacity),
+            state,
+            content_snapshots,
+        };
+        channel.publish_state();
+        channel
+    }
+
+    fn publish_state(&self) {
+        self.state.publish(
+            self.mode,
+            self.output_state.n_notes_active(),
+            self.data_length,
+            self.start_offset,
+            self.last_played_back_sample,
+            self.pre_play_samples,
+            self.data_seq_nr as u64,
+        );
+    }
+
+    /// Compatibility publication for legacy control-side setters. Realtime recording and
+    /// prepared application loads use bounded incremental/prepared operations instead.
+    fn publish_snapshot_contents(&mut self, mutation: crate::content_snapshot::ContentMutation) {
+        let MidiChannel {
+            storage,
+            data_length,
+            recording_start_state,
+            restore_scratch,
+            content_snapshots,
+            ..
+        } = self;
+        let Some(snapshots) = content_snapshots.as_mut() else {
+            return;
+        };
+        snapshots.begin_working_generation();
+        snapshots.begin_mutation(mutation);
+        snapshots.clear(false);
+        recording_start_state.state_as_messages_into(restore_scratch);
+        snapshots.append_state_events(restore_scratch, *data_length);
+        for event in storage.iter() {
+            snapshots.append_storage_events(&[*event], *data_length, false);
         }
+        snapshots.append_storage_events(&[], *data_length, true);
+        snapshots.finish_mutation(false);
     }
 
     // --- accessors ---
@@ -140,6 +263,7 @@ impl MidiChannel {
     }
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
+        self.publish_state();
     }
     pub fn length(&self) -> u32 {
         self.data_length
@@ -149,12 +273,14 @@ impl MidiChannel {
     }
     pub fn set_start_offset(&mut self, offset: i32) {
         self.start_offset = offset;
+        self.publish_state();
     }
     pub fn pre_play_samples(&self) -> u32 {
         self.pre_play_samples
     }
     pub fn set_pre_play_samples(&mut self, n: u32) {
         self.pre_play_samples = n;
+        self.publish_state();
     }
     pub fn data_seq_nr(&self) -> u32 {
         self.data_seq_nr
@@ -181,6 +307,10 @@ impl MidiChannel {
     pub fn input_state(&self) -> &MidiStateTracker {
         &self.input_state
     }
+    pub fn contents_were_loaded(&self) -> bool {
+        self.loaded_contents
+    }
+
     /// Messages that reproduce the state captured when recording began.
     pub fn recording_start_state_messages(&self) -> Vec<Vec<u8>> {
         if self.recording_start_valid {
@@ -192,6 +322,7 @@ impl MidiChannel {
 
     fn data_changed(&mut self) {
         self.data_seq_nr = self.data_seq_nr.wrapping_add(1);
+        self.publish_state();
     }
 
     pub fn clear(&mut self) {
@@ -203,7 +334,14 @@ impl MidiChannel {
         self.recording_start_valid = false;
         self.temp_prerecording_valid = false;
         self.pending_playback_valid = false;
+        self.loaded_contents = false;
         self.start_offset = 0;
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.begin_working_generation();
+            snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
+            snapshots.clear(true);
+            snapshots.finish_mutation(false);
+        }
         self.data_changed();
     }
 
@@ -235,18 +373,50 @@ impl MidiChannel {
         self.playback_cursor = self.storage.create_cursor();
         self.recording_start_state.clear();
         self.recording_start_valid = start_state.is_some();
+        self.loaded_contents = true;
         for m in start_state.unwrap_or(&[]) {
             self.recording_start_state.process(m);
+        }
+        self.publish_snapshot_contents(crate::content_snapshot::ContentMutation::Loading);
+        self.data_changed();
+    }
+
+    #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
+    pub(crate) fn commit_prepared_data_and_snapshot(
+        &mut self,
+        prepared: &mut PreparedMidiChannelData,
+        snapshot: crate::content_snapshot::PreparedMidiSnapshot,
+    ) {
+        std::mem::swap(&mut self.storage, &mut prepared.storage);
+        std::mem::swap(&mut self.prerecord_storage, &mut prepared.prerecord_storage);
+        std::mem::swap(&mut self.data_length, &mut prepared.length);
+        std::mem::swap(&mut self.recording_start_state, &mut prepared.start_state);
+        self.recording_start_valid = prepared.start_state_valid;
+        self.playback_cursor = self.storage.create_cursor();
+        self.loaded_contents = true;
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.install_prepared(snapshot);
         }
         self.data_changed();
     }
 
     pub fn set_length(&mut self, length: u32) {
+        let old_length = self.data_length;
         let mut len = self.data_length;
         Self::set_length_impl(&mut self.storage, &mut len, length);
         let changed = len != self.data_length;
         self.data_length = len;
         if changed {
+            if let Some(snapshots) = self.content_snapshots.as_mut() {
+                snapshots.begin_working_generation();
+                snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Loading);
+                if length < old_length {
+                    snapshots.truncate_after(length as i32, length, true);
+                } else {
+                    snapshots.append_storage_events(&[], length, true);
+                }
+                snapshots.finish_mutation(false);
+            }
             self.data_changed();
         }
     }
@@ -263,6 +433,7 @@ impl MidiChannel {
         self.input_state.clear();
         self.output_state.clear();
         self.pending_playback_valid = false;
+        self.publish_state();
     }
 
     // --- per-cycle buffers ---
@@ -363,6 +534,36 @@ impl MidiChannel {
             flags = ProcessFlags(flags.0 & !ProcessFlags::PLAYBACK.0);
         }
 
+        let previous_mutation = snapshot_mutation(self.prev_process_flags);
+        let current_mutation = snapshot_mutation(flags);
+        if previous_mutation != current_mutation {
+            if let Some(previous) = previous_mutation {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    if previous == crate::content_snapshot::ContentMutation::PreRecording
+                        && current_mutation
+                            != Some(crate::content_snapshot::ContentMutation::Recording)
+                    {
+                        snapshots.cancel_mutation();
+                    } else {
+                        snapshots.finish_mutation(
+                            previous == crate::content_snapshot::ContentMutation::Replacing,
+                        );
+                    }
+                }
+            }
+            if let Some(mutation) = current_mutation {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    let carries_prerecord = previous_mutation
+                        == Some(crate::content_snapshot::ContentMutation::PreRecording)
+                        && mutation == crate::content_snapshot::ContentMutation::Recording;
+                    if !carries_prerecord {
+                        snapshots.begin_working_generation();
+                    }
+                    snapshots.begin_mutation(mutation);
+                }
+            }
+        }
+
         // Anything other than plain forward playback leaves notes hanging.
         let interrupted = self.prev_process_flags.contains(ProcessFlags::PLAYBACK)
             && (!flags.contains(ProcessFlags::PLAYBACK)
@@ -372,6 +573,7 @@ impl MidiChannel {
             self.send_all_sound_off(out, time);
         }
 
+        let mut adopted_prerecording = false;
         if !flags.contains(ProcessFlags::PRE_RECORD)
             && self.prev_process_flags.contains(ProcessFlags::PRE_RECORD)
         {
@@ -396,6 +598,7 @@ impl MidiChannel {
                 } = self;
                 recording_start_state.copy_relevant_state(temp_prerecording_start_state);
                 self.recording_start_valid = self.temp_prerecording_valid;
+                adopted_prerecording = true;
             }
             self.prerecord_storage.clear();
             self.prerecord_data_length = 0;
@@ -425,10 +628,16 @@ impl MidiChannel {
         }
 
         if flags.contains(ProcessFlags::RECORD) {
+            self.loaded_contents = false;
             let from = (length_before as i64 + self.start_offset as i64).max(0) as u32;
             self.process_record(false, from, n_samples, input)?;
             processed_input = true;
+        } else if flags.contains(ProcessFlags::REPLACE) {
+            self.loaded_contents = false;
+            self.process_replace(params.position, n_samples, length_before, input)?;
+            processed_input = true;
         } else if flags.contains(ProcessFlags::PRE_RECORD) {
+            self.loaded_contents = false;
             let from = self.prerecord_data_length;
             self.process_record(true, from, n_samples, input)?;
             processed_input = true;
@@ -437,6 +646,9 @@ impl MidiChannel {
         self.prev_pos_after = pos_after;
         self.prev_process_flags = flags;
 
+        if adopted_prerecording {
+            self.data_changed();
+        }
         if !processed_input {
             self.process_input_messages(n_samples, input);
         }
@@ -447,6 +659,7 @@ impl MidiChannel {
         if let Some(p) = self.play.as_mut() {
             p.n_frames_processed += n_samples;
         }
+        self.publish_state();
         Ok(())
     }
 
@@ -475,6 +688,84 @@ impl MidiChannel {
         self.rec = Some(rec);
     }
 
+    fn process_replace(
+        &mut self,
+        position: i32,
+        n_samples: u32,
+        loop_length: u32,
+        input: &[MidiStorageElem],
+    ) -> Result<(), MidiChannelError> {
+        let Some(mut rec) = self.rec else {
+            return Err(MidiChannelError::NoRecordingBuffer);
+        };
+        if rec.frames_left() < n_samples {
+            return Err(MidiChannelError::RecordOutOfBounds {
+                n_samples,
+                available: rec.frames_left(),
+            });
+        }
+
+        let record_end = rec.n_frames_processed + n_samples;
+        let skip = if position < 0 { (-position) as u32 } else { 0 }.min(n_samples);
+        let start = position.max(0) as u32;
+        let end = start.saturating_add(n_samples - skip).min(loop_length);
+        self.data_length = self.data_length.max(loop_length);
+
+        if start == 0 && start < end {
+            self.recording_start_state
+                .copy_relevant_state(&self.input_state);
+            self.recording_start_valid = true;
+        }
+
+        self.replace_scratch.clear();
+        let mut idx = rec.n_events_processed;
+        while idx < input.len() {
+            let event = input[idx];
+            if event.time >= record_end {
+                break;
+            }
+            if event.time >= rec.n_frames_processed {
+                let relative = event.time - rec.n_frames_processed;
+                let at = position + relative as i32;
+                if at >= start as i32 && at < end as i32 {
+                    if self.replace_scratch.len() == self.replace_scratch.capacity() {
+                        return Err(MidiChannelError::ReplaceCapacity {
+                            required: self.replace_scratch.len() + 1,
+                            capacity: self.replace_scratch.capacity(),
+                        });
+                    }
+                    self.replace_scratch.push(event.at_time(at as u32));
+                }
+                self.input_state.process(event.data());
+            }
+            idx += 1;
+        }
+        rec.n_events_processed = idx;
+        self.rec = Some(rec);
+
+        if start >= end {
+            return Ok(());
+        }
+        self.storage
+            .replace_range(start, end, &self.replace_scratch)
+            .map_err(|error| match error {
+                crate::midi_storage::ReplaceRangeError::OutOfCapacity { required, capacity } => {
+                    MidiChannelError::ReplaceCapacity { required, capacity }
+                }
+                crate::midi_storage::ReplaceRangeError::InvalidRange
+                | crate::midi_storage::ReplaceRangeError::OutOfOrder => {
+                    MidiChannelError::InvalidReplacement
+                }
+            })?;
+        self.playback_cursor.reset(&self.storage);
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.remove_range(start as i32, end as i32, self.data_length);
+            snapshots.append_storage_events(&self.replace_scratch, self.data_length, false);
+        }
+        self.data_changed();
+        Ok(())
+    }
+
     fn process_record(
         &mut self,
         into_prerecord: bool,
@@ -500,6 +791,11 @@ impl MidiChannel {
                 (&mut self.storage, &mut self.data_length)
             };
             Self::set_length_impl(storage, len, record_from);
+        }
+        if !into_prerecord {
+            if let Some(snapshots) = self.content_snapshots.as_mut() {
+                snapshots.truncate_after(record_from as i32, record_from, false);
+            }
         }
 
         let record_end = rec.n_frames_processed + n_samples;
@@ -532,8 +828,26 @@ impl MidiChannel {
                     }
                     if into_prerecord {
                         self.temp_prerecording_valid = true;
+                        let MidiChannel {
+                            temp_prerecording_start_state,
+                            restore_scratch,
+                            ..
+                        } = self;
+                        temp_prerecording_start_state.state_as_messages_into(restore_scratch);
+                        if let Some(snapshots) = self.content_snapshots.as_mut() {
+                            snapshots.append_state_events(restore_scratch, record_from);
+                        }
                     } else {
                         self.recording_start_valid = true;
+                        let MidiChannel {
+                            recording_start_state,
+                            restore_scratch,
+                            ..
+                        } = self;
+                        recording_start_state.state_as_messages_into(restore_scratch);
+                        if let Some(snapshots) = self.content_snapshots.as_mut() {
+                            snapshots.append_state_events(restore_scratch, record_from);
+                        }
                     }
                 }
                 let at = record_from + e.time - rec.n_frames_processed;
@@ -542,6 +856,13 @@ impl MidiChannel {
                 } else {
                     self.storage.append(at, e.data(), false, None)
                 };
+                if stored {
+                    if let Some(snapshots) = self.content_snapshots.as_mut() {
+                        if let Some(event) = MidiStorageElem::new(at, e.data()) {
+                            snapshots.append_storage_events(&[event], at, false);
+                        }
+                    }
+                }
                 changed |= stored;
             }
             self.input_state.process(e.data());
@@ -558,6 +879,17 @@ impl MidiChannel {
             };
             let target = *len + n_samples;
             Self::set_length_impl(storage, len, target);
+        }
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.append_storage_events(
+                &[],
+                if into_prerecord {
+                    self.prerecord_data_length
+                } else {
+                    self.data_length
+                },
+                !into_prerecord,
+            );
         }
         if changed {
             self.data_changed();
@@ -649,6 +981,7 @@ impl MidiChannel {
                 self.send(out, buffer_time.max(0) as u32, event.data());
                 self.last_played_back_sample = Some(t);
                 self.n_events_triggered += 1;
+                self.state.record_triggered_event();
             }
             if self.pending_playback_valid {
                 self.pending_playback_state.process(event.data());
@@ -780,6 +1113,275 @@ mod tests {
         // The second message lands at its absolute recorded position.
         check!(times(&ch.contents()) == vec![1, 6]);
         check!(ch.length() == 8);
+    }
+
+    #[test]
+    fn replacing_overwrites_the_processed_interval() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(6, &midi::note_off(0, 60, 0)),
+            ],
+            8,
+            None,
+        );
+
+        cycle(
+            &mut ch,
+            L::Replacing,
+            8,
+            0,
+            8,
+            &[
+                ev(2, &midi::note_on(0, 64, 100)),
+                ev(5, &midi::note_off(0, 64, 0)),
+            ],
+        );
+
+        check!(times(&ch.contents()) == vec![2, 5]);
+        check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
+    }
+
+    #[test]
+    fn partial_replacement_preserves_events_outside_the_interval() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(3, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+            ],
+            8,
+            None,
+        );
+
+        cycle(
+            &mut ch,
+            L::Replacing,
+            3,
+            2,
+            8,
+            &[ev(1, &midi::cc(0, 7, 42))],
+        );
+
+        check!(times(&ch.contents()) == vec![1, 3, 6]);
+        check!(ch.contents()[1].data() == midi::cc(0, 7, 42).as_slice());
+    }
+
+    #[test]
+    fn replacement_with_no_input_erases_the_interval() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(3, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+            ],
+            8,
+            None,
+        );
+
+        cycle(&mut ch, L::Replacing, 3, 2, 8, &[]);
+
+        check!(times(&ch.contents()) == vec![1, 6]);
+    }
+
+    #[test]
+    fn replacement_across_split_calls_uses_loop_relative_times() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(3, &midi::note_off(0, 60, 0)),
+                ev(5, &midi::note_on(0, 61, 100)),
+                ev(7, &midi::note_off(0, 61, 0)),
+            ],
+            8,
+            None,
+        );
+        let input = [
+            ev(1, &midi::note_on(0, 64, 100)),
+            ev(6, &midi::note_off(0, 64, 0)),
+        ];
+        ch.set_recording_buffer(8);
+        ch.set_playback_buffer(8);
+        let mut out = Vec::new();
+
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            4,
+            0,
+            4,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            4,
+            4,
+            8,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+
+        check!(times(&ch.contents()) == vec![1, 6]);
+        check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
+        check!(ch.contents()[1].data() == midi::note_off(0, 64, 0).as_slice());
+    }
+
+    #[test]
+    fn replacement_split_at_loop_wrap_uses_each_side_of_the_boundary() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(1, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+                ev(7, &midi::note_off(0, 61, 0)),
+            ],
+            8,
+            None,
+        );
+        let input = [
+            ev(1, &midi::note_on(0, 64, 100)),
+            ev(3, &midi::note_off(0, 64, 0)),
+        ];
+        ch.set_recording_buffer(4);
+        ch.set_playback_buffer(4);
+        let mut out = Vec::new();
+
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            2,
+            6,
+            8,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            2,
+            0,
+            2,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+
+        check!(times(&ch.contents()) == vec![1, 7]);
+        check!(ch.contents()[0].data() == midi::note_off(0, 64, 0).as_slice());
+        check!(ch.contents()[1].data() == midi::note_on(0, 64, 100).as_slice());
+    }
+
+    #[test]
+    fn replacement_skips_input_before_the_channel_start_offset() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(1, &midi::note_off(0, 60, 0)),
+                ev(3, &midi::note_on(0, 61, 100)),
+            ],
+            4,
+            None,
+        );
+
+        cycle(
+            &mut ch,
+            L::Replacing,
+            4,
+            -2,
+            4,
+            &[
+                ev(0, &midi::note_on(0, 63, 100)),
+                ev(3, &midi::note_on(0, 64, 100)),
+            ],
+        );
+
+        check!(times(&ch.contents()) == vec![1, 3]);
+        check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
+    }
+
+    #[test]
+    fn replacement_at_loop_start_updates_playback_start_state() {
+        let mut ch = channel();
+        ch.set_contents(&[ev(1, &midi::note_on(0, 60, 100))], 4, None);
+        cycle(&mut ch, L::Stopped, 1, 0, 4, &[ev(0, &midi::cc(0, 7, 42))]);
+
+        cycle(
+            &mut ch,
+            L::Replacing,
+            4,
+            0,
+            4,
+            &[
+                ev(1, &midi::note_on(0, 64, 100)),
+                ev(2, &midi::note_off(0, 64, 0)),
+            ],
+        );
+
+        check!(ch
+            .recording_start_state_messages()
+            .contains(&midi::cc(0, 7, 42).to_vec()));
+    }
+
+    #[test]
+    fn replacement_reports_insufficient_storage_without_partial_mutation() {
+        let mut ch = MidiChannel::with_capacity_elems(3, C::Direct);
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(2, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+            ],
+            8,
+            None,
+        );
+        ch.set_recording_buffer(3);
+        ch.set_playback_buffer(3);
+        let mut out = Vec::new();
+
+        let result = ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            3,
+            1,
+            4,
+            8,
+            &[
+                ev(0, &midi::note_on(0, 64, 100)),
+                ev(1, &midi::note_off(0, 64, 0)),
+            ],
+            &mut out,
+        );
+
+        check!(matches!(
+            result,
+            Err(MidiChannelError::ReplaceCapacity { .. })
+        ));
+        check!(times(&ch.contents()) == vec![0, 2, 6]);
     }
 
     #[test]

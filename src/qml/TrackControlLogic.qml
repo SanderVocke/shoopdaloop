@@ -18,7 +18,7 @@ Item {
     // The properties above determine the readonlies below.
     // To understand why, please refer to "States And Connections"
     // in the developer documentation.
-    readonly property bool mute_drywet_input_passthrough:  (!monitor && any_loop_playing_dry) || (any_loop_pre_rerecording_dry || any_loop_rerecording_dry)
+    readonly property bool mute_drywet_input_passthrough:  (!monitor && !(any_loop_recording || any_loop_pre_recording)) || (any_loop_pre_rerecording_dry || any_loop_rerecording_dry)
     readonly property bool mute_drywet_output_passthrough: !(monitor || any_loop_playing_dry || any_loop_pre_rerecording_dry || any_loop_rerecording_dry)
     readonly property bool mute_direct_passthrough:        !monitor       
     readonly property bool enable_fx:                       monitor || any_loop_recording || any_loop_pre_recording || any_loop_playing_dry || any_loop_rerecording_dry || any_loop_pre_rerecording_dry

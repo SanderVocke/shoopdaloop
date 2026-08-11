@@ -16,18 +16,45 @@
 //! Commands are `FnMut` rather than `FnOnce` because they are called through the box
 //! and the box then has to survive to be sent back. Each is called exactly once.
 
-use crate::channel_mode::ChannelMode;
+use crate::composite_plan::{CompiledCompositePlan, LoopIdentity};
+use crate::composite_timeline::{
+    BoundaryTargetAction, BoundaryTraceEntry, CompositeBoundaryTimeline,
+    CompositeTimelineControlError, CompositeTimelineCounters, CompositeTimelineFaultRecord,
+};
 use crate::loop_mode::LoopMode;
-use crate::session::{ChannelKind, Session};
-use crate::state::{AudioChannelState, AudioPortSnapshot, MidiChannelState, MidiPortSnapshot};
+use crate::session::{ReclaimedCompositeTimeline, RejectedCompositeTimeline, Session};
 
 use rtrb::{Consumer, Producer, RingBuffer};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
 
 /// A unit of control work, run on the audio thread between cycles.
 pub type Command = Box<dyn FnMut(&mut Session) + Send>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CommandSequence(u64);
+
+impl CommandSequence {
+    pub const NONE: Self = Self(0);
+
+    pub fn get(self) -> u64 {
+        self.0
+    }
+
+    pub fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+struct SequencedCommand {
+    sequence: CommandSequence,
+    command: Command,
+}
+
+pub struct CommandReservation {
+    sequence: CommandSequence,
+}
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SendError {
@@ -50,7 +77,22 @@ pub enum WaitError {
 /// condition variable so that the audio thread only ever has to store a result, never
 /// signal anything.
 pub const DEFAULT_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1000);
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_micros(1000);
+
+/// How long to spin, yielding, before falling back to sleeping.
+///
+/// The answer normally arrives within one cycle -- tens of microseconds to a few
+/// milliseconds -- and a waiter that sleeps immediately pays a full sleep quantum for it. That
+/// did not matter while nothing outside the tests used this, and mattered a great deal as soon
+/// as every control read became a round trip: a 1 ms floor per read turns a few thousand reads
+/// into seconds, which presents as an application that has stopped rather than one that is
+/// slow.
+///
+/// Yielding rather than busy-spinning, so a waiter never keeps the audio thread off a core.
+const SPIN_BUDGET: std::time::Duration = std::time::Duration::from_micros(2000);
+
+/// Sleep between checks once the spin budget is spent, for a waiter that is going to be a
+/// while -- an engine that is not being driven at all, most likely.
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_micros(500);
 
 /// Counters the audio thread publishes for the control thread to read.
 ///
@@ -64,6 +106,10 @@ pub struct Stats {
     pub stuck_cycles: AtomicU32,
     /// Commands that arrived and were applied.
     pub commands_applied: AtomicU32,
+    /// Diagnostic trace publications skipped because every preallocated box was in use.
+    pub trace_snapshots_dropped: AtomicU32,
+    /// The newest command sequence that finished executing.
+    pub last_applied_command: AtomicU64,
     /// Cycles run against a schedule older than the session's topology.
     ///
     /// These are processed, not refused -- see [`Session::process`]. Mirrored from the
@@ -78,6 +124,27 @@ pub struct Stats {
     pub capture_underruns: AtomicU32,
     /// Samples a duplex driver's capture ring had to drop because it was full.
     pub capture_overruns: AtomicU32,
+    /// Duration of the most recent engine callback/cycle while tracing was requested.
+    pub callback_last_ns: AtomicU64,
+    /// Worst callback/cycle duration while tracing was requested.
+    pub callback_worst_ns: AtomicU64,
+    /// Traced callbacks whose duration exceeded their nominal audio buffer budget.
+    pub callback_budget_overruns: AtomicU32,
+    /// Latest topology and applied-schedule generations published by the engine.
+    pub schedule_request_id: AtomicU64,
+    pub schedule_applied_id: AtomicU64,
+    /// Sub-blocks processed by the latest session cycle.
+    pub sub_blocks_last_cycle: AtomicU32,
+    /// Whether the session's topology has outrun its schedule, as of the last cycle.
+    ///
+    /// Published so the control side can tell whether a rebuild is needed without asking --
+    /// asking costs a full round trip to the audio thread, and the scheduler would otherwise
+    /// pay for one on every window whether or not anything had changed.
+    ///
+    /// A `true` reading can be trusted at once. A `false` reading only means the graph was
+    /// current when this was last written, so a caller must also satisfy itself that nothing
+    /// is still queued that could dirty it -- see [`EngineHandle::n_pending`].
+    pub graph_stale: AtomicBool,
     /// Backend DSP load, as a percentage scaled by 100 so it fits an integer.
     ///
     /// Scaled rather than a float because there is no portable atomic `f32`, and a
@@ -96,139 +163,47 @@ impl Stats {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct LoopState {
-    pub mode: LoopMode,
-    pub length: u32,
-    pub position: u32,
-    pub maybe_next_mode: Option<LoopMode>,
-    pub maybe_next_mode_delay: Option<u32>,
-}
-
-impl Default for LoopState {
-    fn default() -> Self {
-        Self {
-            mode: LoopMode::Unknown,
-            length: 0,
-            position: 0,
-            maybe_next_mode: None,
-            maybe_next_mode_delay: None,
-        }
-    }
-}
-
-/// One loop's state, as the control side polls it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LoopSnapshot {
-    pub mode: LoopMode,
-    pub length: u32,
-    pub position: u32,
-    pub next_mode: Option<LoopMode>,
-    pub next_mode_delay: Option<u32>,
-}
-
-/// A cycle's published state.
+/// Bounded session-level composite diagnostics.
 ///
-/// Shipped between the threads as a box that is refilled and reused, so publishing
-/// never allocates. None of the vectors is grown by the audio thread: see `truncated`.
-///
-/// Covers everything a UI polls at frame rate -- loops, channels and ports -- because the
-/// alternative is a blocking round trip per object per frame, which at one audio cycle each
-/// costs more than the frame budget as soon as a session has a handful of tracks. What is
-/// *not* here is anything a poll does not need: audio data, MIDI event lists and FX-chain
-/// state are asked for individually, and FX-chain state does not live in the session at all.
+/// Ordinary composite state uses `CompositeStateMirror`; this queue exists only for trace and
+/// timeline diagnostics whose history does not belong to any one object.
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct StateSnapshot {
-    pub loops: Vec<LoopSnapshot>,
-    pub audio_channels: Vec<AudioChannelState>,
-    pub midi_channels: Vec<MidiChannelState>,
-    /// Indexed by the session's port arena, so an entry may be either kind. A port of the
-    /// other kind leaves `None` here rather than shifting the indices.
-    pub audio_ports: Vec<Option<AudioPortSnapshot>>,
-    pub midi_ports: Vec<Option<MidiPortSnapshot>>,
-    /// Cycle this was taken at, so a reader can tell fresh from stale.
+pub struct CompositeTraceSnapshot {
+    pub composite_timeline_counters: CompositeTimelineCounters,
+    pub composite_timeline_fault: CompositeTimelineFaultRecord,
+    pub composite_timeline_version: u64,
+    pub n_retired_composite_plans: usize,
+    pub composite_trace: Vec<BoundaryTraceEntry>,
     pub cycle: u32,
-    /// Loops the session had, which may exceed `loops.len()`.
-    ///
-    /// The audio thread fills only as far as the box already has room for, because
-    /// growing the vector there would allocate. A reader seeing this exceed
-    /// `loops.len()` should hand back bigger boxes; [`EngineHandle::poll`] does.
-    pub n_loops: usize,
-    /// Channels the session had, which may exceed the channel vectors' lengths.
-    ///
-    /// One count for both vectors: they are indexed by the session's single channel arena,
-    /// so an audio channel and a MIDI channel never share an index and both vectors are
-    /// sized to the arena. The slot of the other kind is left at its default.
-    pub n_channels: usize,
-    /// Ports the session had, which may exceed the port vectors' lengths.
-    pub n_ports: usize,
+    pub n_composite_trace_entries: usize,
 }
 
-impl StateSnapshot {
-    /// Whether the audio thread ran out of room in any vector.
-    ///
-    /// One flag for all of them: a reader's only response is to hand back bigger boxes, and
-    /// [`EngineHandle::poll`] grows whichever vectors are actually short.
+impl CompositeTraceSnapshot {
     pub fn truncated(&self) -> bool {
-        self.n_loops > self.loops.len()
-            || self.n_channels > self.audio_channels.len()
-            || self.n_channels > self.midi_channels.len()
-            || self.n_ports > self.audio_ports.len()
-            || self.n_ports > self.midi_ports.len()
+        self.n_composite_trace_entries > self.composite_trace.len()
     }
 }
-
-impl Default for AudioChannelState {
-    fn default() -> Self {
-        Self {
-            mode: ChannelMode::Disabled,
-            gain: 0.0,
-            output_peak: 0.0,
-            length: 0,
-            start_offset: 0,
-            played_back_sample: None,
-            n_preplay_samples: 0,
-            data_dirty: false,
-        }
-    }
-}
-
-impl Default for MidiChannelState {
-    fn default() -> Self {
-        Self {
-            mode: ChannelMode::Disabled,
-            n_events_triggered: 0,
-            n_notes_active: 0,
-            length: 0,
-            start_offset: 0,
-            played_back_sample: None,
-            n_preplay_samples: 0,
-            data_dirty: false,
-        }
-    }
-}
-
 /// Owns the session on the audio thread.
 pub struct Engine {
     session: Session,
-    commands: Consumer<Command>,
-    returns: Producer<Command>,
-    /// Snapshots filled and published for the control side.
-    filled: Producer<Box<StateSnapshot>>,
-    /// Boxes to refill, handed back by the control side.
-    empties: Consumer<Box<StateSnapshot>>,
+    commands: Consumer<SequencedCommand>,
+    returns: Producer<SequencedCommand>,
+    filled: Producer<Box<CompositeTraceSnapshot>>,
+    empties: Consumer<Box<CompositeTraceSnapshot>>,
     stats: Arc<Stats>,
+    alive: Arc<AtomicBool>,
 }
 
 /// The control-thread side. Queues commands and reclaims them once run.
 pub struct EngineHandle {
-    commands: Producer<Command>,
-    returns: Consumer<Command>,
-    filled: Consumer<Box<StateSnapshot>>,
-    empties: Producer<Box<StateSnapshot>>,
-    /// Most recent snapshot taken, held so callers can borrow it.
-    current: Option<Box<StateSnapshot>>,
+    commands: Producer<SequencedCommand>,
+    returns: Consumer<SequencedCommand>,
+    filled: Consumer<Box<CompositeTraceSnapshot>>,
+    empties: Producer<Box<CompositeTraceSnapshot>>,
+    current: Option<Box<CompositeTraceSnapshot>>,
     stats: Arc<Stats>,
+    alive: Arc<AtomicBool>,
+    next_sequence: u64,
 }
 
 /// Builds a paired engine and handle around `session`.
@@ -236,32 +211,27 @@ pub struct EngineHandle {
 /// `capacity` bounds how many commands can be outstanding; beyond that
 /// [`EngineHandle::send`] refuses rather than blocking or growing.
 pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
+    let _span = tracing::info_span!("engine.control.split", command_capacity = capacity).entered();
     let (cmd_tx, cmd_rx) = RingBuffer::new(capacity);
     let (ret_tx, ret_rx) = RingBuffer::new(capacity);
 
     // Three snapshots in circulation: one being filled, one in flight, one being read.
-    // Fewer would make the audio thread skip publishing whenever the reader is mid-poll.
     const N_SNAPSHOTS: usize = 3;
     let (filled_tx, filled_rx) = RingBuffer::new(N_SNAPSHOTS);
     let (mut empties_tx, empties_rx) = RingBuffer::new(N_SNAPSHOTS);
-    // Sized for what the session already has, with a floor so a session built up after the
-    // split does not publish truncated for its first few cycles. Undersizing is not an error
-    // -- `poll` grows the boxes -- so the floor is a convenience, not a correctness matter.
-    let loop_room = session.n_loops().max(8);
-    let channel_room = session.n_channels().max(16);
-    let port_room = session.n_ports().max(16);
+    let composite_trace_room = session
+        .composite_timeline()
+        .n_history_trace_entries()
+        .max(64);
     for _ in 0..N_SNAPSHOTS {
-        let _ = empties_tx.push(Box::new(StateSnapshot {
-            loops: Vec::with_capacity(loop_room),
-            audio_channels: Vec::with_capacity(channel_room),
-            midi_channels: Vec::with_capacity(channel_room),
-            audio_ports: Vec::with_capacity(port_room),
-            midi_ports: Vec::with_capacity(port_room),
+        let _ = empties_tx.push(Box::new(CompositeTraceSnapshot {
+            composite_trace: Vec::with_capacity(composite_trace_room),
             ..Default::default()
         }));
     }
 
     let stats = Arc::new(Stats::default());
+    let alive = Arc::new(AtomicBool::new(true));
     (
         Engine {
             session,
@@ -270,6 +240,7 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
             filled: filled_tx,
             empties: empties_rx,
             stats: Arc::clone(&stats),
+            alive: Arc::clone(&alive),
         },
         EngineHandle {
             commands: cmd_tx,
@@ -278,13 +249,30 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
             empties: empties_tx,
             current: None,
             stats,
+            alive,
+            next_sequence: 1,
         },
     )
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        self.alive.store(false, Ordering::Release);
+    }
 }
 
 impl Engine {
     pub fn stats(&self) -> &Arc<Stats> {
         &self.stats
+    }
+
+    /// Whether any control work is waiting, without applying it.
+    ///
+    /// For a driver deciding whether it is worth pumping between cycles. Cheap enough to check
+    /// in a wait loop, which is the point: the alternative is pumping unconditionally at some
+    /// fixed rate and burning a core to do nothing.
+    pub fn has_pending_commands(&self) -> bool {
+        !self.commands.is_empty()
     }
 
     /// Escape hatch for a session not yet being driven by a callback.
@@ -298,22 +286,75 @@ impl Engine {
         &self.session
     }
 
-    /// Gives the session back when the engine is torn down.
-    pub fn into_session(self) -> Session {
-        self.session
-    }
-
     /// Runs one cycle: applies whatever control work is waiting, then processes.
     ///
     /// Commands run before processing so a mode change lands on the cycle boundary
     /// rather than part-way through a buffer.
     pub fn process(&mut self, n_frames: usize) {
-        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.process_inner(n_frames));
+        let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
+        let started = shoop_tracing::is_tracing_requested().then(std::time::Instant::now);
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+            crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.process_inner(n_frames))
+        });
+        self.finish_callback_timing(started, n_frames);
+        shoop_tracing::realtime_frame_mark!("engine.callback");
+    }
+
+    /// Runs one cycle without applying control work first.
+    ///
+    /// For a driver that has to stage its input buffers between the two: control work has to
+    /// land before the cycle runs, but the buffers can only be staged once it has, so a driver
+    /// pumps, stages through [`Self::session_mut`], then calls this.
+    ///
+    /// Reaching for `session_mut().process(..)` instead skips engine counters and should only
+    /// be used by code that intentionally bypasses the driver boundary.
+    pub fn run_cycle(&mut self, n_frames: usize) {
+        let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
+        let started = shoop_tracing::is_tracing_requested().then(std::time::Instant::now);
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+            crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.cycle_inner(n_frames))
+        });
+        self.finish_callback_timing(started, n_frames);
+        shoop_tracing::realtime_frame_mark!("engine.callback");
+    }
+
+    fn finish_callback_timing(&self, started: Option<std::time::Instant>, n_frames: usize) {
+        let Some(started) = started else {
+            return;
+        };
+        let elapsed_ns = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        self.stats
+            .callback_last_ns
+            .store(elapsed_ns, Ordering::Relaxed);
+        self.stats
+            .callback_worst_ns
+            .fetch_max(elapsed_ns, Ordering::Relaxed);
+        let sample_rate = u64::from(self.session.sample_rate().max(1));
+        let budget_ns = (n_frames as u64)
+            .saturating_mul(1_000_000_000)
+            .checked_div(sample_rate)
+            .unwrap_or(u64::MAX);
+        if elapsed_ns > budget_ns {
+            self.stats
+                .callback_budget_overruns
+                .fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     fn process_inner(&mut self, n_frames: usize) {
-        self.apply_commands();
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.commands");
+            self.apply_commands();
+        }
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.graph_state");
+            self.publish_graph_staleness();
+        }
+        self.cycle_inner(n_frames);
+    }
 
+    fn cycle_inner(&mut self, n_frames: usize) {
+        let _span = shoop_tracing::realtime_span!("engine.rt.cycle", value = n_frames);
         self.session.process(n_frames);
         self.stats.cycles.fetch_add(1, Ordering::Relaxed);
         self.stats
@@ -327,127 +368,41 @@ impl Engine {
         self.stats
             .stale_cycles
             .store(self.session.n_stale_cycles(), Ordering::Relaxed);
-
-        self.publish_state();
+        self.stats
+            .schedule_request_id
+            .store(self.session.graph_request_id(), Ordering::Relaxed);
+        self.stats
+            .schedule_applied_id
+            .store(self.session.graph_applied_id(), Ordering::Relaxed);
+        self.stats
+            .sub_blocks_last_cycle
+            .store(self.session.n_sub_blocks_last_cycle(), Ordering::Relaxed);
+        self.publish_trace();
     }
 
-    /// Fills and publishes a snapshot, if there is a box free to fill.
-    ///
-    /// Skipped rather than queued when the control side has not returned one: it polls,
-    /// so it wants the newest state, and dropping an intermediate costs nothing.
-    fn publish_state(&mut self) {
+    /// Fills and publishes a diagnostic trace snapshot, if a box is free.
+    fn publish_trace(&mut self) {
+        let _span = shoop_tracing::realtime_span_detail!("engine.rt.publish_trace");
         let Ok(mut snap) = self.empties.pop() else {
+            self.stats
+                .trace_snapshots_dropped
+                .fetch_add(1, Ordering::Relaxed);
             return;
         };
 
         snap.cycle = self.stats.cycles.load(Ordering::Relaxed);
-        snap.n_loops = self.session.n_loops();
-        snap.n_channels = self.session.n_channels();
-        snap.n_ports = self.session.n_ports();
+        snap.composite_timeline_version = self.session.composite_timeline_version();
+        snap.n_retired_composite_plans = self.session.composite_timeline().n_retired_plans();
+        snap.n_composite_trace_entries =
+            self.session.composite_timeline().n_history_trace_entries();
 
-        // Each vector is filled only as far as the box already has room for: pushing past
-        // capacity would allocate. The `n_*` counts above record any shortfall so the reader
-        // can hand back bigger boxes -- see `EngineHandle::poll`.
-        snap.loops.clear();
-        for i in 0..snap.n_loops.min(snap.loops.capacity()) {
-            let Some(l) = self.session.loop_(i) else {
-                break;
-            };
-            let next = l.first_planned_transition();
-            snap.loops.push(LoopSnapshot {
-                mode: l.mode(),
-                length: l.length(),
-                position: l.position(),
-                next_mode: next.map(|(m, _)| m),
-                next_mode_delay: next.map(|(_, d)| d),
-            });
-        }
-
-        // Both channel vectors are indexed by the session's single channel arena, so each
-        // index is filled in exactly one of them and left at its default in the other. That
-        // costs a slot per channel and buys an index a handle can use without a second map.
-        snap.audio_channels.clear();
-        snap.midi_channels.clear();
-        let channel_room = snap
-            .audio_channels
-            .capacity()
-            .min(snap.midi_channels.capacity());
-        for i in 0..snap.n_channels.min(channel_room) {
-            let mut audio = AudioChannelState::default();
-            let mut midi = MidiChannelState::default();
-            if let Some(m) = self.session.channel_mapping(i) {
-                let (loop_idx, kind, channel_idx) = (m.loop_idx, m.kind, m.channel_idx);
-                if let Some(l) = self.session.loop_(loop_idx) {
-                    match kind {
-                        ChannelKind::Audio => {
-                            if let Some(c) = l.audio_channel(channel_idx) {
-                                audio = AudioChannelState {
-                                    mode: c.mode(),
-                                    gain: c.gain(),
-                                    output_peak: c.output_peak(),
-                                    length: c.length() as u32,
-                                    start_offset: c.start_offset(),
-                                    played_back_sample: c.played_back_sample(),
-                                    n_preplay_samples: c.pre_play_samples(),
-                                    data_dirty: c.data_seq_nr() != 0,
-                                };
-                            }
-                        }
-                        ChannelKind::Midi => {
-                            if let Some(c) = l.midi_channel(channel_idx) {
-                                midi = MidiChannelState {
-                                    mode: c.mode(),
-                                    n_events_triggered: c.n_events_triggered(),
-                                    n_notes_active: c.n_notes_active(),
-                                    length: c.length(),
-                                    start_offset: c.start_offset(),
-                                    played_back_sample: c.played_back_sample(),
-                                    n_preplay_samples: c.pre_play_samples(),
-                                    data_dirty: c.data_seq_nr() != 0,
-                                };
-                            }
-                        }
-                    }
-                }
-            }
-            snap.audio_channels.push(audio);
-            snap.midi_channels.push(midi);
-        }
-
-        // Ports likewise: one arena, two vectors, `None` for the kind a port is not. No name
-        // is published -- it is a `String`, and this thread must not touch one. Whoever holds
-        // a port handle supplies the name; see `state::AudioPortSnapshot::named`.
-        snap.audio_ports.clear();
-        snap.midi_ports.clear();
-        let port_room = snap.audio_ports.capacity().min(snap.midi_ports.capacity());
-        for i in 0..snap.n_ports.min(port_room) {
-            let mut audio = None;
-            let mut midi = None;
-            if let Some(p) = self.session.port(i) {
-                if let Some(a) = p.audio() {
-                    audio = Some(AudioPortSnapshot {
-                        input_peak: a.input_peak(),
-                        output_peak: a.output_peak(),
-                        gain: a.gain(),
-                        muted: a.muted(),
-                        passthrough_muted: a.passthrough_muted(),
-                        ringbuffer_n_samples: a.ringbuffer_n_samples() as u32,
-                    });
-                } else if let Some(m) = p.midi() {
-                    midi = Some(MidiPortSnapshot {
-                        n_input_events: m.n_input_events(),
-                        n_input_notes_active: m.n_notes_active(),
-                        n_output_events: m.n_output_events(),
-                        n_output_notes_active: 0,
-                        muted: m.muted(),
-                        passthrough_muted: m.passthrough_muted(),
-                        ringbuffer_n_samples: m.ringbuffer_n_samples(),
-                    });
-                }
-            }
-            snap.audio_ports.push(audio);
-            snap.midi_ports.push(midi);
-        }
+        let timeline = self.session.composite_timeline();
+        snap.composite_timeline_counters = timeline.counters();
+        snap.composite_timeline_fault = timeline.fault();
+        snap.composite_trace.clear();
+        let trace_room = snap.composite_trace.capacity();
+        snap.composite_trace
+            .extend(timeline.history_trace().take(trace_room));
 
         let _ = self.filled.push(snap);
     }
@@ -466,19 +421,48 @@ impl Engine {
     /// The allocation guard applies as it does to [`Self::process`], because in the first
     /// case this *is* the audio thread.
     pub fn pump(&mut self) {
-        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.apply_commands());
+        let _span = shoop_tracing::realtime_span!("engine.rt.pump");
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+            crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+                {
+                    let _commands_span = shoop_tracing::realtime_span!("engine.rt.commands");
+                    self.apply_commands();
+                }
+                {
+                    let _graph_span = shoop_tracing::realtime_span!("engine.rt.graph_state");
+                    self.publish_graph_staleness();
+                }
+            });
+        });
+    }
+
+    /// Publishes whether the schedule has fallen behind the topology.
+    ///
+    /// Written after commands are applied, because applying them is what makes it stale, and
+    /// the control side's decision to rebuild is only as good as the moment this reflects.
+    pub(crate) fn publish_graph_staleness(&self) {
+        self.stats
+            .graph_stale
+            .store(!self.session.graph_up_to_date(), Ordering::Relaxed);
     }
 
     fn apply_commands(&mut self) {
+        let accepted = self.commands.slots();
         let mut applied = 0u32;
-        while let Ok(mut cmd) = self.commands.pop() {
+        for _ in 0..accepted {
+            let Ok(mut queued) = self.commands.pop() else {
+                break;
+            };
             crate::realtime_allow_alloc_once!("Engine::apply_commands command execution", || {
-                cmd(&mut self.session)
+                (queued.command)(&mut self.session)
             });
+            self.stats
+                .last_applied_command
+                .store(queued.sequence.get(), Ordering::Release);
             applied += 1;
             // Hand it back to be freed off this thread. Cannot fail: the return
             // queue is as large as the command queue.
-            let _ = self.returns.push(cmd);
+            let _ = self.returns.push(queued);
         }
         if applied > 0 {
             self.stats
@@ -488,17 +472,92 @@ impl Engine {
     }
 }
 
-/// Reserves room for `wanted` items, if the vector is short of it.
+/// Waits for a result queued by [`EngineHandle::send_for_result`].
 ///
-/// On the control thread only. Allocating is what the audio thread cannot do, which is why
-/// it publishes a short snapshot and reports the shortfall instead of growing anything.
-fn grow_to<T>(v: &mut Vec<T>, wanted: usize) {
-    if wanted > v.capacity() {
-        v.reserve(wanted - v.capacity());
+/// A free function rather than a method, so it is impossible to call while holding the
+/// handle: it does not have one. Polls rather than blocking on a condition variable, so the
+/// audio thread only ever has to store a result and never has to signal anything.
+pub fn wait_for_result<T>(
+    mut rx: Consumer<T>,
+    timeout: std::time::Duration,
+) -> Result<T, WaitError> {
+    let span = tracing::debug_span!(
+        "engine.control.wait_result",
+        timeout_ms = timeout.as_millis() as u64,
+        outcome = tracing::field::Empty
+    );
+    let _entered = span.enter();
+    let result = wait_until(timeout, || rx.pop().ok());
+    span.record(
+        "outcome",
+        if result.is_ok() { "applied" } else { "timeout" },
+    );
+    result
+}
+
+pub fn wait_for_command(
+    stats: &Stats,
+    sequence: CommandSequence,
+    timeout: std::time::Duration,
+) -> Result<(), WaitError> {
+    let span = tracing::debug_span!(
+        "engine.control.wait_command",
+        sequence = sequence.get(),
+        timeout_ms = timeout.as_millis() as u64,
+        outcome = tracing::field::Empty
+    );
+    let _entered = span.enter();
+    let result = wait_until(timeout, || {
+        (stats.last_applied_command.load(Ordering::Acquire) >= sequence.get()).then_some(())
+    });
+    span.record(
+        "outcome",
+        if result.is_ok() { "applied" } else { "timeout" },
+    );
+    result
+}
+
+fn wait_until<T>(
+    timeout: std::time::Duration,
+    mut poll: impl FnMut() -> Option<T>,
+) -> Result<T, WaitError> {
+    let started = std::time::Instant::now();
+    let deadline = started + timeout;
+    let spin_until = started + SPIN_BUDGET;
+    loop {
+        if let Some(value) = poll() {
+            return Ok(value);
+        }
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            return Err(WaitError::Timeout(timeout));
+        }
+        // Yield while the answer is plausibly imminent, sleep once it clearly is not. The
+        // audio thread is never signalled either way: it stores the result and moves on.
+        if now < spin_until {
+            std::thread::yield_now();
+        } else {
+            std::thread::sleep(POLL_INTERVAL);
+        }
+    }
+}
+
+fn grow_to<T>(values: &mut Vec<T>, wanted: usize) {
+    if wanted > values.capacity() {
+        values.reserve(wanted - values.capacity());
     }
 }
 
 impl EngineHandle {
+    pub fn is_connected(&self) -> bool {
+        self.alive.load(Ordering::Acquire)
+    }
+
+    #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
+    pub(crate) fn connected_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.alive)
+    }
+
     pub fn stats(&self) -> &Arc<Stats> {
         &self.stats
     }
@@ -507,11 +566,63 @@ impl EngineHandle {
     ///
     /// Reclaiming here rather than in a separate step keeps the queue from silently
     /// filling up in a caller that only ever sends.
-    pub fn send(&mut self, command: Command) -> Result<(), SendError> {
+    pub fn send(&mut self, command: Command) -> Result<CommandSequence, SendError> {
+        let span = tracing::debug_span!(
+            "engine.control.send",
+            pending_before = self.n_pending(),
+            sequence = tracing::field::Empty,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
+        let reservation = match self.try_reserve() {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                span.record(
+                    "outcome",
+                    match &error {
+                        SendError::Full => "full",
+                        SendError::Disconnected => "disconnected",
+                    },
+                );
+                return Err(error);
+            }
+        };
+        let sequence = self.send_reserved(reservation, command);
+        span.record("sequence", sequence.get());
+        span.record("outcome", "queued");
+        Ok(sequence)
+    }
+
+    pub fn try_reserve(&mut self) -> Result<CommandReservation, SendError> {
         self.reclaim();
-        self.commands.push(command).map_err(|e| match e {
-            rtrb::PushError::Full(_) => SendError::Full,
+        if !self.alive.load(Ordering::Acquire) {
+            return Err(SendError::Disconnected);
+        }
+        if self.commands.slots() == 0 {
+            return Err(SendError::Full);
+        }
+        Ok(CommandReservation {
+            sequence: CommandSequence(self.next_sequence),
         })
+    }
+
+    pub fn send_reserved(
+        &mut self,
+        reservation: CommandReservation,
+        command: Command,
+    ) -> CommandSequence {
+        let sequence = reservation.sequence;
+        let _span = tracing::trace_span!(
+            "engine.control.enqueue",
+            sequence = sequence.get(),
+            pending_before = self.n_pending()
+        )
+        .entered();
+        self.commands
+            .push(SequencedCommand { sequence, command })
+            .unwrap_or_else(|_| unreachable!("a reserved command slot must remain available"));
+        self.next_sequence = self.next_sequence.wrapping_add(1).max(1);
+        sequence
     }
 
     /// Queues control work and waits for its result.
@@ -532,28 +643,151 @@ impl EngineHandle {
         T: Send + 'static,
         F: FnOnce(&mut Session) -> T + Send + 'static,
     {
-        let (mut tx, mut rx) = RingBuffer::<T>::new(1);
-        let mut f = Some(f);
-        self.send(Box::new(move |s: &mut Session| {
-            if let Some(f) = f.take() {
-                let _ = tx.push(f(s));
-            }
-        }))?;
+        let span = tracing::debug_span!(
+            "engine.control.send_and_wait",
+            sequence = tracing::field::Empty,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
+        let (sequence, rx) = self.send_for_result(f)?;
+        span.record("sequence", sequence.get());
+        let result = wait_for_result(rx, timeout);
+        span.record("outcome", if result.is_ok() { "applied" } else { "failed" });
+        result
+    }
 
-        let deadline = std::time::Instant::now() + timeout;
-        loop {
-            if let Ok(v) = rx.pop() {
-                return Ok(v);
-            }
-            if std::time::Instant::now() >= deadline {
-                return Err(WaitError::Timeout(timeout));
-            }
-            std::thread::sleep(POLL_INTERVAL);
-        }
+    /// Queues work and hands back the slot its result will arrive in.
+    ///
+    /// The half of [`Self::send_and_wait`] that needs this handle, split out from the half
+    /// that waits. A caller reaching this handle through a mutex -- which anything shared
+    /// between GUI threads must -- has to be able to release that mutex *before* waiting.
+    ///
+    /// Holding it across the wait is a mistake worth spelling out, because it does not look
+    /// like one and it does not fail: every control operation then queues behind a full
+    /// round trip to the audio thread, and a caller doing this in a loop starves every other
+    /// thread. What that looks like from outside is not a deadlock but a GUI that has stopped
+    /// responding, which is a good deal harder to diagnose.
+    pub fn send_for_result<T, F>(
+        &mut self,
+        f: F,
+    ) -> Result<(CommandSequence, Consumer<T>), SendError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Session) -> T + Send + 'static,
+    {
+        let reservation = self.try_reserve()?;
+        Ok(self.send_for_result_reserved(reservation, f))
+    }
+
+    pub fn send_for_result_reserved<T, F>(
+        &mut self,
+        reservation: CommandReservation,
+        f: F,
+    ) -> (CommandSequence, Consumer<T>)
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Session) -> T + Send + 'static,
+    {
+        let (mut tx, rx) = RingBuffer::<T>::new(1);
+        let mut f = Some(f);
+        let sequence = self.send_reserved(
+            reservation,
+            Box::new(move |s: &mut Session| {
+                if let Some(f) = f.take() {
+                    let _ = tx.push(f(s));
+                }
+            }),
+        );
+        (sequence, rx)
+    }
+
+    /// Queues a validated timeline for callback-boundary installation.
+    ///
+    /// The displaced timeline is returned through the result queue so its plans are
+    /// destroyed by the control thread. The returned receiver also carries the
+    /// activation-time generation/topology recheck result.
+    pub fn send_composite_timeline(
+        &mut self,
+        timeline: CompositeBoundaryTimeline,
+    ) -> Result<Consumer<Result<ReclaimedCompositeTimeline, RejectedCompositeTimeline>>, SendError>
+    {
+        self.send_for_result(move |session| session.install_prepared_composite_timeline(timeline))
+            .map(|(_, receiver)| receiver)
+    }
+
+    /// Arms a synchronized composite transition at callback-start acceptance.
+    pub fn send_composite_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        delay: u32,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_transition(source, mode, delay)
+        })
+        .map(|(_, receiver)| receiver)
+    }
+
+    /// Queues an unsynchronized mode change and exact prevalidated iteration seek.
+    pub fn send_composite_immediate_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        iteration: i64,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_immediate_transition(source, mode, iteration)
+        })
+        .map(|(_, receiver)| receiver)
+    }
+
+    /// Changes record-pass completion behavior at callback-start acceptance.
+    pub fn send_composite_play_after_record(
+        &mut self,
+        source: LoopIdentity,
+        enabled: bool,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_play_after_record(source, enabled)
+        })
+        .map(|(_, receiver)| receiver)
+    }
+
+    /// Returns plans displaced by deferred activation for control-thread destruction.
+    pub fn send_composite_plan_reclamation(
+        &mut self,
+        capacity: usize,
+    ) -> Result<Consumer<Vec<CompiledCompositePlan>>, SendError> {
+        let storage = Vec::with_capacity(capacity);
+        self.send_for_result(move |session| session.reclaim_composite_plans(storage))
+            .map(|(_, receiver)| receiver)
+    }
+
+    /// Queues recovery from a latched composite timeline fault.
+    pub fn send_composite_fault_reset(&mut self) -> Result<Consumer<u64>, SendError> {
+        self.send_for_result(Session::accept_composite_fault_reset)
+            .map(|(_, receiver)| receiver)
+    }
+
+    /// Queues a composite/basic target action for callback-start acceptance.
+    ///
+    /// `None` uses the callback-start sample. A timestamp retains its exact future
+    /// sample boundary; a past timestamp is reported by the result receiver.
+    pub fn send_composite_control(
+        &mut self,
+        target: LoopIdentity,
+        action: BoundaryTargetAction,
+        at_sample: Option<u64>,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_control(target, action, at_sample)
+        })
+        .map(|(_, receiver)| receiver)
     }
 
     /// Frees commands the engine has finished with. Safe to call at any time.
     pub fn reclaim(&mut self) -> usize {
+        let _span = tracing::trace_span!("engine.control.reclaim").entered();
         let mut n = 0;
         while self.returns.pop().is_ok() {
             n += 1;
@@ -561,36 +795,25 @@ impl EngineHandle {
         n
     }
 
-    /// Takes the newest published state, returning older boxes to be refilled.
-    ///
-    /// Grows the boxes when the engine reports it had more loops than would fit, so
-    /// the shortfall corrects itself without the audio thread ever allocating.
-    pub fn poll(&mut self) -> Option<&StateSnapshot> {
+    /// Takes the newest session-level composite diagnostics.
+    pub fn poll_trace(&mut self) -> Option<&CompositeTraceSnapshot> {
+        let _span = tracing::trace_span!("engine.control.poll_trace").entered();
         while let Ok(snap) = self.filled.pop() {
             if let Some(old) = self.current.replace(snap) {
                 self.recycle(old);
             }
         }
-        // Grow the box we are holding. It goes back to the pool on the next poll, so
-        // a few polls after loops are added every box in circulation has room. The
-        // audio thread never allocates; it just publishes a short snapshot until then.
-        if let Some(c) = self.current.as_mut() {
-            grow_to(&mut c.loops, c.n_loops);
-            grow_to(&mut c.audio_channels, c.n_channels);
-            grow_to(&mut c.midi_channels, c.n_channels);
-            grow_to(&mut c.audio_ports, c.n_ports);
-            grow_to(&mut c.midi_ports, c.n_ports);
+        if let Some(current) = self.current.as_mut() {
+            grow_to(
+                &mut current.composite_trace,
+                current.n_composite_trace_entries,
+            );
         }
         self.current.as_deref()
     }
 
-    fn recycle(&mut self, mut snap: Box<StateSnapshot>) {
-        // Cleared, not shrunk: the capacity is the whole point of handing the box back.
-        snap.loops.clear();
-        snap.audio_channels.clear();
-        snap.midi_channels.clear();
-        snap.audio_ports.clear();
-        snap.midi_ports.clear();
+    fn recycle(&mut self, mut snap: Box<CompositeTraceSnapshot>) {
+        snap.composite_trace.clear();
         let _ = self.empties.push(snap);
     }
 
@@ -676,75 +899,6 @@ mod tests {
     }
 
     #[test]
-    fn state_is_published_after_a_cycle() {
-        let (mut e, mut h) = engine();
-        let l = e.session_mut().create_loop();
-        e.session_mut().loop_mut(l).expect("loop").set_length(16);
-        e.session_mut().apply_graph_changes().expect("schedule");
-        e.session_mut()
-            .set_loop_mode(l, LoopMode::Playing)
-            .expect("mode");
-
-        // Nothing has run, so there is nothing to read yet.
-        check!(h.poll().is_none());
-
-        e.process(4);
-
-        let_assert!(Some(snap) = h.poll());
-        check!(snap.n_loops == 1);
-        check!(snap.loops.len() == 1);
-        check!(snap.loops[0].mode == LoopMode::Playing);
-        check!(snap.loops[0].length == 16);
-        check!(snap.loops[0].position == 4);
-        check!(snap.cycle == 1);
-    }
-
-    #[test]
-    fn polling_keeps_only_the_newest_state() {
-        let (mut e, mut h) = engine();
-        let l = e.session_mut().create_loop();
-        e.session_mut().loop_mut(l).expect("loop").set_length(64);
-        e.session_mut().apply_graph_changes().expect("schedule");
-        e.session_mut()
-            .set_loop_mode(l, LoopMode::Playing)
-            .expect("mode");
-
-        e.process(4);
-        e.process(4);
-
-        // Two cycles ran; the reader wants where the loop is now, not where it was.
-        let_assert!(Some(snap) = h.poll());
-        check!(snap.loops[0].position == 8);
-        check!(snap.cycle == 2);
-    }
-
-    /// The audio thread cannot grow the snapshot, so it publishes a short one and says
-    /// so; the handle grows the boxes and later snapshots are complete.
-    #[test]
-    fn more_loops_than_fit_are_reported_then_accommodated() {
-        let (mut e, mut h) = split(Session::default(), 16);
-        for _ in 0..20 {
-            e.session_mut().create_loop();
-        }
-        e.session_mut().apply_graph_changes().expect("schedule");
-
-        e.process(4);
-        let_assert!(Some(snap) = h.poll());
-        check!(snap.n_loops == 20);
-        check!(snap.truncated());
-        check!(snap.loops.len() < 20);
-
-        // A few cycles later every box in circulation has been refitted.
-        for _ in 0..6 {
-            e.process(4);
-            h.poll();
-        }
-        let_assert!(Some(snap) = h.poll());
-        check!(!snap.truncated());
-        check!(snap.loops.len() == 20);
-    }
-
-    #[test]
     /// DSP load is stored scaled, so check it survives the round trip and that a
     /// nonsense reading is clamped rather than wrapping.
     fn dsp_load_round_trips() {
@@ -756,150 +910,6 @@ mod tests {
 
         s.set_dsp_load_percent(-5.0);
         check!(s.dsp_load_percent() == 0.0);
-    }
-
-    /// Everything the 40 Hz poll needs, from one cycle: loops, channels and ports together.
-    ///
-    /// The point of publishing these rather than asking for them one at a time -- a blocking
-    /// query per object per frame costs an audio cycle each, which a session with a handful
-    /// of tracks cannot afford.
-    #[test]
-    fn one_cycle_publishes_loops_channels_and_ports_together() {
-        use crate::external_audio_port::ExternalAudioPort;
-        use crate::external_midi_port::ExternalMidiPort;
-
-        let mut s = Session::default();
-        let aport = s.add_port(Port::External(ExternalAudioPort::new(
-            "aout",
-            PortDirection::Output,
-            4,
-        )));
-        let mport = s.add_port(Port::ExternalMidi(ExternalMidiPort::new(
-            "mout",
-            PortDirection::Output,
-        )));
-        let l = s.create_loop();
-        let ac = s
-            .add_audio_channel(l, 64, ChannelMode::Direct)
-            .expect("audio channel");
-        let mc = s
-            .add_midi_channel(l, 256, ChannelMode::Direct)
-            .expect("midi channel");
-        s.connect_channel_output(ac, aport).expect("connect audio");
-        s.connect_channel_output(mc, mport).expect("connect midi");
-        s.loop_mut(l).expect("loop").set_length(64);
-        s.apply_graph_changes().expect("schedule");
-
-        // Distinguishable values, so a snapshot that reported another object's numbers or a
-        // default would not pass.
-        s.loop_mut(l)
-            .expect("loop")
-            .audio_channel_mut(0)
-            .expect("channel")
-            .set_gain(0.25);
-        s.port_mut(aport)
-            .expect("port")
-            .audio_mut()
-            .expect("audio")
-            .set_gain(0.75);
-        s.port_mut(mport)
-            .expect("port")
-            .midi_mut()
-            .expect("midi")
-            .set_muted(true);
-        s.set_loop_mode(l, LoopMode::Playing).expect("mode");
-
-        let (mut e, mut h) = split(s, 16);
-        e.process(4);
-
-        let_assert!(Some(snap) = h.poll());
-        check!(!snap.truncated());
-
-        check!(snap.n_loops == 1);
-        check!(snap.loops[0].mode == LoopMode::Playing);
-        check!(snap.loops[0].position == 4);
-
-        // One arena, two vectors: each channel index is filled in exactly one of them.
-        check!(snap.n_channels == 2);
-        check!(snap.audio_channels[ac].gain == 0.25);
-        check!(snap.audio_channels[ac].mode == ChannelMode::Direct);
-        check!(snap.midi_channels[mc].mode == ChannelMode::Direct);
-
-        check!(snap.n_ports == 2);
-        let_assert!(Some(a) = snap.audio_ports[aport]);
-        check!(a.gain == 0.75);
-        check!(!a.muted);
-        // The audio port is not a MIDI port, and says so rather than shifting the indices.
-        check!(snap.midi_ports[aport].is_none());
-        let_assert!(Some(m) = snap.midi_ports[mport]);
-        check!(m.muted);
-        check!(snap.audio_ports[mport].is_none());
-    }
-
-    /// The published name problem, asserted from the other side.
-    ///
-    /// Port names are deliberately absent from a snapshot, because filling one would mean the
-    /// audio thread cloning a `String`. The name comes from whoever holds the handle.
-    #[test]
-    fn a_polled_port_becomes_a_full_state_once_named() {
-        use crate::external_audio_port::ExternalAudioPort;
-
-        let mut s = Session::default();
-        let p = s.add_port(Port::External(ExternalAudioPort::new(
-            "out-1",
-            PortDirection::Output,
-            4,
-        )));
-        s.port_mut(p)
-            .expect("port")
-            .audio_mut()
-            .expect("audio")
-            .set_gain(0.5);
-        s.apply_graph_changes().expect("schedule");
-
-        let (mut e, mut h) = split(s, 16);
-        e.process(4);
-
-        let_assert!(Some(snap) = h.poll());
-        let_assert!(Some(polled) = snap.audio_ports[p]);
-        let full = polled.named("out-1");
-        check!(full.name == "out-1");
-        check!(full.gain == 0.5);
-    }
-
-    /// Channels and ports added after the split get the same grow-on-poll treatment as loops.
-    #[test]
-    fn more_channels_than_fit_are_reported_then_accommodated() {
-        let mut s = Session::default();
-        let l = s.create_loop();
-        s.apply_graph_changes().expect("schedule");
-
-        // Split while the session is small, so the boxes are sized small, then add well past
-        // the floor `split` reserves.
-        let (mut e, mut h) = split(s, 16);
-        h.send(Box::new(move |s: &mut Session| {
-            for _ in 0..40 {
-                let _ = s.add_audio_channel(l, 8, ChannelMode::Direct);
-            }
-            let _ = s.apply_graph_changes();
-        }))
-        .expect("queue has room");
-        e.process(4);
-
-        let_assert!(Some(snap) = h.poll());
-        check!(snap.n_channels == 40);
-        check!(snap.truncated());
-        check!(snap.audio_channels.len() < 40);
-
-        // A few cycles later every box in circulation has been refitted.
-        for _ in 0..6 {
-            e.process(4);
-            h.poll();
-        }
-        let_assert!(Some(snap) = h.poll());
-        check!(!snap.truncated());
-        check!(snap.audio_channels.len() == 40);
-        check!(snap.midi_channels.len() == 40);
     }
 
     /// What `pump` is for: control work answered while no cycles are being run.
@@ -918,7 +928,7 @@ mod tests {
         e.session_mut().apply_graph_changes().expect("schedule");
 
         let_assert!(
-            Ok(()) = h.send(Box::new(|s: &mut Session| {
+            Ok(_) = h.send(Box::new(|s: &mut Session| {
                 let _ = s.set_loop_mode(0, LoopMode::Stopped);
             }))
         );
@@ -928,10 +938,9 @@ mod tests {
         // The command landed...
         check!(e.session().loop_(0).expect("loop").mode() == LoopMode::Stopped);
         check!(e.stats().commands_applied.load(Ordering::Relaxed) == 1);
-        // ...without a cycle running, so nothing advanced and nothing was published.
+        // ...without a cycle running, so nothing advanced.
         check!(e.stats().cycles.load(Ordering::Relaxed) == 0);
         check!(e.session().loop_(0).expect("loop").position() == 0);
-        check!(h.poll().is_none());
         // And the box came back to be freed on this side, as after a cycle.
         check!(h.reclaim() == 1);
     }
@@ -942,7 +951,7 @@ mod tests {
         e.session_mut().apply_graph_changes().expect("schedule");
 
         let_assert!(
-            Ok(()) = h.send(Box::new(|s: &mut Session| {
+            Ok(_) = h.send(Box::new(|s: &mut Session| {
                 s.create_loop();
             }))
         );
@@ -963,7 +972,7 @@ mod tests {
 
         for _ in 0..3 {
             let_assert!(
-                Ok(()) = h.send(Box::new(|s: &mut Session| {
+                Ok(_) = h.send(Box::new(|s: &mut Session| {
                     s.create_loop();
                 }))
             );
@@ -977,13 +986,64 @@ mod tests {
         let (mut e, mut h) = split(Session::default(), 2);
         e.session_mut().apply_graph_changes().expect("schedule");
 
-        let_assert!(Ok(()) = h.send(Box::new(|_: &mut Session| {})));
-        let_assert!(Ok(()) = h.send(Box::new(|_: &mut Session| {})));
+        let first = h.send(Box::new(|_: &mut Session| {})).expect("first");
+        let second = h.send(Box::new(|_: &mut Session| {})).expect("second");
+        check!(first.get() == 1);
+        check!(second.get() == 2);
         check!(h.send(Box::new(|_: &mut Session| {})) == Err(SendError::Full));
 
-        // Draining makes room again.
+        // Draining makes room again without consuming a sequence for the refusal.
         e.process(4);
-        let_assert!(Ok(()) = h.send(Box::new(|_: &mut Session| {})));
+        let third = h.send(Box::new(|_: &mut Session| {})).expect("third");
+        check!(third.get() == 3);
+        check!(e.stats().last_applied_command.load(Ordering::Acquire) == second.get());
+    }
+
+    #[test]
+    fn a_payload_can_be_retained_until_queue_capacity_is_reserved() {
+        let (mut e, mut h) = split(Session::default(), 1);
+        h.send(Box::new(|_: &mut Session| {})).expect("fill queue");
+
+        let payload = vec![1u8, 2, 3, 4];
+        check!(matches!(h.try_reserve(), Err(SendError::Full)));
+        check!(payload.len() == 4);
+
+        e.pump();
+        let reservation = h.try_reserve().expect("room after pump");
+        let sequence = h.send_reserved(
+            reservation,
+            Box::new(move |s: &mut Session| {
+                let loop_idx = s.create_loop();
+                s.loop_mut(loop_idx)
+                    .expect("created loop")
+                    .set_length(payload.len() as u32);
+            }),
+        );
+        e.pump();
+
+        check!(sequence.get() == 2);
+        check!(e.session().loop_(0).expect("loop").length() == 4);
+    }
+
+    #[test]
+    fn command_fences_observe_applied_sequence() {
+        let (mut e, mut h) = engine();
+        let sequence = h.send(Box::new(|_: &mut Session| {})).expect("queue");
+        let stats = Arc::clone(h.stats());
+        let driver = std::thread::spawn(move || {
+            e.pump();
+            e
+        });
+
+        wait_for_command(&stats, sequence, DEFAULT_WAIT_TIMEOUT).expect("fence");
+        let _ = driver.join().expect("engine");
+    }
+
+    #[test]
+    fn sending_after_engine_drop_reports_disconnected() {
+        let (e, mut h) = engine();
+        drop(e);
+        check!(h.send(Box::new(|_: &mut Session| {})) == Err(SendError::Disconnected));
     }
 
     #[test]
@@ -992,7 +1052,7 @@ mod tests {
         e.session_mut().apply_graph_changes().expect("schedule");
 
         for _ in 0..3 {
-            let_assert!(Ok(()) = h.send(Box::new(|_: &mut Session| {})));
+            let_assert!(Ok(_) = h.send(Box::new(|_: &mut Session| {})));
         }
         e.process(4);
 
@@ -1023,7 +1083,7 @@ mod tests {
         // the last-applied schedule, so existing audio keeps flowing while the next
         // schedule is built; the staleness is counted rather than costing the cycle.
         let_assert!(
-            Ok(()) = h.send(Box::new(|s: &mut Session| {
+            Ok(_) = h.send(Box::new(|s: &mut Session| {
                 s.add_port(Port::Dummy(DummyAudioPort::new(
                     PortId(1),
                     "in",
@@ -1046,7 +1106,7 @@ mod tests {
         // Structural work and the reschedule it needs go in one command, so the
         // graph is never left stale at a cycle boundary.
         let_assert!(
-            Ok(()) = h.send(Box::new(|s: &mut Session| {
+            Ok(_) = h.send(Box::new(|s: &mut Session| {
                 let p = s.add_port(Port::Dummy(DummyAudioPort::new(
                     PortId(1),
                     "in",

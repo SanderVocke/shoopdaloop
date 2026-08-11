@@ -5,6 +5,9 @@
         "configuration": {
             "type": "object",
             "properties": {
+                "carla_hosting_mode": {
+                    "enum": ["in_process", "subprocess"]
+                },
                 "midi_settings": {
                     "type": "object",
                     "properties": {

@@ -61,6 +61,10 @@ on:
           description: 'create draft release and upload build artifacts to it'
           type: boolean
           default: false
+        qml_trace_capture_all_variants:
+          description: 'Test-only: capture and upload QML traces for every non-coverage package variant'
+          type: boolean
+          default: false
     schedule:
       - cron: "0 1 * * *" # every day at 1am
 
@@ -92,6 +96,7 @@ env:
   CHECKPOINTS_DEFAULT: 'false'
   PI_CHECKPOINTS_DEFAULT: 'false'
   CREATE_DRAFT_RELEASE_DEFAULT: 'false'
+  QML_TRACE_CAPTURE_ALL_VARIANTS_DEFAULT: 'false'
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
@@ -118,38 +123,58 @@ jobs:
       checkpoints: ${{ steps.resolve.outputs.checkpoints }}
       pi_checkpoints: ${{ steps.resolve.outputs.pi_checkpoints }}
       create_draft_release: ${{ steps.resolve.outputs.create_draft_release }}
+      qml_trace_capture_all_variants: ${{ steps.resolve.outputs.qml_trace_capture_all_variants }}
     steps:
       - name: Resolve boolean inputs with fallback defaults
         id: resolve
         shell: bash
         run: |
-          resolve() {
-            local name="$1"
-            local default="$2"
-            local input_val="$3"
+          resolve_value() {
+            local default="$1"
+            local input_val="$2"
             if [ -n "$input_val" ]; then
-              echo "$name=$input_val" | tee -a "$GITHUB_OUTPUT"
+              echo "$input_val"
             else
-              echo "$name=$default" | tee -a "$GITHUB_OUTPUT"
+              echo "$default"
             fi
           }
-          resolve windows "${{ env.WINDOWS_DEFAULT }}" "${{ github.event.inputs.windows }}"
-          resolve linux "${{ env.LINUX_DEFAULT }}" "${{ github.event.inputs.linux }}"
-          resolve macos "${{ env.MACOS_DEFAULT }}" "${{ github.event.inputs.macos }}"
-          resolve test_enabled "${{ env.TEST_ENABLED_DEFAULT }}" "${{ github.event.inputs.test_enabled }}"
-          resolve release "${{ env.RELEASE_DEFAULT }}" "${{ github.event.inputs.release }}"
-          resolve debug "${{ env.DEBUG_DEFAULT }}" "${{ github.event.inputs.debug }}"
-          resolve coverage "${{ env.COVERAGE_DEFAULT }}" "${{ github.event.inputs.coverage }}"
-          resolve vcpkg_force_rebuild "${{ env.VCPKG_FORCE_REBUILD_DEFAULT }}" "${{ github.event.inputs.vcpkg_force_rebuild }}"
-          resolve checkpoints "${{ env.CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.checkpoints }}"
-          resolve pi_checkpoints "${{ env.PI_CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.pi_checkpoints }}"
-          resolve create_draft_release "${{ env.CREATE_DRAFT_RELEASE_DEFAULT }}" "${{ github.event.inputs.create_draft_release }}"
 
-          # For draft PRs, only run debug builds and tests (no release/coverage)
+          declare -A values
+          values[windows]="$(resolve_value "${{ env.WINDOWS_DEFAULT }}" "${{ github.event.inputs.windows }}")"
+          values[linux]="$(resolve_value "${{ env.LINUX_DEFAULT }}" "${{ github.event.inputs.linux }}")"
+          values[macos]="$(resolve_value "${{ env.MACOS_DEFAULT }}" "${{ github.event.inputs.macos }}")"
+          values[test_enabled]="$(resolve_value "${{ env.TEST_ENABLED_DEFAULT }}" "${{ github.event.inputs.test_enabled }}")"
+          values[release]="$(resolve_value "${{ env.RELEASE_DEFAULT }}" "${{ github.event.inputs.release }}")"
+          values[debug]="$(resolve_value "${{ env.DEBUG_DEFAULT }}" "${{ github.event.inputs.debug }}")"
+          values[coverage]="$(resolve_value "${{ env.COVERAGE_DEFAULT }}" "${{ github.event.inputs.coverage }}")"
+          values[vcpkg_force_rebuild]="$(resolve_value "${{ env.VCPKG_FORCE_REBUILD_DEFAULT }}" "${{ github.event.inputs.vcpkg_force_rebuild }}")"
+          values[checkpoints]="$(resolve_value "${{ env.CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.checkpoints }}")"
+          values[pi_checkpoints]="$(resolve_value "${{ env.PI_CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.pi_checkpoints }}")"
+          values[create_draft_release]="$(resolve_value "${{ env.CREATE_DRAFT_RELEASE_DEFAULT }}" "${{ github.event.inputs.create_draft_release }}")"
+          values[qml_trace_capture_all_variants]="$(resolve_value "${{ env.QML_TRACE_CAPTURE_ALL_VARIANTS_DEFAULT }}" "${{ github.event.inputs.qml_trace_capture_all_variants }}")"
+
+          # For draft PRs, only run debug builds and tests (no release/coverage).
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.draft }}" = "true" ]; then
-            echo "release=false" | tee -a "$GITHUB_OUTPUT"
-            echo "coverage=false" | tee -a "$GITHUB_OUTPUT"
+            values[release]=false
+            values[coverage]=false
           fi
+
+          # The all-variant experiment deliberately exercises every active debug/release
+          # package test. Coverage still runs, but remains untraced.
+          if [ "${values[qml_trace_capture_all_variants]}" = "true" ]; then
+            values[windows]=true
+            values[linux]=true
+            values[macos]=true
+            values[test_enabled]=true
+            values[release]=true
+            values[debug]=true
+          fi
+
+          for name in windows linux macos test_enabled release debug coverage \
+            vcpkg_force_rebuild checkpoints pi_checkpoints create_draft_release \
+            qml_trace_capture_all_variants; do
+            echo "$name=${values[$name]}" | tee -a "$GITHUB_OUTPUT"
+          done
 
   ##############################################################
   ## Release creation for tag pushes
@@ -215,7 +240,7 @@ jobs:
       matrix:
         kind:
           - name: linux_release
-            if: ${{ needs.setup.outputs.release == 'true' }}
+            if: ${{ false }}
             release_build: true
             package_kind: portable_folder
             second_package_kind: appimage
@@ -230,7 +255,7 @@ jobs:
             upload_release_assets: true
             platform: linux-x64
           - name: linux_coverage
-            if: ${{ needs.setup.outputs.coverage == 'true' }}
+            if: ${{ false }}
             release_build: false
             package_kind: portable_folder
             second_package_kind: test_binaries
@@ -306,7 +331,8 @@ jobs:
       matrix:
         kind:
           - name: release_debian_stable
-            if: ${{ needs.setup.outputs.release == 'true' }}
+            if: ${{ false }}
+            trace_capture: true
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.portable.tar.gz
@@ -314,19 +340,22 @@ jobs:
             sentry_build_type: release
           - name: debug_debian_stable
             if: ${{ needs.setup.outputs.debug == 'true' }}
+            trace_capture: true
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
             sentry_build_type: debug
           - name: release_debian_appimage
-            if: ${{ needs.setup.outputs.release == 'true' }}
+            if: ${{ false }}
+            trace_capture: true
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.AppImage
             sentry_build_type: release
           - name: coverage_debian_bookworm
-            if: ${{ needs.setup.outputs.coverage == 'true' }}
+            if: ${{ false }}
+            trace_capture: false
             python: python3
             container: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
             coverage: true
@@ -376,20 +405,12 @@ jobs:
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
         sentry_key: ${{ secrets.SENTRY_KEY }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
+        capture_traces: ${{ needs.setup.outputs.qml_trace_capture_all_variants == 'true' && matrix.kind.trace_capture == true }}
     - uses: ./.github/actions/checkpoint
       if: ${{ always() && matrix.kind.if }}
     - uses: ./.github/actions/upload_coding_agent_artifact
       if: ${{ always() && matrix.kind.if }}
 
-
-
-
-
-
-
-
-
-  
 
   ##############################################################
   ## MacOS
@@ -436,7 +457,7 @@ jobs:
               if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.macos == 'true' }}
+    if: ${{ false }}
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
@@ -487,6 +508,7 @@ jobs:
         kind:
           - name: release_macos_arm
             if: ${{ needs.setup.outputs.release == 'true' }}
+            trace_capture: true
             python: python3
             container: null
             os: macos-15
@@ -500,6 +522,7 @@ jobs:
           #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
           - name: release_macos
             if: ${{ needs.setup.outputs.release == 'true' }}
+            trace_capture: true
             python: python3
             container: null
             os: macos-15-intel
@@ -516,12 +539,13 @@ jobs:
               if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [build_macos, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' }}
+    if: ${{ false }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
       PATH_SEPARATOR: ":"
+      QML_TRACE_CAPTURE_ENABLED: ${{ needs.setup.outputs.qml_trace_capture_all_variants == 'true' && matrix.kind.trace_capture == true }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
       pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
       PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
@@ -613,7 +637,7 @@ jobs:
               if: false
     runs-on: ${{ matrix.kind.os}}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.windows == 'true' }}
+    if: ${{ false }}
     env:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
@@ -667,6 +691,7 @@ jobs:
         kind:
           - name: release_windows
             if: ${{ needs.setup.outputs.release == 'true' }}
+            trace_capture: true
             python: python.exe
             container: null
             os: windows-2022
@@ -676,27 +701,30 @@ jobs:
             sentry_build_type: release
           - name: release_windows_innosetup
             if: ${{ needs.setup.outputs.release == 'true' }}
+            trace_capture: true
             python: python.exe
             container: null
             os: windows-2022
             package: ShoopDaLoop-Installer-*.exe
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: release
-          # - name: debug_windows
-          #   if: ${{ needs.setup.outputs.debug == 'true' }}
-          #   python: python.exe
-          #   container: null
-          #   os: windows-2022
-          #   package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-          #   pathconvert: "| cygpath -u -f -"
-          #   sentry_build_type: debug
+          - name: debug_windows
+            if: ${{ needs.setup.outputs.debug == 'true' && needs.setup.outputs.qml_trace_capture_all_variants == 'true' }}
+            trace_capture: true
+            python: python.exe
+            container: null
+            os: windows-2022
+            package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
+            pathconvert: "| cygpath -u -f -"
+            sentry_build_type: debug
         exclude:
           - kind:
               if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [build_windows, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' }}
+    if: ${{ false }}
     env:
+      QML_TRACE_CAPTURE_ENABLED: ${{ needs.setup.outputs.qml_trace_capture_all_variants == 'true' && matrix.kind.trace_capture == true }}
       pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
       PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}

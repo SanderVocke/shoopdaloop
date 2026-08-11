@@ -50,6 +50,7 @@ fn populate_folder(folder: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
     Ok(())
 }
 
+#[tracing::instrument(name = "tool.packaging.build_windows_portable_folder", skip_all)]
 pub fn build_portable_folder(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     if std::fs::exists(output_dir)? {
         return Err(anyhow!("Output directory {:?} already exists", output_dir));

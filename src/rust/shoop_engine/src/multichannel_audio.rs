@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use crate::realtime_lock_guard::Mutex;
 
 use thiserror::Error;
 

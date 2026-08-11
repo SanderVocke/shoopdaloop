@@ -6,9 +6,18 @@ Introduction
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 **ShoopDaLoop** supports embedded **Lua scripts** for querying and controlling the application. For example, these are used to define how **ShoopDaLoop** reacts to control MIDI events.
-Lua scripts can be provided by the user and don't require a re-installation of the software.
+Lua scripts can be provided by the user and don't require a re-installation of the software. Native egui builds run the same bundled libraries, ``keyboard.lua``, and APC Mini script as the retained QML frontend. Each script has an isolated Lua state owned by the application actor; stopping or restarting it removes its callbacks, timers, MIDI rules, connections, and queued output.
 
-**Lua** inside **ShoopDaLoop** is sandboxed for security making a large part of the standard libary unavailable. Only a whitelisted list of functions can be used. See **sandbox.lua** for details. Most notably: not any module can be imported through **require**. Only **ShoopDaLoop**-provided modules can be used.
+**Lua** inside **ShoopDaLoop** is sandboxed for compatibility and to keep scripts isolated, making a large part of the standard library unavailable. Only a whitelisted list of functions can be used. See **sandbox.lua** for details. Most notably, arbitrary modules cannot be imported through **require**; only **ShoopDaLoop**-provided modules can be used. Scripts should nevertheless be treated as trusted local code rather than as a hardened security boundary.
+
+Native egui script management
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Open **Settings** and select the **Scripts** tab to inspect lifecycle state, errors, help text, callback/timer activity, logs, and MIDI diagnostics. This is the only script-management surface: it can enable, stop, restart, add, reload, and remove user scripts. Bundled startup toggles and the ordered user path/enabled list are stored in the native ``shoop-egui-settings`` document. Persistent edits apply only after **Save**; **Stop**, **Restart**, and **Reload** affect the runtime without changing the draft. Only ``keyboard.lua`` is enabled on first run. The egui app does not import retained QML ``script_settings.1``. Source-bearing scripts inside a ``.shoop`` session are syntax-checked before session commit and are saved back with that session; machine paths are never embedded implicitly.
+
+Native MIDI autoconnect uses an anchored full-name regular expression. Logical inputs connect to matching external outputs, and logical outputs connect to matching external inputs. Discovery is hotplug-aware, queues are bounded, and positive output-rate limits are enforced per logical output without delayed-pump catch-up bursts. Per-rule patterns, matched and connected endpoint names, and latest failures are published alongside aggregate connection, error, and drop counters. Connection, send, regex, queue-drop, and callback failures remain visible in script status. Stopping a script closes everything it owns.
+
+Browser builds target ``wasm32-unknown-unknown`` and intentionally do not link ``mlua``, native MIDI, or ``shoop_scripting``. Their Settings dialog omits the **Scripts** tab, and script-bearing sessions are capability-rejected rather than partially executed.
 
 API and Libraries
 ^^^^^^^^^^^^^^^^^

@@ -24,6 +24,8 @@ pub struct ChunkedSamples<T> {
     spare: Vec<Vec<T>>,
     /// How often growth had to allocate because the spare list was empty.
     n_allocations: u32,
+    /// Optional hard ceiling used by real-time recording storage.
+    max_chunks: Option<usize>,
 }
 
 impl<T: Copy + Default> ChunkedSamples<T> {
@@ -47,9 +49,19 @@ impl<T: Copy + Default> ChunkedSamples<T> {
                 .map(|_| vec![T::default(); chunk_size])
                 .collect(),
             n_allocations: 0,
+            max_chunks: None,
         };
         s.reset();
         s
+    }
+
+    /// Preallocates a hard-bounded store that never grows beyond `capacity` samples.
+    pub fn with_bounded_capacity(chunk_size: usize, capacity: usize) -> Self {
+        let chunk_size = chunk_size.max(1);
+        let n_chunks = capacity.max(1).div_ceil(chunk_size);
+        let mut result = Self::with_reserve(chunk_size, n_chunks.saturating_sub(1));
+        result.max_chunks = Some(n_chunks);
+        result
     }
 
     pub fn chunk_size(&self) -> usize {
@@ -110,9 +122,17 @@ impl<T: Copy + Default> ChunkedSamples<T> {
         self.chunks.get_mut(idx).map(|c| &mut c[head])
     }
 
+    pub fn can_ensure_available(&self, offset: usize) -> bool {
+        self.max_chunks
+            .is_none_or(|max_chunks| offset / self.chunk_size < max_chunks)
+    }
+
     /// Grows so `offset` is addressable. Returns whether chunks were added.
     pub fn ensure_available(&mut self, offset: usize) -> bool {
         let needed = offset / self.chunk_size;
+        if !self.can_ensure_available(offset) {
+            return false;
+        }
         let changed = self.chunks.len() <= needed;
         while self.chunks.len() <= needed {
             let c = self.take_chunk();
@@ -318,6 +338,18 @@ mod tests {
         s.ensure_available(11);
         check!(s.n_chunks() == 3);
         check!(s.n_allocations() == 1);
+    }
+
+    #[test]
+    fn bounded_capacity_refuses_growth_without_allocating() {
+        let mut samples = ChunkedSamples::<f32>::with_bounded_capacity(4, 8);
+        assert!(samples.can_ensure_available(7));
+        assert!(!samples.can_ensure_available(8));
+        samples.ensure_available(7);
+        let allocations = samples.n_allocations();
+        assert!(!samples.ensure_available(8));
+        assert_eq!(samples.n_chunks(), 2);
+        assert_eq!(samples.n_allocations(), allocations);
     }
 
     #[test]

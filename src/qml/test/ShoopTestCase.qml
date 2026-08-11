@@ -239,6 +239,12 @@ Item {
 
     function wait_session_loaded(session) {
         wait_condition(() => session.loaded, 10000, `session not loaded in time`)
+        // Session construction is intentionally asynchronous. Tests that inspect an
+        // exact restored descriptor use wait_updated's explicit command/graph fence rather
+        // than relying on ordinary stale mirror polling.
+        if (session.backend) {
+            wait_updated(session.backend)
+        }
     }
 
     function wait_session_io_done() {
@@ -256,17 +262,18 @@ Item {
     }
 
     function wait_updated(backend) {
-        function wait_once() {
-            var done = false
-            function updated() {
-                done = true
-            }
-            connectOnce(backend.updated_on_gui_thread, updated)
-            wait_condition(() => done == true, 500, "Backend not updated in time")
+        // Let queued Lua/QML calls settle, then repeatedly fence engine commands and publish
+        // mirrors. Reactions to one publication may queue controls for the next engine pass.
+        wait(30)
+        for (var i = 0; i < 10; ++i) {
+            backend.wait_process()
+            let expected_epoch = backend.refresh_epoch + 1
+            backend.refresh()
+            verify_true(backend.refresh_epoch >= expected_epoch)
+            // A positive delay guarantees at least one event-processing pass even when QML
+            // coverage instrumentation makes a single queued reaction exceed the delay.
+            wait(1)
         }
-        wait_once()
-        wait_once()
-        wait_once()
     }
 
     function wait_controlled_mode(backend) {

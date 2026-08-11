@@ -4,7 +4,17 @@ import QtQuick 6.6
 ShoopRustPortGui {
     id: root
     property var descriptor : null
-    property bool loaded : initialized
+    property bool descriptor_applied: false
+    property bool loaded : root.initialized && descriptor_applied
+    onInitializedChanged: {
+        if (root.initialized && !descriptor_applied) {
+            Qt.callLater(() => {
+                root.push_all()
+                root.descriptor_applied = true
+                Qt.callLater(root.push_all)
+            })
+        }
+    }
     onLoadedChanged: root.logger.debug(`${obj_id}: loaded -> ${loaded}`)
     property var logger : ShoopRustLogger {
         name: "Frontend.Qml.MidiPort"

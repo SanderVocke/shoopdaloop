@@ -24,6 +24,7 @@ impl SettingsIO {
         ))
     }
 
+    #[tracing::instrument(name = "frontend.settings.save", skip_all)]
     pub fn save_settings(
         self: &SettingsIO,
         settings: QMap_QString_QVariant,
@@ -57,6 +58,7 @@ impl SettingsIO {
         }
     }
 
+    #[tracing::instrument(name = "frontend.settings.load", skip_all)]
     pub fn load_settings(self: &SettingsIO, override_filename: QVariant) -> QVariant {
         match || -> Result<QVariant, anyhow::Error> {
             let filename = match override_filename.is_null() {

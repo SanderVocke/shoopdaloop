@@ -73,6 +73,7 @@ impl LuaEngine {
         maybe_script_name: QVariant,
         sandboxed: bool,
     ) -> QVariant {
+        let _span = tracing::info_span!("frontend.qml_lua.evaluate", sandboxed).entered();
         match || -> Result<QVariant, anyhow::Error> {
             let maybe_script_name: Option<String> =
                 maybe_script_name.value::<QString>().map(|s| s.to_string());
@@ -80,7 +81,7 @@ impl LuaEngine {
                 .engine
                 .as_ref()
                 .ok_or(anyhow!("engine not initialized"))?
-                .evaluate::<mlua::Value>(
+                .evaluate::<omnilua::Value>(
                     code.to_string().as_str(),
                     maybe_script_name.as_ref().map(|s| s.as_str()),
                     sandboxed,
@@ -103,6 +104,7 @@ impl LuaEngine {
     }
 
     pub fn execute(self: &LuaEngine, code: QString, maybe_script_name: QVariant, sandboxed: bool) {
+        let _span = tracing::info_span!("frontend.qml_lua.execute", sandboxed).entered();
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let maybe_script_name: Option<String> =
                 maybe_script_name.value::<QString>().map(|s| s.to_string());
@@ -135,7 +137,7 @@ impl LuaEngine {
         match || -> Result<*mut WrappedLuaCallback, anyhow::Error> {
             let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
             let engine = self.engine.as_ref().ok_or(anyhow!("No engine set"))?;
-            let cb = engine.evaluate::<mlua::Function>(
+            let cb = engine.evaluate::<omnilua::Function>(
                 code.to_string().as_str(),
                 Some(name.to_string().as_str()),
                 true,
@@ -149,8 +151,8 @@ impl LuaEngine {
             );
 
             debug!(
-                "Created Qt to Lua callback \"{:?}\" with code:\n{:?}",
-                name, code
+                "Created Qt to Lua callback ({} code bytes)",
+                code.to_string().len()
             );
 
             Ok(wrapped)
@@ -232,7 +234,7 @@ impl WrappedLuaCallback {
 
     pub fn call_impl(
         self: Pin<&mut WrappedLuaCallback>,
-        override_stored_args: Option<&mlua::MultiValue>,
+        override_stored_args: Option<&omnilua::Variadic<omnilua::Value>>,
     ) {
         match || -> Result<QVariant, anyhow::Error> {
             let callback = self.callback.borrow();
@@ -245,7 +247,7 @@ impl WrappedLuaCallback {
             let args = override_stored_args.unwrap_or(&self.stored_arg);
             let rval = callback
                 .callback
-                .call::<mlua::Value>(args.clone())
+                .call::<_, omnilua::Value>(args.clone())
                 .map_err(|e| anyhow!("failed to call callback: {e}"))?;
             let rval = QVariant::from_lua(rval, lua)
                 .map_err(|e| anyhow!("failed to convert return value: {e}"))?;
@@ -262,13 +264,13 @@ impl WrappedLuaCallback {
 
     pub fn call(self: Pin<&mut WrappedLuaCallback>) {
         trace!("wrapped lua callback: call no args");
-        self.call_impl(Some(&mlua::MultiValue::new()));
+        self.call_impl(Some(&omnilua::Variadic::<omnilua::Value>::new()));
     }
 
     pub fn call_with_arg(mut self: Pin<&mut WrappedLuaCallback>, arg: QVariant) {
         trace!("wrapped lua callback: call with arg");
         if let Err(e) = || -> Result<(), anyhow::Error> {
-            let converted: mlua::Value;
+            let converted: omnilua::Value;
             {
                 let rust_mut = self.as_mut().rust_mut();
                 let callback = rust_mut.callback.borrow();
@@ -283,7 +285,9 @@ impl WrappedLuaCallback {
                     .map_err(|e| anyhow!("Could not convert arg to lua: {e}"))?;
             }
             self.as_mut()
-                .call_impl(Some(&mlua::MultiValue::from_vec(vec![converted])));
+                .call_impl(Some(&omnilua::Variadic::<omnilua::Value>::from(vec![
+                    converted,
+                ])));
             Ok(())
         }() {
             error!("Could not call wrapped lua callback: {e}")
@@ -297,7 +301,8 @@ impl WrappedLuaCallback {
 
     pub fn call_and_delete(mut self: Pin<&mut WrappedLuaCallback>) {
         trace!("wrapped lua callback: call and delete");
-        self.as_mut().call_impl(Some(&mlua::MultiValue::new()));
+        self.as_mut()
+            .call_impl(Some(&omnilua::Variadic::<omnilua::Value>::new()));
         self.as_mut().delete_later();
     }
 

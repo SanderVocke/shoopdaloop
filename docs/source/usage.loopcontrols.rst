@@ -52,6 +52,15 @@ Loops support several kinds of triggers. **play** (green), **record** (red, rend
 
 There is an individual **volume dial** for the loop playback, as well as a **balance dial** for stereo loops (appears when hovered over the volume dial).
 
+Generating click loops
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Right-click a primitive audio or MIDI loop and choose **Generate click track...** to fill it with generated click content. Audio loops can alternate a primary sound with a configurable number of secondary sounds. MIDI loops generate note-on/note-off pairs on channel 1. Both kinds support fractional clicks-per-minute values, a click count, and delaying odd clicks by a percentage of one interval. The generated grid sets the loop length; audio or MIDI content of the other kind is preserved on mixed loops.
+
+The defaults produce four clicks at 100 clicks per minute, using ``click_high`` followed by three ``click_low`` sounds, or MIDI note 64 with velocity 127 and a 0.1-second duration. **Fill loop length** derives the tempo needed to fit the selected click count into a non-empty loop. Audio **Preview** is non-mutating: it plays the current draft without loading it into the loop. Native preview uses the system default playback output and is disabled with an explanation when no default output is available. Browser preview uses the running Web Audio context when available and otherwise attempts a gesture-authorized preview context; browser autoplay policy can refuse that fallback and the error remains visible.
+
+Generation is limited to 4,096 clicks and 10,000,000 output frames. Click tails are truncated at the loop boundary, and a final MIDI note-off is kept inside the loop to avoid a stuck note. Generated content saves and loads as ordinary loop media; the generator settings themselves are not stored in the session.
+
 The orange variants of the **play** and **record** commands are present for loops on **dry/wet tracks**, and are referred to as **play dry** and **re-record dry**:
 
 * **play dry** is equivalent to **play**, except that instead if playing back the *wet* recording, we play back the *dry* recording through the synth/FX. That means you can tweak the instrument/effects and hear the result. Be aware that all loops in the same track share a single FX/synth, so using **play dry** on multiple loops simultaneously may give unexpected-sounding results because the dry signals will merge together - especially when using MIDI signals.
@@ -118,7 +127,7 @@ A **composite loop** can be created by selecting an empty slot, then holding **A
 
 Note that **Alt** + click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt** - click will add an additional loop to play right after the short one.
 
-For advanced editing of the sequence, the loop details window should be used (note that at the time of writing this, that is unimplemented).
+Use the loop details window for advanced editing. It supports sequential and parallel timelines, delays, duplication, explicit cycle counts, and regular/script modes.
 
 Composite loops are shown in pink; if a composite loop is (solely) selected, all its sub-loops are highlighted with a pink border.
 
@@ -128,7 +137,9 @@ Composite loops are shown in pink; if a composite loop is (solely) selected, all
 Playback
 """"""""
 
-Playing back a composite loop will play the loops as sequenced. Empty sub-loops are skipped. The progress indicator on the composite loop shows the total progress. The playback will cycle back around to the start of the sequence.
+Playing back a composite loop will play the loops as sequenced. Empty sub-loops remain idle but reserve their scheduled duration. The progress indicator on the composite loop shows the total progress. Regular composites cycle back around to the start; script composites run once.
+
+Once a composition or control is accepted by the engine, iteration, nesting, child transitions, and recording decisions run on the audio timeline. GUI or display updates may lag without changing those boundaries.
 
 
 Recording
@@ -163,5 +174,10 @@ Generally speaking, grabbing on composite loops does what you would expect given
     * If the global **sync control** is active, the last completed sync cycle is mapped to the last cycle of the composite loop.
     * If the global **sync control** is inactive, the currently running sync cycle is mapped to the last cycle of the composite loop. The remainder of the current sync cycle will keep recording into the last part.
 
-Note that only regular composite loops can be grabbed.
+Note that only regular composite loops can be grabbed. Nested compositions are flattened before acceptance, and all affected primitive children adopt their captured ranges in one bounded engine transaction.
+
+Editing a running composition
+"""""""""""""""""""""
+
+Edits that retain the same composite dependency structure activate at the next iteration-zero boundary. An edit that changes nested dependencies activates as a complete callback-boundary restart: old children stop, retained running composites restart at iteration zero, and pending countdowns are canceled. The UI may observe the result one update later.
 

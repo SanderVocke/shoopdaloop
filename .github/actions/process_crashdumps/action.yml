@@ -73,6 +73,7 @@ runs:
 
         SENTRY_ATTACHMENTS=""
         for f in $dump.attach.*; do
+          [ -f "$f" ] || continue
           ATTACHMENT_ID=$(basename $f | sed 's/^.*\.//')
           SENTRY_ATTACHMENTS="$SENTRY_ATTACHMENTS -F $f=@$f"
         done

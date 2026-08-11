@@ -13,11 +13,14 @@
 //! through the schedule -- ordered against the channels that read the port -- and
 //! clears whatever was there, so that a cycle nobody fed reads as silence.
 
+use crate::midi_event::MidiEvent;
 use crate::midi_port::MidiPort;
 use crate::midi_sorting_buffer::MidiSortingBuffer;
 use crate::midi_state::TrackWhat;
 use crate::midi_storage::MidiStorageElem;
 use crate::port::{PortConnectability, PortDataType, PortDirection};
+use crate::realtime_lock_guard::Mutex;
+use std::sync::Arc;
 
 /// Events reserved per cycle, so a normal cycle never grows either buffer.
 const RESERVE: usize = 256;
@@ -29,6 +32,8 @@ pub struct ExternalMidiPort {
     midi: MidiPort,
     /// Staged by the driver before the cycle; `prepare` moves it into `incoming`.
     staged: Vec<MidiStorageElem>,
+    /// Reused while rebasing events deferred into a later cycle.
+    deferred: Vec<MidiStorageElem>,
     /// This cycle's arrivals, as the engine sees them.
     incoming: Vec<MidiStorageElem>,
     /// What the engine wrote this cycle, for the driver to hand to the backend.
@@ -39,6 +44,7 @@ pub struct ExternalMidiPort {
     collect_pos: u32,
     last_collect_start: u32,
     outgoing_current_collected: bool,
+    output_capture: Option<Arc<Mutex<Vec<MidiEvent>>>>,
 }
 
 impl ExternalMidiPort {
@@ -48,13 +54,19 @@ impl ExternalMidiPort {
             direction,
             midi: MidiPort::new(TrackWhat::ALL),
             staged: Vec::with_capacity(RESERVE),
+            deferred: Vec::with_capacity(RESERVE),
             incoming: Vec::with_capacity(RESERVE),
             outgoing: MidiSortingBuffer::with_capacity(RESERVE),
             outgoing_collected: Vec::with_capacity(RESERVE),
             collect_pos: 0,
             last_collect_start: 0,
             outgoing_current_collected: false,
+            output_capture: None,
         }
+    }
+
+    pub fn set_output_capture(&mut self, output: Arc<Mutex<Vec<MidiEvent>>>) {
+        self.output_capture = Some(output);
     }
 
     pub fn name(&self) -> &str {
@@ -109,6 +121,9 @@ impl ExternalMidiPort {
     ///
     /// Refuses an oversized or empty payload rather than storing something malformed.
     pub fn push_incoming(&mut self, time: u32, data: &[u8]) -> bool {
+        if self.staged.len() >= RESERVE {
+            return false;
+        }
         match MidiStorageElem::new(time, data) {
             Some(e) => {
                 self.staged.push(e);
@@ -131,6 +146,11 @@ impl ExternalMidiPort {
         self.incoming.clear();
         self.outgoing.prepare();
         self.outgoing_collected.clear();
+        if let Some(output) = &self.output_capture {
+            crate::realtime_allow_lock!("external MIDI capture clear", output.lock())
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+        }
         self.collect_pos = 0;
         self.last_collect_start = 0;
         self.outgoing_current_collected = false;
@@ -138,6 +158,11 @@ impl ExternalMidiPort {
 
     pub fn request_output(&mut self) {
         self.outgoing_collected.clear();
+        if let Some(output) = &self.output_capture {
+            crate::realtime_allow_lock!("external MIDI capture reset", output.lock())
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+        }
         self.collect_pos = 0;
         self.last_collect_start = 0;
         self.outgoing_current_collected = false;
@@ -177,16 +202,16 @@ impl ExternalMidiPort {
             self.collect_current_outgoing(self.last_collect_start);
         }
         self.incoming.clear();
-        let mut deferred = Vec::with_capacity(self.staged.len());
+        self.deferred.clear();
         for mut e in self.staged.drain(..) {
             if e.time < n_frames {
                 self.incoming.push(e);
             } else {
                 e.time -= n_frames;
-                deferred.push(e);
+                self.deferred.push(e);
             }
         }
-        self.staged = deferred;
+        std::mem::swap(&mut self.staged, &mut self.deferred);
         self.outgoing.prepare();
         self.outgoing_current_collected = false;
     }
@@ -248,6 +273,14 @@ impl ExternalMidiPort {
                     && data[2] == 0;
                 if !is_initial_all_sound_off {
                     self.outgoing_collected.push(e);
+                    if let Some(output) = &self.output_capture {
+                        crate::realtime_allow_lock!(
+                            "external MIDI process output capture",
+                            output.lock()
+                        )
+                        .unwrap_or_else(|error| error.into_inner())
+                        .push(MidiEvent::new(e.time as i32, data.to_vec()));
+                    }
                 }
             }
             self.collect_pos = self.collect_pos.saturating_add(n_frames);

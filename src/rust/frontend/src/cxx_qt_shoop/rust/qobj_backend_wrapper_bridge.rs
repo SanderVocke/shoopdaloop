@@ -14,9 +14,6 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        include!("cxx-qt-lib-shoop/qthread.h");
-        type QThread = cxx_qt_lib_shoop::qthread::QThread;
-
         include!("cxx-qt-lib-shoop/qtimer.h");
         type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;
 
@@ -39,7 +36,7 @@ pub mod ffi {
         #[qml_element]
         #[base = QQuickItem]
         #[qproperty(bool, ready)]
-        #[qproperty(i32, update_interval_ms)]
+        #[qproperty(i32, update_interval_ms, READ=get_update_interval_ms, WRITE=set_update_interval_ms, NOTIFY=update_interval_ms_changed)]
         #[qproperty(i32, actual_backend_type)]
         #[qproperty(QString, client_name_hint)]
         #[qproperty(i32, backend_type)]
@@ -54,6 +51,7 @@ pub mod ffi {
         #[qproperty(i32, sample_rate)]
         #[qproperty(i32, buffer_size)]
         #[qproperty(f32, last_update_interval)]
+        #[qproperty(i32, refresh_epoch)]
         #[qproperty(QMap_QString_QVariant, driver_setting_overrides)]
         type BackendWrapper = super::BackendWrapperRust;
 
@@ -61,19 +59,16 @@ pub mod ffi {
         pub fn updated_on_gui_thread(self: Pin<&mut BackendWrapper>);
 
         #[qsignal]
-        pub fn updated_on_backend_thread(self: Pin<&mut BackendWrapper>);
+        pub fn update_interval_ms_changed(self: Pin<&mut BackendWrapper>, update_interval_ms: i32);
 
         #[qinvokable]
-        pub fn update_on_gui_thread(self: Pin<&mut BackendWrapper>);
+        pub fn refresh(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
-        pub fn update_on_other_thread(self: Pin<&mut BackendWrapper>);
+        pub fn get_update_interval_ms(self: &BackendWrapper) -> i32;
 
         #[qinvokable]
-        pub fn get_gui_thread(self: &BackendWrapper) -> *mut QThread;
-
-        #[qinvokable]
-        pub fn get_backend_thread(self: &BackendWrapper) -> *mut QThread;
+        pub fn set_update_interval_ms(self: Pin<&mut BackendWrapper>, update_interval_ms: i32);
 
         #[qinvokable]
         pub fn close(self: Pin<&mut BackendWrapper>);
@@ -182,24 +177,14 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for BackendWrapper {}
 }
 
+use common::tracing_helpers::TracyPlotter;
 pub use ffi::BackendWrapper;
 use ffi::*;
 
-#[derive(Copy, Clone)]
-pub struct BackendWrapperUpdateData {
-    pub xruns: i32,
-    pub stale_graph_cycles: i32,
-    pub dsp_load: f32,
-    pub last_processed: i32,
-    pub n_audio_buffers_created: i32,
-    pub n_audio_buffers_available: i32,
-    pub sample_rate: i32,
-    pub buffer_size: i32,
-}
 pub struct BackendWrapperRust {
     // Properties
     ready: bool,
-    update_interval_ms: i32,
+    pub update_interval_ms: i32,
     actual_backend_type: i32,
     client_name_hint: QString,
     backend_type: i32,
@@ -213,15 +198,47 @@ pub struct BackendWrapperRust {
     n_audio_buffers_created: i32,
     n_audio_buffers_available: i32,
     last_update_interval: f32,
+    refresh_epoch: i32,
     sample_rate: i32,
     buffer_size: i32,
 
     // Rust-side only
     pub driver: Option<AudioDriver>,
     pub session: Option<BackendSession>,
-    pub update_data: Option<BackendWrapperUpdateData>,
     pub closed: bool,
     pub last_updated: Option<time::Instant>,
+    pub plotter_mode: TracyPlotter,
+    pub plotter_samples_requested: TracyPlotter,
+    pub plotter_samples_pending: TracyPlotter,
+    pub plotter_ready: TracyPlotter,
+    pub plotter_backend_type: TracyPlotter,
+    pub plotter_xruns: TracyPlotter,
+    pub plotter_stale_graph_cycles: TracyPlotter,
+    pub plotter_dsp_load: TracyPlotter,
+    pub plotter_last_processed: TracyPlotter,
+    pub plotter_audio_buffers_created: TracyPlotter,
+    pub plotter_audio_buffers_available: TracyPlotter,
+    pub plotter_sample_rate: TracyPlotter,
+    pub plotter_buffer_size: TracyPlotter,
+    pub plotter_update_interval: TracyPlotter,
+    pub plotter_cycles: TracyPlotter,
+    pub plotter_frames: TracyPlotter,
+    pub plotter_pending_commands: TracyPlotter,
+    pub plotter_commands_applied: TracyPlotter,
+    pub plotter_last_applied_command: TracyPlotter,
+    pub plotter_trace_snapshots_dropped: TracyPlotter,
+    pub plotter_capture_underruns: TracyPlotter,
+    pub plotter_capture_overruns: TracyPlotter,
+    pub plotter_graph_arms: TracyPlotter,
+    pub plotter_graph_applies: TracyPlotter,
+    pub plotter_callback_last_ns: TracyPlotter,
+    pub plotter_callback_worst_ns: TracyPlotter,
+    pub plotter_callback_budget_overruns: TracyPlotter,
+    pub plotter_schedule_request_id: TracyPlotter,
+    pub plotter_schedule_applied_id: TracyPlotter,
+    pub plotter_stuck_cycles: TracyPlotter,
+    pub plotter_stale_cycles: TracyPlotter,
+    pub plotter_sub_blocks_last_cycle: TracyPlotter,
 }
 
 impl Default for BackendWrapperRust {
@@ -243,15 +260,47 @@ impl Default for BackendWrapperRust {
             n_audio_buffers_available: 0,
             n_audio_buffers_created: 0,
             last_update_interval: 1.0,
+            refresh_epoch: 0,
             sample_rate: 1,
             buffer_size: 1,
 
             // Rust-side only
             driver: None,
             session: None,
-            update_data: None,
             closed: false,
             last_updated: None,
+            plotter_mode: TracyPlotter::new("mode"),
+            plotter_samples_requested: TracyPlotter::new("samples_requested"),
+            plotter_samples_pending: TracyPlotter::new("samples_pending"),
+            plotter_ready: TracyPlotter::new("ready"),
+            plotter_backend_type: TracyPlotter::new("backend_type"),
+            plotter_xruns: TracyPlotter::new("xruns"),
+            plotter_stale_graph_cycles: TracyPlotter::new("stale_graph_cycles"),
+            plotter_dsp_load: TracyPlotter::new("dsp_load_percent"),
+            plotter_last_processed: TracyPlotter::new("last_processed"),
+            plotter_audio_buffers_created: TracyPlotter::new("audio_buffers_created"),
+            plotter_audio_buffers_available: TracyPlotter::new("audio_buffers_available"),
+            plotter_sample_rate: TracyPlotter::new("sample_rate"),
+            plotter_buffer_size: TracyPlotter::new("buffer_size"),
+            plotter_update_interval: TracyPlotter::new("update_interval_ms"),
+            plotter_cycles: TracyPlotter::new("cycles"),
+            plotter_frames: TracyPlotter::new("frames"),
+            plotter_pending_commands: TracyPlotter::new("pending_commands"),
+            plotter_commands_applied: TracyPlotter::new("commands_applied"),
+            plotter_last_applied_command: TracyPlotter::new("last_applied_command"),
+            plotter_trace_snapshots_dropped: TracyPlotter::new("trace_snapshots_dropped"),
+            plotter_capture_underruns: TracyPlotter::new("capture_underruns"),
+            plotter_capture_overruns: TracyPlotter::new("capture_overruns"),
+            plotter_graph_arms: TracyPlotter::new("graph_arms"),
+            plotter_graph_applies: TracyPlotter::new("graph_applies"),
+            plotter_callback_last_ns: TracyPlotter::new("callback_last_ns"),
+            plotter_callback_worst_ns: TracyPlotter::new("callback_worst_ns"),
+            plotter_callback_budget_overruns: TracyPlotter::new("callback_budget_overruns"),
+            plotter_schedule_request_id: TracyPlotter::new("schedule_request_id"),
+            plotter_schedule_applied_id: TracyPlotter::new("schedule_applied_id"),
+            plotter_stuck_cycles: TracyPlotter::new("stuck_cycles"),
+            plotter_stale_cycles: TracyPlotter::new("stale_cycles"),
+            plotter_sub_blocks_last_cycle: TracyPlotter::new("sub_blocks_last_cycle"),
         }
     }
 }
