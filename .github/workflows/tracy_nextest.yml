@@ -38,9 +38,15 @@ jobs:
         run: |
           set -euo pipefail
           git clone https://github.com/SanderVocke/tracy-query.git /tmp/tracy-query
-          git -C /tmp/tracy-query checkout dc341c8b0f92f23e7dc7f8b0bcc3ff9798cc97c0
-          cmake -S /tmp/tracy-query -B /tmp/tracy-query-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTRACY_QUERY_FULLY_STATIC=OFF
+          git -C /tmp/tracy-query checkout faca26563ff0994f5d889d60014cb6b546e2e213
+          for attempt in 1 2 3; do
+            if cmake -S /tmp/tracy-query -B /tmp/tracy-query-build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DTRACY_QUERY_FULLY_STATIC=OFF; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            sleep 5
+          done
           cmake --build /tmp/tracy-query-build --parallel 2 \
             --target tracy-query tracy-collector
           /tmp/tracy-query-build/tracy-query --version
