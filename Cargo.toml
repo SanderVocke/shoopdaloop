@@ -55,7 +55,7 @@ lv2_raw = "0.2"
 # plain sample planes, which buys nothing here.
 rubato = "0.16"
 thiserror = "2.0"
-sha2 = "0.10"
+sha2 = "0.11"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 hound = "3.5"
 rfd = { version = "0.16", default-features = false }
