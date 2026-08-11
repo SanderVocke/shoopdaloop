@@ -20,8 +20,7 @@ use thiserror::Error;
 pub struct RequestPending;
 
 /// Messages reserved for each of the port's buffers, so a cycle that emits
-/// messages does not allocate. A loop wrap alone emits All Sound Off, so even an
-/// idle output port needs room.
+/// messages does not allocate. Playback interruption may emit targeted note-offs.
 const RESERVE: usize = 256;
 
 /// Output-side reserve: a playback state restore arrives as one burst, and this

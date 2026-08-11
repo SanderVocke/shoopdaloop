@@ -269,7 +269,6 @@ ShoopTestFile {
                         { 'time': 6, 'data':  input[1]['data']  },
                         { 'time': 8, 'data':  input[2]['data']  },
                         { 'time': 12, 'data': input[3]['data']  },
-                        { 'time': 20, 'data':  Midi.create_all_sound_off(0) }, // end-of-loop
                         { 'time': 20, 'data':  input[0]['data']  }, // from state (no pre-play was done)
                         { 'time': 26, 'data':  input[1]['data']  },
                         { 'time': 28, 'data':  input[2]['data']  },
