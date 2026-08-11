@@ -46,6 +46,19 @@ import or export exact ``.shoop-audio``/``.shoop-midi``, float WAV, and standard
 MIDI. Different sample rates require confirmation before deterministic timing
 and media conversion.
 
+Loop details
+~~~~~~~~~~~~
+
+Select one primitive loop and open the bottom **details** pane to inspect its
+media. Audio channels appear as waveforms. MIDI channels appear as read-only
+piano-roll lanes with note pitch, timing, duration, loop region, and playback
+position. Mixed loops show both kinds of channel. Drag a lane horizontally to
+pan and use its zoom control to change the visible time range.
+
+The basic MIDI lane displays note messages only. Controller, pitch-bend,
+pressure, program, and SysEx messages remain in the loop but are not drawn.
+Inspecting details never changes loop content.
+
 On-screen MIDI piano
 ~~~~~~~~~~~~~~~~~~~~
 

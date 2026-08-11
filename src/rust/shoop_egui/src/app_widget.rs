@@ -1619,7 +1619,10 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::{LoopDetailsState, TrackState, WaveformChannelState};
+    use crate::{
+        LoopDetailsState, MidiEventState, MidiSequenceChannelState, TrackState,
+        WaveformChannelState,
+    };
     use shoop_settings::{
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
@@ -2277,6 +2280,22 @@ mod tests {
                     id: crate::ChannelId::from_raw(1),
                     label: "audio".to_owned(),
                     samples: Arc::from([-0.5, 0.25, 0.75, -0.1]),
+                    ..Default::default()
+                }],
+                midi_channels: vec![MidiSequenceChannelState {
+                    id: crate::ChannelId::from_raw(2),
+                    label: "MIDI 1".to_owned(),
+                    events: Arc::from([
+                        MidiEventState {
+                            frame: 1,
+                            data: Arc::from([0x90, 60, 100]),
+                        },
+                        MidiEventState {
+                            frame: 8,
+                            data: Arc::from([0x80, 60, 0]),
+                        },
+                    ]),
+                    loop_length: 16,
                     ..Default::default()
                 }],
                 ..Default::default()
