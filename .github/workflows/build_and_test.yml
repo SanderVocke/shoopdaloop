@@ -229,6 +229,38 @@ jobs:
           RUSTFLAGS: -D warnings
         run: cargo build --locked -p shoopdaloop ${{ matrix.cargo_args }}
 
+      - name: Reject a fake Carla library with missing descriptors
+        if: (matrix.target == 'linux' || matrix.target == 'macos') && matrix.profile == 'debug'
+        shell: bash
+        run: |
+          extension=so
+          if [ "${{ matrix.target }}" = macos ]; then
+            extension=dylib
+            cc -dynamiclib third_party/carla/fake_native_missing_descriptor.c -o "fake-carla.$extension"
+          else
+            cc -shared -fPIC third_party/carla/fake_native_missing_descriptor.c -o "fake-carla.$extension"
+          fi
+          if SHOOP_CARLA_NATIVE_LIBRARY="$PWD/fake-carla.$extension" \
+             ./${{ matrix.binary }} --probe-carla-native >fake-carla.log 2>&1; then
+            echo 'Fake Carla library was unexpectedly accepted'
+            exit 1
+          fi
+          grep 'Carla descriptor is null' fake-carla.log
+
+      - name: Reject a fake Carla library with missing descriptors on Windows
+        if: matrix.target == 'windows' && matrix.profile == 'debug'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $visualStudio = & $vswhere -latest -property installationPath
+          $developerShell = Join-Path $visualStudio "Common7\Tools\VsDevCmd.bat"
+          cmd /c "`"$developerShell`" -arch=x64 && cl /nologo /LD third_party\carla\fake_native_missing_descriptor.c /link /OUT:fake-carla.dll"
+          if ($LASTEXITCODE -ne 0) { throw "fake Carla build failed" }
+          $env:SHOOP_CARLA_NATIVE_LIBRARY = "$PWD\fake-carla.dll"
+          $output = & ".\\${{ matrix.binary }}" --probe-carla-native 2>&1
+          if ($LASTEXITCODE -eq 0) { throw "Fake Carla library was unexpectedly accepted" }
+          if ($output -notmatch 'Carla descriptor is null') { throw "Missing loader diagnostic: $output" }
+
       - name: Probe normalized Carla Native runtime
         if: matrix.target != 'web' && matrix.target != 'windows'
         shell: bash
