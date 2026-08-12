@@ -2979,6 +2979,9 @@ mod tests {
             advanced.composites[&composite].active_children[0].target,
             BackendCompositeTarget::Loop(children[1])
         );
+
+        backend.remove_composite_loop(composite).unwrap();
+        assert!(!backend.poll().unwrap().composites.contains_key(&composite));
     }
 
     #[test]

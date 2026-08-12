@@ -4657,6 +4657,8 @@ pub struct FakeBackend {
     sync_sources: BTreeMap<BackendLoopId, Option<BackendLoopId>>,
     composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
     composite_configs: BTreeMap<BackendCompositeId, BackendCompositeConfig>,
+    composite_loops_supported: bool,
+    fail_next_composite_configuration: Option<String>,
     next_loop_id: u64,
     next_composite_id: u64,
     next_track_id: u64,
@@ -4743,6 +4745,8 @@ impl Default for FakeBackend {
             sync_sources: BTreeMap::new(),
             composites: BTreeMap::new(),
             composite_configs: BTreeMap::new(),
+            composite_loops_supported: false,
+            fail_next_composite_configuration: None,
             next_loop_id: 1,
             next_composite_id: 1,
             next_track_id: 1,
@@ -4769,6 +4773,14 @@ impl FakeBackend {
 
     pub fn loop_sync_source(&self, loop_id: BackendLoopId) -> Option<BackendLoopId> {
         self.sync_sources.get(&loop_id).copied().flatten()
+    }
+
+    pub fn enable_composite_loops(&mut self) {
+        self.composite_loops_supported = true;
+    }
+
+    pub fn fail_next_composite_configuration(&mut self, message: impl Into<String>) {
+        self.fail_next_composite_configuration = Some(message.into());
     }
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
@@ -5069,6 +5081,10 @@ impl FakeBackend {
 }
 
 impl Backend for FakeBackend {
+    fn supports_composite_loops(&self) -> bool {
+        self.composite_loops_supported
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(Arc::clone(&self.processor_catalog))
     }
@@ -5267,46 +5283,63 @@ impl Backend for FakeBackend {
         if !self.composites.contains_key(&composite_id) {
             return Err(anyhow!("unknown fake composite {composite_id:?}"));
         }
-        for entry in config.timelines.iter().flatten().flatten() {
-            match entry.target {
-                BackendCompositeTarget::Loop(id) if !self.loops.contains_key(&id) => {
-                    return Err(anyhow!("unknown fake composite loop target {id:?}"));
-                }
-                BackendCompositeTarget::Composite(id) if !self.composites.contains_key(&id) => {
-                    return Err(anyhow!("unknown fake composite target {id:?}"));
-                }
-                BackendCompositeTarget::Composite(id) if id == composite_id => {
-                    return Err(anyhow!("composite dependency cycle"));
-                }
-                _ => {}
-            }
+        if let Some(message) = self.fail_next_composite_configuration.take() {
+            return Err(anyhow!(message));
         }
-        let length = config
-            .timelines
-            .iter()
-            .map(|timeline| {
-                timeline
-                    .iter()
-                    .map(|section| {
-                        section
-                            .iter()
-                            .map(|entry| {
-                                entry.delay.max(0) as u64
-                                    + entry.n_cycles.unwrap_or(1).max(1) as u64
-                            })
-                            .max()
-                            .unwrap_or(0)
-                    })
-                    .sum::<u64>()
-            })
-            .max()
-            .unwrap_or(0)
-            .saturating_mul(
-                self.loops
-                    .get(&config.sync_source)
-                    .map(|state| u64::from(state.length))
-                    .unwrap_or(0),
-            );
+        let sync_length = self
+            .loops
+            .get(&config.sync_source)
+            .map(|state| u64::from(state.length))
+            .ok_or_else(|| anyhow!("unknown fake composite sync source"))?;
+        if sync_length == 0 && config.timelines.iter().flatten().flatten().next().is_some() {
+            return Err(anyhow!("composite synchronization length is zero"));
+        }
+        let mut length_cycles = 0u64;
+        for timeline in &config.timelines {
+            let mut timeline_cycles = 0u64;
+            for section in timeline {
+                let mut section_cycles = 0u64;
+                for entry in section {
+                    let delay = u64::try_from(entry.delay)
+                        .map_err(|_| anyhow!("composite entry delay is negative"))?;
+                    let child_length = match entry.target {
+                        BackendCompositeTarget::Loop(id) => self
+                            .loops
+                            .get(&id)
+                            .map(|state| u64::from(state.length))
+                            .ok_or_else(|| anyhow!("unknown fake composite loop target {id:?}"))?,
+                        BackendCompositeTarget::Composite(id) if id == composite_id => {
+                            return Err(anyhow!("composite dependency cycle"));
+                        }
+                        BackendCompositeTarget::Composite(id) => self
+                            .composites
+                            .get(&id)
+                            .map(|state| state.length)
+                            .ok_or_else(|| anyhow!("unknown fake composite target {id:?}"))?,
+                    };
+                    let duration = match entry.n_cycles {
+                        Some(cycles) if cycles <= 0 => {
+                            return Err(anyhow!("composite cycle count is not positive"));
+                        }
+                        Some(cycles) => u64::try_from(cycles)
+                            .map_err(|_| anyhow!("composite cycle count is out of range"))?,
+                        None => child_length.div_ceil(sync_length).max(1),
+                    };
+                    section_cycles = section_cycles.max(
+                        delay
+                            .checked_add(duration)
+                            .ok_or_else(|| anyhow!("composite duration overflow"))?,
+                    );
+                }
+                timeline_cycles = timeline_cycles
+                    .checked_add(section_cycles)
+                    .ok_or_else(|| anyhow!("composite timeline overflow"))?;
+            }
+            length_cycles = length_cycles.max(timeline_cycles);
+        }
+        let length = length_cycles
+            .checked_mul(sync_length)
+            .ok_or_else(|| anyhow!("composite length overflow"))?;
         let state = self.composites.get_mut(&composite_id).unwrap();
         state.length = length;
         state.active_plan_version = state.active_plan_version.saturating_add(1);
@@ -6207,6 +6240,59 @@ impl Backend for FakeBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn backend_composite_lifecycle_contract(backend: &mut dyn Backend) {
+        let sync = backend.create_loop().unwrap();
+        let child = backend.create_loop().unwrap();
+        backend.set_loop_length(sync, 1).unwrap();
+        backend.set_loop_length(child, 4).unwrap();
+        let composite = backend.create_composite_loop().unwrap();
+        let config = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Loop(child),
+                delay: 0,
+                n_cycles: None,
+                mode: None,
+            }]]],
+        };
+        backend
+            .configure_composite_loop(composite, &config)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let configured = backend.poll().unwrap().composites[&composite].clone();
+        assert_eq!(configured.mode, BackendLoopMode::Playing);
+        assert_eq!(configured.length, 4);
+
+        let stale = BackendCompositeConfig {
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Loop(BackendLoopId::from_raw(u64::MAX)),
+                delay: 0,
+                n_cycles: None,
+                mode: None,
+            }]]],
+            ..config
+        };
+        assert!(backend.configure_composite_loop(composite, &stale).is_err());
+        assert_eq!(backend.poll().unwrap().composites[&composite], configured);
+
+        backend.remove_composite_loop(composite).unwrap();
+        assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[test]
+    fn fake_backend_satisfies_shared_composite_lifecycle_contract() {
+        backend_composite_lifecycle_contract(&mut FakeBackend::default());
+    }
+
+    #[test]
+    fn engine_backend_satisfies_shared_composite_lifecycle_contract() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        backend_composite_lifecycle_contract(&mut backend);
+    }
 
     #[test]
     fn engine_backend_composite_contract_is_independent_and_transactional() {

@@ -9373,6 +9373,50 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[test]
+    fn failed_backend_composite_reconfiguration_does_not_commit_application_schedule() {
+        let mut backend = FakeBackend::default();
+        backend.enable_composite_loops();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Transactional".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track = model.tracks[1].id;
+        let target = model.tracks[1].loops[0];
+        let source = model.tracks[1].loops[1];
+        model
+            .handle_loop_action(&mut backend, track, target, LoopAction::ConvertToComposite)
+            .unwrap();
+        let before_composite = model.loops[&target].composite.clone();
+        let before_sections = model.loops[&target].script_composition.clone();
+        let before_backend = model.loops[&target].backend_composite;
+        let before_operations = backend.operations().len();
+
+        backend.fail_next_composite_configuration("injected composite configuration failure");
+        assert!(model
+            .compose_loop_serial(&mut backend, target, source)
+            .unwrap_err()
+            .contains("injected composite configuration failure"));
+
+        assert_eq!(model.loops[&target].composite, before_composite);
+        assert_eq!(model.loops[&target].script_composition, before_sections);
+        assert_eq!(model.loops[&target].backend_composite, before_backend);
+        assert_eq!(backend.operations().len(), before_operations);
+    }
+
+    #[test]
     fn rich_composite_survives_session_load_and_save_without_projection_loss() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9665,12 +9709,25 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.tick(Duration::ZERO);
         }
         runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
             .dispatch(AppIntent::Loop {
                 track_id: sync_track,
                 loop_id: sync,
                 action: LoopAction::PlayClicked,
             })
             .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(
+            runtime.snapshot().tracks[0].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         runtime
             .dispatch(AppIntent::Loop {
                 track_id: track,
@@ -9772,8 +9829,16 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .iter()
             .find(|loop_| loop_.id == target)
             .unwrap();
+        let child = isolated.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == sources[2])
+            .unwrap();
+        assert_eq!(child.mode, LoopMode::Playing);
+        assert!(child.position > 0.0);
         assert_eq!(parent.mode, LoopMode::Stopped);
         assert_eq!(parent.position, 0.0);
+        assert!(parent.active_composite_children.is_empty());
         runtime
             .dispatch(AppIntent::Loop {
                 track_id: track,

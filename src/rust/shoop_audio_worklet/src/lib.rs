@@ -1317,6 +1317,7 @@ mod tests {
             panic!("expected composite snapshot");
         };
         assert_eq!(advanced.composites[0].iteration, 4);
+        assert_eq!(advanced.composites[0].position, 4);
         assert_eq!(
             advanced.composites[0].active_children[0].target,
             WireCompositeTarget::Loop(3)
@@ -1364,6 +1365,7 @@ mod tests {
         };
         assert_eq!(isolated.composites[1].mode, WireLoopMode::Stopped);
         assert_eq!(isolated.composites[1].position, 0);
+        assert!(isolated.composites[1].active_children.is_empty());
     }
 
     #[test]
