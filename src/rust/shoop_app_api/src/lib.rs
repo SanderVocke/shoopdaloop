@@ -1419,6 +1419,7 @@ pub enum LoopAction {
     GainChanged(f32),
     BalanceChanged(f32),
     RestoreRecordedFxState,
+    ConvertToComposite,
 }
 
 pub type LoopWidgetAction = LoopAction;
@@ -1520,6 +1521,10 @@ pub enum AppIntent {
     AddTrackWithTopology(TrackSpec),
     AddLoop {
         track_id: TrackId,
+    },
+    ComposeLoopSerial {
+        target_loop_id: LoopId,
+        source_loop_id: LoopId,
     },
     KeyEvent(KeyEvent),
     AddScriptSource {
@@ -1655,6 +1660,7 @@ impl LoopAction {
             Self::GainChanged(_) => "loop.gain",
             Self::BalanceChanged(_) => "loop.balance",
             Self::RestoreRecordedFxState => "loop.restore_recorded_fx",
+            Self::ConvertToComposite => "loop.convert_to_composite",
         }
     }
 }
@@ -1739,6 +1745,7 @@ impl AppIntent {
             Self::AddTrack(_) => "track.add_direct",
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
             Self::AddLoop { .. } => "loop.add_row",
+            Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
@@ -2007,6 +2014,23 @@ mod tests {
                 loop_id,
                 action: LoopAction::IconClicked(SelectionModifiers { additive: true }),
             }
+        );
+        let source_loop_id = LoopId::from_raw(99);
+        let compose = AppIntent::ComposeLoopSerial {
+            target_loop_id: loop_id,
+            source_loop_id,
+        };
+        assert_eq!(compose.kind(), "loop.compose_serial");
+        assert_eq!(
+            compose,
+            AppIntent::ComposeLoopSerial {
+                target_loop_id: loop_id,
+                source_loop_id,
+            }
+        );
+        assert_eq!(
+            LoopAction::ConvertToComposite.kind(),
+            "loop.convert_to_composite"
         );
     }
 

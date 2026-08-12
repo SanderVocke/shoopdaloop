@@ -963,6 +963,10 @@ impl ApplicationModel {
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddTrackWithTopology(spec) => self.add_track_spec(backend, spec),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
+            AppIntent::ComposeLoopSerial {
+                target_loop_id,
+                source_loop_id,
+            } => self.compose_loop_serial(backend, target_loop_id, source_loop_id),
             AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
             AppIntent::AddScriptSource {
                 name,
@@ -3539,7 +3543,86 @@ impl ApplicationModel {
                     )
                     .map_err(|error| format!("could not restore recorded FX state: {error}"))
             }
+            LoopAction::ConvertToComposite => {
+                if loop_model.composite.is_some() {
+                    return Err(format!("loop {loop_id} is already a composite"));
+                }
+                backend
+                    .clear_loop(loop_model.backend_id)
+                    .map_err(|error| format!("could not clear loop {loop_id}: {error}"))?;
+                self.script_composition_playback.remove(&loop_id);
+                for candidate in self.loops.values_mut() {
+                    candidate.state.selected = false;
+                }
+                let model = self.loops.get_mut(&loop_id).expect("loop was checked");
+                model.length = 0;
+                model.position = 0;
+                model.audio_data = None;
+                model.midi_data = None;
+                model.script_composition.clear();
+                model.composite = Some(CompositeDocument {
+                    kind: CompositeKindDocument::Regular,
+                    playlists: Vec::new(),
+                });
+                model.recorded_fx_state = None;
+                model.state.empty = true;
+                model.state.composite_kind = shoop_app_api::CompositeKind::Regular;
+                model.state.has_recorded_fx_state = false;
+                model.state.selected = true;
+                Ok(())
+            }
         }
+    }
+
+    fn compose_loop_serial(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        source: LoopId,
+    ) -> Result<(), String> {
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        if target_model.composite.is_none() {
+            return Err(format!("composition target {target} is not a composite"));
+        }
+        if !self.loops.contains_key(&source) {
+            return Err(format!("stale or unknown composition source {source}"));
+        }
+        if source == target || self.composite_references(source, target, &mut BTreeSet::new()) {
+            return Err(format!(
+                "adding loop {source} to composite {target} would create a cycle"
+            ));
+        }
+        self.apply_script_operation(
+            backend,
+            ControlOperation::ComposeAddToEnd {
+                target,
+                add: vec![source],
+                parallel: false,
+            },
+        )
+    }
+
+    fn composite_references(
+        &self,
+        composite_id: LoopId,
+        searched: LoopId,
+        visited: &mut BTreeSet<LoopId>,
+    ) -> bool {
+        if !visited.insert(composite_id) {
+            return false;
+        }
+        self.loops
+            .get(&composite_id)
+            .and_then(|model| model.composite.as_ref())
+            .is_some_and(|composite| {
+                composite.playlists.iter().flatten().flatten().any(|event| {
+                    let child = LoopId::from_raw(event.loop_id);
+                    child == searched || self.composite_references(child, searched, visited)
+                })
+            })
     }
 
     fn capture_recording_fx_states(
@@ -8511,6 +8594,136 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let empty = model.details_snapshot().unwrap().composite.unwrap();
         assert_eq!(empty.kind, shoop_app_api::CompositeKind::Regular);
         assert!(empty.events.is_empty());
+    }
+
+    #[test]
+    fn gui_conversion_and_serial_composition_are_authoritative_and_cycle_safe() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        for name in ["Target", "Source", "Nested"] {
+            model
+                .add_track(
+                    &mut backend,
+                    DirectTrackSpec {
+                        name: name.to_owned(),
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                )
+                .unwrap();
+        }
+        let target_track = model.tracks[1].id;
+        let target = model.tracks[1].loops[0];
+        let source = model.tracks[2].loops[0];
+        let nested = model.tracks[3].loops[0];
+        let target_backend = model.loops[&target].backend_id;
+        {
+            let model = model.loops.get_mut(&target).unwrap();
+            model.length = 480;
+            model.audio_data = Some(vec![Arc::from([0.25, -0.25])]);
+            model.state.empty = false;
+            model.state.selected = false;
+        }
+        model.loops.get_mut(&source).unwrap().state.selected = true;
+        assert!(model
+            .compose_loop_serial(&mut backend, target, source)
+            .unwrap_err()
+            .contains("is not a composite"));
+        assert!(model.loops[&target].composite.is_none());
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                target_track,
+                target,
+                LoopAction::ConvertToComposite,
+            )
+            .unwrap();
+        assert!(backend
+            .operations()
+            .contains(&shoop_backend::FakeOperation::Clear(target_backend)));
+        let converted = &model.loops[&target];
+        assert_eq!(converted.length, 0);
+        assert!(converted.audio_data.is_none());
+        assert!(converted.script_composition.is_empty());
+        assert!(converted.state.selected);
+        assert!(!model.loops[&source].state.selected);
+        assert_eq!(
+            converted.composite.as_ref().unwrap(),
+            &CompositeDocument {
+                kind: CompositeKindDocument::Regular,
+                playlists: Vec::new(),
+            }
+        );
+        assert_eq!(
+            model.details_snapshot().unwrap().composite.unwrap().kind,
+            shoop_app_api::CompositeKind::Regular
+        );
+        let converted_before = model.loops[&target].composite.clone();
+        assert!(model
+            .handle_loop_action(
+                &mut backend,
+                target_track,
+                target,
+                LoopAction::ConvertToComposite,
+            )
+            .unwrap_err()
+            .contains("already a composite"));
+        assert_eq!(model.loops[&target].composite, converted_before);
+
+        model
+            .compose_loop_serial(&mut backend, target, source)
+            .unwrap();
+        let composed = &model.loops[&target];
+        assert_eq!(composed.script_composition, [vec![source]]);
+        assert_eq!(
+            composed.composite.as_ref().unwrap().playlists[0][0][0].loop_id,
+            source.raw()
+        );
+        let before = composed.composite.clone();
+        assert!(model
+            .compose_loop_serial(&mut backend, target, target)
+            .unwrap_err()
+            .contains("would create a cycle"));
+        assert!(model
+            .compose_loop_serial(&mut backend, target, LoopId::from_raw(u64::MAX))
+            .unwrap_err()
+            .contains("stale or unknown composition source"));
+        assert_eq!(model.loops[&target].composite, before);
+
+        model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            playlists: vec![vec![vec![CompositeEventDocument {
+                delay_frames: 0,
+                loop_id: target.raw(),
+                mode: None,
+                n_cycles: None,
+            }]]],
+        });
+        assert!(model
+            .compose_loop_serial(&mut backend, target, nested)
+            .unwrap_err()
+            .contains("would create a cycle"));
+        assert_eq!(model.loops[&target].composite, before);
+
+        let capture = backend.capture_session().unwrap();
+        let saved = model.session_bundle_from_backend(&capture).unwrap();
+        let saved_target = saved
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.id == target.raw())
+            .unwrap();
+        assert!(saved_target.channels.is_empty());
+        assert_eq!(saved_target.composite, before);
     }
 
     #[test]
