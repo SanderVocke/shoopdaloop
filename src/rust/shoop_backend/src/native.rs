@@ -1573,6 +1573,11 @@ impl NativeRuntime {
         if !self.connection_snapshot().host_ports.contains_key(endpoint) {
             return Err(anyhow!("external port disappeared: {endpoint}"));
         }
+        // Session restoration can request the global link immediately after its
+        // driver port was queued for creation. Make the port identity visible
+        // before asking the adapter to mutate its external connections; otherwise
+        // the deferred mutation may run before creation and be silently dropped.
+        self.wait();
         let port = self
             .ports
             .get(&port_id)
