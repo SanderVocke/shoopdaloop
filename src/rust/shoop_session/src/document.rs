@@ -83,6 +83,8 @@ pub struct GlobalControlsDocument {
     pub play_after_record: bool,
     pub sync: bool,
     pub solo: bool,
+    #[serde(default)]
+    pub auto_mute_other_track_inputs: bool,
     pub apply_n_cycles: u32,
 }
 

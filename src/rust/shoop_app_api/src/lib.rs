@@ -316,6 +316,7 @@ pub struct GlobalControlState {
     pub play_after_record: bool,
     pub sync: bool,
     pub solo: bool,
+    pub auto_mute_other_track_inputs: bool,
     pub apply_n_cycles: u32,
 }
 
@@ -326,6 +327,7 @@ impl Default for GlobalControlState {
             play_after_record: true,
             sync: true,
             solo: false,
+            auto_mute_other_track_inputs: false,
             apply_n_cycles: 0,
         }
     }
@@ -986,7 +988,7 @@ impl LuaApiVersion {
     }
 }
 
-pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 0 };
+pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 1 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
@@ -1418,7 +1420,10 @@ pub enum TrackAction {
     OutputMuteChanged(bool),
     InputGainChanged(f32),
     InputBalanceChanged(f32),
-    InputMonitoringChanged(bool),
+    InputMonitoringChanged {
+        enabled: bool,
+        respect_auto_mute: bool,
+    },
     FxActiveChanged(bool),
     FxVisibilityChanged(bool),
     FxToggleOrRecover,
@@ -1439,6 +1444,7 @@ pub enum GlobalControlAction {
     SetPlayAfterRecord(bool),
     SetSync(bool),
     SetSolo(bool),
+    SetAutoMuteOtherTrackInputs(bool),
     SetApplyNCycles(u32),
 }
 
@@ -1654,7 +1660,7 @@ impl TrackAction {
             Self::OutputMuteChanged(_) => "track.output_mute",
             Self::InputGainChanged(_) => "track.input_gain",
             Self::InputBalanceChanged(_) => "track.input_balance",
-            Self::InputMonitoringChanged(_) => "track.input_monitoring",
+            Self::InputMonitoringChanged { .. } => "track.input_monitoring",
             Self::FxActiveChanged(_) => "track.fx_active",
             Self::FxVisibilityChanged(_) => "track.fx_visibility",
             Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
@@ -1676,6 +1682,7 @@ impl GlobalControlAction {
             Self::SetPlayAfterRecord(_) => "global.play_after_record",
             Self::SetSync(_) => "global.sync",
             Self::SetSolo(_) => "global.solo",
+            Self::SetAutoMuteOtherTrackInputs(_) => "global.auto_mute_other_track_inputs",
             Self::SetApplyNCycles(_) => "global.apply_n_cycles",
         }
     }
@@ -2039,7 +2046,7 @@ mod tests {
         assert!(!host.accepts(LuaApiVersion { major: 2, minor: 5 }));
         assert!(!host.accepts(LuaApiVersion { major: 1, minor: 4 }));
         assert!(!host.accepts(LuaApiVersion { major: 3, minor: 0 }));
-        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 0 });
+        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 1 });
     }
 
     #[test]

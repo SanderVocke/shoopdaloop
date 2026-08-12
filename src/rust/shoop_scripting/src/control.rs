@@ -76,6 +76,8 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
     "get_sync_active",
     "set_play_after_record",
     "get_play_after_record",
+    "set_auto_mute_other_track_inputs",
+    "get_auto_mute_other_track_inputs",
     "set_default_recording_action",
     "get_default_recording_action",
     "register_loop_event_cb",
@@ -119,6 +121,7 @@ pub struct ControlSnapshot {
     pub solo: bool,
     pub sync_active: bool,
     pub play_after_record: bool,
+    pub auto_mute_other_track_inputs: bool,
     pub default_recording_action: DefaultRecordingAction,
 }
 
@@ -131,6 +134,7 @@ impl Default for ControlSnapshot {
             solo: false,
             sync_active: true,
             play_after_record: true,
+            auto_mute_other_track_inputs: false,
             default_recording_action: DefaultRecordingAction::Record,
         }
     }
@@ -213,11 +217,13 @@ pub enum ControlOperation {
     SetTrackInputMuted {
         tracks: Vec<TrackId>,
         muted: bool,
+        respect_auto_mute: bool,
     },
     SetApplyNCycles(u32),
     SetSolo(bool),
     SetSyncActive(bool),
     SetPlayAfterRecord(bool),
+    SetAutoMuteOtherTrackInputs(bool),
     SetDefaultRecordingAction(DefaultRecordingAction),
 }
 
@@ -1261,12 +1267,51 @@ fn install_track_api(
     set_track_bool(lua, module, "track_set_muted", bridge, |tracks, muted| {
         ControlOperation::SetTrackMuted { tracks, muted }
     })?;
-    set_track_bool(
-        lua,
-        module,
+    let bridge_ = Rc::clone(bridge);
+    module.set(
         "track_set_input_muted",
-        bridge,
-        |tracks, muted| ControlOperation::SetTrackInputMuted { tracks, muted },
+        lua.create_function(move |_, arguments: Variadic<Value>| {
+            if !(2..=3).contains(&arguments.len()) {
+                return Err(runtime_error(
+                    "track_set_input_muted expects 2 or 3 arguments",
+                ));
+            }
+            let selector = &arguments[0];
+            let Value::Boolean(muted) = arguments[1] else {
+                return Err(runtime_error("track_set_input_muted muted must be boolean"));
+            };
+            let respect_auto_mute = match arguments.get(2) {
+                Some(Value::Boolean(value)) => *value,
+                Some(_) => {
+                    return Err(runtime_error(
+                        "track_set_input_muted respect_auto_mute must be boolean",
+                    ));
+                }
+                None => false,
+            };
+            let mut bridge = bridge_.borrow_mut();
+            let ids = selected_track_ids(&bridge.snapshot, selector)?;
+            if !muted
+                && respect_auto_mute
+                && bridge.snapshot.auto_mute_other_track_inputs
+                && !ids.is_empty()
+            {
+                for track in &mut bridge.snapshot.tracks {
+                    if !ids.contains(&track.id) {
+                        track.input_muted = true;
+                    }
+                }
+            }
+            shadow_track_bool(&mut bridge.snapshot, &ids, "track_set_input_muted", muted);
+            bridge
+                .operations
+                .push(ControlOperation::SetTrackInputMuted {
+                    tracks: ids,
+                    muted,
+                    respect_auto_mute,
+                });
+            Ok(())
+        })?,
     )?;
     set_track_number(lua, module, "track_set_gain", bridge, |tracks, gain| {
         ControlOperation::SetTrackGain {
@@ -1368,6 +1413,18 @@ fn install_global_api(
         |bridge, value| {
             bridge.snapshot.play_after_record = value;
             ControlOperation::SetPlayAfterRecord(value)
+        },
+    )?;
+    set_global_pair_bool(
+        lua,
+        module,
+        bridge,
+        "set_auto_mute_other_track_inputs",
+        "get_auto_mute_other_track_inputs",
+        |snapshot| snapshot.auto_mute_other_track_inputs,
+        |bridge, value| {
+            bridge.snapshot.auto_mute_other_track_inputs = value;
+            ControlOperation::SetAutoMuteOtherTrackInputs(value)
         },
     )?;
     let bridge_ = Rc::clone(bridge);
