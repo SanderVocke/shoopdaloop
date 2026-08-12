@@ -52,22 +52,22 @@ This milestone includes the application snapshot data needed for an accurate vie
 
 ### Stage 2 — Deterministic swimlane layout
 
-- [ ] Add a dedicated egui composite timeline module with a pure interval-packing helper that groups by track and assigns the lowest reusable lane using explicit event tie-breaks.
-- [ ] Cover true overlap, containment, equal starts, touching boundaries, duplicate spans from independent playlists, empty tracks, and stable repeated layout in unit tests.
-- [ ] Derive per-track height and total timeline extent from the packed result without embedding view geometry in the application snapshot.
-- [ ] Commit the layout milestone.
+- [x] Add a dedicated egui composite timeline module with a pure interval-packing helper that groups by track and assigns the lowest reusable lane using explicit event tie-breaks.
+- [x] Cover true overlap, containment, equal starts, touching boundaries, duplicate spans from independent playlists, empty tracks, and stable repeated layout in unit tests.
+- [x] Derive per-track height and total timeline extent from the packed result without embedding view geometry in the application snapshot.
+- [x] Commit the layout milestone.
 
 **Verification:** focused `shoop_egui` tests assert lane indices/counts and row growth for all edge cases.
 
 ### Stage 3 — Details-pane rendering, zoom, and scrolling
 
-- [ ] Route composite details to the new timeline before the primitive audio/MIDI empty-state path in `details_pane.rs`.
-- [ ] Render a compact read-only header/kind indicator, fixed track labels, track backgrounds, and clipped named event rectangles at their packed timespans.
-- [ ] Add bounded horizontal zoom with a useful default and fit/reset behavior, retaining per-selected-composite view state and resetting/clamping it safely when selection or extent changes.
-- [ ] Add coordinated horizontal and vertical overflow scrolling without intercepting control-modified input intended for application shortcuts.
-- [ ] Add headless egui tests at narrow/wide pane sizes that verify composite dispatch, painted named events, overlap-driven row height, zoom scale changes, overflow extent, empty messaging, and primitive-details regression.
-- [ ] Update the loop-details documentation to describe regular/script composite viewing and explicitly state that editing is deferred.
-- [ ] Commit the rendering milestone.
+- [x] Route composite details to the new timeline before the primitive audio/MIDI empty-state path in `details_pane.rs`.
+- [x] Render a compact read-only header/kind indicator, fixed track labels, track backgrounds, and clipped named event rectangles at their packed timespans.
+- [x] Add bounded horizontal zoom with a useful default and fit/reset behavior, retaining per-selected-composite view state and resetting/clamping it safely when selection or extent changes.
+- [x] Add coordinated horizontal and vertical overflow scrolling without intercepting control-modified input intended for application shortcuts.
+- [x] Add headless egui tests at narrow/wide pane sizes that verify composite dispatch, painted named events, overlap-driven row height, zoom scale changes, overflow extent, empty messaging, and primitive-details regression.
+- [x] Update the loop-details documentation to describe regular/script composite viewing and explicitly state that editing is deferred.
+- [x] Commit the rendering milestone.
 
 **Verification:** targeted `shoop_egui` tests pass without launching the app, including native and `wasm32` compilation of the new path.
 
