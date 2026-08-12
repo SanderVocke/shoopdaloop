@@ -1679,6 +1679,7 @@ fn browser_unsupported_session_bytes(
                 chain_type: FxChainTypeDocument::CarlaRack,
                 ports: Vec::new(),
                 internal_state: "opaque browser rejection state".to_owned(),
+                midi_cc_assignments: Vec::new(),
             }),
         )
     } else {

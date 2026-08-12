@@ -168,6 +168,80 @@ pub struct FxGenerationLogState {
     pub dropped_stderr_bytes: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum TinySynthFxParameter {
+    MasterGain,
+    ReverbAmount,
+    DistortionDrive,
+    CompressorAmount,
+    EqLow,
+    EqMid,
+    EqHigh,
+}
+
+impl TinySynthFxParameter {
+    pub const ALL: [Self; 7] = [
+        Self::MasterGain,
+        Self::ReverbAmount,
+        Self::DistortionDrive,
+        Self::CompressorAmount,
+        Self::EqLow,
+        Self::EqMid,
+        Self::EqHigh,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::MasterGain => "Master gain",
+            Self::ReverbAmount => "Reverb amount",
+            Self::DistortionDrive => "Distortion drive",
+            Self::CompressorAmount => "Compressor amount",
+            Self::EqLow => "EQ low",
+            Self::EqMid => "EQ mid",
+            Self::EqHigh => "EQ high",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TinySynthFxMidiCcAssignment {
+    pub parameter: TinySynthFxParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LatestMidiMessage {
+    pub bytes: [u8; 4],
+    pub len: u8,
+}
+
+impl LatestMidiMessage {
+    pub const fn new(bytes: [u8; 4], len: u8) -> Option<Self> {
+        if len == 0 || len > 4 {
+            None
+        } else {
+            Some(Self { bytes, len })
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.bytes[..self.len as usize]
+    }
+
+    pub const fn midi_cc(self) -> Option<(u8, u8, u8)> {
+        if self.len == 3
+            && self.bytes[0] & 0xf0 == 0xb0
+            && self.bytes[1] <= 127
+            && self.bytes[2] <= 127
+        {
+            Some((self.bytes[0] & 0x0f, self.bytes[1], self.bytes[2]))
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TinySynthFxState {
     pub selected_preset_id: Option<String>,
@@ -182,6 +256,7 @@ pub struct TinySynthFxState {
     pub eq_low_db: f32,
     pub eq_mid_db: f32,
     pub eq_high_db: f32,
+    pub midi_cc_assignments: Arc<[TinySynthFxMidiCcAssignment]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -484,6 +559,7 @@ pub struct TrackControlState {
     pub input_peak_left_db: f32,
     pub input_peak_right_db: f32,
     pub input_midi_activity: bool,
+    pub latest_input_midi_message: Option<LatestMidiMessage>,
 }
 
 impl Default for TrackControlState {
@@ -507,6 +583,7 @@ impl Default for TrackControlState {
             input_peak_left_db: -200.0,
             input_peak_right_db: -200.0,
             input_midi_activity: false,
+            latest_input_midi_message: None,
         }
     }
 }
@@ -1327,6 +1404,9 @@ pub enum TinySynthFxControl {
     SetEqLowDb(f32),
     SetEqMidDb(f32),
     SetEqHighDb(f32),
+    AssignMidiCc(TinySynthFxMidiCcAssignment),
+    RemoveMidiCc(TinySynthFxParameter),
+    ClearMidiCcAssignments,
     Panic,
 }
 
@@ -1557,6 +1637,9 @@ impl TinySynthFxControl {
             Self::SetEqLowDb(_) => "track.tiny_synth_fx.eq_low",
             Self::SetEqMidDb(_) => "track.tiny_synth_fx.eq_mid",
             Self::SetEqHighDb(_) => "track.tiny_synth_fx.eq_high",
+            Self::AssignMidiCc(_) => "track.tiny_synth_fx.midi_cc_assign",
+            Self::RemoveMidiCc(_) => "track.tiny_synth_fx.midi_cc_remove",
+            Self::ClearMidiCcAssignments => "track.tiny_synth_fx.midi_cc_clear",
             Self::Panic => "track.tiny_synth_fx.panic",
         }
     }
@@ -1900,9 +1983,52 @@ mod tests {
             "track.tiny_synth_fx.distortion_drive"
         );
         assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                TinySynthFxMidiCcAssignment {
+                    parameter: TinySynthFxParameter::EqLow,
+                    channel: 2,
+                    controller: 18,
+                }
+            ))
+            .kind(),
+            "track.tiny_synth_fx.midi_cc_assign"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
+                TinySynthFxParameter::EqLow
+            ))
+            .kind(),
+            "track.tiny_synth_fx.midi_cc_remove"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments).kind(),
+            "track.tiny_synth_fx.midi_cc_clear"
+        );
+        assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::Panic).kind(),
             "track.tiny_synth_fx.panic"
         );
+    }
+
+    #[test]
+    fn latest_midi_message_only_recognizes_complete_control_changes() {
+        assert_eq!(
+            LatestMidiMessage::new([0xb7, 74, 99, 0], 3)
+                .unwrap()
+                .midi_cc(),
+            Some((7, 74, 99))
+        );
+        for message in [
+            LatestMidiMessage::new([0xb7, 74, 0, 0], 2).unwrap(),
+            LatestMidiMessage::new([0x97, 74, 99, 0], 3).unwrap(),
+            LatestMidiMessage::new([0xb7, 74, 99, 1], 4).unwrap(),
+            LatestMidiMessage::new([0xb7, 200, 99, 0], 3).unwrap(),
+            LatestMidiMessage::new([0xb7, 74, 200, 0], 3).unwrap(),
+        ] {
+            assert_eq!(message.midi_cc(), None);
+        }
+        assert!(LatestMidiMessage::new([0; 4], 0).is_none());
+        assert!(LatestMidiMessage::new([0; 4], 5).is_none());
     }
 
     #[test]

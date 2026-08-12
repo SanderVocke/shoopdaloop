@@ -4,7 +4,10 @@ use crate::composite_runtime::{
     ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
 };
 use crate::loop_mode::LoopMode;
-use crate::state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
+use crate::state::{
+    AudioChannelState, AudioPortState, LatestMidiMessage, LoopState, MidiChannelState,
+    MidiPortState,
+};
 use std::array;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
@@ -665,6 +668,7 @@ pub struct MidiPortStateMirror {
     muted: AtomicBool,
     passthrough_muted: AtomicBool,
     ringbuffer_n_samples: AtomicU32,
+    latest_input_message: AtomicU64,
 }
 
 impl MidiPortStateMirror {
@@ -703,7 +707,19 @@ impl MidiPortStateMirror {
         self.n_output_events.fetch_add(output, Ordering::Relaxed);
     }
 
+    pub fn publish_latest_input_message(&self, message: LatestMidiMessage) {
+        let bytes = u32::from_le_bytes(message.bytes) as u64;
+        self.latest_input_message
+            .store(bytes | ((message.len as u64) << 32), Ordering::Relaxed);
+    }
+
     pub fn read(&self, name: String) -> MidiPortState {
+        let packed_message = self.latest_input_message.load(Ordering::Relaxed);
+        let message_len = (packed_message >> 32) as u8;
+        let latest_input_message = (message_len != 0).then(|| LatestMidiMessage {
+            bytes: (packed_message as u32).to_le_bytes(),
+            len: message_len,
+        });
         MidiPortState {
             n_input_events: self.n_input_events.swap(0, Ordering::Relaxed),
             n_input_notes_active: self.n_input_notes_active.load(Ordering::Relaxed),
@@ -712,6 +728,7 @@ impl MidiPortStateMirror {
             muted: self.muted.load(Ordering::Relaxed),
             passthrough_muted: self.passthrough_muted.load(Ordering::Relaxed),
             ringbuffer_n_samples: self.ringbuffer_n_samples.load(Ordering::Relaxed),
+            latest_input_message,
             name,
         }
     }
@@ -848,10 +865,14 @@ mod tests {
         let midi = MidiPortStateMirror::default();
         midi.record_events(2, 1);
         midi.record_events(3, 4);
+        midi.publish_latest_input_message(LatestMidiMessage::new(&[0xb3, 17, 99]).unwrap());
         let first = midi.read("midi".to_string());
         check!(first.n_input_events == 5);
         check!(first.n_output_events == 5);
-        check!(midi.read("midi".to_string()).n_input_events == 0);
+        check!(first.latest_input_message.unwrap().data() == [0xb3, 17, 99]);
+        let second = midi.read("midi".to_string());
+        check!(second.n_input_events == 0);
+        check!(second.latest_input_message.unwrap().data() == [0xb3, 17, 99]);
     }
 
     #[test]

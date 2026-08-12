@@ -75,6 +75,30 @@ pub struct AudioPortState {
     pub name: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LatestMidiMessage {
+    pub bytes: [u8; 4],
+    pub len: u8,
+}
+
+impl LatestMidiMessage {
+    pub fn new(data: &[u8]) -> Option<Self> {
+        if data.is_empty() || data.len() > 4 {
+            return None;
+        }
+        let mut bytes = [0; 4];
+        bytes[..data.len()].copy_from_slice(data);
+        Some(Self {
+            bytes,
+            len: data.len() as u8,
+        })
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.bytes[..self.len as usize]
+    }
+}
+
 /// MIDI-port state exposed through the application-facing backend interface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MidiPortState {
@@ -85,5 +109,6 @@ pub struct MidiPortState {
     pub muted: bool,
     pub passthrough_muted: bool,
     pub ringbuffer_n_samples: u32,
+    pub latest_input_message: Option<LatestMidiMessage>,
     pub name: String,
 }

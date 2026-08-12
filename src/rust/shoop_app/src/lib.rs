@@ -30,7 +30,8 @@ use shoop_backend::{
     BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
     BackendMidiEvent, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
     BackendPortId, BackendPortRole, BackendSessionData, BackendSessionPort,
-    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
+    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot,
+    BackendTinySynthFxMidiCcAssignment, BackendTinySynthFxParameter, BackendTrackControl,
     BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
     DirectTrackRequest, TrackRequest,
 };
@@ -50,7 +51,8 @@ use shoop_session::{
     ExactMidi, ExactMidiEvent, FxChainDocument, FxChainTypeDocument, FxStateDocument,
     GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
     MidiClickTrackSpec, MidiControlDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
-    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument,
+    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument,
+    TinySynthFxMidiCcAssignmentDocument, TinySynthFxParameterDocument, TrackControlsDocument,
     TrackDocument, TrackGroupDocument, TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS,
     MAX_CLICK_TRACK_FRAMES,
 };
@@ -4130,6 +4132,13 @@ impl ApplicationModel {
                 .copied()
                 .unwrap_or(controls.input_peak_left_db);
             controls.input_midi_activity = backend_state.input_midi_activity;
+            controls.latest_input_midi_message =
+                backend_state.latest_input_midi_message.map(|message| {
+                    shoop_app_api::LatestMidiMessage {
+                        bytes: message.bytes,
+                        len: message.len,
+                    }
+                });
             controls.clamp();
         }
         let track_capabilities = self
@@ -4812,6 +4821,12 @@ impl ApplicationModel {
                             chain_type,
                             ports: Vec::new(),
                             internal_state,
+                            midi_cc_assignments: captured
+                                .tiny_synth_midi_cc_assignments
+                                .iter()
+                                .copied()
+                                .map(document_midi_cc_assignment)
+                                .collect(),
                         }),
                     )
                 }
@@ -5774,6 +5789,52 @@ fn io_pending_error(message: &str) -> bool {
         || message.contains("loop content replacement pending")
 }
 
+fn document_midi_cc_assignment(
+    assignment: BackendTinySynthFxMidiCcAssignment,
+) -> TinySynthFxMidiCcAssignmentDocument {
+    let parameter = match assignment.parameter {
+        BackendTinySynthFxParameter::MasterGain => TinySynthFxParameterDocument::MasterGain,
+        BackendTinySynthFxParameter::ReverbAmount => TinySynthFxParameterDocument::ReverbAmount,
+        BackendTinySynthFxParameter::DistortionDrive => {
+            TinySynthFxParameterDocument::DistortionDrive
+        }
+        BackendTinySynthFxParameter::CompressorAmount => {
+            TinySynthFxParameterDocument::CompressorAmount
+        }
+        BackendTinySynthFxParameter::EqLow => TinySynthFxParameterDocument::EqLow,
+        BackendTinySynthFxParameter::EqMid => TinySynthFxParameterDocument::EqMid,
+        BackendTinySynthFxParameter::EqHigh => TinySynthFxParameterDocument::EqHigh,
+    };
+    TinySynthFxMidiCcAssignmentDocument {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn backend_midi_cc_assignment(
+    assignment: TinySynthFxMidiCcAssignmentDocument,
+) -> BackendTinySynthFxMidiCcAssignment {
+    let parameter = match assignment.parameter {
+        TinySynthFxParameterDocument::MasterGain => BackendTinySynthFxParameter::MasterGain,
+        TinySynthFxParameterDocument::ReverbAmount => BackendTinySynthFxParameter::ReverbAmount,
+        TinySynthFxParameterDocument::DistortionDrive => {
+            BackendTinySynthFxParameter::DistortionDrive
+        }
+        TinySynthFxParameterDocument::CompressorAmount => {
+            BackendTinySynthFxParameter::CompressorAmount
+        }
+        TinySynthFxParameterDocument::EqLow => BackendTinySynthFxParameter::EqLow,
+        TinySynthFxParameterDocument::EqMid => BackendTinySynthFxParameter::EqMid,
+        TinySynthFxParameterDocument::EqHigh => BackendTinySynthFxParameter::EqHigh,
+    };
+    BackendTinySynthFxMidiCcAssignment {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
 fn fx_chain_type_for_processor(
     processor: &shoop_app_api::TrackProcessorTypeId,
 ) -> Result<FxChainTypeDocument, String> {
@@ -6164,6 +6225,13 @@ fn session_bundle_to_backend(
                 .fx_chain
                 .as_ref()
                 .map(|chain| chain.internal_state.clone()),
+            tiny_synth_midi_cc_assignments: track
+                .fx_chain
+                .as_ref()
+                .into_iter()
+                .flat_map(|chain| chain.midi_cc_assignments.iter().copied())
+                .map(backend_midi_cc_assignment)
+                .collect(),
         });
     }
     Ok(BackendSessionData {
@@ -6564,6 +6632,13 @@ mod tests {
             shoop_app_api::TinySynthFxControl::SetEqLowDb(3.0),
             shoop_app_api::TinySynthFxControl::SetEqMidDb(-2.0),
             shoop_app_api::TinySynthFxControl::SetEqHighDb(1.5),
+            shoop_app_api::TinySynthFxControl::AssignMidiCc(
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                    channel: 6,
+                    controller: 74,
+                },
+            ),
         ] {
             runtime
                 .dispatch(AppIntent::Track {
@@ -6615,6 +6690,14 @@ mod tests {
         );
         let current_state = &saved_track.fx_chain.as_ref().unwrap().internal_state;
         assert!(!current_state.is_empty());
+        assert_eq!(
+            saved_track.fx_chain.as_ref().unwrap().midi_cc_assignments,
+            [TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         let take_id = saved_track.loops[0]
             .channels
             .iter()
@@ -6669,6 +6752,14 @@ mod tests {
         assert_eq!(editor.eq_low_db, 3.0);
         assert_eq!(editor.eq_mid_db, -2.0);
         assert_eq!(editor.eq_high_db, 1.5);
+        assert_eq!(
+            editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
         let loaded_track_id = loaded.tracks[1].id;
         let loaded_loop_id = loaded.tracks[1].loops[0].id;
@@ -6701,6 +6792,14 @@ mod tests {
         };
         assert_eq!(restored_editor.master_gain_db, -12.0);
         assert_eq!(restored_editor.selected_preset_id.as_deref(), Some("pad"));
+        assert_eq!(
+            restored_editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
 
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
@@ -6741,6 +6840,14 @@ mod tests {
         assert_eq!(switched_editor.distortion_drive, 7.0);
         assert!(switched_editor.compressor_enabled);
         assert_eq!(switched_editor.compressor_amount, 0.6);
+        assert_eq!(
+            switched_editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         assert!(switched_editor.eq_enabled);
         assert_eq!(switched_editor.eq_low_db, 3.0);
         assert_eq!(switched_editor.eq_mid_db, -2.0);

@@ -1,10 +1,11 @@
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
-    WireApplicationPort, WireChannelMode, WireConfirmedLink, WireHostPort, WireLoopMode,
-    WireLoopState, WireMidiOutputEvent, WirePortDataType, WirePortDirection, WirePortRole,
-    WireSnapshot, WireTinySynthFxState, WireTrackControl, WireTrackFxControl, WireTrackFxState,
-    WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
-    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    WireApplicationPort, WireChannelMode, WireConfirmedLink, WireHostPort, WireLatestMidiMessage,
+    WireLoopMode, WireLoopState, WireMidiOutputEvent, WirePortDataType, WirePortDirection,
+    WirePortRole, WireSnapshot, WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter,
+    WireTinySynthFxState, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState,
+    WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
+    MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
     SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
@@ -12,7 +13,8 @@ use shoop_backend::{
     BackendLoopId, BackendLoopMode, BackendMidiEvent, BackendPortDataType, BackendPortDirection,
     BackendPortId, BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
     BackendTrackFxControl, BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
-    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
+    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorEditorState,
+    TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -682,6 +684,30 @@ fn from_wire_track_topology(topology: WireTrackTopology) -> BackendTrackTopology
     }
 }
 
+fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxParameter {
+    match parameter {
+        WireTinySynthFxParameter::MasterGain => TinySynthFxParameter::MasterGain,
+        WireTinySynthFxParameter::ReverbAmount => TinySynthFxParameter::ReverbAmount,
+        WireTinySynthFxParameter::DistortionDrive => TinySynthFxParameter::DistortionDrive,
+        WireTinySynthFxParameter::CompressorAmount => TinySynthFxParameter::CompressorAmount,
+        WireTinySynthFxParameter::EqLow => TinySynthFxParameter::EqLow,
+        WireTinySynthFxParameter::EqMid => TinySynthFxParameter::EqMid,
+        WireTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
+    }
+}
+
+fn to_wire_tiny_parameter(parameter: TinySynthFxParameter) -> WireTinySynthFxParameter {
+    match parameter {
+        TinySynthFxParameter::MasterGain => WireTinySynthFxParameter::MasterGain,
+        TinySynthFxParameter::ReverbAmount => WireTinySynthFxParameter::ReverbAmount,
+        TinySynthFxParameter::DistortionDrive => WireTinySynthFxParameter::DistortionDrive,
+        TinySynthFxParameter::CompressorAmount => WireTinySynthFxParameter::CompressorAmount,
+        TinySynthFxParameter::EqLow => WireTinySynthFxParameter::EqLow,
+        TinySynthFxParameter::EqMid => WireTinySynthFxParameter::EqMid,
+        TinySynthFxParameter::EqHigh => WireTinySynthFxParameter::EqHigh,
+    }
+}
+
 fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxControl {
     match control {
         WireTrackFxControl::SetActive(value) => BackendTrackFxControl::SetActive(value),
@@ -724,6 +750,19 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         }
         WireTrackFxControl::TinySetEqHighDb(value) => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetEqHighDb(value))
+        }
+        WireTrackFxControl::TinyAssignMidiCc(assignment) => BackendTrackFxControl::TinySynthFx(
+            TinySynthFxControl::AssignMidiCc(TinySynthFxMidiCcAssignment {
+                parameter: from_wire_tiny_parameter(assignment.parameter),
+                channel: assignment.channel,
+                controller: assignment.controller,
+            }),
+        ),
+        WireTrackFxControl::TinyRemoveMidiCc(parameter) => BackendTrackFxControl::TinySynthFx(
+            TinySynthFxControl::RemoveMidiCc(from_wire_tiny_parameter(parameter)),
+        ),
+        WireTrackFxControl::TinyClearMidiCcAssignments => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments)
         }
         WireTrackFxControl::TinyPanic => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
@@ -896,6 +935,15 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                             eq_low_db: editor.eq_low_db,
                             eq_mid_db: editor.eq_mid_db,
                             eq_high_db: editor.eq_high_db,
+                            midi_cc_assignments: editor
+                                .midi_cc_assignments
+                                .iter()
+                                .map(|assignment| WireTinySynthFxMidiCcAssignment {
+                                    parameter: to_wire_tiny_parameter(assignment.parameter),
+                                    channel: assignment.channel,
+                                    controller: assignment.controller,
+                                })
+                                .collect(),
                         },
                     })
                 }),
@@ -909,6 +957,12 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 input_monitoring: track.input_monitoring,
                 input_peaks: track.input_peaks,
                 output_peaks: track.output_peaks,
+                latest_input_midi_message: track.latest_input_midi_message.map(|message| {
+                    WireLatestMidiMessage {
+                        bytes: message.bytes,
+                        len: message.len,
+                    }
+                }),
             })
             .collect(),
         loops: snapshot
@@ -1339,6 +1393,11 @@ mod tests {
             WireTrackFxControl::TinySetEqLowDb(3.0),
             WireTrackFxControl::TinySetEqMidDb(-2.0),
             WireTrackFxControl::TinySetEqHighDb(1.5),
+            WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
+                parameter: WireTinySynthFxParameter::ReverbAmount,
+                channel: 2,
+                controller: 17,
+            }),
             WireTrackFxControl::SetVisible(true),
             WireTrackFxControl::TinyPanic,
         ]
@@ -1358,7 +1417,23 @@ mod tests {
                 Event::Ack
             ));
         }
-        let Event::Snapshot(snapshot) = command(&mut host, 25, Command::Poll).event else {
+        assert!(matches!(
+            command(
+                &mut host,
+                26,
+                Command::PushMidiInput {
+                    host_port_id: "webmidi:source:tiny".to_owned(),
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0xb2, 17, 127],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+        let Event::Snapshot(snapshot) = command(&mut host, 27, Command::Poll).event else {
             panic!("missing worklet snapshot");
         };
         assert_eq!(
@@ -1376,10 +1451,25 @@ mod tests {
         );
         let fx = snapshot.tracks[0].fx.as_ref().unwrap();
         assert!(fx.visible);
-        assert_eq!(fx.tiny.selected_preset_id.as_deref(), Some("pad"));
+        assert_eq!(fx.tiny.selected_preset_id, None);
         assert_eq!(fx.tiny.master_gain_db, -12.0);
         assert!(fx.tiny.reverb_enabled);
-        assert_eq!(fx.tiny.reverb_amount, 0.4);
+        assert_eq!(fx.tiny.reverb_amount, 1.0);
+        assert_eq!(
+            fx.tiny.midi_cc_assignments,
+            [WireTinySynthFxMidiCcAssignment {
+                parameter: WireTinySynthFxParameter::ReverbAmount,
+                channel: 2,
+                controller: 17,
+            }]
+        );
+        assert_eq!(
+            snapshot.tracks[0].latest_input_midi_message,
+            Some(WireLatestMidiMessage {
+                bytes: [0xb2, 17, 127, 0],
+                len: 3,
+            })
+        );
         assert!(fx.tiny.distortion_enabled);
         assert_eq!(fx.tiny.distortion_drive, 7.0);
         assert!(fx.tiny.compressor_enabled);

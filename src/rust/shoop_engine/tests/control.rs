@@ -17,7 +17,7 @@ use assert2::{check, let_assert};
 use shoop_engine::app_backend::{
     AudioDriver, AudioDriverSettings, AudioPort, BackendSession, DummyAudioDriverSettings, MidiPort,
 };
-use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, PortDirection};
+use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, MidiEvent, PortDirection};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
@@ -265,6 +265,21 @@ fn a_midi_port_reports_its_state() {
     check!(state.muted);
     check!(state.n_input_events == 0);
     check!(state.name == "min");
+
+    p.dummy_queue_msgs(vec![
+        MidiEvent::new(0, vec![0xc1, 7]),
+        MidiEvent::new(1, vec![0xb3, 19, 88]),
+    ])
+    .expect("queue MIDI input");
+    let_assert!(
+        Some(message) = eventually(|| {
+            p.poll_state()
+                .and_then(|state| state.latest_input_message)
+                .filter(|message| message.data() == [0xb3, 19, 88])
+        })
+    );
+    check!(message.data() == [0xb3, 19, 88]);
+    check!(p.get_state().unwrap().latest_input_message.unwrap().data() == [0xb3, 19, 88]);
 }
 
 #[test]

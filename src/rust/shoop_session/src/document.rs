@@ -254,6 +254,27 @@ pub struct FxChainDocument {
     pub chain_type: FxChainTypeDocument,
     pub ports: Vec<PortDocument>,
     pub internal_state: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub midi_cc_assignments: Vec<TinySynthFxMidiCcAssignmentDocument>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct TinySynthFxMidiCcAssignmentDocument {
+    pub parameter: TinySynthFxParameterDocument,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum TinySynthFxParameterDocument {
+    MasterGain,
+    ReverbAmount,
+    DistortionDrive,
+    CompressorAmount,
+    EqLow,
+    EqMid,
+    EqHigh,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]

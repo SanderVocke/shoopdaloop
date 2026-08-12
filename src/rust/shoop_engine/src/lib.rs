@@ -145,7 +145,10 @@ pub use session::{
     ReclaimedCompositeTimeline, RejectedCompositeTimeline, Session, SessionError, Topology,
     MAX_AUDIO_RINGBUFFER_ADOPTIONS, MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS,
 };
-pub use state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
+pub use state::{
+    AudioChannelState, AudioPortState, LatestMidiMessage, LoopState, MidiChannelState,
+    MidiPortState,
+};
 pub use state_mirror::{
     AudioChannelStateMirror, AudioPortStateMirror, CompositeStateMirror,
     CompositeStateMirrorSnapshot, LoopStateMirror, MidiChannelStateMirror, MidiPortStateMirror,

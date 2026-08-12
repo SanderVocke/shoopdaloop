@@ -2345,6 +2345,9 @@ impl Session {
                     }
                 }
             }
+        } else if let ProcessorBackend::Tiny(processor) = &mut route.backend {
+            let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
+            processor.process_midi_controls_only(events);
         }
         self.processors = processors;
     }
