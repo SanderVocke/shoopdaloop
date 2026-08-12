@@ -109,13 +109,15 @@ Update the keyboard script to use **I** to toggle input mute for tracks containi
 
 ## Final end-to-end validation
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run targeted session, application-core, and Lua-interface tests that do not execute bundled scripts or interact with egui.
-- [ ] Confirm tests demonstrate the complete path: Lua global setting → respecting input-unmute operation → target enabled and all non-target inputs muted.
-- [ ] Confirm legacy sessions and legacy Lua setter arities retain policy-off behavior.
-- [ ] Record that bundled-script execution and interactive GUI validation were intentionally deferred to the user.
-- [ ] Commit any final validation-only corrections as a meaningful milestone.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run targeted session, application-core, and Lua-interface tests that do not execute bundled scripts or interact with egui.
+- [x] Confirm tests demonstrate the complete path: Lua global setting → respecting input-unmute operation → target enabled and all non-target inputs muted.
+- [x] Confirm legacy sessions and legacy Lua setter arities retain policy-off behavior.
+- [x] Record that bundled-script execution and interactive GUI validation were intentionally deferred to the user.
+- [x] Commit any final validation-only corrections as a meaningful milestone.
+
+Bundled-script execution and interactive GUI validation remain intentionally deferred to the user. Local validation covered formatting, a warning-denying workspace build, session compatibility, core policy behavior, Lua API semantics, global callback publication, and the end-to-end Lua-to-application path.
 
 ## Execution contract
 
