@@ -458,7 +458,7 @@ jobs:
           $env:SHOOP_CARLA_NATIVE_LIBRARY = "$shortRoot\shoopdaloop\carla-runtime\lib\libcarla_native-plugin.dll"
           $env:SHOOP_CARLA_RESOURCE_DIR = "$shortRoot\shoopdaloop\carla-runtime\resources"
           $uiHelper = "$env:SHOOP_CARLA_RESOURCE_DIR\carla-plugin.exe"
-          $helper = Start-Process -FilePath $uiHelper -ArgumentList @('test', '0', '0', '0', '0', '0') -PassThru
+          $helper = Start-Process -FilePath $uiHelper -PassThru
           Start-Sleep -Seconds 2
           if ($helper.HasExited) { throw "Extracted Carla UI helper exited immediately with $($helper.ExitCode)" }
           Stop-Process -Id $helper.Id -Force
