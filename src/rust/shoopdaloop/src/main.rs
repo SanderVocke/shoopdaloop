@@ -3446,7 +3446,7 @@ impl BrowserSelfTest {
                     [
                         (
                             "lua-api-higher-minor.lua",
-                            "shoop_announce_api_version(1, 1); require('shoop_control').set_solo(true)",
+                            "shoop_announce_api_version(1, 2); require('shoop_control').set_solo(true)",
                         ),
                         (
                             "lua-api-lower-major.lua",
