@@ -622,6 +622,15 @@ impl NativeRuntime {
             } else {
                 None
             };
+            let tiny_synth_midi_cc_assignments = track
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.chain.tiny_editor_state())
+                .into_iter()
+                .flat_map(|editor| editor.midi_cc_assignments)
+                .map(app_midi_cc_assignment)
+                .map(backend_midi_cc_assignment)
+                .collect();
             tracks.push(BackendSessionTrack {
                 source_id: track_id.raw(),
                 port_name_base: track.port_name_base.clone(),
@@ -629,7 +638,8 @@ impl NativeRuntime {
                 state: track.state.clone(),
                 loops,
                 ports,
-                processor_state: processor_state,
+                processor_state,
+                tiny_synth_midi_cc_assignments,
             });
         }
         Ok(BackendSessionData {
@@ -642,6 +652,9 @@ impl NativeRuntime {
     fn restore_session(&mut self, data: &BackendSessionData) -> Result<BackendSessionReplacement> {
         if !self.tracks.is_empty() {
             return Err(anyhow!("target native session is not empty"));
+        }
+        for track in &data.tracks {
+            validate_backend_midi_cc_assignments(track)?;
         }
         let mut replacement = BackendSessionReplacement::default();
         for source_track in &data.tracks {
@@ -682,6 +695,11 @@ impl NativeRuntime {
                         .and_then(|track| track.fx.as_mut())
                         .ok_or_else(|| anyhow!("restored track has no processor"))?;
                     fx.chain.try_restore_state(state)?;
+                    for assignment in &source_track.tiny_synth_midi_cc_assignments {
+                        fx.chain.tiny_assign_midi_cc(engine_midi_cc_assignment(
+                            app_backend_midi_cc_assignment(*assignment),
+                        ))?;
+                    }
                     fx.last_confirmed_state = Some(state.to_owned());
                 }
                 _ if source_track.processor_state.is_some() => {
@@ -1363,6 +1381,15 @@ impl NativeRuntime {
                     TinySynthFxControl::SetEqMidDb(value) => fx.chain.tiny_set_eq_mid_db(value)?,
                     TinySynthFxControl::SetEqHighDb(value) => {
                         fx.chain.tiny_set_eq_high_db(value)?
+                    }
+                    TinySynthFxControl::AssignMidiCc(assignment) => fx
+                        .chain
+                        .tiny_assign_midi_cc(engine_midi_cc_assignment(assignment))?,
+                    TinySynthFxControl::RemoveMidiCc(parameter) => fx
+                        .chain
+                        .tiny_remove_midi_cc(engine_tiny_synth_parameter(parameter))?,
+                    TinySynthFxControl::ClearMidiCcAssignments => {
+                        fx.chain.tiny_clear_midi_cc_assignments()?
                     }
                     TinySynthFxControl::Panic => fx.chain.tiny_panic()?,
                 }
@@ -2184,6 +2211,12 @@ impl Backend for NativeBackend {
                             eq_low_db: editor.eq_low_db,
                             eq_mid_db: editor.eq_mid_db,
                             eq_high_db: editor.eq_high_db,
+                            midi_cc_assignments: editor
+                                .midi_cc_assignments
+                                .into_iter()
+                                .map(app_midi_cc_assignment)
+                                .collect::<Vec<_>>()
+                                .into(),
                         })
                     }),
                 }
@@ -2206,11 +2239,13 @@ impl Backend for NativeBackend {
                         .unwrap_or(-200.0)
                 })
                 .collect();
-            state.input_midi_activity = track
-                .midi_input
+            let input_midi_state = track.midi_input.as_ref().and_then(MidiPort::poll_state);
+            state.input_midi_activity = input_midi_state
                 .as_ref()
-                .and_then(MidiPort::poll_state)
                 .is_some_and(|state| state.n_input_events > 0 || state.n_input_notes_active > 0);
+            state.latest_input_midi_message = input_midi_state
+                .and_then(|state| state.latest_input_message)
+                .map(Into::into);
             state.output_midi_activity = track
                 .midi_output
                 .as_ref()
@@ -3349,6 +3384,53 @@ mod tests {
             )
             .unwrap();
         let _ = backend.poll().unwrap();
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                    TinySynthFxMidiCcAssignment {
+                        parameter: TinySynthFxParameter::ReverbAmount,
+                        channel: 3,
+                        controller: 21,
+                    },
+                )),
+            )
+            .unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            let midi = runtime.tracks[&created.track_id]
+                .midi_input
+                .as_ref()
+                .unwrap()
+                .clone();
+            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
+                time: 0,
+                data: vec![0xb3, 21, 127],
+            })
+            .unwrap();
+            runtime.driver.dummy_request_controlled_frames(128);
+            runtime.driver.dummy_run_requested_frames();
+        }
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.tracks[&created.track_id]
+                .latest_input_midi_message
+                .unwrap(),
+            BackendLatestMidiMessage {
+                bytes: [0xb3, 21, 127, 0],
+                len: 3,
+            }
+        );
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = snapshot.tracks
+            [&created.track_id]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX editor state");
+        };
+        assert_eq!(editor.reverb_amount, 1.0);
 
         {
             let runtime = backend.runtime_mut().unwrap();
@@ -3419,6 +3501,14 @@ mod tests {
             .processor_state
             .as_deref()
             .is_some_and(|state| state.starts_with("shoop-tiny-synth-fx:1:")));
+        assert_eq!(
+            captured.tracks[0].tiny_synth_midi_cc_assignments,
+            [BackendTinySynthFxMidiCcAssignment {
+                parameter: BackendTinySynthFxParameter::ReverbAmount,
+                channel: 3,
+                controller: 21,
+            }]
+        );
         backend
             .switch_audio_driver(
                 &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
@@ -3429,9 +3519,14 @@ mod tests {
                 &captured,
             )
             .unwrap();
+        let switched = backend.capture_session().unwrap();
         assert_eq!(
-            backend.capture_session().unwrap().tracks[0].processor_state,
+            switched.tracks[0].processor_state,
             captured.tracks[0].processor_state
+        );
+        assert_eq!(
+            switched.tracks[0].tiny_synth_midi_cc_assignments,
+            captured.tracks[0].tiny_synth_midi_cc_assignments
         );
 
         let mut browser = EngineBackend::new_web_audio(48_000, 128).unwrap();
@@ -3445,9 +3540,14 @@ mod tests {
             browser_state.tracks[0].processor_state,
             captured.tracks[0].processor_state
         );
+        assert_eq!(
+            browser_state.tracks[0].tiny_synth_midi_cc_assignments,
+            captured.tracks[0].tiny_synth_midi_cc_assignments
+        );
 
         let mut restored = NativeBackend::new(config).unwrap();
-        restored.replace_session(&browser_state).unwrap();
+        let replacement = restored.replace_session(&browser_state).unwrap();
+        let restored_track = replacement.tracks[&captured.tracks[0].source_id].track_id;
         let restored_state = restored.capture_session().unwrap();
         assert_eq!(
             restored_state.tracks[0].topology,
@@ -3457,6 +3557,42 @@ mod tests {
             restored_state.tracks[0].processor_state,
             captured.tracks[0].processor_state
         );
+        assert_eq!(
+            restored_state.tracks[0].tiny_synth_midi_cc_assignments,
+            captured.tracks[0].tiny_synth_midi_cc_assignments
+        );
+        restored
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
+                    TinySynthFxParameter::ReverbAmount,
+                )),
+            )
+            .unwrap();
+        assert!(restored.capture_session().unwrap().tracks[0]
+            .tiny_synth_midi_cc_assignments
+            .is_empty());
+        restored
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                    TinySynthFxMidiCcAssignment {
+                        parameter: TinySynthFxParameter::EqLow,
+                        channel: 1,
+                        controller: 71,
+                    },
+                )),
+            )
+            .unwrap();
+        restored
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments),
+            )
+            .unwrap();
+        assert!(restored.capture_session().unwrap().tracks[0]
+            .tiny_synth_midi_cc_assignments
+            .is_empty());
     }
 
     #[test]

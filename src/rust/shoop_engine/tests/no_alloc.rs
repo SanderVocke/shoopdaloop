@@ -289,9 +289,14 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         .unwrap()
         .as_dummy_midi_mut()
         .unwrap()
-        .queue_msg(0, &midi::note_on(0, 69, 127));
+        .queue_msg(0, &midi::cc(0, 17, 127));
     assert_no_alloc(|| {
         let processor = session.tiny_synth_fx_processor_mut("tiny").unwrap();
+        processor.assign_midi_cc(shoop_engine::tiny_synth_fx::TinySynthFxMidiCcAssignment {
+            parameter: shoop_engine::tiny_synth_fx::TinySynthFxParameter::ReverbAmount,
+            channel: 0,
+            controller: 17,
+        });
         processor.set_master_gain_db(-12.0);
         processor.set_reverb_enabled(true);
         processor.set_reverb_amount(0.5);
@@ -306,6 +311,9 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         processor.select_preset("percussion-kit");
         processor.panic();
         session.process(4);
+        let processor = session.tiny_synth_fx_processor_mut("tiny").unwrap();
+        processor.remove_midi_cc(shoop_engine::tiny_synth_fx::TinySynthFxParameter::ReverbAmount);
+        processor.clear_midi_cc_assignments();
     });
 }
 

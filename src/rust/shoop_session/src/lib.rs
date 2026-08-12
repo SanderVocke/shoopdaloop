@@ -173,6 +173,7 @@ mod tests {
                         chain_type: FxChainTypeDocument::CarlaPatchbay16x,
                         ports: Vec::new(),
                         internal_state: "{\"opaque\":\"å\\u0000state\"}".to_owned(),
+                        midi_cc_assignments: Vec::new(),
                     }),
                 }],
             }],
@@ -219,6 +220,11 @@ mod tests {
             chain_type: FxChainTypeDocument::TinySynthFx,
             ports: Vec::new(),
             internal_state: "shoop-tiny-synth-fx:1:c0c00000:VEFT".to_owned(),
+            midi_cc_assignments: vec![TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqMid,
+                channel: 4,
+                controller: 18,
+            }],
         });
         let midi = &mut track.loops[0].channels[0];
         midi.mode = ChannelModeDocument::Dry;
@@ -350,6 +356,7 @@ mod tests {
                     chain_type: FxChainTypeDocument::CarlaRack,
                     ports: Vec::new(),
                     internal_state: "opaque\0carla\nstate".to_owned(),
+                    midi_cc_assignments: Vec::new(),
                 }),
             },
         ]);
@@ -365,6 +372,7 @@ mod tests {
                 chain_type: FxChainTypeDocument::Test,
                 ports: Vec::new(),
                 internal_state: "bus-state".to_owned(),
+                midi_cc_assignments: Vec::new(),
             }),
         }];
         bundle.document.global_ports = vec![PortDocument {
@@ -430,16 +438,43 @@ mod tests {
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
         let mut mismatched = bundle.clone();
-        mismatched.document.track_groups[0].tracks[0]
+        let mismatched_chain = mismatched.document.track_groups[0].tracks[0]
             .fx_chain
             .as_mut()
-            .unwrap()
-            .chain_type = FxChainTypeDocument::CarlaRack;
+            .unwrap();
+        mismatched_chain.chain_type = FxChainTypeDocument::CarlaRack;
+        mismatched_chain.midi_cc_assignments.clear();
         assert!(matches!(
             validate_bundle(&mismatched),
             Err(SessionError::Validation(message))
                 if message.contains("chain type does not match")
         ));
+
+        let mut duplicate = bundle.clone();
+        duplicate.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .midi_cc_assignments
+            .push(TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqHigh,
+                channel: 4,
+                controller: 18,
+            });
+        assert!(matches!(
+            validate_bundle(&duplicate),
+            Err(SessionError::Validation(message))
+                if message.contains("invalid or duplicate MIDI CC assignments")
+        ));
+
+        let mut out_of_range = bundle.clone();
+        out_of_range.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .midi_cc_assignments[0]
+            .channel = 16;
+        assert!(validate_bundle(&out_of_range).is_err());
 
         let mut missing_midi = bundle;
         missing_midi.document.track_groups[0].tracks[0].loops[0]
@@ -450,6 +485,18 @@ mod tests {
             Err(SessionError::Validation(message))
                 if message.contains("channel shape does not match")
         ));
+    }
+
+    #[test]
+    fn legacy_fx_chain_without_midi_assignments_defaults_to_empty() {
+        let chain = tiny_synth_fx_bundle().document.track_groups[0].tracks[0]
+            .fx_chain
+            .clone()
+            .unwrap();
+        let mut value = serde_json::to_value(chain).unwrap();
+        value.as_object_mut().unwrap().remove("midi_cc_assignments");
+        let decoded: FxChainDocument = serde_json::from_value(value).unwrap();
+        assert!(decoded.midi_cc_assignments.is_empty());
     }
 
     #[test]
