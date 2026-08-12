@@ -741,10 +741,11 @@ impl ConnectionDialog {
                 ui.label(crate::fonts::bold_italic_text(&endpoint.group));
                 previous_group = Some(&endpoint.group);
             }
-            let (rect, _) = ui.allocate_exact_size(
+            let (rect, row_response) = ui.allocate_exact_size(
                 egui::vec2(COLUMN_WIDTH, ENDPOINT_HEIGHT),
                 egui::Sense::hover(),
             );
+            row_response.on_hover_text(endpoint_hover(endpoint, column.is_source()));
             let visuals = ui.visuals().widgets.inactive;
             ui.painter().rect(
                 rect.shrink(1.0),
@@ -834,7 +835,7 @@ impl ConnectionDialog {
             } else {
                 format!("{}  {glyph}", endpoint.label)
             };
-            ui.painter().text(
+            ui.painter().with_clip_rect(text_rect).text(
                 match align {
                     egui::Align2::LEFT_CENTER => text_rect.left_center(),
                     _ => text_rect.right_center(),
@@ -1294,19 +1295,21 @@ mod tests {
     #[test]
     fn data_type_and_multi_track_filters_remove_endpoints_and_routes() {
         let state = state();
-        let filters = ConnectionFilters {
-            audio: false,
-            midi: true,
-            tracks: TrackFilter::Selected(BTreeSet::from([TrackId::from_raw(1)])),
-        };
-        let graph = ConnectionGraph::build(&state, &filters);
-        assert!(graph
+        let midi_track_one = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters {
+                audio: false,
+                midi: true,
+                tracks: TrackFilter::Selected(BTreeSet::from([TrackId::from_raw(1)])),
+            },
+        );
+        assert!(midi_track_one
             .endpoints
             .values()
             .flatten()
             .all(|endpoint| endpoint.data_type == PortDataType::Midi));
-        assert_eq!(graph.routes.len(), 1);
-        let all_ids: BTreeSet<_> = graph
+        assert_eq!(midi_track_one.routes.len(), 1);
+        let all_ids: BTreeSet<_> = midi_track_one
             .endpoints
             .values()
             .flatten()
@@ -1314,6 +1317,35 @@ mod tests {
             .collect();
         assert!(all_ids.contains(&EndpointId::Application(PortId::from_raw(12))));
         assert!(!all_ids.contains(&EndpointId::Application(PortId::from_raw(13))));
+
+        let both_tracks = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters {
+                audio: true,
+                midi: true,
+                tracks: TrackFilter::Selected(BTreeSet::from([
+                    TrackId::from_raw(1),
+                    TrackId::from_raw(2),
+                ])),
+            },
+        );
+        let application_ids: BTreeSet<_> = both_tracks
+            .endpoints
+            .values()
+            .flatten()
+            .filter_map(|endpoint| match endpoint.id {
+                EndpointId::Application(id) => Some(id),
+                EndpointId::Host(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            application_ids,
+            BTreeSet::from([
+                PortId::from_raw(11),
+                PortId::from_raw(12),
+                PortId::from_raw(13),
+            ])
+        );
     }
 
     #[test]
@@ -1382,6 +1414,12 @@ mod tests {
             connection_policy: ConnectionPolicy::OwnerManaged,
         });
         connections.application_ports = ports.into();
+        let mut confirmed_links = connections.confirmed_links.to_vec();
+        confirmed_links.push(ConfirmedConnectionState {
+            application_port_id: PortId::from_raw(99),
+            host_port_id: HostPortId::new("orphan:midi_source"),
+        });
+        connections.confirmed_links = confirmed_links.into();
         let global = ConnectionGraph::build(
             &state,
             &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
@@ -1390,6 +1428,14 @@ mod tests {
             .column(GraphColumn::ShoopSinks)
             .iter()
             .any(|endpoint| endpoint.group == "Script: APC"));
+        let managed_route = global
+            .routes
+            .iter()
+            .find(|route| route.application_port_id == PortId::from_raw(99))
+            .expect("Lua owner-managed route should remain visible");
+        assert_eq!(managed_route.policy, ConnectionPolicy::OwnerManaged);
+        assert_eq!(managed_route.state, GraphRouteState::Confirmed);
+        assert!(!global.compatible_drop(&managed_route.source, &managed_route.sink));
         let selected = ConnectionGraph::build(
             &state,
             &ConnectionFilters::for_scope(ConnectionScope::Track(TrackId::from_raw(1))),
@@ -1399,6 +1445,45 @@ mod tests {
             .values()
             .flatten()
             .any(|endpoint| endpoint.id == EndpointId::Application(PortId::from_raw(99))));
+    }
+
+    #[test]
+    fn duplicate_display_names_retain_distinct_stable_host_identities() {
+        let mut state = state();
+        let connections = Arc::make_mut(&mut state.connections);
+        let mut host_ports = connections.host_ports.to_vec();
+        host_ports.extend([
+            host_port(
+                "duplicate-id-1",
+                "Duplicate Device:output",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ),
+            host_port(
+                "duplicate-id-2",
+                "Duplicate Device:output",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ),
+        ]);
+        connections.host_ports = host_ports.into();
+        let graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        let duplicates: Vec<_> = graph
+            .column(GraphColumn::SystemSources)
+            .iter()
+            .filter(|endpoint| endpoint.full_name == "Duplicate Device:output")
+            .map(|endpoint| endpoint.id.clone())
+            .collect();
+        assert_eq!(
+            duplicates,
+            [
+                EndpointId::Host(HostPortId::new("duplicate-id-1")),
+                EndpointId::Host(HostPortId::new("duplicate-id-2")),
+            ]
+        );
     }
 
     #[test]
@@ -1507,6 +1592,40 @@ mod tests {
             assert_eq!(dialog.endpoint_rects.len(), 6);
             assert_eq!(dialog.route_points.len(), 1);
         }
+    }
+
+    #[test]
+    fn loading_unavailable_and_no_filter_results_are_safe_and_truthful() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut state = state();
+        let mut dialog = ConnectionDialog::default();
+        dialog.open(ConnectionScope::AllTracks);
+
+        Arc::make_mut(&mut state.connections).loading = true;
+        let loading = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert!(loading.shapes.len() > 2);
+        assert!(dialog.endpoint_rects.is_empty());
+
+        let connections = Arc::make_mut(&mut state.connections);
+        connections.loading = false;
+        connections.backend_available = false;
+        let unavailable = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert!(unavailable.shapes.len() > 10);
+        assert_eq!(dialog.endpoint_rects.len(), 6);
+
+        dialog.filters.audio = false;
+        dialog.filters.midi = false;
+        let filtered = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert!(filtered.shapes.len() > 2);
+        assert!(dialog.endpoint_rects.is_empty());
+        assert!(dialog.route_points.is_empty());
     }
 
     fn frame(
