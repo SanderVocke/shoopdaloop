@@ -974,15 +974,15 @@ mod tests {
             ("return", "must be the first Shoop API call"),
             (
                 "shoop_announce_api_version(2, 0)",
-                "script requests 2.0, host supports 1.0",
+                "script requests 2.0, host supports 1.1",
             ),
             (
                 "shoop_announce_api_version(0, 0)",
-                "script requests 0.0, host supports 1.0",
+                "script requests 0.0, host supports 1.1",
             ),
             (
-                "shoop_announce_api_version(1, 1)",
-                "script requests 1.1, host supports 1.0",
+                "shoop_announce_api_version(1, 2)",
+                "script requests 1.2, host supports 1.1",
             ),
             (
                 "shoop_announce_api_version(-1, 0)",
@@ -1315,6 +1315,7 @@ d.open('Simple')
                 solo: false,
                 sync_active: true,
                 play_after_record: true,
+                auto_mute_other_track_inputs: false,
                 default_recording_action: shoop_app_api::DefaultRecordingAction::Record,
             },
             operations: Vec::new(),
@@ -1398,6 +1399,8 @@ eq(c.get_sync_active(), true, 'sync')
 c.set_sync_active(false)
 eq(c.get_play_after_record(), true, 'play after record')
 c.set_play_after_record(false)
+eq(c.get_auto_mute_other_track_inputs(), false, 'auto mute inputs')
+c.set_auto_mute_other_track_inputs(true)
 eq(c.get_default_recording_action(), 'record', 'record action')
 c.set_default_recording_action('grab')
 
@@ -1421,7 +1424,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
             .map(|name| (*name).to_owned())
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(called, expected);
-        assert_eq!(bridge.borrow().operations.len(), 30);
+        assert_eq!(bridge.borrow().operations.len(), 31);
     }
 
     #[test]
@@ -1531,6 +1534,10 @@ fails('loop coordinate', function() c.loop_count({{0}}) end)
 fails('invalid loop mode', function() c.loop_trigger({0,0}, 99) end)
 fails('non-negative', function() c.loop_transition({0,0}, c.constants.LoopMode_Playing, -2, -1) end)
 fails('track selector', function() c.track_get_gain('bad') end)
+fails('2 or 3 arguments', function() c.track_set_input_muted(0) end)
+fails('muted must be boolean', function() c.track_set_input_muted(0, 'false') end)
+fails('respect_auto_mute must be boolean', function() c.track_set_input_muted(0, false, 1) end)
+fails('2 or 3 arguments', function() c.track_set_input_muted(0, false, true, false) end)
 fails('timer delay', function() c.register_one_shot_timer_cb(-1, function() end) end)
 fails('rate limit', function() c.auto_open_device_specific_midi_control_output('', function() end, function() end, -1) end)
 fails('invalid MIDI autoconnect regex', function() c.auto_open_device_specific_midi_control_input('[', function() end) end)
@@ -1550,6 +1557,89 @@ c.track_set_muted(99, true)
                     tracks: Vec::new(),
                     muted: true,
                 },
+            ]
+        );
+    }
+
+    #[test]
+    fn input_mute_control_and_helper_preserve_legacy_and_exclusive_semantics() {
+        let sync = TrackId::from_raw(1);
+        let first = TrackId::from_raw(2);
+        let second = TrackId::from_raw(3);
+        let third = TrackId::from_raw(4);
+        let track = |id, index, input_muted| ControlTrack {
+            id,
+            index,
+            output_gain_db: 0.0,
+            output_balance: 0.0,
+            output_muted: false,
+            input_gain_db: 0.0,
+            input_muted,
+        };
+        let bridge = Rc::new(RefCell::new(ControlBridge {
+            snapshot: ControlSnapshot {
+                tracks: vec![
+                    track(sync, -1, false),
+                    track(first, 0, false),
+                    track(second, 1, true),
+                    track(third, 2, false),
+                ],
+                auto_mute_other_track_inputs: true,
+                ..Default::default()
+            },
+            operations: Vec::new(),
+        }));
+        let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
+        runtime
+            .execute_announced(
+                "input mutedness",
+                r#"
+local c = require('shoop_control')
+local h = require('shoop_helpers')
+local function states(expected)
+    local actual = c.track_get_input_muted({-1, 0, 1, 2})
+    for i, value in ipairs(expected) do
+        if actual[i] ~= value then error('state ' .. i) end
+    end
+end
+if not c.get_auto_mute_other_track_inputs() then error('global getter') end
+h.track_toggle_input_muted(0)
+states({false, true, true, false})
+h.track_toggle_input_muted({0, 1}, true)
+states({true, false, false, true})
+h.track_toggle_input_muted({0, 1}, true)
+states({true, true, true, true})
+c.track_set_input_muted(2, false)
+states({true, true, true, false})
+c.set_auto_mute_other_track_inputs(false)
+if c.get_auto_mute_other_track_inputs() then error('global setter') end
+"#,
+            )
+            .unwrap();
+        assert_eq!(
+            bridge.borrow().operations,
+            [
+                ControlOperation::SetTrackInputMuted {
+                    tracks: vec![first],
+                    muted: true,
+                    respect_auto_mute: false,
+                },
+                ControlOperation::SetTrackInputMuted {
+                    tracks: vec![first, second],
+                    muted: false,
+                    respect_auto_mute: true,
+                },
+                ControlOperation::SetTrackInputMuted {
+                    tracks: vec![first, second],
+                    muted: true,
+                    respect_auto_mute: true,
+                },
+                ControlOperation::SetTrackInputMuted {
+                    tracks: vec![third],
+                    muted: false,
+                    respect_auto_mute: false,
+                },
+                ControlOperation::SetAutoMuteOtherTrackInputs(false),
             ]
         );
     }

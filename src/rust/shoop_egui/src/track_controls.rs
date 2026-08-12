@@ -136,9 +136,10 @@ impl TrackControls {
                     .on_hover_text("Enable/disable input monitoring");
                 self.record_rect(TestTrackControl::InputMonitoring, &response);
                 if response.clicked() {
-                    actions.push(TrackWidgetAction::InputMonitoringChanged(
-                        !state.input_monitoring,
-                    ));
+                    actions.push(TrackWidgetAction::InputMonitoringChanged {
+                        enabled: !state.input_monitoring,
+                        respect_auto_mute: true,
+                    });
                 }
 
                 let (gain_width, balance_size) =
@@ -507,7 +508,10 @@ mod tests {
                 &state,
                 TestTrackControl::InputMonitoring
             ),
-            vec![TrackWidgetAction::InputMonitoringChanged(true)]
+            vec![TrackWidgetAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: true,
+            }]
         );
     }
 

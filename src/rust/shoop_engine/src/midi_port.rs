@@ -13,6 +13,7 @@ use crate::midi_sorting_buffer::MidiSortingBuffer;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{MidiStorage, MidiStorageElem};
 use crate::port::PortDataType;
+use crate::state::LatestMidiMessage;
 use crate::state_mirror::MidiPortStateMirror;
 use std::sync::Arc;
 
@@ -38,6 +39,7 @@ pub struct MidiPort {
     ringbuffer_capacity: usize,
     n_input_events: u32,
     n_output_events: u32,
+    latest_input_message: Option<LatestMidiMessage>,
     state: Arc<MidiPortStateMirror>,
 }
 
@@ -55,6 +57,7 @@ impl MidiPort {
             ringbuffer_capacity: DEFAULT_RINGBUFFER_CAPACITY_ELEMS,
             n_input_events: 0,
             n_output_events: 0,
+            latest_input_message: None,
             state: Arc::new(MidiPortStateMirror::default()),
         }
     }
@@ -135,6 +138,9 @@ impl MidiPort {
     pub fn reset_n_output_events(&mut self) {
         self.n_output_events = 0;
     }
+    pub fn latest_input_message(&self) -> Option<LatestMidiMessage> {
+        self.latest_input_message
+    }
 
     pub fn midi_state(&self) -> Option<&MidiStateTracker> {
         self.midi_state.as_ref()
@@ -195,6 +201,13 @@ impl MidiPort {
             self.publish_state();
             return;
         };
+        if let Some(message) = events
+            .last()
+            .and_then(|event| LatestMidiMessage::new(event.data()))
+        {
+            self.latest_input_message = Some(message);
+            self.state.publish_latest_input_message(message);
+        }
         self.n_input_events += events.len() as u32;
         let input_count = events.len() as u32;
 
@@ -273,6 +286,37 @@ mod tests {
         check!(p.n_input_events() == 2);
         p.reset_n_input_events();
         check!(p.n_input_events() == 0);
+    }
+
+    #[test]
+    fn latest_input_message_is_exact_persistent_and_pre_mute() {
+        let mut p = port();
+        for data in [
+            &[0xf8][..],
+            &[0xc1, 7][..],
+            &[0xb2, 11, 64][..],
+            &[0xf0, 1, 2, 0xf7][..],
+        ] {
+            p.process(4, Some(&[ev(0, data)]), None);
+            check!(p.latest_input_message().unwrap().data() == data);
+            check!(
+                p.state
+                    .read(String::new())
+                    .latest_input_message
+                    .unwrap()
+                    .data()
+                    == data
+            );
+        }
+        p.set_muted(true);
+        p.process(
+            4,
+            Some(&[ev(0, &[0x90, 60, 1]), ev(1, &[0xb4, 19, 88])]),
+            None,
+        );
+        check!(p.latest_input_message().unwrap().data() == [0xb4, 19, 88]);
+        p.process(4, Some(&[]), None);
+        check!(p.latest_input_message().unwrap().data() == [0xb4, 19, 88]);
     }
 
     #[test]

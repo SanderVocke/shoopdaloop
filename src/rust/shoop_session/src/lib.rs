@@ -134,6 +134,7 @@ mod tests {
                 play_after_record: true,
                 sync: true,
                 solo: true,
+                auto_mute_other_track_inputs: true,
                 apply_n_cycles: 4,
             },
             track_groups: vec![TrackGroupDocument {
@@ -173,6 +174,7 @@ mod tests {
                         chain_type: FxChainTypeDocument::CarlaPatchbay16x,
                         ports: Vec::new(),
                         internal_state: "{\"opaque\":\"å\\u0000state\"}".to_owned(),
+                        midi_cc_assignments: Vec::new(),
                     }),
                 }],
             }],
@@ -219,6 +221,11 @@ mod tests {
             chain_type: FxChainTypeDocument::TinySynthFx,
             ports: Vec::new(),
             internal_state: "shoop-tiny-synth-fx:1:c0c00000:VEFT".to_owned(),
+            midi_cc_assignments: vec![TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqMid,
+                channel: 4,
+                controller: 18,
+            }],
         });
         let midi = &mut track.loops[0].channels[0];
         midi.mode = ChannelModeDocument::Dry;
@@ -350,6 +357,7 @@ mod tests {
                     chain_type: FxChainTypeDocument::CarlaRack,
                     ports: Vec::new(),
                     internal_state: "opaque\0carla\nstate".to_owned(),
+                    midi_cc_assignments: Vec::new(),
                 }),
             },
         ]);
@@ -365,6 +373,7 @@ mod tests {
                 chain_type: FxChainTypeDocument::Test,
                 ports: Vec::new(),
                 internal_state: "bus-state".to_owned(),
+                midi_cc_assignments: Vec::new(),
             }),
         }];
         bundle.document.global_ports = vec![PortDocument {
@@ -403,7 +412,8 @@ mod tests {
         bundle
     }
 
-    fn rewrite_manifest_major(bytes: Vec<u8>, major: u16) -> Vec<u8> {
+    fn rewrite_manifest(bytes: Vec<u8>, rewrite: impl FnOnce(&mut serde_json::Value)) -> Vec<u8> {
+        let mut rewrite = Some(rewrite);
         let mut input = ZipArchive::new(Cursor::new(bytes)).unwrap();
         let mut output = ZipWriter::new(Cursor::new(Vec::new()));
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -414,13 +424,19 @@ mod tests {
             entry.read_to_end(&mut payload).unwrap();
             if name == "manifest.json" {
                 let mut manifest: serde_json::Value = serde_json::from_slice(&payload).unwrap();
-                manifest["format_version"]["major"] = serde_json::json!(major);
+                rewrite.take().unwrap()(&mut manifest);
                 payload = serde_json::to_vec(&manifest).unwrap();
             }
             output.start_file(name, options).unwrap();
             output.write_all(&payload).unwrap();
         }
         output.finish().unwrap().into_inner()
+    }
+
+    fn rewrite_manifest_major(bytes: Vec<u8>, major: u16) -> Vec<u8> {
+        rewrite_manifest(bytes, |manifest| {
+            manifest["format_version"]["major"] = serde_json::json!(major);
+        })
     }
 
     #[test]
@@ -430,16 +446,43 @@ mod tests {
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
         let mut mismatched = bundle.clone();
-        mismatched.document.track_groups[0].tracks[0]
+        let mismatched_chain = mismatched.document.track_groups[0].tracks[0]
             .fx_chain
             .as_mut()
-            .unwrap()
-            .chain_type = FxChainTypeDocument::CarlaRack;
+            .unwrap();
+        mismatched_chain.chain_type = FxChainTypeDocument::CarlaRack;
+        mismatched_chain.midi_cc_assignments.clear();
         assert!(matches!(
             validate_bundle(&mismatched),
             Err(SessionError::Validation(message))
                 if message.contains("chain type does not match")
         ));
+
+        let mut duplicate = bundle.clone();
+        duplicate.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .midi_cc_assignments
+            .push(TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqHigh,
+                channel: 4,
+                controller: 18,
+            });
+        assert!(matches!(
+            validate_bundle(&duplicate),
+            Err(SessionError::Validation(message))
+                if message.contains("invalid or duplicate MIDI CC assignments")
+        ));
+
+        let mut out_of_range = bundle.clone();
+        out_of_range.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .midi_cc_assignments[0]
+            .channel = 16;
+        assert!(validate_bundle(&out_of_range).is_err());
 
         let mut missing_midi = bundle;
         missing_midi.document.track_groups[0].tracks[0].loops[0]
@@ -453,10 +496,36 @@ mod tests {
     }
 
     #[test]
+    fn legacy_fx_chain_without_midi_assignments_defaults_to_empty() {
+        let chain = tiny_synth_fx_bundle().document.track_groups[0].tracks[0]
+            .fx_chain
+            .clone()
+            .unwrap();
+        let mut value = serde_json::to_value(chain).unwrap();
+        value.as_object_mut().unwrap().remove("midi_cc_assignments");
+        let decoded: FxChainDocument = serde_json::from_value(value).unwrap();
+        assert!(decoded.midi_cc_assignments.is_empty());
+    }
+
+    #[test]
     fn minimal_session_fixture_round_trips() {
         let bundle = SessionBundle::new(SessionDocument::empty(48_000));
         let encoded = encode_session(&bundle, "minimal-fixture").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
+    }
+
+    #[test]
+    fn missing_auto_mute_other_track_inputs_defaults_off() {
+        let mut bundle = direct_bundle(1);
+        bundle.document.global.auto_mute_other_track_inputs = false;
+        let encoded = encode_session(&bundle, "legacy-global-fixture").unwrap();
+        let without_field = rewrite_manifest(encoded, |manifest| {
+            manifest["document"]["global"]
+                .as_object_mut()
+                .unwrap()
+                .remove("auto_mute_other_track_inputs");
+        });
+        assert_eq!(decode_session(&without_field).unwrap(), bundle);
     }
 
     #[test]

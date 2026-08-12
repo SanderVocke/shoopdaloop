@@ -61,7 +61,9 @@
 --
 -- Track muting can be done as follows:
 -- - VOLUME + LOOP BUTTON will toggle mute on the track that the clicked loop is in.
--- - PAN + LOOP BUTTON will toggle input mute on the track that the clicked loop is in.
+-- - PAN + GRID BUTTON will toggle input mute for the track represented by that column.
+--   PAN + the sync-loop button applies to the sync track. Unmuting always respects the
+--   global auto-mute-other-inputs control.
 --
 -- -----------------------
 -- -- COMPOSITION MODE ---
@@ -85,7 +87,7 @@
 -- The continued behavior during the lifetime of the script is set up near
 -- the bottom by registering callbacks.
 if shoop_announce_api_version then
-    shoop_announce_api_version(1, 0)
+    shoop_announce_api_version(1, 1)
 end
 
 print_debug("Init akai_apc_mini_mk1.lua")
@@ -291,7 +293,7 @@ local handle_loop_pressed = function(coords)
     elseif STATE_pan_pressed then
         -- Pan => Input Mute
         print_debug("-> toggle track input muted")
-        shoop_helpers.track_toggle_input_muted(coords[1])
+        shoop_helpers.track_toggle_input_muted(coords[1], true)
     elseif STATE_dry_pressed and STATE_shift_pressed then
         -- Shift + Dry => Composition mode
         print_debug("-> enter composition mode with loop")

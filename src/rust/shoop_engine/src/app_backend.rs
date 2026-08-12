@@ -6002,10 +6002,12 @@ impl FXChain {
             FXChainBackendKind::Carla(host) => host.restore_state(state),
             FXChainBackendKind::Tiny(control) => {
                 let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
-                let replacement = engine::tiny_synth_fx::TinySynthFxControlState::from_encoded(
+                let assignments = control.lock().unwrap().midi_cc_assignments();
+                let mut replacement = engine::tiny_synth_fx::TinySynthFxControlState::from_encoded(
                     sample_rate as f32,
                     state,
                 )?;
+                replacement.set_midi_cc_assignments(assignments);
                 let processor = replacement.prepare_processor(
                     sample_rate as f32,
                     self.tiny_channels,
@@ -6233,6 +6235,57 @@ impl FXChain {
             }
         })?;
         update_control(&mut control.lock().unwrap(), gain_db)?;
+        Ok(())
+    }
+
+    pub fn tiny_assign_midi_cc(
+        &self,
+        assignment: engine::tiny_synth_fx::TinySynthFxMidiCcAssignment,
+    ) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if assignment.channel > 15 || assignment.controller > 127 {
+            return Err(anyhow!("invalid Tiny Synth/FX MIDI CC assignment"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.assign_midi_cc(assignment);
+            }
+        })?;
+        control.lock().unwrap().assign_midi_cc(assignment);
+        Ok(())
+    }
+
+    pub fn tiny_remove_midi_cc(
+        &self,
+        parameter: engine::tiny_synth_fx::TinySynthFxParameter,
+    ) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.remove_midi_cc(parameter);
+            }
+        })?;
+        control.lock().unwrap().remove_midi_cc(parameter);
+        Ok(())
+    }
+
+    pub fn tiny_clear_midi_cc_assignments(&self) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.clear_midi_cc_assignments();
+            }
+        })?;
+        control.lock().unwrap().clear_midi_cc_assignments();
         Ok(())
     }
 

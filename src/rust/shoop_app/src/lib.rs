@@ -30,7 +30,8 @@ use shoop_backend::{
     BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
     BackendMidiEvent, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
     BackendPortId, BackendPortRole, BackendSessionData, BackendSessionPort,
-    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
+    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot,
+    BackendTinySynthFxMidiCcAssignment, BackendTinySynthFxParameter, BackendTrackControl,
     BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
     DirectTrackRequest, TrackRequest,
 };
@@ -50,7 +51,8 @@ use shoop_session::{
     ExactMidi, ExactMidiEvent, FxChainDocument, FxChainTypeDocument, FxStateDocument,
     GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
     MidiClickTrackSpec, MidiControlDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
-    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument,
+    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument,
+    TinySynthFxMidiCcAssignmentDocument, TinySynthFxParameterDocument, TrackControlsDocument,
     TrackDocument, TrackGroupDocument, TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS,
     MAX_CLICK_TRACK_FRAMES,
 };
@@ -1310,6 +1312,8 @@ impl ApplicationModel {
             || current.solo != self.script_last_snapshot.solo
             || current.sync_active != self.script_last_snapshot.sync_active
             || current.play_after_record != self.script_last_snapshot.play_after_record
+            || current.auto_mute_other_track_inputs
+                != self.script_last_snapshot.auto_mute_other_track_inputs
             || current.default_recording_action
                 != self.script_last_snapshot.default_recording_action
         {
@@ -1377,6 +1381,7 @@ impl ApplicationModel {
             solo: self.global.solo,
             sync_active: self.global.sync,
             play_after_record: self.global.play_after_record,
+            auto_mute_other_track_inputs: self.global.auto_mute_other_track_inputs,
             default_recording_action: self.global.default_recording_action,
         }
     }
@@ -1658,12 +1663,11 @@ impl ApplicationModel {
             ),
             ControlOperation::SetTrackInputGain { tracks, gain_db } => self
                 .apply_script_track_action(backend, tracks, TrackAction::InputGainChanged(gain_db)),
-            ControlOperation::SetTrackInputMuted { tracks, muted } => self
-                .apply_script_track_action(
-                    backend,
-                    tracks,
-                    TrackAction::InputMonitoringChanged(!muted),
-                ),
+            ControlOperation::SetTrackInputMuted {
+                tracks,
+                muted,
+                respect_auto_mute,
+            } => self.handle_track_input_monitoring(backend, &tracks, !muted, respect_auto_mute),
             ControlOperation::SetApplyNCycles(value) => {
                 self.handle_global_action(backend, GlobalControlAction::SetApplyNCycles(value))
             }
@@ -1676,6 +1680,10 @@ impl ApplicationModel {
             ControlOperation::SetPlayAfterRecord(value) => {
                 self.handle_global_action(backend, GlobalControlAction::SetPlayAfterRecord(value))
             }
+            ControlOperation::SetAutoMuteOtherTrackInputs(value) => self.handle_global_action(
+                backend,
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(value),
+            ),
             ControlOperation::SetDefaultRecordingAction(value) => self.handle_global_action(
                 backend,
                 GlobalControlAction::SetDefaultRecordingAction(value),
@@ -1691,6 +1699,51 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         for id in tracks {
             self.handle_track_action(backend, id, action.clone())?;
+        }
+        Ok(())
+    }
+
+    fn handle_track_input_monitoring(
+        &mut self,
+        backend: &mut dyn Backend,
+        tracks: &[TrackId],
+        enabled: bool,
+        respect_auto_mute: bool,
+    ) -> Result<(), String> {
+        let targets = tracks.iter().copied().collect::<BTreeSet<_>>();
+        if targets.is_empty() {
+            return Ok(());
+        }
+        for target in &targets {
+            if !self.tracks.iter().any(|track| track.id == *target) {
+                return Err(format!("stale or unknown track {target}"));
+            }
+        }
+        if enabled && respect_auto_mute && self.global.auto_mute_other_track_inputs {
+            for track in self
+                .tracks
+                .iter()
+                .filter(|track| !targets.contains(&track.id))
+            {
+                backend
+                    .set_track_control(
+                        track.backend_id,
+                        BackendTrackControl::InputMonitoring(false),
+                    )
+                    .map_err(|error| format!("could not update track {}: {error}", track.id))?;
+            }
+        }
+        for track in self
+            .tracks
+            .iter()
+            .filter(|track| targets.contains(&track.id))
+        {
+            backend
+                .set_track_control(
+                    track.backend_id,
+                    BackendTrackControl::InputMonitoring(enabled),
+                )
+                .map_err(|error| format!("could not update track {}: {error}", track.id))?;
         }
         Ok(())
     }
@@ -3175,6 +3228,18 @@ impl ApplicationModel {
         track_id: TrackId,
         action: TrackAction,
     ) -> Result<(), String> {
+        if let TrackAction::InputMonitoringChanged {
+            enabled,
+            respect_auto_mute,
+        } = &action
+        {
+            return self.handle_track_input_monitoring(
+                backend,
+                &[track_id],
+                *enabled,
+                *respect_auto_mute,
+            );
+        }
         let track = self
             .tracks
             .iter_mut()
@@ -3190,9 +3255,7 @@ impl ApplicationModel {
             TrackAction::OutputMuteChanged(value) => BackendTrackControl::OutputMute(value),
             TrackAction::InputGainChanged(value) => BackendTrackControl::InputGainDb(value),
             TrackAction::InputBalanceChanged(value) => BackendTrackControl::InputBalance(value),
-            TrackAction::InputMonitoringChanged(value) => {
-                BackendTrackControl::InputMonitoring(value)
-            }
+            TrackAction::InputMonitoringChanged { .. } => unreachable!(),
             TrackAction::FxActiveChanged(value) => {
                 return backend
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::SetActive(value))
@@ -3995,6 +4058,9 @@ impl ApplicationModel {
             }
             GlobalControlAction::SetSync(value) => self.global.sync = value,
             GlobalControlAction::SetSolo(value) => self.global.solo = value,
+            GlobalControlAction::SetAutoMuteOtherTrackInputs(value) => {
+                self.global.auto_mute_other_track_inputs = value;
+            }
             GlobalControlAction::SetApplyNCycles(value) => self.global.apply_n_cycles = value,
         }
         Ok(())
@@ -4130,6 +4196,13 @@ impl ApplicationModel {
                 .copied()
                 .unwrap_or(controls.input_peak_left_db);
             controls.input_midi_activity = backend_state.input_midi_activity;
+            controls.latest_input_midi_message =
+                backend_state.latest_input_midi_message.map(|message| {
+                    shoop_app_api::LatestMidiMessage {
+                        bytes: message.bytes,
+                        len: message.len,
+                    }
+                });
             controls.clamp();
         }
         let track_capabilities = self
@@ -4812,6 +4885,12 @@ impl ApplicationModel {
                             chain_type,
                             ports: Vec::new(),
                             internal_state,
+                            midi_cc_assignments: captured
+                                .tiny_synth_midi_cc_assignments
+                                .iter()
+                                .copied()
+                                .map(document_midi_cc_assignment)
+                                .collect(),
                         }),
                     )
                 }
@@ -4854,6 +4933,7 @@ impl ApplicationModel {
                 play_after_record: self.global.play_after_record,
                 sync: self.global.sync,
                 solo: self.global.solo,
+                auto_mute_other_track_inputs: self.global.auto_mute_other_track_inputs,
                 apply_n_cycles: self.global.apply_n_cycles,
             },
             track_groups: vec![
@@ -5124,6 +5204,8 @@ impl ApplicationModel {
         self.global.play_after_record = bundle.document.global.play_after_record;
         self.global.sync = bundle.document.global.sync;
         self.global.solo = bundle.document.global.solo;
+        self.global.auto_mute_other_track_inputs =
+            bundle.document.global.auto_mute_other_track_inputs;
         self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
         self.script_manager
             .replace_session_scripts(&session_script_sources(bundle))
@@ -5774,6 +5856,52 @@ fn io_pending_error(message: &str) -> bool {
         || message.contains("loop content replacement pending")
 }
 
+fn document_midi_cc_assignment(
+    assignment: BackendTinySynthFxMidiCcAssignment,
+) -> TinySynthFxMidiCcAssignmentDocument {
+    let parameter = match assignment.parameter {
+        BackendTinySynthFxParameter::MasterGain => TinySynthFxParameterDocument::MasterGain,
+        BackendTinySynthFxParameter::ReverbAmount => TinySynthFxParameterDocument::ReverbAmount,
+        BackendTinySynthFxParameter::DistortionDrive => {
+            TinySynthFxParameterDocument::DistortionDrive
+        }
+        BackendTinySynthFxParameter::CompressorAmount => {
+            TinySynthFxParameterDocument::CompressorAmount
+        }
+        BackendTinySynthFxParameter::EqLow => TinySynthFxParameterDocument::EqLow,
+        BackendTinySynthFxParameter::EqMid => TinySynthFxParameterDocument::EqMid,
+        BackendTinySynthFxParameter::EqHigh => TinySynthFxParameterDocument::EqHigh,
+    };
+    TinySynthFxMidiCcAssignmentDocument {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn backend_midi_cc_assignment(
+    assignment: TinySynthFxMidiCcAssignmentDocument,
+) -> BackendTinySynthFxMidiCcAssignment {
+    let parameter = match assignment.parameter {
+        TinySynthFxParameterDocument::MasterGain => BackendTinySynthFxParameter::MasterGain,
+        TinySynthFxParameterDocument::ReverbAmount => BackendTinySynthFxParameter::ReverbAmount,
+        TinySynthFxParameterDocument::DistortionDrive => {
+            BackendTinySynthFxParameter::DistortionDrive
+        }
+        TinySynthFxParameterDocument::CompressorAmount => {
+            BackendTinySynthFxParameter::CompressorAmount
+        }
+        TinySynthFxParameterDocument::EqLow => BackendTinySynthFxParameter::EqLow,
+        TinySynthFxParameterDocument::EqMid => BackendTinySynthFxParameter::EqMid,
+        TinySynthFxParameterDocument::EqHigh => BackendTinySynthFxParameter::EqHigh,
+    };
+    BackendTinySynthFxMidiCcAssignment {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
 fn fx_chain_type_for_processor(
     processor: &shoop_app_api::TrackProcessorTypeId,
 ) -> Result<FxChainTypeDocument, String> {
@@ -6164,6 +6292,13 @@ fn session_bundle_to_backend(
                 .fx_chain
                 .as_ref()
                 .map(|chain| chain.internal_state.clone()),
+            tiny_synth_midi_cc_assignments: track
+                .fx_chain
+                .as_ref()
+                .into_iter()
+                .flat_map(|chain| chain.midi_cc_assignments.iter().copied())
+                .map(backend_midi_cc_assignment)
+                .collect(),
         });
     }
     Ok(BackendSessionData {
@@ -6564,6 +6699,13 @@ mod tests {
             shoop_app_api::TinySynthFxControl::SetEqLowDb(3.0),
             shoop_app_api::TinySynthFxControl::SetEqMidDb(-2.0),
             shoop_app_api::TinySynthFxControl::SetEqHighDb(1.5),
+            shoop_app_api::TinySynthFxControl::AssignMidiCc(
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                    channel: 6,
+                    controller: 74,
+                },
+            ),
         ] {
             runtime
                 .dispatch(AppIntent::Track {
@@ -6615,6 +6757,14 @@ mod tests {
         );
         let current_state = &saved_track.fx_chain.as_ref().unwrap().internal_state;
         assert!(!current_state.is_empty());
+        assert_eq!(
+            saved_track.fx_chain.as_ref().unwrap().midi_cc_assignments,
+            [TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         let take_id = saved_track.loops[0]
             .channels
             .iter()
@@ -6669,6 +6819,14 @@ mod tests {
         assert_eq!(editor.eq_low_db, 3.0);
         assert_eq!(editor.eq_mid_db, -2.0);
         assert_eq!(editor.eq_high_db, 1.5);
+        assert_eq!(
+            editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
         let loaded_track_id = loaded.tracks[1].id;
         let loaded_loop_id = loaded.tracks[1].loops[0].id;
@@ -6701,6 +6859,14 @@ mod tests {
         };
         assert_eq!(restored_editor.master_gain_db, -12.0);
         assert_eq!(restored_editor.selected_preset_id.as_deref(), Some("pad"));
+        assert_eq!(
+            restored_editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
 
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
@@ -6741,6 +6907,14 @@ mod tests {
         assert_eq!(switched_editor.distortion_drive, 7.0);
         assert!(switched_editor.compressor_enabled);
         assert_eq!(switched_editor.compressor_amount, 0.6);
+        assert_eq!(
+            switched_editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         assert!(switched_editor.eq_enabled);
         assert_eq!(switched_editor.eq_low_db, 3.0);
         assert_eq!(switched_editor.eq_mid_db, -2.0);
@@ -7393,7 +7567,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 1); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 2); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -7411,7 +7585,88 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.1, host supports 1.0"));
+        assert!(error.contains("script requests 1.2, host supports 1.1"));
+    }
+
+    #[test]
+    fn auto_mute_policy_change_dispatches_lua_global_event() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "global-listener.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+shoop_announce_api_version(1, 1)
+local c = require('shoop_control')
+c.register_global_event_cb(function() c.set_solo(true) end)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(!runtime.snapshot().global_controls.solo);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().global_controls.solo);
+    }
+
+    #[test]
+    fn lua_respecting_input_unmute_applies_global_policy_through_application() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        for name in ["first", "second"] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let first = runtime.snapshot().tracks[1].id;
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: first,
+                action: TrackAction::InputMonitoringChanged {
+                    enabled: true,
+                    respect_auto_mute: false,
+                },
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
+
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "exclusive-input.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+shoop_announce_api_version(1, 1)
+local c = require('shoop_control')
+c.set_auto_mute_other_track_inputs(true)
+c.track_set_input_muted(1, false, true)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        assert!(snapshot.global_controls.auto_mute_other_track_inputs);
+        assert!(!snapshot.tracks[0].controls.input_monitoring);
+        assert!(!snapshot.tracks[1].controls.input_monitoring);
+        assert!(snapshot.tracks[2].controls.input_monitoring);
     }
 
     #[test]
@@ -8762,6 +9017,93 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[test]
+    fn auto_mute_other_track_inputs_is_respected_per_monitoring_request() {
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        for name in ["first", "second", "third"] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                }),
+            );
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let first = model.tracks[1].id;
+        let second = model.tracks[2].id;
+        let third = model.tracks[3].id;
+        let monitoring = |model: &ApplicationModel| {
+            model
+                .tracks
+                .iter()
+                .map(|track| track.controls.input_monitoring)
+                .collect::<Vec<_>>()
+        };
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first, second], true, false)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_global_action(
+                &mut backend,
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            )
+            .unwrap();
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_track_action(
+                &mut backend,
+                third,
+                TrackAction::InputMonitoringChanged {
+                    enabled: true,
+                    respect_auto_mute: true,
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, false, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first], true, false)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first], false, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, false, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first, second], true, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_global_action(
+                &mut backend,
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(false),
+            )
+            .unwrap();
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+        model
+            .handle_track_input_monitoring(&mut backend, &[third], true, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, true]);
+    }
+
+    #[test]
     fn piano_fanout_tracks_original_monitored_midi_recipients() {
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -8822,7 +9164,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8858,7 +9203,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(monitoring),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: monitoring,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8909,7 +9257,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8957,7 +9308,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime
                 .dispatch(AppIntent::Track {
                     track_id: track.id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 })
                 .unwrap();
         }

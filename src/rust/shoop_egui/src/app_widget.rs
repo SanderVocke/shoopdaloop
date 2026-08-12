@@ -1616,6 +1616,7 @@ fn audio_channel_label(channels: u32) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::sync::Arc;
 
     use super::*;
@@ -1630,6 +1631,32 @@ mod tests {
     #[test]
     fn bottom_panel_starts_closed() {
         assert_eq!(AppWidget::default().bottom_pane, None);
+    }
+
+    #[test]
+    fn connection_open_api_applies_global_sync_and_main_track_presets() {
+        let mut widget = AppWidget::default();
+        assert_eq!(widget.open_connection_scope(), None);
+        widget.open_connections(ConnectionScope::AllTracks);
+        assert_eq!(
+            widget.open_connection_scope(),
+            Some(ConnectionScope::AllTracks)
+        );
+        assert_eq!(widget.connections.test_selected_tracks(), None);
+        assert_eq!(widget.connections.test_data_type_filters(), (true, true));
+
+        for track_id in [crate::TrackId::from_raw(1), crate::TrackId::from_raw(2)] {
+            widget.open_connections(ConnectionScope::Track(track_id));
+            assert_eq!(
+                widget.open_connection_scope(),
+                Some(ConnectionScope::Track(track_id))
+            );
+            assert_eq!(
+                widget.connections.test_selected_tracks(),
+                Some(BTreeSet::from([track_id]))
+            );
+            assert_eq!(widget.connections.test_data_type_filters(), (true, true));
+        }
     }
 
     #[test]

@@ -17,8 +17,10 @@ Track controls
 ~~~~~~~~~~~~~~
 
 Input gain affects monitored and recorded input. Input mute disables monitoring
-without discarding recording input. Output gain and mute affect monitored and
-played-back output. Stereo sides expose balance controls. Meters and MIDI
+without discarding recording input. The top-bar exclusive-input toggle makes
+enabling one track's input monitoring mute all other track inputs, which is
+useful when switching recording tracks. Output gain and mute affect monitored
+and played-back output. Stereo sides expose balance controls. Meters and MIDI
 activity indicators summarize applicable ports.
 
 A track title can be edited after creation. Its stable port-name base does not
