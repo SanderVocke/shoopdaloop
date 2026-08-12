@@ -931,7 +931,7 @@ impl EngineBackend {
             PortDirection::Input,
         )));
         session.set_global_fx_midi_input(global_fx_midi)?;
-        let global_fx_port = BackendPortId::from_raw(u64::MAX);
+        let global_fx_port = BackendPortId::from_raw(9_007_199_254_740_991);
         let global_descriptor = BackendPortDescriptor {
             id: global_fx_port,
             owner: BackendPortOwner::GlobalFxControl,
@@ -3950,7 +3950,7 @@ impl Default for FakeBackend {
             state: Arc::new(Mutex::new(FakeConnectionState::default())),
         };
         let global_fx_port = BackendPortDescriptor {
-            id: BackendPortId::from_raw(u64::MAX),
+            id: BackendPortId::from_raw(9_007_199_254_740_991),
             owner: BackendPortOwner::GlobalFxControl,
             name: "Global FX Control MIDI In".to_owned(),
             data_type: BackendPortDataType::Midi,

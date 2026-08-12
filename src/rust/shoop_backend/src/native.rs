@@ -308,7 +308,7 @@ impl NativeRuntime {
             0,
         )?;
         session.set_global_fx_midi_input(&global_fx_midi)?;
-        let global_fx_port = BackendPortId::from_raw(u64::MAX);
+        let global_fx_port = BackendPortId::from_raw(9_007_199_254_740_991);
         let global_descriptor = BackendPortDescriptor {
             id: global_fx_port,
             owner: BackendPortOwner::GlobalFxControl,
