@@ -3995,6 +3995,9 @@ impl ApplicationModel {
             }
             GlobalControlAction::SetSync(value) => self.global.sync = value,
             GlobalControlAction::SetSolo(value) => self.global.solo = value,
+            GlobalControlAction::SetAutoMuteOtherTrackInputs(value) => {
+                self.global.auto_mute_other_track_inputs = value;
+            }
             GlobalControlAction::SetApplyNCycles(value) => self.global.apply_n_cycles = value,
         }
         Ok(())
@@ -4854,6 +4857,7 @@ impl ApplicationModel {
                 play_after_record: self.global.play_after_record,
                 sync: self.global.sync,
                 solo: self.global.solo,
+                auto_mute_other_track_inputs: self.global.auto_mute_other_track_inputs,
                 apply_n_cycles: self.global.apply_n_cycles,
             },
             track_groups: vec![
@@ -5124,6 +5128,8 @@ impl ApplicationModel {
         self.global.play_after_record = bundle.document.global.play_after_record;
         self.global.sync = bundle.document.global.sync;
         self.global.solo = bundle.document.global.solo;
+        self.global.auto_mute_other_track_inputs =
+            bundle.document.global.auto_mute_other_track_inputs;
         self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
         self.script_manager
             .replace_session_scripts(&session_script_sources(bundle))

@@ -53,13 +53,13 @@ Update the keyboard script to use **I** to toggle input mute for tracks containi
 
 ## Stage 1 — State, actions, and persistence
 
-- [ ] Add the boolean to `GlobalControlState` in `src/rust/shoop_app_api/src/lib.rs`, defaulting to `false`.
-- [ ] Add its `GlobalControlAction` setter variant and stable action kind.
-- [ ] Add the field to `GlobalControlsDocument` in `src/rust/shoop_session/src/document.rs` with missing-field deserialization defaulting to `false`.
-- [ ] Wire capture, load, snapshots, fixtures, and struct initializers through `src/rust/shoop_app/src/lib.rs` and `src/rust/shoop_session`.
-- [ ] Add session tests for exact round-trip and loading a document without the new field.
-- [ ] Verify with targeted `shoop_app_api` and `shoop_session` tests.
-- [ ] Commit the completed state/persistence milestone.
+- [x] Add the boolean to `GlobalControlState` in `src/rust/shoop_app_api/src/lib.rs`, defaulting to `false`.
+- [x] Add its `GlobalControlAction` setter variant and stable action kind.
+- [x] Add the field to `GlobalControlsDocument` in `src/rust/shoop_session/src/document.rs` with missing-field deserialization defaulting to `false`.
+- [x] Wire capture, load, snapshots, fixtures, and struct initializers through `src/rust/shoop_app/src/lib.rs` and `src/rust/shoop_session`.
+- [x] Add session tests for exact round-trip and loading a document without the new field.
+- [x] Verify with targeted `shoop_app_api` and `shoop_session` tests.
+- [x] Commit the completed state/persistence milestone.
 
 **Dependency:** This stage precedes policy enforcement, UI, and Lua exposure.
 

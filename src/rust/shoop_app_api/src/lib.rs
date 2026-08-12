@@ -241,6 +241,7 @@ pub struct GlobalControlState {
     pub play_after_record: bool,
     pub sync: bool,
     pub solo: bool,
+    pub auto_mute_other_track_inputs: bool,
     pub apply_n_cycles: u32,
 }
 
@@ -251,6 +252,7 @@ impl Default for GlobalControlState {
             play_after_record: true,
             sync: true,
             solo: false,
+            auto_mute_other_track_inputs: false,
             apply_n_cycles: 0,
         }
     }
@@ -1359,6 +1361,7 @@ pub enum GlobalControlAction {
     SetPlayAfterRecord(bool),
     SetSync(bool),
     SetSolo(bool),
+    SetAutoMuteOtherTrackInputs(bool),
     SetApplyNCycles(u32),
 }
 
@@ -1593,6 +1596,7 @@ impl GlobalControlAction {
             Self::SetPlayAfterRecord(_) => "global.play_after_record",
             Self::SetSync(_) => "global.sync",
             Self::SetSolo(_) => "global.solo",
+            Self::SetAutoMuteOtherTrackInputs(_) => "global.auto_mute_other_track_inputs",
             Self::SetApplyNCycles(_) => "global.apply_n_cycles",
         }
     }
