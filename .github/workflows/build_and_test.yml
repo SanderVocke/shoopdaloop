@@ -315,7 +315,7 @@ jobs:
           real = os.environ["SHOOP_CARLA_NATIVE_LIBRARY"]
           cases = [
               (str(Path("fake-null.dll").resolve()), None, "Carla descriptor is null"),
-              (str(Path("fake-symbol.dll").resolve()), None, "carla_get_native_patchbay16_plugin"),
+              (str(Path("fake-symbol.dll").resolve()), None, "GetProcAddress failed"),
               (str(Path("fake-descriptor.dll").resolve()), None, "incompatible port layout"),
               (real, "relative", "must be an absolute path"),
               (real, str(Path("missing-resource").resolve()), "is not a directory"),

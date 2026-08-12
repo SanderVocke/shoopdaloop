@@ -305,6 +305,19 @@ fn library_candidates() -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
+#[cfg(target_os = "windows")]
+fn windows_process_path(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    text.strip_prefix(r"\\?\")
+        .map(PathBuf::from)
+        .unwrap_or(path)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn windows_process_path(path: PathBuf) -> PathBuf {
+    path
+}
+
 fn resource_dir_for(library: &Path) -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("SHOOP_CARLA_RESOURCE_DIR") {
         let path = absolute_override("SHOOP_CARLA_RESOURCE_DIR", path)?;
@@ -399,16 +412,16 @@ fn load_runtime() -> Result<Arc<CarlaRuntime>> {
             }
         };
         let loaded = (|| -> Result<CarlaRuntime> {
-            let resource_dir = resource_dir_for(&canonical)?;
+            let resource_dir = windows_process_path(resource_dir_for(&canonical)?);
             let library_parent = canonical
                 .parent()
                 .ok_or_else(|| anyhow!("Carla library has no parent directory"))?;
             let component_binary_dir = library_parent.join("../bin");
-            let binary_dir = if component_binary_dir.is_dir() {
+            let binary_dir = windows_process_path(if component_binary_dir.is_dir() {
                 component_binary_dir.canonicalize()?
             } else {
                 library_parent.to_owned()
-            };
+            });
             let library = unsafe { Library::new(&canonical) }
                 .with_context(|| format!("loading {}", canonical.display()))?;
             #[cfg(target_os = "windows")]
@@ -1108,6 +1121,15 @@ mod tests {
             std::ffi::OsString::from("/carla/library.so")
         };
         assert!(absolute_override("TEST", absolute).is_ok());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_process_paths_avoid_verbatim_prefixes_rejected_by_carla_helpers() {
+        assert_eq!(
+            windows_process_path(PathBuf::from(r"\\?\D:\Shoop Δ\carla-runtime\resources")),
+            PathBuf::from(r"D:\Shoop Δ\carla-runtime\resources")
+        );
     }
 
     #[test]
