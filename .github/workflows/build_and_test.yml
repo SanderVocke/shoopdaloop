@@ -455,6 +455,8 @@ jobs:
           $output = & $application --probe-carla-native
           if ($LASTEXITCODE -ne 0) { throw "Extracted Carla probe failed with exit code $LASTEXITCODE" }
           if ($output -notmatch 'carla-runtime\\lib\\libcarla_native-plugin.dll') { throw "Extracted probe did not load bundled Carla: $output" }
+          $env:SHOOP_CARLA_NATIVE_LIBRARY = "$shortRoot\shoopdaloop\carla-runtime\lib\libcarla_native-plugin.dll"
+          $env:SHOOP_CARLA_RESOURCE_DIR = "$shortRoot\shoopdaloop\carla-runtime\resources"
           & $application --probe-carla-native-ui
           if ($LASTEXITCODE -ne 0) { throw "Extracted Carla UI probe failed with exit code $LASTEXITCODE" }
           Start-Sleep -Seconds 1
