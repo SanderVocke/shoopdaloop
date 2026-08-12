@@ -306,16 +306,45 @@ fn library_candidates() -> Result<Vec<PathBuf>> {
 }
 
 #[cfg(target_os = "windows")]
-fn windows_process_path(path: PathBuf) -> PathBuf {
+fn windows_process_path(path: PathBuf) -> Result<PathBuf> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
     let text = path.to_string_lossy();
-    text.strip_prefix(r"\\?\")
+    let path = text
+        .strip_prefix(r"\\?\")
         .map(PathBuf::from)
-        .unwrap_or(path)
+        .unwrap_or(path);
+    if path.as_os_str().to_string_lossy().is_ascii() {
+        return Ok(path);
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetShortPathNameW(long_path: *const u16, short_path: *mut u16, capacity: u32) -> u32;
+    }
+    let mut long: Vec<u16> = path.as_os_str().encode_wide().collect();
+    long.push(0);
+    let required = unsafe { GetShortPathNameW(long.as_ptr(), std::ptr::null_mut(), 0) };
+    if required == 0 {
+        bail!(
+            "Carla helper path contains non-ASCII characters and has no Windows short path: {}",
+            path.display()
+        );
+    }
+    let mut short = vec![0_u16; required as usize];
+    let written = unsafe { GetShortPathNameW(long.as_ptr(), short.as_mut_ptr(), required) };
+    if written == 0 || written >= required {
+        bail!(
+            "could not resolve Windows short path for {}",
+            path.display()
+        );
+    }
+    short.truncate(written as usize);
+    Ok(PathBuf::from(std::ffi::OsString::from_wide(&short)))
 }
 
 #[cfg(not(target_os = "windows"))]
-fn windows_process_path(path: PathBuf) -> PathBuf {
-    path
+fn windows_process_path(path: PathBuf) -> Result<PathBuf> {
+    Ok(path)
 }
 
 fn resource_dir_for(library: &Path) -> Result<PathBuf> {
@@ -412,7 +441,7 @@ fn load_runtime() -> Result<Arc<CarlaRuntime>> {
             }
         };
         let loaded = (|| -> Result<CarlaRuntime> {
-            let resource_dir = windows_process_path(resource_dir_for(&canonical)?);
+            let resource_dir = windows_process_path(resource_dir_for(&canonical)?)?;
             let library_parent = canonical
                 .parent()
                 .ok_or_else(|| anyhow!("Carla library has no parent directory"))?;
@@ -421,7 +450,7 @@ fn load_runtime() -> Result<Arc<CarlaRuntime>> {
                 component_binary_dir.canonicalize()?
             } else {
                 library_parent.to_owned()
-            });
+            })?;
             let library = unsafe { Library::new(&canonical) }
                 .with_context(|| format!("loading {}", canonical.display()))?;
             #[cfg(target_os = "windows")]
@@ -1127,8 +1156,8 @@ mod tests {
     #[test]
     fn windows_process_paths_avoid_verbatim_prefixes_rejected_by_carla_helpers() {
         assert_eq!(
-            windows_process_path(PathBuf::from(r"\\?\D:\Shoop Δ\carla-runtime\resources")),
-            PathBuf::from(r"D:\Shoop Δ\carla-runtime\resources")
+            windows_process_path(PathBuf::from(r"\\?\D:\Shoop\carla-runtime\resources")).unwrap(),
+            PathBuf::from(r"D:\Shoop\carla-runtime\resources")
         );
     }
 
