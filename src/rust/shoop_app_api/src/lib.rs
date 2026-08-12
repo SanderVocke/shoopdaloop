@@ -788,6 +788,37 @@ impl Default for WaveformChannelState {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MidiEventState {
+    pub frame: u32,
+    pub data: Arc<[u8]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MidiSequenceChannelState {
+    pub id: ChannelId,
+    pub label: String,
+    pub content_revision: u64,
+    pub events: Arc<[MidiEventState]>,
+    pub start_offset: i64,
+    pub loop_length: u64,
+    pub played_sample: Option<i64>,
+}
+
+impl Default for MidiSequenceChannelState {
+    fn default() -> Self {
+        Self {
+            id: ChannelId::INVALID,
+            label: String::new(),
+            content_revision: 0,
+            events: Arc::from([]),
+            start_offset: 0,
+            loop_length: 0,
+            played_sample: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
     pub generation: u64,
@@ -795,6 +826,8 @@ pub struct LoopDetailsState {
     pub title: String,
     pub loading: bool,
     pub channels: Vec<WaveformChannelState>,
+    pub midi_loading: bool,
+    pub midi_channels: Vec<MidiSequenceChannelState>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

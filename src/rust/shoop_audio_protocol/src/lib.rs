@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 8;
+pub const PROTOCOL_VERSION: u16 = 9;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
 pub const SESSION_TRANSFER_MAX_BYTES: usize = 256 * 1024 * 1024;
 pub const WAVEFORM_CHUNK_SAMPLES: usize = 512;
+pub const MIDI_DETAIL_CHUNK_EVENTS: usize = 16;
 pub const STATUS_INTERVAL_MS: u32 = 50;
 pub const MAX_DEVICE_AUDIO_CHANNELS: usize = 2;
 pub const MIDI_BATCH_CAPACITY: usize = 128;
@@ -119,6 +120,13 @@ pub enum Command {
         channel: usize,
         offset: usize,
         max_samples: usize,
+    },
+    RequestMidiData {
+        loop_id: u64,
+        generation: u64,
+        channel: usize,
+        offset: usize,
+        max_events: usize,
     },
     BeginSessionCapture {
         generation: u64,
@@ -335,6 +343,15 @@ pub enum WireLoopMode {
     RecordingDryIntoWet,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireChannelMode {
+    #[default]
+    Direct,
+    Dry,
+    Wet,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireGrabRequest {
     pub loop_id: u64,
@@ -371,6 +388,7 @@ pub enum Event {
     },
     Snapshot(WireSnapshot),
     Waveform(WaveformChunk),
+    MidiData(MidiDataChunk),
     SessionCaptureReady {
         generation: u64,
         total_bytes: usize,
@@ -547,6 +565,23 @@ pub struct WaveformChunk {
     pub samples: Vec<f32>,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct MidiDataChunk {
+    pub loop_id: u64,
+    pub generation: u64,
+    pub content_revision: u64,
+    pub mode: WireChannelMode,
+    pub channel: usize,
+    pub channel_count: usize,
+    pub offset: usize,
+    pub total_events: usize,
+    pub length: u32,
+    pub start_offset: i32,
+    pub preplay: u32,
+    pub final_chunk: bool,
+    pub events: Vec<WireMidiEvent>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -640,6 +675,53 @@ mod tests {
         .supersedes_in_journal(&Command::ConfigureMidiEndpoints {
             endpoints: Vec::new(),
         }));
+    }
+
+    #[test]
+    fn midi_detail_chunks_round_trip_with_request_identity_and_metadata() {
+        let request = CommandEnvelope::new(
+            4,
+            Command::RequestMidiData {
+                loop_id: 8,
+                generation: 3,
+                channel: 1,
+                offset: 128,
+                max_events: MIDI_DETAIL_CHUNK_EVENTS,
+            },
+        );
+        let request_json = serde_json::to_vec(&request).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<CommandEnvelope>(&request_json).unwrap(),
+            request
+        );
+
+        let response = EventEnvelope {
+            version: PROTOCOL_VERSION,
+            sequence: 4,
+            event: Event::MidiData(MidiDataChunk {
+                loop_id: 8,
+                generation: 3,
+                content_revision: 12,
+                mode: WireChannelMode::Dry,
+                channel: 1,
+                channel_count: 2,
+                offset: 128,
+                total_events: 129,
+                length: 512,
+                start_offset: -7,
+                preplay: 9,
+                final_chunk: true,
+                events: vec![WireMidiEvent {
+                    frame: 400,
+                    data: vec![0x90, 60, 100],
+                }],
+            }),
+        };
+        let response_json = serde_json::to_vec(&response).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<EventEnvelope>(&response_json).unwrap(),
+            response
+        );
     }
 
     #[test]

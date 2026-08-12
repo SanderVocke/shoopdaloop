@@ -384,6 +384,9 @@ try {
     waveformSamples: Number(document.getElementById('runtime_status')?.getAttribute('data-waveform-samples')),
     waveformPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-waveform-peak')),
     waveformLoading: document.getElementById('runtime_status')?.getAttribute('data-waveform-loading'),
+    midiDetailChannels: Number(document.getElementById('runtime_status')?.getAttribute('data-midi-detail-channels')),
+    midiDetailEvents: Number(document.getElementById('runtime_status')?.getAttribute('data-midi-detail-events')),
+    midiDetailLoading: document.getElementById('runtime_status')?.getAttribute('data-midi-detail-loading'),
     enableHidden: document.getElementById('enable_audio')?.hidden,
     outputEnableHidden: document.getElementById('enable_output_audio')?.hidden,
     canvasWidth: document.getElementById('shoop_canvas')?.width,
@@ -743,6 +746,9 @@ try {
     if (callbacksBeforeRestart === 0 || recovered.overflows === 0) {
       throw new Error(`Web MIDI restart/refusal evidence is invalid: ${JSON.stringify(recovered)}`);
     }
+    if (!(recovered.midiDetailChannels > 0 && recovered.midiDetailEvents >= 2) || recovered.midiDetailLoading !== 'false') {
+      throw new Error(`MIDI details did not recover after worklet restart: ${JSON.stringify(recovered)}`);
+    }
     const portLifecycle = await evaluate(`({
       inputOpen: window.__shoopWebMidi.input.openCalls,
       outputOpen: window.__shoopWebMidi.output.openCalls,
@@ -811,6 +817,9 @@ try {
     }
     if (!(state.applicationPorts > 0 && state.hostPorts >= 4 && state.confirmedLinks > 0)) {
       throw new Error(`normalized browser port truth is missing: ${JSON.stringify(state)}`);
+    }
+    if (!(state.midiDetailChannels > 0 && state.midiDetailEvents > 16) || state.midiDetailLoading !== 'false') {
+      throw new Error(`selected-loop MIDI details are missing or incomplete: ${JSON.stringify(state)}`);
     }
     await evaluate("document.getElementById('shoop_canvas').focus()");
     await call('Input.dispatchKeyEvent', {

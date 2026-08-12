@@ -2599,9 +2599,11 @@ impl BrowserSelfTest {
                         action: shoop_egui::TrackAction::OutputMuteChanged(true),
                     })
                     .and_then(|()| {
-                        runtime.dispatch(AppIntent::Piano(shoop_egui::PianoAction::Press(
-                            shoop_egui::MidiNote::new(65).unwrap(),
-                        )))
+                        (48..=65).try_for_each(|note| {
+                            runtime.dispatch(AppIntent::Piano(shoop_egui::PianoAction::Press(
+                                shoop_egui::MidiNote::new(note).unwrap(),
+                            )))
+                        })
                     })
                     .map(|()| Self::WaitForPianoPress {
                         callbacks_before: snapshot.status.callback_count,
@@ -2613,10 +2615,12 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
-                runtime
-                    .dispatch(AppIntent::Piano(shoop_egui::PianoAction::Release(
-                        shoop_egui::MidiNote::new(65).unwrap(),
-                    )))
+                (48..=65)
+                    .try_for_each(|note| {
+                        runtime.dispatch(AppIntent::Piano(shoop_egui::PianoAction::Release(
+                            shoop_egui::MidiNote::new(note).unwrap(),
+                        )))
+                    })
                     .map(|()| Self::WaitForPianoRelease {
                         callbacks_before: snapshot.status.callback_count,
                     })
@@ -3781,6 +3785,23 @@ fn set_browser_status(message: &str, snapshot: Option<&AppSnapshot>) {
             let _ = element.set_attribute("data-waveform-samples", &samples.len().to_string());
             let _ = element.set_attribute("data-waveform-peak", &peak.to_string());
             let _ = element.set_attribute("data-waveform-loading", &details.loading.to_string());
+            let _ = element.set_attribute(
+                "data-midi-detail-channels",
+                &details.midi_channels.len().to_string(),
+            );
+            let _ = element.set_attribute(
+                "data-midi-detail-events",
+                &details
+                    .midi_channels
+                    .iter()
+                    .map(|channel| channel.events.len())
+                    .sum::<usize>()
+                    .to_string(),
+            );
+            let _ = element.set_attribute(
+                "data-midi-detail-loading",
+                &details.midi_loading.to_string(),
+            );
         }
     }
 }

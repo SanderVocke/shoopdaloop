@@ -1870,6 +1870,40 @@ impl Backend for NativeBackend {
         ))
     }
 
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        let runtime = self.runtime()?;
+        let loop_ = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        let channels = loop_
+            .midi
+            .iter()
+            .zip(&loop_.midi_modes)
+            .map(|(channel, mode)| {
+                let state = channel.get_state()?;
+                let data = channel.get_all_midi_data();
+                let revision = channel.get_latest_data_snapshot().snapshot.revision.0;
+                Ok(BackendMidiChannelData {
+                    content_revision: revision,
+                    mode: *mode,
+                    length: state.length,
+                    events: data
+                        .into_iter()
+                        .filter(|event| event.time >= 0)
+                        .map(|event| BackendMidiEvent {
+                            time: event.time as u32,
+                            data: event.data,
+                        })
+                        .collect(),
+                    start_offset: state.start_offset,
+                    preplay: state.n_preplay_samples,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Some(BackendMidiData { channels }))
+    }
+
     fn set_loop_sync_source(
         &mut self,
         loop_id: BackendLoopId,
@@ -2728,6 +2762,13 @@ mod tests {
             );
             state.cycles
         };
+
+        let midi_details = backend.loop_midi_data(target).unwrap().unwrap();
+        assert_eq!(midi_details.channels.len(), 1);
+        assert_eq!(midi_details.channels[0].start_offset, -3);
+        assert_eq!(midi_details.channels[0].preplay, 4);
+        assert_eq!(midi_details.channels[0].events[0].data, [0x90, 64, 127]);
+        assert!(midi_details.channels[0].content_revision > 0);
 
         let captured = backend.capture_session().unwrap();
         assert_eq!(

@@ -17,21 +17,22 @@ use shoop_app_api::{
     ClickTrackState, ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState,
     ConnectionPolicy, ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId,
     HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
-    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
-    PendingConnectionState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
-    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
-    ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId, TrackAction, TrackControlState,
-    TrackId, TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology,
-    TrackState, TrackTopology, WaveformChannelState,
+    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
+    MidiSequenceChannelState, NotificationLevel, PendingConnectionState, PianoAction, PortDataType,
+    PortDirection, PortId, PortRole, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
+    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
+    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
+    TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioChannelUpdate, BackendAudioContent, BackendChannelMode,
     BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiEvent,
-    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortRole, BackendSessionData, BackendSessionPort, BackendSessionReplacement,
-    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
+    BackendMidiEvent, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortRole, BackendSessionData, BackendSessionPort,
+    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -521,7 +522,7 @@ fn update_application(
     if let Err(error) = model.advance_script_compositions(backend, elapsed) {
         model.notify_error(error);
     }
-    if let Err(error) = model.refresh_selected_audio(backend) {
+    if let Err(error) = model.refresh_selected_media(backend) {
         model.notify_error(error);
     }
     model.advance_io(backend);
@@ -628,8 +629,45 @@ struct LoopModel {
     length: u32,
     position: u32,
     audio_data: Option<Vec<Arc<[f32]>>>,
+    midi_data: Option<Vec<MidiSequenceChannelState>>,
     script_composition: Vec<Vec<LoopId>>,
     recorded_fx_state: Option<RecordedFxState>,
+}
+
+fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSequenceChannelState> {
+    data.channels
+        .into_iter()
+        .enumerate()
+        .map(|(index, channel)| {
+            let kind = match channel.mode {
+                BackendChannelMode::Direct => "MIDI",
+                BackendChannelMode::Dry => "Dry MIDI",
+                BackendChannelMode::Wet => "Wet MIDI",
+            };
+            MidiSequenceChannelState {
+                id: ChannelId::from_raw(
+                    model.id.raw().wrapping_shl(16) | 0x8000 | index as u64 + 1,
+                ),
+                label: format!("{kind} {}", index + 1),
+                content_revision: channel.content_revision,
+                events: channel
+                    .events
+                    .into_iter()
+                    .map(|event| MidiEventState {
+                        frame: event.time,
+                        data: Arc::from(event.data),
+                    })
+                    .collect(),
+                start_offset: i64::from(channel.start_offset),
+                loop_length: u64::from(model.length),
+                played_sample: matches!(
+                    model.state.mode,
+                    LoopMode::Playing | LoopMode::PlayingDryThroughWet
+                )
+                .then_some(i64::from(model.position)),
+            }
+        })
+        .collect()
 }
 
 struct ScriptCompositionPlayback {
@@ -763,6 +801,7 @@ impl ApplicationModel {
             length: 0,
             position: 0,
             audio_data: None,
+            midi_data: None,
             script_composition: Vec::new(),
             recorded_fx_state: None,
         };
@@ -1481,7 +1520,7 @@ impl ApplicationModel {
                         model.state.selected = selected;
                     }
                 }
-                self.refresh_selected_audio(backend)
+                self.refresh_selected_media(backend)
             }
             ControlOperation::SetTarget { target } => {
                 for model in self.loops.values_mut() {
@@ -1502,6 +1541,8 @@ impl ApplicationModel {
                     model.length = 0;
                     model.state.empty = true;
                     model.state.composite_kind = shoop_app_api::CompositeKind::None;
+                    model.audio_data = None;
+                    model.midi_data = None;
                     model.script_composition.clear();
                 }
                 Ok(())
@@ -2944,6 +2985,7 @@ impl ApplicationModel {
                             model.state.next_transition_delay = None;
                             model.state.empty = false;
                             model.audio_data = None;
+                            model.midi_data = None;
                         }
                         self.finish_io(IoTaskStatus::Completed, &message);
                     }
@@ -3225,6 +3267,7 @@ impl ApplicationModel {
                 length: 0,
                 position: 0,
                 audio_data: None,
+                midi_data: None,
                 script_composition: Vec::new(),
                 recorded_fx_state: None,
             },
@@ -3302,7 +3345,7 @@ impl ApplicationModel {
                         model.state.selected = !was_selected;
                     }
                 }
-                self.refresh_selected_audio(backend)?;
+                self.refresh_selected_media(backend)?;
                 Ok(())
             }
             LoopAction::IconDoubleClicked => {
@@ -3319,7 +3362,7 @@ impl ApplicationModel {
                         model.state.targeted = true;
                     }
                 }
-                self.refresh_selected_audio(backend)?;
+                self.refresh_selected_media(backend)?;
                 Ok(())
             }
             LoopAction::PlayClicked => {
@@ -3434,31 +3477,62 @@ impl ApplicationModel {
         Ok(())
     }
 
-    fn refresh_selected_audio(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+    fn refresh_selected_media(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
         let selected: Vec<_> = self
             .loops
             .values()
             .filter(|model| model.state.selected)
-            .map(|model| (model.id, model.backend_id))
+            .map(|model| {
+                (
+                    model.id,
+                    model.backend_id,
+                    model.state.has_audio,
+                    model.state.has_midi,
+                )
+            })
             .collect();
         for model in self.loops.values_mut() {
             if !model.state.selected {
                 model.audio_data = None;
+                model.midi_data = None;
             }
         }
-        if let [(id, backend_id)] = selected.as_slice() {
-            if self
-                .loops
-                .get(id)
-                .is_some_and(|model| model.audio_data.is_some())
-            {
-                return Ok(());
+        let [(id, backend_id, has_audio, has_midi)] = selected.as_slice() else {
+            return Ok(());
+        };
+        let (needs_audio, needs_midi) = self
+            .loops
+            .get(id)
+            .map(|model| (model.audio_data.is_none(), model.midi_data.is_none()))
+            .unwrap_or_default();
+        if needs_audio {
+            if *has_audio {
+                let data = backend
+                    .loop_audio_data(*backend_id)
+                    .map_err(|error| format!("could not fetch selected loop audio: {error}"))?;
+                if let (Some(model), Some(data)) = (self.loops.get_mut(id), data) {
+                    model.audio_data = Some(data);
+                }
+            } else if let Some(model) = self.loops.get_mut(id) {
+                model.audio_data = Some(Vec::new());
             }
-            let data = backend
-                .loop_audio_data(*backend_id)
-                .map_err(|error| format!("could not fetch selected loop audio: {error}"))?;
-            if let (Some(model), Some(data)) = (self.loops.get_mut(id), data) {
-                model.audio_data = Some(data);
+        }
+        if needs_midi {
+            if *has_midi {
+                let data = backend
+                    .loop_midi_data(*backend_id)
+                    .map_err(|error| format!("could not fetch selected loop MIDI: {error}"))?;
+                if let Some(data) = data {
+                    let Some(model) = self.loops.get(id) else {
+                        return Ok(());
+                    };
+                    let channels = midi_detail_channels(model, data);
+                    if let Some(model) = self.loops.get_mut(id) {
+                        model.midi_data = Some(channels);
+                    }
+                }
+            } else if let Some(model) = self.loops.get_mut(id) {
+                model.midi_data = Some(Vec::new());
             }
         }
         Ok(())
@@ -3604,6 +3678,12 @@ impl ApplicationModel {
         backend
             .grab_loops(&requests)
             .map_err(|error| format!("could not grab loop recording: {error}"))?;
+        for id in &ids {
+            if let Some(model) = self.loops.get_mut(id) {
+                model.audio_data = None;
+                model.midi_data = None;
+            }
+        }
 
         if !self.global.sync {
             let delay = target.map(|_| self.target_delay()).unwrap_or(0);
@@ -3883,6 +3963,7 @@ impl ApplicationModel {
                 for model in self.loops.values_mut() {
                     model.state.selected = false;
                     model.audio_data = None;
+                    model.midi_data = None;
                 }
             }
             GlobalControlAction::ClearRecordings { include_sync }
@@ -4071,7 +4152,19 @@ impl ApplicationModel {
                 model.length = backend_state.length;
                 model.position = backend_state.position;
             }
+            let was_changing = matches!(
+                model.state.mode,
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            );
             model.state.mode = app_loop_mode(backend_state.mode);
+            let is_changing = matches!(
+                model.state.mode,
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            );
+            if was_changing && !is_changing {
+                model.audio_data = None;
+                model.midi_data = None;
+            }
             model.state.next_mode = backend_state
                 .next_mode
                 .map(app_loop_mode)
@@ -4967,6 +5060,7 @@ impl ApplicationModel {
                             .map_err(|_| "loop length exceeds engine range".to_owned())?,
                         position: 0,
                         audio_data: None,
+                        midi_data: None,
                         script_composition,
                         recorded_fx_state,
                     },
@@ -5112,12 +5206,33 @@ impl ApplicationModel {
                     .collect()
             })
             .unwrap_or_default();
+        let midi_channels = model
+            .midi_data
+            .as_ref()
+            .map(|channels| {
+                channels
+                    .iter()
+                    .cloned()
+                    .map(|mut channel| {
+                        channel.loop_length = u64::from(model.length);
+                        channel.played_sample = matches!(
+                            model.state.mode,
+                            LoopMode::Playing | LoopMode::PlayingDryThroughWet
+                        )
+                        .then_some(i64::from(model.position));
+                        channel
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         Some(LoopDetailsState {
             generation: self.revision,
             loop_id: model.id,
             title: model.name.clone(),
-            loading: model.audio_data.is_none(),
+            loading: model.state.has_audio && model.audio_data.is_none(),
             channels,
+            midi_loading: model.state.has_midi && model.midi_data.is_none(),
+            midi_channels,
         })
     }
 
@@ -8916,7 +9031,11 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     .as_ref()
                     .is_some_and(|details| details.loop_id == first)
         });
-        assert_eq!(snapshot.details.as_ref().unwrap().channels.len(), 2);
+        let details = snapshot.details.as_ref().unwrap();
+        assert_eq!(details.channels.len(), 2);
+        assert_eq!(details.midi_channels.len(), 1);
+        assert!(!details.loading);
+        assert!(!details.midi_loading);
 
         handle
             .dispatch(AppIntent::Loop {
@@ -8947,6 +9066,96 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         });
         assert!(snapshot.global_controls.solo);
         assert_eq!(snapshot.global_controls.apply_n_cycles, 2);
+    }
+
+    #[test]
+    fn midi_only_selection_publishes_immutable_midi_details() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "MIDI only".to_owned(),
+                    audio_channels: 0,
+                    midi: true,
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let track_id = model.tracks[1].id;
+        let loop_id = model.tracks[1].loops[0];
+        let backend_loop = model.loops[&loop_id].backend_id;
+        backend
+            .replace_loop_content(
+                backend_loop,
+                &BackendLoopContentUpdate {
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 24,
+                        start_state: Vec::new(),
+                        events: vec![
+                            BackendMidiEvent {
+                                time: 2,
+                                data: vec![0x90, 67, 99],
+                            },
+                            BackendMidiEvent {
+                                time: 18,
+                                data: vec![0x80, 67, 0],
+                            },
+                        ],
+                        start_offset: Some(-3),
+                        preplay: Some(4),
+                    }],
+                    length: Some(24),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                loop_id,
+                LoopAction::IconClicked(SelectionModifiers::default()),
+            )
+            .unwrap();
+
+        let details = model.details_snapshot().unwrap();
+        assert!(details.channels.is_empty());
+        assert!(!details.loading);
+        assert!(!details.midi_loading);
+        assert_eq!(details.midi_channels.len(), 1);
+        let channel = &details.midi_channels[0];
+        assert_eq!(channel.start_offset, -3);
+        assert_eq!(channel.loop_length, 24);
+        assert_eq!(channel.events.len(), 2);
+        assert_eq!(channel.events[0].data.as_ref(), [0x90, 67, 99]);
+        assert_eq!(
+            backend.capture_session().unwrap().tracks[1].loops[0].midi[0]
+                .events
+                .len(),
+            2
+        );
+        let original_events = Arc::clone(&channel.events);
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::ClearLoops {
+                    loops: vec![loop_id],
+                },
+            )
+            .unwrap();
+        model.refresh_selected_media(&mut backend).unwrap();
+        let cleared = model.details_snapshot().unwrap();
+        assert!(cleared.midi_channels[0].events.is_empty());
+        assert!(!Arc::ptr_eq(
+            &cleared.midi_channels[0].events,
+            &original_events
+        ));
     }
 
     #[test]

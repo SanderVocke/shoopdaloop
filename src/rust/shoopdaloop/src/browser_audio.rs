@@ -8,22 +8,23 @@ use crate::browser_midi::{BrowserMidiHub, TrackMidiInput};
 use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
-    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireGrabRequest, WireHostPort,
-    WireLoopMode, WireMidiEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, COMMAND_MAX_BYTES,
-    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk, WireChannelMode,
+    WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WirePortDataType,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl, WireTrackFxControl,
+    WireTrackTopology, COMMAND_CAPACITY, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
     SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     default_tiny_synth_fx_state, encode_tiny_synth_fx_state, tiny_synth_fx_descriptor, Backend,
-    BackendConfirmedLink, BackendConnectionFailure, BackendDriverState, BackendGrabRequest,
-    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
-    BackendLoopState, BackendMidiEvent, BackendPortDataType, BackendPortDescriptor,
-    BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, TinySynthFxControl, TrackProcessorTypeId,
-    TrackRequest,
+    BackendChannelMode, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
+    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
+    BackendPortRole, BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackState, BackendTrackTopology, DirectTrackRequest, TinySynthFxControl,
+    TrackProcessorTypeId, TrackRequest,
 };
 use shoop_egui::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
@@ -962,6 +963,15 @@ struct WaveformAssembly {
     in_flight: bool,
 }
 
+struct MidiDataAssembly {
+    generation: u64,
+    channels: Vec<BackendMidiChannelData>,
+    next_channel: usize,
+    next_offset: usize,
+    complete: bool,
+    in_flight: bool,
+}
+
 const SESSION_CAPTURE_IN_FLIGHT_LIMIT: usize = 8;
 
 struct SessionCaptureAssembly {
@@ -1001,6 +1011,8 @@ pub struct WebAudioBackend {
     last_wire_xruns: u32,
     waveform_revisions: BTreeMap<BackendLoopId, u64>,
     waveforms: BTreeMap<BackendLoopId, WaveformAssembly>,
+    midi_data_generations: BTreeMap<BackendLoopId, u64>,
+    midi_data: BTreeMap<BackendLoopId, MidiDataAssembly>,
     next_session_generation: u64,
     session_capture: Option<SessionCaptureAssembly>,
     session_replace: Option<SessionReplaceAssembly>,
@@ -1044,6 +1056,8 @@ impl WebAudioBackend {
                 last_wire_xruns: 0,
                 waveform_revisions: BTreeMap::new(),
                 waveforms: BTreeMap::new(),
+                midi_data_generations: BTreeMap::new(),
+                midi_data: BTreeMap::new(),
                 next_session_generation: 1,
                 session_capture: None,
                 session_replace: None,
@@ -1176,6 +1190,120 @@ impl WebAudioBackend {
             assembly.next_offset = chunk.offset.saturating_add(chunk.samples.len());
         }
         self.request_waveform_chunk(loop_id)
+    }
+
+    fn request_midi_data_chunk(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        let Some(assembly) = self.midi_data.get_mut(&loop_id) else {
+            return Ok(());
+        };
+        if assembly.complete || assembly.in_flight {
+            return Ok(());
+        }
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::RequestMidiData {
+                loop_id: loop_id.raw(),
+                generation: assembly.generation,
+                channel: assembly.next_channel,
+                offset: assembly.next_offset,
+                max_events: MIDI_DETAIL_CHUNK_EVENTS,
+            })?;
+        assembly.in_flight = true;
+        Ok(())
+    }
+
+    fn restart_midi_data(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        let generation = self
+            .midi_data_generations
+            .entry(loop_id)
+            .and_modify(|generation| *generation = generation.saturating_add(1))
+            .or_insert(1);
+        self.midi_data.insert(
+            loop_id,
+            MidiDataAssembly {
+                generation: *generation,
+                channels: Vec::new(),
+                next_channel: 0,
+                next_offset: 0,
+                complete: false,
+                in_flight: false,
+            },
+        );
+        self.request_midi_data_chunk(loop_id)
+    }
+
+    fn apply_midi_data_chunk(&mut self, chunk: MidiDataChunk) -> Result<()> {
+        let loop_id = BackendLoopId::from_raw(chunk.loop_id);
+        let Some(assembly) = self.midi_data.get_mut(&loop_id) else {
+            return Ok(());
+        };
+        if assembly.generation != chunk.generation
+            || assembly.next_channel != chunk.channel
+            || assembly.next_offset != chunk.offset
+        {
+            return Ok(());
+        }
+        assembly.in_flight = false;
+        if chunk.channel_count == 0 {
+            if chunk.channel != 0 || chunk.offset != 0 || !chunk.events.is_empty() {
+                return Err(anyhow!("malformed empty MIDI detail chunk"));
+            }
+            assembly.complete = true;
+            return Ok(());
+        }
+        if chunk.channel >= chunk.channel_count
+            || chunk.offset > chunk.total_events
+            || chunk.offset.saturating_add(chunk.events.len()) > chunk.total_events
+            || chunk.events.len() > MIDI_DETAIL_CHUNK_EVENTS
+            || chunk.final_chunk
+                != (chunk.offset.saturating_add(chunk.events.len()) >= chunk.total_events)
+        {
+            return Err(anyhow!("malformed MIDI detail chunk"));
+        }
+        if chunk.offset == 0 {
+            if assembly.channels.len() != chunk.channel {
+                return Err(anyhow!("out-of-order MIDI detail channel"));
+            }
+            assembly.channels.push(BackendMidiChannelData {
+                content_revision: chunk.content_revision,
+                mode: match chunk.mode {
+                    WireChannelMode::Direct => BackendChannelMode::Direct,
+                    WireChannelMode::Dry => BackendChannelMode::Dry,
+                    WireChannelMode::Wet => BackendChannelMode::Wet,
+                },
+                length: chunk.length,
+                events: Vec::with_capacity(chunk.total_events),
+                start_offset: chunk.start_offset,
+                preplay: chunk.preplay,
+            });
+        }
+        let Some(channel) = assembly.channels.get_mut(chunk.channel) else {
+            return Err(anyhow!("missing MIDI detail channel assembly"));
+        };
+        if channel.content_revision != chunk.content_revision {
+            return self.restart_midi_data(loop_id);
+        }
+        if channel.length != chunk.length
+            || channel.start_offset != chunk.start_offset
+            || channel.preplay != chunk.preplay
+            || channel.events.len() != chunk.offset
+        {
+            return Err(anyhow!("inconsistent MIDI detail chunk metadata"));
+        }
+        channel
+            .events
+            .extend(chunk.events.into_iter().map(|event| BackendMidiEvent {
+                time: event.frame,
+                data: event.data,
+            }));
+        if chunk.final_chunk {
+            assembly.next_channel += 1;
+            assembly.next_offset = 0;
+            assembly.complete = assembly.next_channel >= chunk.channel_count;
+        } else {
+            assembly.next_offset = channel.events.len();
+        }
+        self.request_midi_data_chunk(loop_id)
     }
 
     fn request_session_capture_chunks(&mut self) -> Result<()> {
@@ -1329,6 +1457,7 @@ impl WebAudioBackend {
         self.snapshot.connections.application_ports.clear();
         self.snapshot.connections.confirmed_links.clear();
         self.waveforms.clear();
+        self.midi_data.clear();
         for source_track in &session.tracks {
             let Some(created) = replacement.tracks.get(&source_track.source_id) else {
                 continue;
@@ -2121,6 +2250,7 @@ impl Backend for WebAudioBackend {
         })?;
         for request in requests {
             self.waveforms.remove(&request.loop_id);
+            self.midi_data.remove(&request.loop_id);
         }
         Ok(())
     }
@@ -2161,6 +2291,19 @@ impl Backend for WebAudioBackend {
         Ok(None)
     }
 
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        if !self.snapshot.loops.contains_key(&loop_id) {
+            return Err(anyhow!("unknown browser backend loop {loop_id:?}"));
+        }
+        if let Some(assembly) = self.midi_data.get(&loop_id) {
+            return Ok(assembly.complete.then(|| BackendMidiData {
+                channels: assembly.channels.clone(),
+            }));
+        }
+        self.restart_midi_data(loop_id)?;
+        Ok(None)
+    }
+
     fn set_loop_sync_source(
         &mut self,
         loop_id: BackendLoopId,
@@ -2184,6 +2327,7 @@ impl Backend for WebAudioBackend {
             cycles_delay,
         })?;
         self.waveforms.remove(&loop_id);
+        self.midi_data.remove(&loop_id);
         Ok(())
     }
 
@@ -2192,6 +2336,7 @@ impl Backend for WebAudioBackend {
             loop_id: loop_id.raw(),
         })?;
         self.waveforms.remove(&loop_id);
+        self.midi_data.remove(&loop_id);
         Ok(())
     }
 
@@ -2210,6 +2355,7 @@ impl Backend for WebAudioBackend {
             if replace.complete {
                 self.loop_content_replace = None;
                 self.waveforms.remove(&loop_id);
+                self.midi_data.remove(&loop_id);
                 return Ok(());
             }
             self.pump_loop_content_replace()?;
@@ -2417,6 +2563,7 @@ impl Backend for WebAudioBackend {
                 }
                 Event::Snapshot(snapshot) => self.apply_wire_snapshot(snapshot),
                 Event::Waveform(chunk) => self.apply_waveform_chunk(chunk)?,
+                Event::MidiData(chunk) => self.apply_midi_data_chunk(chunk)?,
                 Event::SessionCaptureReady {
                     generation,
                     total_bytes,

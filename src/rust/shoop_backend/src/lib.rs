@@ -448,6 +448,21 @@ pub struct BackendMidiContent {
     pub preplay: u32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackendMidiChannelData {
+    pub content_revision: u64,
+    pub mode: BackendChannelMode,
+    pub length: u32,
+    pub events: Vec<BackendMidiEvent>,
+    pub start_offset: i32,
+    pub preplay: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct BackendMidiData {
+    pub channels: Vec<BackendMidiChannelData>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendLoopContent {
     pub source_id: u64,
@@ -611,6 +626,7 @@ pub trait Backend {
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()>;
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>>;
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>>;
     fn loop_audio_data_chunk(
         &mut self,
         loop_id: BackendLoopId,
@@ -3012,6 +3028,40 @@ impl Backend for EngineBackend {
             .map(Some)
     }
 
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
+        let channels = channels
+            .midi
+            .iter()
+            .zip(&channels.midi_modes)
+            .map(|(channel, mode)| {
+                let channel = self
+                    .session
+                    .midi_channel(*channel)
+                    .ok_or_else(|| anyhow!("missing MIDI loop channel"))?;
+                Ok(BackendMidiChannelData {
+                    content_revision: u64::from(channel.data_seq_nr()),
+                    mode: *mode,
+                    length: channel.length(),
+                    events: channel
+                        .contents()
+                        .into_iter()
+                        .map(|event| BackendMidiEvent {
+                            time: event.time,
+                            data: event.data().to_vec(),
+                        })
+                        .collect(),
+                    start_offset: channel.start_offset(),
+                    preplay: channel.pre_play_samples(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Some(BackendMidiData { channels }))
+    }
+
     fn loop_audio_data_chunk(
         &mut self,
         loop_id: BackendLoopId,
@@ -4635,6 +4685,26 @@ impl Backend for FakeBackend {
                 .map(|channel| Arc::from(channel.samples.clone()))
                 .collect(),
         ))
+    }
+
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        self.require_loop(loop_id)?;
+        let channels = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?
+            .midi
+            .iter()
+            .map(|channel| BackendMidiChannelData {
+                content_revision: 0,
+                mode: channel.mode,
+                length: channel.length,
+                events: channel.events.clone(),
+                start_offset: channel.start_offset,
+                preplay: channel.preplay,
+            })
+            .collect();
+        Ok(Some(BackendMidiData { channels }))
     }
 
     fn set_loop_sync_source(
@@ -7045,6 +7115,57 @@ mod tests {
             backend.poll().unwrap().loops[&track.loops[0]].mode,
             BackendLoopMode::Stopped
         );
+    }
+
+    #[test]
+    fn targeted_midi_data_preserves_channel_metadata_events_and_content() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "midi_details".to_owned(),
+                audio_channels: 0,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = track.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 32,
+                        start_state: Vec::new(),
+                        events: vec![
+                            BackendMidiEvent {
+                                time: 3,
+                                data: vec![0x90, 64, 100],
+                            },
+                            BackendMidiEvent {
+                                time: 19,
+                                data: vec![0x80, 64, 0],
+                            },
+                        ],
+                        start_offset: Some(-4),
+                        preplay: Some(7),
+                    }],
+                    length: Some(32),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let before = backend.capture_session().unwrap();
+        let data = backend.loop_midi_data(loop_id).unwrap().unwrap();
+        let channel = &data.channels[0];
+        assert_eq!(channel.mode, BackendChannelMode::Direct);
+        assert_eq!(channel.length, 32);
+        assert_eq!(channel.start_offset, -4);
+        assert_eq!(channel.preplay, 7);
+        assert_eq!(channel.events[0].data, [0x90, 64, 100]);
+        assert_eq!(channel.events[1].time, 19);
+        assert!(channel.content_revision > 0);
+        assert_eq!(backend.capture_session().unwrap(), before);
     }
 
     #[test]
