@@ -76,16 +76,16 @@ Update the keyboard script to use **I** to toggle input mute for tracks containi
 
 ## Stage 3 — Lua interface
 
-- [ ] Extend `ControlSnapshot` and global change detection with the policy value.
-- [ ] Add Lua getter/setter functions and corresponding `ControlOperation` support.
-- [ ] Extend `SetTrackInputMuted` with `respect_auto_mute`.
-- [ ] Preserve legacy setter arity while accepting and validating the new boolean argument.
-- [ ] Make Lua shadow-state updates mirror core target-group auto-muting.
-- [ ] Update `shoop_helpers.track_toggle_input_muted` to accept a selector and optional respect flag, using consistent group-toggle semantics.
-- [ ] Advance `LUA_API_VERSION` to `1.1`.
-- [ ] Add focused scripting-interface tests for getter/setter operations, legacy calls, respecting/bypassing behavior, multi-target shadow state, and argument validation.
-- [ ] Add an application-level Lua snippet test proving that a respecting operation reaches the core policy correctly; do not use either bundled script.
-- [ ] Commit the completed Lua-interface milestone.
+- [x] Extend `ControlSnapshot` and global change detection with the policy value.
+- [x] Add Lua getter/setter functions and corresponding `ControlOperation` support.
+- [x] Extend `SetTrackInputMuted` with `respect_auto_mute`.
+- [x] Preserve legacy setter arity while accepting and validating the new boolean argument.
+- [x] Make Lua shadow-state updates mirror core target-group auto-muting.
+- [x] Update `shoop_helpers.track_toggle_input_muted` to accept a selector and optional respect flag, using consistent group-toggle semantics.
+- [x] Advance `LUA_API_VERSION` to `1.1`.
+- [x] Add focused scripting-interface tests for getter/setter operations, legacy calls, respecting/bypassing behavior, multi-target shadow state, and argument validation.
+- [x] Add an application-level Lua snippet test proving that a respecting operation reaches the core policy correctly; do not use either bundled script.
+- [x] Commit the completed Lua-interface milestone.
 
 ## Stage 4 — Top-bar control
 
