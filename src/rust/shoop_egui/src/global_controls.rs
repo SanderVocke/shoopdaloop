@@ -1,6 +1,6 @@
 use egui_material_icons::icons::{
-    ICON_BORDER_CLEAR, ICON_DELETE, ICON_EXCLAMATION, ICON_FIBER_MANUAL_RECORD, ICON_MENU,
-    ICON_PLAY_ARROW, ICON_STOP, ICON_TIMER,
+    ICON_BORDER_CLEAR, ICON_DELETE, ICON_EXCLAMATION, ICON_FIBER_MANUAL_RECORD, ICON_HEARING,
+    ICON_MENU, ICON_PLAY_ARROW, ICON_STOP, ICON_TIMER,
 };
 
 use crate::{
@@ -35,6 +35,7 @@ enum TestGlobalControl {
     PlayAfterRecord,
     Sync,
     Solo,
+    AutoMuteOtherTrackInputs,
     ApplyNCycles,
 }
 
@@ -54,6 +55,7 @@ struct TestGlobalControlRects {
     play_after_record: Option<egui::Rect>,
     sync: Option<egui::Rect>,
     solo: Option<egui::Rect>,
+    auto_mute_other_track_inputs: Option<egui::Rect>,
     apply_n_cycles: Option<egui::Rect>,
 }
 
@@ -198,6 +200,20 @@ impl GlobalControls {
             if response.clicked() {
                 actions.push(GlobalControlAction::SetSolo(!state.solo));
             }
+            let exclusive_input_text = egui::RichText::new(format!("{} 1", ICON_HEARING.codepoint))
+                .family(ICON_HEARING.font_family())
+                .size(18.0);
+            let response = ui
+                .selectable_label(state.auto_mute_other_track_inputs, exclusive_input_text)
+                .on_hover_text(
+                    "Automatically mute other track inputs when enabling input monitoring",
+                );
+            self.record_rect(TestGlobalControl::AutoMuteOtherTrackInputs, &response);
+            if response.clicked() {
+                actions.push(GlobalControlAction::SetAutoMuteOtherTrackInputs(
+                    !state.auto_mute_other_track_inputs,
+                ));
+            }
 
             let mut cycles = self
                 .apply_n_cycles
@@ -258,6 +274,9 @@ impl GlobalControls {
             TestGlobalControl::PlayAfterRecord => &mut self.test_rects.play_after_record,
             TestGlobalControl::Sync => &mut self.test_rects.sync,
             TestGlobalControl::Solo => &mut self.test_rects.solo,
+            TestGlobalControl::AutoMuteOtherTrackInputs => {
+                &mut self.test_rects.auto_mute_other_track_inputs
+            }
             TestGlobalControl::ApplyNCycles => &mut self.test_rects.apply_n_cycles,
         };
         *target = Some(response.rect);
@@ -282,6 +301,9 @@ impl GlobalControls {
             TestGlobalControl::PlayAfterRecord => self.test_rects.play_after_record,
             TestGlobalControl::Sync => self.test_rects.sync,
             TestGlobalControl::Solo => self.test_rects.solo,
+            TestGlobalControl::AutoMuteOtherTrackInputs => {
+                self.test_rects.auto_mute_other_track_inputs
+            }
             TestGlobalControl::ApplyNCycles => self.test_rects.apply_n_cycles,
         }
     }

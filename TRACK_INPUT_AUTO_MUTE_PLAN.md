@@ -89,13 +89,13 @@ Update the keyboard script to use **I** to toggle input mute for tracks containi
 
 ## Stage 4 — Top-bar control
 
-- [ ] Add the new toggle to `src/rust/shoop_egui/src/global_controls.rs` beside the existing synchronization/solo controls.
-- [ ] Give it a concise active/inactive visual state and explanatory hover text.
-- [ ] Emit the new global action when clicked.
-- [ ] Make ordinary track input-monitoring buttons issue respecting requests.
-- [ ] Update exhaustive action mappings and compile-time fixtures.
-- [ ] Verify through compilation and core action tests only; do not add or run interactive egui tests.
-- [ ] Commit the completed UI-wiring milestone.
+- [x] Add the new toggle to `src/rust/shoop_egui/src/global_controls.rs` beside the existing synchronization/solo controls.
+- [x] Give it a concise active/inactive visual state and explanatory hover text.
+- [x] Emit the new global action when clicked.
+- [x] Make ordinary track input-monitoring buttons issue respecting requests.
+- [x] Update exhaustive action mappings and compile-time fixtures.
+- [x] Verify through compilation and core action tests only; do not add or run interactive egui tests.
+- [x] Commit the completed UI-wiring milestone.
 
 ## Stage 5 — Bundled scripts and documentation
 
