@@ -200,6 +200,7 @@ impl ConnectionGraph {
         let visible_host_ports: Vec<_> = state
             .host_ports
             .iter()
+            .filter(|host| !is_application_owned_host(app_state, host))
             .filter(|host| {
                 filters.includes_type(host.data_type)
                     && visible_application_ids.iter().any(|port_id| {
@@ -402,6 +403,28 @@ fn latest_error(
                 .is_none_or(|host_id| error.external_port.as_deref() == Some(host_id.as_str())))
         .then(|| error.message.clone())
     })
+}
+
+fn is_application_owned_host(app_state: &AppState, host: &HostPortState) -> bool {
+    let Some(active) = app_state.audio_drivers.active.as_ref() else {
+        return false;
+    };
+    let configured_client = match &active.configured {
+        crate::AudioDriverConfig::Jack(config) => Some(config.client_name.as_str()),
+        crate::AudioDriverConfig::Cpal(config) => Some(config.client_name.as_str()),
+        crate::AudioDriverConfig::Dummy(_) | crate::AudioDriverConfig::WebAudio => None,
+    };
+    let application_client = (!active.instance_name.is_empty())
+        .then_some(active.instance_name.as_str())
+        .or(configured_client.filter(|client| !client.is_empty()));
+    application_client.is_some_and(|client| {
+        external_client_name(&host.name) == Some(client)
+            || external_client_name(host.id.as_str()) == Some(client)
+    })
+}
+
+fn external_client_name(full_name: &str) -> Option<&str> {
+    full_name.split_once(':').map(|(client, _)| client)
 }
 
 fn application_group_label(
@@ -1445,6 +1468,84 @@ mod tests {
             .values()
             .flatten()
             .any(|endpoint| endpoint.id == EndpointId::Application(PortId::from_raw(99))));
+    }
+
+    #[test]
+    fn system_columns_exclude_active_shoop_instance_ports_only() {
+        let mut state = state();
+        state.audio_drivers.active = Some(crate::ResolvedAudioDriverConfig {
+            configured: crate::AudioDriverConfig::Jack(crate::JackAudioDriverConfig {
+                client_name: "ShoopDaLoop".to_owned(),
+            }),
+            sample_rate: 48_000,
+            buffer_size: 128,
+            instance_name: "ShoopDaLoop-42".to_owned(),
+        });
+        let connections = Arc::make_mut(&mut state.connections);
+        let mut host_ports = connections.host_ports.to_vec();
+        host_ports.extend([
+            host_port(
+                "ShoopDaLoop-42:one_audio_in",
+                "ShoopDaLoop-42:one_audio_in",
+                PortDataType::Audio,
+                PortDirection::Input,
+            ),
+            host_port(
+                "ShoopDaLoop-42:one_audio_out",
+                "ShoopDaLoop-42:one_audio_out",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ),
+            host_port(
+                "external-copy:one_audio_out",
+                "External Copy:one_audio_out",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ),
+            host_port(
+                "ShoopDaLoop:foreign_audio_out",
+                "ShoopDaLoop:foreign_audio_out",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ),
+        ]);
+        connections.host_ports = host_ports.into();
+
+        let graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        assert!(graph.endpoints.values().flatten().all(|endpoint| {
+            !matches!(
+                &endpoint.id,
+                EndpointId::Host(id) if id.as_str().starts_with("ShoopDaLoop-42:")
+            )
+        }));
+        for retained in [
+            "external-copy:one_audio_out",
+            "ShoopDaLoop:foreign_audio_out",
+        ] {
+            assert!(graph
+                .endpoints
+                .values()
+                .flatten()
+                .any(|endpoint| { endpoint.id == EndpointId::Host(HostPortId::new(retained)) }));
+        }
+
+        let fallback_host = host_port(
+            "opaque-id",
+            "ShoopDaLoop:fallback",
+            PortDataType::Audio,
+            PortDirection::Output,
+        );
+        state
+            .audio_drivers
+            .active
+            .as_mut()
+            .unwrap()
+            .instance_name
+            .clear();
+        assert!(is_application_owned_host(&state, &fallback_host));
     }
 
     #[test]

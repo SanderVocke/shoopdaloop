@@ -8,7 +8,7 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 
 - Four-column grouped endpoint layout, connection-line rendering, drag-to-connect, and an explicit line-based disconnect interaction.
 - Independent Audio/MIDI inclusion toggles and a track multi-selection filter.
-- Grouping system endpoints by device/client/application and ShoopDaLoop endpoints by track or application owner.
+- Grouping external system endpoints by device/client/application and ShoopDaLoop endpoints by track or application owner, without duplicating ShoopDaLoop-owned ports in the system columns.
 - Presentation of confirmed, pending, failed, unavailable, and owner-managed connection states already exposed by `ConnectionViewState`.
 - Egui interaction/layout tests, application open-path tests, and connection UI documentation.
 
@@ -32,6 +32,7 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 9. Loading, backend-unavailable, empty-host, no-filter-results, stale-track, pending, owner-managed, and error states remain usable and do not hide otherwise eligible ShoopDaLoop ports or emit invalid intents.
 10. The graph remains usable in a small resizable window through clipped painting and two-axis overflow, and remains practical with large endpoint inventories; connector hit targets and labels retain hover/help text where truncation or interaction meaning is not obvious.
 11. Existing native and browser connection behavior, normalized identities, exact desired-state intents, and session routing semantics remain unchanged, and all required project validation gates pass.
+12. The System sources and System sinks columns exclude ports owned by the active ShoopDaLoop application instance, even when the host backend publishes those ports in its inventory; those ports appear only in the corresponding ShoopDaLoop columns.
 
 ## Design rules and constraints
 
@@ -39,6 +40,7 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 - Use stable typed identities (`PortId`, `HostPortId`, owner IDs) for grouping, widget IDs, anchors, hit testing, and emitted intents; names are labels, not identities.
 - Treat only adjacent source/sink pairs as candidates: host output → application input and application output → host input. Data types must match, and the application endpoint must be `UserManaged` and not pending before mutation.
 - Keep application ports visible when the compatible host inventory is empty. After applying data-type and track filters, include only system endpoints compatible with at least one visible application endpoint in their lane.
+- Identify and exclude application-owned host rows using the resolved active audio-driver instance name (with its configured client-name hint as a fallback), while retaining external clients even when they expose compatible ports.
 - Use one shared scrollable graph coordinate space so endpoint anchors and connection curves remain aligned while scrolling. Clip lines, drag previews, and line hit regions to the graph viewport.
 - Use consistent Audio/MIDI line styling plus separate confirmed, pending, hovered, owner-managed, and error treatments; do not rely on color alone to communicate mutable versus disabled state.
 - Cancel transient drag/hover selection when the dialog closes, filters change, or a snapshot revision removes an endpoint. Never optimistically add or remove a confirmed line before authoritative state changes.
@@ -51,7 +53,7 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 
 - [x] Replace role-tab/matrix preparation with internal graph-view structures for the four endpoint columns, owner/client groups, visible routes, pending/error metadata, and stable source/sink identities.
 - [x] Add independent Audio/MIDI filter state and an all-tracks-or-selected-track-set filter. Make `ConnectionScope::AllTracks` and `ConnectionScope::Track` deterministic open presets rather than permanent hard scopes.
-- [x] Resolve track and script display names from `AppState`, preserve stable ordering, and prune only system endpoints that cannot connect to a currently visible application endpoint.
+- [x] Resolve track and script display names from `AppState`, preserve stable ordering, exclude host rows owned by the active ShoopDaLoop instance, and prune only external system endpoints that cannot connect to a currently visible application endpoint.
 - [x] Add focused tests for four-column classification, direction/type compatibility, group naming/order, global and multi-track filters, Lua/non-track exclusion under track filters, stale tracks, empty inventories, and route visibility.
 - [x] Verify with `cargo test -p shoop_egui connection_dialog` and commit the completed view-model/filter milestone.
 
@@ -82,7 +84,7 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 
 ### Stage 5 — Final end-to-end validation
 
-- [x] Cover representative Audio and MIDI inventories in headless tests: grouped devices/apps, direct/sync/main ownership, owner-managed Lua MIDI ports, exact connect/disconnect intents, pending/error feedback, filtering, scrolling, resizing, stale scopes, and close/reopen presets. Do not open or control a desktop GUI or browser.
+- [x] Cover representative Audio and MIDI inventories in headless tests: grouped external devices/apps, exclusion of ShoopDaLoop-owned host rows, direct/sync/main ownership, owner-managed Lua MIDI ports, exact connect/disconnect intents, pending/error feedback, filtering, scrolling, resizing, stale scopes, and close/reopen presets. Do not open or control a desktop GUI or browser.
 - [x] Run `cargo fmt --all -- --check`.
 - [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
 - [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
