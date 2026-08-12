@@ -99,13 +99,13 @@ Update the keyboard script to use **I** to toggle input mute for tracks containi
 
 ## Stage 5 — Bundled scripts and documentation
 
-- [ ] Update `keyboard.lua` documentation and handling for the **I** binding, including unique selected-track collection and respecting group toggle.
-- [ ] Update the Akai documentation comments to clarify **PAN + grid**, column-to-track behavior, sync handling, and auto-mute-policy respect.
-- [ ] Pass `true` explicitly from the Akai input-mute binding.
-- [ ] Update both bundled scripts to announce API `1.1`.
-- [ ] Update `docs/lua_compatibility_contract.md`, generated helper documentation inputs, and version references such as `src/rust/shoopdaloop/README.md`.
-- [ ] Review script changes statically only; do not execute or syntax-test the bundled scripts.
-- [ ] Commit the completed script/documentation milestone.
+- [x] Update `keyboard.lua` documentation and handling for the **I** binding, including unique selected-track collection and respecting group toggle.
+- [x] Update the Akai documentation comments to clarify **PAN + grid**, column-to-track behavior, sync handling, and auto-mute-policy respect.
+- [x] Pass `true` explicitly from the Akai input-mute binding.
+- [x] Update both bundled scripts to announce API `1.1`.
+- [x] Update `docs/lua_compatibility_contract.md`, generated helper documentation inputs, and version references such as `src/rust/shoopdaloop/README.md`.
+- [x] Review script changes statically only; do not execute or syntax-test the bundled scripts.
+- [x] Commit the completed script/documentation milestone.
 
 ## Final end-to-end validation
 

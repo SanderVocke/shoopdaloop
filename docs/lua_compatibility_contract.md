@@ -7,10 +7,12 @@ This document defines the Shoop Lua compatibility target for the native and brow
 - A loop coordinate is a two-integer Lua sequence `{track, row}`. Main tracks are zero-based; the sync loop is `{-1, 0}`.
 - A loop selector is one coordinate, a sequence of coordinates, or `nil`. Missing coordinates select no object. Results follow current track/row order.
 - A track selector is a zero-based integer, a sequence of integers, or `nil`; track `-1` is the sync track. Missing indices select no object.
-- Setters accept exactly the documented argument count. Unsupported selector/value types are errors. Setters return `nil` unless noted.
+- Setters accept exactly one of their documented argument counts. Unsupported selector/value types are errors. Setters return `nil` unless noted.
 - Multi-object getters return Lua sequences in selector order. A singular-looking selector still produces a sequence for getters documented as `list[...]`.
 - Mode, event, key, and modifier values are integers. `nil` represents an absent queued transition or target.
 - Gain-factor APIs use linear amplitude. Balance is clamped to `[-1, 1]`; fader positions are clamped to `[0, 1]` and use the same conversion curve as the application controls.
+
+The auto-mute-other-track-inputs policy defaults off, and changing the policy does not alter current input monitoring. A respecting multi-track unmute treats its selector as one target group: selected tracks are unmuted and every track outside the group, including the sync track, is muted. Muting and non-respecting calls never affect tracks outside the selector.
 
 ## `shoop_control` function inventory
 
@@ -55,7 +57,7 @@ This document defines the Shoop Lua compatibility target for the native and brow
 | Track query | `track_get_muted(selector)` | Sequence of output mute states. |
 | Track mutation | `track_set_muted(selector, muted)` | Sets output mute. |
 | Track query | `track_get_input_muted(selector)` | Sequence of inverse input-monitoring states. |
-| Track mutation | `track_set_input_muted(selector, muted)` | Sets inverse input monitoring. |
+| Track mutation | `track_set_input_muted(selector, muted[, respect_auto_mute])` | Sets inverse input monitoring. The optional flag defaults to false; when true, an unmute applies the enabled global auto-mute policy to tracks outside the selector. |
 | Track mutation | `track_set_gain(selector, gain)` | Sets linear output gain. |
 | Track mutation | `track_set_balance(selector, balance)` | Sets output balance. |
 | Track mutation | `track_set_gain_fader(selector, position)` | Sets output gain through the fader curve. |
@@ -65,6 +67,7 @@ This document defines the Shoop Lua compatibility target for the native and brow
 | Global | `set_solo(active)` / `get_solo()` | Sets/gets solo policy. |
 | Global | `set_sync_active(active)` / `get_sync_active()` | Sets/gets synchronized-trigger policy. |
 | Global | `set_play_after_record(active)` / `get_play_after_record()` | Sets/gets recording completion policy. |
+| Global | `set_auto_mute_other_track_inputs(active)` / `get_auto_mute_other_track_inputs()` | Sets/gets whether respecting input-unmute operations mute every track outside the selected target group. |
 | Global | `set_default_recording_action(value)` / `get_default_recording_action()` | Sets/gets `"record"` or `"grab"`; other values are ignored for compatibility. |
 | Subscription | `register_loop_event_cb(callback)` | Registers a script-owned loop callback. |
 | Subscription | `register_global_event_cb(callback)` | Registers a script-owned global callback. |
@@ -105,12 +108,12 @@ Each script gets its own Lua 5.4 state. Runtime or callback failure changes only
 
 | Script | Direct API families | Required application/runtime behavior |
 |---|---|---|
-| `keyboard.lua` | Selection/target queries and mutations; mode query/trigger; clear/grab/record-with-target; global cycle count; keyboard subscription. | Stable coordinates, synchronized and immediate transitions, selection movement, target recording, fixed cycles, and press/release sampler state from `shoop_helpers`. |
-| `akai_apc_mini_mk1.lua` | Loop trigger/clear/grab/select/target/composition; track gain/balance; global controls; loop/global callbacks; timer; MIDI auto-open input/output. | Full grid and sync coordinate mapping, regular composition append/parallel execution, event-driven LEDs, delayed reset, input hotplug, output broadcast/throttling, and controller reconnect. |
+| `keyboard.lua` | Selection/target queries and mutations; mode query/trigger; clear/grab/record-with-target; track input mute; global cycle count; keyboard subscription. | Stable coordinates, synchronized and immediate transitions, selection movement, target recording, fixed cycles, selected-track input monitoring, and press/release sampler state from `shoop_helpers`. |
+| `akai_apc_mini_mk1.lua` | Loop trigger/clear/grab/select/target/composition; track gain/balance/input mute; global controls; loop/global callbacks; timer; MIDI auto-open input/output. | Full grid and sync coordinate mapping, regular composition append/parallel execution, event-driven LEDs, delayed reset, input hotplug, output broadcast/throttling, and controller reconnect. |
 
 The APC source indexes coordinate pairs as `coords[1]`/`coords[2]`; nested numeric indexing is invalid. This behavior is part of the shared script contract.
 
-Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, explicit transition, repeat-sync, and track mute/input-mute APIs to the required set.
+Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, explicit transition, repeat-sync, and track mute/input-mute APIs to the required set. Bundled track input-unmute actions always respect the global auto-mute policy.
 
 ## MIDI connection contract
 

@@ -12,7 +12,7 @@ restarting a script removes its callbacks, timers, logical MIDI ports,
 connections, queued output, and script-owned dialogs.
 
 Every script must make ``shoop_announce_api_version(major, minor)`` its first
-Shoop API call. The current version is ``1.0``. A script runs only when its major
+Shoop API call. The current version is ``1.1``. A script runs only when its major
 equals the host major and its minor is no newer than the host minor. Missing,
 malformed, repeated, or incompatible announcements cancel initial execution
 before versioned side effects. The global two-integer signature is independent

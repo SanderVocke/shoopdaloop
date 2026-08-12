@@ -21,6 +21,8 @@
 --                If none selected, select all "playing dry through wet" loops.
 -- -  M key:      Set the selected loop(s) to recording dry into wet mode.
 --                If none selected, select all "recording dry into wet" loops.
+-- -  I key:      Toggle input mute for the track(s) containing selected loops.
+--                Unmuting respects the global auto-mute-other-inputs control.
 -- -  N key:      "Record next": Queue recording into the first empty loop of the
 --                currently selected/recording track.
 -- -  G key:      "Grab": grabs data from the running buffer to record it retro-
@@ -48,7 +50,7 @@
 -- toggled by holding the Ctrl button.
 
 if shoop_announce_api_version then
-    shoop_announce_api_version(1, 0)
+    shoop_announce_api_version(1, 1)
 end
 
 print_debug("Init keyboard.lua")
@@ -150,6 +152,21 @@ local handle_loop_action = function(mode)
     end
 end
 
+local toggle_selected_track_inputs = function()
+    local tracks = {}
+    local seen = {}
+    for _, coords in ipairs(shoop_control.loop_get_which_selected()) do
+        local track = coords[1]
+        if not seen[track] then
+            seen[track] = true
+            table.insert(tracks, track)
+        end
+    end
+    if #tracks > 0 then
+        shoop_helpers.track_toggle_input_muted(tracks, true)
+    end
+end
+
 --  Overall keyboard event handler.
 local handle_keyboard = function(event)
     local key = event.key
@@ -170,6 +187,8 @@ local handle_keyboard = function(event)
             handle_loop_action(shoop_control.constants.LoopMode_PlayingDryThroughWet)
         elseif key == shoop_control.constants.Key_M then
             handle_loop_action(shoop_control.constants.LoopMode_RecordingDryIntoWet)
+        elseif key == shoop_control.constants.Key_I then
+            toggle_selected_track_inputs()
         elseif key == shoop_control.constants.Key_N then
             shoop_helpers.record_into_first_empty(false)
         elseif key == shoop_control.constants.Key_O then
