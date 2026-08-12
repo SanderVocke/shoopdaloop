@@ -79,27 +79,27 @@ This milestone includes the application snapshot data needed for an accurate vie
 
 ### Stage 4 — Basic conversion and drag/drop editing
 
-- [ ] Add a typed application action for converting a primitive loop to an empty regular composite, expose it only from eligible loop context menus, and implement backend/media clearing plus authoritative model/snapshot updates.
-- [ ] Add a stable-ID serial-compose intent for dropping a source onto a target composite; validate target/source identities and self-reference before preserving canonical playlists and updating the existing playback projection.
-- [ ] Make loop widgets typed drag sources and the visible composite timeline a typed drop target with clear hover feedback; dropping emits the serial-compose intent while cancellation/outside drops are inert.
-- [ ] Add application tests for conversion, destructive clear semantics, valid serial append, stale/self rejection, snapshot updates, and session persistence.
-- [ ] Add headless egui tests for context-menu eligibility/action routing, drag payload lifecycle, valid timeline drop routing, and inert invalid/outside drops.
-- [ ] Update user documentation to describe conversion and serial drag/drop while clearly listing deferred editing operations.
-- [ ] Commit the application and UI editing milestones separately.
+- [x] Add a typed application action for converting a primitive loop to an empty regular composite, expose it only from eligible loop context menus, and implement backend/media clearing plus authoritative model/snapshot updates.
+- [x] Add a stable-ID serial-compose intent for dropping a source onto a target composite; validate target/source identities and self-reference before preserving canonical playlists and updating the existing playback projection.
+- [x] Make loop widgets typed drag sources and the visible composite timeline a typed drop target with clear hover feedback; dropping emits the serial-compose intent while cancellation/outside drops are inert.
+- [x] Add application tests for conversion, destructive clear semantics, valid serial append, stale/self rejection, snapshot updates, and session persistence.
+- [x] Add headless egui tests for context-menu eligibility/action routing, drag payload lifecycle, valid timeline drop routing, and inert invalid/outside drops.
+- [x] Update user documentation to describe conversion and serial drag/drop while clearly listing deferred editing operations.
+- [x] Commit the application and UI editing milestones separately.
 
 **Verification:** targeted `shoop_app_api`, `shoop_app`, and `shoop_egui` suites prove the complete context-menu-to-model and drag-source-to-drop-target paths without launching the app.
 
 ### Stage 5 — End-to-end non-interactive validation
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo test --locked --no-default-features -p shoop_audio_protocol -p shoop_audio_worklet -p shoop_egui -p shoopdaloop`, `RUSTFLAGS="-D warnings" cargo build --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown`, and `RUSTFLAGS="-D warnings" cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown`; do not launch a browser or GUI session.
-- [ ] Review the final diff for unrelated formatting, accidental editor controls, snapshot payload growth, and divergence between documented and tested schedule semantics.
-- [ ] Commit any validation fixes as a separate meaningful milestone and rerun every affected gate.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo test --locked --no-default-features -p shoop_audio_protocol -p shoop_audio_worklet -p shoop_egui -p shoopdaloop`, `RUSTFLAGS="-D warnings" cargo build --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown`, and `RUSTFLAGS="-D warnings" cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown`; do not launch a browser or GUI session.
+- [x] Review the final diff for unrelated formatting, accidental editor controls, snapshot payload growth, and divergence between documented and tested schedule semantics.
+- [x] Commit any validation fixes as a separate meaningful milestone and rerun every affected gate.
 
-**Verification:** all listed local gates are green and the worktree contains only intended plan/feature/documentation changes. The display-only implementation passed these gates on 2026-08-12; rerun all of them after the new editing paths are complete. Supply the Wasm linker from the existing Nix store if needed, and do not launch a GUI/browser session.
+**Verification:** all listed local gates are green and the worktree contains only intended plan/feature/documentation changes. On 2026-08-12 the final editing implementation passed the warning-denying workspace build, complete workspace suite (including 689 engine unit tests and all application/egui tests), 119-module tracing inventory, browser-independent suites, and both WebAssembly builds. The Wasm linker came from the existing Nix store; no GUI/browser session was launched.
 
 ### Stage 6 — Pull request and three-green CI handoff
 
