@@ -1658,12 +1658,9 @@ impl ApplicationModel {
             ),
             ControlOperation::SetTrackInputGain { tracks, gain_db } => self
                 .apply_script_track_action(backend, tracks, TrackAction::InputGainChanged(gain_db)),
-            ControlOperation::SetTrackInputMuted { tracks, muted } => self
-                .apply_script_track_action(
-                    backend,
-                    tracks,
-                    TrackAction::InputMonitoringChanged(!muted),
-                ),
+            ControlOperation::SetTrackInputMuted { tracks, muted } => {
+                self.handle_track_input_monitoring(backend, &tracks, !muted, false)
+            }
             ControlOperation::SetApplyNCycles(value) => {
                 self.handle_global_action(backend, GlobalControlAction::SetApplyNCycles(value))
             }
@@ -1691,6 +1688,51 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         for id in tracks {
             self.handle_track_action(backend, id, action.clone())?;
+        }
+        Ok(())
+    }
+
+    fn handle_track_input_monitoring(
+        &mut self,
+        backend: &mut dyn Backend,
+        tracks: &[TrackId],
+        enabled: bool,
+        respect_auto_mute: bool,
+    ) -> Result<(), String> {
+        let targets = tracks.iter().copied().collect::<BTreeSet<_>>();
+        if targets.is_empty() {
+            return Ok(());
+        }
+        for target in &targets {
+            if !self.tracks.iter().any(|track| track.id == *target) {
+                return Err(format!("stale or unknown track {target}"));
+            }
+        }
+        if enabled && respect_auto_mute && self.global.auto_mute_other_track_inputs {
+            for track in self
+                .tracks
+                .iter()
+                .filter(|track| !targets.contains(&track.id))
+            {
+                backend
+                    .set_track_control(
+                        track.backend_id,
+                        BackendTrackControl::InputMonitoring(false),
+                    )
+                    .map_err(|error| format!("could not update track {}: {error}", track.id))?;
+            }
+        }
+        for track in self
+            .tracks
+            .iter()
+            .filter(|track| targets.contains(&track.id))
+        {
+            backend
+                .set_track_control(
+                    track.backend_id,
+                    BackendTrackControl::InputMonitoring(enabled),
+                )
+                .map_err(|error| format!("could not update track {}: {error}", track.id))?;
         }
         Ok(())
     }
@@ -3175,6 +3217,18 @@ impl ApplicationModel {
         track_id: TrackId,
         action: TrackAction,
     ) -> Result<(), String> {
+        if let TrackAction::InputMonitoringChanged {
+            enabled,
+            respect_auto_mute,
+        } = &action
+        {
+            return self.handle_track_input_monitoring(
+                backend,
+                &[track_id],
+                *enabled,
+                *respect_auto_mute,
+            );
+        }
         let track = self
             .tracks
             .iter_mut()
@@ -3190,9 +3244,7 @@ impl ApplicationModel {
             TrackAction::OutputMuteChanged(value) => BackendTrackControl::OutputMute(value),
             TrackAction::InputGainChanged(value) => BackendTrackControl::InputGainDb(value),
             TrackAction::InputBalanceChanged(value) => BackendTrackControl::InputBalance(value),
-            TrackAction::InputMonitoringChanged(value) => {
-                BackendTrackControl::InputMonitoring(value)
-            }
+            TrackAction::InputMonitoringChanged { .. } => unreachable!(),
             TrackAction::FxActiveChanged(value) => {
                 return backend
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::SetActive(value))
@@ -8768,6 +8820,93 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[test]
+    fn auto_mute_other_track_inputs_is_respected_per_monitoring_request() {
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        for name in ["first", "second", "third"] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                }),
+            );
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let first = model.tracks[1].id;
+        let second = model.tracks[2].id;
+        let third = model.tracks[3].id;
+        let monitoring = |model: &ApplicationModel| {
+            model
+                .tracks
+                .iter()
+                .map(|track| track.controls.input_monitoring)
+                .collect::<Vec<_>>()
+        };
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first, second], true, false)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_global_action(
+                &mut backend,
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            )
+            .unwrap();
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_track_action(
+                &mut backend,
+                third,
+                TrackAction::InputMonitoringChanged {
+                    enabled: true,
+                    respect_auto_mute: true,
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, false, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first], true, false)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first], false, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, false, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first, second], true, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_global_action(
+                &mut backend,
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(false),
+            )
+            .unwrap();
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+        model
+            .handle_track_input_monitoring(&mut backend, &[third], true, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, true]);
+    }
+
+    #[test]
     fn piano_fanout_tracks_original_monitored_midi_recipients() {
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -8828,7 +8967,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8864,7 +9006,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(monitoring),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: monitoring,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8915,7 +9060,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8963,7 +9111,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime
                 .dispatch(AppIntent::Track {
                     track_id: track.id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 })
                 .unwrap();
         }

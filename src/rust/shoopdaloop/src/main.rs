@@ -2026,7 +2026,10 @@ impl BrowserSelfTest {
                     .and_then(|()| {
                         runtime.dispatch(AppIntent::Track {
                             track_id: tiny.id,
-                            action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                            action: shoop_egui::TrackAction::InputMonitoringChanged {
+                                enabled: true,
+                                respect_auto_mute: false,
+                            },
                         })
                     })
                     .and_then(|()| {
@@ -2160,7 +2163,10 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::Track {
                         track_id,
-                        action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                        action: shoop_egui::TrackAction::InputMonitoringChanged {
+                            enabled: true,
+                            respect_auto_mute: false,
+                        },
                     })
                     .and_then(|()| {
                         runtime.dispatch(AppIntent::Loop {
@@ -2464,7 +2470,10 @@ impl BrowserSelfTest {
                     return;
                 };
                 let tiny_controls = [
-                    shoop_egui::TrackAction::InputMonitoringChanged(true),
+                    shoop_egui::TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                     shoop_egui::TrackAction::TinySynthFx(
                         shoop_egui::TinySynthFxControl::SelectPreset("pad".to_owned()),
                     ),
@@ -2554,7 +2563,10 @@ impl BrowserSelfTest {
                             runtime
                                 .dispatch(AppIntent::Track {
                                     track_id: track.id,
-                                    action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                                    action: shoop_egui::TrackAction::InputMonitoringChanged {
+                                        enabled: true,
+                                        respect_auto_mute: false,
+                                    },
                                 })
                                 .and_then(|()| {
                                     runtime.dispatch(AppIntent::Loop {
@@ -2842,7 +2854,10 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::Track {
                         track_id: tiny.id,
-                        action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                        action: shoop_egui::TrackAction::InputMonitoringChanged {
+                            enabled: true,
+                            respect_auto_mute: false,
+                        },
                     })
                     .map(|()| Self::SaveSession {
                         callbacks_before: snapshot.status.callback_count,
@@ -4770,7 +4785,10 @@ mod tests {
             app.runtime
                 .dispatch(AppIntent::Track {
                     track_id: monitored_track,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 })
                 .unwrap();
         }

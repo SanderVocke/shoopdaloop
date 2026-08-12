@@ -65,14 +65,14 @@ Update the keyboard script to use **I** to toggle input mute for tracks containi
 
 ## Stage 2 — Core monitoring policy
 
-- [ ] Extend the input-monitoring application action path to carry whether the operation respects auto-mute.
-- [ ] Centralize handling of input-monitoring changes in `src/rust/shoop_app/src/lib.rs`.
-- [ ] When enabling monitoring with respect enabled and the policy active, mute every non-target track before enabling the complete target set.
-- [ ] Keep disabling, bypassed requests, and policy-off requests scoped to their selected tracks.
-- [ ] Update existing internal call sites explicitly; callers that intentionally monitor several tracks must bypass the policy.
-- [ ] Add application-model tests covering policy off/on, bypass, muting, sync inclusion, multi-target behavior, and unchanged state when merely enabling the policy.
-- [ ] Verify with only the targeted non-GUI core tests.
-- [ ] Commit the completed core-behavior milestone.
+- [x] Extend the input-monitoring application action path to carry whether the operation respects auto-mute.
+- [x] Centralize handling of input-monitoring changes in `src/rust/shoop_app/src/lib.rs`.
+- [x] When enabling monitoring with respect enabled and the policy active, mute every non-target track before enabling the complete target set.
+- [x] Keep disabling, bypassed requests, and policy-off requests scoped to their selected tracks.
+- [x] Update existing internal call sites explicitly; callers that intentionally monitor several tracks must bypass the policy.
+- [x] Add application-model tests covering policy off/on, bypass, muting, sync inclusion, multi-target behavior, and unchanged state when merely enabling the policy.
+- [x] Verify with only the targeted non-GUI core tests.
+- [x] Commit the completed core-behavior milestone.
 
 ## Stage 3 — Lua interface
 
