@@ -12,6 +12,8 @@ const ENDPOINT_HEIGHT: f32 = 28.0;
 const CONNECTOR_RADIUS: f32 = 5.0;
 const CONNECTOR_HIT_RADIUS: f32 = 11.0;
 const CURVE_HIT_DISTANCE: f32 = 7.0;
+const AUDIO_TYPE_COLOR: egui::Color32 = colors::AUDIO_ACTIVITY;
+const MIDI_TYPE_COLOR: egui::Color32 = egui::Color32::from_rgb(206, 147, 216);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ConnectionScope {
@@ -838,14 +840,14 @@ impl ConnectionDialog {
                     egui::Stroke::new(2.0, colors::SUCCESS),
                 );
             }
-            let glyph = if endpoint.error.is_some() {
-                "!"
+            let status_glyph = if endpoint.error.is_some() {
+                Some("!")
             } else if endpoint.pending {
-                "…"
+                Some("…")
             } else if endpoint.policy == ConnectionPolicy::OwnerManaged {
-                "◆"
+                Some("◆")
             } else {
-                data_type_glyph(endpoint.data_type)
+                None
             };
             let text_rect = rect.shrink2(egui::vec2(12.0, 3.0));
             let align = if column.connector_on_right() {
@@ -853,10 +855,10 @@ impl ConnectionDialog {
             } else {
                 egui::Align2::RIGHT_CENTER
             };
-            let text = if column.connector_on_right() {
-                format!("{glyph}  {}", endpoint.label)
-            } else {
-                format!("{}  {glyph}", endpoint.label)
+            let text = match (status_glyph, column.connector_on_right()) {
+                (Some(glyph), true) => format!("{glyph}  {}", endpoint.label),
+                (Some(glyph), false) => format!("{}  {glyph}", endpoint.label),
+                (None, _) => endpoint.label.clone(),
             };
             ui.painter().with_clip_rect(text_rect).text(
                 match align {
@@ -866,7 +868,7 @@ impl ConnectionDialog {
                 align,
                 text,
                 egui::TextStyle::Body.resolve(ui.style()),
-                ui.visuals().text_color(),
+                data_type_color(endpoint.data_type),
             );
             anchors.insert(
                 endpoint.id.clone(),
@@ -1127,15 +1129,8 @@ fn route_hover(route: &GraphRoute) -> String {
 
 fn data_type_color(data_type: PortDataType) -> egui::Color32 {
     match data_type {
-        PortDataType::Audio => colors::AUDIO_ACTIVITY,
-        PortDataType::Midi => colors::MIDI_ACTIVITY,
-    }
-}
-
-fn data_type_glyph(data_type: PortDataType) -> &'static str {
-    match data_type {
-        PortDataType::Audio => "A",
-        PortDataType::Midi => "M",
+        PortDataType::Audio => AUDIO_TYPE_COLOR,
+        PortDataType::Midi => MIDI_TYPE_COLOR,
     }
 }
 
@@ -1693,6 +1688,90 @@ mod tests {
             assert_eq!(dialog.endpoint_rects.len(), 6);
             assert_eq!(dialog.route_points.len(), 1);
         }
+    }
+
+    #[test]
+    fn endpoint_rows_use_type_colors_without_letter_type_prefixes() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            context.style_mut_of(theme, |style| style.animation_time = 0.0);
+        }
+        let state = state();
+        let mut dialog = ConnectionDialog::default();
+        dialog.open(ConnectionScope::AllTracks);
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1100.0, 700.0));
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                time: Some(0.0),
+                ..Default::default()
+            },
+            |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
+        );
+        let output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                time: Some(1.0),
+                ..Default::default()
+            },
+            |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
+        );
+        fn collect_text(shape: &egui::Shape, painted: &mut Vec<(String, egui::Color32)>) {
+            match shape {
+                egui::Shape::Text(text) => painted.push((
+                    text.galley.text().to_owned(),
+                    text.galley
+                        .job
+                        .sections
+                        .first()
+                        .map_or(text.fallback_color, |section| section.format.color),
+                )),
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collect_text(shape, painted);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut painted_text = Vec::new();
+        for clipped in &output.shapes {
+            collect_text(&clipped.shape, &mut painted_text);
+        }
+        assert!(
+            painted_text.contains(&(
+                "audio_source".to_owned(),
+                data_type_color(PortDataType::Audio)
+            )),
+            "painted text: {painted_text:#?}"
+        );
+        assert!(
+            painted_text.contains(&("midi_out".to_owned(), data_type_color(PortDataType::Midi)))
+        );
+        assert_ne!(
+            data_type_color(PortDataType::Audio),
+            data_type_color(PortDataType::Midi)
+        );
+        assert!(painted_text.iter().all(|(text, _)| {
+            !text.starts_with("A  ")
+                && !text.ends_with("  A")
+                && !text.starts_with("M  ")
+                && !text.ends_with("  M")
+        }));
+
+        let graph = ConnectionGraph::build(
+            &state,
+            &ConnectionFilters::for_scope(ConnectionScope::AllTracks),
+        );
+        let audio = graph
+            .endpoint(&EndpointId::Host(HostPortId::new("device:audio_source")))
+            .expect("audio endpoint");
+        let midi = graph
+            .endpoint(&EndpointId::Application(PortId::from_raw(12)))
+            .expect("MIDI endpoint");
+        assert!(endpoint_hover(audio, true).contains("\nAudio source"));
+        assert!(endpoint_hover(midi, true).contains("\nMIDI source"));
     }
 
     #[test]
