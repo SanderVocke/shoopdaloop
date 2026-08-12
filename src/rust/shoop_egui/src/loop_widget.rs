@@ -5,8 +5,9 @@ use egui_material_icons::icons::{
 use egui_material_icons::MaterialIcon;
 
 use crate::{
-    colors, dial::paint_dial, optimistic_value::OptimisticValue, AppIntent, CompositeKind,
-    LoopAudioExportFormat, LoopMode, LoopState, LoopWidgetAction, SelectionModifiers,
+    colors, composite_loop_widget::LoopDragPayload, dial::paint_dial,
+    optimistic_value::OptimisticValue, AppIntent, CompositeKind, LoopAudioExportFormat, LoopMode,
+    LoopState, LoopWidgetAction, SelectionModifiers,
 };
 
 #[derive(Debug, Default)]
@@ -40,6 +41,8 @@ pub struct LoopWidget {
     test_gain_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_balance_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_convert_rect: Option<egui::Rect>,
 }
 
 fn paint_icon(
@@ -118,6 +121,10 @@ fn can_generate_click_track(state: &LoopState) -> bool {
     state.composite_kind == CompositeKind::None && (state.has_audio || state.has_midi)
 }
 
+fn can_convert_to_composite(state: &LoopState) -> bool {
+    state.composite_kind == CompositeKind::None
+}
+
 fn generated_loop_name(name: &str) -> bool {
     name.strip_prefix('(')
         .and_then(|name| name.strip_suffix(')'))
@@ -127,6 +134,84 @@ fn generated_loop_name(name: &str) -> bool {
 }
 
 impl LoopWidget {
+    fn show_context_menu(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &LoopState,
+        result: &mut LoopWidgetResponse,
+    ) {
+        ui.label(&state.name);
+        if can_convert_to_composite(state) {
+            let convert = ui.button("Convert to composite");
+            #[cfg(test)]
+            {
+                self.test_convert_rect = Some(convert.rect);
+            }
+            if convert.clicked() {
+                result.actions.push(LoopWidgetAction::ConvertToComposite);
+                ui.close();
+            }
+            ui.separator();
+        }
+        if can_generate_click_track(state) {
+            if ui.button("Generate click track…").clicked() {
+                result.click_track_requested = true;
+                ui.close();
+            }
+            ui.separator();
+        }
+        if state.has_audio {
+            if ui.button("Save exact audio…").clicked() {
+                result.io_intents.push(AppIntent::RequestLoopAudioExport {
+                    loop_id: state.id,
+                    format: LoopAudioExportFormat::Exact,
+                });
+                ui.close();
+            }
+            if ui.button("Save float WAV…").clicked() {
+                result.io_intents.push(AppIntent::RequestLoopAudioExport {
+                    loop_id: state.id,
+                    format: LoopAudioExportFormat::FloatWav,
+                });
+                ui.close();
+            }
+            if ui.button("Load audio…").clicked() {
+                result
+                    .io_intents
+                    .push(AppIntent::RequestLoopAudioImportPicker { loop_id: state.id });
+                ui.close();
+            }
+        }
+        if state.has_recorded_fx_state && ui.button("Restore recorded FX state").clicked() {
+            result
+                .actions
+                .push(LoopWidgetAction::RestoreRecordedFxState);
+            ui.close();
+        }
+        if state.has_midi {
+            if ui.button("Save exact MIDI…").clicked() {
+                result.io_intents.push(AppIntent::RequestLoopMidiExport {
+                    loop_id: state.id,
+                    standard: false,
+                });
+                ui.close();
+            }
+            if ui.button("Save standard MIDI…").clicked() {
+                result.io_intents.push(AppIntent::RequestLoopMidiExport {
+                    loop_id: state.id,
+                    standard: true,
+                });
+                ui.close();
+            }
+            if ui.button("Load MIDI…").clicked() {
+                result
+                    .io_intents
+                    .push(AppIntent::RequestLoopMidiImportPicker { loop_id: state.id });
+                ui.close();
+            }
+        }
+    }
+
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -144,67 +229,13 @@ impl LoopWidget {
         hover_allowed: bool,
     ) -> LoopWidgetResponse {
         let mut result = LoopWidgetResponse::default();
-        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-        response.context_menu(|ui| {
-            ui.label(&state.name);
-            if can_generate_click_track(state) {
-                if ui.button("Generate click track…").clicked() {
-                    result.click_track_requested = true;
-                    ui.close();
-                }
-                ui.separator();
-            }
-            if state.has_audio {
-                if ui.button("Save exact audio…").clicked() {
-                    result.io_intents.push(AppIntent::RequestLoopAudioExport {
-                        loop_id: state.id,
-                        format: LoopAudioExportFormat::Exact,
-                    });
-                    ui.close();
-                }
-                if ui.button("Save float WAV…").clicked() {
-                    result.io_intents.push(AppIntent::RequestLoopAudioExport {
-                        loop_id: state.id,
-                        format: LoopAudioExportFormat::FloatWav,
-                    });
-                    ui.close();
-                }
-                if ui.button("Load audio…").clicked() {
-                    result
-                        .io_intents
-                        .push(AppIntent::RequestLoopAudioImportPicker { loop_id: state.id });
-                    ui.close();
-                }
-            }
-            if state.has_recorded_fx_state && ui.button("Restore recorded FX state").clicked() {
-                result
-                    .actions
-                    .push(LoopWidgetAction::RestoreRecordedFxState);
-                ui.close();
-            }
-            if state.has_midi {
-                if ui.button("Save exact MIDI…").clicked() {
-                    result.io_intents.push(AppIntent::RequestLoopMidiExport {
-                        loop_id: state.id,
-                        standard: false,
-                    });
-                    ui.close();
-                }
-                if ui.button("Save standard MIDI…").clicked() {
-                    result.io_intents.push(AppIntent::RequestLoopMidiExport {
-                        loop_id: state.id,
-                        standard: true,
-                    });
-                    ui.close();
-                }
-                if ui.button("Load MIDI…").clicked() {
-                    result
-                        .io_intents
-                        .push(AppIntent::RequestLoopMidiImportPicker { loop_id: state.id });
-                    ui.close();
-                }
-            }
-        });
+        #[cfg(test)]
+        {
+            self.test_convert_rect = None;
+        }
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+        response.dnd_set_drag_payload(LoopDragPayload { loop_id: state.id });
+        response.context_menu(|ui| self.show_context_menu(ui, state, &mut result));
         let loop_visible = ui.clip_rect().intersect(rect).is_positive();
         if !loop_visible {
             self.play_popup_until = 0.0;
@@ -836,6 +867,29 @@ mod tests {
         )
     }
 
+    fn context_menu_frame(
+        context: &egui::Context,
+        widget: &mut LoopWidget,
+        state: &LoopState,
+        time: f64,
+        events: Vec<egui::Event>,
+    ) -> LoopWidgetResponse {
+        let mut response = LoopWidgetResponse::default();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 300.0),
+                )),
+                time: Some(time),
+                events,
+                ..Default::default()
+            },
+            |ui| widget.show_context_menu(ui, state, &mut response),
+        );
+        response
+    }
+
     fn state() -> LoopState {
         LoopState {
             id: LoopId::from_raw(1),
@@ -915,6 +969,107 @@ mod tests {
             vec![pointer(record_popup.center())],
         );
         assert!(widget.record_popup_until > 2.02);
+    }
+
+    #[test]
+    fn context_menu_routes_conversion_only_for_primitive_loops() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = LoopWidget::default();
+        let primitive = state();
+        let _ = context_menu_frame(&context, &mut widget, &primitive, 1.0, Vec::new());
+        let convert = widget.test_convert_rect.expect("conversion menu item");
+        let _ = context_menu_frame(
+            &context,
+            &mut widget,
+            &primitive,
+            1.1,
+            vec![
+                pointer(convert.center()),
+                egui::Event::PointerButton {
+                    pos: convert.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = context_menu_frame(
+            &context,
+            &mut widget,
+            &primitive,
+            1.2,
+            vec![
+                pointer(convert.center()),
+                egui::Event::PointerButton {
+                    pos: convert.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response
+            .actions
+            .contains(&LoopWidgetAction::ConvertToComposite));
+
+        let composite = LoopState {
+            composite_kind: CompositeKind::Regular,
+            ..primitive
+        };
+        widget.test_convert_rect = None;
+        let _ = context_menu_frame(&context, &mut widget, &composite, 2.0, Vec::new());
+        assert!(widget.test_convert_rect.is_none());
+        assert!(!can_convert_to_composite(&composite));
+    }
+
+    #[test]
+    fn dragging_a_loop_sets_and_releases_its_stable_payload() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = state();
+        let mut widget = LoopWidget::default();
+        let start = egui::pos2(90.0, 13.0);
+        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.1,
+            vec![
+                pointer(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.2,
+            vec![pointer(start + egui::vec2(30.0, 20.0))],
+        );
+        assert_eq!(
+            egui::DragAndDrop::payload::<LoopDragPayload>(&context).as_deref(),
+            Some(&LoopDragPayload { loop_id: state.id })
+        );
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.3,
+            vec![egui::Event::PointerButton {
+                pos: start + egui::vec2(30.0, 20.0),
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(egui::DragAndDrop::payload::<LoopDragPayload>(&context).is_none());
     }
 
     #[test]

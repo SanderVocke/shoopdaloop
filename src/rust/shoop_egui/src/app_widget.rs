@@ -697,7 +697,9 @@ impl AppWidget {
                             .fill(colors::RAISED_BACKGROUND)
                             .inner_margin(egui::Margin::same(6)),
                     )
-                    .show(ui, |ui| self.details.show(ui, state.details.as_ref()));
+                    .show(ui, |ui| {
+                        actions.extend(self.details.show(ui, state.details.as_ref()));
+                    });
             }
             Some(BottomPane::Piano) => {
                 let destinations = piano_destinations(state);

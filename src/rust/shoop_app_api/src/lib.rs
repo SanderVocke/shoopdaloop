@@ -899,6 +899,36 @@ impl Default for MidiSequenceChannelState {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeTrackDetailsState {
+    pub id: TrackId,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeEventDetailsState {
+    pub loop_id: LoopId,
+    pub loop_name: String,
+    pub track_id: TrackId,
+    pub start_frame: u64,
+    pub end_frame: u64,
+    pub playlist_index: u32,
+    pub section_index: u32,
+    pub parallel_index: u32,
+    pub mode: Option<String>,
+    pub forced_n_cycles: Option<u32>,
+    pub loop_mode: LoopMode,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeDetailsState {
+    pub kind: CompositeKind,
+    pub cycle_length_frames: u64,
+    pub timeline_length_frames: u64,
+    pub tracks: Vec<CompositeTrackDetailsState>,
+    pub events: Vec<CompositeEventDetailsState>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
     pub generation: u64,
@@ -908,6 +938,7 @@ pub struct LoopDetailsState {
     pub channels: Vec<WaveformChannelState>,
     pub midi_loading: bool,
     pub midi_channels: Vec<MidiSequenceChannelState>,
+    pub composite: Option<CompositeDetailsState>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1389,6 +1420,7 @@ pub enum LoopAction {
     GainChanged(f32),
     BalanceChanged(f32),
     RestoreRecordedFxState,
+    ConvertToComposite,
 }
 
 pub type LoopWidgetAction = LoopAction;
@@ -1490,6 +1522,10 @@ pub enum AppIntent {
     AddTrackWithTopology(TrackSpec),
     AddLoop {
         track_id: TrackId,
+    },
+    ComposeLoopSerial {
+        target_loop_id: LoopId,
+        source_loop_id: LoopId,
     },
     KeyEvent(KeyEvent),
     AddScriptSource {
@@ -1625,6 +1661,7 @@ impl LoopAction {
             Self::GainChanged(_) => "loop.gain",
             Self::BalanceChanged(_) => "loop.balance",
             Self::RestoreRecordedFxState => "loop.restore_recorded_fx",
+            Self::ConvertToComposite => "loop.convert_to_composite",
         }
     }
 }
@@ -1709,6 +1746,7 @@ impl AppIntent {
             Self::AddTrack(_) => "track.add_direct",
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
             Self::AddLoop { .. } => "loop.add_row",
+            Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
@@ -1977,6 +2015,23 @@ mod tests {
                 loop_id,
                 action: LoopAction::IconClicked(SelectionModifiers { additive: true }),
             }
+        );
+        let source_loop_id = LoopId::from_raw(99);
+        let compose = AppIntent::ComposeLoopSerial {
+            target_loop_id: loop_id,
+            source_loop_id,
+        };
+        assert_eq!(compose.kind(), "loop.compose_serial");
+        assert_eq!(
+            compose,
+            AppIntent::ComposeLoopSerial {
+                target_loop_id: loop_id,
+                source_loop_id,
+            }
+        );
+        assert_eq!(
+            LoopAction::ConvertToComposite.kind(),
+            "loop.convert_to_composite"
         );
     }
 

@@ -3,6 +3,7 @@
 mod app_widget;
 mod click_track_dialog;
 pub mod colors;
+mod composite_loop_widget;
 mod connection_dialog;
 mod details_pane;
 mod dial;
@@ -33,6 +34,7 @@ pub use app_widget::{
     DEFAULT_NEW_TRACK_MIDI, DUMMY_BUFFER_SIZE, DUMMY_SAMPLE_RATE, JACK_CLIENT_NAME,
     KEYBOARD_SCRIPT_ENABLED, SELECTED_AUDIO_DRIVER, USER_SCRIPTS,
 };
+pub use composite_loop_widget::CompositeLoopWidget;
 pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;
 pub use global_controls::GlobalControls;
