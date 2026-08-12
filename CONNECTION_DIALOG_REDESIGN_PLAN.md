@@ -77,7 +77,7 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 - [x] Update `docs/port_model.md` and `src/rust/shoopdaloop/README.md` to describe the graph, grouping, filters, drag-to-connect, disconnect interaction, owner-managed routes, and unchanged authoritative connection contract; remove matrix-specific wording.
 - [x] Update or replace existing matrix-oriented tests without weakening exact-intent, browser MIDI, empty-host, owner-managed, and large-inventory coverage.
 - [x] Exercise global and per-track opening through the application widget, including sync tracks and deletion of a selected track while the dialog is open.
-- [ ] Verify targeted UI/application tests and browser compilation, then commit the documentation/integration milestone.
+- [x] Verify targeted UI/application tests and browser compilation, then commit the documentation/integration milestone.
 
 ### Stage 5 — Final end-to-end validation
 
