@@ -4287,6 +4287,33 @@ impl ApplicationModel {
 
     fn apply_connection_snapshot(&mut self, snapshot: BackendConnectionSnapshot) {
         self.connection_backend_available = snapshot.available;
+        for descriptor in snapshot
+            .application_ports
+            .values()
+            .filter(|port| port.owner == BackendPortOwner::GlobalFxControl)
+        {
+            if self
+                .connection_ports
+                .values()
+                .all(|port| port.backend_id != descriptor.id)
+            {
+                let id = PortId::from_raw(self.next_port_id);
+                self.next_port_id = self.next_port_id.saturating_add(1);
+                self.connection_ports.insert(
+                    id,
+                    ConnectionPortModel {
+                        id,
+                        backend_id: descriptor.id,
+                        owner: ApplicationPortOwner::GlobalFxControl,
+                        name: descriptor.name.clone(),
+                        data_type: PortDataType::Midi,
+                        direction: PortDirection::Input,
+                        role: PortRole::MidiInput,
+                        candidates: BTreeMap::new(),
+                    },
+                );
+            }
+        }
         for failure in snapshot.failures {
             let Some(port_id) = self
                 .connection_ports
