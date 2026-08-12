@@ -314,9 +314,6 @@ fn windows_process_path(path: PathBuf) -> Result<PathBuf> {
         .strip_prefix(r"\\?\")
         .map(PathBuf::from)
         .unwrap_or(path);
-    if path.as_os_str().to_string_lossy().is_ascii() {
-        return Ok(path);
-    }
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn GetShortPathNameW(long_path: *const u16, short_path: *mut u16, capacity: u32) -> u32;
@@ -325,10 +322,7 @@ fn windows_process_path(path: PathBuf) -> Result<PathBuf> {
     long.push(0);
     let required = unsafe { GetShortPathNameW(long.as_ptr(), std::ptr::null_mut(), 0) };
     if required == 0 {
-        bail!(
-            "Carla helper path contains non-ASCII characters and has no Windows short path: {}",
-            path.display()
-        );
+        return Ok(path);
     }
     let mut short = vec![0_u16; required as usize];
     let written = unsafe { GetShortPathNameW(long.as_ptr(), short.as_mut_ptr(), required) };
