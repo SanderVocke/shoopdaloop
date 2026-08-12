@@ -898,6 +898,36 @@ impl Default for MidiSequenceChannelState {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeTrackDetailsState {
+    pub id: TrackId,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeEventDetailsState {
+    pub loop_id: LoopId,
+    pub loop_name: String,
+    pub track_id: TrackId,
+    pub start_frame: u64,
+    pub end_frame: u64,
+    pub playlist_index: u32,
+    pub section_index: u32,
+    pub parallel_index: u32,
+    pub mode: Option<String>,
+    pub forced_n_cycles: Option<u32>,
+    pub loop_mode: LoopMode,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeDetailsState {
+    pub kind: CompositeKind,
+    pub cycle_length_frames: u64,
+    pub timeline_length_frames: u64,
+    pub tracks: Vec<CompositeTrackDetailsState>,
+    pub events: Vec<CompositeEventDetailsState>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
     pub generation: u64,
@@ -907,6 +937,7 @@ pub struct LoopDetailsState {
     pub channels: Vec<WaveformChannelState>,
     pub midi_loading: bool,
     pub midi_channels: Vec<MidiSequenceChannelState>,
+    pub composite: Option<CompositeDetailsState>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

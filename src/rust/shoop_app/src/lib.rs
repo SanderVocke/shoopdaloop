@@ -14,9 +14,10 @@ use shoop_app_api::{
     AudioChannelMappingState, AudioChannelSelectionState, AudioDriverConfig,
     AudioDriverRuntimeState, AudioDriverState, AudioDriverSwitchState, AudioDriverSwitchStatus,
     ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest,
-    ClickTrackState, ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState,
-    ConnectionPolicy, ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId,
-    HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
+    ClickTrackState, CompositeDetailsState, CompositeEventDetailsState, CompositeTrackDetailsState,
+    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
+    ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
+    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
     LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
     MidiSequenceChannelState, NotificationLevel, PendingConnectionState, PianoAction, PortDataType,
     PortDirection, PortId, PortRole, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
@@ -633,7 +634,43 @@ struct LoopModel {
     audio_data: Option<Vec<Arc<[f32]>>>,
     midi_data: Option<Vec<MidiSequenceChannelState>>,
     script_composition: Vec<Vec<LoopId>>,
+    composite: Option<CompositeDocument>,
     recorded_fx_state: Option<RecordedFxState>,
+}
+
+fn composite_with_appended_sources(
+    existing: Option<&CompositeDocument>,
+    add: &[LoopId],
+    parallel: bool,
+) -> CompositeDocument {
+    let mut composite = existing.cloned().unwrap_or(CompositeDocument {
+        kind: CompositeKindDocument::Regular,
+        playlists: Vec::new(),
+    });
+    composite.kind = CompositeKindDocument::Regular;
+    for event in composite.playlists.iter_mut().flatten().flatten() {
+        event.mode = None;
+    }
+    if composite.playlists.is_empty() {
+        composite.playlists.push(Vec::new());
+    }
+    let playlist = &mut composite.playlists[0];
+    let events = add.iter().map(|source| CompositeEventDocument {
+        delay_frames: 0,
+        loop_id: source.raw(),
+        mode: None,
+        n_cycles: None,
+    });
+    if parallel {
+        if playlist.is_empty() {
+            playlist.push(events.collect());
+        } else {
+            playlist.last_mut().unwrap().extend(events);
+        }
+    } else {
+        playlist.extend(events.map(|event| vec![event]));
+    }
+    composite
 }
 
 fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSequenceChannelState> {
@@ -805,6 +842,7 @@ impl ApplicationModel {
             audio_data: None,
             midi_data: None,
             script_composition: Vec::new(),
+            composite: None,
             recorded_fx_state: None,
         };
         #[cfg(not(target_arch = "wasm32"))]
@@ -1549,6 +1587,7 @@ impl ApplicationModel {
                     model.audio_data = None;
                     model.midi_data = None;
                     model.script_composition.clear();
+                    model.composite = None;
                 }
                 Ok(())
             }
@@ -1603,13 +1642,13 @@ impl ApplicationModel {
                         .script_composition
                         .last_mut()
                         .unwrap()
-                        .extend(add);
+                        .extend(add.iter().copied());
                 } else if parallel {
-                    target_loop.script_composition.push(add);
+                    target_loop.script_composition.push(add.clone());
                 } else {
                     target_loop
                         .script_composition
-                        .extend(add.into_iter().map(|source| vec![source]));
+                        .extend(add.iter().copied().map(|source| vec![source]));
                 }
                 let sections = target_loop.script_composition.clone();
                 let length = sections
@@ -1627,6 +1666,11 @@ impl ApplicationModel {
                 target_loop.length = length;
                 target_loop.state.empty = false;
                 target_loop.state.composite_kind = shoop_app_api::CompositeKind::Regular;
+                target_loop.composite = Some(composite_with_appended_sources(
+                    target_loop.composite.as_ref(),
+                    &add,
+                    parallel,
+                ));
                 Ok(())
             }
             ControlOperation::SetRepeatSync { loops, active } => {
@@ -3332,6 +3376,7 @@ impl ApplicationModel {
                 audio_data: None,
                 midi_data: None,
                 script_composition: Vec::new(),
+                composite: None,
                 recorded_fx_state: None,
             },
         );
@@ -4798,29 +4843,12 @@ impl ApplicationModel {
                     is_sync: model.state.sync,
                     gain: content.gain,
                     balance: content.balance,
-                    channels: if model.script_composition.is_empty() {
+                    channels: if model.composite.is_none() {
                         channels
                     } else {
                         Vec::new()
                     },
-                    composite: (!model.script_composition.is_empty()).then(|| CompositeDocument {
-                        kind: CompositeKindDocument::Regular,
-                        playlists: vec![model
-                            .script_composition
-                            .iter()
-                            .map(|section| {
-                                section
-                                    .iter()
-                                    .map(|source| CompositeEventDocument {
-                                        delay_frames: 0,
-                                        loop_id: source.raw(),
-                                        mode: None,
-                                        n_cycles: None,
-                                    })
-                                    .collect()
-                            })
-                            .collect()],
-                    }),
+                    composite: model.composite.clone(),
                 });
             }
             let (topology, fx_chain) = match &captured.topology {
@@ -5079,8 +5107,8 @@ impl ApplicationModel {
                         })
                     })
                     .transpose()?;
-                let script_composition = loop_document
-                    .composite
+                let composite = loop_document.composite.clone();
+                let script_composition = composite
                     .as_ref()
                     .and_then(|composite| composite.playlists.first())
                     .map(|playlist| {
@@ -5142,6 +5170,7 @@ impl ApplicationModel {
                         audio_data: None,
                         midi_data: None,
                         script_composition,
+                        composite,
                         recorded_fx_state,
                     },
                 );
@@ -5307,15 +5336,96 @@ impl ApplicationModel {
                     .collect()
             })
             .unwrap_or_default();
+        let composite = model
+            .composite
+            .as_ref()
+            .map(|composite| self.composite_details_snapshot(composite));
         Some(LoopDetailsState {
             generation: self.revision,
             loop_id: model.id,
             title: model.name.clone(),
-            loading: model.state.has_audio && model.audio_data.is_none(),
+            loading: composite.is_none() && model.state.has_audio && model.audio_data.is_none(),
             channels,
-            midi_loading: model.state.has_midi && model.midi_data.is_none(),
+            midi_loading: composite.is_none() && model.state.has_midi && model.midi_data.is_none(),
             midi_channels,
+            composite,
         })
+    }
+
+    fn composite_details_snapshot(&self, composite: &CompositeDocument) -> CompositeDetailsState {
+        let cycle_length_frames = u64::from(self.sync_length());
+        let tracks = self
+            .tracks
+            .iter()
+            .filter(|track| !track.is_sync)
+            .map(|track| CompositeTrackDetailsState {
+                id: track.id,
+                name: track.name.clone(),
+            })
+            .collect();
+        let mut events = Vec::new();
+        let mut timeline_length_frames = 0_u64;
+        for (playlist_index, playlist) in composite.playlists.iter().enumerate() {
+            let mut section_start = 0_u64;
+            for (section_index, section) in playlist.iter().enumerate() {
+                let mut section_duration = 0_u64;
+                for (parallel_index, event) in section.iter().enumerate() {
+                    let Some(source) = self.loops.get(&LoopId::from_raw(event.loop_id)) else {
+                        continue;
+                    };
+                    let source_duration = u64::from(source.length);
+                    let natural_duration = if cycle_length_frames > 0 {
+                        source_duration
+                            .div_ceil(cycle_length_frames)
+                            .max(1)
+                            .saturating_mul(cycle_length_frames)
+                    } else {
+                        source_duration.max(1)
+                    };
+                    let duration = event
+                        .n_cycles
+                        .filter(|cycles| *cycles > 0)
+                        .map(|cycles| {
+                            let cycle = if cycle_length_frames > 0 {
+                                cycle_length_frames
+                            } else {
+                                natural_duration
+                            };
+                            cycle.saturating_mul(u64::from(cycles))
+                        })
+                        .unwrap_or(natural_duration);
+                    let start_frame = section_start.saturating_add(event.delay_frames);
+                    let end_frame = start_frame.saturating_add(duration);
+                    section_duration =
+                        section_duration.max(event.delay_frames.saturating_add(duration));
+                    timeline_length_frames = timeline_length_frames.max(end_frame);
+                    events.push(CompositeEventDetailsState {
+                        loop_id: source.id,
+                        loop_name: source.name.clone(),
+                        track_id: source.track_id,
+                        start_frame,
+                        end_frame,
+                        playlist_index: u32::try_from(playlist_index).unwrap_or(u32::MAX),
+                        section_index: u32::try_from(section_index).unwrap_or(u32::MAX),
+                        parallel_index: u32::try_from(parallel_index).unwrap_or(u32::MAX),
+                        mode: event.mode.clone(),
+                        forced_n_cycles: event.n_cycles,
+                        loop_mode: source.state.mode,
+                    });
+                }
+                section_start = section_start.saturating_add(section_duration);
+            }
+        }
+        CompositeDetailsState {
+            kind: match composite.kind {
+                CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
+                CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
+            },
+            cycle_length_frames,
+            timeline_length_frames,
+            tracks,
+            events,
+        }
     }
 
     fn prepare_loop_audio_import(
@@ -8239,6 +8349,267 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Playing
         );
+    }
+
+    #[test]
+    fn composite_details_preserve_qml_schedule_semantics_and_canonical_session_data() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        for name in ["Target", "Rhythm", "Melody"] {
+            model
+                .add_track(
+                    &mut backend,
+                    DirectTrackSpec {
+                        name: name.to_owned(),
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                )
+                .unwrap();
+        }
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 50;
+        let target = model.tracks[1].loops[0];
+        let rhythm_a = model.tracks[2].loops[0];
+        let rhythm_b = model.tracks[2].loops[1];
+        let melody = model.tracks[3].loops[0];
+        model.loops.get_mut(&rhythm_a).unwrap().length = 100;
+        model.loops.get_mut(&rhythm_b).unwrap().length = 40;
+        model.loops.get_mut(&melody).unwrap().length = 60;
+        let composite = CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            playlists: vec![
+                vec![
+                    vec![
+                        CompositeEventDocument {
+                            delay_frames: 10,
+                            loop_id: rhythm_a.raw(),
+                            mode: Some("playing".to_owned()),
+                            n_cycles: None,
+                        },
+                        CompositeEventDocument {
+                            delay_frames: 20,
+                            loop_id: rhythm_b.raw(),
+                            mode: Some("recording".to_owned()),
+                            n_cycles: Some(2),
+                        },
+                    ],
+                    vec![CompositeEventDocument {
+                        delay_frames: 5,
+                        loop_id: melody.raw(),
+                        mode: Some("playing_dry_through_wet".to_owned()),
+                        n_cycles: None,
+                    }],
+                ],
+                vec![vec![CompositeEventDocument {
+                    delay_frames: 30,
+                    loop_id: rhythm_b.raw(),
+                    mode: Some("playing".to_owned()),
+                    n_cycles: None,
+                }]],
+            ],
+        };
+        {
+            let target = model.loops.get_mut(&target).unwrap();
+            target.state.selected = true;
+            target.state.empty = false;
+            target.state.composite_kind = shoop_app_api::CompositeKind::Script;
+            target.script_composition = vec![vec![rhythm_a, rhythm_b], vec![melody]];
+            target.composite = Some(composite.clone());
+        }
+
+        let details = model.details_snapshot().unwrap();
+        assert!(!details.loading);
+        assert!(!details.midi_loading);
+        assert!(details.channels.is_empty());
+        assert!(details.midi_channels.is_empty());
+        let details = details.composite.unwrap();
+        assert_eq!(details.kind, shoop_app_api::CompositeKind::Script);
+        assert_eq!(details.cycle_length_frames, 50);
+        assert_eq!(
+            details
+                .tracks
+                .iter()
+                .map(|track| track.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Target", "Rhythm", "Melody"]
+        );
+        assert_eq!(
+            details
+                .events
+                .iter()
+                .map(|event| (
+                    event.loop_id,
+                    event.start_frame,
+                    event.end_frame,
+                    event.playlist_index,
+                    event.section_index,
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (rhythm_a, 10, 110, 0, 0),
+                (rhythm_b, 20, 120, 0, 0),
+                (melody, 125, 225, 0, 1),
+                (rhythm_b, 30, 80, 1, 0),
+            ]
+        );
+        assert_eq!(details.timeline_length_frames, 225);
+        assert_eq!(details.events[1].forced_n_cycles, Some(2));
+        assert_eq!(details.events[1].mode.as_deref(), Some("recording"));
+
+        let capture = backend.capture_session().unwrap();
+        let saved = model.session_bundle_from_backend(&capture).unwrap();
+        let saved_composite = saved
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.id == target.raw())
+            .unwrap()
+            .composite
+            .as_ref()
+            .unwrap();
+        assert_eq!(saved_composite, &composite);
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::ComposeAddToEnd {
+                    target,
+                    add: vec![melody],
+                    parallel: false,
+                },
+            )
+            .unwrap();
+        let updated = model.loops[&target].composite.as_ref().unwrap();
+        assert_eq!(updated.kind, CompositeKindDocument::Regular);
+        assert_eq!(updated.playlists.len(), 2);
+        assert_eq!(updated.playlists[0][0][0].delay_frames, 10);
+        assert_eq!(updated.playlists[1][0][0].delay_frames, 30);
+        assert_eq!(
+            updated.playlists[0].last().unwrap()[0].loop_id,
+            melody.raw()
+        );
+        assert!(updated
+            .playlists
+            .iter()
+            .flatten()
+            .flatten()
+            .all(|event| event.mode.is_none()));
+
+        model.loops.get_mut(&target).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            playlists: Vec::new(),
+        });
+        let empty = model.details_snapshot().unwrap().composite.unwrap();
+        assert_eq!(empty.kind, shoop_app_api::CompositeKind::Regular);
+        assert!(empty.events.is_empty());
+    }
+
+    #[test]
+    fn rich_composite_survives_session_load_and_save_without_projection_loss() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Sources".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            if runtime.take_file_output().is_some_and(|output| {
+                let mut bundle = decode_session(&output.bytes).unwrap();
+                let track = &mut bundle.document.track_groups[1].tracks[0];
+                let target = track.loops[0].id;
+                let source_a = track.loops[1].id;
+                let source_b = track.loops[2].id;
+                track.loops[0].channels.clear();
+                track.loops[0].length_frames = 350;
+                track.loops[1].length_frames = 100;
+                track.loops[2].length_frames = 200;
+                let composite = CompositeDocument {
+                    kind: CompositeKindDocument::Script,
+                    playlists: vec![
+                        vec![
+                            vec![CompositeEventDocument {
+                                delay_frames: 25,
+                                loop_id: source_a,
+                                mode: Some("recording".to_owned()),
+                                n_cycles: Some(3),
+                            }],
+                            vec![CompositeEventDocument {
+                                delay_frames: 10,
+                                loop_id: source_b,
+                                mode: Some("playing".to_owned()),
+                                n_cycles: None,
+                            }],
+                        ],
+                        vec![vec![CompositeEventDocument {
+                            delay_frames: 75,
+                            loop_id: source_b,
+                            mode: Some("playing_dry_through_wet".to_owned()),
+                            n_cycles: Some(2),
+                        }]],
+                    ],
+                };
+                track.loops[0].composite = Some(composite.clone());
+                bundle.document.selected_loop_ids = vec![target];
+                runtime
+                    .dispatch(AppIntent::LoadSessionBytes {
+                        name: "rich-composite.shoop".to_owned(),
+                        bytes: Arc::from(encode_session(&bundle, "test").unwrap()),
+                    })
+                    .unwrap();
+                for _ in 0..20 {
+                    runtime.tick(Duration::ZERO);
+                    if runtime
+                        .snapshot()
+                        .io_task
+                        .as_ref()
+                        .is_some_and(|task| task.status == IoTaskStatus::Completed)
+                    {
+                        break;
+                    }
+                }
+                let loaded = runtime.snapshot();
+                let details = loaded.details.as_ref().unwrap().composite.as_ref().unwrap();
+                assert_eq!(details.kind, shoop_app_api::CompositeKind::Script);
+                assert_eq!(details.events.len(), 3);
+                assert_eq!(details.events[0].start_frame, 25);
+                assert_eq!(details.events[0].mode.as_deref(), Some("recording"));
+                assert_eq!(details.events[0].forced_n_cycles, Some(3));
+                assert_eq!(details.events[2].playlist_index, 1);
+
+                runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+                for _ in 0..20 {
+                    runtime.tick(Duration::ZERO);
+                    if let Some(output) = runtime.take_file_output() {
+                        let saved = decode_session(&output.bytes).unwrap();
+                        let saved_composite = saved.document.track_groups[1].tracks[0].loops[0]
+                            .composite
+                            .as_ref()
+                            .unwrap();
+                        assert_eq!(saved_composite, &composite);
+                        return true;
+                    }
+                }
+                panic!("rich composite save did not complete");
+            }) {
+                return;
+            }
+        }
+        panic!("baseline session save did not complete");
     }
 
     #[test]

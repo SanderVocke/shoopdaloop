@@ -33,20 +33,20 @@ This milestone includes the application snapshot data needed for an accurate vie
 
 ### Stage 0 — Baseline and contract
 
-- [ ] Commit the approved plan, update the branch from current `origin/master`, confirm a clean worktree, and run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test -p shoop_app_api -p shoop_app -p shoop_egui -- --test-threads=1` as the targeted baseline.
-- [ ] Re-read the legacy QML scheduling/layout paths and lock representative fixtures for serial, parallel, delayed, forced-duration, multi-playlist, script-kind, empty, and same-track-overlap cases.
-- [ ] Keep this plan updated as evidence changes; do not alter goals or acceptance criteria without explicit user approval.
+- [x] Commit the approved plan, update the branch from current `origin/master`, confirm a clean worktree, and run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test -p shoop_app_api -p shoop_app -p shoop_egui -- --test-threads=1` as the targeted baseline.
+- [x] Re-read the legacy QML scheduling/layout paths and lock representative fixtures for serial, parallel, delayed, forced-duration, multi-playlist, script-kind, empty, and same-track-overlap cases.
+- [x] Keep this plan updated as evidence changes; do not alter goals or acceptance criteria without explicit user approval.
 
 **Verification:** baseline targeted tests pass and the selected fixtures have documented expected start/end/track placement derived from the QML behavior.
 
 ### Stage 1 — Canonical model and snapshot projection
 
-- [ ] Retain a complete internal composite representation across session load, key/MIDI/Lua composition updates, clear, and save, while preserving the existing playback projection and behavior.
-- [ ] Add controller-independent composite details types to `shoop_app_api` and attach an optional composite payload to `LoopDetailsState`.
-- [ ] In `shoop_app`, project all playlists into scheduled event spans, resolve source loop names and source track IDs/names, preserve main-track order and composite kind, and publish this only for a singly selected composite.
-- [ ] Ensure primitive details still publish media/loading state unchanged, and empty composites publish an empty composite payload rather than primitive “no data.”
-- [ ] Add model tests proving regular and script snapshots, all-playlist/parallel/serial timing, overlap inputs, empty schedules, composition updates, and save/load preservation.
-- [ ] Commit the completed data-model/snapshot milestone.
+- [x] Retain a complete internal composite representation across session load, key/MIDI/Lua composition updates, clear, and save, while preserving the existing playback projection and behavior.
+- [x] Add controller-independent composite details types to `shoop_app_api` and attach an optional composite payload to `LoopDetailsState`.
+- [x] In `shoop_app`, project all playlists into scheduled event spans, resolve source loop names and source track IDs/names, preserve main-track order and composite kind, and publish this only for a singly selected composite.
+- [x] Ensure primitive details still publish media/loading state unchanged, and empty composites publish an empty composite payload rather than primitive “no data.”
+- [x] Add model tests proving regular and script snapshots, all-playlist/parallel/serial timing, overlap inputs, empty schedules, composition updates, and save/load preservation.
+- [x] Commit the completed data-model/snapshot milestone.
 
 **Verification:** targeted `shoop_app_api`/`shoop_app` tests demonstrate exact fixture rows and event spans and existing composition playback/persistence tests remain green.
 
