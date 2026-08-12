@@ -974,15 +974,15 @@ mod tests {
             ("return", "must be the first Shoop API call"),
             (
                 "shoop_announce_api_version(2, 0)",
-                "script requests 2.0, host supports 1.0",
+                "script requests 2.0, host supports 1.1",
             ),
             (
                 "shoop_announce_api_version(0, 0)",
-                "script requests 0.0, host supports 1.0",
+                "script requests 0.0, host supports 1.1",
             ),
             (
-                "shoop_announce_api_version(1, 1)",
-                "script requests 1.1, host supports 1.0",
+                "shoop_announce_api_version(1, 2)",
+                "script requests 1.2, host supports 1.1",
             ),
             (
                 "shoop_announce_api_version(-1, 0)",
