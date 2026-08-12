@@ -8,13 +8,14 @@ use crate::browser_midi::{BrowserMidiHub, TrackMidiInput};
 use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
-    Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk, WireChannelMode,
-    WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WirePortDataType,
-    WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxMidiCcAssignment,
-    WireTinySynthFxParameter, WireTrackControl, WireTrackFxControl, WireTrackTopology,
-    COMMAND_CAPACITY, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
-    MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
+    WireApplicationPortOwner, WireChannelMode, WireGrabRequest, WireHostPort, WireLoopMode,
+    WireMidiEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
+    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTrackControl,
+    WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, COMMAND_MAX_BYTES,
+    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     default_tiny_synth_fx_state, encode_tiny_synth_fx_state, tiny_synth_fx_descriptor, Backend,
@@ -22,10 +23,11 @@ use shoop_backend::{
     BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
     BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
     BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortRole, BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
-    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
-    BackendTrackState, BackendTrackTopology, DirectTrackRequest, TinySynthFxControl,
-    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
+    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionReplacement,
+    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
+    TrackProcessorTypeId, TrackRequest,
 };
 use shoop_egui::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
@@ -1557,6 +1559,12 @@ impl WebAudioBackend {
                     id,
                     BackendPortDescriptor {
                         id,
+                        owner: match port.owner {
+                            WireApplicationPortOwner::Track => BackendPortOwner::Track,
+                            WireApplicationPortOwner::GlobalFxControl => {
+                                BackendPortOwner::GlobalFxControl
+                            }
+                        },
                         name: port.name,
                         data_type: from_wire_data_type(port.data_type),
                         direction: from_wire_direction(port.direction),
@@ -1703,6 +1711,11 @@ impl WebAudioBackend {
 
 fn browser_replacement_mapping(session: &BackendSessionData) -> BackendSessionReplacement {
     let mut replacement = BackendSessionReplacement::default();
+    for global in &session.global_ports {
+        replacement
+            .global_ports
+            .insert(global.source_id, global.descriptor.id);
+    }
     let mut next_track_id = 1_u64;
     let mut next_loop_id = 1_u64;
     let mut next_port_id = 1_u64;
@@ -1756,6 +1769,7 @@ fn browser_port_descriptors(
         *next_port_id = next_port_id.saturating_add(1);
         ports.push(BackendPortDescriptor {
             id,
+            owner: BackendPortOwner::Track,
             name,
             data_type,
             direction,
@@ -1812,6 +1826,7 @@ fn browser_tiny_port_descriptors(
         *next_port_id = next_port_id.saturating_add(1);
         ports.push(BackendPortDescriptor {
             id,
+            owner: BackendPortOwner::Track,
             name,
             data_type,
             direction,
@@ -2443,8 +2458,14 @@ impl Backend for WebAudioBackend {
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         if let Some(capture) = &self.session_capture {
             if capture.total_bytes == Some(capture.bytes.len()) && capture.in_flight == 0 {
-                let session = serde_json::from_slice(&capture.bytes)
+                let session: BackendSessionData = serde_json::from_slice(&capture.bytes)
                     .map_err(|error| anyhow!("invalid worklet session capture: {error}"))?;
+                for global in &session.global_ports {
+                    self.snapshot
+                        .connections
+                        .application_ports
+                        .insert(global.descriptor.id, global.descriptor.clone());
+                }
                 self.session_capture = None;
                 return Ok(session);
             }

@@ -1,20 +1,21 @@
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
-    WireApplicationPort, WireChannelMode, WireConfirmedLink, WireHostPort, WireLatestMidiMessage,
-    WireLoopMode, WireLoopState, WireMidiOutputEvent, WirePortDataType, WirePortDirection,
-    WirePortRole, WireSnapshot, WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter,
-    WireTinySynthFxState, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState,
-    WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
-    MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WireApplicationPort, WireApplicationPortOwner, WireChannelMode, WireConfirmedLink,
+    WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
+    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
+    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
+    WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
+    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
+    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate,
     BackendLoopId, BackendLoopMode, BackendMidiEvent, BackendPortDataType, BackendPortDirection,
-    BackendPortId, BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
-    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
-    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorEditorState,
-    TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
+    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData, BackendSnapshot,
+    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackTopology,
+    EngineBackend, TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
+    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -870,6 +871,10 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         .into_values()
         .map(|port| WireApplicationPort {
             id: port.id.raw(),
+            owner: match port.owner {
+                BackendPortOwner::Track => WireApplicationPortOwner::Track,
+                BackendPortOwner::GlobalFxControl => WireApplicationPortOwner::GlobalFxControl,
+            },
             name: port.name,
             data_type: to_wire_data_type(port.data_type),
             direction: to_wire_direction(port.direction),
@@ -1538,7 +1543,7 @@ mod tests {
         let Event::Snapshot(snapshot) = command(&mut host, 4, Command::Poll).event else {
             panic!("expected snapshot");
         };
-        assert_eq!(snapshot.application_ports.len(), 4);
+        assert_eq!(snapshot.application_ports.len(), 5);
         assert_eq!(snapshot.host_ports.len(), 4);
         assert_eq!(snapshot.confirmed_links.len(), 4);
 
@@ -1888,6 +1893,138 @@ mod tests {
     }
 
     #[test]
+    fn global_web_midi_dual_route_survives_capture_replace_and_stays_allocation_free() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let endpoint = "webmidi:source:global-dual";
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureMidiEndpoints {
+                    endpoints: vec![WireHostPort {
+                        id: endpoint.to_owned(),
+                        name: "Global dual".to_owned(),
+                        data_type: WirePortDataType::Midi,
+                        direction: WirePortDirection::Output,
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "global_tiny".to_owned(),
+                    topology: WireTrackTopology::TinySynthFx { audio_channels: 0 },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 3, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        let global = snapshot
+            .application_ports
+            .iter()
+            .find(|port| port.owner == WireApplicationPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
+        let track_input = snapshot
+            .application_ports
+            .iter()
+            .find(|port| {
+                port.owner == WireApplicationPortOwner::Track
+                    && port.role == WirePortRole::MidiInput
+            })
+            .unwrap()
+            .id;
+        for (sequence, port) in [(4, track_input), (5, global)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetPortConnected {
+                        application_port_id: port,
+                        host_port_id: endpoint.to_owned(),
+                        connected: true,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Recording,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::PushMidiInput {
+                    host_port_id: endpoint.to_owned(),
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0xb0, 7, 101],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 0, 128)));
+        assert!(matches!(
+            command(
+                &mut host,
+                8,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Stopped,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let session = host.backend.capture_session().unwrap();
+        assert_eq!(session.global_ports[0].external_connections, vec![endpoint]);
+        assert_eq!(
+            session.tracks[0].loops[0].midi[0]
+                .events
+                .iter()
+                .filter(|event| event.data == [0xb0, 7, 101])
+                .count(),
+            1
+        );
+        host.backend.replace_session(&session).unwrap();
+        let snapshot = host.backend.poll().unwrap();
+        assert!(snapshot.connections.confirmed_links.iter().any(|link| {
+            snapshot
+                .connections
+                .application_ports
+                .get(&link.application_port_id)
+                .is_some_and(|port| port.owner == BackendPortOwner::GlobalFxControl)
+                && link.host_port_id == endpoint
+        }));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 0, 128)));
+    }
+
+    #[test]
     fn session_capture_and_replacement_use_bounded_chunks_and_keep_processing() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let mut sequence = 1_u64;
@@ -2201,6 +2338,14 @@ mod tests {
     #[test]
     fn stale_duplicate_and_malformed_commands_are_rejected_observably() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let mismatched = serde_json::to_vec(&CommandEnvelope {
+            version: PROTOCOL_VERSION.saturating_sub(1),
+            sequence: 1,
+            command: Command::Poll,
+        })
+        .unwrap();
+        let response: EventEnvelope = serde_json::from_str(host.handle_json(&mismatched)).unwrap();
+        assert!(matches!(response.event, Event::Error { .. }));
         assert!(matches!(
             command(&mut host, 2, Command::Poll).event,
             Event::Error { .. }

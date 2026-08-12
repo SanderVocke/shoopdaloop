@@ -117,6 +117,7 @@ pub struct NativeBackend {
 
 struct NativeRuntime {
     tracks: BTreeMap<BackendTrackId, NativeTrack>,
+    global_fx_port: BackendPortId,
     loops: BTreeMap<BackendLoopId, NativeLoop>,
     ports: BTreeMap<BackendPortId, NativePort>,
     next_track_id: u64,
@@ -299,10 +300,34 @@ impl NativeRuntime {
             buffer_size: state.buffer_size.max(state.last_processed),
             instance_name: state.maybe_instance_name,
         };
+        let global_fx_midi = MidiPort::new_driver_port(
+            &session,
+            &driver,
+            "global_fx_control_midi_in",
+            &PortDirection::Input,
+            0,
+        )?;
+        session.set_global_fx_midi_input(&global_fx_midi)?;
+        let global_fx_port = BackendPortId::from_raw(9_007_199_254_740_991);
+        let global_descriptor = BackendPortDescriptor {
+            id: global_fx_port,
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        };
         Ok(Self {
             tracks: BTreeMap::new(),
+            global_fx_port,
             loops: BTreeMap::new(),
-            ports: BTreeMap::new(),
+            ports: BTreeMap::from([(
+                global_fx_port,
+                NativePort {
+                    descriptor: global_descriptor,
+                    handle: NativePortHandle::Midi(global_fx_midi),
+                },
+            )]),
             next_track_id: 1,
             next_loop_id: 1,
             next_port_id: 1,
@@ -329,6 +354,7 @@ impl NativeRuntime {
     ) -> BackendPortDescriptor {
         let descriptor = BackendPortDescriptor {
             id: BackendPortId::from_raw(self.next_port_id),
+            owner: BackendPortOwner::Track,
             name,
             data_type,
             direction,
@@ -642,9 +668,20 @@ impl NativeRuntime {
                 tiny_synth_midi_cc_assignments,
             });
         }
+        let global_ports = vec![BackendSessionPort {
+            source_id: self.global_fx_port.raw(),
+            descriptor: self.ports[&self.global_fx_port].descriptor.clone(),
+            external_connections: connections
+                .confirmed_links
+                .iter()
+                .filter(|link| link.application_port_id == self.global_fx_port)
+                .map(|link| link.host_port_id.clone())
+                .collect(),
+        }];
         Ok(BackendSessionData {
             sample_rate: self.resolved.sample_rate,
             tracks,
+            global_ports,
             use_legacy_browser_default_routes: false,
         })
     }
@@ -657,6 +694,23 @@ impl NativeRuntime {
             validate_backend_midi_cc_assignments(track)?;
         }
         let mut replacement = BackendSessionReplacement::default();
+        let source_global = data
+            .global_ports
+            .first()
+            .ok_or_else(|| anyhow!("prepared session has no global FX control port"))?;
+        if data.global_ports.len() != 1
+            || source_global.descriptor.owner != BackendPortOwner::GlobalFxControl
+            || source_global.descriptor.data_type != BackendPortDataType::Midi
+            || source_global.descriptor.direction != BackendPortDirection::Input
+        {
+            return Err(anyhow!("prepared global FX control port is invalid"));
+        }
+        replacement
+            .global_ports
+            .insert(source_global.source_id, self.global_fx_port);
+        for external in &source_global.external_connections {
+            self.set_port_connected(self.global_fx_port, external, true)?;
+        }
         for source_track in &data.tracks {
             if source_track.state.topology != source_track.topology {
                 return Err(anyhow!("prepared native topology state is inconsistent"));
@@ -1546,6 +1600,11 @@ impl NativeRuntime {
         if !self.connection_snapshot().host_ports.contains_key(endpoint) {
             return Err(anyhow!("external port disappeared: {endpoint}"));
         }
+        // Session restoration can request the global link immediately after its
+        // driver port was queued for creation. Make the port identity visible
+        // before asking the adapter to mutate its external connections; otherwise
+        // the deferred mutation may run before creation and be silently dropped.
+        self.wait();
         let port = self
             .ports
             .get(&port_id)
@@ -1555,6 +1614,9 @@ impl NativeRuntime {
         } else {
             port.handle.disconnect(endpoint);
         }
+        // JACK applies links synchronously, while dummy/CPAL adapters may queue the
+        // mutation until the next driver turn. Do not publish or capture stale truth.
+        self.wait();
         self.connection_revision = self.connection_revision.wrapping_add(1);
         Ok(())
     }
@@ -2624,6 +2686,15 @@ mod tests {
             .iter()
             .find(|port| port.role == BackendPortRole::AudioInput)
             .unwrap();
+        let global = backend
+            .poll()
+            .unwrap()
+            .connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
         assert!(backend
             .poll()
             .unwrap()
@@ -2633,7 +2704,14 @@ mod tests {
         backend
             .set_port_connected(input.id, "system:capture_1", true)
             .unwrap();
+        backend
+            .set_port_connected(global, "controller:midi_out", true)
+            .unwrap();
         let mut captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.global_ports[0].external_connections,
+            ["controller:midi_out"]
+        );
         captured.tracks[0].loops[0].length = 512;
         captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5, 0.75];
         captured.tracks[0].loops[0].midi[0] = BackendMidiContent {
@@ -2659,6 +2737,7 @@ mod tests {
             .unwrap();
         assert_eq!(mapping.tracks.len(), captured.tracks.len());
         assert_eq!(mapping.loops.len(), 2);
+        assert_eq!(mapping.global_ports.len(), 1);
         let restored = backend.capture_session().unwrap();
         assert_eq!(restored.sample_rate, 48_000);
         assert_eq!(restored.tracks.len(), captured.tracks.len());
@@ -2671,6 +2750,10 @@ mod tests {
         assert_eq!(restored.tracks[0].loops[0].midi[0].length, 512);
         assert_eq!(restored.tracks[0].loops[0].midi[0].events[0].time, 100);
         assert_eq!(restored.tracks[0].loops[0].midi[0].start_offset, -4);
+        assert_eq!(
+            restored.global_ports[0].external_connections,
+            ["controller:midi_out"]
+        );
         assert!(restored.tracks[0]
             .ports
             .iter()

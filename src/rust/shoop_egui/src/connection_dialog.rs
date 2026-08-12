@@ -61,7 +61,10 @@ impl ConnectionFilters {
             (TrackFilter::Selected(track_ids), ApplicationPortOwner::Track { track_id, .. }) => {
                 track_ids.contains(track_id)
             }
-            (TrackFilter::Selected(_), ApplicationPortOwner::LuaControl { .. }) => false,
+            (
+                TrackFilter::Selected(_),
+                ApplicationPortOwner::LuaControl { .. } | ApplicationPortOwner::GlobalFxControl,
+            ) => false,
         }
     }
 }
@@ -394,6 +397,26 @@ fn find_host_port<'a>(
     state.host_ports.iter().find(|host| &host.id == id)
 }
 
+fn dual_route_warning(state: &ConnectionViewState) -> bool {
+    let global_hosts: BTreeSet<_> = state
+        .confirmed_links
+        .iter()
+        .filter_map(|link| {
+            find_application_port(state, link.application_port_id)
+                .is_some_and(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+                .then(|| link.host_port_id.clone())
+        })
+        .collect();
+    state.confirmed_links.iter().any(|link| {
+        global_hosts.contains(&link.host_port_id)
+            && find_application_port(state, link.application_port_id).is_some_and(|port| {
+                matches!(port.owner, ApplicationPortOwner::Track { .. })
+                    && port.data_type == PortDataType::Midi
+                    && port.direction == PortDirection::Input
+            })
+    })
+}
+
 fn latest_error(
     state: &ConnectionViewState,
     port_id: PortId,
@@ -443,6 +466,7 @@ fn application_group_label(
             .get(script_id)
             .map(|name| format!("Script: {name}"))
             .unwrap_or_else(|| format!("Script {script_id}")),
+        ApplicationPortOwner::GlobalFxControl => "Global FX control".to_owned(),
     }
 }
 
@@ -473,6 +497,8 @@ pub struct ConnectionDialog {
     graph_clip_rect: Option<egui::Rect>,
     #[cfg(test)]
     hovered_route: Option<(PortId, HostPortId)>,
+    #[cfg(test)]
+    dual_route_warning_visible: bool,
 }
 
 impl Default for ConnectionDialog {
@@ -490,6 +516,8 @@ impl Default for ConnectionDialog {
             graph_clip_rect: None,
             #[cfg(test)]
             hovered_route: None,
+            #[cfg(test)]
+            dual_route_warning_visible: false,
         }
     }
 }
@@ -533,6 +561,7 @@ impl ConnectionDialog {
             self.route_points.clear();
             self.graph_clip_rect = None;
             self.hovered_route = None;
+            self.dual_route_warning_visible = false;
         }
         let scoped_track = match self.scope {
             ConnectionScope::AllTracks => None,
@@ -593,6 +622,18 @@ impl ConnectionDialog {
             self.drag = None;
         }
         ui.separator();
+
+        if dual_route_warning(&state.connections) {
+            #[cfg(test)]
+            {
+                self.dual_route_warning_visible = true;
+            }
+            ui.colored_label(
+                colors::WARNING,
+                "A MIDI source feeds both Global FX Control and a track input. Absolute controls may be applied twice, relative controls may behave incorrectly, and the track copy can be recorded.",
+            );
+            ui.separator();
+        }
 
         let graph = ConnectionGraph::build(state, &self.filters);
         if graph.endpoints.values().all(Vec::is_empty) {
@@ -1431,6 +1472,15 @@ mod tests {
             role: PortRole::MidiInput,
             connection_policy: ConnectionPolicy::OwnerManaged,
         });
+        ports.push(ApplicationPortState {
+            id: PortId::from_raw(100),
+            owner: ApplicationPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: PortDataType::Midi,
+            direction: PortDirection::Input,
+            role: PortRole::MidiInput,
+            connection_policy: ConnectionPolicy::UserManaged,
+        });
         connections.application_ports = ports.into();
         let mut confirmed_links = connections.confirmed_links.to_vec();
         confirmed_links.push(ConfirmedConnectionState {
@@ -1446,6 +1496,10 @@ mod tests {
             .column(GraphColumn::ShoopSinks)
             .iter()
             .any(|endpoint| endpoint.group == "Script: APC"));
+        assert!(global
+            .column(GraphColumn::ShoopSinks)
+            .iter()
+            .any(|endpoint| endpoint.group == "Global FX control"));
         let managed_route = global
             .routes
             .iter()
@@ -1458,11 +1512,64 @@ mod tests {
             &state,
             &ConnectionFilters::for_scope(ConnectionScope::Track(TrackId::from_raw(1))),
         );
-        assert!(!selected
-            .endpoints
-            .values()
-            .flatten()
-            .any(|endpoint| endpoint.id == EndpointId::Application(PortId::from_raw(99))));
+        assert!(!selected.endpoints.values().flatten().any(|endpoint| {
+            matches!(
+                endpoint.id,
+                EndpointId::Application(id)
+                    if id == PortId::from_raw(99) || id == PortId::from_raw(100)
+            )
+        }));
+    }
+
+    #[test]
+    fn dual_route_warning_uses_confirmed_truth_only() {
+        let mut state = state();
+        let connections = Arc::make_mut(&mut state.connections);
+        let mut ports = connections.application_ports.to_vec();
+        ports.push(ApplicationPortState {
+            id: PortId::from_raw(100),
+            owner: ApplicationPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: PortDataType::Midi,
+            direction: PortDirection::Input,
+            role: PortRole::MidiInput,
+            connection_policy: ConnectionPolicy::UserManaged,
+        });
+        ports.push(application_port(
+            101,
+            TrackId::from_raw(1),
+            "one:midi_in",
+            PortDataType::Midi,
+            PortDirection::Input,
+            ConnectionPolicy::UserManaged,
+        ));
+        connections.application_ports = ports.into();
+        connections.confirmed_links = Arc::from([
+            ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(100),
+                host_port_id: HostPortId::new("orphan:midi_source"),
+            },
+            ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(101),
+                host_port_id: HostPortId::new("orphan:midi_source"),
+            },
+        ]);
+        assert!(dual_route_warning(&state.connections));
+
+        Arc::make_mut(&mut state.connections).confirmed_links = Arc::from([]);
+        Arc::make_mut(&mut state.connections).pending_links = Arc::from([
+            PendingConnectionState {
+                application_port_id: PortId::from_raw(100),
+                host_port_id: HostPortId::new("orphan:midi_source"),
+                desired_connected: true,
+            },
+            PendingConnectionState {
+                application_port_id: PortId::from_raw(101),
+                host_port_id: HostPortId::new("orphan:midi_source"),
+                desired_connected: true,
+            },
+        ]);
+        assert!(!dual_route_warning(&state.connections));
     }
 
     #[test]

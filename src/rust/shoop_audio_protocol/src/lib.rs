@@ -470,10 +470,18 @@ pub enum WirePortRole {
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireApplicationPort {
     pub id: u64,
+    pub owner: WireApplicationPortOwner,
     pub name: String,
     pub data_type: WirePortDataType,
     pub direction: WirePortDirection,
     pub role: WirePortRole,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireApplicationPortOwner {
+    Track,
+    GlobalFxControl,
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -710,6 +718,23 @@ mod tests {
         .supersedes_in_journal(&Command::ConfigureMidiEndpoints {
             endpoints: Vec::new(),
         }));
+    }
+
+    #[test]
+    fn global_application_port_owner_round_trips_explicitly() {
+        let port = WireApplicationPort {
+            id: 99,
+            owner: WireApplicationPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: WirePortDataType::Midi,
+            direction: WirePortDirection::Input,
+            role: WirePortRole::MidiInput,
+        };
+        let encoded = serde_json::to_vec(&port).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<WireApplicationPort>(&encoded).unwrap(),
+            port
+        );
     }
 
     #[test]
