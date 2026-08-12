@@ -28,24 +28,25 @@ impl PendingMidiControlState {
     }
 
     pub fn process(&mut self, data: &[u8]) -> bool {
-        let Some(key) = ControlKey::from_message(data) else {
-            return false;
-        };
-        match key {
+        self.process_with_status(data).is_some()
+    }
+
+    /// Stores a supported control and reports whether it replaced a pending value.
+    pub fn process_with_status(&mut self, data: &[u8]) -> Option<bool> {
+        let key = ControlKey::from_message(data)?;
+        let replaced = match key {
             ControlKey::Cc {
                 channel,
                 controller,
-            } => {
-                self.cc[channel][controller] = Some(data[2]);
-            }
+            } => self.cc[channel][controller].replace(data[2]).is_some(),
             ControlKey::ChannelPressure { channel } => {
-                self.channel_pressure[channel] = Some(data[1]);
+                self.channel_pressure[channel].replace(data[1]).is_some()
             }
-            ControlKey::PitchWheel { channel } => {
-                self.pitch_wheel[channel] = Some((data[1] as u16) | ((data[2] as u16) << 7));
-            }
-        }
-        true
+            ControlKey::PitchWheel { channel } => self.pitch_wheel[channel]
+                .replace((data[1] as u16) | ((data[2] as u16) << 7))
+                .is_some(),
+        };
+        Some(replaced)
     }
 
     pub fn clear_message(&mut self, data: &[u8]) -> bool {
@@ -106,10 +107,26 @@ impl PendingMidiControlState {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.cc
+            .iter()
+            .flatten()
+            .filter(|value| value.is_some())
+            .count()
+            + self
+                .channel_pressure
+                .iter()
+                .filter(|value| value.is_some())
+                .count()
+            + self
+                .pitch_wheel
+                .iter()
+                .filter(|value| value.is_some())
+                .count()
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.cc.iter().flatten().all(Option::is_none)
-            && self.channel_pressure.iter().all(Option::is_none)
-            && self.pitch_wheel.iter().all(Option::is_none)
+        self.len() == 0
     }
 }
 
@@ -161,6 +178,33 @@ mod tests {
         assert!(!pending.process(&midi::note_on(0, 60, 100)));
         assert!(!pending.process(&[0xf8]));
         assert!(!pending.process(&[0xb0, 7]));
+    }
+
+    #[test]
+    fn every_supported_key_is_independent_and_full_state_is_bounded() {
+        let mut pending = PendingMidiControlState::default();
+        for channel in 0..CHANNELS as u8 {
+            for controller in 0..CCS as u8 {
+                assert_eq!(
+                    pending.process_with_status(&midi::cc(channel, controller, controller)),
+                    Some(false)
+                );
+            }
+            assert_eq!(
+                pending.process_with_status(&midi::channel_pressure(channel, channel)),
+                Some(false)
+            );
+            assert_eq!(
+                pending.process_with_status(&midi::pitch_wheel(channel, channel as u16 * 100)),
+                Some(false)
+            );
+        }
+        assert_eq!(pending.len(), MAX_PENDING_MIDI_CONTROLS);
+        let mut out = Vec::with_capacity(MAX_PENDING_MIDI_CONTROLS);
+        pending.append_messages(&mut out, usize::MAX);
+        assert_eq!(out.len(), MAX_PENDING_MIDI_CONTROLS);
+        assert_eq!(out[0].data(), midi::cc(0, 0, 0));
+        assert_eq!(out.last().unwrap().data(), midi::pitch_wheel(15, 1_500));
     }
 
     #[test]

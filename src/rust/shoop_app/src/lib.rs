@@ -10688,6 +10688,116 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[test]
+    fn global_fx_port_round_trips_legacy_migrates_and_malformed_load_is_transactional() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        let global = runtime
+            .snapshot()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+            .unwrap()
+            .clone();
+        assert_eq!(global.name, "Global FX Control MIDI In");
+        assert_eq!(global.connection_policy, ConnectionPolicy::UserManaged);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime.snapshot().io_task.as_ref().is_some_and(|task| {
+                task.kind == IoTaskKind::SaveSession && task.status == IoTaskStatus::Completed
+            }) {
+                break;
+            }
+        }
+        let saved = runtime.take_file_output().unwrap();
+        let bundle = decode_session(&saved.bytes).unwrap();
+        assert_eq!(bundle.document.global_ports.len(), 1);
+        let document = &bundle.document.global_ports[0];
+        assert_eq!(document.id, global.id.raw());
+        assert_eq!(document.ringbuffer_frames, 0);
+        assert!(document.internal_connections.is_empty());
+
+        let mut legacy = bundle.clone();
+        legacy.document.global_ports.clear();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "legacy.shoop".to_owned(),
+                bytes: Arc::from(encode_session(&legacy, "legacy").unwrap()),
+            })
+            .unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime.snapshot().io_task.as_ref().is_some_and(|task| {
+                task.kind == IoTaskKind::LoadSession && task.status == IoTaskStatus::Completed
+            }) {
+                break;
+            }
+        }
+        runtime.tick(Duration::ZERO);
+        let migrated = runtime.snapshot();
+        assert_eq!(
+            migrated
+                .connections
+                .application_ports
+                .iter()
+                .filter(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+                .count(),
+            1,
+            "task={:?}, ports={:?}",
+            migrated.io_task,
+            migrated.connections.application_ports
+        );
+        assert!(!migrated.connections.confirmed_links.iter().any(|link| {
+            migrated
+                .connections
+                .application_ports
+                .iter()
+                .find(|port| port.id == link.application_port_id)
+                .is_some_and(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+        }));
+
+        let before_tracks = migrated
+            .tracks
+            .iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>();
+        let mut malformed = bundle;
+        malformed
+            .document
+            .global_ports
+            .push(malformed.document.global_ports[0].clone());
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "malformed.shoop".to_owned(),
+                bytes: Arc::from(encode_session(&malformed, "malformed").unwrap()),
+            })
+            .unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Failed)
+            {
+                break;
+            }
+        }
+        let after = runtime.snapshot();
+        assert_eq!(
+            after
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            before_tracks
+        );
+        assert_eq!(after.io_task.as_ref().unwrap().status, IoTaskStatus::Failed);
+    }
+
+    #[test]
     fn unsupported_deferred_topology_is_rejected_without_replacing_the_session() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();

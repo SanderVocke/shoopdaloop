@@ -686,6 +686,23 @@ mod tests {
     }
 
     #[test]
+    fn global_application_port_owner_round_trips_explicitly() {
+        let port = WireApplicationPort {
+            id: 99,
+            owner: WireApplicationPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: WirePortDataType::Midi,
+            direction: WirePortDirection::Input,
+            role: WirePortRole::MidiInput,
+        };
+        let encoded = serde_json::to_vec(&port).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<WireApplicationPort>(&encoded).unwrap(),
+            port
+        );
+    }
+
+    #[test]
     fn midi_detail_chunks_round_trip_with_request_identity_and_metadata() {
         let request = CommandEnvelope::new(
             4,

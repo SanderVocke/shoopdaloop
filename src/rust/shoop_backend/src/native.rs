@@ -2643,6 +2643,15 @@ mod tests {
             .iter()
             .find(|port| port.role == BackendPortRole::AudioInput)
             .unwrap();
+        let global = backend
+            .poll()
+            .unwrap()
+            .connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
         assert!(backend
             .poll()
             .unwrap()
@@ -2652,7 +2661,14 @@ mod tests {
         backend
             .set_port_connected(input.id, "system:capture_1", true)
             .unwrap();
+        backend
+            .set_port_connected(global, "controller:midi_out", true)
+            .unwrap();
         let mut captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.global_ports[0].external_connections,
+            ["controller:midi_out"]
+        );
         captured.tracks[0].loops[0].length = 512;
         captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5, 0.75];
         captured.tracks[0].loops[0].midi[0] = BackendMidiContent {
@@ -2678,6 +2694,7 @@ mod tests {
             .unwrap();
         assert_eq!(mapping.tracks.len(), captured.tracks.len());
         assert_eq!(mapping.loops.len(), 2);
+        assert_eq!(mapping.global_ports.len(), 1);
         let restored = backend.capture_session().unwrap();
         assert_eq!(restored.sample_rate, 48_000);
         assert_eq!(restored.tracks.len(), captured.tracks.len());
@@ -2690,6 +2707,10 @@ mod tests {
         assert_eq!(restored.tracks[0].loops[0].midi[0].length, 512);
         assert_eq!(restored.tracks[0].loops[0].midi[0].events[0].time, 100);
         assert_eq!(restored.tracks[0].loops[0].midi[0].start_offset, -4);
+        assert_eq!(
+            restored.global_ports[0].external_connections,
+            ["controller:midi_out"]
+        );
         assert!(restored.tracks[0]
             .ports
             .iter()

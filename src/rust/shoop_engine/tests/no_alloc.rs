@@ -14,6 +14,7 @@ use shoop_engine::content_snapshot::ContentSnapshotRuntime;
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
 use shoop_engine::external_audio_port::ExternalAudioPort;
+use shoop_engine::external_midi_port::ExternalMidiPort;
 use shoop_engine::internal_audio_port::InternalAudioPort;
 use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi;
@@ -307,6 +308,57 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         processor.panic();
         session.process(4);
     });
+}
+
+#[test]
+fn global_fx_active_inactive_full_restore_and_external_send_are_allocation_free() {
+    let mut session = Session::default();
+    session.set_buffer_size(4);
+    session.set_test_fx_active("fx", false);
+    let processor_midi = session.add_port(midi_port(40, "fx:midi_in", PortDirection::Input));
+    let global = session.add_port(midi_port(41, "global:fx", PortDirection::Input));
+    session
+        .set_processor_ports("fx", vec![], vec![], vec![processor_midi])
+        .unwrap();
+    session.set_global_fx_midi_input(global).unwrap();
+    for index in 0..shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK {
+        let channel = (index / 120) as u8;
+        let controller = (index % 120) as u8;
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::cc(channel, controller, controller));
+    }
+    session.apply_graph_changes().unwrap();
+    assert_no_alloc(|| session.process(4));
+    session.set_test_fx_active("fx", true);
+    assert_no_alloc(|| {
+        session.process(4);
+        session.process(4);
+    });
+
+    let mut external = Session::default();
+    external.set_buffer_size(4);
+    external.set_external_processor("external");
+    let send = external.add_port(Port::ExternalMidi(ExternalMidiPort::new(
+        "external:send",
+        PortDirection::Output,
+    )));
+    let global = external.add_port(midi_port(42, "global:fx", PortDirection::Input));
+    external
+        .set_processor_ports("external", vec![], vec![], vec![send])
+        .unwrap();
+    external.set_global_fx_midi_input(global).unwrap();
+    external
+        .port_mut(global)
+        .unwrap()
+        .as_dummy_midi_mut()
+        .unwrap()
+        .queue_msg(0, &midi::pitch_wheel(0, 4_096));
+    external.apply_graph_changes().unwrap();
+    assert_no_alloc(|| external.process(4));
 }
 
 #[test]

@@ -2054,17 +2054,26 @@ impl EngineBackend {
                 processor_state: track.fx.as_ref().map(|fx| fx.control.encode()),
             });
         }
+        let mut global_connections = connections
+            .confirmed_links
+            .iter()
+            .filter(|link| link.application_port_id == self.global_fx_port)
+            .map(|link| link.host_port_id.clone())
+            .collect::<BTreeSet<_>>();
+        if self.mode == EngineBackendMode::Physical {
+            global_connections.extend(
+                self.desired_web_midi_connections
+                    .iter()
+                    .filter(|(desired_port, _)| *desired_port == self.global_fx_port)
+                    .map(|(_, host_id)| host_id.clone()),
+            );
+        }
         let global_ports = vec![BackendSessionPort {
             source_id: self.global_fx_port.raw(),
             descriptor: self.connection_ports[&self.global_fx_port]
                 .descriptor
                 .clone(),
-            external_connections: connections
-                .confirmed_links
-                .iter()
-                .filter(|link| link.application_port_id == self.global_fx_port)
-                .map(|link| link.host_port_id.clone())
-                .collect(),
+            external_connections: global_connections.into_iter().collect(),
         }];
         Ok(BackendSessionData {
             sample_rate: self.sample_rate,
@@ -6408,6 +6417,129 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[test]
+    fn web_midi_dual_route_is_additive_but_only_track_copy_records() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        let endpoint = BackendHostPortDescriptor {
+            id: "webmidi:source:dual".to_owned(),
+            name: "Dual route".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Output,
+        };
+        backend
+            .configure_web_midi_endpoints(vec![endpoint.clone()])
+            .unwrap();
+        let track = backend
+            .create_track(TrackRequest {
+                port_name_base: "dual_tiny".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                    dry_audio_channels: 0,
+                    wet_audio_channels: 0,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let input = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::MidiInput)
+            .unwrap();
+        let global = backend
+            .poll()
+            .unwrap()
+            .connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
+        backend
+            .set_port_connected(input.id, &endpoint.id, true)
+            .unwrap();
+        backend
+            .set_port_connected(global, &endpoint.id, true)
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        assert_eq!(
+            backend
+                .stage_web_midi_input(&endpoint.id, &[0xb0, 7, 99])
+                .unwrap(),
+            2
+        );
+        assert_no_alloc::assert_no_alloc(|| {
+            backend
+                .process_audio_quantum(&[], 0, &mut [], 0, 128)
+                .unwrap();
+        });
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].loops[0].midi[0]
+                .events
+                .iter()
+                .filter(|event| event.data == [0xb0, 7, 99])
+                .count(),
+            1
+        );
+        assert_eq!(
+            captured.global_ports[0].external_connections,
+            vec![endpoint.id]
+        );
+    }
+
+    #[test]
+    fn missing_desired_global_web_midi_identity_survives_replace_and_reconnects() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        let endpoint = BackendHostPortDescriptor {
+            id: "webmidi:source:global-hotplug".to_owned(),
+            name: "Global hotplug".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Output,
+        };
+        backend
+            .configure_web_midi_endpoints(vec![endpoint.clone()])
+            .unwrap();
+        let global = backend
+            .poll()
+            .unwrap()
+            .connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
+        backend
+            .set_port_connected(global, &endpoint.id, true)
+            .unwrap();
+        backend.configure_web_midi_endpoints(Vec::new()).unwrap();
+        let saved = backend.capture_session().unwrap();
+        assert_eq!(
+            saved.global_ports[0].external_connections,
+            vec![endpoint.id.clone()]
+        );
+        backend.replace_session(&saved).unwrap();
+        backend
+            .configure_web_midi_endpoints(vec![endpoint.clone()])
+            .unwrap();
+        assert!(backend
+            .poll()
+            .unwrap()
+            .connections
+            .confirmed_links
+            .contains(&BackendConfirmedLink {
+                application_port_id: backend.global_fx_port,
+                host_port_id: endpoint.id,
+            }));
     }
 
     #[test]

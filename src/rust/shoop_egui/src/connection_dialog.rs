@@ -16,6 +16,8 @@ pub struct ConnectionDialog {
     selected_role: Option<PortRole>,
     #[cfg(test)]
     cell_rects: Vec<(crate::PortId, String, egui::Rect)>,
+    #[cfg(test)]
+    dual_route_warning_visible: bool,
 }
 
 impl Default for ConnectionDialog {
@@ -26,6 +28,8 @@ impl Default for ConnectionDialog {
             selected_role: None,
             #[cfg(test)]
             cell_rects: Vec::new(),
+            #[cfg(test)]
+            dual_route_warning_visible: false,
         }
     }
 }
@@ -52,7 +56,10 @@ impl ConnectionDialog {
             return Vec::new();
         }
         #[cfg(test)]
-        self.cell_rects.clear();
+        {
+            self.cell_rects.clear();
+            self.dual_route_warning_visible = false;
+        }
 
         let scoped_track = match self.scope {
             ConnectionScope::AllTracks => None,
@@ -178,6 +185,10 @@ impl ConnectionDialog {
             })
             .collect();
         if global_hosts.iter().any(|host| track_hosts.contains(host)) {
+            #[cfg(test)]
+            {
+                self.dual_route_warning_visible = true;
+            }
             ui.colored_label(
                 colors::WARNING,
                 "A MIDI source feeds both Global FX Control and a track input. Absolute controls may be applied twice, relative controls may behave incorrectly, and the track copy can be recorded.",
@@ -696,6 +707,79 @@ mod tests {
         );
         assert!(output.shapes.len() > 10);
         assert_eq!(dialog.cell_rects.len(), 16 * 50);
+    }
+
+    #[test]
+    fn global_fx_port_is_all_tracks_only_and_dual_warning_uses_confirmed_truth() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let track_id = TrackId::from_raw(1);
+        let host = HostPortId::new("webmidi:source:dual");
+        let mut state = state();
+        let connections = Arc::make_mut(&mut state.connections);
+        connections.application_ports = Arc::from([
+            ApplicationPortState {
+                id: PortId::from_raw(11),
+                owner: ApplicationPortOwner::Track {
+                    track_id,
+                    kind: TrackPortOwnerKind::Main,
+                },
+                name: "track:midi_in".to_owned(),
+                data_type: PortDataType::Midi,
+                direction: PortDirection::Input,
+                role: PortRole::MidiInput,
+                connection_policy: ConnectionPolicy::UserManaged,
+            },
+            ApplicationPortState {
+                id: PortId::from_raw(12),
+                owner: ApplicationPortOwner::GlobalFxControl,
+                name: "Global FX Control MIDI In".to_owned(),
+                data_type: PortDataType::Midi,
+                direction: PortDirection::Input,
+                role: PortRole::MidiInput,
+                connection_policy: ConnectionPolicy::UserManaged,
+            },
+        ]);
+        connections.host_ports = Arc::from([HostPortState {
+            id: host.clone(),
+            name: host.to_string(),
+            data_type: PortDataType::Midi,
+            direction: PortDirection::Output,
+        }]);
+        connections.confirmed_links = Arc::from([
+            ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(11),
+                host_port_id: host.clone(),
+            },
+            ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(12),
+                host_port_id: host.clone(),
+            },
+        ]);
+
+        let mut dialog = ConnectionDialog::default();
+        dialog.open(ConnectionScope::AllTracks);
+        let global = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert_eq!(dialog.cell_rects.len(), 2);
+        assert!(dialog.dual_route_warning_visible);
+        assert!(!global.shapes.is_empty());
+
+        dialog.open(ConnectionScope::Track(track_id));
+        let _ = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert_eq!(dialog.cell_rects.len(), 1);
+        assert!(dialog.dual_route_warning_visible);
+
+        Arc::make_mut(&mut state.connections).confirmed_links = Arc::from([]);
+        dialog.open(ConnectionScope::AllTracks);
+        let _ = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert_eq!(dialog.cell_rects.len(), 2);
+        assert!(!dialog.dual_route_warning_visible);
     }
 
     #[test]
