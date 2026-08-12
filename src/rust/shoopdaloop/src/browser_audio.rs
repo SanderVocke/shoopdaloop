@@ -1690,6 +1690,11 @@ impl WebAudioBackend {
 
 fn browser_replacement_mapping(session: &BackendSessionData) -> BackendSessionReplacement {
     let mut replacement = BackendSessionReplacement::default();
+    for global in &session.global_ports {
+        replacement
+            .global_ports
+            .insert(global.source_id, global.descriptor.id);
+    }
     let mut next_track_id = 1_u64;
     let mut next_loop_id = 1_u64;
     let mut next_port_id = 1_u64;
