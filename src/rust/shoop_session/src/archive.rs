@@ -622,6 +622,30 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
 }
 
 fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
+    if let Some(chain) = &track.fx_chain {
+        if chain.chain_type != FxChainTypeDocument::TinySynthFx
+            && !chain.midi_cc_assignments.is_empty()
+        {
+            return Err(SessionError::Validation(format!(
+                "non-Tiny FX chain {} contains MIDI CC assignments",
+                chain.id
+            )));
+        }
+        let mut parameters = BTreeSet::new();
+        let mut sources = BTreeSet::new();
+        for assignment in &chain.midi_cc_assignments {
+            if assignment.channel > 15
+                || assignment.controller > 127
+                || !parameters.insert(assignment.parameter)
+                || !sources.insert((assignment.channel, assignment.controller))
+            {
+                return Err(SessionError::Validation(format!(
+                    "FX chain {} contains invalid or duplicate MIDI CC assignments",
+                    chain.id
+                )));
+            }
+        }
+    }
     match (&track.topology, &track.fx_chain) {
         (TrackTopologyDocument::DryWetExternal { .. }, Some(_)) => {
             Err(SessionError::Validation(format!(

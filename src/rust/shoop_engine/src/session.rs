@@ -2377,6 +2377,13 @@ impl Session {
                         route.global_pending_overwrites.saturating_add(1);
                 }
             }
+            // Tiny Synth's control-only path updates its explicit track MIDI CC
+            // mappings without running DSP. Global controls remain deferred above
+            // so they never wake or silently process an inactive FX processor.
+            if let ProcessorBackend::Tiny(processor) = &mut route.backend {
+                let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
+                processor.process_midi_controls_only(events);
+            }
             self.processors = processors;
             return;
         }
@@ -4772,6 +4779,56 @@ mod tests {
                 .map(|event| event.data().to_vec())
                 .collect::<Vec<_>>(),
             vec![midi::cc(0, 7, 100).to_vec()]
+        );
+    }
+
+    #[test]
+    fn global_fx_control_drives_tiny_synth_cc_mapping_while_track_lane_stays_additive() {
+        use crate::tiny_synth_fx::{
+            TinySynthFxControlState, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
+        };
+
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_buffer_size(4);
+        let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
+        assert!(control.assign_midi_cc(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::ReverbAmount,
+            channel: 2,
+            controller: 17,
+        }));
+        let processor = control.prepare_processor(48_000.0, 0, 4).unwrap();
+        session.set_tiny_synth_fx_processor("tiny", processor);
+        session.set_tiny_synth_fx_active("tiny", true);
+        let track_midi = session.add_port(dummy_midi(88, "tiny:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(89, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("tiny", vec![], vec![], vec![track_midi])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(track_midi)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(1, &[0xb2, 17, 32]);
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(2, &[0xb2, 17, 127]);
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+
+        assert_eq!(control.editor_state().reverb_amount, 1.0);
+        assert_eq!(
+            session.processors[0]
+                .combined_midi
+                .iter()
+                .map(|event| (event.time, event.data().to_vec()))
+                .collect::<Vec<_>>(),
+            vec![(1, vec![0xb2, 17, 32]), (2, vec![0xb2, 17, 127])]
         );
     }
 
