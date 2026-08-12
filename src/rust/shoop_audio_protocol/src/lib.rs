@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 10;
+pub const PROTOCOL_VERSION: u16 = 11;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -60,6 +60,26 @@ pub enum Command {
     AddLoop {
         track_id: u64,
         expected_loop_id: u64,
+    },
+    CreateComposite {
+        expected_composite_id: u64,
+    },
+    ConfigureComposite {
+        composite_id: u64,
+        config: WireCompositeConfig,
+    },
+    TransitionComposite {
+        composite_id: u64,
+        mode: WireLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    },
+    SetCompositePlayAfterRecord {
+        composite_id: u64,
+        enabled: bool,
+    },
+    RemoveComposite {
+        composite_id: u64,
     },
     SetTrackControl {
         track_id: u64,
@@ -358,6 +378,35 @@ pub enum WireChannelMode {
     Wet,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireCompositeKind {
+    Regular,
+    Script,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+pub enum WireCompositeTarget {
+    Loop(u64),
+    Composite(u64),
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireCompositeEntry {
+    pub target: WireCompositeTarget,
+    pub delay: i64,
+    pub n_cycles: Option<i64>,
+    pub mode: Option<WireLoopMode>,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireCompositeConfig {
+    pub kind: WireCompositeKind,
+    pub sync_source: u64,
+    pub timelines: Vec<Vec<Vec<WireCompositeEntry>>>,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireGrabRequest {
     pub loop_id: u64,
@@ -436,6 +485,7 @@ pub struct WireSnapshot {
     pub storage_exhaustions: u32,
     pub tracks: Vec<WireTrackState>,
     pub loops: Vec<WireLoopState>,
+    pub composites: Vec<WireCompositeState>,
     pub application_ports: Vec<WireApplicationPort>,
     pub host_ports: Vec<WireHostPort>,
     pub confirmed_links: Vec<WireConfirmedLink>,
@@ -596,6 +646,28 @@ pub struct WireLoopState {
     pub midi_activity: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireActiveCompositeChild {
+    pub target: WireCompositeTarget,
+    pub mode: WireLoopMode,
+    pub cycle_offset: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireCompositeState {
+    pub id: u64,
+    pub mode: WireLoopMode,
+    pub next_mode: Option<WireLoopMode>,
+    pub next_transition_delay: Option<u32>,
+    pub iteration: u32,
+    pub cycle_count: u64,
+    pub length: u64,
+    pub position: u64,
+    pub active_plan_version: u64,
+    pub pending_plan_version: Option<u64>,
+    pub active_children: Vec<WireActiveCompositeChild>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct WaveformChunk {
     pub loop_id: u64,
@@ -628,6 +700,32 @@ pub struct MidiDataChunk {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn composite_configuration_round_trips_without_losing_targets_or_modes() {
+        let command = CommandEnvelope::new(
+            41,
+            Command::ConfigureComposite {
+                composite_id: 7,
+                config: WireCompositeConfig {
+                    kind: WireCompositeKind::Script,
+                    sync_source: 1,
+                    timelines: vec![vec![vec![WireCompositeEntry {
+                        target: WireCompositeTarget::Composite(8),
+                        delay: 2,
+                        n_cycles: Some(3),
+                        mode: Some(WireLoopMode::Recording),
+                    }]]],
+                },
+            },
+        );
+        let encoded = serde_json::to_vec(&command).unwrap();
+        assert!(encoded.len() <= COMMAND_MAX_BYTES);
+        assert_eq!(
+            serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+            command
+        );
+    }
 
     #[test]
     fn journal_coalesces_only_superseded_controls_for_the_same_entity() {

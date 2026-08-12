@@ -244,11 +244,15 @@ mod tests {
             ..Default::default()
         };
         let loop_id = LoopId::from_raw(11);
+        let play_loop_id = LoopId::from_raw(12);
         let response = crate::TrackWidgetResponse {
-            loop_actions: vec![(
-                loop_id,
-                LoopWidgetAction::IconClicked(SelectionModifiers { additive: true }),
-            )],
+            loop_actions: vec![
+                (
+                    loop_id,
+                    LoopWidgetAction::IconClicked(SelectionModifiers { additive: true }),
+                ),
+                (play_loop_id, LoopWidgetAction::PlayClicked),
+            ],
             click_track_requested: Some(loop_id),
             add_loop_requested: true,
             connections_requested: true,
@@ -265,6 +269,11 @@ mod tests {
                     track_id: track.id,
                     loop_id,
                     action: LoopWidgetAction::IconClicked(SelectionModifiers { additive: true }),
+                },
+                AppIntent::Loop {
+                    track_id: track.id,
+                    loop_id: play_loop_id,
+                    action: LoopWidgetAction::PlayClicked,
                 },
                 AppIntent::AddLoop { track_id: track.id },
             ]

@@ -27,14 +27,15 @@ use shoop_app_api::{
 };
 use shoop_backend::{
     Backend, BackendAudioChannelUpdate, BackendAudioContent, BackendChannelMode,
-    BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
-    BackendMidiEvent, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionPort,
-    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot,
-    BackendTinySynthFxMidiCcAssignment, BackendTinySynthFxParameter, BackendTrackControl,
-    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
-    DirectTrackRequest, TrackRequest,
+    BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId, BackendCompositeKind,
+    BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate,
+    BackendMidiContent, BackendMidiData, BackendMidiEvent, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendSessionData, BackendSessionPort, BackendSessionReplacement, BackendSessionTrack,
+    BackendSnapshot, BackendTinySynthFxMidiCcAssignment, BackendTinySynthFxParameter,
+    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackState,
+    BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -522,6 +523,9 @@ fn update_application(
             model.notify_error(format!("backend poll failed: {error}"));
         }
     }
+    if let Err(error) = model.refresh_backend_composite_configs(backend) {
+        model.notify_error(error);
+    }
     if let Err(error) = model.advance_script_compositions(backend, elapsed) {
         model.notify_error(error);
     }
@@ -635,6 +639,9 @@ struct LoopModel {
     midi_data: Option<Vec<MidiSequenceChannelState>>,
     script_composition: Vec<Vec<LoopId>>,
     composite: Option<CompositeDocument>,
+    backend_composite: Option<BackendCompositeId>,
+    backend_composite_signature: Vec<(LoopId, u32)>,
+    repeat_sync: bool,
     recorded_fx_state: Option<RecordedFxState>,
 }
 
@@ -865,6 +872,9 @@ impl ApplicationModel {
             midi_data: None,
             script_composition: Vec::new(),
             composite: None,
+            backend_composite: None,
+            backend_composite_signature: Vec::new(),
+            repeat_sync: false,
             recorded_fx_state: None,
         };
         #[cfg(not(target_arch = "wasm32"))]
@@ -1472,19 +1482,29 @@ impl ApplicationModel {
                 align_to_sync_at,
             } => {
                 for id in loops {
-                    let backend_id = self
+                    let model = self
                         .loops
                         .get(&id)
-                        .ok_or_else(|| format!("stale or unknown loop {id}"))?
-                        .backend_id;
-                    backend
-                        .transition_loop_aligned(
-                            backend_id,
-                            backend_loop_mode(mode),
-                            cycles_delay,
-                            align_to_sync_at,
-                        )
-                        .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+                    if let Some(composite_id) = model.backend_composite {
+                        backend
+                            .transition_composite_loop(
+                                composite_id,
+                                backend_loop_mode(mode),
+                                cycles_delay,
+                                align_to_sync_at.map(i64::from),
+                            )
+                            .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                    } else {
+                        backend
+                            .transition_loop_aligned(
+                                model.backend_id,
+                                backend_loop_mode(mode),
+                                cycles_delay,
+                                align_to_sync_at,
+                            )
+                            .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                    }
                 }
                 Ok(())
             }
@@ -1606,6 +1626,11 @@ impl ApplicationModel {
                         .loops
                         .get_mut(&id)
                         .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+                    if let Some(composite_id) = model.backend_composite {
+                        backend
+                            .remove_composite_loop(composite_id)
+                            .map_err(|error| format!("could not remove composite {id}: {error}"))?;
+                    }
                     backend
                         .clear_loop(model.backend_id)
                         .map_err(|error| format!("could not clear loop {id}: {error}"))?;
@@ -1616,6 +1641,8 @@ impl ApplicationModel {
                     model.midi_data = None;
                     model.script_composition.clear();
                     model.composite = None;
+                    model.backend_composite = None;
+                    model.backend_composite_signature.clear();
                 }
                 Ok(())
             }
@@ -1663,22 +1690,50 @@ impl ApplicationModel {
                 }
                 let target_loop = self
                     .loops
-                    .get_mut(&target)
+                    .get(&target)
                     .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
-                if parallel && !target_loop.script_composition.is_empty() {
-                    target_loop
-                        .script_composition
-                        .last_mut()
-                        .unwrap()
-                        .extend(add.iter().copied());
-                } else if parallel {
-                    target_loop.script_composition.push(add.clone());
-                } else {
-                    target_loop
-                        .script_composition
-                        .extend(add.iter().copied().map(|source| vec![source]));
+                for source in &add {
+                    if *source == target
+                        || self.composite_references(*source, target, &mut BTreeSet::new())
+                    {
+                        return Err(format!(
+                            "adding loop {source} to composite {target} would create a cycle"
+                        ));
+                    }
                 }
-                let sections = target_loop.script_composition.clone();
+                let mut sections = target_loop.script_composition.clone();
+                if parallel && !sections.is_empty() {
+                    sections.last_mut().unwrap().extend(add.iter().copied());
+                } else if parallel {
+                    sections.push(add.clone());
+                } else {
+                    sections.extend(add.iter().copied().map(|source| vec![source]));
+                }
+                let composite =
+                    composite_with_appended_sources(target_loop.composite.as_ref(), &add, parallel);
+                let previous_backend_composite = target_loop.backend_composite;
+                let backend_composite = match self.backend_composite_config(&composite)? {
+                    Some(config) => match previous_backend_composite {
+                        Some(id) => {
+                            backend
+                                .configure_composite_loop(id, &config)
+                                .map_err(|error| {
+                                    format!("could not configure composite loop: {error}")
+                                })?;
+                            Some(id)
+                        }
+                        None => self.create_and_configure_backend_composite(backend, &composite)?,
+                    },
+                    None => {
+                        if let Some(id) = previous_backend_composite {
+                            backend.remove_composite_loop(id).map_err(|error| {
+                                format!("could not remove composite loop: {error}")
+                            })?;
+                        }
+                        None
+                    }
+                };
+                let signature = self.composite_length_signature(&composite);
                 let length = sections
                     .iter()
                     .map(|section| {
@@ -1691,22 +1746,21 @@ impl ApplicationModel {
                     })
                     .sum();
                 let target_loop = self.loops.get_mut(&target).unwrap();
+                target_loop.script_composition = sections;
                 target_loop.length = length;
                 target_loop.state.empty = false;
                 target_loop.state.composite_kind = shoop_app_api::CompositeKind::Regular;
-                target_loop.composite = Some(composite_with_appended_sources(
-                    target_loop.composite.as_ref(),
-                    &add,
-                    parallel,
-                ));
+                target_loop.composite = Some(composite);
+                target_loop.backend_composite = backend_composite;
+                target_loop.backend_composite_signature = signature;
                 Ok(())
             }
             ControlOperation::SetRepeatSync { loops, active } => {
                 let sync = active.then(|| self.sync_backend_loop()).flatten();
-                for id in loops {
+                for id in &loops {
                     let backend_id = self
                         .loops
-                        .get(&id)
+                        .get(id)
                         .ok_or_else(|| format!("stale or unknown loop {id}"))?
                         .backend_id;
                     backend
@@ -1714,6 +1768,9 @@ impl ApplicationModel {
                         .map_err(|error| {
                             format!("could not update repeat sync for loop {id}: {error}")
                         })?;
+                }
+                for id in loops {
+                    self.loops.get_mut(&id).unwrap().repeat_sync = active;
                 }
                 Ok(())
             }
@@ -1830,13 +1887,23 @@ impl ApplicationModel {
         let backend_mode = backend_loop_mode(mode);
         let sync_length = self.sync_length().max(1);
         let mut expanded = Vec::new();
+        let mut backend_composite_targets = Vec::new();
         for id in loops {
-            let composition = self
+            let model = self
                 .loops
                 .get(id)
-                .ok_or_else(|| format!("stale or unknown loop {id}"))?
-                .script_composition
-                .clone();
+                .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+            if let Some(composite_id) = model.backend_composite {
+                backend
+                    .set_composite_play_after_record(composite_id, self.global.play_after_record)
+                    .map_err(|error| format!("could not set composite option: {error}"))?;
+                backend
+                    .transition_composite_loop(composite_id, backend_mode, delay, None)
+                    .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
+                backend_composite_targets.push(*id);
+                continue;
+            }
+            let composition = model.script_composition.clone();
             if composition.is_empty() {
                 expanded.push((*id, delay));
                 continue;
@@ -1938,7 +2005,8 @@ impl ApplicationModel {
                 LoopMode::Playing | LoopMode::PlayingDryThroughWet | LoopMode::Recording
             )
         {
-            let expanded_ids = expanded.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+            let mut expanded_ids = expanded.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+            expanded_ids.extend(backend_composite_targets);
             let target_tracks: Vec<_> = expanded_ids
                 .iter()
                 .filter_map(|id| self.loops.get(id).map(|model| model.track_id))
@@ -3202,7 +3270,7 @@ impl ApplicationModel {
                 initial_loops: slot_count,
             })
             .map_err(|error| format!("could not create track: {error}"))?;
-        let sync_backend = self.sync_backend_loop();
+        let sync_backend = self.global.sync.then(|| self.sync_backend_loop()).flatten();
         for backend_loop in &created.loops {
             backend
                 .set_loop_sync_source(*backend_loop, sync_backend)
@@ -3277,7 +3345,7 @@ impl ApplicationModel {
             let backend_loop = backend
                 .add_loop_to_track(backend_track)
                 .map_err(|error| format!("could not add aligned loop: {error}"))?;
-            if let Some(sync) = self.sync_backend_loop() {
+            if let Some(sync) = self.global.sync.then(|| self.sync_backend_loop()).flatten() {
                 backend
                     .set_loop_sync_source(backend_loop, Some(sync))
                     .map_err(|error| format!("could not synchronize added loop: {error}"))?;
@@ -3408,6 +3476,9 @@ impl ApplicationModel {
                 midi_data: None,
                 script_composition: Vec::new(),
                 composite: None,
+                backend_composite: None,
+                backend_composite_signature: Vec::new(),
+                repeat_sync: self.global.sync,
                 recorded_fx_state: None,
             },
         );
@@ -3574,9 +3645,19 @@ impl ApplicationModel {
                 if loop_model.composite.is_some() {
                     return Err(format!("loop {loop_id} is already a composite"));
                 }
-                backend
-                    .clear_loop(loop_model.backend_id)
-                    .map_err(|error| format!("could not clear loop {loop_id}: {error}"))?;
+                let composite = CompositeDocument {
+                    kind: CompositeKindDocument::Regular,
+                    playlists: Vec::new(),
+                };
+                let signature = self.composite_length_signature(&composite);
+                let backend_composite =
+                    self.create_and_configure_backend_composite(backend, &composite)?;
+                if let Err(error) = backend.clear_loop(loop_model.backend_id) {
+                    if let Some(id) = backend_composite {
+                        let _ = backend.remove_composite_loop(id);
+                    }
+                    return Err(format!("could not clear loop {loop_id}: {error}"));
+                }
                 self.script_composition_playback.remove(&loop_id);
                 for candidate in self.loops.values_mut() {
                     candidate.state.selected = false;
@@ -3587,10 +3668,9 @@ impl ApplicationModel {
                 model.audio_data = None;
                 model.midi_data = None;
                 model.script_composition.clear();
-                model.composite = Some(CompositeDocument {
-                    kind: CompositeKindDocument::Regular,
-                    playlists: Vec::new(),
-                });
+                model.composite = Some(composite);
+                model.backend_composite = backend_composite;
+                model.backend_composite_signature = signature;
                 model.recorded_fx_state = None;
                 model.state.empty = true;
                 model.state.composite_kind = shoop_app_api::CompositeKind::Regular;
@@ -3599,6 +3679,204 @@ impl ApplicationModel {
                 Ok(())
             }
         }
+    }
+
+    fn composite_length_signature(&self, composite: &CompositeDocument) -> Vec<(LoopId, u32)> {
+        let mut ids = composite
+            .playlists
+            .iter()
+            .flatten()
+            .flatten()
+            .map(|event| LoopId::from_raw(event.loop_id))
+            .collect::<BTreeSet<_>>();
+        if let Some(sync) = self
+            .tracks
+            .iter()
+            .find(|track| track.is_sync)
+            .and_then(|track| track.loops.first())
+        {
+            ids.insert(*sync);
+        }
+        ids.into_iter()
+            .filter_map(|id| self.loops.get(&id).map(|model| (id, model.length)))
+            .collect()
+    }
+
+    fn refresh_backend_composite_configs(
+        &mut self,
+        backend: &mut dyn Backend,
+    ) -> Result<(), String> {
+        let stale = self
+            .loops
+            .values()
+            .filter_map(|model| {
+                let composite_id = model.backend_composite?;
+                let composite = model.composite.as_ref()?;
+                let recording = matches!(
+                    model.state.mode,
+                    LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                ) || model.state.next_transition_delay == Some(0)
+                    && matches!(
+                        model.state.next_mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    );
+                let signature = self.composite_length_signature(composite);
+                (!recording && signature != model.backend_composite_signature).then_some((
+                    model.id,
+                    composite_id,
+                    composite.clone(),
+                    signature,
+                ))
+            })
+            .collect::<Vec<_>>();
+        for (id, composite_id, composite, signature) in stale {
+            let Some(config) = self.backend_composite_config(&composite)? else {
+                continue;
+            };
+            backend
+                .configure_composite_loop(composite_id, &config)
+                .map_err(|error| format!("could not refresh composite {id}: {error}"))?;
+            self.loops.get_mut(&id).unwrap().backend_composite_signature = signature;
+        }
+        Ok(())
+    }
+
+    fn backend_composite_config(
+        &self,
+        composite: &CompositeDocument,
+    ) -> Result<Option<BackendCompositeConfig>, String> {
+        let Some(sync_source) = self.sync_backend_loop() else {
+            return Ok(None);
+        };
+        let sync_length = u64::from(self.sync_length());
+        let timelines = composite
+            .playlists
+            .iter()
+            .map(|playlist| {
+                playlist
+                    .iter()
+                    .map(|section| {
+                        section
+                            .iter()
+                            .map(|event| {
+                                let source_id = LoopId::from_raw(event.loop_id);
+                                let source = self.loops.get(&source_id).ok_or_else(|| {
+                                    format!("stale composition source {source_id}")
+                                })?;
+                                let target = match source.backend_composite {
+                                    Some(id) => BackendCompositeTarget::Composite(id),
+                                    None if source.composite.is_none() => {
+                                        BackendCompositeTarget::Loop(source.backend_id)
+                                    }
+                                    None => return Ok(None),
+                                };
+                                let delay = if event.delay_frames == 0 {
+                                    0
+                                } else if sync_length > 0 && event.delay_frames % sync_length == 0 {
+                                    i64::try_from(event.delay_frames / sync_length).map_err(
+                                        |_| "composite delay exceeds engine range".to_owned(),
+                                    )?
+                                } else {
+                                    return Ok(None);
+                                };
+                                let mode = match event.mode.as_deref() {
+                                    None => None,
+                                    Some("stopped") => Some(BackendLoopMode::Stopped),
+                                    Some("playing") => Some(BackendLoopMode::Playing),
+                                    Some("recording") => Some(BackendLoopMode::Recording),
+                                    Some("replacing") => Some(BackendLoopMode::Replacing),
+                                    Some("playing_dry_through_wet") => {
+                                        Some(BackendLoopMode::PlayingDryThroughWet)
+                                    }
+                                    Some("recording_dry_into_wet") => {
+                                        Some(BackendLoopMode::RecordingDryIntoWet)
+                                    }
+                                    Some(mode) => {
+                                        return Err(format!("unsupported composite mode {mode}"));
+                                    }
+                                };
+                                Ok(Some(BackendCompositeEntry {
+                                    target,
+                                    delay,
+                                    n_cycles: event.n_cycles.map(i64::from),
+                                    mode,
+                                }))
+                            })
+                            .collect::<Result<Option<Vec<_>>, String>>()
+                    })
+                    .collect::<Result<Option<Vec<_>>, String>>()
+            })
+            .collect::<Result<Option<Vec<_>>, String>>()?;
+        let Some(timelines) = timelines else {
+            return Ok(None);
+        };
+        let kind = match composite.kind {
+            CompositeKindDocument::Regular => BackendCompositeKind::Regular,
+            CompositeKindDocument::Script => BackendCompositeKind::Script,
+        };
+        Ok(Some(BackendCompositeConfig {
+            kind,
+            sync_source,
+            timelines,
+        }))
+    }
+
+    fn create_and_configure_backend_composite(
+        &self,
+        backend: &mut dyn Backend,
+        composite: &CompositeDocument,
+    ) -> Result<Option<BackendCompositeId>, String> {
+        if !backend.supports_composite_loops() {
+            return Ok(None);
+        }
+        let Some(config) = self.backend_composite_config(composite)? else {
+            return Ok(None);
+        };
+        let id = backend
+            .create_composite_loop()
+            .map_err(|error| format!("could not create composite loop: {error}"))?;
+        if let Err(error) = backend.configure_composite_loop(id, &config) {
+            let _ = backend.remove_composite_loop(id);
+            return Err(format!("could not configure composite loop: {error}"));
+        }
+        Ok(Some(id))
+    }
+
+    fn restore_backend_composites(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+        let mut pending = self
+            .loops
+            .values()
+            .filter(|model| model.composite.is_some())
+            .map(|model| model.id)
+            .collect::<BTreeSet<_>>();
+        while !pending.is_empty() {
+            let ready = pending.iter().copied().find(|id| {
+                self.loops[id]
+                    .composite
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|composite| &composite.playlists)
+                    .flatten()
+                    .flatten()
+                    .map(|event| LoopId::from_raw(event.loop_id))
+                    .filter(|child| {
+                        self.loops
+                            .get(child)
+                            .is_some_and(|model| model.composite.is_some())
+                    })
+                    .all(|child| !pending.contains(&child))
+            });
+            let id = ready.ok_or_else(|| "composite dependency cycle".to_owned())?;
+            let composite = self.loops[&id].composite.clone().unwrap();
+            let backend_composite =
+                self.create_and_configure_backend_composite(backend, &composite)?;
+            let signature = self.composite_length_signature(&composite);
+            let model = self.loops.get_mut(&id).unwrap();
+            model.backend_composite = backend_composite;
+            model.backend_composite_signature = signature;
+            pending.remove(&id);
+        }
+        Ok(())
     }
 
     fn compose_loop_serial(
@@ -3963,7 +4241,14 @@ impl ApplicationModel {
             .filter(|model| {
                 model.id == initiating_loop || initiating_selected && model.state.selected
             })
-            .map(|model| (model.id, model.track_id, model.backend_id))
+            .map(|model| {
+                (
+                    model.id,
+                    model.track_id,
+                    model.backend_id,
+                    model.backend_composite,
+                )
+            })
             .collect();
         let delay = self.global.sync.then_some(self.target_delay());
         if matches!(
@@ -3972,7 +4257,7 @@ impl ApplicationModel {
                 | BackendLoopMode::Replacing
                 | BackendLoopMode::RecordingDryIntoWet
         ) {
-            let ids = targets.iter().map(|(id, _, _)| *id).collect::<Vec<_>>();
+            let ids = targets.iter().map(|(id, _, _, _)| *id).collect::<Vec<_>>();
             self.capture_recording_fx_states(backend, &ids)?;
         }
         if self.global.solo
@@ -3983,26 +4268,49 @@ impl ApplicationModel {
                     | BackendLoopMode::Recording
             )
         {
-            let track_ids: Vec<_> = targets.iter().map(|(_, track_id, _)| *track_id).collect();
-            let selected_ids: Vec<_> = targets.iter().map(|(id, _, _)| *id).collect();
+            let track_ids: Vec<_> = targets
+                .iter()
+                .map(|(_, track_id, _, _)| *track_id)
+                .collect();
+            let selected_ids: Vec<_> = targets.iter().map(|(id, _, _, _)| *id).collect();
             let others: Vec<_> = self
                 .loops
                 .values()
                 .filter(|model| {
                     track_ids.contains(&model.track_id) && !selected_ids.contains(&model.id)
                 })
-                .map(|model| (model.id, model.backend_id))
+                .map(|model| (model.id, model.backend_id, model.backend_composite))
                 .collect();
-            for (id, backend_id) in others {
-                backend
-                    .transition_loop(backend_id, BackendLoopMode::Stopped, delay)
-                    .map_err(|error| format!("could not solo-stop loop {id}: {error}"))?;
+            for (id, backend_id, composite_id) in others {
+                if let Some(composite_id) = composite_id {
+                    backend
+                        .transition_composite_loop(
+                            composite_id,
+                            BackendLoopMode::Stopped,
+                            delay,
+                            None,
+                        )
+                        .map_err(|error| format!("could not solo-stop loop {id}: {error}"))?;
+                } else {
+                    backend
+                        .transition_loop(backend_id, BackendLoopMode::Stopped, delay)
+                        .map_err(|error| format!("could not solo-stop loop {id}: {error}"))?;
+                }
             }
         }
-        for (id, _, backend_id) in targets {
-            backend
-                .transition_loop(backend_id, mode, delay)
-                .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+        for (id, _, backend_id, composite_id) in targets {
+            if let Some(composite_id) = composite_id {
+                backend
+                    .set_composite_play_after_record(composite_id, self.global.play_after_record)
+                    .map_err(|error| format!("could not set composite option: {error}"))?;
+                backend
+                    .transition_composite_loop(composite_id, mode, delay, None)
+                    .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+            } else {
+                backend
+                    .transition_loop(backend_id, mode, delay)
+                    .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+            }
             if mode == BackendLoopMode::Recording && self.global.apply_n_cycles > 0 {
                 let after = delay
                     .unwrap_or(0)
@@ -4012,11 +4320,19 @@ impl ApplicationModel {
                 } else {
                     BackendLoopMode::Stopped
                 };
-                backend
-                    .transition_loop(backend_id, next, Some(after))
-                    .map_err(|error| {
-                        format!("could not schedule recording end for {id}: {error}")
-                    })?;
+                if let Some(composite_id) = composite_id {
+                    backend
+                        .transition_composite_loop(composite_id, next, Some(after), None)
+                        .map_err(|error| {
+                            format!("could not schedule recording end for {id}: {error}")
+                        })?;
+                } else {
+                    backend
+                        .transition_loop(backend_id, next, Some(after))
+                        .map_err(|error| {
+                            format!("could not schedule recording end for {id}: {error}")
+                        })?;
+                }
             }
         }
         Ok(())
@@ -4211,7 +4527,38 @@ impl ApplicationModel {
             GlobalControlAction::SetPlayAfterRecord(value) => {
                 self.global.play_after_record = value;
             }
-            GlobalControlAction::SetSync(value) => self.global.sync = value,
+            GlobalControlAction::SetSync(value) => {
+                let sync = value.then(|| self.sync_backend_loop()).flatten();
+                let targets = self
+                    .loops
+                    .values()
+                    .filter(|model| {
+                        self.tracks
+                            .iter()
+                            .find(|track| track.id == model.track_id)
+                            .is_some_and(|track| !track.is_sync)
+                    })
+                    .map(|model| (model.id, model.backend_id, model.repeat_sync))
+                    .collect::<Vec<_>>();
+                let mut applied: Vec<(LoopId, BackendLoopId, bool)> = Vec::new();
+                for (id, backend_id, previous) in &targets {
+                    if let Err(error) = backend.set_loop_sync_source(*backend_id, sync) {
+                        for (_, applied_backend, applied_previous) in applied.into_iter().rev() {
+                            let previous_source =
+                                applied_previous.then(|| self.sync_backend_loop()).flatten();
+                            let _ = backend.set_loop_sync_source(applied_backend, previous_source);
+                        }
+                        return Err(format!(
+                            "could not update loop {id} synchronization: {error}"
+                        ));
+                    }
+                    applied.push((*id, *backend_id, *previous));
+                }
+                for (id, _, _) in targets {
+                    self.loops.get_mut(&id).unwrap().repeat_sync = value;
+                }
+                self.global.sync = value;
+            }
             GlobalControlAction::SetSolo(value) => self.global.solo = value,
             GlobalControlAction::SetAutoMuteOtherTrackInputs(value) => {
                 self.global.auto_mute_other_track_inputs = value;
@@ -4420,10 +4767,65 @@ impl ApplicationModel {
                 .unwrap_or(model.state.peak_left_db);
             model.state.midi_activity = backend_state.midi_activity;
         }
+        let app_loop_by_backend = self
+            .loops
+            .values()
+            .map(|model| (model.backend_id, model.id))
+            .collect::<BTreeMap<_, _>>();
+        let app_composite_by_backend = self
+            .loops
+            .values()
+            .filter_map(|model| model.backend_composite.map(|id| (id, model.id)))
+            .collect::<BTreeMap<_, _>>();
+        for model in self.loops.values_mut() {
+            let Some(composite_id) = model.backend_composite else {
+                continue;
+            };
+            let Some(state) = snapshot.composites.get(&composite_id) else {
+                continue;
+            };
+            model.state.mode = app_loop_mode(state.mode);
+            model.state.next_mode = state
+                .next_mode
+                .map(app_loop_mode)
+                .unwrap_or(model.state.mode);
+            model.state.next_transition_delay = state.next_transition_delay;
+            model.state.composite_iteration = Some(state.iteration);
+            model.state.composite_cycle_count = state.cycle_count;
+            model.state.active_composite_children = state
+                .active_children
+                .iter()
+                .filter_map(|child| match child.target {
+                    BackendCompositeTarget::Loop(id) => app_loop_by_backend.get(&id).copied(),
+                    BackendCompositeTarget::Composite(id) => {
+                        app_composite_by_backend.get(&id).copied()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into();
+            model.length = u32::try_from(state.length).unwrap_or(u32::MAX);
+            model.position = u32::try_from(state.position).unwrap_or(u32::MAX);
+            model.state.empty = model.composite.as_ref().is_none_or(|composite| {
+                composite
+                    .playlists
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .next()
+                    .is_none()
+            });
+            model.state.position = if model.length == 0 {
+                0.0
+            } else {
+                model.position as f32 / model.length as f32
+            };
+        }
         let composites = self
             .loops
             .values()
-            .filter(|model| !model.script_composition.is_empty())
+            .filter(|model| {
+                model.backend_composite.is_none() && !model.script_composition.is_empty()
+            })
             .map(|model| (model.id, model.script_composition.clone()))
             .collect::<Vec<_>>();
         for (target, sections) in composites {
@@ -4438,11 +4840,23 @@ impl ApplicationModel {
                         .unwrap_or(0)
                 })
                 .sum();
-            let active_section = self
+            let Some(active_section) = self
                 .script_composition_playback
                 .get(&target)
                 .map(|playback| playback.section)
-                .unwrap_or(0);
+            else {
+                if let Some(model) = self.loops.get_mut(&target) {
+                    model.state.mode = LoopMode::Stopped;
+                    model.state.next_mode = LoopMode::Stopped;
+                    model.state.next_transition_delay = None;
+                    model.state.composite_iteration = None;
+                    model.state.composite_cycle_count = 0;
+                    model.state.active_composite_children = Arc::from([]);
+                    model.position = 0;
+                    model.state.position = 0.0;
+                }
+                continue;
+            };
             let section_offset = sections
                 .iter()
                 .take(active_section)
@@ -5231,7 +5645,10 @@ impl ApplicationModel {
                 loop_ids.push(id);
                 if !track_document.is_sync {
                     backend
-                        .set_loop_sync_source(*backend_loop, sync_source)
+                        .set_loop_sync_source(
+                            *backend_loop,
+                            bundle.document.global.sync.then_some(sync_source).flatten(),
+                        )
                         .map_err(|error| format!("could not restore loop sync: {error}"))?;
                 }
                 let has_audio = loop_document
@@ -5327,6 +5744,9 @@ impl ApplicationModel {
                         midi_data: None,
                         script_composition,
                         composite,
+                        backend_composite: None,
+                        backend_composite_signature: Vec::new(),
+                        repeat_sync: bundle.document.global.sync,
                         recorded_fx_state,
                     },
                 );
@@ -5413,6 +5833,7 @@ impl ApplicationModel {
             .saturating_add(1);
         self.tracks = tracks;
         self.loops = loops;
+        self.restore_backend_composites(backend)?;
         self.script_composition_playback.clear();
         self.script_composition_frame_remainder = 0;
         self.active_piano_notes.clear();
@@ -6882,6 +7303,60 @@ mod tests {
             assert!(started.elapsed() < Duration::from_secs(2));
             thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    fn engine_model_with_regular_composite() -> (
+        EngineBackend,
+        ApplicationModel,
+        TrackId,
+        LoopId,
+        [LoopId; 3],
+    ) {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Composite".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        let target = model.tracks[1].loops[0];
+        let sources = [
+            model.tracks[1].loops[1],
+            model.tracks[1].loops[2],
+            model.tracks[1].loops[3],
+        ];
+        for source in sources {
+            backend
+                .set_loop_length(model.loops[&source].backend_id, 4)
+                .unwrap();
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                target,
+                LoopAction::ConvertToComposite,
+            )
+            .unwrap();
+        for source in sources {
+            model
+                .compose_loop_serial(&mut backend, target, source)
+                .unwrap();
+        }
+        (backend, model, track_id, target, sources)
     }
 
     #[test]
@@ -8460,7 +8935,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[test]
-    fn script_snapshot_distinguishes_current_and_planned_modes_for_loops_and_composites() {
+    fn script_snapshot_keeps_child_and_composite_transition_state_independent() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
         runtime
@@ -8525,9 +9000,9 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .into_iter()
             .find(|loop_| loop_.id == composite_id)
             .unwrap();
-        assert_eq!(composite.mode, LoopMode::Playing);
-        assert_eq!(composite.next_mode, Some(LoopMode::Recording));
-        assert_eq!(composite.next_mode_delay, Some(2));
+        assert_eq!(composite.mode, LoopMode::Stopped);
+        assert_eq!(composite.next_mode, None);
+        assert_eq!(composite.next_mode_delay, None);
     }
 
     #[test]
@@ -8994,6 +9469,441 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             }
         }
         panic!("baseline session save did not complete");
+    }
+
+    #[test]
+    fn latest_global_or_script_repeat_sync_policy_applies_to_existing_and_new_loops() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Unsynced".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let loop_id = model.tracks[1].loops[0];
+        assert!(!model.loops[&loop_id].repeat_sync);
+        assert_eq!(
+            backend.loop_sync_source(model.loops[&loop_id].backend_id),
+            None
+        );
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::SetRepeatSync {
+                    loops: vec![loop_id],
+                    active: true,
+                },
+            )
+            .unwrap();
+        assert!(model.loops[&loop_id].repeat_sync);
+        assert!(backend
+            .loop_sync_source(model.loops[&loop_id].backend_id)
+            .is_some());
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(model.loops[&loop_id].repeat_sync);
+
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        assert!(!model.loops[&loop_id].repeat_sync);
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(true))
+            .unwrap();
+        assert!(model.loops[&loop_id].repeat_sync);
+    }
+
+    #[test]
+    fn disabling_sync_makes_a_primitive_loop_repeat_at_its_own_boundary() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let sync = model.tracks[0].loops[0];
+        let track_id = model.tracks[1].id;
+        let loop_id = model.tracks[1].loops[0];
+        backend
+            .set_loop_length(model.loops[&sync].backend_id, 10)
+            .unwrap();
+        backend
+            .set_loop_length(model.loops[&loop_id].backend_id, 4)
+            .unwrap();
+        backend
+            .transition_loop(
+                model.loops[&sync].backend_id,
+                BackendLoopMode::Playing,
+                None,
+            )
+            .unwrap();
+        backend.advance(Duration::from_millis(1));
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        model
+            .handle_loop_action(&mut backend, track_id, loop_id, LoopAction::PlayClicked)
+            .unwrap();
+
+        backend.advance(Duration::from_millis(4));
+        let state = backend.poll().unwrap().loops[&model.loops[&loop_id].backend_id].clone();
+
+        assert_eq!(state.mode, BackendLoopMode::Playing);
+        assert_eq!(state.position, 0);
+    }
+
+    #[test]
+    fn independently_playing_a_child_does_not_advance_its_composite() {
+        let (mut backend, mut model, _, target, sources) = engine_model_with_regular_composite();
+        backend
+            .transition_loop(
+                model.loops[&sources[0]].backend_id,
+                BackendLoopMode::Playing,
+                None,
+            )
+            .unwrap();
+        backend.advance(Duration::from_millis(2));
+        model.apply_backend_snapshot(backend.poll().unwrap());
+
+        assert_eq!(
+            (
+                model.loops[&target].state.mode,
+                model.loops[&target].position
+            ),
+            (LoopMode::Stopped, 0)
+        );
+    }
+
+    #[test]
+    fn gui_play_on_a_regular_composite_starts_the_composite_and_first_child() {
+        let (mut backend, mut model, track_id, target, sources) =
+            engine_model_with_regular_composite();
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        model
+            .handle_loop_action(&mut backend, track_id, target, LoopAction::PlayClicked)
+            .unwrap();
+        backend.advance(Duration::from_millis(1));
+        model.apply_backend_snapshot(backend.poll().unwrap());
+
+        assert_eq!(
+            (
+                model.loops[&target].state.mode,
+                model.loops[&sources[0]].state.mode,
+            ),
+            (LoopMode::Playing, LoopMode::Playing)
+        );
+        assert!(sources[1..]
+            .iter()
+            .all(|source| model.loops[source].state.mode == LoopMode::Stopped));
+    }
+
+    #[test]
+    fn public_intents_disable_repeat_sync_for_an_independently_wrapping_loop() {
+        let backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Unsynced".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        let sync_track = snapshot.tracks[0].id;
+        let sync = snapshot.tracks[0].loops[0].id;
+        let track = snapshot.tracks[1].id;
+        let loop_id = snapshot.tracks[1].loops[0].id;
+        for (track_id, id, frames) in [(sync_track, sync, 10), (track, loop_id, 4)] {
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id,
+                    loop_id: id,
+                    action: LoopAction::RecordClicked,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::from_millis(frames));
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id,
+                    loop_id: id,
+                    action: LoopAction::StopClicked,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+        }
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: sync_track,
+                loop_id: sync,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(4));
+        let loop_ = &runtime.snapshot().tracks[1].loops[0];
+        assert_eq!(loop_.mode, LoopMode::Playing);
+        assert_eq!(loop_.position, 0.0);
+    }
+
+    #[test]
+    fn public_intents_drive_three_section_engine_composite_and_isolate_child_control() {
+        let backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Composite".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        let sync_track = snapshot.tracks[0].id;
+        let sync = snapshot.tracks[0].loops[0].id;
+        let track = snapshot.tracks[1].id;
+        let target = snapshot.tracks[1].loops[0].id;
+        let sources = [
+            snapshot.tracks[1].loops[1].id,
+            snapshot.tracks[1].loops[2].id,
+            snapshot.tracks[1].loops[3].id,
+        ];
+        let mut record_for = |track_id, loop_id, frames| {
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id,
+                    loop_id,
+                    action: LoopAction::RecordClicked,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::from_millis(frames));
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id,
+                    loop_id,
+                    action: LoopAction::StopClicked,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+        };
+        record_for(sync_track, sync, 1);
+        for source in sources {
+            record_for(track, source, 4);
+        }
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: sync_track,
+                loop_id: sync,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: target,
+                action: LoopAction::ConvertToComposite,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        for source in sources {
+            runtime
+                .dispatch(AppIntent::ComposeLoopSerial {
+                    target_loop_id: target,
+                    source_loop_id: source,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+        }
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: sources[2],
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        let isolated = runtime.snapshot();
+        let parent = isolated.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.mode, LoopMode::Stopped);
+        assert_eq!(parent.position, 0.0);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: sources[2],
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: target,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let started = runtime.snapshot();
+        let parent = started.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.mode, LoopMode::Playing);
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
+
+        runtime.tick(Duration::from_millis(4));
+        let second = runtime.snapshot();
+        let parent = second.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[1]]);
+        assert_eq!(parent.composite_iteration, Some(4));
+        assert!((parent.position - 1.0 / 3.0).abs() < f32::EPSILON);
+        runtime.tick(Duration::from_millis(4));
+        let third = runtime.snapshot();
+        let parent = third.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[2]]);
+        runtime.tick(Duration::from_millis(4));
+        let wrapped = runtime.snapshot();
+        let parent = wrapped.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
+        assert_eq!(parent.composite_cycle_count, 1);
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        let output = loop {
+            runtime.tick(Duration::from_millis(1));
+            if let Some(output) = runtime.take_file_output() {
+                break output;
+            }
+        };
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "composite-round-trip.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            {
+                break;
+            }
+        }
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: target,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loaded = runtime.snapshot();
+        let parent = loaded.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.mode, LoopMode::Playing);
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 1_000,
+                    buffer_size: 2,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Persisting
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: target,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let replaced = runtime.snapshot();
+        let parent = replaced.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.mode, LoopMode::Playing);
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
     }
 
     #[test]
