@@ -9,7 +9,8 @@ use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
-    WireApplicationPortOwner, WireChannelMode, WireGrabRequest, WireHostPort, WireLoopMode,
+    WireApplicationPortOwner, WireChannelMode, WireCompositeConfig, WireCompositeEntry,
+    WireCompositeKind, WireCompositeTarget, WireGrabRequest, WireHostPort, WireLoopMode,
     WireMidiEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
     WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTrackControl,
     WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, COMMAND_MAX_BYTES,
@@ -19,15 +20,16 @@ use shoop_audio_protocol::{
 };
 use shoop_backend::{
     default_tiny_synth_fx_state, encode_tiny_synth_fx_state, tiny_synth_fx_descriptor, Backend,
-    BackendChannelMode, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
-    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
-    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionReplacement,
-    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
-    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
-    DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
-    TrackProcessorTypeId, TrackRequest,
+    BackendActiveCompositeChild, BackendChannelMode, BackendCompositeConfig, BackendCompositeId,
+    BackendCompositeKind, BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink,
+    BackendConnectionFailure, BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
+    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendPortDataType,
+    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackState, BackendTrackTopology, DirectTrackRequest, TinySynthFxControl,
+    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
 };
 use shoop_egui::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
@@ -1009,6 +1011,7 @@ pub struct WebAudioBackend {
     snapshot: BackendSnapshot,
     next_track_id: u64,
     next_loop_id: u64,
+    next_composite_id: u64,
     next_port_id: u64,
     last_poll: Instant,
     last_wire_xruns: u32,
@@ -1054,6 +1057,7 @@ impl WebAudioBackend {
                 },
                 next_track_id: 1,
                 next_loop_id: 1,
+                next_composite_id: 1,
                 next_port_id: 1,
                 last_poll: Instant::now(),
                 last_wire_xruns: 0,
@@ -1457,6 +1461,8 @@ impl WebAudioBackend {
     ) {
         self.snapshot.tracks.clear();
         self.snapshot.loops.clear();
+        self.snapshot.composites.clear();
+        self.next_composite_id = 1;
         self.snapshot.connections.application_ports.clear();
         self.snapshot.connections.confirmed_links.clear();
         self.waveforms.clear();
@@ -1706,6 +1712,43 @@ impl WebAudioBackend {
                 })
                 .collect::<BTreeMap<_, _>>(),
         );
+        self.snapshot.composites = wire
+            .composites
+            .into_iter()
+            .map(|composite| {
+                let target = |target| match target {
+                    WireCompositeTarget::Loop(id) => {
+                        BackendCompositeTarget::Loop(BackendLoopId::from_raw(id))
+                    }
+                    WireCompositeTarget::Composite(id) => {
+                        BackendCompositeTarget::Composite(BackendCompositeId::from_raw(id))
+                    }
+                };
+                (
+                    BackendCompositeId::from_raw(composite.id),
+                    BackendCompositeState {
+                        mode: from_wire_loop_mode(composite.mode),
+                        next_mode: composite.next_mode.map(from_wire_loop_mode),
+                        next_transition_delay: composite.next_transition_delay,
+                        iteration: composite.iteration,
+                        cycle_count: composite.cycle_count,
+                        length: composite.length,
+                        position: composite.position,
+                        active_plan_version: composite.active_plan_version,
+                        pending_plan_version: composite.pending_plan_version,
+                        active_children: composite
+                            .active_children
+                            .into_iter()
+                            .map(|child| BackendActiveCompositeChild {
+                                target: target(child.target),
+                                mode: from_wire_loop_mode(child.mode),
+                                cycle_offset: child.cycle_offset,
+                            })
+                            .collect(),
+                    },
+                )
+            })
+            .collect();
     }
 }
 
@@ -1857,6 +1900,10 @@ fn browser_tiny_port_descriptors(
 }
 
 impl Backend for WebAudioBackend {
+    fn supports_composite_loops(&self) -> bool {
+        true
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![tiny_synth_fx_descriptor()].into())
     }
@@ -1948,6 +1995,97 @@ impl Backend for WebAudioBackend {
 
     fn create_loop(&mut self) -> Result<BackendLoopId> {
         Err(anyhow!("standalone browser loops are unsupported"))
+    }
+
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        let id = BackendCompositeId::from_raw(self.next_composite_id);
+        self.submit(Command::CreateComposite {
+            expected_composite_id: id.raw(),
+        })?;
+        self.next_composite_id = self.next_composite_id.saturating_add(1);
+        self.snapshot
+            .composites
+            .insert(id, BackendCompositeState::default());
+        Ok(id)
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        let wire = WireCompositeConfig {
+            kind: match config.kind {
+                BackendCompositeKind::Regular => WireCompositeKind::Regular,
+                BackendCompositeKind::Script => WireCompositeKind::Script,
+            },
+            sync_source: config.sync_source.raw(),
+            timelines: config
+                .timelines
+                .iter()
+                .map(|timeline| {
+                    timeline
+                        .iter()
+                        .map(|section| {
+                            section
+                                .iter()
+                                .map(|entry| WireCompositeEntry {
+                                    target: match entry.target {
+                                        BackendCompositeTarget::Loop(id) => {
+                                            WireCompositeTarget::Loop(id.raw())
+                                        }
+                                        BackendCompositeTarget::Composite(id) => {
+                                            WireCompositeTarget::Composite(id.raw())
+                                        }
+                                    },
+                                    delay: entry.delay,
+                                    n_cycles: entry.n_cycles,
+                                    mode: entry.mode.map(to_wire_loop_mode),
+                                })
+                                .collect()
+                        })
+                        .collect()
+                })
+                .collect(),
+        };
+        self.submit(Command::ConfigureComposite {
+            composite_id: composite_id.raw(),
+            config: wire,
+        })
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        self.submit(Command::TransitionComposite {
+            composite_id: composite_id.raw(),
+            mode: to_wire_loop_mode(mode),
+            cycles_delay,
+            align_to_iteration,
+        })
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        enabled: bool,
+    ) -> Result<()> {
+        self.submit(Command::SetCompositePlayAfterRecord {
+            composite_id: composite_id.raw(),
+            enabled,
+        })
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        self.submit(Command::RemoveComposite {
+            composite_id: composite_id.raw(),
+        })?;
+        self.snapshot.composites.remove(&composite_id);
+        Ok(())
     }
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {

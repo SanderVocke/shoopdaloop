@@ -4,7 +4,7 @@ use shoop_app_api::{
     TrackProcessorMidiPolicy,
 };
 use shoop_engine::app_backend::{
-    AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession,
+    AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession, CompositeLoop,
     CpalMidiAudioDriverSettings, DummyAudioDriverSettings, FXChain, JackAudioDriverSettings, Loop,
     MidiChannel, MidiPort,
 };
@@ -119,9 +119,11 @@ struct NativeRuntime {
     tracks: BTreeMap<BackendTrackId, NativeTrack>,
     global_fx_port: BackendPortId,
     loops: BTreeMap<BackendLoopId, NativeLoop>,
+    composites: BTreeMap<BackendCompositeId, NativeComposite>,
     ports: BTreeMap<BackendPortId, NativePort>,
     next_track_id: u64,
     next_loop_id: u64,
+    next_composite_id: u64,
     next_port_id: u64,
     connection_revision: u64,
     connection_failures: Vec<BackendConnectionFailure>,
@@ -152,6 +154,11 @@ struct NativeFx {
     chain: FXChain,
     active: bool,
     last_confirmed_state: Option<String>,
+}
+
+struct NativeComposite {
+    handle: CompositeLoop,
+    config: Option<BackendCompositeConfig>,
 }
 
 struct NativeLoop {
@@ -321,6 +328,7 @@ impl NativeRuntime {
             tracks: BTreeMap::new(),
             global_fx_port,
             loops: BTreeMap::new(),
+            composites: BTreeMap::new(),
             ports: BTreeMap::from([(
                 global_fx_port,
                 NativePort {
@@ -330,6 +338,7 @@ impl NativeRuntime {
             )]),
             next_track_id: 1,
             next_loop_id: 1,
+            next_composite_id: 1,
             next_port_id: 1,
             connection_revision: 1,
             connection_failures: Vec::new(),
@@ -342,6 +351,118 @@ impl NativeRuntime {
 
     fn wait(&self) {
         self.driver.wait_process();
+    }
+
+    fn composite_target_identity(
+        &self,
+        target: BackendCompositeTarget,
+    ) -> Result<shoop_engine::LoopIdentity> {
+        match target {
+            BackendCompositeTarget::Loop(id) => self
+                .loops
+                .get(&id)
+                .map(|loop_| loop_.handle.identity())
+                .ok_or_else(|| anyhow!("stale composite loop target {id:?}")),
+            BackendCompositeTarget::Composite(id) => self
+                .composites
+                .get(&id)
+                .map(|composite| composite.handle.identity())
+                .ok_or_else(|| anyhow!("stale composite target {id:?}")),
+        }
+    }
+
+    fn backend_composite_target(
+        &self,
+        identity: shoop_engine::LoopIdentity,
+    ) -> Option<BackendCompositeTarget> {
+        match identity.kind {
+            shoop_engine::LoopTargetKind::Basic => self.loops.iter().find_map(|(id, loop_)| {
+                (loop_.handle.identity() == identity).then_some(BackendCompositeTarget::Loop(*id))
+            }),
+            shoop_engine::LoopTargetKind::Composite => {
+                self.composites.iter().find_map(|(id, composite)| {
+                    (composite.handle.identity() == identity)
+                        .then_some(BackendCompositeTarget::Composite(*id))
+                })
+            }
+        }
+    }
+
+    fn configure_composite(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        let composite = self
+            .composites
+            .get(&composite_id)
+            .ok_or_else(|| anyhow!("unknown native composite {composite_id:?}"))?;
+        let source = composite.handle.identity();
+        let sync = self
+            .loops
+            .get(&config.sync_source)
+            .ok_or_else(|| anyhow!("stale composite sync source"))?;
+        let sync_identity = sync.handle.identity();
+        let sync_length = u64::from(sync.handle.get_state()?.length).max(1);
+        let timelines = config
+            .timelines
+            .iter()
+            .map(|sections| {
+                Ok(shoop_engine::CompositeTimeline {
+                    sections: sections
+                        .iter()
+                        .map(|entries| {
+                            Ok(shoop_engine::CompositeSection {
+                                entries: entries
+                                    .iter()
+                                    .map(|entry| {
+                                        Ok(shoop_engine::CompositeEntry {
+                                            target: self.composite_target_identity(entry.target)?,
+                                            delay: entry.delay,
+                                            n_cycles: entry.n_cycles,
+                                            mode: entry.mode.map(to_native_mode),
+                                        })
+                                    })
+                                    .collect::<Result<Vec<_>>>()?,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let descriptor = shoop_engine::CompositePlanDescriptor {
+            source,
+            sync_length,
+            timelines,
+        };
+        let mut metadata = Vec::with_capacity(self.loops.len() + self.composites.len());
+        for loop_ in self.loops.values() {
+            let state = loop_.handle.get_state()?;
+            metadata.push(shoop_engine::LoopTargetMetadata {
+                identity: loop_.handle.identity(),
+                length_samples: u64::from(state.length),
+            });
+        }
+        for candidate in self.composites.values() {
+            metadata.push(shoop_engine::LoopTargetMetadata {
+                identity: candidate.handle.identity(),
+                length_samples: candidate
+                    .handle
+                    .poll_state()
+                    .map(|state| state.length)
+                    .unwrap_or(0),
+            });
+        }
+        let primitive_sync_sources = self.session.primitive_sync_sources();
+        self.session.configure_composite_loop(
+            &composite.handle,
+            descriptor,
+            sync_identity,
+            metadata,
+            &primitive_sync_sources,
+        )?;
+        self.composites.get_mut(&composite_id).unwrap().config = Some(config.clone());
+        Ok(())
     }
 
     fn next_port(
@@ -1623,6 +1744,10 @@ impl NativeRuntime {
 }
 
 impl Backend for NativeBackend {
+    fn supports_composite_loops(&self) -> bool {
+        true
+    }
+
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
         let active = self
             .runtime
@@ -1772,6 +1897,91 @@ impl Backend for NativeBackend {
         );
         runtime.wait();
         Ok(id)
+    }
+
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        let runtime = self.runtime_mut()?;
+        let handle = runtime.session.create_composite_loop()?;
+        let id = BackendCompositeId::from_raw(runtime.next_composite_id);
+        runtime.next_composite_id = runtime.next_composite_id.saturating_add(1);
+        runtime.composites.insert(
+            id,
+            NativeComposite {
+                handle,
+                config: None,
+            },
+        );
+        runtime.wait();
+        Ok(id)
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        self.runtime_mut()?
+            .configure_composite(composite_id, config)
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        let composite = runtime
+            .composites
+            .get(&composite_id)
+            .ok_or_else(|| anyhow!("unknown native composite {composite_id:?}"))?;
+        if let Some(iteration) = align_to_iteration {
+            composite
+                .handle
+                .transition_immediate(to_native_mode(mode), iteration)?;
+        } else if let Some(delay) = cycles_delay {
+            composite.handle.transition(to_native_mode(mode), delay)?;
+        } else {
+            composite
+                .handle
+                .transition_immediate(to_native_mode(mode), 0)?;
+        }
+        runtime.wait();
+        Ok(())
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        enabled: bool,
+    ) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        runtime
+            .composites
+            .get(&composite_id)
+            .ok_or_else(|| anyhow!("unknown native composite {composite_id:?}"))?
+            .handle
+            .set_play_after_record(enabled)?;
+        runtime.wait();
+        Ok(())
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        let Some(composite) = runtime.composites.remove(&composite_id) else {
+            return Ok(());
+        };
+        let primitive_sync_sources = runtime.session.primitive_sync_sources();
+        if let Err(error) = runtime
+            .session
+            .remove_composite_loop(&composite.handle, &primitive_sync_sources)
+        {
+            runtime.composites.insert(composite_id, composite);
+            return Err(error);
+        }
+        runtime.wait();
+        Ok(())
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
@@ -2354,6 +2564,39 @@ impl Backend for NativeBackend {
                 },
             );
         }
+        let composites = runtime
+            .composites
+            .iter()
+            .filter_map(|(id, composite)| {
+                let state = composite.handle.poll_state()?;
+                let active_children = state
+                    .active_children
+                    .iter()
+                    .filter_map(|child| {
+                        Some(BackendActiveCompositeChild {
+                            target: runtime.backend_composite_target(child.identity)?,
+                            mode: from_native_mode(child.mode),
+                            cycle_offset: child.cycle_offset,
+                        })
+                    })
+                    .collect();
+                Some((
+                    *id,
+                    BackendCompositeState {
+                        mode: from_native_mode(state.mode),
+                        next_mode: state.maybe_next_mode.map(from_native_mode),
+                        next_transition_delay: state.maybe_next_mode_delay,
+                        iteration: state.iteration,
+                        cycle_count: state.cycle_count,
+                        length: state.length,
+                        position: state.position,
+                        active_plan_version: state.active_plan_version,
+                        pending_plan_version: state.pending_plan_version,
+                        active_children,
+                    },
+                ))
+            })
+            .collect();
         Ok(BackendSnapshot {
             status: BackendStatus {
                 dsp_load_percent: driver.dsp_load_percent,
@@ -2375,6 +2618,7 @@ impl Backend for NativeBackend {
             audio_drivers,
             tracks,
             loops,
+            composites,
             connections: runtime.take_connection_snapshot(),
         })
     }
@@ -2662,6 +2906,82 @@ mod tests {
                 .dummy_dequeue_data(),
             [MidiEvent::new(0, vec![0x90, note, 100])]
         );
+    }
+
+    #[test]
+    fn native_dummy_exposes_engine_owned_composite_state_and_advancement() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 1_000,
+            buffer_size: 1,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        backend
+            .runtime_mut()
+            .unwrap()
+            .driver
+            .dummy_enter_controlled_mode();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "composite".to_owned(),
+                audio_channels: 0,
+                midi: false,
+                initial_loops: 4,
+            })
+            .unwrap();
+        let sync = created.loops[0];
+        let children = [created.loops[1], created.loops[2], created.loops[3]];
+        backend.set_loop_length(sync, 1).unwrap();
+        for child in children {
+            backend.set_loop_length(child, 4).unwrap();
+        }
+        let composite = backend.create_composite_loop().unwrap();
+        backend
+            .configure_composite_loop(
+                composite,
+                &BackendCompositeConfig {
+                    kind: BackendCompositeKind::Regular,
+                    sync_source: sync,
+                    timelines: vec![children
+                        .into_iter()
+                        .map(|child| {
+                            vec![BackendCompositeEntry {
+                                target: BackendCompositeTarget::Loop(child),
+                                delay: 0,
+                                n_cycles: None,
+                                mode: None,
+                            }]
+                        })
+                        .collect()],
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(sync, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let started = backend.poll().unwrap();
+        assert_eq!(
+            started.composites[&composite].active_children[0].target,
+            BackendCompositeTarget::Loop(children[0])
+        );
+
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_request_controlled_frames(4);
+            runtime.driver.dummy_run_requested_frames();
+        }
+        backend.wait_idle();
+        let advanced = backend.poll().unwrap();
+        assert_eq!(advanced.composites[&composite].iteration, 4);
+        assert_eq!(
+            advanced.composites[&composite].active_children[0].target,
+            BackendCompositeTarget::Loop(children[1])
+        );
+
+        backend.remove_composite_loop(composite).unwrap();
+        assert!(!backend.poll().unwrap().composites.contains_key(&composite));
     }
 
     #[test]

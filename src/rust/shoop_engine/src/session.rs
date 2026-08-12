@@ -733,6 +733,10 @@ impl Session {
         self.composite_timeline_version
     }
 
+    pub fn primitive_sync_sources(&self) -> &[Option<usize>] {
+        &self.sync_sources
+    }
+
     pub fn accept_composite_transition(
         &mut self,
         source: LoopIdentity,

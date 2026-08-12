@@ -1,8 +1,9 @@
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
-    WireApplicationPort, WireApplicationPortOwner, WireChannelMode, WireConfirmedLink,
-    WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
+    WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
+    WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
+    WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
+    WireMidiOutputEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
     WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
     WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
     COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
@@ -10,12 +11,14 @@ use shoop_audio_protocol::{
     TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiEvent, BackendPortDataType, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData, BackendSnapshot,
-    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackTopology,
-    EngineBackend, TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
-    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
+    BackendCompositeKind, BackendCompositeTarget, BackendGrabRequest, BackendHostPortDescriptor,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
+    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
+    BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
+    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorEditorState,
+    TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -278,6 +281,64 @@ impl WorkletHost {
                 if actual.raw() != expected_loop_id {
                     return Err("stable-ID mismatch while creating a loop".to_owned());
                 }
+                Ok(Event::Ack)
+            }
+            Command::CreateComposite {
+                expected_composite_id,
+            } => {
+                let actual = self
+                    .backend
+                    .create_composite_loop()
+                    .map_err(|error| error.to_string())?;
+                if actual.raw() != expected_composite_id {
+                    return Err("stable-ID mismatch while creating a composite".to_owned());
+                }
+                Ok(Event::Ack)
+            }
+            Command::ConfigureComposite {
+                composite_id,
+                config,
+            } => {
+                self.backend
+                    .configure_composite_loop(
+                        BackendCompositeId::from_raw(composite_id),
+                        &from_wire_composite_config(config),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::TransitionComposite {
+                composite_id,
+                mode,
+                cycles_delay,
+                align_to_iteration,
+            } => {
+                self.backend
+                    .transition_composite_loop(
+                        BackendCompositeId::from_raw(composite_id),
+                        from_wire_loop_mode(mode),
+                        cycles_delay,
+                        align_to_iteration,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetCompositePlayAfterRecord {
+                composite_id,
+                enabled,
+            } => {
+                self.backend
+                    .set_composite_play_after_record(
+                        BackendCompositeId::from_raw(composite_id),
+                        enabled,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::RemoveComposite { composite_id } => {
+                self.backend
+                    .remove_composite_loop(BackendCompositeId::from_raw(composite_id))
+                    .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
             Command::SetTrackControl { track_id, control } => {
@@ -783,6 +844,45 @@ fn from_wire_loop_mode(mode: WireLoopMode) -> BackendLoopMode {
     }
 }
 
+fn from_wire_composite_config(config: WireCompositeConfig) -> BackendCompositeConfig {
+    BackendCompositeConfig {
+        kind: match config.kind {
+            WireCompositeKind::Regular => BackendCompositeKind::Regular,
+            WireCompositeKind::Script => BackendCompositeKind::Script,
+        },
+        sync_source: BackendLoopId::from_raw(config.sync_source),
+        timelines: config
+            .timelines
+            .into_iter()
+            .map(|timeline| {
+                timeline
+                    .into_iter()
+                    .map(|section| {
+                        section
+                            .into_iter()
+                            .map(|entry| BackendCompositeEntry {
+                                target: match entry.target {
+                                    WireCompositeTarget::Loop(id) => {
+                                        BackendCompositeTarget::Loop(BackendLoopId::from_raw(id))
+                                    }
+                                    WireCompositeTarget::Composite(id) => {
+                                        BackendCompositeTarget::Composite(
+                                            BackendCompositeId::from_raw(id),
+                                        )
+                                    }
+                                },
+                                delay: entry.delay,
+                                n_cycles: entry.n_cycles,
+                                mode: entry.mode.map(from_wire_loop_mode),
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect(),
+    }
+}
+
 fn to_wire_track_topology(topology: &BackendTrackTopology) -> WireTrackTopology {
     match topology {
         BackendTrackTopology::Direct {
@@ -987,6 +1087,36 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 midi_activity: loop_.midi_activity,
             })
             .collect(),
+        composites: snapshot
+            .composites
+            .into_iter()
+            .map(|(id, composite)| WireCompositeState {
+                id: id.raw(),
+                mode: to_wire_loop_mode(composite.mode),
+                next_mode: composite.next_mode.map(to_wire_loop_mode),
+                next_transition_delay: composite.next_transition_delay,
+                iteration: composite.iteration,
+                cycle_count: composite.cycle_count,
+                length: composite.length,
+                position: composite.position,
+                active_plan_version: composite.active_plan_version,
+                pending_plan_version: composite.pending_plan_version,
+                active_children: composite
+                    .active_children
+                    .into_iter()
+                    .map(|child| WireActiveCompositeChild {
+                        target: match child.target {
+                            BackendCompositeTarget::Loop(id) => WireCompositeTarget::Loop(id.raw()),
+                            BackendCompositeTarget::Composite(id) => {
+                                WireCompositeTarget::Composite(id.raw())
+                            }
+                        },
+                        mode: to_wire_loop_mode(child.mode),
+                        cycle_offset: child.cycle_offset,
+                    })
+                    .collect(),
+            })
+            .collect(),
         application_ports,
         host_ports,
         confirmed_links,
@@ -1073,6 +1203,169 @@ mod tests {
     fn command(host: &mut WorkletHost, sequence: u64, command: Command) -> EventEnvelope {
         let json = serde_json::to_vec(&CommandEnvelope::new(sequence, command)).unwrap();
         serde_json::from_str(host.handle_json(&json)).unwrap()
+    }
+
+    #[test]
+    fn worklet_composite_contract_controls_and_publishes_independent_parent_state() {
+        let mut host = WorkletHost::new(1_000, 8).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1, 2, 3, 4],
+                    port_name_base: "composite".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 0,
+                        midi: false,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        for (sequence, loop_id, length) in [(2, 1, 1), (3, 2, 4), (4, 3, 4), (5, 4, 4)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetLoopLength { loop_id, length },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        let config = WireCompositeConfig {
+            kind: WireCompositeKind::Regular,
+            sync_source: 1,
+            timelines: vec![vec![2, 3, 4]
+                .into_iter()
+                .map(|id| {
+                    vec![shoop_audio_protocol::WireCompositeEntry {
+                        target: WireCompositeTarget::Loop(id),
+                        delay: 0,
+                        n_cycles: None,
+                        mode: None,
+                    }]
+                })
+                .collect()],
+        };
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::CreateComposite {
+                    expected_composite_id: 1,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::ConfigureComposite {
+                    composite_id: 1,
+                    config: config.clone(),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                8,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Playing,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                9,
+                Command::TransitionComposite {
+                    composite_id: 1,
+                    mode: WireLoopMode::Playing,
+                    cycles_delay: None,
+                    align_to_iteration: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(started) = command(&mut host, 10, Command::Poll).event else {
+            panic!("expected composite snapshot");
+        };
+        assert_eq!(started.composites[0].mode, WireLoopMode::Playing);
+        assert_eq!(
+            started.composites[0].active_children[0].target,
+            WireCompositeTarget::Loop(2)
+        );
+
+        for _ in 0..4 {
+            assert!(host.process(0, 0, 1));
+        }
+        let Event::Snapshot(advanced) = command(&mut host, 11, Command::Poll).event else {
+            panic!("expected composite snapshot");
+        };
+        assert_eq!(advanced.composites[0].iteration, 4);
+        assert_eq!(advanced.composites[0].position, 4);
+        assert_eq!(
+            advanced.composites[0].active_children[0].target,
+            WireCompositeTarget::Loop(3)
+        );
+
+        assert!(matches!(
+            command(
+                &mut host,
+                12,
+                Command::CreateComposite {
+                    expected_composite_id: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                13,
+                Command::ConfigureComposite {
+                    composite_id: 2,
+                    config,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                14,
+                Command::TransitionLoop {
+                    loop_id: 4,
+                    mode: WireLoopMode::Playing,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(host.process(0, 0, 1));
+        let Event::Snapshot(isolated) = command(&mut host, 15, Command::Poll).event else {
+            panic!("expected composite snapshot");
+        };
+        assert_eq!(isolated.composites[1].mode, WireLoopMode::Stopped);
+        assert_eq!(isolated.composites[1].position, 0);
+        assert!(isolated.composites[1].active_children.is_empty());
     }
 
     #[test]

@@ -47,6 +47,19 @@ impl BackendLoopId {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct BackendCompositeId(u64);
+
+impl BackendCompositeId {
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn raw(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BackendTrackId(u64);
 
 impl BackendTrackId {
@@ -319,7 +332,7 @@ pub struct BackendStatus {
     pub storage_exhaustions: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum BackendLoopMode {
     #[default]
     Unknown,
@@ -415,6 +428,54 @@ pub struct BackendLoopState {
     pub balance: f32,
     pub audio_peaks: Vec<f32>,
     pub midi_activity: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendCompositeKind {
+    Regular,
+    Script,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendCompositeTarget {
+    Loop(BackendLoopId),
+    Composite(BackendCompositeId),
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendCompositeEntry {
+    pub target: BackendCompositeTarget,
+    pub delay: i64,
+    pub n_cycles: Option<i64>,
+    pub mode: Option<BackendLoopMode>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendCompositeConfig {
+    pub kind: BackendCompositeKind,
+    pub sync_source: BackendLoopId,
+    pub timelines: Vec<Vec<Vec<BackendCompositeEntry>>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackendActiveCompositeChild {
+    pub target: BackendCompositeTarget,
+    pub mode: BackendLoopMode,
+    pub cycle_offset: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct BackendCompositeState {
+    pub mode: BackendLoopMode,
+    pub next_mode: Option<BackendLoopMode>,
+    pub next_transition_delay: Option<u32>,
+    pub iteration: u32,
+    pub cycle_count: u64,
+    pub length: u64,
+    pub position: u64,
+    pub active_plan_version: u64,
+    pub pending_plan_version: Option<u64>,
+    pub active_children: Vec<BackendActiveCompositeChild>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -595,10 +656,15 @@ pub struct BackendSnapshot {
     pub audio_drivers: AudioDriverRuntimeState,
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
+    pub composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
     pub connections: BackendConnectionSnapshot,
 }
 
 pub trait Backend {
+    fn supports_composite_loops(&self) -> bool {
+        false
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(Arc::from([]))
     }
@@ -627,6 +693,35 @@ pub trait Backend {
         Err(anyhow!("audio-driver switching is unavailable"))
     }
     fn create_loop(&mut self) -> Result<BackendLoopId>;
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
+    fn configure_composite_loop(
+        &mut self,
+        _composite_id: BackendCompositeId,
+        _config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
+    fn transition_composite_loop(
+        &mut self,
+        _composite_id: BackendCompositeId,
+        _mode: BackendLoopMode,
+        _cycles_delay: Option<u32>,
+        _align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
+    fn set_composite_play_after_record(
+        &mut self,
+        _composite_id: BackendCompositeId,
+        _enabled: bool,
+    ) -> Result<()> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
+    fn remove_composite_loop(&mut self, _composite_id: BackendCompositeId) -> Result<()> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
         match request.topology {
             BackendTrackTopology::Direct {
@@ -1007,8 +1102,12 @@ pub struct EngineBackend {
     xruns: u32,
     loops: BTreeMap<BackendLoopId, usize>,
     loop_channels: BTreeMap<BackendLoopId, EngineLoopChannels>,
+    composites: BTreeMap<BackendCompositeId, EngineComposite>,
     tracks: BTreeMap<BackendTrackId, EngineTrack>,
     next_loop_id: u64,
+    next_composite_id: u64,
+    next_composite_slot: u32,
+    next_composite_version: u64,
     next_track_id: u64,
     next_port_id: u64,
     next_backend_port_id: u64,
@@ -1027,6 +1126,13 @@ pub struct EngineBackend {
     web_midi_output_pending: VecDeque<BackendWebMidiOutputEvent>,
     web_midi_output_dropped: u32,
     web_midi_input_refused: u32,
+}
+
+struct EngineComposite {
+    identity: shoop_engine::LoopIdentity,
+    config: Option<BackendCompositeConfig>,
+    state: Arc<shoop_engine::state_mirror::CompositeStateMirror>,
+    play_after_record: bool,
 }
 
 struct EngineLoopChannels {
@@ -1108,8 +1214,12 @@ impl EngineBackend {
             xruns: 0,
             loops: BTreeMap::new(),
             loop_channels: BTreeMap::new(),
+            composites: BTreeMap::new(),
             tracks: BTreeMap::new(),
             next_loop_id: 1,
+            next_composite_id: 1,
+            next_composite_slot: 0x8000_0000,
+            next_composite_version: 1,
             next_track_id: 1,
             next_port_id: 2,
             next_backend_port_id: 1,
@@ -1158,6 +1268,263 @@ impl EngineBackend {
             .unwrap()
             .registry_id = PortId(backend.global_fx_midi as u64);
         Ok(backend)
+    }
+
+    fn composite_target_identity(
+        &self,
+        target: BackendCompositeTarget,
+    ) -> Result<shoop_engine::LoopIdentity> {
+        match target {
+            BackendCompositeTarget::Loop(id) => {
+                let index = self.engine_loop_index(id)?;
+                self.session
+                    .loop_identity(index)
+                    .ok_or_else(|| anyhow!("stale composite loop target {id:?}"))
+            }
+            BackendCompositeTarget::Composite(id) => self
+                .composites
+                .get(&id)
+                .map(|composite| composite.identity)
+                .ok_or_else(|| anyhow!("stale composite target {id:?}")),
+        }
+    }
+
+    fn backend_composite_target(
+        &self,
+        identity: shoop_engine::LoopIdentity,
+    ) -> Option<BackendCompositeTarget> {
+        match identity.kind {
+            shoop_engine::LoopTargetKind::Basic => self.loops.iter().find_map(|(id, index)| {
+                (*index == identity.slot as usize).then_some(BackendCompositeTarget::Loop(*id))
+            }),
+            shoop_engine::LoopTargetKind::Composite => {
+                self.composites.iter().find_map(|(id, composite)| {
+                    (composite.identity == identity)
+                        .then_some(BackendCompositeTarget::Composite(*id))
+                })
+            }
+        }
+    }
+
+    fn composite_primitive_targets(
+        &self,
+        composite_id: BackendCompositeId,
+        visited: &mut BTreeSet<BackendCompositeId>,
+        targets: &mut BTreeSet<BackendLoopId>,
+    ) -> Result<()> {
+        if !visited.insert(composite_id) {
+            return Err(anyhow!("composite dependency cycle"));
+        }
+        let config = self
+            .composites
+            .get(&composite_id)
+            .and_then(|composite| composite.config.as_ref())
+            .ok_or_else(|| anyhow!("composite is not configured"))?;
+        for entry in config.timelines.iter().flatten().flatten() {
+            match entry.target {
+                BackendCompositeTarget::Loop(id) => {
+                    targets.insert(id);
+                }
+                BackendCompositeTarget::Composite(id) => {
+                    self.composite_primitive_targets(id, visited, targets)?;
+                }
+            }
+        }
+        visited.remove(&composite_id);
+        Ok(())
+    }
+
+    fn compile_composite_timeline(
+        &self,
+        configs: &BTreeMap<BackendCompositeId, BackendCompositeConfig>,
+    ) -> Result<shoop_engine::CompositeBoundaryTimeline> {
+        let mut metadata = BTreeMap::new();
+        for (id, index) in &self.loops {
+            let identity = self
+                .session
+                .loop_identity(*index)
+                .ok_or_else(|| anyhow!("stale primitive loop {id:?}"))?;
+            let length = self
+                .session
+                .loop_(*index)
+                .map(|loop_| u64::from(loop_.length()))
+                .unwrap_or(0);
+            metadata.insert(
+                identity,
+                shoop_engine::LoopTargetMetadata {
+                    identity,
+                    length_samples: length,
+                },
+            );
+        }
+        for id in configs.keys() {
+            let identity = self
+                .composites
+                .get(id)
+                .ok_or_else(|| anyhow!("unknown composite {id:?}"))?
+                .identity;
+            metadata.insert(
+                identity,
+                shoop_engine::LoopTargetMetadata {
+                    identity,
+                    length_samples: 0,
+                },
+            );
+        }
+
+        let dependencies = configs
+            .iter()
+            .map(|(id, config)| {
+                let source = self.composites[id].identity;
+                let composite_children = config
+                    .timelines
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .filter_map(|entry| match entry.target {
+                        BackendCompositeTarget::Composite(child) => {
+                            self.composites.get(&child).map(|child| child.identity)
+                        }
+                        BackendCompositeTarget::Loop(_) => None,
+                    })
+                    .collect();
+                shoop_engine::CompositeDependency {
+                    source,
+                    composite_children,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut pending = configs.keys().copied().collect::<BTreeSet<_>>();
+        let mut compiled = BTreeMap::new();
+        while !pending.is_empty() {
+            let ready = pending.iter().copied().find(|id| {
+                configs[id]
+                    .timelines
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .all(|entry| match entry.target {
+                        BackendCompositeTarget::Loop(_) => true,
+                        BackendCompositeTarget::Composite(child) => compiled.contains_key(&child),
+                    })
+            });
+            let id = ready.ok_or_else(|| anyhow!("composite dependency cycle"))?;
+            let config = &configs[&id];
+            let source = self.composites[&id].identity;
+            let sync_index = self.engine_loop_index(config.sync_source)?;
+            let sync_identity = self
+                .session
+                .loop_identity(sync_index)
+                .ok_or_else(|| anyhow!("stale composite sync source"))?;
+            let sync_length = self
+                .session
+                .loop_(sync_index)
+                .map(|loop_| u64::from(loop_.length()))
+                .unwrap_or(0)
+                .max(1);
+            let timelines = config
+                .timelines
+                .iter()
+                .map(|sections| {
+                    Ok(shoop_engine::CompositeTimeline {
+                        sections: sections
+                            .iter()
+                            .map(|entries| {
+                                Ok(shoop_engine::CompositeSection {
+                                    entries: entries
+                                        .iter()
+                                        .map(|entry| {
+                                            Ok(shoop_engine::CompositeEntry {
+                                                target: self
+                                                    .composite_target_identity(entry.target)?,
+                                                delay: entry.delay,
+                                                n_cycles: entry.n_cycles,
+                                                mode: entry.mode.map(to_engine_mode),
+                                            })
+                                        })
+                                        .collect::<Result<Vec<_>>>()?,
+                                })
+                            })
+                            .collect::<Result<Vec<_>>>()?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let descriptor = shoop_engine::CompositePlanDescriptor {
+                source,
+                sync_length,
+                timelines,
+            };
+            let catalog =
+                shoop_engine::LoopTargetCatalog::new(metadata.values().copied().collect())
+                    .map_err(|error| anyhow!("invalid composite target catalog: {error}"))?;
+            let plan = shoop_engine::compile_composite_plan(
+                &descriptor,
+                &catalog,
+                &dependencies,
+                shoop_engine::CompositePlanLimits::default(),
+            )
+            .map_err(|error| anyhow!("composite plan validation failed: {error}"))?;
+            let actual_kind = match plan.kind() {
+                shoop_engine::CompiledCompositeKind::Regular => BackendCompositeKind::Regular,
+                shoop_engine::CompiledCompositeKind::Script => BackendCompositeKind::Script,
+            };
+            if actual_kind != config.kind {
+                return Err(anyhow!("composite kind does not match its entry modes"));
+            }
+            metadata.get_mut(&source).unwrap().length_samples =
+                u64::from(plan.n_iterations()).saturating_mul(sync_length);
+            compiled.insert(id, (plan, sync_identity));
+            pending.remove(&id);
+        }
+
+        let mut timeline = shoop_engine::CompositeBoundaryTimeline::new(
+            compiled
+                .into_values()
+                .map(|(plan, sync_source)| shoop_engine::CompositeTimelineNode {
+                    plan,
+                    sync_source,
+                })
+                .collect(),
+            shoop_engine::CompositeTimelineLimits::default(),
+        )
+        .map_err(|error| anyhow!("composite timeline validation failed: {error}"))?;
+        for (id, composite) in &self.composites {
+            if configs.contains_key(id)
+                && !timeline.set_state_mirror(composite.identity, Arc::clone(&composite.state))
+            {
+                return Err(anyhow!("compiled composite is missing from the timeline"));
+            }
+        }
+        Ok(timeline)
+    }
+
+    fn install_composite_configs(
+        &mut self,
+        configs: BTreeMap<BackendCompositeId, BackendCompositeConfig>,
+    ) -> Result<()> {
+        let mut timeline = self.compile_composite_timeline(&configs)?;
+        let version = self.next_composite_version;
+        self.next_composite_version = self.next_composite_version.saturating_add(1);
+        timeline
+            .prepare_install(version, self.session.primitive_sync_sources())
+            .map_err(|error| anyhow!("could not prepare composite timeline: {error}"))?;
+        let reclaimed = self
+            .session
+            .install_prepared_composite_timeline(timeline)
+            .map_err(|rejected| {
+                anyhow!("could not install composite timeline: {}", rejected.error)
+            })?;
+        drop(reclaimed);
+        for (id, config) in configs {
+            if let Some(composite) = self.composites.get_mut(&id) {
+                composite.config = Some(config);
+                self.session.accept_composite_play_after_record(
+                    composite.identity,
+                    composite.play_after_record,
+                )?;
+            }
+        }
+        Ok(())
     }
 
     pub fn configure_web_audio_channels(
@@ -2647,6 +3014,10 @@ fn engine_tiny_fx_state(fx: &mut EngineTinyFx) -> TrackFxState {
 }
 
 impl Backend for EngineBackend {
+    fn supports_composite_loops(&self) -> bool {
+        true
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![tiny_synth_fx_descriptor()].into())
     }
@@ -2734,6 +3105,129 @@ impl Backend for EngineBackend {
         self.next_loop_id = self.next_loop_id.saturating_add(1);
         self.loops.insert(id, engine_loop);
         Ok(id)
+    }
+
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        if self.next_composite_slot == u32::MAX {
+            return Err(anyhow!("composite identity capacity exhausted"));
+        }
+        let id = BackendCompositeId::from_raw(self.next_composite_id);
+        self.next_composite_id = self.next_composite_id.saturating_add(1);
+        let identity = shoop_engine::LoopIdentity {
+            slot: self.next_composite_slot,
+            generation: 1,
+            kind: shoop_engine::LoopTargetKind::Composite,
+        };
+        self.next_composite_slot += 1;
+        self.composites.insert(
+            id,
+            EngineComposite {
+                identity,
+                config: None,
+                state: Arc::new(shoop_engine::state_mirror::CompositeStateMirror::new(
+                    identity,
+                )),
+                play_after_record: false,
+            },
+        );
+        Ok(id)
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        if !self.composites.contains_key(&composite_id) {
+            return Err(anyhow!("unknown composite {composite_id:?}"));
+        }
+        let mut configs = self
+            .composites
+            .iter()
+            .filter_map(|(id, composite)| composite.config.clone().map(|config| (*id, config)))
+            .collect::<BTreeMap<_, _>>();
+        configs.insert(composite_id, config.clone());
+        self.install_composite_configs(configs)
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        let (identity, empty) = {
+            let composite = self
+                .composites
+                .get(&composite_id)
+                .ok_or_else(|| anyhow!("unknown composite {composite_id:?}"))?;
+            (composite.identity, composite.state.read().length == 0)
+        };
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            let mut targets = BTreeSet::new();
+            self.composite_primitive_targets(composite_id, &mut BTreeSet::new(), &mut targets)?;
+            for target in targets {
+                self.prepare_recording_storage(target)?;
+            }
+        }
+        if mode != BackendLoopMode::Stopped && empty {
+            return Ok(());
+        }
+        if let Some(iteration) = align_to_iteration {
+            self.session.accept_composite_immediate_transition(
+                identity,
+                to_engine_mode(mode),
+                iteration,
+            )?;
+        } else if let Some(delay) = cycles_delay {
+            self.session
+                .accept_composite_transition(identity, to_engine_mode(mode), delay)?;
+        } else {
+            self.session.accept_composite_immediate_transition(
+                identity,
+                to_engine_mode(mode),
+                0,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        enabled: bool,
+    ) -> Result<()> {
+        let composite = self
+            .composites
+            .get_mut(&composite_id)
+            .ok_or_else(|| anyhow!("unknown composite {composite_id:?}"))?;
+        composite.play_after_record = enabled;
+        if composite.config.is_some() {
+            self.session
+                .accept_composite_play_after_record(composite.identity, enabled)?;
+        }
+        Ok(())
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        if !self.composites.contains_key(&composite_id) {
+            return Ok(());
+        }
+        let configs = self
+            .composites
+            .iter()
+            .filter(|(id, _)| **id != composite_id)
+            .filter_map(|(id, composite)| composite.config.clone().map(|config| (*id, config)))
+            .collect::<BTreeMap<_, _>>();
+        self.install_composite_configs(configs)?;
+        self.composites.remove(&composite_id);
+        Ok(())
     }
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
@@ -3804,6 +4298,40 @@ impl Backend for EngineBackend {
                 },
             );
         }
+        let composites = self
+            .composites
+            .iter()
+            .filter_map(|(id, composite)| {
+                let state = composite.state.read();
+                state.installed.then(|| {
+                    let active_children = state
+                        .active_children()
+                        .filter_map(|child| {
+                            Some(BackendActiveCompositeChild {
+                                target: self.backend_composite_target(child.identity)?,
+                                mode: from_engine_mode(child.mode),
+                                cycle_offset: child.cycle_offset,
+                            })
+                        })
+                        .collect();
+                    (
+                        *id,
+                        BackendCompositeState {
+                            mode: from_engine_mode(state.mode),
+                            next_mode: state.next_mode.map(from_engine_mode),
+                            next_transition_delay: state.next_mode_delay,
+                            iteration: state.iteration,
+                            cycle_count: state.cycle_count,
+                            length: state.length,
+                            position: state.position,
+                            active_plan_version: state.active_plan_version,
+                            pending_plan_version: state.pending_plan_version,
+                            active_children,
+                        },
+                    )
+                })
+            })
+            .collect();
         Ok(BackendSnapshot {
             status: BackendStatus {
                 dsp_load_percent: 0.0,
@@ -3851,6 +4379,7 @@ impl Backend for EngineBackend {
             audio_drivers: self.audio_driver_runtime_state(),
             tracks,
             loops,
+            composites,
             connections: self.connection_snapshot(),
         })
     }
@@ -4126,7 +4655,12 @@ pub struct FakeBackend {
     tracks: BTreeMap<BackendTrackId, FakeTrack>,
     loops: BTreeMap<BackendLoopId, BackendLoopState>,
     sync_sources: BTreeMap<BackendLoopId, Option<BackendLoopId>>,
+    composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
+    composite_configs: BTreeMap<BackendCompositeId, BackendCompositeConfig>,
+    composite_loops_supported: bool,
+    fail_next_composite_configuration: Option<String>,
     next_loop_id: u64,
+    next_composite_id: u64,
     next_track_id: u64,
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
@@ -4154,6 +4688,15 @@ struct FakeTrack {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FakeOperation {
     CreateLoop(BackendLoopId),
+    CreateComposite(BackendCompositeId),
+    ConfigureComposite(BackendCompositeId, BackendCompositeConfig),
+    TransitionComposite(
+        BackendCompositeId,
+        BackendLoopMode,
+        Option<u32>,
+        Option<i64>,
+    ),
+    RemoveComposite(BackendCompositeId),
     CreateTrack(BackendTrackId),
     AddTrackLoop(BackendTrackId, BackendLoopId),
     SetTrackControl(BackendTrackId, BackendTrackControl),
@@ -4200,7 +4743,12 @@ impl Default for FakeBackend {
             tracks: BTreeMap::new(),
             loops: BTreeMap::new(),
             sync_sources: BTreeMap::new(),
+            composites: BTreeMap::new(),
+            composite_configs: BTreeMap::new(),
+            composite_loops_supported: false,
+            fail_next_composite_configuration: None,
             next_loop_id: 1,
+            next_composite_id: 1,
             next_track_id: 1,
             next_port_id: 1,
             fail_track_creation_after: None,
@@ -4221,6 +4769,18 @@ impl Default for FakeBackend {
 impl FakeBackend {
     pub fn operations(&self) -> &[FakeOperation] {
         &self.operations
+    }
+
+    pub fn loop_sync_source(&self, loop_id: BackendLoopId) -> Option<BackendLoopId> {
+        self.sync_sources.get(&loop_id).copied().flatten()
+    }
+
+    pub fn enable_composite_loops(&mut self) {
+        self.composite_loops_supported = true;
+    }
+
+    pub fn fail_next_composite_configuration(&mut self, message: impl Into<String>) {
+        self.fail_next_composite_configuration = Some(message.into());
     }
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
@@ -4521,6 +5081,10 @@ impl FakeBackend {
 }
 
 impl Backend for FakeBackend {
+    fn supports_composite_loops(&self) -> bool {
+        self.composite_loops_supported
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(Arc::clone(&self.processor_catalog))
     }
@@ -4701,6 +5265,143 @@ impl Backend for FakeBackend {
         );
         self.operations.push(FakeOperation::CreateLoop(id));
         Ok(id)
+    }
+
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        let id = BackendCompositeId::from_raw(self.next_composite_id);
+        self.next_composite_id = self.next_composite_id.saturating_add(1);
+        self.composites.insert(id, BackendCompositeState::default());
+        self.operations.push(FakeOperation::CreateComposite(id));
+        Ok(id)
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        if !self.composites.contains_key(&composite_id) {
+            return Err(anyhow!("unknown fake composite {composite_id:?}"));
+        }
+        if let Some(message) = self.fail_next_composite_configuration.take() {
+            return Err(anyhow!(message));
+        }
+        let sync_length = self
+            .loops
+            .get(&config.sync_source)
+            .map(|state| u64::from(state.length))
+            .ok_or_else(|| anyhow!("unknown fake composite sync source"))?;
+        if sync_length == 0 && config.timelines.iter().flatten().flatten().next().is_some() {
+            return Err(anyhow!("composite synchronization length is zero"));
+        }
+        let mut length_cycles = 0u64;
+        for timeline in &config.timelines {
+            let mut timeline_cycles = 0u64;
+            for section in timeline {
+                let mut section_cycles = 0u64;
+                for entry in section {
+                    let delay = u64::try_from(entry.delay)
+                        .map_err(|_| anyhow!("composite entry delay is negative"))?;
+                    let child_length = match entry.target {
+                        BackendCompositeTarget::Loop(id) => self
+                            .loops
+                            .get(&id)
+                            .map(|state| u64::from(state.length))
+                            .ok_or_else(|| anyhow!("unknown fake composite loop target {id:?}"))?,
+                        BackendCompositeTarget::Composite(id) if id == composite_id => {
+                            return Err(anyhow!("composite dependency cycle"));
+                        }
+                        BackendCompositeTarget::Composite(id) => self
+                            .composites
+                            .get(&id)
+                            .map(|state| state.length)
+                            .ok_or_else(|| anyhow!("unknown fake composite target {id:?}"))?,
+                    };
+                    let duration = match entry.n_cycles {
+                        Some(cycles) if cycles <= 0 => {
+                            return Err(anyhow!("composite cycle count is not positive"));
+                        }
+                        Some(cycles) => u64::try_from(cycles)
+                            .map_err(|_| anyhow!("composite cycle count is out of range"))?,
+                        None => child_length.div_ceil(sync_length).max(1),
+                    };
+                    section_cycles = section_cycles.max(
+                        delay
+                            .checked_add(duration)
+                            .ok_or_else(|| anyhow!("composite duration overflow"))?,
+                    );
+                }
+                timeline_cycles = timeline_cycles
+                    .checked_add(section_cycles)
+                    .ok_or_else(|| anyhow!("composite timeline overflow"))?;
+            }
+            length_cycles = length_cycles.max(timeline_cycles);
+        }
+        let length = length_cycles
+            .checked_mul(sync_length)
+            .ok_or_else(|| anyhow!("composite length overflow"))?;
+        let state = self.composites.get_mut(&composite_id).unwrap();
+        state.length = length;
+        state.active_plan_version = state.active_plan_version.saturating_add(1);
+        self.composite_configs.insert(composite_id, config.clone());
+        self.operations.push(FakeOperation::ConfigureComposite(
+            composite_id,
+            config.clone(),
+        ));
+        Ok(())
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        let state = self
+            .composites
+            .get_mut(&composite_id)
+            .ok_or_else(|| anyhow!("unknown fake composite {composite_id:?}"))?;
+        if cycles_delay.is_some() && align_to_iteration.is_none() {
+            state.next_mode = Some(mode);
+            state.next_transition_delay = cycles_delay;
+        } else {
+            state.mode = if state.length == 0 {
+                BackendLoopMode::Stopped
+            } else {
+                mode
+            };
+            state.next_mode = None;
+            state.next_transition_delay = None;
+            state.iteration = align_to_iteration.unwrap_or(0).max(0) as u32;
+            state.position = u64::from(state.iteration).min(state.length);
+        }
+        self.operations.push(FakeOperation::TransitionComposite(
+            composite_id,
+            mode,
+            cycles_delay,
+            align_to_iteration,
+        ));
+        Ok(())
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        _enabled: bool,
+    ) -> Result<()> {
+        if !self.composites.contains_key(&composite_id) {
+            return Err(anyhow!("unknown fake composite {composite_id:?}"));
+        }
+        Ok(())
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        self.composites.remove(&composite_id);
+        self.composite_configs.remove(&composite_id);
+        self.operations
+            .push(FakeOperation::RemoveComposite(composite_id));
+        Ok(())
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -5528,6 +6229,7 @@ impl Backend for FakeBackend {
                 .map(|(id, track)| (*id, track.state.clone()))
                 .collect(),
             loops: self.loops.clone(),
+            composites: self.composites.clone(),
             connections: self.connection_snapshot(),
         })
     }
@@ -5538,6 +6240,242 @@ impl Backend for FakeBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn backend_composite_lifecycle_contract(backend: &mut dyn Backend) {
+        let sync = backend.create_loop().unwrap();
+        let child = backend.create_loop().unwrap();
+        backend.set_loop_length(sync, 1).unwrap();
+        backend.set_loop_length(child, 4).unwrap();
+        let composite = backend.create_composite_loop().unwrap();
+        let config = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Loop(child),
+                delay: 0,
+                n_cycles: None,
+                mode: None,
+            }]]],
+        };
+        backend
+            .configure_composite_loop(composite, &config)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let configured = backend.poll().unwrap().composites[&composite].clone();
+        assert_eq!(configured.mode, BackendLoopMode::Playing);
+        assert_eq!(configured.length, 4);
+
+        let stale = BackendCompositeConfig {
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Loop(BackendLoopId::from_raw(u64::MAX)),
+                delay: 0,
+                n_cycles: None,
+                mode: None,
+            }]]],
+            ..config
+        };
+        assert!(backend.configure_composite_loop(composite, &stale).is_err());
+        assert_eq!(backend.poll().unwrap().composites[&composite], configured);
+
+        backend.remove_composite_loop(composite).unwrap();
+        assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[test]
+    fn fake_backend_satisfies_shared_composite_lifecycle_contract() {
+        backend_composite_lifecycle_contract(&mut FakeBackend::default());
+    }
+
+    #[test]
+    fn engine_backend_satisfies_shared_composite_lifecycle_contract() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        backend_composite_lifecycle_contract(&mut backend);
+    }
+
+    #[test]
+    fn engine_backend_composite_contract_is_independent_and_transactional() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let sync = backend.create_loop().unwrap();
+        let children = [
+            backend.create_loop().unwrap(),
+            backend.create_loop().unwrap(),
+            backend.create_loop().unwrap(),
+        ];
+        backend.set_loop_length(sync, 1).unwrap();
+        for child in children {
+            backend.set_loop_length(child, 4).unwrap();
+        }
+        backend.apply_graph_changes().unwrap();
+        let empty = backend.create_composite_loop().unwrap();
+        backend
+            .configure_composite_loop(
+                empty,
+                &BackendCompositeConfig {
+                    kind: BackendCompositeKind::Regular,
+                    sync_source: sync,
+                    timelines: Vec::new(),
+                },
+            )
+            .unwrap();
+        backend
+            .transition_composite_loop(empty, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        assert_eq!(
+            backend.poll().unwrap().composites[&empty].mode,
+            BackendLoopMode::Stopped
+        );
+
+        let composite = backend.create_composite_loop().unwrap();
+        let config = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![children
+                .into_iter()
+                .map(|target| {
+                    vec![BackendCompositeEntry {
+                        target: BackendCompositeTarget::Loop(target),
+                        delay: 0,
+                        n_cycles: None,
+                        mode: None,
+                    }]
+                })
+                .collect()],
+        };
+        backend
+            .configure_composite_loop(composite, &config)
+            .unwrap();
+        backend
+            .transition_loop(sync, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let started = backend.poll().unwrap();
+        assert_eq!(
+            started.composites[&composite].mode,
+            BackendLoopMode::Playing
+        );
+        assert_eq!(
+            started.composites[&composite].active_children[0].target,
+            BackendCompositeTarget::Loop(children[0])
+        );
+
+        backend.advance_frames(4);
+        let advanced = backend.poll().unwrap();
+        assert_eq!(advanced.composites[&composite].iteration, 4);
+        assert_eq!(
+            advanced.composites[&composite].active_children[0].target,
+            BackendCompositeTarget::Loop(children[1])
+        );
+
+        let aligned = backend.create_composite_loop().unwrap();
+        backend.configure_composite_loop(aligned, &config).unwrap();
+        backend
+            .transition_composite_loop(aligned, BackendLoopMode::Playing, None, Some(5))
+            .unwrap();
+        let aligned_state = backend.poll().unwrap().composites[&aligned].clone();
+        assert_eq!(aligned_state.iteration, 5);
+        assert_eq!(aligned_state.position, 5);
+        assert_eq!(
+            aligned_state.active_children[0].target,
+            BackendCompositeTarget::Loop(children[1])
+        );
+
+        let stopped = backend.create_composite_loop().unwrap();
+        backend.configure_composite_loop(stopped, &config).unwrap();
+        backend
+            .transition_composite_loop(stopped, BackendLoopMode::Playing, Some(2), None)
+            .unwrap();
+        let pending = backend.poll().unwrap().composites[&stopped].clone();
+        assert_eq!(pending.mode, BackendLoopMode::Stopped);
+        assert_eq!(pending.next_mode, Some(BackendLoopMode::Playing));
+        assert_eq!(pending.next_transition_delay, Some(2));
+        backend
+            .transition_loop(children[2], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend.advance_frames(1);
+        assert_eq!(
+            backend.poll().unwrap().composites[&stopped].mode,
+            BackendLoopMode::Stopped
+        );
+
+        let reconfigured = backend.create_composite_loop().unwrap();
+        backend
+            .configure_composite_loop(reconfigured, &config)
+            .unwrap();
+        let parallel = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![
+                children[..2]
+                    .iter()
+                    .map(|target| BackendCompositeEntry {
+                        target: BackendCompositeTarget::Loop(*target),
+                        delay: 0,
+                        n_cycles: None,
+                        mode: None,
+                    })
+                    .collect(),
+                vec![BackendCompositeEntry {
+                    target: BackendCompositeTarget::Loop(children[2]),
+                    delay: 0,
+                    n_cycles: None,
+                    mode: None,
+                }],
+            ]],
+        };
+        backend
+            .configure_composite_loop(reconfigured, &parallel)
+            .unwrap();
+        backend
+            .transition_composite_loop(reconfigured, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let parallel_state = backend.poll().unwrap().composites[&reconfigured].clone();
+        assert_eq!(parallel_state.length, 8);
+        assert_eq!(parallel_state.active_children.len(), 2);
+        backend.remove_composite_loop(reconfigured).unwrap();
+        assert!(!backend
+            .poll()
+            .unwrap()
+            .composites
+            .contains_key(&reconfigured));
+        assert!(backend
+            .transition_composite_loop(reconfigured, BackendLoopMode::Playing, None, None,)
+            .is_err());
+
+        let stale = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Loop(BackendLoopId::from_raw(u64::MAX)),
+                delay: 0,
+                n_cycles: None,
+                mode: None,
+            }]]],
+        };
+        let before_stale = backend.poll().unwrap().composites[&composite].clone();
+        assert!(backend.configure_composite_loop(composite, &stale).is_err());
+        assert_eq!(backend.poll().unwrap().composites[&composite], before_stale);
+
+        let invalid = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Composite(composite),
+                delay: 0,
+                n_cycles: Some(1),
+                mode: None,
+            }]]],
+        };
+        assert!(backend
+            .configure_composite_loop(composite, &invalid)
+            .unwrap_err()
+            .to_string()
+            .contains("cycle"));
+        assert_eq!(backend.poll().unwrap().composites[&composite], before_stale);
+    }
 
     #[test]
     fn default_input_capture_is_thirty_seconds() {
