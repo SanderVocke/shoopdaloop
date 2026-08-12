@@ -52,6 +52,7 @@ pub mod midi_storage;
 #[cfg(feature = "midir")]
 pub mod midir_driver;
 pub mod multichannel_audio;
+pub mod pending_midi_control;
 pub mod port;
 pub mod profiling;
 pub mod realtime_alloc_guard;
@@ -135,6 +136,7 @@ pub use midi_sorting_buffer::MidiSortingBuffer;
 pub use midi_state::{MidiStateTracker, TrackWhat};
 pub use midi_storage::{Cursor, CursorFindResult, MidiStorage, MidiStorageElem, TruncateSide};
 pub use multichannel_audio::{MultichannelAudio, MultichannelAudioError};
+pub use pending_midi_control::{PendingMidiControlState, MAX_PENDING_MIDI_CONTROLS};
 pub use port::{
     AudioPort, PortConnectability, PortConnectabilityKind, PortDataType, PortDirection,
 };

@@ -13,6 +13,7 @@
 
 #[cfg(feature = "carla")]
 use crate::carla_processor::CarlaProcessor;
+use crate::pending_midi_control::PendingMidiControlState;
 use shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -382,6 +383,7 @@ pub struct Session {
     boundary_natural_intents: Vec<BoundaryIntent>,
     /// Stable, callback-owned processors and their explicit graph routes.
     processors: Vec<ProcessorRoute>,
+    global_fx_midi_input: Option<usize>,
     /// Cycles that hit [`MAX_SUB_BLOCKS`] without finishing.
     n_stuck_cycles: u32,
     /// Cycles run against a schedule older than the current topology.
@@ -418,6 +420,9 @@ struct ProcessorRoute {
     audio_outputs: Vec<usize>,
     midi_inputs: Vec<usize>,
     midi_staging: Vec<Vec<MidiStorageElem>>,
+    global_pending: PendingMidiControlState,
+    global_current: Vec<MidiStorageElem>,
+    combined_midi: Vec<MidiStorageElem>,
 }
 
 /// A topology snapshot: everything [`build_schedule`] needs, borrowing nothing.
@@ -1381,6 +1386,12 @@ impl Session {
                 m.output_port = None;
             }
         }
+        if self.global_fx_midi_input == Some(port) {
+            self.global_fx_midi_input = None;
+            for processor in &mut self.processors {
+                processor.global_pending = PendingMidiControlState::default();
+            }
+        }
         for processor in &mut self.processors {
             processor
                 .audio_inputs
@@ -1472,6 +1483,9 @@ impl Session {
                 audio_outputs: Vec::new(),
                 midi_inputs: Vec::new(),
                 midi_staging: Vec::new(),
+                global_pending: PendingMidiControlState::default(),
+                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
             });
             self.note_graph_change();
         }
@@ -1490,8 +1504,24 @@ impl Session {
             audio_outputs: Vec::new(),
             midi_inputs: Vec::new(),
             midi_staging: Vec::new(),
+            global_pending: PendingMidiControlState::default(),
+            global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+            combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
         });
         self.note_graph_change();
+    }
+
+    pub fn set_global_fx_midi_input(&mut self, port: usize) -> Result<(), SessionError> {
+        if !self
+            .ports
+            .get(port)
+            .is_some_and(|candidate| candidate.midi().is_some())
+        {
+            return Err(SessionError::NoSuchPort(port));
+        }
+        self.global_fx_midi_input = Some(port);
+        self.note_graph_change();
+        Ok(())
     }
 
     pub fn set_processor_ports(
@@ -1555,6 +1585,9 @@ impl Session {
                 audio_outputs: Vec::new(),
                 midi_inputs: Vec::new(),
                 midi_staging: Vec::new(),
+                global_pending: PendingMidiControlState::default(),
+                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
             });
             None
         };
@@ -1603,6 +1636,9 @@ impl Session {
                 audio_outputs: Vec::new(),
                 midi_inputs: Vec::new(),
                 midi_staging: Vec::new(),
+                global_pending: PendingMidiControlState::default(),
+                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
             });
         }
         self.note_graph_change();
@@ -1976,14 +2012,27 @@ impl Session {
                     input_ports: processor
                         .audio_inputs
                         .iter()
-                        .chain(&processor.midi_inputs)
+                        .chain(
+                            processor.midi_inputs.iter().filter(|_| {
+                                !matches!(processor.backend, ProcessorBackend::External)
+                            }),
+                        )
                         .copied()
+                        .chain(
+                            self.global_fx_midi_input
+                                .filter(|_| !processor.midi_inputs.is_empty()),
+                        )
                         .map(PortIdx)
                         .collect(),
                     output_ports: processor
                         .audio_outputs
                         .iter()
                         .copied()
+                        .chain(
+                            processor.midi_inputs.iter().copied().filter(|_| {
+                                matches!(processor.backend, ProcessorBackend::External)
+                            }),
+                        )
                         .map(PortIdx)
                         .collect(),
                 })
@@ -2245,6 +2294,9 @@ impl Session {
 
         for (staging, &port_index) in route.midi_staging.iter_mut().zip(&route.midi_inputs) {
             staging.clear();
+            if matches!(route.backend, ProcessorBackend::External) {
+                continue;
+            }
             staging.extend(
                 self.ports[port_index]
                     .midi_events()
@@ -2258,90 +2310,147 @@ impl Session {
             }
         }
 
-        if route.active {
-            match &mut route.backend {
-                ProcessorBackend::External => {}
-                ProcessorBackend::Test2x2x1 => {
-                    for output_index in 0..route.audio_outputs.len() {
-                        self.scratch[..n_frames].fill(0.0);
-                        if let Some(&input) = route.audio_inputs.get(output_index) {
-                            let input = self.ports[input].buffer(n_frames);
-                            for (output, input) in self.scratch[..n_frames].iter_mut().zip(input) {
-                                *output = *input * 0.5;
-                            }
-                        }
-                        for event in route.midi_staging.iter().flatten() {
-                            let time = event.time as usize;
-                            if time < n_frames
-                                && event.data().len() >= 3
-                                && (event.data()[0] & 0xf0) == 0x90
-                                && event.data()[2] > 0
-                            {
-                                self.scratch[time] += event.data()[2] as f32 / 255.0;
-                            }
-                        }
-                        self.ports[route.audio_outputs[output_index]]
-                            .buffer(n_frames)
-                            .copy_from_slice(&self.scratch[..n_frames]);
-                    }
-                }
-                ProcessorBackend::Tiny(processor) => {
-                    if n_frames <= processor.max_frames() {
-                        for input_index in 0..processor.logical_channel_count() {
-                            let Some(destination) = processor.plane_mut(input_index, n_frames)
-                            else {
-                                continue;
-                            };
-                            if let Some(&port_index) = route.audio_inputs.get(input_index) {
-                                destination
-                                    .copy_from_slice(self.ports[port_index].buffer(n_frames));
-                            } else {
-                                destination.fill(0.0);
-                            }
-                        }
-                        processor.clear_silent_plane(n_frames);
-                        let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
-                        processor.process(n_frames, events);
-                        for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
-                            let Some(source) = processor.plane(output_index, n_frames) else {
-                                continue;
-                            };
-                            self.ports[port_index]
-                                .buffer(n_frames)
-                                .copy_from_slice(source);
-                        }
-                    }
-                }
+        route.global_current.clear();
+        if !route.midi_inputs.is_empty() {
+            if let Some(port) = self
+                .global_fx_midi_input
+                .and_then(|port| self.ports.get(port))
+            {
+                route.global_current.extend(
+                    port.midi_events()
+                        .iter()
+                        .filter(|event| PendingMidiControlState::supports(event.data()))
+                        .take(MAX_MIDI_EVENTS_PER_BLOCK)
+                        .copied(),
+                );
+            }
+        }
+        let processor_active = route.active
+            && match &route.backend {
                 #[cfg(feature = "carla")]
-                ProcessorBackend::Carla(host) => {
-                    if host.is_active() {
-                        for (input_index, &port_index) in route.audio_inputs.iter().enumerate() {
-                            if let Some(destination) = host.audio_input_mut(input_index) {
-                                destination[..n_frames]
-                                    .copy_from_slice(self.ports[port_index].buffer(n_frames));
-                            }
+                ProcessorBackend::Carla(host) => host.is_active(),
+                _ => true,
+            };
+        if !processor_active {
+            for event in &route.global_current {
+                route.global_pending.process(event.data());
+            }
+            self.processors = processors;
+            return;
+        }
+
+        for event in &route.global_current {
+            route.global_pending.clear_message(event.data());
+        }
+        route.combined_midi.clear();
+        let ordinary = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
+        let current_count = route
+            .global_current
+            .len()
+            .min(MAX_MIDI_EVENTS_PER_BLOCK.saturating_sub(ordinary.len()));
+        let pending_capacity = MAX_MIDI_EVENTS_PER_BLOCK
+            .saturating_sub(ordinary.len())
+            .saturating_sub(current_count);
+        route
+            .global_pending
+            .append_messages(&mut route.combined_midi, pending_capacity);
+        let pending_count = route.combined_midi.len();
+        route.combined_midi.extend(ordinary.iter().copied());
+        route
+            .combined_midi
+            .extend(route.global_current.iter().take(current_count).copied());
+        for index in 0..pending_count {
+            route
+                .global_pending
+                .clear_message(route.combined_midi[index].data());
+        }
+        for event in route.global_current.iter().skip(current_count) {
+            route.global_pending.process(event.data());
+        }
+
+        match &mut route.backend {
+            ProcessorBackend::External => {
+                for &port in &route.midi_inputs {
+                    for event in &route.combined_midi {
+                        self.ports[port].write_midi(*event);
+                    }
+                }
+            }
+            ProcessorBackend::Test2x2x1 => {
+                for output_index in 0..route.audio_outputs.len() {
+                    self.scratch[..n_frames].fill(0.0);
+                    if let Some(&input) = route.audio_inputs.get(output_index) {
+                        let input = self.ports[input].buffer(n_frames);
+                        for (output, input) in self.scratch[..n_frames].iter_mut().zip(input) {
+                            *output = *input * 0.5;
                         }
-                        for (midi_index, staging) in route.midi_staging.iter().enumerate() {
-                            let mut events = [(0_u32, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
-                            for (destination, event) in events.iter_mut().zip(staging) {
-                                *destination = (
-                                    event.time.min(n_frames.saturating_sub(1) as u32),
-                                    event.data(),
-                                );
-                            }
-                            let _ = host.set_midi_input_events(
-                                midi_index,
-                                &events[..staging.len().min(MAX_MIDI_EVENTS_PER_BLOCK)],
-                            );
+                    }
+                    for event in &route.combined_midi {
+                        let time = event.time as usize;
+                        if time < n_frames
+                            && event.data().len() >= 3
+                            && (event.data()[0] & 0xf0) == 0x90
+                            && event.data()[2] > 0
+                        {
+                            self.scratch[time] += event.data()[2] as f32 / 255.0;
                         }
-                        let _ = host.process(n_frames);
-                        for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
-                            if let Some(source) = host.audio_output(output_index) {
-                                self.ports[port_index]
-                                    .buffer(n_frames)
-                                    .copy_from_slice(&source[..n_frames]);
-                            }
+                    }
+                    self.ports[route.audio_outputs[output_index]]
+                        .buffer(n_frames)
+                        .copy_from_slice(&self.scratch[..n_frames]);
+                }
+            }
+            ProcessorBackend::Tiny(processor) => {
+                if n_frames <= processor.max_frames() {
+                    for input_index in 0..processor.logical_channel_count() {
+                        let Some(destination) = processor.plane_mut(input_index, n_frames) else {
+                            continue;
+                        };
+                        if let Some(&port_index) = route.audio_inputs.get(input_index) {
+                            destination.copy_from_slice(self.ports[port_index].buffer(n_frames));
+                        } else {
+                            destination.fill(0.0);
                         }
+                    }
+                    processor.clear_silent_plane(n_frames);
+                    processor.process(n_frames, &route.combined_midi);
+                    for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
+                        let Some(source) = processor.plane(output_index, n_frames) else {
+                            continue;
+                        };
+                        self.ports[port_index]
+                            .buffer(n_frames)
+                            .copy_from_slice(source);
+                    }
+                }
+            }
+            #[cfg(feature = "carla")]
+            ProcessorBackend::Carla(host) => {
+                for (input_index, &port_index) in route.audio_inputs.iter().enumerate() {
+                    if let Some(destination) = host.audio_input_mut(input_index) {
+                        destination[..n_frames]
+                            .copy_from_slice(self.ports[port_index].buffer(n_frames));
+                    }
+                }
+                for midi_index in 0..route.midi_staging.len() {
+                    let mut events = [(0_u32, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
+                    for (destination, event) in events.iter_mut().zip(&route.combined_midi) {
+                        *destination = (
+                            event.time.min(n_frames.saturating_sub(1) as u32),
+                            event.data(),
+                        );
+                    }
+                    let _ = host.set_midi_input_events(
+                        midi_index,
+                        &events[..route.combined_midi.len().min(MAX_MIDI_EVENTS_PER_BLOCK)],
+                    );
+                }
+                let _ = host.process(n_frames);
+                for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
+                    if let Some(source) = host.audio_output(output_index) {
+                        self.ports[port_index]
+                            .buffer(n_frames)
+                            .copy_from_slice(&source[..n_frames]);
                     }
                 }
             }
@@ -2964,6 +3073,7 @@ impl Session {
 mod tests {
     use super::*;
     use crate::dummy_port::PortId;
+    use crate::midi;
     use crate::port::{PortConnectability, PortDirection};
     use assert2::{check, let_assert};
 
@@ -4556,6 +4666,90 @@ mod tests {
         let wet = s.port_mut(fx_out).unwrap().buffer(64).to_vec();
         assert_eq!(wet.len(), 64);
         assert!(wet.iter().all(|s| s.is_finite()));
+    }
+
+    #[test]
+    fn global_fx_controls_filter_and_feed_active_processors_without_recording() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_test_fx_active("fx", true);
+        let audio_in = session.add_port(internal("fx:audio_in", 4));
+        let audio_out = session.add_port(internal("fx:audio_out", 4));
+        let midi_in = session.add_port(dummy_midi(80, "fx:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(81, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("fx", vec![audio_in], vec![audio_out], vec![midi_in])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(1, &midi::cc(0, 7, 100));
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(2, &midi::note_on(0, 60, 127));
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+
+        assert_eq!(session.port_mut(audio_out).unwrap().buffer(4), [0.0; 4]);
+        assert_eq!(
+            session.processors[0]
+                .combined_midi
+                .iter()
+                .map(|event| event.data().to_vec())
+                .collect::<Vec<_>>(),
+            vec![midi::cc(0, 7, 100).to_vec()]
+        );
+    }
+
+    #[test]
+    fn inactive_processor_keeps_latest_global_control_until_real_activation() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_test_fx_active("fx", false);
+        let audio_in = session.add_port(internal("fx:audio_in", 4));
+        let audio_out = session.add_port(internal("fx:audio_out", 4));
+        let midi_in = session.add_port(dummy_midi(82, "fx:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(83, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("fx", vec![audio_in], vec![audio_out], vec![midi_in])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::cc(0, 7, 1));
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(1, &midi::cc(0, 7, 2));
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+        assert_eq!(session.port_mut(audio_out).unwrap().buffer(4), [0.0; 4]);
+        assert!(!session.processors[0].global_pending.is_empty());
+        assert!(session.processors[0].combined_midi.is_empty());
+
+        session.set_test_fx_active("fx", true);
+        session.process(4);
+        assert_eq!(session.port_mut(audio_out).unwrap().buffer(4), [0.0; 4]);
+        assert_eq!(
+            session.processors[0]
+                .combined_midi
+                .iter()
+                .map(|event| event.data().to_vec())
+                .collect::<Vec<_>>(),
+            vec![midi::cc(0, 7, 2).to_vec()]
+        );
+        assert!(session.processors[0].global_pending.is_empty());
     }
 
     #[test]
