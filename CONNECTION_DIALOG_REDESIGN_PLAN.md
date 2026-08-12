@@ -43,6 +43,7 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 - Use consistent Audio/MIDI line styling plus separate confirmed, pending, hovered, owner-managed, and error treatments; do not rely on color alone to communicate mutable versus disabled state.
 - Cancel transient drag/hover selection when the dialog closes, filters change, or a snapshot revision removes an endpoint. Never optimistically add or remove a confirmed line before authoritative state changes.
 - Keep grouping and filtering logic in testable helper/view-model code, separate from egui painting and pointer handling. Avoid changes to `shoop_app_api` unless implementation evidence shows the existing owner/name metadata is insufficient.
+- Do not open or control the desktop application or a browser for automated/manual GUI validation. Validate presentation and gestures through headless egui input/paint tests, application integration tests, and native/Wasm compilation; visual behavior beyond those surfaces is assumed.
 
 ## Staged implementation
 
@@ -61,7 +62,7 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 - [x] Put all four columns in one two-axis scrollable graph viewport; provide useful lane-specific empty messages while retaining visible application ports when host inventories are empty.
 - [x] Update open-path behavior in `AppWidget` as needed so global, sync-track, and main-track buttons apply the required presets every time they open the dialog.
 - [x] Add layout and interaction-state tests at minimum and common window sizes, with mixed Audio/MIDI, multiple tracks, script ports, duplicate display names, and large inventories.
-- [x] Verify with targeted `shoop_egui` tests and a manual paint/resize/scroll check, then commit the layout/filter milestone.
+- [x] Verify with targeted headless `shoop_egui` paint/resize/scroll tests, then commit the layout/filter milestone.
 
 ### Stage 3 — Add connection curves and pointer interactions
 
@@ -81,13 +82,13 @@ Replace the connection matrix in `src/rust/shoop_egui/src/connection_dialog.rs` 
 
 ### Stage 5 — Final end-to-end validation
 
-- [ ] Manually validate with representative Audio and MIDI inventories: grouped devices/apps, direct and dry/wet tracks, sync/main tracks, owner-managed Lua MIDI ports, connect confirmation, disconnect confirmation, pending/error feedback, filtering, scrolling, resizing, and close/reopen presets.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the documented browser smoke checks when supported browsers are available.
-- [ ] Confirm the final diff contains no backend/session routing changes unless separately justified by implementation evidence, and commit the validated feature.
+- [x] Cover representative Audio and MIDI inventories in headless tests: grouped devices/apps, direct/sync/main ownership, owner-managed Lua MIDI ports, exact connect/disconnect intents, pending/error feedback, filtering, scrolling, resizing, stale scopes, and close/reopen presets. Do not open or control a desktop GUI or browser.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`; do not run browser GUI automation.
+- [x] Confirm the final diff contains no backend/session routing changes unless separately justified by implementation evidence, and commit the validated feature.
 
 ## Execution contract
 
