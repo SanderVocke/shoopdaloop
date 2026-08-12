@@ -713,122 +713,124 @@ impl SettingsDialog {
                 .and_then(|paths| paths.get(&script.id))
                 .filter(|_| script.kind == ScriptKind::User)
                 .cloned();
-            ui.group(|ui| {
-                ui.horizontal(|ui| {
-                    if script.kind == ScriptKind::Session {
-                        let mut enabled = script.enabled;
-                        if ui.checkbox(&mut enabled, "enabled").changed() {
-                            response.app_actions.push(AppAction::SetScriptEnabled {
+            ui.push_id(("script_runtime", script.id), |ui| {
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        if script.kind == ScriptKind::Session {
+                            let mut enabled = script.enabled;
+                            if ui.checkbox(&mut enabled, "enabled").changed() {
+                                response.app_actions.push(AppAction::SetScriptEnabled {
+                                    script_id: script.id,
+                                    enabled,
+                                });
+                            }
+                        }
+                        ui.strong(&script.name);
+                        let kind = match script.kind {
+                            ScriptKind::Bundled => "Built-in",
+                            ScriptKind::User => "User",
+                            ScriptKind::Session => "Session",
+                            ScriptKind::Ephemeral => "Run once",
+                        };
+                        ui.label(format!("{kind} · {:?}", script.lifecycle));
+                    });
+                    if let Some(path) = script_paths.and_then(|paths| paths.get(&script.id)) {
+                        ui.weak(path);
+                    }
+                    ui.horizontal(|ui| {
+                        let restart = ui.button("Restart");
+                        #[cfg(test)]
+                        self.restart_rects.insert(script.id, restart.rect);
+                        if restart.clicked() {
+                            response.app_actions.push(AppAction::RestartScript {
                                 script_id: script.id,
-                                enabled,
                             });
                         }
-                    }
-                    ui.strong(&script.name);
-                    let kind = match script.kind {
-                        ScriptKind::Bundled => "Built-in",
-                        ScriptKind::User => "User",
-                        ScriptKind::Session => "Session",
-                        ScriptKind::Ephemeral => "Run once",
-                    };
-                    ui.label(format!("{kind} · {:?}", script.lifecycle));
-                });
-                if let Some(path) = script_paths.and_then(|paths| paths.get(&script.id)) {
-                    ui.weak(path);
-                }
-                ui.horizontal(|ui| {
-                    let restart = ui.button("Restart");
-                    #[cfg(test)]
-                    self.restart_rects.insert(script.id, restart.rect);
-                    if restart.clicked() {
-                        response.app_actions.push(AppAction::RestartScript {
-                            script_id: script.id,
-                        });
-                    }
-                    if ui.button("Stop").clicked() {
-                        response.app_actions.push(AppAction::StopScript {
-                            script_id: script.id,
-                        });
-                    }
-                    if user_path.is_some() {
-                        let reload = ui.button("Reload file");
-                        #[cfg(test)]
-                        self.reload_rects.insert(script.id, reload.rect);
-                        if reload.clicked() {
-                            response.settings_actions.push(
-                                SettingsAction::RequestReloadUserScript {
-                                    script_id: script.id,
-                                },
-                            );
+                        if ui.button("Stop").clicked() {
+                            response.app_actions.push(AppAction::StopScript {
+                                script_id: script.id,
+                            });
                         }
-                    }
-                    if let Some(path) = &user_path {
-                        let remove = ui.button("Remove");
-                        #[cfg(test)]
-                        self.remove_rects.insert(script.id, remove.rect);
-                        if remove.clicked() {
-                            self.remove_user_script_path(path);
+                        if user_path.is_some() {
+                            let reload = ui.button("Reload file");
+                            #[cfg(test)]
+                            self.reload_rects.insert(script.id, reload.rect);
+                            if reload.clicked() {
+                                response.settings_actions.push(
+                                    SettingsAction::RequestReloadUserScript {
+                                        script_id: script.id,
+                                    },
+                                );
+                            }
                         }
-                    }
-                });
-                if let Some(error) = &script.latest_error {
-                    ui.colored_label(colors::ERROR, error);
-                }
-                if let Some(documentation) = &script.documentation {
-                    ui.collapsing("Documentation", |ui| {
-                        ui.label(documentation);
-                    });
-                }
-                ui.label(format!(
-                    "Callbacks: {} loop, {} global, {} keyboard; {} timers",
-                    script.activity.loop_callbacks,
-                    script.activity.global_callbacks,
-                    script.activity.keyboard_callbacks,
-                    script.activity.timers
-                ));
-                ui.label(format!(
-                    "MIDI: {} rules, {} connections, {} dropped, {} errors",
-                    script.midi.rules,
-                    script.midi.connections,
-                    script.midi.dropped_messages,
-                    script.midi.errors
-                ));
-                for rule in script.midi.rule_states.iter() {
-                    let direction = match rule.direction {
-                        crate::ScriptMidiRuleDirection::Input => "input",
-                        crate::ScriptMidiRuleDirection::Output => "output",
-                    };
-                    ui.collapsing(format!("MIDI {direction}: /{}/", rule.pattern), |ui| {
-                        if rule.matched_endpoints.is_empty() {
-                            ui.weak("No matching endpoints");
-                        } else {
-                            ui.label(format!("Matched: {}", rule.matched_endpoints.join(", ")));
-                        }
-                        if rule.connected_endpoints.is_empty() {
-                            ui.weak("Not connected");
-                        } else {
-                            ui.label(format!(
-                                "Connected: {}",
-                                rule.connected_endpoints.join(", ")
-                            ));
-                        }
-                        if let Some(error) = &rule.latest_error {
-                            ui.colored_label(colors::ERROR, format!("Latest failure: {error}"));
+                        if let Some(path) = &user_path {
+                            let remove = ui.button("Remove");
+                            #[cfg(test)]
+                            self.remove_rects.insert(script.id, remove.rect);
+                            if remove.clicked() {
+                                self.remove_user_script_path(path);
+                            }
                         }
                     });
-                }
-                ui.collapsing(format!("Log ({})", script.logs.len()), |ui| {
-                    if script.logs.is_empty() {
-                        ui.weak("No messages");
+                    if let Some(error) = &script.latest_error {
+                        ui.colored_label(colors::ERROR, error);
                     }
-                    for entry in script.logs.iter() {
-                        let color = match entry.level {
-                            ScriptLogLevel::Warning => colors::WARNING,
-                            ScriptLogLevel::Error => colors::ERROR,
-                            _ => ui.visuals().text_color(),
+                    if let Some(documentation) = &script.documentation {
+                        ui.collapsing("Documentation", |ui| {
+                            ui.label(documentation);
+                        });
+                    }
+                    ui.label(format!(
+                        "Callbacks: {} loop, {} global, {} keyboard; {} timers",
+                        script.activity.loop_callbacks,
+                        script.activity.global_callbacks,
+                        script.activity.keyboard_callbacks,
+                        script.activity.timers
+                    ));
+                    ui.label(format!(
+                        "MIDI: {} rules, {} connections, {} dropped, {} errors",
+                        script.midi.rules,
+                        script.midi.connections,
+                        script.midi.dropped_messages,
+                        script.midi.errors
+                    ));
+                    for rule in script.midi.rule_states.iter() {
+                        let direction = match rule.direction {
+                            crate::ScriptMidiRuleDirection::Input => "input",
+                            crate::ScriptMidiRuleDirection::Output => "output",
                         };
-                        ui.colored_label(color, &entry.message);
+                        ui.collapsing(format!("MIDI {direction}: /{}/", rule.pattern), |ui| {
+                            if rule.matched_endpoints.is_empty() {
+                                ui.weak("No matching endpoints");
+                            } else {
+                                ui.label(format!("Matched: {}", rule.matched_endpoints.join(", ")));
+                            }
+                            if rule.connected_endpoints.is_empty() {
+                                ui.weak("Not connected");
+                            } else {
+                                ui.label(format!(
+                                    "Connected: {}",
+                                    rule.connected_endpoints.join(", ")
+                                ));
+                            }
+                            if let Some(error) = &rule.latest_error {
+                                ui.colored_label(colors::ERROR, format!("Latest failure: {error}"));
+                            }
+                        });
                     }
+                    ui.collapsing(format!("Log ({})", script.logs.len()), |ui| {
+                        if script.logs.is_empty() {
+                            ui.weak("No messages");
+                        }
+                        for entry in script.logs.iter() {
+                            let color = match entry.level {
+                                ScriptLogLevel::Warning => colors::WARNING,
+                                ScriptLogLevel::Error => colors::ERROR,
+                                _ => ui.visuals().text_color(),
+                            };
+                            ui.colored_label(color, &entry.message);
+                        }
+                    });
                 });
             });
         }
