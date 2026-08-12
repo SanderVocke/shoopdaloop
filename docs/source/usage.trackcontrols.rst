@@ -33,6 +33,15 @@ dry input/send and wet return/output ports. Hosted processors keep their
 internal endpoints private while exposing applicable dry inputs, wet outputs,
 and dry MIDI.
 
+The all-tracks Connections dialog also exposes **Global FX Control MIDI In**.
+CC 0–119, channel pressure, and pitch bend from this port control every
+MIDI-capable FX processor without being recorded. Sleeping processors keep only
+the latest control values and apply them when normal processing resumes; the
+controller does not wake their DSP. Notes and other event-like messages are
+filtered. Connecting one controller to both this port and a track MIDI input is
+additive, so absolute controls can be applied twice, relative encoders may behave
+incorrectly, and the track copy can be recorded.
+
 Processed-track controls show only capabilities advertised by the selected
 processor. Tiny Synth/FX uses an embedded editor. Carla tracks expose lifecycle,
 UI, recovery, state, and bounded process-log controls when available.

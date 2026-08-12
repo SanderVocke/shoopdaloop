@@ -1,18 +1,20 @@
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
-    WireApplicationPort, WireChannelMode, WireConfirmedLink, WireHostPort, WireLoopMode,
-    WireLoopState, WireMidiOutputEvent, WirePortDataType, WirePortDirection, WirePortRole,
-    WireSnapshot, WireTinySynthFxState, WireTrackControl, WireTrackFxControl, WireTrackFxState,
-    WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
-    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WireApplicationPort, WireApplicationPortOwner, WireChannelMode, WireConfirmedLink,
+    WireHostPort, WireLoopMode, WireLoopState, WireMidiOutputEvent, WirePortDataType,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxState, WireTrackControl,
+    WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
+    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate,
     BackendLoopId, BackendLoopMode, BackendMidiEvent, BackendPortDataType, BackendPortDirection,
-    BackendPortId, BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
-    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
-    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
+    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData, BackendSnapshot,
+    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackTopology,
+    EngineBackend, TinySynthFxControl, TrackProcessorEditorState, TrackProcessorTypeId,
+    TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -831,6 +833,10 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         .into_values()
         .map(|port| WireApplicationPort {
             id: port.id.raw(),
+            owner: match port.owner {
+                BackendPortOwner::Track => WireApplicationPortOwner::Track,
+                BackendPortOwner::GlobalFxControl => WireApplicationPortOwner::GlobalFxControl,
+            },
             name: port.name,
             data_type: to_wire_data_type(port.data_type),
             direction: to_wire_direction(port.direction),
@@ -1448,7 +1454,7 @@ mod tests {
         let Event::Snapshot(snapshot) = command(&mut host, 4, Command::Poll).event else {
             panic!("expected snapshot");
         };
-        assert_eq!(snapshot.application_ports.len(), 4);
+        assert_eq!(snapshot.application_ports.len(), 5);
         assert_eq!(snapshot.host_ports.len(), 4);
         assert_eq!(snapshot.confirmed_links.len(), 4);
 

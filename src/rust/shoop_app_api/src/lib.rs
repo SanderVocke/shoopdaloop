@@ -638,6 +638,7 @@ pub enum TrackPortOwnerKind {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ApplicationPortOwner {
+    GlobalFxControl,
     Track {
         track_id: TrackId,
         kind: TrackPortOwnerKind,

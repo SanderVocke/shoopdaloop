@@ -117,6 +117,7 @@ pub struct NativeBackend {
 
 struct NativeRuntime {
     tracks: BTreeMap<BackendTrackId, NativeTrack>,
+    global_fx_port: BackendPortId,
     loops: BTreeMap<BackendLoopId, NativeLoop>,
     ports: BTreeMap<BackendPortId, NativePort>,
     next_track_id: u64,
@@ -299,10 +300,34 @@ impl NativeRuntime {
             buffer_size: state.buffer_size.max(state.last_processed),
             instance_name: state.maybe_instance_name,
         };
+        let global_fx_midi = MidiPort::new_driver_port(
+            &session,
+            &driver,
+            "global_fx_control_midi_in",
+            &PortDirection::Input,
+            0,
+        )?;
+        session.set_global_fx_midi_input(&global_fx_midi)?;
+        let global_fx_port = BackendPortId::from_raw(u64::MAX);
+        let global_descriptor = BackendPortDescriptor {
+            id: global_fx_port,
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        };
         Ok(Self {
             tracks: BTreeMap::new(),
+            global_fx_port,
             loops: BTreeMap::new(),
-            ports: BTreeMap::new(),
+            ports: BTreeMap::from([(
+                global_fx_port,
+                NativePort {
+                    descriptor: global_descriptor,
+                    handle: NativePortHandle::Midi(global_fx_midi),
+                },
+            )]),
             next_track_id: 1,
             next_loop_id: 1,
             next_port_id: 1,
@@ -329,6 +354,7 @@ impl NativeRuntime {
     ) -> BackendPortDescriptor {
         let descriptor = BackendPortDescriptor {
             id: BackendPortId::from_raw(self.next_port_id),
+            owner: BackendPortOwner::Track,
             name,
             data_type,
             direction,
@@ -632,9 +658,20 @@ impl NativeRuntime {
                 processor_state: processor_state,
             });
         }
+        let global_ports = vec![BackendSessionPort {
+            source_id: self.global_fx_port.raw(),
+            descriptor: self.ports[&self.global_fx_port].descriptor.clone(),
+            external_connections: connections
+                .confirmed_links
+                .iter()
+                .filter(|link| link.application_port_id == self.global_fx_port)
+                .map(|link| link.host_port_id.clone())
+                .collect(),
+        }];
         Ok(BackendSessionData {
             sample_rate: self.resolved.sample_rate,
             tracks,
+            global_ports,
             use_legacy_browser_default_routes: false,
         })
     }
@@ -644,6 +681,23 @@ impl NativeRuntime {
             return Err(anyhow!("target native session is not empty"));
         }
         let mut replacement = BackendSessionReplacement::default();
+        let source_global = data
+            .global_ports
+            .first()
+            .ok_or_else(|| anyhow!("prepared session has no global FX control port"))?;
+        if data.global_ports.len() != 1
+            || source_global.descriptor.owner != BackendPortOwner::GlobalFxControl
+            || source_global.descriptor.data_type != BackendPortDataType::Midi
+            || source_global.descriptor.direction != BackendPortDirection::Input
+        {
+            return Err(anyhow!("prepared global FX control port is invalid"));
+        }
+        replacement
+            .global_ports
+            .insert(source_global.source_id, self.global_fx_port);
+        for external in &source_global.external_connections {
+            self.set_port_connected(self.global_fx_port, external, true)?;
+        }
         for source_track in &data.tracks {
             if source_track.state.topology != source_track.topology {
                 return Err(anyhow!("prepared native topology state is inconsistent"));

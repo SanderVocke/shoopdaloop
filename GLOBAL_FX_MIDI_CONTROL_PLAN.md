@@ -41,12 +41,12 @@ This is an end-to-end native and browser feature covering the engine, all backen
 
 ### Stage 1 — Engine control-state and routing contract
 
-- [ ] Add a fixed-size `PendingMidiControlState` (or equivalently named type) for CC 0–119, channel pressure, and pitch bend, with classification, overwrite, sparse clearing, deterministic bounded draining, and no invented defaults.
-- [ ] Add unit tests for all channels/types, explicit zero versus `None`, unsupported message rejection, repeated-value replacement, partial drains, stale-key replacement by current global input, and clear-after-admission behavior.
-- [ ] Represent the global control lane explicitly in `Session` and processor routes; add/remove/rebind operations must remain topology-safe and preserve prepared schedule ownership.
-- [ ] Make every relevant processor node depend on the global input while keeping that input outside all channel mappings and internal passthrough recording routes.
-- [ ] Assemble processor MIDI in the specified order and admission policy, caching only supported global updates while intentionally inactive and never invoking inactive processor DSP.
-- [ ] Adapt hosted Carla, Tiny Synth/FX, test processors, and External processor sends to the shared contract; make External output scheduling explicit where needed.
+- [x] Add a fixed-size `PendingMidiControlState` (or equivalently named type) for CC 0–119, channel pressure, and pitch bend, with classification, overwrite, sparse clearing, deterministic bounded draining, and no invented defaults.
+- [x] Add unit tests for all channels/types, explicit zero versus `None`, unsupported message rejection, repeated-value replacement, partial drains, stale-key replacement by current global input, and clear-after-admission behavior.
+- [x] Represent the global control lane explicitly in `Session` and processor routes; add/remove/rebind operations must remain topology-safe and preserve prepared schedule ownership.
+- [x] Make every relevant processor node depend on the global input while keeping that input outside all channel mappings and internal passthrough recording routes.
+- [x] Assemble processor MIDI in the specified order and admission policy, caching only supported global updates while intentionally inactive and never invoking inactive processor DSP.
+- [x] Adapt hosted Carla, Tiny Synth/FX, test processors, and External processor sends to the shared contract; make External output scheduling explicit where needed.
 - [ ] Add engine tests proving live fanout, inactive overwrite-and-restore, multi-block bounded restore, unsupported-message filtering, no loop recording, removal/crash behavior, External send ordering, and no cross-lane deduplication.
 - [ ] Extend allocation/lock tests to cover active and inactive global fanout, a full pending state, activation, and Carla bridge/subprocess-compatible block limits.
 
@@ -57,11 +57,11 @@ This is an end-to-end native and browser feature covering the engine, all backen
 
 ### Stage 2 — Backend ownership and native lifecycle
 
-- [ ] Extend backend contracts with explicit global-port ownership/creation and include global ports in session capture and replacement mappings separately from track ports.
-- [ ] Create the canonical native driver MIDI input with zero ringbuffer/capture, register it in normalized connection snapshots, and bind it to the engine global lane.
+- [x] Extend backend contracts with explicit global-port ownership/creation and include global ports in session capture and replacement mappings separately from track ports.
+- [x] Create the canonical native driver MIDI input with zero ringbuffer/capture, register it in normalized connection snapshots, and bind it to the engine global lane.
 - [ ] Include all MIDI-capable processed tracks in fanout as they are created, and remove their pending state cleanly with track/session replacement.
 - [ ] Preserve global endpoint identities and connection truth across native audio-driver switches, including intentional disconnection and endpoint loss.
-- [ ] Implement the equivalent canonical port and routing in `EngineBackend` for dummy/offline and physical Web Audio modes.
+- [x] Implement the equivalent canonical port and routing in `EngineBackend` for dummy/offline and physical Web Audio modes.
 - [ ] Make connection failure explicit when a host API cannot open one hardware endpoint for both a track and global port; do not fake confirmation or fall back to software deduplication.
 - [ ] Update fake backends and fixtures so app-level tests can observe global ownership, connection mutation, filtering, deferred delivery, and failure paths.
 
@@ -72,9 +72,9 @@ This is an end-to-end native and browser feature covering the engine, all backen
 
 ### Stage 3 — Browser protocol and AudioWorklet
 
-- [ ] Extend the wire protocol with explicit global-port ownership/lifecycle and any required create/replace payloads; increment `PROTOCOL_VERSION` and update serialization/supersession tests.
-- [ ] Publish the global application port and confirmed Web MIDI links from worklet snapshots without merging it with track ports.
-- [ ] Route `PushMidiInput` from one Web MIDI source independently to every connected track port and the global port, retaining bounded refusal counters and frame-zero next-quantum timing.
+- [x] Extend the wire protocol with explicit global-port ownership/lifecycle and any required create/replace payloads; increment `PROTOCOL_VERSION` and update serialization/supersession tests.
+- [x] Publish the global application port and confirmed Web MIDI links from worklet snapshots without merging it with track ports.
+- [x] Route `PushMidiInput` from one Web MIDI source independently to every connected track port and the global port, retaining bounded refusal counters and frame-zero next-quantum timing.
 - [ ] Carry the global port and desired Web MIDI endpoint IDs through worklet restart and transactional session replacement.
 - [ ] Add AudioWorklet no-allocation tests for global fanout, inactive deferral, saturation, hotplug, restart, and dual routing.
 
@@ -85,10 +85,10 @@ This is an end-to-end native and browser feature covering the engine, all backen
 
 ### Stage 4 — Application model and Connections UI
 
-- [ ] Add `ApplicationPortOwner::GlobalFxControl` (or an equally explicit API identity), map backend ownership into stable app port state, and update exhaustive owner handling.
-- [ ] Register the canonical global port during startup and loaded-session commit without assigning it a track ID; keep stable app/backend/document ID mappings transactional.
-- [ ] Show it in the main/all-tracks Connections dialog with a clear owner label and hide it from every track-scoped dialog.
-- [ ] Derive and display a non-blocking warning whenever one confirmed host source feeds both the global port and any regular track MIDI input. Explain duplicate absolute updates, unsafe relative/event semantics, and regular-path recording without preventing the connection.
+- [x] Add `ApplicationPortOwner::GlobalFxControl` (or an equally explicit API identity), map backend ownership into stable app port state, and update exhaustive owner handling.
+- [x] Register the canonical global port during startup and loaded-session commit without assigning it a track ID; keep stable app/backend/document ID mappings transactional.
+- [x] Show it in the main/all-tracks Connections dialog with a clear owner label and hide it from every track-scoped dialog.
+- [x] Derive and display a non-blocking warning whenever one confirmed host source feeds both the global port and any regular track MIDI input. Explain duplicate absolute updates, unsafe relative/event semantics, and regular-path recording without preventing the connection.
 - [ ] Retain existing user-managed pending/confirmed/error cell behavior for global links, including disappearance, timeout, rejection, and reconnect.
 - [ ] Update UI and application tests for empty host inventories, sorting, owner labels, warning appearance/removal, connection intents, dual links, and backend failure reporting.
 
@@ -99,10 +99,10 @@ This is an end-to-end native and browser feature covering the engine, all backen
 
 ### Stage 5 — Session persistence and compatibility
 
-- [ ] Capture the canonical port in `SessionDocument.global_ports` with its stable ID, MIDI/input role, external connectability, zero capture frames, and exact desired/confirmed endpoint identities as appropriate to the backend contract.
-- [ ] Validate load documents to allow exactly the canonical global FX control shape while continuing to reject unrelated deferred global-port capabilities; reject duplicate IDs, multiple control ports, wrong type/direction/role, internal links, capture state, and unsupported mutable fields before backend mutation.
-- [ ] Migrate older version-1 documents with no global control port to one disconnected canonical port, choosing a collision-free stable ID without changing track/loop/media identity.
-- [ ] Extend backend session data and native/browser replacement mappings so global creation, endpoint restoration, rollback, and driver switching are atomic with tracks.
+- [x] Capture the canonical port in `SessionDocument.global_ports` with its stable ID, MIDI/input role, external connectability, zero capture frames, and exact desired/confirmed endpoint identities as appropriate to the backend contract.
+- [x] Validate load documents to allow exactly the canonical global FX control shape while continuing to reject unrelated deferred global-port capabilities; reject duplicate IDs, multiple control ports, wrong type/direction/role, internal links, capture state, and unsupported mutable fields before backend mutation.
+- [x] Migrate older version-1 documents with no global control port to one disconnected canonical port, choosing a collision-free stable ID without changing track/loop/media identity.
+- [x] Extend backend session data and native/browser replacement mappings so global creation, endpoint restoration, rollback, and driver switching are atomic with tracks.
 - [ ] Add round-trip, legacy-load, malformed-document, endpoint-hotplug, browser restart, native switch, resampling, and failed-commit tests. Confirm pending runtime controller values are transient and are not serialized as MIDI media or processor state.
 
 **Stage verification**

@@ -116,7 +116,10 @@ impl ConnectionDialog {
                         track_id: owner_id, ..
                     },
                 ) => track_id == owner_id,
-                (ConnectionScope::Track(_), ApplicationPortOwner::LuaControl { .. }) => false,
+                (
+                    ConnectionScope::Track(_),
+                    ApplicationPortOwner::LuaControl { .. } | ApplicationPortOwner::GlobalFxControl,
+                ) => false,
             })
             .collect();
         if scoped_ports.is_empty() {
@@ -146,6 +149,40 @@ impl ConnectionDialog {
                     }
                 });
             });
+        let global_hosts: std::collections::BTreeSet<_> = state
+            .confirmed_links
+            .iter()
+            .filter_map(|link| {
+                state
+                    .application_ports
+                    .iter()
+                    .find(|port| port.id == link.application_port_id)
+                    .is_some_and(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+                    .then(|| link.host_port_id.clone())
+            })
+            .collect();
+        let track_hosts: std::collections::BTreeSet<_> = state
+            .confirmed_links
+            .iter()
+            .filter_map(|link| {
+                state
+                    .application_ports
+                    .iter()
+                    .find(|port| port.id == link.application_port_id)
+                    .is_some_and(|port| {
+                        matches!(port.owner, ApplicationPortOwner::Track { .. })
+                            && port.data_type == crate::PortDataType::Midi
+                            && port.direction == crate::PortDirection::Input
+                    })
+                    .then(|| link.host_port_id.clone())
+            })
+            .collect();
+        if global_hosts.iter().any(|host| track_hosts.contains(host)) {
+            ui.colored_label(
+                colors::WARNING,
+                "A MIDI source feeds both Global FX Control and a track input. Absolute controls may be applied twice, relative controls may behave incorrectly, and the track copy can be recorded.",
+            );
+        }
         ui.separator();
 
         let selected = self.selected_role.unwrap_or(selected);
@@ -299,6 +336,7 @@ fn connection_intent(
 
 fn owner_label(owner: &ApplicationPortOwner) -> String {
     match owner {
+        ApplicationPortOwner::GlobalFxControl => "Global FX control".to_owned(),
         ApplicationPortOwner::Track { track_id, kind } => {
             format!("{kind:?} track {track_id}")
         }

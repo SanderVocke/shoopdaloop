@@ -84,6 +84,12 @@ pub enum BackendPortDirection {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum BackendPortOwner {
+    Track,
+    GlobalFxControl,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum BackendPortRole {
     AudioInput,
     AudioOutput,
@@ -97,6 +103,7 @@ pub enum BackendPortRole {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendPortDescriptor {
     pub id: BackendPortId,
+    pub owner: BackendPortOwner,
     pub name: String,
     pub data_type: BackendPortDataType,
     pub direction: BackendPortDirection,
@@ -522,6 +529,8 @@ pub struct BackendSessionData {
     pub sample_rate: u32,
     pub tracks: Vec<BackendSessionTrack>,
     #[serde(default)]
+    pub global_ports: Vec<BackendSessionPort>,
+    #[serde(default)]
     pub use_legacy_browser_default_routes: bool,
 }
 
@@ -530,6 +539,7 @@ pub struct BackendSessionReplacement {
     pub tracks: BTreeMap<u64, BackendTrackCreation>,
     pub loops: BTreeMap<u64, BackendLoopId>,
     pub ports: BTreeMap<u64, BackendPortId>,
+    pub global_ports: BTreeMap<u64, BackendPortId>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -831,6 +841,8 @@ enum EngineBackendMode {
 
 pub struct EngineBackend {
     session: Session,
+    global_fx_midi: usize,
+    global_fx_port: BackendPortId,
     sample_rate: u32,
     buffer_size: u32,
     elapsed_frame_numerator: u128,
@@ -912,8 +924,26 @@ impl EngineBackend {
         let mut session = Session::default();
         session.set_sample_rate(sample_rate);
         session.set_buffer_size(buffer_size);
+        let global_registry = PortId(1);
+        let global_fx_midi = session.add_port(Port::DummyMidi(DummyMidiPort::new(
+            global_registry,
+            "global_fx_control_midi_in",
+            PortDirection::Input,
+        )));
+        session.set_global_fx_midi_input(global_fx_midi)?;
+        let global_fx_port = BackendPortId::from_raw(u64::MAX);
+        let global_descriptor = BackendPortDescriptor {
+            id: global_fx_port,
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        };
         Ok(Self {
             session,
+            global_fx_midi,
+            global_fx_port,
             sample_rate,
             buffer_size,
             elapsed_frame_numerator: 0,
@@ -924,10 +954,16 @@ impl EngineBackend {
             tracks: BTreeMap::new(),
             next_loop_id: 1,
             next_track_id: 1,
-            next_port_id: 1,
+            next_port_id: 2,
             next_backend_port_id: 1,
             connection_revision: 1,
-            connection_ports: BTreeMap::new(),
+            connection_ports: BTreeMap::from([(
+                global_fx_port,
+                EngineConnectionPort {
+                    descriptor: global_descriptor,
+                    registry_id: global_registry,
+                },
+            )]),
             external_connections: representative_external_connections(),
             web_midi_hosts: BTreeMap::new(),
             desired_web_midi_connections: BTreeSet::new(),
@@ -953,6 +989,17 @@ impl EngineBackend {
         let mut backend = Self::new_dummy(sample_rate, max_quantum)?;
         backend.mode = EngineBackendMode::Physical;
         backend.external_connections.remove_all_mock_ports();
+        let global = ExternalMidiPort::new("global_fx_control_midi_in", PortDirection::Input);
+        backend.session.remove_port(backend.global_fx_midi)?;
+        backend.global_fx_midi = backend.session.add_port(Port::ExternalMidi(global));
+        backend
+            .session
+            .set_global_fx_midi_input(backend.global_fx_midi)?;
+        backend
+            .connection_ports
+            .get_mut(&backend.global_fx_port)
+            .unwrap()
+            .registry_id = PortId(backend.global_fx_midi as u64);
         Ok(backend)
     }
 
@@ -1069,7 +1116,7 @@ impl EngineBackend {
         if host.direction != BackendPortDirection::Output {
             return Err(anyhow!("Web MIDI endpoint is not an input source"));
         }
-        let destinations = self
+        let mut destinations = self
             .tracks
             .values()
             .filter_map(|track| {
@@ -1087,6 +1134,13 @@ impl EngineBackend {
             })
             .map(|(session_port, application_port_id, _)| (session_port, application_port_id))
             .collect::<Vec<_>>();
+        let global_registry = self.connection_ports[&self.global_fx_port].registry_id;
+        if self
+            .external_connections
+            .is_connected(global_registry, host_port_id)
+        {
+            destinations.push((self.global_fx_midi, self.global_fx_port));
+        }
         let mut staged = 0;
         for (session_port, _) in destinations {
             let accepted = self
@@ -1327,6 +1381,7 @@ impl EngineBackend {
         self.next_backend_port_id = self.next_backend_port_id.saturating_add(1);
         let descriptor = BackendPortDescriptor {
             id,
+            owner: BackendPortOwner::Track,
             name: name.clone(),
             data_type,
             direction,
@@ -1999,9 +2054,22 @@ impl EngineBackend {
                 processor_state: track.fx.as_ref().map(|fx| fx.control.encode()),
             });
         }
+        let global_ports = vec![BackendSessionPort {
+            source_id: self.global_fx_port.raw(),
+            descriptor: self.connection_ports[&self.global_fx_port]
+                .descriptor
+                .clone(),
+            external_connections: connections
+                .confirmed_links
+                .iter()
+                .filter(|link| link.application_port_id == self.global_fx_port)
+                .map(|link| link.host_port_id.clone())
+                .collect(),
+        }];
         Ok(BackendSessionData {
             sample_rate: self.sample_rate,
             tracks,
+            global_ports,
             use_legacy_browser_default_routes: false,
         })
     }
@@ -2033,10 +2101,25 @@ impl EngineBackend {
                 "session requires a track processor unavailable in this backend"
             ));
         }
+        let mut replacement = BackendSessionReplacement::default();
         let mut staged = match self.mode {
             EngineBackendMode::Dummy => Self::new_dummy(self.sample_rate, self.buffer_size)?,
             EngineBackendMode::Physical => Self::new_web_audio(self.sample_rate, self.buffer_size)?,
         };
+        let source_global = data
+            .global_ports
+            .first()
+            .ok_or_else(|| anyhow!("session has no global FX control port"))?;
+        if data.global_ports.len() != 1
+            || source_global.descriptor.owner != BackendPortOwner::GlobalFxControl
+            || source_global.descriptor.data_type != BackendPortDataType::Midi
+            || source_global.descriptor.direction != BackendPortDirection::Input
+        {
+            return Err(anyhow!("session global FX control port is invalid"));
+        }
+        replacement
+            .global_ports
+            .insert(source_global.source_id, staged.global_fx_port);
         staged.external_connections = DummyExternalConnections::default();
         for descriptor in self.external_connections.mock_ports() {
             staged.external_connections.add_mock_port(
@@ -2046,7 +2129,9 @@ impl EngineBackend {
             );
         }
         staged.web_midi_hosts = self.web_midi_hosts.clone();
-        let mut replacement = BackendSessionReplacement::default();
+        for external in &source_global.external_connections {
+            staged.set_port_connected(staged.global_fx_port, external, true)?;
+        }
         for source_track in &data.tracks {
             let created = staged.create_track(TrackRequest {
                 port_name_base: source_track.port_name_base.clone(),
@@ -3861,6 +3946,20 @@ pub enum FakeOperation {
 
 impl Default for FakeBackend {
     fn default() -> Self {
+        let connections = FakeConnectionControl {
+            state: Arc::new(Mutex::new(FakeConnectionState::default())),
+        };
+        let global_fx_port = BackendPortDescriptor {
+            id: BackendPortId::from_raw(u64::MAX),
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        };
+        connections.with_state(|state| {
+            state.ports.insert(global_fx_port.id, global_fx_port);
+        });
         Self {
             status: BackendStatus {
                 buffer_size: 256,
@@ -3888,9 +3987,7 @@ impl Default for FakeBackend {
             fail_fx_state_restore: false,
             audio_driver_control: FakeAudioDriverControl::default(),
             operations: Vec::new(),
-            connections: FakeConnectionControl {
-                state: Arc::new(Mutex::new(FakeConnectionState::default())),
-            },
+            connections,
             loop_content: BTreeMap::new(),
         }
     }
@@ -3970,6 +4067,7 @@ impl FakeBackend {
     ) -> BackendPortDescriptor {
         let descriptor = BackendPortDescriptor {
             id: BackendPortId::from_raw(self.next_port_id),
+            owner: BackendPortOwner::Track,
             name,
             data_type,
             direction,
@@ -4341,6 +4439,7 @@ impl Backend for FakeBackend {
                 };
                 if corrupt {
                     replacement.tracks.clear();
+                    replacement.global_ports.clear();
                 }
                 Ok(replacement)
             }
@@ -4965,9 +5064,26 @@ impl Backend for FakeBackend {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        let global_descriptor = connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .cloned()
+            .ok_or_else(|| anyhow!("missing fake global FX control port"))?;
+        let global_ports = vec![BackendSessionPort {
+            source_id: global_descriptor.id.raw(),
+            external_connections: connections
+                .confirmed_links
+                .iter()
+                .filter(|link| link.application_port_id == global_descriptor.id)
+                .map(|link| link.host_port_id.clone())
+                .collect(),
+            descriptor: global_descriptor,
+        }];
         Ok(BackendSessionData {
             sample_rate: self.status.sample_rate,
             tracks,
+            global_ports,
             use_legacy_browser_default_routes: false,
         })
     }
@@ -4988,6 +5104,15 @@ impl Backend for FakeBackend {
             .connections
             .with_state(|state| state.external_ports.clone());
         let mut staged = FakeBackend::default();
+        let source_global = session
+            .global_ports
+            .first()
+            .ok_or_else(|| anyhow!("session has no global FX control port"))?;
+        if session.global_ports.len() != 1
+            || source_global.descriptor.owner != BackendPortOwner::GlobalFxControl
+        {
+            return Err(anyhow!("session global FX control port is invalid"));
+        }
         staged.status = self.status;
         staged.active_audio_driver = self.active_audio_driver.clone();
         staged.audio_driver_control = self.audio_driver_control.clone();
@@ -5000,6 +5125,19 @@ impl Backend for FakeBackend {
             state.external_ports = external_ports;
         });
         let mut replacement = BackendSessionReplacement::default();
+        let staged_global = staged
+            .connections
+            .with_state(|state| {
+                state
+                    .ports
+                    .values()
+                    .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+                    .map(|port| port.id)
+            })
+            .ok_or_else(|| anyhow!("staged backend has no global FX control port"))?;
+        replacement
+            .global_ports
+            .insert(source_global.source_id, staged_global);
         for source_track in &session.tracks {
             if source_track.state.topology != source_track.topology {
                 return Err(anyhow!("prepared session topology state is inconsistent"));
@@ -6021,7 +6159,15 @@ mod tests {
         assert!(connections.available);
         assert!(connections.host_ports.is_empty());
         assert!(connections.confirmed_links.is_empty());
-        assert_eq!(connections.application_ports.len(), created.ports.len());
+        assert_eq!(connections.application_ports.len(), created.ports.len() + 1);
+        assert_eq!(
+            connections
+                .application_ports
+                .values()
+                .filter(|port| port.owner == BackendPortOwner::GlobalFxControl)
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -6876,7 +7022,7 @@ mod tests {
         assert!(output.iter().any(|sample| *sample != 0.0));
         let snapshot = backend.poll().unwrap();
         assert!(snapshot.connections.available);
-        assert_eq!(snapshot.connections.application_ports.len(), 2);
+        assert_eq!(snapshot.connections.application_ports.len(), 3);
         let status = snapshot.status;
         assert_eq!(status.callback_count, 2);
         assert_eq!(status.processed_frames, 256);

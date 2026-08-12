@@ -84,6 +84,7 @@ src/rust/shoop_engine/src/midi_state.rs,mixed_realtime_and_control,instrumented_
 src/rust/shoop_engine/src/midi_storage.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/midir_driver.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/multichannel_audio.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_engine/src/pending_midi_control.rs,realtime_processing,instrumented_indirect,"Runs within the traced processor routing boundary; a separate per-control span would add callback overhead."
 src/rust/shoop_engine/src/port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/profiling.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/realtime_alloc_guard.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

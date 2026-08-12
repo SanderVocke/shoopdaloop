@@ -11,6 +11,8 @@ A link is compatible when data types match and directions oppose. The applicatio
 
 Track links are user-managed. Direct tracks publish Audio/MIDI input and output roles. Native External dry/wet tracks publish dry Audio inputs and sends, wet Audio returns and outputs, and optional dry MIDI input/send in deterministic index order. Carla tracks publish only dry inputs, wet outputs, and optional dry MIDI input; Carla's own endpoint ports and internal wiring never enter the host connection matrix. Session capture/restoration retains exact confirmed host IDs for every public role.
 
+The user-managed **Global FX Control MIDI In** port is application-owned and appears only in the all-tracks Connections dialog. CC 0–119, channel pressure, and pitch bend fan out to every MIDI-capable FX processor without entering loop channels or recording. Inactive processors retain only the latest value per control and receive it when normal processing resumes; global MIDI never wakes sleeping DSP. Other MIDI messages are filtered. Connecting one source here and to a track input is additive: absolute controls can be applied twice, relative controls may behave incorrectly, and the regular track copy can be recorded.
+
 Lua control links are owner-managed because script regex/autoconnect policy remains authoritative; the GUI displays their confirmed host truth but disables competing cell mutation. Script control-port IDs remain stable across stop/restart and disappear while stopped. Browser track and Lua control consumers share canonical `webmidi:source|sink:<MIDIPort.id>` host rows without duplicate namespaced copies. Before permission, denial, or on unsupported browsers, application ports remain visible with an empty MIDI host inventory.
 
 ## Web Audio endpoints

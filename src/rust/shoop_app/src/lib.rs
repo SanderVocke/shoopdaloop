@@ -29,7 +29,7 @@ use shoop_backend::{
     BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
     BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData,
     BackendMidiEvent, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortRole, BackendSessionData, BackendSessionPort,
+    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionPort,
     BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
     BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
     DirectTrackRequest, TrackRequest,
@@ -601,7 +601,7 @@ struct TrackModel {
 struct ConnectionPortModel {
     id: PortId,
     backend_id: BackendPortId,
-    track_id: TrackId,
+    owner: ApplicationPortOwner,
     name: String,
     data_type: PortDataType,
     direction: PortDirection,
@@ -781,10 +781,32 @@ impl ApplicationModel {
         let mut connection_ports = BTreeMap::new();
         let port_ids = register_backend_ports(
             track_id,
+            TrackPortOwnerKind::Sync,
             &created.ports,
             &mut next_port_id,
             &mut connection_ports,
         );
+        let global_ports = backend.poll()?.connections.application_ports;
+        for descriptor in global_ports
+            .values()
+            .filter(|port| port.owner == BackendPortOwner::GlobalFxControl)
+        {
+            let id = PortId::from_raw(next_port_id);
+            next_port_id = next_port_id.saturating_add(1);
+            connection_ports.insert(
+                id,
+                ConnectionPortModel {
+                    id,
+                    backend_id: descriptor.id,
+                    owner: ApplicationPortOwner::GlobalFxControl,
+                    name: descriptor.name.clone(),
+                    data_type: PortDataType::Midi,
+                    direction: PortDirection::Input,
+                    role: PortRole::MidiInput,
+                    candidates: BTreeMap::new(),
+                },
+            );
+        }
         let loop_model = LoopModel {
             id: loop_id,
             backend_id: backend_loop,
@@ -1096,8 +1118,10 @@ impl ApplicationModel {
         track.controls.input_monitoring
             && track.port_ids.iter().any(|port_id| {
                 self.connection_ports.get(port_id).is_some_and(|port| {
-                    port.track_id == track.id
-                        && port.data_type == PortDataType::Midi
+                    matches!(
+                        port.owner,
+                        ApplicationPortOwner::Track { track_id, .. } if track_id == track.id
+                    ) && port.data_type == PortDataType::Midi
                         && port.direction == PortDirection::Input
                         && port.role == PortRole::MidiInput
                 })
@@ -2145,13 +2169,15 @@ impl ApplicationModel {
         if let Err(error) = self.apply_loaded_session(backend, &bundle, &replacement) {
             self.audio_drivers.switch.status = AudioDriverSwitchStatus::Restoring;
             self.audio_drivers.switch.message = "Restoring the prior audio driver".to_owned();
+            let rollback_data = session_bundle_to_backend(&source_bundle, &self.track_processors);
             let rollback = source.as_ref().ok_or_else(|| {
                 "could not restore switched session because source driver state is missing"
                     .to_owned()
             });
             let rollback = rollback.and_then(|source| {
+                let rollback_data = rollback_data?;
                 backend
-                    .switch_audio_driver(&source.configured, source.sample_rate, &capture)
+                    .switch_audio_driver(&source.configured, source.sample_rate, &rollback_data)
                     .map_err(|rollback_error| rollback_error.to_string())
                     .and_then(|mapping| {
                         self.apply_loaded_session(backend, &source_bundle, &mapping)
@@ -3083,6 +3109,7 @@ impl ApplicationModel {
         }
         let port_ids = register_backend_ports(
             track_id,
+            TrackPortOwnerKind::Main,
             &created.ports,
             &mut self.next_port_id,
             &mut self.connection_ports,
@@ -4353,28 +4380,14 @@ impl ApplicationModel {
         let mut application_ports: Vec<ApplicationPortState> = self
             .connection_ports
             .values()
-            .map(|port| {
-                let is_sync = self
-                    .tracks
-                    .iter()
-                    .find(|track| track.id == port.track_id)
-                    .is_some_and(|track| track.is_sync);
-                ApplicationPortState {
-                    id: port.id,
-                    owner: ApplicationPortOwner::Track {
-                        track_id: port.track_id,
-                        kind: if is_sync {
-                            TrackPortOwnerKind::Sync
-                        } else {
-                            TrackPortOwnerKind::Main
-                        },
-                    },
-                    name: port.name.clone(),
-                    data_type: port.data_type,
-                    direction: port.direction,
-                    role: port.role,
-                    connection_policy: ConnectionPolicy::UserManaged,
-                }
+            .map(|port| ApplicationPortState {
+                id: port.id,
+                owner: port.owner.clone(),
+                name: port.name.clone(),
+                data_type: port.data_type,
+                direction: port.direction,
+                role: port.role,
+                connection_policy: ConnectionPolicy::UserManaged,
             })
             .collect();
         let mut normalized_hosts = self.host_ports.clone();
@@ -4841,6 +4854,32 @@ impl ApplicationModel {
                 main_tracks.push(document);
             }
         }
+        let global_ports = capture
+            .global_ports
+            .iter()
+            .map(|captured| {
+                let app_port = self
+                    .connection_ports
+                    .values()
+                    .find(|port| port.backend_id == captured.descriptor.id)
+                    .ok_or_else(|| "backend omitted global port mapping".to_owned())?;
+                Ok(PortDocument {
+                    id: app_port.id.raw(),
+                    name: "Global FX Control MIDI In".to_owned(),
+                    data_type: DataTypeDocument::Midi,
+                    direction: PortDirectionDocument::Input,
+                    role: PortRoleDocument::MidiInput,
+                    input_connectability: vec![ConnectabilityDocument::External],
+                    output_connectability: vec![ConnectabilityDocument::Internal],
+                    gain: 1.0,
+                    muted: false,
+                    passthrough_muted: true,
+                    internal_connections: Vec::new(),
+                    external_connections: captured.external_connections.clone(),
+                    ringbuffer_frames: 0,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         let document = SessionDocument {
             sample_rate: capture.sample_rate,
             connection_model_version: shoop_session::CONNECTION_MODEL_VERSION,
@@ -4878,7 +4917,7 @@ impl ApplicationModel {
                 .find(|loop_| loop_.state.targeted)
                 .map(|loop_| loop_.id.raw()),
             buses: Vec::new(),
-            global_ports: Vec::new(),
+            global_ports,
             fx_states,
             scripts: self.session_script_documents(),
             midi_control: MidiControlDocument::default(),
@@ -4952,7 +4991,14 @@ impl ApplicationModel {
                     ConnectionPortModel {
                         id,
                         backend_id: created_port.id,
-                        track_id: TrackId::from_raw(track_document.id),
+                        owner: ApplicationPortOwner::Track {
+                            track_id: TrackId::from_raw(track_document.id),
+                            kind: if track_document.is_sync {
+                                TrackPortOwnerKind::Sync
+                            } else {
+                                TrackPortOwnerKind::Main
+                            },
+                        },
                         name: document.name.clone(),
                         data_type: app_data_type(document.data_type),
                         direction: app_port_direction(document.direction),
@@ -5100,6 +5146,46 @@ impl ApplicationModel {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
+        for document in &bundle.document.global_ports {
+            let backend_id = replacement
+                .global_ports
+                .get(&document.id)
+                .copied()
+                .ok_or_else(|| "backend omitted loaded global FX control port".to_owned())?;
+            connection_ports.insert(
+                PortId::from_raw(document.id),
+                ConnectionPortModel {
+                    id: PortId::from_raw(document.id),
+                    backend_id,
+                    owner: ApplicationPortOwner::GlobalFxControl,
+                    name: document.name.clone(),
+                    data_type: PortDataType::Midi,
+                    direction: PortDirection::Input,
+                    role: PortRole::MidiInput,
+                    candidates: BTreeMap::new(),
+                },
+            );
+        }
+        if bundle.document.global_ports.is_empty() {
+            let (source_id, backend_id) = replacement
+                .global_ports
+                .iter()
+                .next()
+                .ok_or_else(|| "backend omitted migrated global FX control port".to_owned())?;
+            connection_ports.insert(
+                PortId::from_raw(*source_id),
+                ConnectionPortModel {
+                    id: PortId::from_raw(*source_id),
+                    backend_id: *backend_id,
+                    owner: ApplicationPortOwner::GlobalFxControl,
+                    name: "Global FX Control MIDI In".to_owned(),
+                    data_type: PortDataType::Midi,
+                    direction: PortDirection::Input,
+                    role: PortRole::MidiInput,
+                    candidates: BTreeMap::new(),
+                },
+            );
+        }
         self.next_port_id = connection_ports
             .keys()
             .map(|id| id.raw())
@@ -5970,12 +6056,25 @@ fn session_script_sources(bundle: &SessionBundle) -> Vec<SessionScriptSource> {
         .collect()
 }
 
+fn valid_global_fx_port_document(port: &PortDocument) -> bool {
+    port.name == "Global FX Control MIDI In"
+        && port.data_type == DataTypeDocument::Midi
+        && port.direction == PortDirectionDocument::Input
+        && port.role == PortRoleDocument::MidiInput
+        && port.input_connectability == [ConnectabilityDocument::External]
+        && port.output_connectability == [ConnectabilityDocument::Internal]
+        && port.gain == 1.0
+        && !port.muted
+        && port.passthrough_muted
+        && port.internal_connections.is_empty()
+        && port.ringbuffer_frames == 0
+}
+
 fn session_bundle_to_backend(
     bundle: &SessionBundle,
     processors: &[TrackProcessorDescriptor],
 ) -> Result<BackendSessionData, String> {
     if !bundle.document.buses.is_empty()
-        || !bundle.document.global_ports.is_empty()
         || !bundle.document.midi_control.bindings.is_empty()
         || !bundle.document.settings.is_empty()
     {
@@ -5983,6 +6082,45 @@ fn session_bundle_to_backend(
             "session requires a feature not yet available in the application runtime".to_owned(),
         );
     }
+    let used_ids = bundle
+        .document
+        .track_groups
+        .iter()
+        .flat_map(|group| &group.tracks)
+        .flat_map(|track| track.ports.iter().map(|port| port.id))
+        .collect::<BTreeSet<_>>();
+    let global_document = match bundle.document.global_ports.as_slice() {
+        [] => None,
+        [port] if valid_global_fx_port_document(port) => Some(port.clone()),
+        _ => return Err("session global FX control port is invalid".to_owned()),
+    };
+    let global_id = global_document
+        .as_ref()
+        .map(|port| port.id)
+        .unwrap_or_else(|| {
+            let mut id = 1_u64;
+            while used_ids.contains(&id) {
+                id = id.saturating_add(1);
+            }
+            id
+        });
+    if used_ids.contains(&global_id) {
+        return Err("session global FX control port ID conflicts with a track port".to_owned());
+    }
+    let global_ports = vec![BackendSessionPort {
+        source_id: global_id,
+        descriptor: BackendPortDescriptor {
+            id: BackendPortId::from_raw(global_id),
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        },
+        external_connections: global_document
+            .map(|port| port.external_connections)
+            .unwrap_or_default(),
+    }];
     let mut tracks = Vec::new();
     for track in bundle
         .document
@@ -6011,6 +6149,7 @@ fn session_bundle_to_backend(
                 source_id: port.id,
                 descriptor: BackendPortDescriptor {
                     id: BackendPortId::from_raw(port.id),
+                    owner: BackendPortOwner::Track,
                     name: port.name.clone(),
                     data_type: backend_data_type(port.data_type),
                     direction: backend_port_direction(port.direction),
@@ -6169,6 +6308,7 @@ fn session_bundle_to_backend(
     Ok(BackendSessionData {
         sample_rate: bundle.document.sample_rate,
         tracks,
+        global_ports,
         use_legacy_browser_default_routes: cfg!(target_arch = "wasm32")
             && bundle.document.connection_model_version == 0,
     })
@@ -6297,6 +6437,7 @@ fn map_port_direction(value: BackendPortDirection) -> PortDirection {
 
 fn register_backend_ports(
     track_id: TrackId,
+    kind: TrackPortOwnerKind,
     descriptors: &[BackendPortDescriptor],
     next_port_id: &mut u64,
     ports: &mut BTreeMap<PortId, ConnectionPortModel>,
@@ -6310,7 +6451,10 @@ fn register_backend_ports(
             ConnectionPortModel {
                 id,
                 backend_id: descriptor.id,
-                track_id,
+                owner: match descriptor.owner {
+                    BackendPortOwner::Track => ApplicationPortOwner::Track { track_id, kind },
+                    BackendPortOwner::GlobalFxControl => ApplicationPortOwner::GlobalFxControl,
+                },
                 name: descriptor.name.clone(),
                 data_type: match descriptor.data_type {
                     BackendPortDataType::Audio => PortDataType::Audio,
@@ -8712,15 +8856,14 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         let snapshot = wait_for(&handle, |snapshot| !snapshot.notifications.is_empty());
         assert_eq!(snapshot.tracks.len(), 1);
-        assert!(snapshot
-            .connections
-            .application_ports
-            .iter()
-            .all(|port| matches!(
-                port.owner,
-                ApplicationPortOwner::Track { track_id, .. }
-                    if track_id == snapshot.tracks[0].id
-            )));
+        assert!(snapshot.connections.application_ports.iter().all(|port| {
+            port.owner == ApplicationPortOwner::GlobalFxControl
+                || matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. }
+                        if track_id == snapshot.tracks[0].id
+                )
+        }));
         assert!(snapshot.notifications[0]
             .message
             .contains("injected track creation failure"));
@@ -9402,11 +9545,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         });
         assert!(initial.connections.backend_available);
         assert!(initial.connections.application_ports.iter().all(|port| {
-            matches!(
-                port.owner,
-                ApplicationPortOwner::Track { track_id, .. }
-                    if track_id == initial.tracks[0].id
-            ) && initial.tracks[0].port_ids.contains(&port.id)
+            port.owner == ApplicationPortOwner::GlobalFxControl
+                || (matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. }
+                        if track_id == initial.tracks[0].id
+                ) && initial.tracks[0].port_ids.contains(&port.id))
         }));
 
         handle
@@ -9979,7 +10123,9 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let failed = runtime.snapshot();
         assert_eq!(
             failed.audio_drivers.switch.status,
-            AudioDriverSwitchStatus::Failed
+            AudioDriverSwitchStatus::Failed,
+            "{}",
+            failed.audio_drivers.switch.message
         );
         assert!(failed
             .audio_drivers

@@ -2629,6 +2629,15 @@ impl BackendSession {
         Ok(version)
     }
 
+    pub fn set_global_fx_midi_input(&self, port: &MidiPort) -> Result<CommandSequence> {
+        let control = Arc::clone(&port.control);
+        Ok(self.shared.send_topology(move |session| {
+            if let Some(port) = control.ready_id() {
+                let _ = session.set_global_fx_midi_input(port.index());
+            }
+        })?)
+    }
+
     pub fn register_external_processor(
         &self,
         title: &str,

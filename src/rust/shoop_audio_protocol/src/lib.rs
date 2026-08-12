@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 9;
+pub const PROTOCOL_VERSION: u16 = 10;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -464,10 +464,18 @@ pub enum WirePortRole {
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireApplicationPort {
     pub id: u64,
+    pub owner: WireApplicationPortOwner,
     pub name: String,
     pub data_type: WirePortDataType,
     pub direction: WirePortDirection,
     pub role: WirePortRole,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireApplicationPortOwner {
+    Track,
+    GlobalFxControl,
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
