@@ -10,9 +10,10 @@ use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk, WireChannelMode,
     WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WirePortDataType,
-    WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl, WireTrackFxControl,
-    WireTrackTopology, COMMAND_CAPACITY, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
-    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxMidiCcAssignment,
+    WireTinySynthFxParameter, WireTrackControl, WireTrackFxControl, WireTrackTopology,
+    COMMAND_CAPACITY, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
+    MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
     SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
@@ -24,7 +25,7 @@ use shoop_backend::{
     BackendPortRole, BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
     BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
     BackendTrackState, BackendTrackTopology, DirectTrackRequest, TinySynthFxControl,
-    TrackProcessorTypeId, TrackRequest,
+    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
 };
 use shoop_egui::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
@@ -1637,6 +1638,19 @@ impl WebAudioBackend {
                                         eq_low_db: fx.tiny.eq_low_db,
                                         eq_mid_db: fx.tiny.eq_mid_db,
                                         eq_high_db: fx.tiny.eq_high_db,
+                                        midi_cc_assignments: fx
+                                            .tiny
+                                            .midi_cc_assignments
+                                            .into_iter()
+                                            .map(|assignment| TinySynthFxMidiCcAssignment {
+                                                parameter: from_wire_tiny_parameter(
+                                                    assignment.parameter,
+                                                ),
+                                                channel: assignment.channel,
+                                                controller: assignment.controller,
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .into(),
                                     },
                                 )),
                             }),
@@ -1650,6 +1664,12 @@ impl WebAudioBackend {
                             input_monitoring: track.input_monitoring,
                             input_peaks: track.input_peaks,
                             output_peaks: track.output_peaks,
+                            latest_input_midi_message: track.latest_input_midi_message.map(
+                                |message| shoop_backend::BackendLatestMidiMessage {
+                                    bytes: message.bytes,
+                                    len: message.len,
+                                },
+                            ),
                             ..Default::default()
                         },
                     )
@@ -2079,6 +2099,11 @@ impl Backend for WebAudioBackend {
                 {
                     return Err(anyhow!("invalid Tiny Synth/FX compressor amount"));
                 }
+                TinySynthFxControl::AssignMidiCc(assignment)
+                    if assignment.channel > 15 || assignment.controller > 127 =>
+                {
+                    return Err(anyhow!("invalid Tiny Synth/FX MIDI CC assignment"));
+                }
                 TinySynthFxControl::SetEqLowDb(value)
                 | TinySynthFxControl::SetEqMidDb(value)
                 | TinySynthFxControl::SetEqHighDb(value)
@@ -2138,6 +2163,25 @@ impl Backend for WebAudioBackend {
                     TinySynthFxControl::SetEqLowDb(value) => editor.eq_low_db = value,
                     TinySynthFxControl::SetEqMidDb(value) => editor.eq_mid_db = value,
                     TinySynthFxControl::SetEqHighDb(value) => editor.eq_high_db = value,
+                    TinySynthFxControl::AssignMidiCc(assignment) => {
+                        let mut assignments = editor.midi_cc_assignments.to_vec();
+                        assignments.retain(|current| {
+                            current.parameter != assignment.parameter
+                                && (current.channel, current.controller)
+                                    != (assignment.channel, assignment.controller)
+                        });
+                        assignments.push(assignment);
+                        assignments.sort_by_key(|assignment| assignment.parameter);
+                        editor.midi_cc_assignments = assignments.into();
+                    }
+                    TinySynthFxControl::RemoveMidiCc(parameter) => {
+                        let mut assignments = editor.midi_cc_assignments.to_vec();
+                        assignments.retain(|assignment| assignment.parameter != parameter);
+                        editor.midi_cc_assignments = assignments.into();
+                    }
+                    TinySynthFxControl::ClearMidiCcAssignments => {
+                        editor.midi_cc_assignments = Arc::from([]);
+                    }
                     TinySynthFxControl::Panic => {}
                 }
             }
@@ -2670,6 +2714,30 @@ fn to_wire_track_control(control: BackendTrackControl) -> WireTrackControl {
     }
 }
 
+fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxParameter {
+    match parameter {
+        WireTinySynthFxParameter::MasterGain => TinySynthFxParameter::MasterGain,
+        WireTinySynthFxParameter::ReverbAmount => TinySynthFxParameter::ReverbAmount,
+        WireTinySynthFxParameter::DistortionDrive => TinySynthFxParameter::DistortionDrive,
+        WireTinySynthFxParameter::CompressorAmount => TinySynthFxParameter::CompressorAmount,
+        WireTinySynthFxParameter::EqLow => TinySynthFxParameter::EqLow,
+        WireTinySynthFxParameter::EqMid => TinySynthFxParameter::EqMid,
+        WireTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
+    }
+}
+
+fn to_wire_tiny_parameter(parameter: TinySynthFxParameter) -> WireTinySynthFxParameter {
+    match parameter {
+        TinySynthFxParameter::MasterGain => WireTinySynthFxParameter::MasterGain,
+        TinySynthFxParameter::ReverbAmount => WireTinySynthFxParameter::ReverbAmount,
+        TinySynthFxParameter::DistortionDrive => WireTinySynthFxParameter::DistortionDrive,
+        TinySynthFxParameter::CompressorAmount => WireTinySynthFxParameter::CompressorAmount,
+        TinySynthFxParameter::EqLow => WireTinySynthFxParameter::EqLow,
+        TinySynthFxParameter::EqMid => WireTinySynthFxParameter::EqMid,
+        TinySynthFxParameter::EqHigh => WireTinySynthFxParameter::EqHigh,
+    }
+}
+
 fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxControl {
     match control {
         BackendTrackFxControl::SetActive(value) => WireTrackFxControl::SetActive(value),
@@ -2704,6 +2772,19 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             TinySynthFxControl::SetEqLowDb(value) => WireTrackFxControl::TinySetEqLowDb(value),
             TinySynthFxControl::SetEqMidDb(value) => WireTrackFxControl::TinySetEqMidDb(value),
             TinySynthFxControl::SetEqHighDb(value) => WireTrackFxControl::TinySetEqHighDb(value),
+            TinySynthFxControl::AssignMidiCc(assignment) => {
+                WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
+                    parameter: to_wire_tiny_parameter(assignment.parameter),
+                    channel: assignment.channel,
+                    controller: assignment.controller,
+                })
+            }
+            TinySynthFxControl::RemoveMidiCc(parameter) => {
+                WireTrackFxControl::TinyRemoveMidiCc(to_wire_tiny_parameter(parameter))
+            }
+            TinySynthFxControl::ClearMidiCcAssignments => {
+                WireTrackFxControl::TinyClearMidiCcAssignments
+            }
             TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
         },
     }

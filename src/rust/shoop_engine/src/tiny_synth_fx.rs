@@ -3,7 +3,7 @@ use base64::Engine;
 use tinyviolin::midi::MidiMessage;
 use tinyviolin::{AudioProcessor, Preset};
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::midi_storage::MidiStorageElem;
@@ -117,6 +117,7 @@ impl TinySynthFxMidiCcAssignments {
 struct TinySynthFxRuntimeState {
     values: [AtomicU32; 7],
     revision: AtomicU64,
+    midi_customized_preset: AtomicBool,
 }
 
 impl TinySynthFxRuntimeState {
@@ -124,12 +125,24 @@ impl TinySynthFxRuntimeState {
         Self {
             values: values.map(|value| AtomicU32::new(value.to_bits())),
             revision: AtomicU64::new(1),
+            midi_customized_preset: AtomicBool::new(false),
         }
     }
 
     fn publish(&self, parameter: TinySynthFxParameter, value: f32) -> u64 {
         self.values[parameter.index()].store(value.to_bits(), Ordering::Relaxed);
         self.revision.fetch_add(1, Ordering::Release) + 1
+    }
+
+    fn publish_midi(&self, parameter: TinySynthFxParameter, value: f32) {
+        if parameter != TinySynthFxParameter::MasterGain {
+            self.midi_customized_preset.store(true, Ordering::Relaxed);
+        }
+        self.publish(parameter, value);
+    }
+
+    fn reset_midi_customized_preset(&self) {
+        self.midi_customized_preset.store(false, Ordering::Relaxed);
     }
 
     fn revision(&self) -> u64 {
@@ -228,10 +241,16 @@ impl TinySynthFxControlState {
         self.synchronize_runtime_values();
         let settings = self.audio.effect_settings();
         TinySynthFxEditorState {
-            selected_preset_id: self
-                .audio
-                .selected_preset()
-                .map(|preset| preset.id().to_owned()),
+            selected_preset_id: (!self
+                .runtime_state
+                .midi_customized_preset
+                .load(Ordering::Relaxed))
+            .then(|| {
+                self.audio
+                    .selected_preset()
+                    .map(|preset| preset.id().to_owned())
+            })
+            .flatten(),
             master_gain_db: self.master_gain_db,
             reverb_enabled: settings.reverb_enabled,
             reverb_amount: settings.reverb_amount,
@@ -249,6 +268,7 @@ impl TinySynthFxControlState {
 
     pub fn select_preset(&mut self, id: &str) -> Result<(), tinyviolin::midi::MidiError> {
         self.audio.select_preset_by_id(id)?;
+        self.runtime_state.reset_midi_customized_preset();
         self.publish_all_runtime_values();
         Ok(())
     }
@@ -561,7 +581,7 @@ impl TinySynthFxProcessor {
             TinySynthFxParameter::EqMid => self.set_eq_mid_db(value),
             TinySynthFxParameter::EqHigh => self.set_eq_high_db(value),
         }
-        self.runtime_state.publish(parameter, value);
+        self.runtime_state.publish_midi(parameter, value);
     }
 
     pub fn select_preset(&mut self, id: &str) {

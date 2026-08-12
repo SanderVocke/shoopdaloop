@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 9;
+pub const PROTOCOL_VERSION: u16 = 10;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -302,6 +302,9 @@ pub enum WireTrackFxControl {
     TinySetEqLowDb(f32),
     TinySetEqMidDb(f32),
     TinySetEqHighDb(f32),
+    TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment),
+    TinyRemoveMidiCc(WireTinySynthFxParameter),
+    TinyClearMidiCcAssignments,
     TinyPanic,
 }
 
@@ -325,6 +328,9 @@ impl WireTrackFxControl {
             | Self::TinySetDistortionEnabled(_)
             | Self::TinySetCompressorEnabled(_)
             | Self::TinySetEqEnabled(_)
+            | Self::TinyAssignMidiCc(_)
+            | Self::TinyRemoveMidiCc(_)
+            | Self::TinyClearMidiCcAssignments
             | Self::TinyPanic => return None,
         })
     }
@@ -484,6 +490,31 @@ pub struct WireConfirmedLink {
     pub host_port_id: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireTinySynthFxParameter {
+    MasterGain,
+    ReverbAmount,
+    DistortionDrive,
+    CompressorAmount,
+    EqLow,
+    EqMid,
+    EqHigh,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireTinySynthFxMidiCcAssignment {
+    pub parameter: WireTinySynthFxParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireLatestMidiMessage {
+    pub bytes: [u8; 4],
+    pub len: u8,
+}
+
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireMidiEvent {
     pub frame: u32,
@@ -513,6 +544,8 @@ pub struct WireTrackState {
     pub input_monitoring: bool,
     pub input_peaks: Vec<f32>,
     pub output_peaks: Vec<f32>,
+    #[serde(default)]
+    pub latest_input_midi_message: Option<WireLatestMidiMessage>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -536,6 +569,8 @@ pub struct WireTinySynthFxState {
     pub eq_low_db: f32,
     pub eq_mid_db: f32,
     pub eq_high_db: f32,
+    #[serde(default)]
+    pub midi_cc_assignments: Vec<WireTinySynthFxMidiCcAssignment>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -815,6 +850,13 @@ mod tests {
             WireTrackFxControl::TinySetEqLowDb(3.0),
             WireTrackFxControl::TinySetEqMidDb(-2.0),
             WireTrackFxControl::TinySetEqHighDb(1.5),
+            WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
+                parameter: WireTinySynthFxParameter::EqHigh,
+                channel: 3,
+                controller: 74,
+            }),
+            WireTrackFxControl::TinyRemoveMidiCc(WireTinySynthFxParameter::EqHigh),
+            WireTrackFxControl::TinyClearMidiCcAssignments,
             WireTrackFxControl::TinyPanic,
         ]
         .into_iter()
