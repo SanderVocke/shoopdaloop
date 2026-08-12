@@ -73,15 +73,15 @@ This milestone includes the application snapshot data needed for an accurate vie
 
 ### Stage 4 — End-to-end non-interactive validation
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo test --locked --no-default-features -p shoop_audio_protocol -p shoop_audio_worklet -p shoop_egui -p shoopdaloop`, `RUSTFLAGS="-D warnings" cargo build --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown`, and `RUSTFLAGS="-D warnings" cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown`; do not launch a browser or GUI session.
-- [ ] Review the final diff for unrelated formatting, accidental editor controls, snapshot payload growth, and divergence between documented and tested schedule semantics.
-- [ ] Commit any validation fixes as a separate meaningful milestone and rerun every affected gate.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo test --locked --no-default-features -p shoop_audio_protocol -p shoop_audio_worklet -p shoop_egui -p shoopdaloop`, `RUSTFLAGS="-D warnings" cargo build --locked --no-default-features -p shoopdaloop --target wasm32-unknown-unknown`, and `RUSTFLAGS="-D warnings" cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown`; do not launch a browser or GUI session.
+- [x] Review the final diff for unrelated formatting, accidental editor controls, snapshot payload growth, and divergence between documented and tested schedule semantics.
+- [x] Commit any validation fixes as a separate meaningful milestone and rerun every affected gate.
 
-**Verification:** all listed local gates are green and the worktree contains only intended plan/feature/documentation changes.
+**Verification:** all listed local gates are green and the worktree contains only intended plan/feature/documentation changes. On 2026-08-12 the warning-denying workspace build, complete workspace suite, 119-module tracing inventory, browser-independent suites, and both WebAssembly builds passed; the Wasm linker was supplied from the existing Nix store and no GUI/browser session was launched.
 
 ### Stage 5 — Pull request and three-green CI handoff
 
