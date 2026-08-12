@@ -1,4 +1,6 @@
-use crate::{colors, CompositeDetailsState, CompositeEventDetailsState, LoopId, LoopMode, TrackId};
+use crate::{
+    colors, AppIntent, CompositeDetailsState, CompositeEventDetailsState, LoopId, LoopMode, TrackId,
+};
 use std::collections::BTreeMap;
 
 const MIN_CYCLE_WIDTH: f32 = 20.0;
@@ -10,6 +12,11 @@ const LANE_HEIGHT: f32 = 28.0;
 const LANE_GAP: f32 = 2.0;
 const TRACK_GAP: f32 = 2.0;
 const EVENT_INSET: f32 = 1.0;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct LoopDragPayload {
+    pub loop_id: LoopId,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct PackedEvent {
@@ -93,6 +100,8 @@ pub struct CompositeLoopWidget {
     rendered_track_heights: Vec<f32>,
     #[cfg(test)]
     content_size: egui::Vec2,
+    #[cfg(test)]
+    drop_rect: Option<egui::Rect>,
 }
 
 impl Default for CompositeLoopWidget {
@@ -106,12 +115,19 @@ impl Default for CompositeLoopWidget {
             rendered_track_heights: Vec::new(),
             #[cfg(test)]
             content_size: egui::Vec2::ZERO,
+            #[cfg(test)]
+            drop_rect: None,
         }
     }
 }
 
 impl CompositeLoopWidget {
-    pub fn show(&mut self, ui: &mut egui::Ui, loop_id: LoopId, details: &CompositeDetailsState) {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        loop_id: LoopId,
+        details: &CompositeDetailsState,
+    ) -> Vec<AppIntent> {
         if self.loop_id != loop_id {
             self.loop_id = loop_id;
             self.cycle_width = DEFAULT_CYCLE_WIDTH;
@@ -121,6 +137,7 @@ impl CompositeLoopWidget {
             self.rendered_events.clear();
             self.rendered_track_heights.clear();
             self.content_size = egui::Vec2::ZERO;
+            self.drop_rect = None;
         }
 
         let fit_width = (ui.available_width() - TRACK_LABEL_WIDTH).max(1.0);
@@ -155,11 +172,37 @@ impl CompositeLoopWidget {
             }
         });
 
-        if details.events.is_empty() {
-            ui.label("The composite schedule is empty.");
-            return;
+        let (_drop_zone, dropped) = ui.dnd_drop_zone::<LoopDragPayload, _>(
+            egui::Frame::new().inner_margin(egui::Margin::same(3)),
+            |ui| {
+                if details.events.is_empty() {
+                    ui.add_sized(
+                        [ui.available_width().max(160.0), 56.0],
+                        egui::Label::new(
+                            "The composite schedule is empty. Drag a loop here to add it.",
+                        ),
+                    );
+                } else {
+                    self.show_timeline(ui, details);
+                }
+            },
+        );
+        #[cfg(test)]
+        {
+            self.drop_rect = Some(_drop_zone.response.rect);
         }
+        dropped
+            .filter(|payload| payload.loop_id != loop_id)
+            .map(|payload| {
+                vec![AppIntent::ComposeLoopSerial {
+                    target_loop_id: loop_id,
+                    source_loop_id: payload.loop_id,
+                }]
+            })
+            .unwrap_or_default()
+    }
 
+    fn show_timeline(&mut self, ui: &mut egui::Ui, details: &CompositeDetailsState) {
         let packed = pack_swimlanes(details);
         let timeline_cycles = timeline_cycles(details);
         let timeline_width = timeline_cycles as f32 * self.cycle_width;
@@ -178,7 +221,7 @@ impl CompositeLoopWidget {
         }
 
         egui::ScrollArea::both()
-            .id_salt(("composite_timeline", loop_id))
+            .id_salt(("composite_timeline", self.loop_id))
             .auto_shrink([false, false])
             .scroll_source(crate::control_safe_scroll_source())
             .show(ui, |ui| {
@@ -414,12 +457,119 @@ mod tests {
         assert_eq!(track_height(2), LANE_HEIGHT * 2.0 + LANE_GAP);
     }
 
+    fn widget_frame(
+        context: &egui::Context,
+        widget: &mut CompositeLoopWidget,
+        loop_id: LoopId,
+        state: &CompositeDetailsState,
+        events: Vec<egui::Event>,
+    ) -> Vec<AppIntent> {
+        let mut intents = Vec::new();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(500.0, 220.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| intents = widget.show(ui, loop_id, state),
+        );
+        intents
+    }
+
+    #[test]
+    fn timeline_accepts_typed_loop_drops_and_ignores_self_or_outside_drops() {
+        let context = egui::Context::default();
+        let mut widget = CompositeLoopWidget::default();
+        let target = LoopId::from_raw(8);
+        let source = LoopId::from_raw(9);
+        let state = details(Vec::new());
+        let _ = widget_frame(&context, &mut widget, target, &state, Vec::new());
+        let drop_center = widget.drop_rect.unwrap().center();
+
+        egui::DragAndDrop::set_payload(&context, LoopDragPayload { loop_id: source });
+        let _ = widget_frame(
+            &context,
+            &mut widget,
+            target,
+            &state,
+            vec![
+                egui::Event::PointerMoved(drop_center),
+                egui::Event::PointerButton {
+                    pos: drop_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let intents = widget_frame(
+            &context,
+            &mut widget,
+            target,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: drop_center,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            intents,
+            [AppIntent::ComposeLoopSerial {
+                target_loop_id: target,
+                source_loop_id: source,
+            }]
+        );
+
+        for (payload, position) in [
+            (LoopDragPayload { loop_id: target }, drop_center),
+            (
+                LoopDragPayload { loop_id: source },
+                egui::pos2(490.0, 210.0),
+            ),
+        ] {
+            egui::DragAndDrop::set_payload(&context, payload);
+            let _ = widget_frame(
+                &context,
+                &mut widget,
+                target,
+                &state,
+                vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            let intents = widget_frame(
+                &context,
+                &mut widget,
+                target,
+                &state,
+                vec![egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert!(intents.is_empty());
+        }
+    }
+
     #[test]
     fn empty_composite_paints_an_explicit_schedule_message() {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
         let output = context.run_ui(Default::default(), |ui| {
-            widget.show(ui, LoopId::from_raw(8), &details(Vec::new()))
+            widget.show(ui, LoopId::from_raw(8), &details(Vec::new()));
         });
         assert!(output.shapes.iter().any(|shape| match &shape.shape {
             egui::Shape::Text(text) => text.galley.job.text.contains("schedule is empty"),
@@ -441,7 +591,9 @@ mod tests {
                 )),
                 ..Default::default()
             },
-            |ui| widget.show(ui, LoopId::from_raw(9), &state),
+            |ui| {
+                widget.show(ui, LoopId::from_raw(9), &state);
+            },
         );
         assert!(!output.shapes.is_empty());
         assert_eq!(
@@ -457,12 +609,12 @@ mod tests {
         let initial_width = widget.rendered_events[0].1.width();
         widget.cycle_width = DEFAULT_CYCLE_WIDTH * 2.0;
         let _ = context.run_ui(Default::default(), |ui| {
-            widget.show(ui, LoopId::from_raw(9), &state)
+            widget.show(ui, LoopId::from_raw(9), &state);
         });
         assert!(widget.rendered_events[0].1.width() > initial_width * 1.9);
         widget.cycle_width = MAX_CYCLE_WIDTH + 100.0;
         let _ = context.run_ui(Default::default(), |ui| {
-            widget.show(ui, LoopId::from_raw(9), &state)
+            widget.show(ui, LoopId::from_raw(9), &state);
         });
         assert!(widget.cycle_width <= MAX_CYCLE_WIDTH);
     }
@@ -498,7 +650,9 @@ mod tests {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
                 },
-                |ui| widget.show(ui, LoopId::from_raw(10), &state),
+                |ui| {
+                    widget.show(ui, LoopId::from_raw(10), &state);
+                },
             );
             assert!(!output.shapes.is_empty());
             assert_eq!(widget.rendered_events.len(), 16);
