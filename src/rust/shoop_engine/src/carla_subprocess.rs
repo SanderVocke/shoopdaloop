@@ -1,9 +1,9 @@
+use crate::carla_native::CarlaNativeHost;
 use crate::carla_processor::{
     CarlaGenerationLog, CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo,
     CarlaProcessorLifecycle, FakeCarlaProcessor, FakeProcessorBehavior,
 };
 use crate::carla_shared_memory::SharedBlockTransport;
-use crate::lv2_carla::CarlaLv2Host;
 use crate::realtime_lock_guard::Mutex;
 use crate::FXChainType;
 use anyhow::{anyhow, Context, Result};
@@ -268,6 +268,19 @@ fn run_shared_worker(
         }));
         match result {
             Ok(Ok(())) => {}
+            Ok(Err(error))
+                if matches!(
+                    error.downcast_ref::<crate::carla_shared_memory::SharedBlockError>(),
+                    Some(
+                        crate::carla_shared_memory::SharedBlockError::DeadlineMiss
+                            | crate::carla_shared_memory::SharedBlockError::StaleCompletion
+                    )
+                ) =>
+            {
+                // The parent owns deadline accounting and bounded fallback.
+                // A stale realtime block is recoverable and must not turn one
+                // scheduling miss into a supervised-process crash.
+            }
             Ok(Err(error)) => {
                 eprintln!("Carla shared-memory worker failed: {error:#}");
                 std::process::exit(70);
@@ -310,7 +323,7 @@ fn instantiate_worker_host(
         fake.set_behavior(behavior);
         Ok(Box::new(fake))
     } else {
-        CarlaLv2Host::instantiate(
+        CarlaNativeHost::instantiate(
             engine_chain_type(chain_type),
             sample_rate,
             nominal_buffer_size,
@@ -323,10 +336,9 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
     let mut stream = TcpStream::connect_timeout(&options.address, STARTUP_TIMEOUT)
         .context("worker could not connect to parent")?;
     stream.set_nodelay(true)?;
-    // The worker is long-lived and may legitimately receive no control traffic for
-    // minutes. Parent-side request deadlines bound individual exchanges; a worker
-    // read deadline here would incorrectly turn an idle plugin into a crash.
-    stream.set_read_timeout(None)?;
+    // A short timeout lets the control owner service Carla's UI without depending
+    // on control traffic. Timeouts are idle ticks, not worker failures.
+    stream.set_read_timeout(Some(Duration::from_millis(30)))?;
     stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
     let notification = UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
     notification.set_read_timeout(Some(Duration::from_millis(10)))?;
@@ -388,7 +400,35 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
         ..Default::default()
     };
     loop {
-        let message: ParentToWorker = match read_frame(&mut stream) {
+        if let Some(host) = host
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_mut()
+        {
+            if host.is_visible() {
+                host.idle();
+            }
+        }
+        let mut available = [0_u8; 1];
+        match stream.peek(&mut available) {
+            Ok(0) => return Ok(()),
+            Ok(_) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                continue;
+            }
+            Err(error) => return Err(error.into()),
+        }
+        // Once a frame starts, read it without a timeout so a partial TCP frame
+        // cannot be mistaken for a fresh header on the next idle tick.
+        stream.set_read_timeout(None)?;
+        let result = read_frame(&mut stream);
+        stream.set_read_timeout(Some(Duration::from_millis(30)))?;
+        let message: ParentToWorker = match result {
             Ok(message) => message,
             Err(shoop_plugin_protocol::WireError::Io(error))
                 if matches!(

@@ -11,7 +11,7 @@ The cross-platform workflow produces:
 - macOS arm64: `.tar.gz` archives containing `ShoopDaLoop.app`.
 - WebAssembly: a hosted bundle `.zip` and a self-contained `.html` file.
 
-Native archives do not bundle a complete native-library dependency closure and are not installers. They are unsigned; the operating system may require explicit approval before first launch. Release and workflow artifacts should be treated as development software and tested before performance use.
+Native archives bundle the pinned Carla Native runtime used by hosted Rack/Patchbay tracks, including its UI and plugin discovery/bridge helpers. They are not installers and remain unsigned; the operating system may require explicit approval before first launch. Release and workflow artifacts should be treated as development software and tested before performance use.
 
 The hosted web bundle should be served over HTTPS or `localhost`. The self-contained HTML can be opened directly, but browser security policy may restrict audio, MIDI, or storage on `file:` URLs.
 
@@ -26,8 +26,8 @@ The Ubuntu CI build uses:
 ```sh
 sudo apt-get update
 sudo apt-get install --yes \
-  libasound2-dev libjack-jackd2-dev liblilv-dev libgl1-mesa-dev \
-  libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+  libasound2-dev libjack-jackd2-dev libgl1-mesa-dev libx11-dev \
+  libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
   libxcursor-dev libxi-dev libxkbcommon-dev libxrandr-dev libwayland-dev
 ```
 
@@ -35,22 +35,18 @@ Equivalent packages may be used on other distributions.
 
 ### macOS
 
-Install Xcode command-line tools, Rust, Lilv, and pkg-config. The CI runner uses:
-
-```sh
-brew install lilv pkg-config
-```
+Install Xcode command-line tools and Rust. No Carla, Lilv, or LV2 SDK is needed to compile ShoopDaLoop.
 
 ### Windows
 
-Install Visual Studio 2022 Build Tools with the MSVC C++ toolchain, Rust for `x86_64-pc-windows-msvc`, and native Lilv plus pkg-config development files. Ensure `PKG_CONFIG` and `PKG_CONFIG_PATH` resolve the Lilv installation. The GitHub-hosted runner installs those two packages through its provided dependency manager.
+Install Visual Studio 2022 Build Tools with the MSVC C++ toolchain and Rust for `x86_64-pc-windows-msvc`. No Carla, Lilv, or LV2 SDK is needed to compile ShoopDaLoop.
 
 ### Native commands
 
 From the repository root:
 
 ```sh
-# Native drivers and LV2/Carla hosting.
+# Native drivers and dynamically loaded Carla Native hosting.
 cargo build -p shoopdaloop
 cargo run -p shoopdaloop
 
@@ -59,7 +55,7 @@ cargo build -p shoopdaloop --no-default-features
 cargo run -p shoopdaloop --no-default-features
 ```
 
-The executable is written to `target/debug/` or `target/release/`. No generated launcher is needed.
+The executable is written to `target/debug/` or `target/release/`. No generated launcher is needed. Source-tree builds gracefully mark Carla processors unavailable unless a packaged runtime is present; developers can select a matching runtime with the absolute-path overrides `SHOOP_CARLA_NATIVE_LIBRARY` and `SHOOP_CARLA_RESOURCE_DIR`. Run `shoopdaloop --probe-carla-native` to validate it without opening the GUI, or `shoopdaloop --probe-carla-native-ui` to exercise every external UI lifecycle.
 
 On first native launch, ShoopDaLoop uses the dummy/offline driver. Open **Settings → Audio** to configure JACK or CPAL+midir and confirm a runtime switch.
 

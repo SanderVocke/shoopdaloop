@@ -38,7 +38,7 @@ The repository currently retains an older interface screenshot while updated scr
 # Native application with native FX support.
 cargo run -p shoopdaloop
 
-# Native application without LV2/Carla dependencies.
+# Native application without Carla hosting.
 cargo run -p shoopdaloop --no-default-features
 ```
 
@@ -61,4 +61,4 @@ The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssem
 
 Copyright © Sander Vocke (2023–present) and other credited contributors. See [LICENSE](LICENSE).
 
-ShoopDaLoop is made possible by Rust, egui/eframe, JACK, CPAL, midir, libsndfile-compatible tooling, Lilv/LV2, Carla, omniLua, Tracy, and many other open-source projects represented in `Cargo.lock`.
+ShoopDaLoop is made possible by Rust, egui/eframe, JACK, CPAL, midir, libsndfile-compatible tooling, Carla, omniLua, Tracy, and many other open-source projects represented in `Cargo.lock`. Native archives include the pinned GPL-2.0-or-later Carla runtime and its corresponding-source information.

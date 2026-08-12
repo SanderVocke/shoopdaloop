@@ -1,0 +1,9 @@
+NativeMidiEvent=12,4
+NativeTimeInfo=80,8
+NativeHostDescriptor=128,8
+NativePluginDescriptor=280,8
+NativeHostDescriptor.dispatcher=120
+NativePluginDescriptor.instantiate=72
+NativePluginDescriptor.process=208
+NativePluginDescriptor.get_state=216
+NativePluginDescriptor.ui_width=272

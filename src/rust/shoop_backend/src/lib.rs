@@ -4,7 +4,8 @@ mod native;
 pub use native::NativeBackend;
 #[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
 pub use native::{
-    configure_carla_hosting_mode, configured_carla_hosting_mode, run_carla_worker_if_requested,
+    carla_runtime_path, configure_carla_hosting_mode, configured_carla_hosting_mode,
+    run_carla_worker_if_requested, smoke_test_carla_runtime, smoke_test_carla_ui,
 };
 pub use shoop_app_api::{
     TinySynthFxControl, TinySynthFxState, TrackProcessorEditorState, TrackProcessorTypeId,

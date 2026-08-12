@@ -43,8 +43,11 @@ allocation and lock guards cover engine and AudioWorklet paths.
 Carla hosting
 ~~~~~~~~~~~~~
 
-Carla processors implement one frontend-independent processor contract. Direct
-hosting processes in the application. Subprocess mode gives each chain an
+Carla processors implement one frontend-independent processor contract. A
+pinned ``libcarla_native-plugin`` is loaded by absolute path and Rack/Patchbay
+descriptors are instantiated through ``CarlaNative.h``; ShoopDaLoop does not
+host Carla through LV2 or another plugin wrapper. In-process hosting owns Carla
+on a non-realtime bridge thread. Subprocess mode gives each chain an
 authenticated worker generation and bounded shared-memory block transport. The
 same executable dispatches hidden worker mode before creating the GUI.
 
@@ -52,9 +55,11 @@ Build and packaging
 ~~~~~~~~~~~~~~~~~~~
 
 Cargo builds the native workspace. Trunk builds the browser UI and dedicated
-AudioWorklet with matching profiles. The application artifact script emits unsigned
-native archives, a hosted web archive, and a self-contained HTML file. It does
-not construct installers or native dependency-closure bundles.
+AudioWorklet with matching profiles. The application artifact script emits
+unsigned native archives, a hosted web archive, and a self-contained HTML file.
+Native archives include a manifest- and checksum-verified Carla runtime
+component with UI/discovery/bridge helpers, licenses, and corresponding-source
+metadata. Browser artifacts contain none of that component.
 
 Testing
 ~~~~~~~

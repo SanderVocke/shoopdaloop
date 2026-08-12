@@ -10,10 +10,12 @@ pub mod audio_channel;
 pub mod audio_midi_loop;
 pub mod basic_loop;
 pub mod buffer_queue;
+#[cfg(feature = "carla")]
+pub mod carla_native;
 pub mod carla_processor;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod carla_shared_memory;
-#[cfg(all(feature = "lv2", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
 pub mod carla_subprocess;
 pub mod channel_mode;
 pub mod chunked_samples;
@@ -38,8 +40,6 @@ pub mod graph_build;
 pub mod graph_scheduler;
 pub mod internal_audio_port;
 pub mod loop_mode;
-#[cfg(feature = "lv2")]
-pub mod lv2_carla;
 pub mod midi;
 pub mod midi_buffering_input_port;
 pub mod midi_channel;

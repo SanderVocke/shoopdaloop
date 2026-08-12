@@ -101,6 +101,7 @@ pub trait CarlaProcessor: Send + Debug {
         Vec::new()
     }
     fn clear_logs(&mut self) {}
+    fn idle(&mut self) {}
     fn toggle_or_recover(&mut self) -> Result<()> {
         let visible = self.is_visible();
         self.set_visible(!visible)
@@ -182,6 +183,7 @@ mod bridge {
 
         fn publish_health(&self, host: &mut dyn CarlaProcessor) {
             self.ready.store(host.is_ready(), Ordering::Release);
+            self.visible.store(host.is_visible(), Ordering::Release);
             self.lifecycle
                 .store(host.lifecycle() as u8, Ordering::Release);
             self.generation.store(host.generation(), Ordering::Release);
@@ -745,6 +747,9 @@ mod bridge {
             }
             if stopped {
                 break;
+            }
+            if host.is_visible() {
+                host.idle();
             }
             if processing_faulted {
                 std::thread::park_timeout(Duration::from_millis(10));

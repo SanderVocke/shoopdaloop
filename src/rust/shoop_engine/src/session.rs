@@ -11,7 +11,7 @@
 //!
 //! Audio only for now: MIDI channels are not yet routed through the session.
 
-#[cfg(feature = "lv2")]
+#[cfg(feature = "carla")]
 use crate::carla_processor::CarlaProcessor;
 use shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK;
 use std::collections::HashMap;
@@ -405,7 +405,7 @@ enum ProcessorBackend {
     External,
     Test2x2x1,
     Tiny(TinySynthFxProcessor),
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     Carla(Box<dyn CarlaProcessor>),
 }
 
@@ -1585,7 +1585,7 @@ impl Session {
             })
     }
 
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     pub fn set_carla_fx_host(&mut self, title: impl Into<String>, host: Box<dyn CarlaProcessor>) {
         let title = title.into();
         if let Some(route) = self
@@ -2312,7 +2312,7 @@ impl Session {
                         }
                     }
                 }
-                #[cfg(feature = "lv2")]
+                #[cfg(feature = "carla")]
                 ProcessorBackend::Carla(host) => {
                     if host.is_active() {
                         for (input_index, &port_index) in route.audio_inputs.iter().enumerate() {
@@ -4397,16 +4397,16 @@ mod tests {
         check!(s.apply_graph_changes() == Err(SessionError::Graph(GraphError::Cycle)));
     }
 
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     #[test]
     fn inactive_carla_fx_chain_bypasses_processing_and_tails() {
-        let _exclusive = crate::lv2_carla::lock_carla_test();
-        let Ok(host) =
-            crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
-        else {
-            eprintln!(
-                "skipping Carla inactive routing test; Carla Rack is not installed in LV2_PATH"
-            );
+        let _exclusive = crate::carla_native::lock_carla_test();
+        let Ok(host) = crate::carla_native::CarlaNativeHost::instantiate(
+            crate::FXChainType::CarlaRack,
+            48_000,
+            64,
+        ) else {
+            eprintln!("skipping Carla inactive routing test; Carla Native runtime is unavailable");
             return;
         };
         let host: Box<dyn CarlaProcessor> = Box::new(host);
@@ -4432,7 +4432,7 @@ mod tests {
         assert!(wet.iter().all(|s| *s == 0.0));
     }
 
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     #[test]
     fn fake_carla_processor_node_records_its_wet_output() {
         let mut host =
@@ -4473,7 +4473,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     #[test]
     fn bridged_carla_session_path_has_no_allocation_or_mutex() {
         let fake = crate::carla_processor::FakeCarlaProcessor::new(
@@ -4512,14 +4512,16 @@ mod tests {
         crate::realtime_lock_guard::set_enabled(false);
     }
 
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     #[test]
     fn carla_fx_chain_audio_route_runs_from_session_ports_to_wet_output() {
-        let _exclusive = crate::lv2_carla::lock_carla_test();
-        let Ok(mut host) =
-            crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
-        else {
-            eprintln!("skipping Carla routing test; Carla Rack is not installed in LV2_PATH");
+        let _exclusive = crate::carla_native::lock_carla_test();
+        let Ok(mut host) = crate::carla_native::CarlaNativeHost::instantiate(
+            crate::FXChainType::CarlaRack,
+            48_000,
+            64,
+        ) else {
+            eprintln!("skipping Carla routing test; Carla Native runtime is unavailable");
             return;
         };
         host.set_active(true);

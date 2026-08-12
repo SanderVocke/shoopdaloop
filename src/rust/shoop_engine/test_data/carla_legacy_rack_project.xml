@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE CARLA-PROJECT>
+<CARLA-PROJECT VERSION='2.5'>
+ <EngineSettings>
+  <ForceStereo>true</ForceStereo>
+  <PreferPluginBridges>false</PreferPluginBridges>
+  <PreferUiBridges>false</PreferUiBridges>
+  <UIsAlwaysOnTop>true</UIsAlwaysOnTop>
+  <MaxParameters>200</MaxParameters>
+  <UIBridgesTimeout>4000</UIBridgesTimeout>
+  <LADSPA_PATH></LADSPA_PATH>
+  <DSSI_PATH></DSSI_PATH>
+  <LV2_PATH></LV2_PATH>
+  <VST2_PATH></VST2_PATH>
+  <VST3_PATH></VST3_PATH>
+  <SF2_PATH></SF2_PATH>
+  <SFZ_PATH></SFZ_PATH>
+  <JSFX_PATH></JSFX_PATH>
+ </EngineSettings>
+</CARLA-PROJECT>

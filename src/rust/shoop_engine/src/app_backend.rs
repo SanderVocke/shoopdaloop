@@ -37,7 +37,7 @@ pub use engine::{CommandSequence, SendError};
 const COMMAND_QUEUE_CAPACITY: usize = 4096;
 const INVALID_OBJECT_INDEX: usize = usize::MAX;
 static NEXT_BACKEND_SESSION_ID: AtomicU64 = AtomicU64::new(1);
-#[cfg(feature = "lv2")]
+#[cfg(feature = "carla")]
 static NEXT_CARLA_CHAIN_ID: AtomicU64 = AtomicU64::new(1);
 static CARLA_HOSTING_MODE: AtomicU8 = AtomicU8::new(0);
 
@@ -1628,7 +1628,7 @@ impl SharedSession {
     /// Two reasons this is not optional. A driver that stops without returning it leaves the
     /// session unreachable, so every control call afterwards waits out its timeout. And the
     /// session would then be *destroyed on the driver's thread* -- which for a session holding
-    /// Carla LV2 hosts means tearing down plugin instances on a thread that did not create
+    /// Carla Native hosts means tearing down plugin instances on a thread that did not create
     /// them, and those do not survive it.
     fn return_engine(&self, engine: engine::Engine) {
         *self.parked.lock().unwrap_or_else(|e| e.into_inner()) = Some(engine);
@@ -2726,14 +2726,14 @@ impl BackendSession {
                 FXChainBackendKind::Tiny(Mutex::new(control))
             }
             FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
-                #[cfg(feature = "lv2")]
+                #[cfg(feature = "carla")]
                 {
                     let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
                     let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
                     let host: Result<Box<dyn engine::carla_processor::CarlaProcessor>> =
                         match carla_hosting_mode() {
                             CarlaHostingMode::InProcess => {
-                                engine::lv2_carla::CarlaLv2Host::instantiate(
+                                engine::carla_native::CarlaNativeHost::instantiate(
                                     chain_type,
                                     sample_rate,
                                     buffer_size,
@@ -2796,10 +2796,10 @@ impl BackendSession {
                         }
                     }
                 }
-                #[cfg(not(feature = "lv2"))]
+                #[cfg(not(feature = "carla"))]
                 {
                     FXChainBackendKind::Unavailable {
-                        reason: "shoop_engine was built without LV2 support".to_string(),
+                        reason: "shoop_engine was built without Carla Native support".to_string(),
                     }
                 }
             }
@@ -3277,7 +3277,7 @@ impl AudioDriver {
                         }
 
                         // Hand the engine back before this thread ends. Dropping it here would destroy
-                        // the session on this thread, and a session holding Carla LV2 hosts does not
+                        // the session on this thread, and a session holding Carla Native hosts does not
                         // survive being torn down off the thread that created its plugins. It would
                         // also leave the session unreachable for whatever outlives this driver.
                         if let Some(e) = engine.take() {
@@ -5854,7 +5854,7 @@ pub type FXChainState = engine::FXChainState;
 enum FXChainBackendKind {
     Test2x2x1,
     Tiny(Mutex<engine::tiny_synth_fx::TinySynthFxControlState>),
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     Carla(engine::carla_processor::CarlaControlHandle),
     Unavailable {
         reason: String,
@@ -5879,7 +5879,7 @@ impl FXChain {
     }
     pub fn set_visible(&self, visible: bool) {
         self.state.lock().unwrap().visible = visible as u32;
-        #[cfg(feature = "lv2")]
+        #[cfg(feature = "carla")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
             let ok = host.set_visible(visible).is_ok();
             self.state.lock().unwrap().visible = (visible && ok) as u32;
@@ -5906,7 +5906,7 @@ impl FXChain {
                     log::error!("could not queue Tiny Synth/FX active state: {error}");
                 }
             }
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.set_active(active),
             FXChainBackendKind::Unavailable { .. } => {}
         }
@@ -5914,7 +5914,7 @@ impl FXChain {
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();
         s.ready = self.available() as u32;
-        #[cfg(feature = "lv2")]
+        #[cfg(feature = "carla")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
             s.ready = host.is_ready() as u32;
             s.active = host.is_active() as u32;
@@ -5925,7 +5925,7 @@ impl FXChain {
     }
     pub fn toggle_or_recover(&self) -> Result<()> {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.toggle_or_recover(),
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => {
                 self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
@@ -5937,7 +5937,7 @@ impl FXChain {
 
     pub fn lifecycle(&self) -> engine::carla_processor::CarlaProcessorLifecycle {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.lifecycle(),
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => {
                 engine::carla_processor::CarlaProcessorLifecycle::Running
@@ -5950,7 +5950,7 @@ impl FXChain {
 
     pub fn generation(&self) -> u64 {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.generation(),
             _ => 0,
         }
@@ -5958,7 +5958,7 @@ impl FXChain {
 
     pub fn crash_summary(&self) -> Option<String> {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.crash_summary(),
             FXChainBackendKind::Unavailable { reason } => Some(reason.clone()),
             _ => None,
@@ -5967,14 +5967,14 @@ impl FXChain {
 
     pub fn generation_logs(&self) -> Vec<engine::carla_processor::CarlaGenerationLog> {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.generation_logs(),
             _ => Vec::new(),
         }
     }
 
     pub fn clear_logs(&self) {
-        #[cfg(feature = "lv2")]
+        #[cfg(feature = "carla")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
             host.clear_logs();
         }
@@ -5984,7 +5984,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
             FXChainBackendKind::Tiny(control) => Ok(control.lock().unwrap().encode()),
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.save_state(),
             _ => Ok(String::new()),
         }
@@ -5995,10 +5995,10 @@ impl FXChain {
     }
 
     pub fn try_restore_state(&self, state: &str) -> Result<()> {
-        #[cfg(not(feature = "lv2"))]
+        #[cfg(not(feature = "carla"))]
         let _ = state;
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.restore_state(state),
             FXChainBackendKind::Tiny(control) => {
                 let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
@@ -6253,7 +6253,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -6263,7 +6263,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -6271,7 +6271,7 @@ impl FXChain {
     fn n_midi_input_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => 1,
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -6280,7 +6280,7 @@ impl FXChain {
     fn n_midi_output_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => 0,
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -8094,10 +8094,10 @@ mod tests {
         assert!(graph_up_to_date(&sess));
     }
 
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     #[test]
     fn carla_fx_chain_handle_instantiates_when_plugin_is_available() {
-        let _exclusive = engine::lv2_carla::lock_carla_test();
+        let _exclusive = engine::carla_native::lock_carla_test();
         let sess = BackendSession::new().expect("session");
         let chain = sess
             .create_fx_chain(FXChainType::CarlaRack, "carla", 0)
@@ -8121,8 +8121,8 @@ mod tests {
         assert_eq!(chain.get_state().expect("state").active, 1);
         let state = chain.get_state_str().expect("state string");
         assert!(
-            state.starts_with('{'),
-            "Carla state should be JSON: {state}"
+            state.starts_with("shoop-carla-native-state:2:rack:"),
+            "Carla state should use the native envelope: {state}"
         );
         chain.restore_state(&state);
     }

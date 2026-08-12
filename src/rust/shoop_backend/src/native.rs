@@ -25,6 +25,21 @@ pub fn configured_carla_hosting_mode() -> shoop_settings::CarlaHostingMode {
 }
 
 #[cfg(feature = "native-fx")]
+pub fn smoke_test_carla_runtime() -> Result<()> {
+    shoop_engine::carla_native::smoke_test_carla_runtime()
+}
+
+#[cfg(feature = "native-fx")]
+pub fn smoke_test_carla_ui() -> Result<()> {
+    shoop_engine::carla_native::smoke_test_carla_ui()
+}
+
+#[cfg(feature = "native-fx")]
+pub fn carla_runtime_path() -> Result<std::path::PathBuf> {
+    shoop_engine::carla_native::carla_runtime_path()
+}
+
+#[cfg(feature = "native-fx")]
 pub fn run_carla_worker_if_requested<I, S>(args: I) -> Result<bool>
 where
     I: IntoIterator<Item = S>,
@@ -1691,6 +1706,7 @@ impl Backend for NativeBackend {
         #[cfg(feature = "native-fx")]
         let catalog = {
             let mut catalog = catalog;
+            let carla_availability = shoop_engine::carla_native::carla_runtime_availability();
             for (id, label, max_channels) in [
                 (TrackProcessorTypeId::CARLA_RACK, "Carla Rack", 2),
                 (TrackProcessorTypeId::CARLA_PATCHBAY, "Carla Patchbay", 2),
@@ -1703,8 +1719,8 @@ impl Backend for NativeBackend {
                 catalog.push(TrackProcessorDescriptor {
                     id: TrackProcessorTypeId::new(id),
                     label: label.to_owned(),
-                    available: true,
-                    unavailable_reason: None,
+                    available: carla_availability.is_ok(),
+                    unavailable_reason: carla_availability.as_ref().err().cloned(),
                     constraints: TrackProcessorConstraints {
                         max_dry_audio_channels: Some(max_channels),
                         max_wet_audio_channels: Some(max_channels),
@@ -2985,7 +3001,10 @@ mod tests {
         let catalog = backend.track_processor_catalog().unwrap();
         assert_eq!(catalog.len(), 5);
         assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::TINY_SYNTH_FX);
+        let runtime_available = shoop_engine::carla_native::carla_runtime_availability().is_ok();
         for descriptor in &catalog[2..] {
+            assert_eq!(descriptor.available, runtime_available);
+            assert_eq!(descriptor.unavailable_reason.is_none(), runtime_available);
             assert!(descriptor.features.state);
             assert!(descriptor.features.external_ui);
             assert!(descriptor.features.recovery);
@@ -2997,6 +3016,46 @@ mod tests {
             assert!(descriptor.constraints.max_dry_audio_channels.is_some());
             assert!(descriptor.constraints.max_wet_audio_channels.is_some());
         }
+    }
+
+    #[cfg(feature = "native-fx")]
+    #[test]
+    fn missing_carla_runtime_disables_only_carla_catalog_entries() {
+        let original_library = std::env::var_os("SHOOP_CARLA_NATIVE_LIBRARY");
+        let original_resources = std::env::var_os("SHOOP_CARLA_RESOURCE_DIR");
+        unsafe {
+            std::env::set_var(
+                "SHOOP_CARLA_NATIVE_LIBRARY",
+                std::env::temp_dir().join("shoop-certainly-missing-carla.so"),
+            );
+            std::env::remove_var("SHOOP_CARLA_RESOURCE_DIR");
+        }
+        let result = (|| {
+            let mut backend =
+                NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: 48_000,
+                    buffer_size: 128,
+                }))?;
+            let catalog = backend.track_processor_catalog()?;
+            assert!(catalog[..2].iter().all(|descriptor| {
+                descriptor.available && !descriptor.id.as_str().starts_with("carla_")
+            }));
+            assert!(catalog[2..].iter().all(|descriptor| {
+                !descriptor.available && descriptor.unavailable_reason.is_some()
+            }));
+            Ok::<_, anyhow::Error>(())
+        })();
+        unsafe {
+            match original_library {
+                Some(value) => std::env::set_var("SHOOP_CARLA_NATIVE_LIBRARY", value),
+                None => std::env::remove_var("SHOOP_CARLA_NATIVE_LIBRARY"),
+            }
+            match original_resources {
+                Some(value) => std::env::set_var("SHOOP_CARLA_RESOURCE_DIR", value),
+                None => std::env::remove_var("SHOOP_CARLA_RESOURCE_DIR"),
+            }
+        }
+        result.unwrap();
     }
 
     #[test]
