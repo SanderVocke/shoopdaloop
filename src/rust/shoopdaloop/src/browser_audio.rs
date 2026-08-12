@@ -2408,8 +2408,14 @@ impl Backend for WebAudioBackend {
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         if let Some(capture) = &self.session_capture {
             if capture.total_bytes == Some(capture.bytes.len()) && capture.in_flight == 0 {
-                let session = serde_json::from_slice(&capture.bytes)
+                let session: BackendSessionData = serde_json::from_slice(&capture.bytes)
                     .map_err(|error| anyhow!("invalid worklet session capture: {error}"))?;
+                for global in &session.global_ports {
+                    self.snapshot
+                        .connections
+                        .application_ports
+                        .insert(global.descriptor.id, global.descriptor.clone());
+                }
                 self.session_capture = None;
                 return Ok(session);
             }
