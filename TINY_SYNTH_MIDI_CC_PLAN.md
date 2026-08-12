@@ -47,74 +47,74 @@ Out of scope:
 
 ### Stage 1 — Define fixed MIDI and Tiny Synth mapping contracts
 
-- [ ] Add fixed-size latest-message state types at the engine/backend/app API boundaries, with explicit conversion helpers rather than exposing realtime storage internals.
-- [ ] Add public Tiny Synth continuous-parameter and CC-assignment types plus assign/remove/clear `TinySynthFxControl` actions and action-kind tracing labels.
-- [ ] Add one canonical range/scaling function on the engine side and bounded assignment operations enforcing one source and one target per mapping.
-- [ ] Update fixtures/defaults and exhaustive matches for the seven supported targets only.
-- [ ] Verify with focused unit tests for CC parsing, endpoint/intermediate scaling, malformed messages, conflict replacement, deterministic ordering, and action kinds.
-- [ ] Commit the contract milestone.
+- [x] Add fixed-size latest-message state types at the engine/backend/app API boundaries, with explicit conversion helpers rather than exposing realtime storage internals.
+- [x] Add public Tiny Synth continuous-parameter and CC-assignment types plus assign/remove/clear `TinySynthFxControl` actions and action-kind tracing labels.
+- [x] Add one canonical range/scaling function on the engine side and bounded assignment operations enforcing one source and one target per mapping.
+- [x] Update fixtures/defaults and exhaustive matches for the seven supported targets only.
+- [x] Verify with focused unit tests for CC parsing, endpoint/intermediate scaling, malformed messages, conflict replacement, deterministic ordering, and action kinds.
+- [x] Commit the contract milestone.
 
 ### Stage 2 — Publish the latest MIDI input message lock-free
 
 Depends on Stage 1.
 
-- [ ] Extend `MidiPort` and `MidiPortState` in `shoop_engine/src/state.rs` and `midi_port.rs` with persistent latest-input-message state.
-- [ ] Extend `MidiPortStateMirror` with a single packed atomic payload and publish the last event in each non-empty input batch without changing event-counter reset semantics.
-- [ ] Propagate the field through `shoop_engine::app_backend::MidiPort`, native backend polling, `EngineBackend::poll`, `BackendTrackState`, `shoop_app` snapshot updates, and `TrackControlState`.
-- [ ] Refactor native polling to read each MIDI port mirror once per poll, then derive both activity and latest-message state from that result.
-- [ ] Verify that no-message defaults, 1/2/3/4-byte payloads, multiple events per block, repeated reads, muted inputs, and replacement by a later message behave identically in direct-engine and application-backend tests.
-- [ ] Commit the MIDI state-publication milestone.
+- [x] Extend `MidiPort` and `MidiPortState` in `shoop_engine/src/state.rs` and `midi_port.rs` with persistent latest-input-message state.
+- [x] Extend `MidiPortStateMirror` with a single packed atomic payload and publish the last event in each non-empty input batch without changing event-counter reset semantics.
+- [x] Propagate the field through `shoop_engine::app_backend::MidiPort`, native backend polling, `EngineBackend::poll`, `BackendTrackState`, `shoop_app` snapshot updates, and `TrackControlState`.
+- [x] Refactor native polling to read each MIDI port mirror once per poll, then derive both activity and latest-message state from that result.
+- [x] Verify that no-message defaults, 1/2/3/4-byte payloads, multiple events per block, repeated reads, muted inputs, and replacement by a later message behave identically in direct-engine and application-backend tests.
+- [x] Commit the MIDI state-publication milestone.
 
 ### Stage 3 — Implement realtime host-side CC mapping
 
 Depends on Stages 1-2.
 
-- [ ] Add fixed assignment storage and a lock-free runtime parameter mirror to `TinySynthFxControlState`/`TinySynthFxProcessor`; initialize both consistently when preparing or replacing a processor.
-- [ ] Inspect processor MIDI events for matching CCs, scale through the canonical target ranges, and call ShoopDaLoop's existing Tiny processor setters at the event offset before forwarding the same event to `tinyviolin`.
-- [ ] Ensure matching CCs update parameters even when an individual effect is disabled; arrange processor routing so learned controls are observed when the Tiny processor route is inactive without dispatching inactive synth note traffic.
-- [ ] Add assignment mutation methods and preserve mappings when restoring only the opaque sound state.
-- [ ] Synchronize mirrored runtime parameter values into editor snapshots and mutable current-state encoding, including correct `Custom` preset presentation after MIDI changes to preset-owned effect values.
-- [ ] Verify every target at CC values 0, an intermediate value, and 127; channel/controller matching and nonmatching; unchanged preset/toggle behavior; original MIDI dispatch; inactive/effect-disabled behavior; and sound-state capture after a CC change.
-- [ ] Extend `shoop_engine/tests/no_alloc.rs` so assignment mutation and mapped CC processing remain allocation-free in the guarded first/steady-state block.
-- [ ] Commit the realtime mapping milestone.
+- [x] Add fixed assignment storage and a lock-free runtime parameter mirror to `TinySynthFxControlState`/`TinySynthFxProcessor`; initialize both consistently when preparing or replacing a processor.
+- [x] Inspect processor MIDI events for matching CCs, scale through the canonical target ranges, and call ShoopDaLoop's existing Tiny processor setters at the event offset before forwarding the same event to `tinyviolin`.
+- [x] Ensure matching CCs update parameters even when an individual effect is disabled; arrange processor routing so learned controls are observed when the Tiny processor route is inactive without dispatching inactive synth note traffic.
+- [x] Add assignment mutation methods and preserve mappings when restoring only the opaque sound state.
+- [x] Synchronize mirrored runtime parameter values into editor snapshots and mutable current-state encoding, including correct `Custom` preset presentation after MIDI changes to preset-owned effect values.
+- [x] Verify every target at CC values 0, an intermediate value, and 127; channel/controller matching and nonmatching; unchanged preset/toggle behavior; original MIDI dispatch; inactive/effect-disabled behavior; and sound-state capture after a CC change.
+- [x] Extend `shoop_engine/tests/no_alloc.rs` so assignment mutation and mapped CC processing remain allocation-free in the guarded first/steady-state block.
+- [x] Commit the realtime mapping milestone.
 
 ### Stage 4 — Wire both backends, application actions, and persistence
 
 Depends on Stage 3.
 
-- [ ] Handle assign/remove/clear controls in native `FXChain`, native backend dispatch, and browser-compatible `EngineBackend`, updating control and realtime processor copies in command order.
-- [ ] Include current assignments in `TinySynthFxState` returned by both backend implementations and pass the input port's latest message into the app-facing track state.
-- [ ] Route new `TrackAction::TinySynthFx` variants through `shoop_app` with the existing error-reporting behavior.
-- [ ] Add a defaultable Tiny Synth MIDI-assignment list to `FxChainDocument` and the backend session-transfer model; validate bounds, supported targets, uniqueness, and processor type before mutation.
-- [ ] Save current-chain assignments deterministically, restore them when constructing replacement backends, preserve them across sample-rate/driver replacement, and deliberately exclude them from recorded-take `FxStateDocument` restore.
-- [ ] Update `docs/session_format_v1.md` to document the optional ShoopDaLoop host mapping and backward-compatible empty default.
-- [ ] Verify focused native and `EngineBackend` tests for action dispatch, realtime CC response, frontend state reflection, current-state capture, session round-trip, legacy empty defaults, malformed persisted mappings, transactional rejection, sample-rate replacement, and recorded FX-state restore preserving current assignments.
-- [ ] Commit the backend/application/persistence milestone.
+- [x] Handle assign/remove/clear controls in native `FXChain`, native backend dispatch, and browser-compatible `EngineBackend`, updating control and realtime processor copies in command order.
+- [x] Include current assignments in `TinySynthFxState` returned by both backend implementations and pass the input port's latest message into the app-facing track state.
+- [x] Route new `TrackAction::TinySynthFx` variants through `shoop_app` with the existing error-reporting behavior.
+- [x] Add a defaultable Tiny Synth MIDI-assignment list to `FxChainDocument` and the backend session-transfer model; validate bounds, supported targets, uniqueness, and processor type before mutation.
+- [x] Save current-chain assignments deterministically, restore them when constructing replacement backends, preserve them across sample-rate/driver replacement, and deliberately exclude them from recorded-take `FxStateDocument` restore.
+- [x] Update `docs/session_format_v1.md` to document the optional ShoopDaLoop host mapping and backward-compatible empty default.
+- [x] Verify focused native and `EngineBackend` tests for action dispatch, realtime CC response, frontend state reflection, current-state capture, session round-trip, legacy empty defaults, malformed persisted mappings, transactional rejection, sample-rate replacement, and recorded FX-state restore preserving current assignments.
+- [x] Commit the backend/application/persistence milestone.
 
 ### Stage 5 — Add the Tiny Synth/FX MIDI learn sub-window
 
 Depends on Stage 4.
 
-- [ ] Add a compact `MIDI Learn…` button to the existing editor and track local open/selected-target state in `TinySynthFxEditor`.
-- [ ] Build a track-scoped secondary egui window that shows either `Channel N · CC M · Value V` or a clear no-valid-CC status, offers only the seven continuous targets, and enables assignment only for a valid latest CC.
-- [ ] Render assignments in deterministic target order with channel/controller labels, per-row `Remove`, and guarded `Remove all`; make both windows independently closable and prevent the learn view from appearing during normal use unless requested.
-- [ ] Emit only the new Tiny Synth actions and rely on backend snapshots for authoritative assignment/value state rather than optimistic persistent copies.
-- [ ] Extend egui tests for open/close behavior, track-scoped IDs, valid and invalid latest messages, target selection, assign, replacement display, individual removal, clear-all, disabled actions, and isolation between two editor instances.
-- [ ] Commit the GUI milestone.
+- [x] Add a compact `MIDI Learn…` button to the existing editor and track local open/selected-target state in `TinySynthFxEditor`.
+- [x] Build a track-scoped secondary egui window that shows either `Channel N · CC M · Value V` or a clear no-valid-CC status, offers only the seven continuous targets, and enables assignment only for a valid latest CC.
+- [x] Render assignments in deterministic target order with channel/controller labels, per-row `Remove`, and guarded `Remove all`; make both windows independently closable and prevent the learn view from appearing during normal use unless requested.
+- [x] Emit only the new Tiny Synth actions and rely on backend snapshots for authoritative assignment/value state rather than optimistic persistent copies.
+- [x] Extend egui tests for open/close behavior, track-scoped IDs, valid and invalid latest messages, target selection, assign, replacement display, individual removal, clear-all, disabled actions, and isolation between two editor instances.
+- [x] Commit the GUI milestone.
 
 ### Stage 6 — End-to-end validation and documentation check
 
 Depends on all prior stages.
 
-- [ ] Exercise a complete scenario on the dummy/native path: inject a CC into a Tiny Synth track input, observe it in the learn window, assign it, inject endpoint and intermediate values, observe audio/editor-state changes, remove it, and confirm further CCs no longer control the parameter.
-- [ ] Repeat the backend-level scenario through `EngineBackend`, including session save/load, to cover browser behavior without relying only on native handles.
-- [ ] Re-read changed public/session documentation and update tracing inventory if new instrumented action paths require it.
-- [ ] Run formatting and warnings gates: `cargo fmt --all -- --check` and `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run the complete Rust suite: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`; run the documented browser smoke checks when browsers are available, recording an explicit skip reason otherwise.
-- [ ] Confirm `git diff` contains no `tinyviolin` changes and no unrelated generated artifacts.
-- [ ] Commit the final validation/documentation milestone.
+- [x] Exercise a complete scenario on the dummy/native path: inject a CC into a Tiny Synth track input, observe it in the learn window, assign it, inject endpoint and intermediate values, observe audio/editor-state changes, remove it, and confirm further CCs no longer control the parameter.
+- [x] Repeat the backend-level scenario through `EngineBackend`, including session save/load, to cover browser behavior without relying only on native handles.
+- [x] Re-read changed public/session documentation and update tracing inventory if new instrumented action paths require it.
+- [x] Run formatting and warnings gates: `cargo fmt --all -- --check` and `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run the complete Rust suite: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`; interactive browser smoke checks were explicitly waived by the user.
+- [x] Confirm `git diff` contains no `tinyviolin` changes and no unrelated generated artifacts.
+- [x] Commit the final validation/documentation milestone.
 
 ## Execution contract
 
