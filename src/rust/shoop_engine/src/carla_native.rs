@@ -27,7 +27,8 @@ pub(crate) fn lock_carla_test() -> impl Drop {
 pub const CARLA_MAX_BUFFER_SIZE: usize = shoop_plugin_protocol::MAX_BLOCK_FRAMES;
 pub const CARLA_MIDI_BUFFER_CAPACITY: usize = shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK;
 const MAX_STATE_BYTES: usize = 16 * 1024 * 1024;
-const STATE_PREFIX: &str = "shoop-carla-native-state:1:";
+const STATE_PREFIX_V1: &str = "shoop-carla-native-state:1:";
+const STATE_PREFIX_V2: &str = "shoop-carla-native-state:2:";
 const LEGACY_CHUNK_URI: &str = "http://kxstudio.sf.net/ns/carla/chunk";
 const LEGACY_ATOM_STRING_URI: &str = "http://lv2plug.in/ns/ext/atom#String";
 const NATIVE_PLUGIN_HAS_UI: c_int = 1 << 2;
@@ -267,9 +268,17 @@ fn library_filename() -> &'static str {
     }
 }
 
-fn library_candidates() -> Vec<PathBuf> {
+fn absolute_override(name: &str, value: std::ffi::OsString) -> Result<PathBuf> {
+    let path = PathBuf::from(value);
+    if !path.is_absolute() {
+        bail!("{name} must be an absolute path: {}", path.display());
+    }
+    Ok(path)
+}
+
+fn library_candidates() -> Result<Vec<PathBuf>> {
     if let Some(path) = std::env::var_os("SHOOP_CARLA_NATIVE_LIBRARY") {
-        return vec![PathBuf::from(path)];
+        return Ok(vec![absolute_override("SHOOP_CARLA_NATIVE_LIBRARY", path)?]);
     }
     let mut paths = Vec::new();
     if let Ok(executable) = std::env::current_exe() {
@@ -293,12 +302,12 @@ fn library_candidates() -> Vec<PathBuf> {
                 .map(|root| Path::new(root).join(library_filename())),
         );
     }
-    paths
+    Ok(paths)
 }
 
 fn resource_dir_for(library: &Path) -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("SHOOP_CARLA_RESOURCE_DIR") {
-        let path = PathBuf::from(path);
+        let path = absolute_override("SHOOP_CARLA_RESOURCE_DIR", path)?;
         if path.is_dir() {
             return Ok(path);
         }
@@ -379,7 +388,7 @@ fn validate_descriptor(
 }
 
 fn load_runtime() -> Result<Arc<CarlaRuntime>> {
-    let candidates = library_candidates();
+    let candidates = library_candidates()?;
     let mut failures = Vec::new();
     for candidate in &candidates {
         let canonical = match candidate.canonicalize() {
@@ -486,6 +495,31 @@ pub fn smoke_test_carla_runtime() -> Result<()> {
     Ok(())
 }
 
+pub fn smoke_test_carla_ui() -> Result<()> {
+    for chain_type in [
+        FXChainType::CarlaRack,
+        FXChainType::CarlaPatchbay,
+        FXChainType::CarlaPatchbay16x,
+    ] {
+        let mut host = CarlaNativeHost::instantiate(chain_type, 48_000, 64)?;
+        for _ in 0..2 {
+            host.set_visible(true)?;
+            for _ in 0..20 {
+                host.idle();
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            if !host.is_visible() {
+                bail!("{chain_type:?} external UI closed during smoke test");
+            }
+            host.set_visible(false)?;
+            if host.is_visible() {
+                bail!("{chain_type:?} external UI remained visible after hide");
+            }
+        }
+    }
+    Ok(())
+}
+
 struct HostContext {
     sample_rate: f64,
     buffer_size: u32,
@@ -493,6 +527,7 @@ struct HostContext {
     midi_output: Vec<NativeMidiEvent>,
     midi_output_count: usize,
     process_frames: u32,
+    file_dialog_result: Option<CString>,
     visible: AtomicBool,
 }
 
@@ -570,13 +605,55 @@ unsafe extern "C" fn host_ui_closed(handle: NativeHostHandle) {
     }
 }
 
-unsafe extern "C" fn host_file_dialog(
-    _handle: NativeHostHandle,
-    _is_dir: bool,
-    _title: *const c_char,
+fn file_dialog_title(title: *const c_char) -> String {
+    if title.is_null() {
+        return "Select file".to_owned();
+    }
+    unsafe { CStr::from_ptr(title) }
+        .to_string_lossy()
+        .into_owned()
+}
+
+unsafe fn host_file_dialog(
+    handle: NativeHostHandle,
+    is_dir: bool,
+    title: *const c_char,
+    save: bool,
+) -> *const c_char {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let host = unsafe { context(handle) }?;
+        host.file_dialog_result = None;
+        let dialog = rfd::FileDialog::new().set_title(file_dialog_title(title));
+        let selected = if is_dir {
+            dialog.pick_folder()
+        } else if save {
+            dialog.save_file()
+        } else {
+            dialog.pick_file()
+        }?;
+        let selected = CString::new(selected.to_string_lossy().as_bytes()).ok()?;
+        host.file_dialog_result = Some(selected);
+        host.file_dialog_result.as_ref().map(|path| path.as_ptr())
+    }));
+    result.ok().flatten().unwrap_or(std::ptr::null())
+}
+
+unsafe extern "C" fn host_open_file_dialog(
+    handle: NativeHostHandle,
+    is_dir: bool,
+    title: *const c_char,
     _filter: *const c_char,
 ) -> *const c_char {
-    std::ptr::null()
+    unsafe { host_file_dialog(handle, is_dir, title, false) }
+}
+
+unsafe extern "C" fn host_save_file_dialog(
+    handle: NativeHostHandle,
+    is_dir: bool,
+    title: *const c_char,
+    _filter: *const c_char,
+) -> *const c_char {
+    unsafe { host_file_dialog(handle, is_dir, title, true) }
 }
 
 unsafe extern "C" fn host_dispatcher(
@@ -600,21 +677,49 @@ unsafe extern "C" fn host_dispatcher(
     }
 }
 
-fn encode_state(bytes: &[u8]) -> Result<String> {
+fn state_chain_label(chain_type: FXChainType) -> Result<&'static str> {
+    match chain_type {
+        FXChainType::CarlaRack => Ok("rack"),
+        FXChainType::CarlaPatchbay => Ok("patchbay"),
+        FXChainType::CarlaPatchbay16x => Ok("patchbay16"),
+        _ => bail!("{chain_type:?} is not a Carla chain type"),
+    }
+}
+
+fn encode_state(chain_type: FXChainType, bytes: &[u8]) -> Result<String> {
     if bytes.len() > MAX_STATE_BYTES {
         bail!("Carla state exceeds {MAX_STATE_BYTES} bytes");
     }
+    if bytes.contains(&0) {
+        bail!("Carla state contains an interior NUL byte");
+    }
     Ok(format!(
-        "{STATE_PREFIX}{}",
+        "{STATE_PREFIX_V2}{}:{}",
+        state_chain_label(chain_type)?,
         base64::engine::general_purpose::STANDARD.encode(bytes)
     ))
 }
 
-fn decode_state(state: &str) -> Result<Vec<u8>> {
-    let decoded = if let Some(encoded) = state.strip_prefix(STATE_PREFIX) {
-        base64::engine::general_purpose::STANDARD
-            .decode(encoded)
-            .context("invalid Carla Native state base64")?
+fn decode_native_state(encoded: &str) -> Result<Vec<u8>> {
+    base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .context("invalid Carla Native state base64")
+}
+
+fn decode_state(state: &str, expected_chain_type: FXChainType) -> Result<Vec<u8>> {
+    let decoded = if let Some(tagged) = state.strip_prefix(STATE_PREFIX_V2) {
+        let (chain, encoded) = tagged
+            .split_once(':')
+            .ok_or_else(|| anyhow!("Carla Native state has no chain tag"))?;
+        let expected = state_chain_label(expected_chain_type)?;
+        if chain != expected {
+            bail!("Carla Native state is for {chain}, not {expected}");
+        }
+        decode_native_state(encoded)?
+    } else if let Some(encoded) = state.strip_prefix(STATE_PREFIX_V1) {
+        // Version 1 was emitted briefly during direct-host development before
+        // states carried a chain tag. Keep it readable, but only v2 is written.
+        decode_native_state(encoded)?
     } else {
         let value: serde_json::Value =
             serde_json::from_str(state).context("unsupported Carla state format")?;
@@ -632,9 +737,10 @@ fn decode_state(state: &str) -> Result<Vec<u8>> {
         let mut bytes = base64::engine::general_purpose::STANDARD
             .decode(encoded)
             .context("invalid legacy Carla state base64")?;
-        if bytes.last() == Some(&0) {
-            bytes.pop();
+        if bytes.last() != Some(&0) {
+            bail!("legacy Carla state chunk has no trailing NUL byte");
         }
+        bytes.pop();
         bytes
     };
     if decoded.len() > MAX_STATE_BYTES {
@@ -705,6 +811,7 @@ impl CarlaNativeHost {
             midi_output: vec![NativeMidiEvent::default(); CARLA_MIDI_BUFFER_CAPACITY],
             midi_output_count: 0,
             process_frames: 0,
+            file_dialog_result: None,
             visible: AtomicBool::new(false),
         });
         let mut host_descriptor = Box::new(NativeHostDescriptor {
@@ -721,8 +828,8 @@ impl CarlaNativeHost {
             ui_midi_program_changed: Some(host_ui_midi_program_changed),
             ui_custom_data_changed: Some(host_ui_custom_data_changed),
             ui_closed: Some(host_ui_closed),
-            ui_open_file: Some(host_file_dialog),
-            ui_save_file: Some(host_file_dialog),
+            ui_open_file: Some(host_open_file_dialog),
+            ui_save_file: Some(host_save_file_dialog),
             dispatcher: Some(host_dispatcher),
         });
         let instantiate = unsafe { descriptor.as_ref() }
@@ -869,7 +976,7 @@ impl CarlaProcessor for CarlaNativeHost {
             .to_bytes()
             .to_vec();
         unsafe { (self.runtime.state_free)(state.as_ptr().cast()) };
-        encode_state(&bytes)
+        encode_state(self.info.chain_type, &bytes)
     }
 
     #[tracing::instrument(
@@ -878,7 +985,7 @@ impl CarlaProcessor for CarlaNativeHost {
         fields(state_bytes = state.len())
     )]
     fn restore_state(&mut self, state: &str) -> Result<()> {
-        let bytes = decode_state(state)?;
+        let bytes = decode_state(state, self.info.chain_type)?;
         let state = CString::new(bytes)?;
         let set_state = self
             .descriptor()
@@ -993,6 +1100,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn runtime_overrides_must_be_absolute() {
+        assert!(absolute_override("TEST", "relative/library.so".into()).is_err());
+        let absolute = if cfg!(target_os = "windows") {
+            std::ffi::OsString::from(r"C:\carla\library.dll")
+        } else {
+            std::ffi::OsString::from("/carla/library.so")
+        };
+        assert!(absolute_override("TEST", absolute).is_ok());
+    }
+
+    #[test]
     fn native_ffi_layout_matches_pinned_carla_header() {
         assert_eq!(std::mem::size_of::<NativeMidiEvent>(), 12);
         assert_eq!(std::mem::align_of::<NativeMidiEvent>(), 4);
@@ -1013,22 +1131,73 @@ mod tests {
     }
 
     #[test]
-    fn direct_state_codec_round_trips_and_rejects_nul() {
-        let encoded = encode_state(b"<CARLA-PROJECT />").unwrap();
-        assert_eq!(decode_state(&encoded).unwrap(), b"<CARLA-PROJECT />");
-        assert!(decode_state(&encode_state(b"bad\0state").unwrap()).is_err());
+    fn direct_state_codec_round_trips_and_rejects_invalid_input() {
+        let encoded = encode_state(FXChainType::CarlaRack, b"<CARLA-PROJECT />").unwrap();
+        assert_eq!(
+            decode_state(&encoded, FXChainType::CarlaRack).unwrap(),
+            b"<CARLA-PROJECT />"
+        );
+        let version_one = format!(
+            "{STATE_PREFIX_V1}{}",
+            base64::engine::general_purpose::STANDARD.encode(b"old direct state")
+        );
+        assert_eq!(
+            decode_state(&version_one, FXChainType::CarlaRack).unwrap(),
+            b"old direct state"
+        );
+        assert!(encode_state(FXChainType::CarlaRack, b"bad\0state").is_err());
+        assert!(decode_state(&encoded, FXChainType::CarlaPatchbay).is_err());
+        assert!(decode_state(
+            "shoop-carla-native-state:2:rack:not-base64!",
+            FXChainType::CarlaRack
+        )
+        .is_err());
+        let oversized = format!(
+            "{STATE_PREFIX_V2}rack:{}",
+            base64::engine::general_purpose::STANDARD.encode(vec![0_u8; MAX_STATE_BYTES + 1])
+        );
+        assert!(decode_state(&oversized, FXChainType::CarlaRack).is_err());
     }
 
     #[test]
     fn legacy_lv2_chunks_for_every_descriptor_decode_to_native_state() {
-        let project = include_bytes!("../test_data/carla_legacy_loaded_project.xml");
-        for state in [
-            include_str!("../test_data/carla_legacy_rack_loaded_state.json"),
-            include_str!("../test_data/carla_legacy_patchbay_loaded_state.json"),
-            include_str!("../test_data/carla_legacy_patchbay16_loaded_state.json"),
+        for (state, project, chain_type) in [
+            (
+                include_str!("../test_data/carla_legacy_rack_loaded_state.json"),
+                include_bytes!("../test_data/carla_legacy_rack_loaded_project.xml").as_slice(),
+                FXChainType::CarlaRack,
+            ),
+            (
+                include_str!("../test_data/carla_legacy_patchbay_loaded_state.json"),
+                include_bytes!("../test_data/carla_legacy_patchbay_loaded_project.xml").as_slice(),
+                FXChainType::CarlaPatchbay,
+            ),
+            (
+                include_str!("../test_data/carla_legacy_patchbay16_loaded_state.json"),
+                include_bytes!("../test_data/carla_legacy_patchbay16_loaded_project.xml")
+                    .as_slice(),
+                FXChainType::CarlaPatchbay16x,
+            ),
         ] {
-            assert_eq!(decode_state(state).unwrap(), project);
+            assert_eq!(decode_state(state, chain_type).unwrap(), project);
         }
+    }
+
+    #[test]
+    fn legacy_state_codec_rejects_malformed_wrong_type_and_nul_contracts() {
+        let wrong_type =
+            r#"{"http://kxstudio.sf.net/ns/carla/chunk":{"type":"wrong","value":"AA=="}}"#;
+        assert!(decode_state(wrong_type, FXChainType::CarlaRack).is_err());
+        let no_trailing_nul = format!(
+            r#"{{"{LEGACY_CHUNK_URI}":{{"type":"{LEGACY_ATOM_STRING_URI}","value":"{}"}}}}"#,
+            base64::engine::general_purpose::STANDARD.encode(b"state")
+        );
+        assert!(decode_state(&no_trailing_nul, FXChainType::CarlaRack).is_err());
+        let interior_nul = format!(
+            r#"{{"{LEGACY_CHUNK_URI}":{{"type":"{LEGACY_ATOM_STRING_URI}","value":"{}"}}}}"#,
+            base64::engine::general_purpose::STANDARD.encode(b"bad\0state\0")
+        );
+        assert!(decode_state(&interior_nul, FXChainType::CarlaRack).is_err());
     }
 
     #[test]
@@ -1038,26 +1207,11 @@ mod tests {
             return;
         }
         let _exclusive = lock_carla_test();
-        for chain_type in [
-            FXChainType::CarlaRack,
-            FXChainType::CarlaPatchbay,
-            FXChainType::CarlaPatchbay16x,
-        ] {
-            let mut host = CarlaNativeHost::instantiate(chain_type, 48_000, 64)
-                .expect("Carla runtime required for opted-in UI smoke test");
-            for _ in 0..2 {
-                host.set_visible(true).expect("show Carla UI");
-                for _ in 0..20 {
-                    host.idle();
-                    std::thread::sleep(std::time::Duration::from_millis(25));
-                }
-                assert!(host.is_visible());
-                host.set_visible(false).expect("hide Carla UI");
-                assert!(!host.is_visible());
-            }
-            unsafe { host_ui_closed(host.host_descriptor.handle) };
-            assert!(!host.is_visible());
-        }
+        smoke_test_carla_ui().expect("Carla runtime required for opted-in UI smoke test");
+        let mut host = CarlaNativeHost::instantiate(FXChainType::CarlaRack, 48_000, 64).unwrap();
+        host.set_visible(true).unwrap();
+        unsafe { host_ui_closed(host.host_descriptor.handle) };
+        assert!(!host.is_visible());
     }
 
     #[test]
@@ -1078,9 +1232,15 @@ mod tests {
             ),
         ];
         for (chain_type, fixture) in fixtures {
-            let Ok(mut host) = CarlaNativeHost::instantiate(chain_type, 48_000, 64) else {
-                eprintln!("skipping Carla Native runtime test; runtime is unavailable");
-                return;
+            let mut host = match CarlaNativeHost::instantiate(chain_type, 48_000, 64) {
+                Ok(host) => host,
+                Err(error) if std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_none() => {
+                    eprintln!(
+                        "skipping Carla Native runtime test; runtime is unavailable: {error:#}"
+                    );
+                    return;
+                }
+                Err(error) => panic!("required Carla Native runtime is unavailable: {error:#}"),
             };
             host.set_active(true);
             for channel in 0..host.info().audio_inputs {
@@ -1123,9 +1283,9 @@ mod tests {
             assert!(
                 loaded_processed,
                 "{chain_type:?} loaded plugin routing did not process; state={}",
-                String::from_utf8_lossy(&decode_state(&state).unwrap())
+                String::from_utf8_lossy(&decode_state(&state, chain_type).unwrap())
             );
-            let state_xml = String::from_utf8(decode_state(&state).unwrap()).unwrap();
+            let state_xml = String::from_utf8(decode_state(&state, chain_type).unwrap()).unwrap();
             assert!(state_xml.contains("<Label>audiogain_s</Label>"));
             assert!(state_xml.contains("<Label>midithrough</Label>"));
             host.restore_state(&state).unwrap();

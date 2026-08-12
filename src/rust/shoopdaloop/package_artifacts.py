@@ -248,6 +248,50 @@ def require_click_assets(binary: bytes, artifact: str) -> None:
         raise RuntimeError(f"{artifact} is missing embedded click assets: {missing}")
 
 
+def require_native_architecture(binary: bytes, platform: str, artifact: str) -> None:
+    if platform == "linux":
+        valid = (
+            len(binary) >= 20
+            and binary[:6] == b"\x7fELF\x02\x01"
+            and int.from_bytes(binary[18:20], "little") == 62
+        )
+    elif platform == "windows":
+        pe_offset = int.from_bytes(binary[0x3C:0x40], "little") if len(binary) >= 0x40 else 0
+        valid = (
+            binary[:2] == b"MZ"
+            and pe_offset + 6 <= len(binary)
+            and binary[pe_offset : pe_offset + 4] == b"PE\0\0"
+            and int.from_bytes(binary[pe_offset + 4 : pe_offset + 6], "little") == 0x8664
+        )
+    else:
+        arm64 = 0x0100000C
+        magic = binary[:4]
+        valid = magic == b"\xcf\xfa\xed\xfe" and int.from_bytes(binary[4:8], "little") == arm64
+        if magic in {b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"} and len(binary) >= 8:
+            count = int.from_bytes(binary[4:8], "big")
+            stride = 32 if magic == b"\xca\xfe\xba\xbf" else 20
+            valid = any(
+                8 + stride * (index + 1) <= len(binary)
+                and int.from_bytes(binary[8 + stride * index : 12 + stride * index], "big") == arm64
+                for index in range(count)
+            )
+    if not valid:
+        raise RuntimeError(f"{artifact} has the wrong {platform} architecture")
+
+
+def reject_carla_native_payload(binary: bytes, artifact: str) -> None:
+    forbidden = (
+        b"carla_get_native_rack_plugin",
+        b"carla_get_native_patchbay_plugin",
+        b"libcarla_native-plugin",
+        b"SHOOP_CARLA_NATIVE_LIBRARY",
+        b"SHOOP_CARLA_RESOURCE_DIR",
+    )
+    present = [value.decode("ascii") for value in forbidden if value in binary]
+    if present:
+        raise RuntimeError(f"{artifact} contains Carla Native payload markers: {present}")
+
+
 def carla_archive_path(platform: str, relative: str) -> str:
     root = f"{ARCHIVE_ROOT}/"
     if platform == "macos":
@@ -282,6 +326,12 @@ def verify_native(path: Path, platform: str) -> None:
         raise RuntimeError("native archive has no valid Carla component manifest") from error
     if component_manifest.get("platform") != platform:
         raise RuntimeError("native archive contains the wrong Carla component platform")
+    lock_path = carla_archive_path(platform, "runtime-lock.json")
+    notice_path = carla_archive_path(platform, "licenses/README.md")
+    if payloads.get(lock_path) != (ROOT / "third_party" / "carla" / "runtime-lock.json").read_bytes():
+        raise RuntimeError("native archive contains an unreviewed Carla runtime lock")
+    if payloads.get(notice_path) != (ROOT / "third_party" / "carla" / "README.md").read_bytes():
+        raise RuntimeError("native archive contains an unreviewed Carla notice")
     required.add(component_manifest_path)
     for entry in component_manifest.get("files", []):
         archived = carla_archive_path(platform, entry["path"])
@@ -299,6 +349,9 @@ def verify_native(path: Path, platform: str) -> None:
     if platform != "windows" and modes.get(executable, 0) & 0o111 == 0:
         raise RuntimeError(f"archive executable has no execute bit: {executable}")
     binary = payloads[executable]
+    require_native_architecture(binary, platform, "native executable")
+    carla_library = payloads[carla_archive_path(platform, component_manifest["library"])]
+    require_native_architecture(carla_library, platform, "Carla Native library")
     require_application_icon(binary, "native executable")
     require_click_assets(binary, "native executable")
 
@@ -317,7 +370,11 @@ def verify_web(bundle: Path, html: Path) -> None:
     icon = archive_file(bundle, f"{root}icon.png")
     if icon != APPLICATION_ICON.read_bytes():
         raise RuntimeError("hosted web archive contains the wrong application icon")
-    require_click_assets(archive_file(bundle, wasm[0]), "hosted application Wasm")
+    hosted_application = archive_file(bundle, wasm[0])
+    hosted_worklet = archive_file(bundle, f"{root}generated/shoop_audio_worklet.wasm")
+    require_click_assets(hosted_application, "hosted application Wasm")
+    reject_carla_native_payload(hosted_application, "hosted application Wasm")
+    reject_carla_native_payload(hosted_worklet, "hosted AudioWorklet Wasm")
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
         raise RuntimeError("self-contained HTML does not contain the embedded application")
@@ -352,6 +409,7 @@ def verify_web(bundle: Path, html: Path) -> None:
         binary = base64.b64decode(match.group(1), validate=True)
         if not binary.startswith(b"\0asm"):
             raise RuntimeError(f"self-contained HTML has invalid {variable}")
+        reject_carla_native_payload(binary, f"self-contained {variable}")
         if variable == "shoopWasmBinary":
             application_binary = binary
     require_click_assets(application_binary or b"", "self-contained application Wasm")

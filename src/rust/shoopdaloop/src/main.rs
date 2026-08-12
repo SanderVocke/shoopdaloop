@@ -94,6 +94,11 @@ struct NativeCli {
     #[cfg(feature = "native-fx")]
     #[arg(long)]
     probe_carla_native: bool,
+
+    /// Open, idle, hide, and reopen every bundled Carla external UI, then exit.
+    #[cfg(feature = "native-fx")]
+    #[arg(long)]
+    probe_carla_native_ui: bool,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1380,8 +1385,13 @@ fn main() {
 
     let cli = NativeCli::parse();
     #[cfg(feature = "native-fx")]
-    if cli.probe_carla_native {
-        match shoop_backend::smoke_test_carla_runtime() {
+    if cli.probe_carla_native || cli.probe_carla_native_ui {
+        let result = if cli.probe_carla_native_ui {
+            shoop_backend::smoke_test_carla_ui()
+        } else {
+            shoop_backend::smoke_test_carla_runtime()
+        };
+        match result {
             Ok(()) => {
                 let path = shoop_backend::carla_runtime_path()
                     .map(|path| path.display().to_string())

@@ -8,6 +8,14 @@ use std::time::Instant;
 const SAMPLE_RATE: u32 = 48_000;
 const WARMUP_BLOCKS: usize = 100;
 const MEASURED_BLOCKS: usize = 2_000;
+
+fn benchmark_blocks(default: usize) -> usize {
+    if std::env::var_os("SHOOP_BENCHMARK_SMOKE").is_some() {
+        default.min(3)
+    } else {
+        default
+    }
+}
 const BUFFER_SIZES: [u32; 6] = [32, 64, 128, 256, 512, 1024];
 
 fn benchmark(chain_type: FXChainType, frames: u32) -> Result<()> {
@@ -21,16 +29,17 @@ fn benchmark(chain_type: FXChainType, frames: u32) -> Result<()> {
             *sample = ((index + channel) as f32 * 0.01).sin();
         }
     }
-    for _ in 0..WARMUP_BLOCKS {
+    for _ in 0..benchmark_blocks(WARMUP_BLOCKS) {
         host.process(frames as usize)?;
     }
 
     let started = Instant::now();
-    for _ in 0..MEASURED_BLOCKS {
+    let measured_blocks = benchmark_blocks(MEASURED_BLOCKS);
+    for _ in 0..measured_blocks {
         black_box(host.process(frames as usize)?);
     }
     let elapsed = started.elapsed();
-    let block_ns = elapsed.as_nanos() as f64 / MEASURED_BLOCKS as f64;
+    let block_ns = elapsed.as_nanos() as f64 / measured_blocks as f64;
     let budget_ns = frames as f64 * 1_000_000_000.0 / SAMPLE_RATE as f64;
     println!(
         "chain={chain_type:?} channels={} frames={frames} mean_us={:.3} budget_percent={:.3}",

@@ -17,6 +17,29 @@
       "sha256": "a30e98409974493ade18f598566628369fee67f179a84e1c2cc3ae46a71808b1"
     }
   },
+  "targets": {
+    "linux-x86_64": {
+      "source": "pinned source archive",
+      "build": "make -j2 plugin frontend; freeze Carla plugin UIs with cx-Freeze 7.2.7 and PyQt5 5.15.11",
+      "runner": "ubuntu-24.04",
+      "architecture": "x86_64",
+      "glibc_baseline": "ubuntu-24.04 runner (glibc 2.39)",
+      "loader_policy": "$ORIGIN-relative RPATH with recorded non-platform dependency closure"
+    },
+    "windows-x86_64": {
+      "source": "checksummed upstream win64 archive",
+      "architecture": "x86_64",
+      "build": "verified upstream win64 release payload, normalized by scripts/carla_runtime.py",
+      "loader_policy": "application-relative component paths; no PATH lookup"
+    },
+    "macos-arm64": {
+      "source": "checksummed upstream universal archive",
+      "architecture": "arm64 slice required",
+      "build": "verified upstream universal release payload, normalized by scripts/carla_runtime.py",
+      "minimum_os": "11.0",
+      "signing": "unsigned application archive; no signing identity or installer is introduced"
+    }
+  },
   "required_exports": [
     "carla_get_native_rack_plugin",
     "carla_get_native_patchbay_plugin",
@@ -31,7 +54,8 @@
     "required_library_stems": ["libcarla_native-plugin"],
     "required_helpers": ["carla-plugin", "carla-plugin-patchbay", "carla-discovery-native", "carla-bridge-native"],
     "optional_helper_prefixes": ["carla-bridge-", "carla-discovery-"],
-    "excluded_prefixes": ["carla.lv2", "carla.vst", "CarlaRack", "CarlaPatchbay"]
+    "excluded_prefixes": ["carla.lv2", "carla.vst", "CarlaRack", "CarlaPatchbay", "libcarla_host-plugin", "libcarla_standalone"],
+    "linux_platform_libraries": ["ld-linux-x86-64.so.2", "libc.so.6", "libdl.so.2", "libgcc_s.so.1", "libm.so.6", "libmvec.so.1", "libpthread.so.0", "librt.so.1", "libstdc++.so.6", "libGL.so.1", "libGLX.so.0", "libGLdispatch.so.0"]
   },
   "license": {
     "carla": "GPL-2.0-or-later",

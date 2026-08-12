@@ -44,6 +44,7 @@ tinyviolin = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_tracing = { workspace = true, features = ["tracy"] }
 uuid = { workspace = true }
+rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 shoop_tracing = { workspace = true, default-features = false }
@@ -56,7 +57,7 @@ prebuild = []
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
-carla = ["dep:serde_json", "dep:libloading", "dep:libc"]
+carla = ["dep:serde_json", "dep:libloading", "dep:libc", "dep:rfd"]
 native_audio_backend = ["jack", "cpal", "midir"]
 app_backend = ["native_audio_backend"]
 

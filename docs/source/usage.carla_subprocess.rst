@@ -21,6 +21,7 @@ Release archives include a pinned Carla Native runtime, external UI, and plugin
 discovery/bridge helpers. ShoopDaLoop loads this runtime directly rather than
 hosting Carla through LV2. Source builds need no Carla SDK; when no runtime is
 present the Carla processors are shown as unavailable without affecting External
-or Tiny Synth/FX tracks. Developers can use ``SHOOP_CARLA_NATIVE_LIBRARY`` and
-``SHOOP_CARLA_RESOURCE_DIR`` to select an exact runtime and
-``--probe-carla-native`` to validate it.
+or Tiny Synth/FX tracks. Developers can use the absolute-path overrides
+``SHOOP_CARLA_NATIVE_LIBRARY`` and ``SHOOP_CARLA_RESOURCE_DIR`` to select an
+exact runtime and ``--probe-carla-native`` to validate it. ``--probe-carla-native-ui`` additionally
+opens, idles, hides, and reopens every external Carla UI before exiting.

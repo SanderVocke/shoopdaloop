@@ -8121,7 +8121,7 @@ mod tests {
         assert_eq!(chain.get_state().expect("state").active, 1);
         let state = chain.get_state_str().expect("state string");
         assert!(
-            state.starts_with("shoop-carla-native-state:1:"),
+            state.starts_with("shoop-carla-native-state:2:rack:"),
             "Carla state should use the native envelope: {state}"
         );
         chain.restore_state(&state);

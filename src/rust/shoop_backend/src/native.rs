@@ -30,6 +30,11 @@ pub fn smoke_test_carla_runtime() -> Result<()> {
 }
 
 #[cfg(feature = "native-fx")]
+pub fn smoke_test_carla_ui() -> Result<()> {
+    shoop_engine::carla_native::smoke_test_carla_ui()
+}
+
+#[cfg(feature = "native-fx")]
 pub fn carla_runtime_path() -> Result<std::path::PathBuf> {
     shoop_engine::carla_native::carla_runtime_path()
 }
@@ -2970,6 +2975,46 @@ mod tests {
             assert!(descriptor.constraints.max_dry_audio_channels.is_some());
             assert!(descriptor.constraints.max_wet_audio_channels.is_some());
         }
+    }
+
+    #[cfg(feature = "native-fx")]
+    #[test]
+    fn missing_carla_runtime_disables_only_carla_catalog_entries() {
+        let original_library = std::env::var_os("SHOOP_CARLA_NATIVE_LIBRARY");
+        let original_resources = std::env::var_os("SHOOP_CARLA_RESOURCE_DIR");
+        unsafe {
+            std::env::set_var(
+                "SHOOP_CARLA_NATIVE_LIBRARY",
+                std::env::temp_dir().join("shoop-certainly-missing-carla.so"),
+            );
+            std::env::remove_var("SHOOP_CARLA_RESOURCE_DIR");
+        }
+        let result = (|| {
+            let mut backend =
+                NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: 48_000,
+                    buffer_size: 128,
+                }))?;
+            let catalog = backend.track_processor_catalog()?;
+            assert!(catalog[..2].iter().all(|descriptor| {
+                descriptor.available && !descriptor.id.as_str().starts_with("carla_")
+            }));
+            assert!(catalog[2..].iter().all(|descriptor| {
+                !descriptor.available && descriptor.unavailable_reason.is_some()
+            }));
+            Ok::<_, anyhow::Error>(())
+        })();
+        unsafe {
+            match original_library {
+                Some(value) => std::env::set_var("SHOOP_CARLA_NATIVE_LIBRARY", value),
+                None => std::env::remove_var("SHOOP_CARLA_NATIVE_LIBRARY"),
+            }
+            match original_resources {
+                Some(value) => std::env::set_var("SHOOP_CARLA_RESOURCE_DIR", value),
+                None => std::env::remove_var("SHOOP_CARLA_RESOURCE_DIR"),
+            }
+        }
+        result.unwrap();
     }
 
     #[test]

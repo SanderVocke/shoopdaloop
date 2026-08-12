@@ -9,9 +9,9 @@ runtime libraries, discovery/bridge helpers, Rack/Patchbay UI helpers, resources
 and license/source metadata. Standalone Carla applications and wrappers that
 expose Carla as another plugin are excluded.
 
-`SHOOP_CARLA_NATIVE_LIBRARY` and `SHOOP_CARLA_RESOURCE_DIR` are development and
-test overrides. Release archives resolve absolute paths relative to the
-ShoopDaLoop executable and do not search the working directory or `PATH`.
+`SHOOP_CARLA_NATIVE_LIBRARY` and `SHOOP_CARLA_RESOURCE_DIR` are absolute-path
+development and test overrides. Release archives resolve absolute paths relative
+to the ShoopDaLoop executable and do not search the working directory or `PATH`.
 
 Carla is GPL-2.0-or-later. The exact corresponding source archive is identified
 by URL and SHA-256 in the lock file. Runtime component generation copies this

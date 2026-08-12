@@ -9,4 +9,6 @@
 
 EXPORT const void* carla_get_native_rack_plugin(void) { return NULL; }
 EXPORT const void* carla_get_native_patchbay_plugin(void) { return NULL; }
+#if !defined(OMIT_PATCHBAY16)
 EXPORT const void* carla_get_native_patchbay16_plugin(void) { return NULL; }
+#endif

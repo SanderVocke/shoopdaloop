@@ -11,6 +11,14 @@ const SAMPLE_RATE: u32 = 48_000;
 const WARMUP: usize = 100;
 const ITERATIONS: usize = 500;
 
+fn benchmark_iterations(default: usize) -> usize {
+    if std::env::var_os("SHOOP_BENCHMARK_SMOKE").is_some() {
+        default.min(3)
+    } else {
+        default
+    }
+}
+
 fn percentile(sorted: &[f64], percentile: f64) -> f64 {
     let index = ((sorted.len() - 1) as f64 * percentile).round() as usize;
     sorted[index]
@@ -30,13 +38,14 @@ fn measure(
             .context("missing benchmark audio input")?[..frames]
             .fill(0.125);
     }
-    for _ in 0..WARMUP {
+    for _ in 0..benchmark_iterations(WARMUP) {
         endpoint.process(frames)?;
     }
     let misses_before = control.deadline_misses();
-    let mut elapsed = Vec::with_capacity(ITERATIONS);
+    let iterations = benchmark_iterations(ITERATIONS);
+    let mut elapsed = Vec::with_capacity(iterations);
     let period = std::time::Duration::from_secs_f64(frames as f64 / SAMPLE_RATE as f64);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations {
         let started = Instant::now();
         endpoint.process(frames)?;
         let processing = started.elapsed();

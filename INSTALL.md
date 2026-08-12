@@ -55,7 +55,7 @@ cargo build -p shoopdaloop --no-default-features
 cargo run -p shoopdaloop --no-default-features
 ```
 
-The executable is written to `target/debug/` or `target/release/`. No generated launcher is needed. Source-tree builds gracefully mark Carla processors unavailable unless a packaged runtime is present; developers can select a matching runtime with `SHOOP_CARLA_NATIVE_LIBRARY` and `SHOOP_CARLA_RESOURCE_DIR`. Run `shoopdaloop --probe-carla-native` to validate it without opening the GUI.
+The executable is written to `target/debug/` or `target/release/`. No generated launcher is needed. Source-tree builds gracefully mark Carla processors unavailable unless a packaged runtime is present; developers can select a matching runtime with the absolute-path overrides `SHOOP_CARLA_NATIVE_LIBRARY` and `SHOOP_CARLA_RESOURCE_DIR`. Run `shoopdaloop --probe-carla-native` to validate it without opening the GUI, or `shoopdaloop --probe-carla-native-ui` to exercise every external UI lifecycle.
 
 On first native launch, ShoopDaLoop uses the dummy/offline driver. Open **Settings → Audio** to configure JACK or CPAL+midir and confirm a runtime switch.
 
