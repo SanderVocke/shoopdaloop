@@ -1582,6 +1582,9 @@ impl NativeRuntime {
         } else {
             port.handle.disconnect(endpoint);
         }
+        // JACK applies links synchronously, while dummy/CPAL adapters may queue the
+        // mutation until the next driver turn. Do not publish or capture stale truth.
+        self.wait();
         self.connection_revision = self.connection_revision.wrapping_add(1);
         Ok(())
     }
