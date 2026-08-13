@@ -50,7 +50,7 @@ impl TrackControls {
         let mut actions = Vec::new();
 
         if state.has_output {
-            let response = meter(
+            let (response, mut row) = meter_row(
                 ui,
                 state.output_stereo,
                 state.output_peak_left_db,
@@ -58,63 +58,62 @@ impl TrackControls {
                 state.output_midi_activity,
             );
             self.record_rect(TestTrackControl::OutputMeter, &response);
-            ui.horizontal(|ui| {
-                let icon = if state.output_muted {
-                    ICON_VOLUME_MUTE
-                } else {
-                    ICON_VOLUME_UP
-                };
-                let color = if state.output_muted {
-                    colors::MUTED_FOREGROUND
-                } else {
-                    colors::FOREGROUND
-                };
-                let response = ui
-                    .add(egui::Button::new(icon.rich_text().size(16.0).color(color)).frame(false))
-                    .on_hover_text("Mute/unmute output");
-                self.record_rect(TestTrackControl::OutputMute, &response);
-                if response.clicked() {
-                    actions.push(TrackWidgetAction::OutputMuteChanged(!state.output_muted));
-                }
+            let ui = &mut row;
+            let icon = if state.output_muted {
+                ICON_VOLUME_MUTE
+            } else {
+                ICON_VOLUME_UP
+            };
+            let color = if state.output_muted {
+                colors::MUTED_FOREGROUND
+            } else {
+                colors::FOREGROUND
+            };
+            let response = ui
+                .add(egui::Button::new(icon.rich_text().size(16.0).color(color)).frame(false))
+                .on_hover_text("Mute/unmute output");
+            self.record_rect(TestTrackControl::OutputMute, &response);
+            if response.clicked() {
+                actions.push(TrackWidgetAction::OutputMuteChanged(!state.output_muted));
+            }
 
-                let (gain_width, balance_size) =
-                    control_sizes(ui, state.has_output_audio, state.output_stereo);
-                if state.has_output_audio {
-                    let mut gain = self
-                        .output_gain
-                        .resolve(state.output_gain_db, self.output_gain_dragging);
-                    let response = gain_slider(ui, &mut gain, gain_width)
-                        .on_hover_text(format!("Output gain: {gain:.1} dB"));
-                    self.record_rect(TestTrackControl::OutputGain, &response);
-                    if response.drag_started() || response.dragged() {
-                        self.output_gain_dragging = true;
-                    }
-                    if response.changed() {
-                        self.output_gain.set(gain);
-                        actions.push(TrackWidgetAction::OutputGainChanged(gain));
-                    }
-                    if response.drag_stopped() {
-                        self.output_gain_dragging = false;
-                    }
+            let (gain_width, balance_size) =
+                control_sizes(ui, state.has_output_audio, state.output_stereo);
+            if state.has_output_audio {
+                let mut gain = self
+                    .output_gain
+                    .resolve(state.output_gain_db, self.output_gain_dragging);
+                let response = gain_slider(ui, &mut gain, gain_width)
+                    .on_hover_text(format!("Output gain: {gain:.1} dB"));
+                self.record_rect(TestTrackControl::OutputGain, &response);
+                if response.drag_started() || response.dragged() {
+                    self.output_gain_dragging = true;
                 }
+                if response.changed() {
+                    self.output_gain.set(gain);
+                    actions.push(TrackWidgetAction::OutputGainChanged(gain));
+                }
+                if response.drag_stopped() {
+                    self.output_gain_dragging = false;
+                }
+            }
 
-                if state.output_stereo {
-                    let response = balance_control(
-                        ui,
-                        state.output_balance,
-                        balance_size,
-                        &mut self.output_balance,
-                        &mut self.output_balance_drag_start,
-                        TrackWidgetAction::OutputBalanceChanged,
-                        &mut actions,
-                    );
-                    self.record_rect(TestTrackControl::OutputBalance, &response);
-                }
-            });
+            if state.output_stereo {
+                let response = balance_control(
+                    ui,
+                    state.output_balance,
+                    balance_size,
+                    &mut self.output_balance,
+                    &mut self.output_balance_drag_start,
+                    TrackWidgetAction::OutputBalanceChanged,
+                    &mut actions,
+                );
+                self.record_rect(TestTrackControl::OutputBalance, &response);
+            }
         }
 
         if state.has_input {
-            let response = meter(
+            let (response, mut row) = meter_row(
                 ui,
                 state.input_stereo,
                 state.input_peak_left_db,
@@ -122,60 +121,59 @@ impl TrackControls {
                 state.input_midi_activity,
             );
             self.record_rect(TestTrackControl::InputMeter, &response);
-            ui.horizontal(|ui| {
-                let color = if state.input_monitoring {
-                    colors::FOREGROUND
-                } else {
-                    colors::MUTED_FOREGROUND
-                };
-                let response = ui
-                    .add(
-                        egui::Button::new(ICON_HEARING.rich_text().size(16.0).color(color))
-                            .frame(false),
-                    )
-                    .on_hover_text("Enable/disable input monitoring");
-                self.record_rect(TestTrackControl::InputMonitoring, &response);
-                if response.clicked() {
-                    actions.push(TrackWidgetAction::InputMonitoringChanged {
-                        enabled: !state.input_monitoring,
-                        respect_auto_mute: true,
-                    });
-                }
+            let ui = &mut row;
+            let color = if state.input_monitoring {
+                colors::FOREGROUND
+            } else {
+                colors::MUTED_FOREGROUND
+            };
+            let response = ui
+                .add(
+                    egui::Button::new(ICON_HEARING.rich_text().size(16.0).color(color))
+                        .frame(false),
+                )
+                .on_hover_text("Enable/disable input monitoring");
+            self.record_rect(TestTrackControl::InputMonitoring, &response);
+            if response.clicked() {
+                actions.push(TrackWidgetAction::InputMonitoringChanged {
+                    enabled: !state.input_monitoring,
+                    respect_auto_mute: true,
+                });
+            }
 
-                let (gain_width, balance_size) =
-                    control_sizes(ui, state.has_input_audio, state.input_stereo);
-                if state.has_input_audio {
-                    let mut gain = self
-                        .input_gain
-                        .resolve(state.input_gain_db, self.input_gain_dragging);
-                    let response = gain_slider(ui, &mut gain, gain_width)
-                        .on_hover_text(format!("Input gain: {gain:.1} dB"));
-                    self.record_rect(TestTrackControl::InputGain, &response);
-                    if response.drag_started() || response.dragged() {
-                        self.input_gain_dragging = true;
-                    }
-                    if response.changed() {
-                        self.input_gain.set(gain);
-                        actions.push(TrackWidgetAction::InputGainChanged(gain));
-                    }
-                    if response.drag_stopped() {
-                        self.input_gain_dragging = false;
-                    }
+            let (gain_width, balance_size) =
+                control_sizes(ui, state.has_input_audio, state.input_stereo);
+            if state.has_input_audio {
+                let mut gain = self
+                    .input_gain
+                    .resolve(state.input_gain_db, self.input_gain_dragging);
+                let response = gain_slider(ui, &mut gain, gain_width)
+                    .on_hover_text(format!("Input gain: {gain:.1} dB"));
+                self.record_rect(TestTrackControl::InputGain, &response);
+                if response.drag_started() || response.dragged() {
+                    self.input_gain_dragging = true;
                 }
+                if response.changed() {
+                    self.input_gain.set(gain);
+                    actions.push(TrackWidgetAction::InputGainChanged(gain));
+                }
+                if response.drag_stopped() {
+                    self.input_gain_dragging = false;
+                }
+            }
 
-                if state.input_stereo {
-                    let response = balance_control(
-                        ui,
-                        state.input_balance,
-                        balance_size,
-                        &mut self.input_balance,
-                        &mut self.input_balance_drag_start,
-                        TrackWidgetAction::InputBalanceChanged,
-                        &mut actions,
-                    );
-                    self.record_rect(TestTrackControl::InputBalance, &response);
-                }
-            });
+            if state.input_stereo {
+                let response = balance_control(
+                    ui,
+                    state.input_balance,
+                    balance_size,
+                    &mut self.input_balance,
+                    &mut self.input_balance_drag_start,
+                    TrackWidgetAction::InputBalanceChanged,
+                    &mut actions,
+                );
+                self.record_rect(TestTrackControl::InputBalance, &response);
+            }
         }
 
         actions
@@ -217,8 +215,16 @@ impl TrackControls {
 fn gain_slider(ui: &mut egui::Ui, gain: &mut f32, width: f32) -> egui::Response {
     let slider_width = ui.spacing().slider_width;
     ui.spacing_mut().slider_width = width;
-    let response =
-        ui.add(egui::Slider::new(gain, MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB).show_value(false));
+    let response = ui
+        .scope(|ui| {
+            ui.visuals_mut().selection.bg_fill = colors::COLORED_HIGHLIGHT;
+            ui.add(
+                egui::Slider::new(gain, MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB)
+                    .show_value(false)
+                    .trailing_fill(true),
+            )
+        })
+        .inner;
     ui.spacing_mut().slider_width = slider_width;
     response
 }
@@ -231,15 +237,7 @@ fn control_sizes(ui: &egui::Ui, gain: bool, balance: bool) -> (f32, f32) {
         0.0
     };
     let usable = (available - gap).max(0.0);
-    let balance_size = if balance {
-        if gain {
-            (usable * 0.3).min(20.0)
-        } else {
-            usable.min(20.0)
-        }
-    } else {
-        0.0
-    };
+    let balance_size = if balance { usable.min(18.0) } else { 0.0 };
     let gain_width = if gain {
         (usable - balance_size).max(0.0)
     } else {
@@ -283,20 +281,19 @@ fn balance_control(
     response.on_hover_text(format!("Stereo balance: {balance:.2}"))
 }
 
-fn meter(
+fn meter_row(
     ui: &mut egui::Ui,
     stereo: bool,
     left_db: f32,
     right_db: f32,
     midi_activity: bool,
-) -> egui::Response {
+) -> (egui::Response, egui::Ui) {
     let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 4.0), egui::Sense::hover());
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 24.0), egui::Sense::hover());
     let painter = ui.painter();
-    painter.rect_filled(rect, 1.0, colors::CONTROL_BACKGROUND);
+    painter.rect_filled(rect, 2.0, colors::CONTROL_BACKGROUND);
 
     let normalized = |db: f32| ((db - METER_MIN_DB) / -METER_MIN_DB).clamp(0.0, 1.0);
-    let color = colors::METER_LEVEL;
     if stereo {
         let center = rect.center().x;
         let left_width = normalized(left_db) * rect.width() * 0.5;
@@ -307,7 +304,7 @@ fn meter(
                 egui::pos2(center, rect.bottom()),
             ),
             0.0,
-            color,
+            colors::METER_LEVEL,
         );
         painter.rect_filled(
             egui::Rect::from_min_max(
@@ -315,14 +312,14 @@ fn meter(
                 egui::pos2(center + right_width, rect.bottom()),
             ),
             0.0,
-            color,
+            colors::METER_LEVEL,
         );
     } else {
         let width = normalized(left_db.max(right_db)) * rect.width();
         painter.rect_filled(
             egui::Rect::from_min_size(rect.min, egui::vec2(width, rect.height())),
-            0.0,
-            color,
+            2.0,
+            colors::METER_LEVEL,
         );
     }
 
@@ -336,7 +333,13 @@ fn meter(
             colors::MIDI_ACTIVITY,
         );
     }
-    response
+    let row = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(("meter_controls", rect.min.y.to_bits()))
+            .max_rect(rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    (response, row)
 }
 
 #[cfg(test)]

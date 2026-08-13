@@ -11,7 +11,7 @@ use crate::tiny_synth_fx_editor::TinySynthFxEditor;
 const DEFAULT_TRACK_WIDTH: f32 = 120.0;
 const MIN_TRACK_WIDTH: f32 = 100.0;
 const MAX_TRACK_WIDTH: f32 = 400.0;
-const TRACK_CONTROLS_HEIGHT: f32 = 50.0;
+const TRACK_CONTROLS_HEIGHT: f32 = 48.0;
 const TRACK_CONTENT_MARGIN: egui::Margin = egui::Margin::same(4);
 const TRACK_CONTROLS_MARGIN: egui::Margin = egui::Margin::same(4);
 const RESIZE_HANDLE_RADIUS: f32 = 3.0;
@@ -87,6 +87,14 @@ impl Default for TrackWidget {
     }
 }
 
+fn track_background(state: &crate::TrackControlState) -> egui::Color32 {
+    if state.input_monitoring {
+        colors::INPUT_ACTIVE_BACKGROUND
+    } else {
+        colors::RAISED_BACKGROUND
+    }
+}
+
 impl TrackWidget {
     pub(crate) fn set_width_resizable(&mut self, resizable: bool) {
         self.width_resizable = resizable;
@@ -101,9 +109,11 @@ impl TrackWidget {
         let item_spacing_y = ui.spacing().item_spacing.y;
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut response = self.show_content(ui, state, !state.is_sync);
-        response
-            .actions
-            .extend(self.show_controls(ui, &state.controls));
+        response.actions.extend(self.show_controls_with_height(
+            ui,
+            &state.controls,
+            !state.is_sync,
+        ));
         ui.spacing_mut().item_spacing.y = item_spacing_y;
         response
     }
@@ -155,7 +165,7 @@ impl TrackWidget {
         self.test_loop_rects.clear();
         let rendered_width = self.width;
         let frame = egui::Frame::new()
-            .fill(colors::RAISED_BACKGROUND)
+            .fill(track_background(&state.controls))
             .inner_margin(TRACK_CONTENT_MARGIN)
             .show(ui, |ui| {
                 ui.set_width(rendered_width);
@@ -238,27 +248,42 @@ impl TrackWidget {
         ui: &mut egui::Ui,
         state: &crate::TrackControlState,
     ) -> Vec<TrackWidgetAction> {
+        self.show_controls_with_height(ui, state, true)
+    }
+
+    fn show_controls_with_height(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &crate::TrackControlState,
+        fill_available: bool,
+    ) -> Vec<TrackWidgetAction> {
         let frame = egui::Frame::new()
-            .fill(colors::RAISED_BACKGROUND)
+            .fill(track_background(state))
             .inner_margin(TRACK_CONTROLS_MARGIN);
         let background = ui.painter().add(egui::Shape::Noop);
         let total_margin = frame.total_margin();
         let outer_min = ui.next_widget_position();
-        let content_min = egui::pos2(
+        let frame_content_min = egui::pos2(
             outer_min.x + total_margin.left,
             outer_min.y + total_margin.top,
         );
-        let content_bounds = egui::Rect::from_min_max(
-            content_min,
-            egui::pos2(
-                content_min.x + self.rendered_content_width,
-                (ui.max_rect().bottom() - total_margin.bottom).max(content_min.y),
-            ),
+        let frame_content_height = if fill_available {
+            (ui.available_height() - total_margin.sum().y).max(TRACK_CONTROLS_HEIGHT)
+        } else {
+            TRACK_CONTROLS_HEIGHT
+        };
+        let controls_min = egui::pos2(
+            frame_content_min.x,
+            frame_content_min.y + frame_content_height - TRACK_CONTROLS_HEIGHT,
+        );
+        let controls_bounds = egui::Rect::from_min_size(
+            controls_min,
+            egui::vec2(self.rendered_content_width, TRACK_CONTROLS_HEIGHT),
         );
         let mut content_ui = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt("track_controls_content")
-                .max_rect(content_bounds)
+                .max_rect(controls_bounds)
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
         let horizontal_clip = egui::Rect::from_min_max(
@@ -274,16 +299,11 @@ impl TrackWidget {
             self.test_controls_clip_rect = Some(content_ui.clip_rect());
         }
         content_ui.set_width(self.rendered_content_width);
-        let content_height =
-            (ui.available_height() - total_margin.sum().y).max(TRACK_CONTROLS_HEIGHT);
-        content_ui.set_min_height(content_height);
+        content_ui.set_min_height(TRACK_CONTROLS_HEIGHT);
         let actions = self.controls.show(&mut content_ui, state);
         let content_rect = egui::Rect::from_min_size(
-            content_min,
-            egui::vec2(
-                self.rendered_content_width,
-                content_ui.min_rect().height().max(content_height),
-            ),
+            frame_content_min,
+            egui::vec2(self.rendered_content_width, frame_content_height),
         );
         ui.painter().set(background, frame.paint(content_rect));
         let outer_rect = frame.outer_rect(content_rect);
@@ -624,6 +644,21 @@ mod tests {
     }
 
     #[test]
+    fn monitored_input_accents_the_whole_track() {
+        assert_eq!(
+            track_background(&crate::TrackControlState {
+                input_monitoring: true,
+                ..Default::default()
+            }),
+            colors::INPUT_ACTIVE_BACKGROUND
+        );
+        assert_eq!(
+            track_background(&crate::TrackControlState::default()),
+            colors::RAISED_BACKGROUND
+        );
+    }
+
+    #[test]
     fn processor_facets_render_status_controls_and_logs_without_affecting_direct_tracks() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -823,6 +858,7 @@ mod tests {
         widget.width = MAX_TRACK_WIDTH;
         widget.set_width_resizable(false);
         let _ = full_frame(&context, &mut widget, &state, Vec::new());
+        assert!(widget.test_controls_rect.unwrap().height() < 100.0);
         let edge = widget.test_content_rect.unwrap().right_center();
         let _ = full_frame(
             &context,

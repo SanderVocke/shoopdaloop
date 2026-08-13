@@ -4,8 +4,10 @@ use egui::Color32;
 
 pub const DARK_BACKGROUND: Color32 = Color32::from_rgb(28, 27, 31);
 pub const RAISED_BACKGROUND: Color32 = Color32::from_rgb(85, 85, 85);
+pub const INPUT_ACTIVE_BACKGROUND: Color32 = Color32::from_rgb(92, 75, 78);
 pub const SIDEBAR_BACKGROUND: Color32 = DARK_BACKGROUND;
 pub const CONTROL_BACKGROUND: Color32 = Color32::from_rgb(34, 34, 34);
+pub const HOVER_BACKGROUND: Color32 = Color32::from_rgb(82, 82, 86);
 pub const FOREGROUND: Color32 = Color32::WHITE;
 pub const COLORED_HIGHLIGHT: Color32 = Color32::from_rgb(244, 143, 177);
 pub const MUTED_FOREGROUND: Color32 = Color32::from_rgb(128, 128, 128);
@@ -34,9 +36,10 @@ pub const LOOP_SELECTED_EDGE: Color32 = WARNING;
 pub const LOOP_SYNC_MARKER: Color32 = WARNING;
 pub const LOOP_CONTENT_EDGE: Color32 = Color32::from_gray(221);
 
-pub const METER_LEVEL: Color32 = Color32::from_rgb(102, 102, 102);
+pub const METER_LEVEL: Color32 = Color32::from_rgb(76, 50, 62);
 pub const DIAL_LABEL: Color32 = Color32::from_gray(180);
-pub const WAVEFORM_BACKGROUND: Color32 = Color32::from_rgb(24, 24, 24);
-pub const WAVEFORM_ZERO_LINE: Color32 = Color32::from_gray(90);
-pub const WAVEFORM_LOOP_REGION: Color32 = Color32::from_rgba_unmultiplied_const(0, 0, 180, 45);
-pub const WAVEFORM_PLAYHEAD: Color32 = Color32::GREEN;
+pub const WAVEFORM_BACKGROUND: Color32 = Color32::from_rgb(25, 25, 27);
+pub const WAVEFORM_ZERO_LINE: Color32 = Color32::from_rgb(92, 48, 54);
+pub const WAVEFORM_LOOP_REGION: Color32 = Color32::from_rgba_unmultiplied_const(28, 28, 128, 110);
+pub const WAVEFORM_LINE: Color32 = Color32::from_rgb(235, 35, 55);
+pub const WAVEFORM_PLAYHEAD: Color32 = Color32::from_rgb(80, 210, 100);

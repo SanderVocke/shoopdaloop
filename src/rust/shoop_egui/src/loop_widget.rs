@@ -1,6 +1,6 @@
 use egui_material_icons::icons::{
     ICON_ARROW_DOWNWARD, ICON_BORDER_CLEAR, ICON_EDIT_NOTE, ICON_FIBER_MANUAL_RECORD, ICON_HELP,
-    ICON_PLAY_ARROW, ICON_STAR, ICON_STOP, ICON_TIMER, ICON_VIEW_LIST,
+    ICON_HOURGLASS_EMPTY, ICON_PLAY_ARROW, ICON_STAR, ICON_STOP, ICON_VIEW_LIST,
 };
 use egui_material_icons::MaterialIcon;
 
@@ -361,7 +361,7 @@ impl LoopWidget {
                 paint_icon(
                     ui.painter(),
                     icon_rect.center(),
-                    ICON_TIMER,
+                    ICON_HOURGLASS_EMPTY,
                     20.0,
                     colors::FOREGROUND,
                 );
