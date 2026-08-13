@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 assert_no_alloc = { workspace = true }
+ctor = { workspace = true }
 tracy-client = { workspace = true, optional = true }
 
 [dev-dependencies]

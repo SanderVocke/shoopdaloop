@@ -3849,6 +3849,7 @@ name = "shoop_tracing"
 version = "0.3.0"
 dependencies = [
  "assert_no_alloc",
+ "ctor",
  "tracy-client",
  "tracy-nextest-capture",
 ]

@@ -15,6 +15,14 @@ static TRACING_ENABLED: AtomicBool = AtomicBool::new(false);
 static TRACING_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);
 static ENGINE_DETAIL_ENABLED: AtomicBool = AtomicBool::new(false);
 
+#[ctor::ctor(unsafe)]
+fn configure_ci_tracing() {
+    if std::env::var_os("SHOOP_CI_TRACING_ENGINE_DETAIL").is_some() {
+        set_tracing_enabled(true);
+        set_engine_detail_enabled(true);
+    }
+}
+
 /// Enable or disable all application tracing.
 pub fn set_tracing_enabled(enabled: bool) {
     TRACING_ENABLED.store(enabled, Ordering::Relaxed);

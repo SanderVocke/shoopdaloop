@@ -27,6 +27,8 @@ concurrency:
 env:
   RUST_BACKTRACE: "1"
   PIP_BREAK_SYSTEM_PACKAGES: "1"
+  # Enable coarse and detailed engine events in every native nextest capture.
+  SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
   build_and_test:
