@@ -1061,7 +1061,7 @@ mod tests {
         msgs.iter().map(|m| m.time).collect()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn records_incoming_messages_with_relative_times() {
         let mut ch = channel();
         let input = [
@@ -1074,7 +1074,7 @@ mod tests {
         check!(ch.length() == 8);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn recording_across_two_calls_offsets_times() {
         let mut ch = channel();
         ch.set_recording_buffer(8);
@@ -1118,7 +1118,7 @@ mod tests {
         check!(ch.length() == 8);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacing_overwrites_the_processed_interval() {
         let mut ch = channel();
         ch.set_contents(
@@ -1146,7 +1146,7 @@ mod tests {
         check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn partial_replacement_preserves_events_outside_the_interval() {
         let mut ch = channel();
         ch.set_contents(
@@ -1172,7 +1172,7 @@ mod tests {
         check!(ch.contents()[1].data() == midi::cc(0, 7, 42).as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacement_with_no_input_erases_the_interval() {
         let mut ch = channel();
         ch.set_contents(
@@ -1190,7 +1190,7 @@ mod tests {
         check!(times(&ch.contents()) == vec![1, 6]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacement_across_split_calls_uses_loop_relative_times() {
         let mut ch = channel();
         ch.set_contents(
@@ -1243,7 +1243,7 @@ mod tests {
         check!(ch.contents()[1].data() == midi::note_off(0, 64, 0).as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacement_split_at_loop_wrap_uses_each_side_of_the_boundary() {
         let mut ch = channel();
         ch.set_contents(
@@ -1296,7 +1296,7 @@ mod tests {
         check!(ch.contents()[1].data() == midi::note_on(0, 64, 100).as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacement_skips_input_before_the_channel_start_offset() {
         let mut ch = channel();
         ch.set_contents(
@@ -1325,7 +1325,7 @@ mod tests {
         check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacement_at_loop_start_updates_playback_start_state() {
         let mut ch = channel();
         ch.set_contents(&[ev(1, &midi::note_on(0, 60, 100))], 4, None);
@@ -1348,7 +1348,7 @@ mod tests {
             .contains(&midi::cc(0, 7, 42).to_vec()));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacement_reports_insufficient_storage_without_partial_mutation() {
         let mut ch = MidiChannel::with_capacity_elems(3, C::Direct);
         ch.set_contents(
@@ -1387,7 +1387,7 @@ mod tests {
         check!(times(&ch.contents()) == vec![0, 2, 6]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn messages_beyond_the_window_are_deferred() {
         let mut ch = channel();
         let input = [ev(9, &midi::note_on(0, 60, 1))];
@@ -1396,7 +1396,7 @@ mod tests {
         check!(ch.n_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn input_state_is_tracked_even_when_not_recording() {
         let mut ch = channel();
         let input = [ev(1, &midi::cc(0, 7, 42))];
@@ -1405,7 +1405,7 @@ mod tests {
         check!(ch.input_state().cc_value(0, 7) == Some(42));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn plays_back_recorded_messages_at_buffer_relative_times() {
         let mut ch = channel();
         cycle(
@@ -1428,7 +1428,7 @@ mod tests {
         check!(ch.n_events_triggered() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playback_only_emits_messages_inside_the_window() {
         let mut ch = channel();
         cycle(
@@ -1449,7 +1449,7 @@ mod tests {
         check!(times(&out) == vec![1, 2]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playback_updates_output_state() {
         let mut ch = channel();
         cycle(
@@ -1465,7 +1465,7 @@ mod tests {
         check!(ch.n_notes_active() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn loop_wrap_stops_only_notes_owned_by_playback() {
         let mut ch = channel();
         ch.set_contents(&[ev(0, &midi::note_on(0, 60, 100))], 4, None);
@@ -1489,7 +1489,7 @@ mod tests {
         check!(mixed_state.note_velocity(0, 64) == Some(100));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn interrupting_playback_stops_its_active_notes() {
         let mut ch = channel();
         cycle(
@@ -1507,7 +1507,7 @@ mod tests {
         check!(out[0].data() == midi::note_off(0, 60, 0).as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_position_jump_also_counts_as_interruption() {
         let mut ch = channel();
         cycle(
@@ -1526,7 +1526,7 @@ mod tests {
             .any(|message| message.data() == midi::note_off(0, 60, 0).as_slice()));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn uninterrupted_forward_playback_sends_no_cleanup() {
         let mut ch = channel();
         cycle(
@@ -1545,7 +1545,7 @@ mod tests {
         check!(times(&out) == vec![1]); // frame 5 is buffer-relative frame 1
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn input_drift_since_record_start_is_reverted_on_playback() {
         let mut ch = channel();
         // A controller value the recording was made against.
@@ -1579,7 +1579,7 @@ mod tests {
         check!(ch.output_state().cc_value(0, 7) == Some(99));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     /// State the input never moved needs no restore: in Direct mode the input
     /// already reached the receiver, so re-sending it would be noise.
     fn undrifted_state_is_not_restored_on_playback() {
@@ -1602,7 +1602,7 @@ mod tests {
         check!(times(&out) == vec![1, 2]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn set_length_truncates_recorded_messages() {
         let mut ch = channel();
         cycle(
@@ -1622,7 +1622,7 @@ mod tests {
         check!(times(&ch.contents()) == vec![1]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn clear_empties_everything() {
         let mut ch = channel();
         cycle(
@@ -1639,7 +1639,7 @@ mod tests {
         check!(ch.recording_start_state_messages().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn set_contents_restores_messages_and_start_state() {
         let mut ch = channel();
         let msgs = [ev(1, &midi::note_on(0, 60, 7))];
@@ -1654,7 +1654,7 @@ mod tests {
             .any(|m| m.data() == midi::note_on(0, 60, 7).as_slice()));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn without_buffers_nothing_is_recorded() {
         let mut ch = channel();
         ch.clear_buffers();
@@ -1677,7 +1677,7 @@ mod tests {
         check!(out.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn recording_past_the_input_buffer_errors() {
         let mut ch = channel();
         ch.set_recording_buffer(2);
@@ -1705,7 +1705,7 @@ mod tests {
         check!(available == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playing_past_the_output_buffer_errors() {
         let mut ch = channel();
         ch.set_recording_buffer(8);
@@ -1733,7 +1733,7 @@ mod tests {
         check!(available == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn disabled_channel_does_nothing() {
         let mut ch = MidiChannel::with_capacity_elems(64, C::Disabled);
         cycle(
@@ -1748,7 +1748,7 @@ mod tests {
         check!(ch.next_poi(L::Playing, L::Unknown, None, None, 0) == None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn next_poi_is_smallest_remaining_buffer() {
         let mut ch = channel();
         ch.set_playback_buffer(8);
@@ -1758,7 +1758,7 @@ mod tests {
         check!(ch.next_poi(L::Stopped, L::Unknown, None, None, 0) == None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pre_record_carries_over_into_recording() {
         let mut ch = channel();
         // Recording is one trigger away: this cycle pre-records.
@@ -1809,7 +1809,7 @@ mod tests {
         check!(ch.start_offset() == 4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pre_record_discarded_when_recording_does_not_follow() {
         let mut ch = channel();
         ch.set_recording_buffer(4);
@@ -1835,7 +1835,7 @@ mod tests {
         check!(ch.start_offset() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn record_position_accounts_for_start_offset() {
         let mut ch = channel();
         // A non-zero start offset makes the storage write position differ from
@@ -1853,7 +1853,7 @@ mod tests {
         check!(times(&ch.contents()) == vec![12]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playback_skips_messages_before_the_start_offset() {
         let mut ch = channel();
         ch.set_contents(
@@ -1872,7 +1872,7 @@ mod tests {
         check!(played.contains(&midi::note_on(0, 61, 1).to_vec()));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pre_playing_before_the_start_offset_stays_silent() {
         let mut ch = channel();
         ch.set_contents(
@@ -1893,7 +1893,7 @@ mod tests {
         check!(played.contains(&midi::note_on(0, 61, 1).to_vec()));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pre_play_samples_widen_the_validity_window() {
         let mut ch = channel();
         ch.set_contents(
@@ -1913,7 +1913,7 @@ mod tests {
         check!(played.contains(&midi::note_on(0, 61, 1).to_vec()));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn start_state_is_restored_only_once_per_playback_run() {
         let mut ch = channel();
         ch.set_contents(
@@ -1932,7 +1932,7 @@ mod tests {
         check!(out.iter().filter(|m| midi::is_note_on(m.data())).count() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn reset_state_tracking_forgets_everything() {
         let mut ch = channel();
         cycle(&mut ch, L::Stopped, 4, 0, 0, &[ev(0, &midi::cc(0, 7, 9))]);

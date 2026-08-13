@@ -426,7 +426,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn sample_intervals_are_half_open_at_a_boundary() {
         assert!(half_open_interval_contains(10, 20, 10));
         assert!(half_open_interval_contains(10, 20, 19));
@@ -434,7 +434,7 @@ mod tests {
         assert!(half_open_interval_contains(20, 30, 20));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn boundary_phase_order_is_fixed() {
         assert_eq!(
             BOUNDARY_PHASE_ORDER,
@@ -450,7 +450,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn coincident_end_and_start_continue_or_change_mode() {
         assert_eq!(
             normalize_coincident_schedule_actions(Some(LoopMode::Playing), Some(LoopMode::Playing)),
@@ -469,7 +469,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn incompatible_intents_have_total_precedence() {
         let natural = priority(IntentOrigin::Natural, 1, 0, 0);
         let regular = priority(IntentOrigin::InheritedRegular, 9, 0, 0);
@@ -501,19 +501,19 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn stop_before_delivery_suppresses_a_due_action() {
         assert!(source_emits_due_action(true, false));
         assert!(!source_emits_due_action(true, true));
         assert!(!source_emits_due_action(false, false));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn nested_iteration_zero_occurs_at_the_parent_start_sample() {
         assert!(nested_iteration_zero_is_same_sample());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dependency_order_is_stable_and_parent_before_child() {
         assert_eq!(
             dependency_order(5, &[(0, 3), (1, 3), (3, 4)]),
@@ -522,7 +522,7 @@ mod tests {
         assert_eq!(dependency_order(3, &[(0, 2), (0, 2)]), Ok(vec![0, 1, 2]));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn direct_and_transitive_dependency_cycles_are_rejected() {
         assert_eq!(
             dependency_order(2, &[(0, 1), (1, 0)]),
@@ -536,7 +536,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn invalid_dependency_identity_is_rejected() {
         assert_eq!(
             dependency_order(2, &[(0, 2)]),
@@ -544,7 +544,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn plan_activation_depends_only_on_runtime_status() {
         assert_eq!(
             plan_activation(RuntimeStatus::Stopped),
@@ -562,14 +562,14 @@ mod tests {
         assert!(plan_can_enter_running(1));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn countdown_delay_counts_boundaries_to_skip() {
         assert_eq!(countdown_execution_boundary(0), 1);
         assert_eq!(countdown_execution_boundary(3), 4);
         assert_eq!(countdown_execution_boundary(u32::MAX), 1u64 << 32);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn schedule_duration_is_explicit_or_length_derived() {
         assert_eq!(entry_duration(Some(3), 999, 100), Ok(3));
         assert_eq!(entry_duration(None, 0, 100), Ok(1));
@@ -585,7 +585,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn regular_and_script_modes_are_all_or_nothing() {
         assert_eq!(classify_plan_modes(&[]), Ok(CompositeKind::Regular));
         assert_eq!(
@@ -606,7 +606,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn empty_child_and_recording_pass_rules_are_explicit() {
         assert_eq!(
             empty_child_action(LoopMode::Playing),
@@ -636,7 +636,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn immediate_seek_is_bounded_and_derives_cycle_offsets() {
         assert!(valid_seek_iteration(0, 4));
         assert!(valid_seek_iteration(3, 4));
@@ -648,7 +648,7 @@ mod tests {
         assert_eq!(seek_cycle_offset(1, 2, 2, false), None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn stale_or_missing_targets_are_never_retargeted() {
         let expected = TargetIdentity {
             slot: 7,
@@ -674,7 +674,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn overflow_never_turns_into_a_late_event() {
         for site in [
             OverflowSite::CommandQueue,
@@ -702,7 +702,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn callback_cutoff_defers_commands_that_missed_the_drain() {
         assert_eq!(
             command_disposition(true, CommandTiming::Untimestamped),
@@ -714,7 +714,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn timestamped_commands_keep_exact_in_buffer_timing() {
         assert_eq!(
             command_disposition(

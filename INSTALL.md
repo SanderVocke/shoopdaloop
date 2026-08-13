@@ -84,8 +84,9 @@ python3 build_single_file_app.py dist
 ```sh
 cargo fmt --all -- --check
 RUSTFLAGS="-D warnings" cargo build --workspace
+# Requires cargo-nextest 0.9.116.
 SHOOP_ALLOW_MISSING_BACKENDS=1 \
-  cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1
+  cargo nextest run --workspace --features shoop_engine/app_backend --profile ci
 ```
 
 `SHOOP_ALLOW_MISSING_BACKENDS=1` skips only tests that require unavailable host audio/MIDI facilities; deterministic software-backed tests continue to run.

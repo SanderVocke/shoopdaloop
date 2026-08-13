@@ -22,7 +22,7 @@ fn midi_port(name: &str, direction: PortDirection) -> Port {
     Port::ExternalMidi(ExternalMidiPort::new(name, direction))
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_driver_can_record_and_play_audio_through_the_session() {
     let mut s = Session::default();
     let input = s.add_port(audio_port("in", PortDirection::Input));
@@ -58,7 +58,7 @@ fn a_driver_can_record_and_play_audio_through_the_session() {
     check!(out == incoming);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn an_unfed_cycle_is_silent_rather_than_a_repeat() {
     let mut s = Session::default();
     let input = s.add_port(audio_port("in", PortDirection::Input));
@@ -82,7 +82,7 @@ fn an_unfed_cycle_is_silent_rather_than_a_repeat() {
     check!(ch.data()[4..8] == [0.0; 4]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_driver_can_record_and_play_midi_through_the_session() {
     let mut s = Session::default();
     let input = s.add_port(midi_port("min", PortDirection::Input));
@@ -134,7 +134,7 @@ fn a_driver_can_record_and_play_midi_through_the_session() {
 
 /// The whole boundary at once: a control command and a staged buffer meeting in one
 /// cycle, which is what a driver callback does every time it runs.
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn the_engine_drives_driver_shaped_ports() {
     let mut s = Session::default();
     let input = s.add_port(midi_port("min", PortDirection::Input));

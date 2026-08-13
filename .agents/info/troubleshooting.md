@@ -8,7 +8,7 @@ Headless environments often lack `/dev/snd`, an ALSA sequencer, JACK, or a defau
 
 ```sh
 SHOOP_ALLOW_MISSING_BACKENDS=1 \
-  cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1
+  cargo nextest run --workspace --features shoop_engine/app_backend --profile ci
 ```
 
 Do not use that variable when investigating a real JACK, CPAL, midir, or hardware path. Record which host facility is unavailable instead of claiming its tests ran.

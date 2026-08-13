@@ -12,6 +12,7 @@ shoop_scripting = { path = "../shoop_scripting" }
 tracing = { workspace = true }
 
 [dev-dependencies]
+tracy-nextest-capture = { workspace = true }
 midir = { workspace = true }
 
 [lints]

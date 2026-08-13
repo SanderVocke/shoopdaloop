@@ -60,7 +60,7 @@ fn channel_data(l: &AudioMidiLoop, idx: usize) -> Vec<f32> {
     l.audio_channel(idx).expect("channel").data()
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_stop() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(256, ChannelMode::Direct);
@@ -79,7 +79,7 @@ fn audio_stop() {
     check!(l.position() == 0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_record() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -135,7 +135,7 @@ fn audio_record_beyond_external_buffer() {
     advance(&mut l, 20);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_record_multiple_target() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -162,7 +162,7 @@ fn audio_record_multiple_target() {
     check!(channel_data(&l, 0)[..512] == source[..]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_record_multiple_source() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -199,7 +199,7 @@ fn audio_record_multiple_source() {
     check!(channel_data(&l, 0)[..512] == ramp(512, 0)[..]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_record_onto_smaller() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -237,7 +237,7 @@ fn audio_record_onto_smaller() {
     check!(data[128..148] == ramp(20, 0)[..]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_record_onto_larger() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -273,7 +273,7 @@ fn audio_record_onto_larger() {
     check!(data[64..128] == ramp(64, 0)[..]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_playback() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -320,7 +320,7 @@ fn audio_playback() {
     check!(play[2][..20] == data[..20]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_playback_multiple_target() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -353,7 +353,7 @@ fn audio_playback_multiple_target() {
     check!(play == data);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_playback_shorter_data() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -388,7 +388,7 @@ fn audio_playback_shorter_data() {
     check!(play[32..62].iter().all(|&v| v == 0.0));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_playback_wrap() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -435,7 +435,7 @@ fn audio_playback_wrap() {
     check!(play[16..] == data[..48]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_playback_wrap_longer_data() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -481,7 +481,7 @@ fn audio_playback_wrap_longer_data() {
     check!(play[16..] == data[..48]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_replace() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -525,7 +525,7 @@ fn audio_replace() {
     }
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_replace_onto_smaller() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -565,7 +565,7 @@ fn audio_replace_onto_smaller() {
     check!(got[48..64] == input[..16]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_play_dry_through_wet() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -669,7 +669,7 @@ fn follower_with_three_channels(source: &AudioMidiLoop, chunk: usize) -> AudioMi
     l
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_record_dry_into_wet() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -725,7 +725,7 @@ fn audio_record_dry_into_wet() {
     check!(out[1] == ramp(32, 16));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_prerecord() {
     let mut sync_source = playing_sync_source(100);
     check!(sync_source.predicted_next_trigger_eta().unwrap_or(999) == 100);
@@ -786,7 +786,7 @@ fn audio_prerecord() {
     check!(l.predicted_next_trigger_eta().unwrap_or(999) == 40);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_preplay() {
     let mut sync_source = playing_sync_source(100);
     check!(sync_source.predicted_next_trigger_eta().unwrap_or(999) == 100);
@@ -844,7 +844,7 @@ fn audio_preplay() {
     }
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_playback_and_set_to_sync() {
     let mut sync_source = playing_sync_source(30);
     check!(sync_source.predicted_next_trigger_eta().unwrap_or(999) == 30);
@@ -898,7 +898,7 @@ fn audio_playback_and_set_to_sync() {
     }
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_record_and_set_to_sync() {
     let mut sync_source = playing_sync_source(30);
     check!(sync_source.predicted_next_trigger_eta().unwrap_or(999) == 30);

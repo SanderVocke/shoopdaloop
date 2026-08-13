@@ -381,7 +381,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn buttons_generate_typed_global_actions_and_main_menu_has_no_business_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -461,7 +461,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn clear_menu_generates_a_clear_action() {
         let context = egui::Context::default();
         crate::initialize(&context);

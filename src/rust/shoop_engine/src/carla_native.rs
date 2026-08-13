@@ -1135,7 +1135,7 @@ impl CarlaProcessor for CarlaNativeHost {
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn runtime_overrides_must_be_absolute() {
         assert!(absolute_override("TEST", "relative/library.so".into()).is_err());
         let absolute = if cfg!(target_os = "windows") {
@@ -1147,7 +1147,7 @@ mod tests {
     }
 
     #[cfg(target_os = "windows")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn windows_process_paths_avoid_verbatim_prefixes_rejected_by_carla_helpers() {
         assert_eq!(
             windows_process_path(PathBuf::from(r"\\?\D:\Shoop\carla-runtime\resources")).unwrap(),
@@ -1155,7 +1155,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn native_ffi_layout_matches_pinned_carla_header() {
         assert_eq!(std::mem::size_of::<NativeMidiEvent>(), 12);
         assert_eq!(std::mem::align_of::<NativeMidiEvent>(), 4);
@@ -1175,7 +1175,7 @@ mod tests {
         assert_eq!(std::mem::offset_of!(NativePluginDescriptor, ui_width), 272);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn direct_state_codec_round_trips_and_rejects_invalid_input() {
         let encoded = encode_state(FXChainType::CarlaRack, b"<CARLA-PROJECT />").unwrap();
         assert_eq!(
@@ -1204,7 +1204,7 @@ mod tests {
         assert!(decode_state(&oversized, FXChainType::CarlaRack).is_err());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn legacy_lv2_chunks_for_every_descriptor_decode_to_native_state() {
         for (state, project, chain_type) in [
             (
@@ -1228,7 +1228,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn legacy_state_codec_rejects_malformed_wrong_type_and_nul_contracts() {
         let wrong_type =
             r#"{"http://kxstudio.sf.net/ns/carla/chunk":{"type":"wrong","value":"AA=="}}"#;
@@ -1245,7 +1245,7 @@ mod tests {
         assert!(decode_state(&interior_nul, FXChainType::CarlaRack).is_err());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn shows_and_hides_carla_ui_when_opted_in() {
         if std::env::var_os("SHOOP_TEST_CARLA_UI").is_none() {
             eprintln!("skipping Carla UI smoke test; set SHOOP_TEST_CARLA_UI=1");
@@ -1259,7 +1259,7 @@ mod tests {
         assert!(!host.is_visible());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn probes_and_runs_installed_carla_when_available() {
         let _exclusive = lock_carla_test();
         let fixtures = [

@@ -68,7 +68,7 @@ fn loop_with_channel(capacity: usize) -> AudioMidiLoop {
     l
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_stop() {
     let mut l = loop_with_channel(512);
 
@@ -85,7 +85,7 @@ fn midi_stop() {
     check!(l.position() == 0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_record() {
     let mut l = loop_with_channel(512);
 
@@ -124,7 +124,7 @@ fn midi_record() {
     check!(msgs[1] == as_pair(&source[1]));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_record_append_out_of_order() {
     let mut l = loop_with_channel(512);
 
@@ -158,7 +158,7 @@ fn midi_record_append_out_of_order() {
     check!(msgs[1] == with_time(&source[2], 111));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_record_multiple_source_buffers() {
     let mut l = loop_with_channel(512);
 
@@ -245,7 +245,7 @@ fn midi_record_multiple_source_buffers() {
     check!(msgs[8] == with_time(&buf2[2], buf2[2].time + 30));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_playback() {
     let mut l = loop_with_channel(512);
     let recorded = [
@@ -279,7 +279,7 @@ fn midi_playback() {
     check!(played[2] == as_pair(&recorded[2]));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_record_onto_longer_buffer() {
     let mut l = loop_with_channel(1024);
     let existing = [
@@ -337,7 +337,7 @@ fn midi_record_onto_longer_buffer() {
     );
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_pitch_wheel_round_trips_through_a_recording() {
     // engine's constructor agrees with what it recorded and played back.
     let mut l = loop_with_channel(512);
@@ -354,7 +354,7 @@ fn midi_pitch_wheel_round_trips_through_a_recording() {
     check!(msgs[0].1 == wheel.to_vec());
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_prerecord() {
     let mut sync_source = AudioMidiLoop::default();
     sync_source.set_length(100);
@@ -439,7 +439,7 @@ struct StateTracking {
     expect_reset_pitch: u16,
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_cc_state_tracking() {
     let cases = [
         // Playing from the start reverts to centre, the value the tracker starts at.
@@ -559,7 +559,7 @@ fn midi_cc_state_tracking() {
     }
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_corner_case_note_started_before_loop_boundary() {
     // A note that started before recording began but ended inside it must be
     // re-started when playback starts, or the note is lost.
@@ -682,7 +682,7 @@ fn process_synced(
     out
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_corner_case_note_started_during_pre_play() {
     // A note started during pre-play needs no restore, because it was already sent.
     // But once the loop wraps and there is no pre-play left, it must be inserted.
@@ -777,7 +777,7 @@ fn midi_corner_case_note_started_during_pre_play() {
     check!(played[3] == (29, midi::note_off(0, 100, 60).to_vec()));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_corner_case_note_pre_recorded_but_no_preplay() {
     // Same as the pre-play case with no pre-play window. The pre-recorded note-on
     // sits before the loop's start offset, so it never plays from the recording and
@@ -861,7 +861,7 @@ fn midi_corner_case_note_pre_recorded_but_no_preplay() {
     check!(played[3] == (29, midi::note_off(0, 100, 60).to_vec()));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_preplay() {
     let mut sync_source = AudioMidiLoop::default();
     sync_source.set_length(100);

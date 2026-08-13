@@ -412,7 +412,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn inapplicable_track_controls_are_not_rendered() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -436,7 +436,7 @@ mod tests {
         assert!(controls.test_rect(TestTrackControl::InputBalance).is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn meters_gain_sliders_and_balance_dials_fit_the_available_width() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -471,7 +471,7 @@ mod tests {
         assert!(wide_balance.right() <= wide_meter.right());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn applicable_controls_render_and_buttons_generate_typed_actions() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -515,7 +515,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dragged_gain_stays_optimistic_while_authoritative_state_is_stale() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -585,7 +585,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn balance_dial_uses_total_delta_across_drag_frames() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -636,7 +636,7 @@ mod tests {
         assert!((second - 0.4).abs() < f32::EPSILON);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn balance_dial_double_click_resets_to_center() {
         let context = egui::Context::default();
         crate::initialize(&context);

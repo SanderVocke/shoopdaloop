@@ -9,6 +9,9 @@ edition = "2021"
 assert_no_alloc = { workspace = true }
 tracy-client = { workspace = true, optional = true }
 
+[dev-dependencies]
+tracy-nextest-capture = { workspace = true }
+
 [lints]
 workspace = true
 

@@ -701,7 +701,7 @@ pub struct MidiDataChunk {
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn composite_configuration_round_trips_without_losing_targets_or_modes() {
         let command = CommandEnvelope::new(
             41,
@@ -727,7 +727,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn journal_coalesces_only_superseded_controls_for_the_same_entity() {
         let first = Command::SetTrackControl {
             track_id: 2,
@@ -818,7 +818,7 @@ mod tests {
         }));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn global_application_port_owner_round_trips_explicitly() {
         let port = WireApplicationPort {
             id: 99,
@@ -835,7 +835,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn midi_detail_chunks_round_trip_with_request_identity_and_metadata() {
         let request = CommandEnvelope::new(
             4,
@@ -882,7 +882,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn protocol_round_trip_preserves_sequence_and_stable_ids() {
         let command = CommandEnvelope::new(
             42,

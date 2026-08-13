@@ -92,7 +92,7 @@ mod tests {
     use super::*;
     use assert2::check;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn note_on_with_zero_velocity_is_a_note_off() {
         check!(is_note_on(&note_on(0, 60, 100)));
         check!(!is_note_off(&note_on(0, 60, 100)));
@@ -102,7 +102,7 @@ mod tests {
         check!(is_note_off(&zero_vel));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn classifies_message_types() {
         check!(is_note_off(&note_off(1, 60, 0)));
         check!(is_cc(&cc(2, 7, 100)));
@@ -112,7 +112,7 @@ mod tests {
         check!(!is_cc(&note_on(0, 60, 1)));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn extracts_channel_and_note() {
         let m = note_on(7, 64, 99);
         check!(channel(&m) == 7);
@@ -120,12 +120,12 @@ mod tests {
         check!(velocity(&m) == 99);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn channel_is_masked_to_four_bits() {
         check!(channel(&note_on(0xFF, 1, 1)) == 0x0F);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pitch_wheel_is_lsb_first() {
         let m = pitch_wheel(0, 8192);
         check!(m[1] == 0x00);
@@ -135,7 +135,7 @@ mod tests {
         check!(recombined == 8192);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn recognises_channel_mode_messages() {
         check!(all_notes_off_channel(&cc(3, 123, 0)) == Some(3));
         check!(all_notes_off_channel(&cc(3, 7, 0)) == None);
@@ -143,7 +143,7 @@ mod tests {
         check!(all_sound_off_channel(&note_on(0, 1, 1)) == None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn message_len_from_status() {
         check!(message_len(0x90) == 3);
         check!(message_len(0xB0) == 3);
@@ -152,7 +152,7 @@ mod tests {
         check!(message_len(0xD0) == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn short_messages_are_not_misclassified() {
         // A truncated buffer must not be read past its end.
         check!(!is_note_on(&[0x90]));

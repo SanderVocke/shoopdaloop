@@ -17,6 +17,7 @@ shoop_plugin_protocol = { path = "../shoop_plugin_protocol", optional = true }
 shoop_settings = { path = "../shoop_settings" }
 
 [dev-dependencies]
+tracy-nextest-capture = { workspace = true }
 assert_no_alloc = { workspace = true }
 
 [lints]

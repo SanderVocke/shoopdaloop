@@ -8,6 +8,12 @@ on:
     branches: ["master"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+    inputs:
+      tracy_failure_canary:
+        description: Run the intentional nextest failure-capture canary
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "0 2 * * *"
 
@@ -125,6 +131,16 @@ jobs:
           cargo --version
           python3 --version
           if [ "${{ matrix.target }}" = "web" ]; then trunk --version; fi
+
+      - name: Install cargo-nextest
+        if: env.ACT != 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.116
+
+      - name: Check local cargo-nextest prerequisite
+        if: env.ACT == 'true'
+        run: cargo nextest --version
 
       - name: Install Linux build dependencies
         if: matrix.target == 'linux' && env.ACT != 'true'
@@ -471,15 +487,18 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_ALLOW_MISSING_BACKENDS: 1
-        run: >-
-          cargo test --locked ${{ matrix.cargo_args }}
-          -p shoop_app_api
-          -p shoop_engine
-          -p shoop_backend
-          -p shoop_app
-          -p shoop_egui
-          -p shoopdaloop
-          -- --test-threads=1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        shell: bash
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo nextest run --locked ${{ matrix.cargo_args }} --profile ci \
+            -p shoop_app_api \
+            -p shoop_engine \
+            -p shoop_backend \
+            -p shoop_app \
+            -p shoop_egui \
+            -p shoopdaloop
 
       - name: Test complete retained workspace
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -487,7 +506,11 @@ jobs:
           RUSTFLAGS: -D warnings
           SHOOP_ALLOW_MISSING_BACKENDS: 1
           SHOOP_REQUIRE_CARLA_TESTS: 1
-        run: cargo test --locked --workspace --features shoop_engine/app_backend -- --test-threads=1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
 
       - name: Smoke-test Carla benchmarks
         if: matrix.target == 'linux' && matrix.profile == 'release'
@@ -503,18 +526,24 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_REQUIRE_CARLA_TESTS: 1
-        run: cargo test --locked -p shoop_engine --features carla carla_native::tests::probes_and_runs_installed_carla_when_available -- --exact --test-threads=1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        run: >-
+          cargo nextest run --locked -p shoop_engine --features carla --profile ci
+          -E 'test(=carla_native::tests::probes_and_runs_installed_carla_when_available)'
 
       - name: Run real Carla runtime and worker suites on Windows
         if: matrix.target == 'windows' && matrix.profile == 'debug'
         env:
           RUSTFLAGS: -D warnings
           SHOOP_REQUIRE_CARLA_TESTS: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
         shell: pwsh
         run: |
-          cargo test --locked -p shoop_engine --features carla carla_native::tests::probes_and_runs_installed_carla_when_available -- --exact --test-threads=1
+          cargo nextest run --locked -p shoop_engine --features carla --profile ci -E 'test(=carla_native::tests::probes_and_runs_installed_carla_when_available)'
           if ($LASTEXITCODE -ne 0) { throw "real Carla engine suite failed" }
-          cargo test --locked -p shoopdaloop --test carla_worker_entry application_worker_hosts_the_real_carla_native_runtime_when_available -- --exact --test-threads=1
+          cargo nextest run --locked -p shoopdaloop --test carla_worker_entry --profile ci -E 'test(=application_worker_hosts_the_real_carla_native_runtime_when_available)'
           if ($LASTEXITCODE -ne 0) { throw "real Carla worker suite failed" }
 
       - name: Audit native feature and dependency isolation
@@ -537,11 +566,45 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_TEST_CARLA_UI: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
         run: |
           ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
-          xvfb-run -a cargo test --locked ${{ matrix.cargo_args }} -p shoop_engine --features carla carla_native::tests::shows_and_hides_carla_ui_when_opted_in -- --test-threads=1
+          xvfb-run -a cargo nextest run --locked ${{ matrix.cargo_args }} -p shoop_engine --features carla --profile ci -E 'test(=carla_native::tests::shows_and_hides_carla_ui_when_opted_in)'
           sleep 1
           ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
+
+      - name: Run intentional Tracy failure-capture canary
+        if: matrix.target == 'linux' && matrix.profile == 'debug' && inputs.tracy_failure_canary
+        env:
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-canary
+        shell: bash
+        run: |
+          rm -rf "$TRACY_NEXTEST_OUTPUT_DIR"
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          set +e
+          cargo nextest run --locked -p shoop_common --test nextest_capture_smoke \
+            --profile ci --run-ignored ignored-only \
+            -E 'test(intentional_failure_publishes_trace)' \
+            > "$RUNNER_TEMP/tracy-nextest-canary.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/tracy-nextest-canary.log"
+          test "$status" -ne 0
+          grep 'intentional Tracy nextest capture smoke failure' "$RUNNER_TEMP/tracy-nextest-canary.log"
+          mapfile -t traces < <(find "$TRACY_NEXTEST_OUTPUT_DIR" -maxdepth 1 -name '*.tracy' -type f)
+          test "${#traces[@]}" -eq 1
+          ! find "$TRACY_NEXTEST_OUTPUT_DIR" -name '*.partial' -print -quit | grep -q .
+          curl -L --fail --retry 3 \
+            -o "$RUNNER_TEMP/tracy-query" \
+            https://github.com/SanderVocke/tracy-extensions/releases/download/v0.4.0/tracy-query-linux-x86_64
+          chmod +x "$RUNNER_TEMP/tracy-query"
+          "$RUNNER_TEMP/tracy-query" check "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" range "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" info "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind message \
+            --filter 'message.text=shoop\.nextest_capture\.smoke\.failure' "${traces[0]}"
 
       - name: Check formatting and tracing inventory
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -561,12 +624,16 @@ jobs:
         if: matrix.target == 'web'
         env:
           RUSTFLAGS: -D warnings
-        run: >-
-          cargo test --locked ${{ matrix.cargo_args }}
-          -p shoop_audio_protocol
-          -p shoop_audio_worklet
-          -p shoop_egui
-          -p shoopdaloop
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        shell: bash
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo nextest run --locked ${{ matrix.cargo_args }} --profile ci \
+            -p shoop_audio_protocol \
+            -p shoop_audio_worklet \
+            -p shoop_egui \
+            -p shoopdaloop
 
       - name: Check WebAssembly packages
         if: matrix.target == 'web'
@@ -645,3 +712,12 @@ jobs:
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         run: xvfb-run -a python3 browser_firefox_smoke.py
+
+      - name: Upload Tracy failure captures
+        if: always() && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tracy-nextest-${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/tracy-nextest-*/*.tracy
+          if-no-files-found: ignore
+          retention-days: 14

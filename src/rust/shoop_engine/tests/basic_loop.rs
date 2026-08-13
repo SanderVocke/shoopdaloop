@@ -25,7 +25,7 @@ fn synced_recording_loop() -> BasicLoop {
     l
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_stop() {
     let mut l = BasicLoop::default();
 
@@ -42,7 +42,7 @@ fn basic_loop_stop() {
     check!(l.position() == 0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_record() {
     let mut l = BasicLoop::default();
     l.set_mode(LoopMode::Recording);
@@ -62,7 +62,7 @@ fn basic_loop_record() {
     check!(l.position() == 0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_planned_transition() {
     let mut l = synced_recording_loop();
 
@@ -77,7 +77,7 @@ fn basic_loop_planned_transition() {
     check!(l.next_poi() == Some(10)); // end of loop
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_planned_transition_delayed() {
     let mut l = synced_recording_loop();
 
@@ -100,7 +100,7 @@ fn basic_loop_planned_transition_delayed() {
     check!(l.next_poi() == Some(11));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_planned_transitions_delayed() {
     let mut l = synced_recording_loop();
 
@@ -135,7 +135,7 @@ fn basic_loop_planned_transitions_delayed() {
     check!(l.mode() == LoopMode::Recording);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_planned_transitions_cancellation() {
     let mut l = synced_recording_loop();
 
@@ -169,7 +169,7 @@ fn basic_loop_planned_transitions_cancellation() {
     check!(l.next_poi() == None);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_generate_trigger() {
     let mut l = BasicLoop::default();
     l.set_mode(LoopMode::Stopped);
@@ -181,7 +181,7 @@ fn basic_loop_generate_trigger() {
     check!(l.is_triggering_now());
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_generate_trigger_on_restart() {
     let mut l = BasicLoop::default();
     check!(!l.is_triggering_now());
@@ -210,7 +210,7 @@ fn basic_loop_generate_trigger_on_restart() {
     check!(!l.is_triggering_now());
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn basic_loop_playback_zero_length() {
     let mut l = BasicLoop::default();
     l.set_mode(LoopMode::Playing);

@@ -1,21 +1,21 @@
 ---
 name: tracy
 description: Capture and investigate native ShoopDaLoop Tracy profiles, including GUI/application intent flow, engine control and graph work, realtime audio timing, Tiny Synth/FX processing, queues, scheduling, and state publication from .tracy files.
-compatibility: The native application emits Tracy 0.13.1-compatible captures. Querying requires the matching static tracy-query release binary.
+compatibility: The native application emits Tracy 0.13.1-compatible captures through the tracy-extensions 0.4.0 embedded backend. Querying requires the matching static tracy-query 0.4.0 release binary.
 ---
 
 # Debug ShoopDaLoop with Tracy
 
 Use this skill for the native `shoopdaloop` application. It does not describe the legacy frontend, its self-tests, or its CLI and trace data.
 
-Use the versioned `tracy-query` skill distributed with `tracy-query` for complete query syntax. This skill covers ShoopDaLoop-specific capture and interpretation.
+Use the versioned `tracy-query` skill distributed with `tracy-extensions` for complete query syntax. This skill covers ShoopDaLoop-specific capture and interpretation.
 
 ## Obtain `tracy-query` and its skill
 
-Download both from the `tracy-query` v0.1.0 release:
+Use the `tracy-extensions` v0.4.0 release and the matching tagged query skill:
 
-- Release page: <https://github.com/SanderVocke/tracy-query/releases/tag/v0.1.0>
-- Query skill: <https://github.com/SanderVocke/tracy-query/releases/download/v0.1.0/SKILL.md>
+- Release page: <https://github.com/SanderVocke/tracy-extensions/releases/tag/v0.4.0>
+- Query skill: <https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.4.0/tracy-query/SKILL.md>
 
 Choose the static binary for the current platform:
 
@@ -32,16 +32,19 @@ For example:
 TRACE_DIR=traces/investigation
 ASSET=tracy-query-linux-x86_64 # select for the current OS and architecture
 
-gh release download v0.1.0 \
-  --repo SanderVocke/tracy-query \
+mkdir -p "$TRACE_DIR"
+gh release download v0.4.0 \
+  --repo SanderVocke/tracy-extensions \
   --pattern "$ASSET" \
-  --pattern SKILL.md \
   --dir "$TRACE_DIR" \
   --clobber
+curl --fail --location \
+  https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.4.0/tracy-query/SKILL.md \
+  --output "$TRACE_DIR/tracy-query-SKILL.md"
 chmod +x "$TRACE_DIR/$ASSET"
 ```
 
-Read the downloaded `SKILL.md` before querying. Keep downloaded binaries with investigation artifacts or in a temporary tools directory; do not commit them.
+Read the downloaded `tracy-query-SKILL.md` before querying. Keep downloaded binaries with investigation artifacts or in a temporary tools directory; do not commit them.
 
 Validate the tool and capture before analysis:
 
@@ -66,21 +69,20 @@ Build the native application:
 cargo build -p shoopdaloop
 ```
 
-The application executable has three tracing options:
+The application executable has two tracing options:
 
 ```text
---tracing                enable live Tracy profiling
---tracing-capture        start tracy-capture and write below ./traces
---tracing-engine-detail  add detailed realtime engine zones; requires either mode
+--tracing                capture Tracy profiling data below ./traces
+--tracing-engine-detail  add detailed realtime engine zones; requires --tracing
 ```
 
-There are no CLI options for selecting the capture executable or output directory. `TRACY_CAPTURE_TOOL` selects the executable; otherwise it is resolved as `tracy-capture` on `PATH`. The output directory is `traces` relative to the application's working directory.
+Tracing uses the embedded in-process backend. There is no live TCP profiler mode, external `tracy-capture` executable, capture-tool environment variable, or CLI output-directory option. The output directory is `traces` relative to the application's working directory.
 
 The audio backend is selected through persisted application settings, not a `--backend` argument. Reproduce with the configured JACK, CPAL+midir, or dummy backend that matters to the issue.
 
-### Live profiling
+### Capture a `.tracy` file
 
-Connect a matching Tracy 0.13.1 profiler, then run:
+For a coarse capture:
 
 ```sh
 cargo run -p shoopdaloop -- --tracing
@@ -94,33 +96,17 @@ cargo run -p shoopdaloop -- \
   --tracing-engine-detail
 ```
 
-### Capture a `.tracy` file
+Omit engine detail for lower callback overhead and smaller captures. Quit normally so all application and engine workers quiesce and the in-process finalizer can atomically publish the capture. Abort, fatal signals, forced termination, OOM, and power loss cannot finalize an in-process trace.
 
-Install the Tracy 0.13.1 `tracy-capture` executable. It is distinct from `tracy-query`.
-
-```sh
-TRACY_CAPTURE_TOOL="$(command -v tracy-capture)" \
-  cargo run -p shoopdaloop -- \
-    --tracing-capture \
-    --tracing-engine-detail
-```
-
-`--tracing-capture` enables tracing automatically. Omit engine detail for lower callback overhead and smaller captures. Quit normally so the capture can disconnect and finalize.
-
-A capture run creates:
-
-- a non-empty numbered file such as `traces/0001-application.tracy`;
-- `traces/manifest.tsv`, with an `application` label row;
-- `traces/tracy-capture.log`.
+A successful run creates a non-empty numbered file such as `traces/0001-application.tracy`. An interrupted or failed finalizer may leave a `.partial` file; never treat it as a capture.
 
 Before interpreting a capture, require all of the following:
 
-1. Application output reports `Finalized Tracy capture`.
+1. Application output reports `Finalized embedded Tracy capture`.
 2. The selected `.tracy` file is non-empty.
-3. `manifest.tsv` has the corresponding successful application row.
-4. `tracy-capture.log` reports that Tracy saved the trace.
-5. Application output and the trace contain no instrumentation-failure diagnostic.
-6. `tracy-query check` succeeds.
+3. No corresponding `.partial` file exists.
+4. Application output and the trace contain no instrumentation-failure diagnostic.
+5. `tracy-query check` succeeds.
 
 ## Expected application trace data
 

@@ -167,7 +167,7 @@ mod tests {
         events.iter().map(|event| event.data().to_vec()).collect()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn supports_only_absolute_fx_controls() {
         let mut pending = PendingMidiControlState::default();
         assert!(pending.process(&midi::cc(15, 119, 0)));
@@ -180,7 +180,7 @@ mod tests {
         assert!(!pending.process(&[0xb0, 7]));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn every_supported_key_is_independent_and_full_state_is_bounded() {
         let mut pending = PendingMidiControlState::default();
         for channel in 0..CHANNELS as u8 {
@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(out.last().unwrap().data(), midi::pitch_wheel(15, 1_500));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn latest_value_replaces_pending_and_zero_is_explicit() {
         let mut pending = PendingMidiControlState::default();
         pending.process(&midi::cc(2, 7, 99));
@@ -220,7 +220,7 @@ mod tests {
         assert!(pending.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn partial_drain_is_deterministic_and_clears_only_admitted_values() {
         let mut pending = PendingMidiControlState::default();
         pending.process(&midi::pitch_wheel(1, 2_000));
@@ -246,7 +246,7 @@ mod tests {
         assert!(pending.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn current_message_can_remove_a_stale_pending_key() {
         let mut pending = PendingMidiControlState::default();
         pending.process(&midi::cc(0, 7, 1));

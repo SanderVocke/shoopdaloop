@@ -17,7 +17,7 @@ fn contents(b: &MidiRingbuffer) -> Vec<(u32, Vec<u8>)> {
     msgs(b.storage())
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_ringbuffer_put_and_increment() {
     let mut b = MidiRingbuffer::with_capacity_elems(200);
     b.set_n_samples(50);
@@ -44,7 +44,7 @@ fn midi_ringbuffer_put_and_increment() {
     );
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_ringbuffer_put_and_truncate() {
     // A 17-sample window, so advancing past that drops what fell out of it.
     let mut b = MidiRingbuffer::with_capacity_elems(200);
@@ -64,7 +64,7 @@ fn midi_ringbuffer_put_and_truncate() {
     check!(contents(&b) == vec![(13, vec![3, 3, 3]), (23, vec![4, 4, 4])]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_ringbuffer_put_and_wrap() {
     // Room for exactly three messages, and a window long enough that nothing is
     // dropped for being old: only capacity forces anything out.
@@ -84,7 +84,7 @@ fn midi_ringbuffer_put_and_wrap() {
     check!(contents(&b) == vec![(2, vec![2, 2, 2]), (3, vec![3, 3, 3]), (4, vec![4, 4, 4])]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_ringbuffer_put_and_wrap_then_truncate() {
     let mut b = MidiRingbuffer::with_capacity_elems(3);
     b.set_n_samples(17);
@@ -102,7 +102,7 @@ fn midi_ringbuffer_put_and_wrap_then_truncate() {
     check!(contents(&b) == vec![(3, vec![3, 3, 3]), (4, vec![4, 4, 4])]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_ringbuffer_put_then_overflow_then_snapshot() {
     let mut b = MidiRingbuffer::with_capacity_elems(3);
     b.set_n_samples(17);
@@ -144,7 +144,7 @@ fn midi_ringbuffer_put_then_overflow_then_snapshot() {
     check!(msgs(&copy) == vec![(1, vec![0, 0, 0]), (3, vec![1, 1, 1]), (6, vec![2, 2, 2])]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_ringbuffer_put_then_truncated_snapshot() {
     let mut b = MidiRingbuffer::with_capacity_elems(3);
     b.set_n_samples(20);

@@ -168,7 +168,7 @@ impl ContentStatus {
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn mutation_and_publication_state_control_exact_reads() {
         let epoch = Arc::new(SessionContentEpoch::default());
         let status = ContentStatus::new(epoch);
@@ -195,7 +195,7 @@ mod tests {
         assert_eq!(status.require_current(), Ok(revision));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn every_unsettled_mutation_has_a_typed_exact_read_error() {
         for mutation in [
             ContentMutation::Recording,
@@ -215,7 +215,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn saturation_retains_revisions_but_blocks_exact_reads_until_recovered() {
         let status = ContentStatus::new(Arc::new(SessionContentEpoch::default()));
         let revision = status.next_revision();
@@ -237,7 +237,7 @@ mod tests {
         assert_eq!(status.require_current(), Ok(revision));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn revision_counter_saturates_instead_of_wrapping() {
         let status = ContentStatus::new(Arc::new(SessionContentEpoch::default()));
         status.next_revision.store(u64::MAX - 1, Ordering::Relaxed);
@@ -255,7 +255,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn session_epoch_exhaustion_fails_closed() {
         let epoch = SessionContentEpoch::default();
         epoch.epoch.store(u64::MAX, Ordering::Relaxed);
@@ -265,7 +265,7 @@ mod tests {
         assert!(!epoch.validate(u64::MAX));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn session_epoch_rejects_overlap_and_changes_completed_between_reads() {
         let epoch = Arc::new(SessionContentEpoch::default());
         let a = ContentStatus::new(Arc::clone(&epoch));

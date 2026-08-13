@@ -44,7 +44,7 @@ pub(crate) fn paint_dial(
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dial_indicator_stays_outside_the_label_area() {
         let rect = egui::Rect::from_center_size(egui::pos2(20.0, 20.0), egui::vec2(18.0, 18.0));
         for fraction in [0.0, 0.25, 0.5, 0.75, 1.0] {

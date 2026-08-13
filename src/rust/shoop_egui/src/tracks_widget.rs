@@ -158,7 +158,7 @@ mod tests {
     use super::*;
     use crate::{LoopId, LoopState, LoopWidgetAction, SelectionModifiers, TrackId};
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn empty_main_tracks_show_first_track_instruction_only() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -190,7 +190,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn track_content_and_control_rows_have_matching_horizontal_bounds() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -237,7 +237,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn response_routes_loop_and_add_actions_by_stable_id() {
         let track = TrackState {
             id: TrackId::from_raw(7),

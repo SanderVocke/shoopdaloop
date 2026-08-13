@@ -65,7 +65,7 @@ fn eventually<T>(mut f: impl FnMut() -> Option<T>) -> Option<T> {
     f()
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_loop_can_be_created_and_read_back() {
     let (_exclusive, _driver, b) = backend();
 
@@ -77,7 +77,7 @@ fn a_loop_can_be_created_and_read_back() {
 }
 
 /// Exact read-after-write is available through an explicit command fence.
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn an_explicit_fence_makes_a_mutation_visible() {
     let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
@@ -90,7 +90,7 @@ fn an_explicit_fence_makes_a_mutation_visible() {
 }
 
 /// The frame-rate path: state the audio thread published, read without blocking.
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn polled_state_catches_up_with_the_engine() {
     let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
@@ -107,7 +107,7 @@ fn polled_state_catches_up_with_the_engine() {
     check!(s.length == 4096);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn an_audio_channel_round_trips_its_data() {
     let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
@@ -125,7 +125,7 @@ fn an_audio_channel_round_trips_its_data() {
     check!(state.length == 32);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn audio_channel_settings_take_effect() {
     let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
@@ -145,7 +145,7 @@ fn audio_channel_settings_take_effect() {
     check!(state.n_preplay_samples == 9);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_midi_channel_reports_its_state() {
     let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
@@ -163,7 +163,7 @@ fn a_midi_channel_reports_its_state() {
     check!(state.n_notes_active == 0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn clearing_a_loop_empties_its_channels_and_stops_it() {
     let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
@@ -187,7 +187,7 @@ fn clearing_a_loop_empties_its_channels_and_stops_it() {
     check!(c.get_data().is_empty());
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_loop_can_follow_another() {
     let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(source) = b.create_loop());
@@ -210,7 +210,7 @@ fn a_loop_can_follow_another() {
 /// The handle is behind a mutex that no audio thread ever waits on, and the session itself is
 /// only ever touched by the engine's owner, so this is safe for a reason it was not before:
 /// the threads are contending for the queue, not for the session.
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn handles_can_be_shared_across_threads() {
     let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
@@ -236,7 +236,7 @@ fn handles_can_be_shared_across_threads() {
     check!((100..104).contains(&state.length));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_port_reports_its_state() {
     let (_exclusive, driver, b) = backend();
 
@@ -254,7 +254,7 @@ fn a_port_reports_its_state() {
     check!(state.ringbuffer_n_samples == 128);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_midi_port_reports_its_state() {
     let (_exclusive, driver, b) = backend();
 
@@ -282,7 +282,7 @@ fn a_midi_port_reports_its_state() {
     check!(p.get_state().unwrap().latest_input_message.unwrap().data() == [0xb3, 19, 88]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn muting_applies_to_whichever_kind_the_port_is() {
     let (_exclusive, driver, b) = backend();
 
@@ -302,7 +302,7 @@ fn muting_applies_to_whichever_kind_the_port_is() {
 
 /// The whole graph built through the API, then run: a channel playing to a port is what every
 /// other call exists to arrange.
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_graph_built_through_the_api_records_and_plays() {
     let (_exclusive, driver, b) = backend();
 
@@ -338,7 +338,7 @@ fn a_graph_built_through_the_api_records_and_plays() {
     check!(peak > 0.0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn ports_can_be_routed_to_each_other() {
     let (_exclusive, driver, b) = backend();
 

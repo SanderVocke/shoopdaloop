@@ -78,6 +78,7 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [dev-dependencies]
+tracy-nextest-capture = { workspace = true }
 serde_json = { workspace = true }
 shoop_session = { path = "../shoop_session" }
 tempfile = { workspace = true }

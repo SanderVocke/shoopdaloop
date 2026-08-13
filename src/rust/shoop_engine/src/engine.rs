@@ -854,7 +854,7 @@ mod tests {
 
     /// A blocking read, which is how the control side gets at anything a snapshot does
     /// not carry. Driven from this thread here; a real driver's callback does it.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn send_and_wait_returns_a_result_from_the_engine() {
         use std::sync::atomic::AtomicBool;
         use std::sync::Arc;
@@ -887,7 +887,7 @@ mod tests {
         let_assert!(Ok(Some(42)) = got);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn send_and_wait_times_out_when_nothing_is_driving_the_engine() {
         let (_e, mut h) = engine();
 
@@ -898,7 +898,7 @@ mod tests {
         check!(got == Err(WaitError::Timeout(short)));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     /// DSP load is stored scaled, so check it survives the round trip and that a
     /// nonsense reading is clamped rather than wrapping.
     fn dsp_load_round_trips() {
@@ -917,7 +917,7 @@ mod tests {
     /// A driver spinning in controlled mode processes nothing until frames are requested, and
     /// an engine no driver has taken yet has no thread at all. Without this, a blocking call
     /// in either state waits out its whole timeout.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pump_applies_commands_without_advancing_anything() {
         let (mut e, mut h) = engine();
         let l = e.session_mut().create_loop();
@@ -945,7 +945,7 @@ mod tests {
         check!(h.reclaim() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_command_is_applied_on_the_next_cycle() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -965,7 +965,7 @@ mod tests {
         check!(e.stats().commands_applied.load(Ordering::Relaxed) == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn commands_are_applied_in_order() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -981,7 +981,7 @@ mod tests {
         check!(e.session().n_loops() == 3);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_full_queue_refuses_rather_than_growing() {
         let (mut e, mut h) = split(Session::default(), 2);
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -999,7 +999,7 @@ mod tests {
         check!(e.stats().last_applied_command.load(Ordering::Acquire) == second.get());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_payload_can_be_retained_until_queue_capacity_is_reserved() {
         let (mut e, mut h) = split(Session::default(), 1);
         h.send(Box::new(|_: &mut Session| {})).expect("fill queue");
@@ -1025,7 +1025,7 @@ mod tests {
         check!(e.session().loop_(0).expect("loop").length() == 4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn command_fences_observe_applied_sequence() {
         let (mut e, mut h) = engine();
         let sequence = h.send(Box::new(|_: &mut Session| {})).expect("queue");
@@ -1039,14 +1039,14 @@ mod tests {
         let _ = driver.join().expect("engine");
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn sending_after_engine_drop_reports_disconnected() {
         let (e, mut h) = engine();
         drop(e);
         check!(h.send(Box::new(|_: &mut Session| {})) == Err(SendError::Disconnected));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn executed_commands_come_back_to_be_freed() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -1061,7 +1061,7 @@ mod tests {
         check!(h.reclaim() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cycles_and_frames_are_counted() {
         let (mut e, _h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -1074,7 +1074,7 @@ mod tests {
         check!(e.stats().stale_cycles.load(Ordering::Relaxed) == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_stale_graph_still_runs_and_is_counted() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -1099,7 +1099,7 @@ mod tests {
         check!(e.stats().cycles.load(Ordering::Relaxed) == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_command_can_reconfigure_and_reschedule() {
         let (mut e, mut h) = engine();
 

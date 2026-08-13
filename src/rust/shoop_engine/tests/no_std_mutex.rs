@@ -13,7 +13,7 @@ fn rust_sources(directory: &Path, output: &mut Vec<PathBuf>) {
     }
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn production_engine_mutexes_use_the_checked_abstraction() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let checked_mutex = source_root.join("realtime_lock_guard.rs");
@@ -48,7 +48,7 @@ fn production_engine_mutexes_use_the_checked_abstraction() {
     );
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn processor_callback_owns_lock_free_endpoints() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let session = fs::read_to_string(source_root.join("session.rs")).expect("read session source");
@@ -75,7 +75,7 @@ fn processor_callback_owns_lock_free_endpoints() {
     assert!(!realtime.contains("Command::"));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn engine_and_driver_realtime_boundaries_are_marked() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let engine = fs::read_to_string(source_root.join("engine.rs")).expect("read engine source");

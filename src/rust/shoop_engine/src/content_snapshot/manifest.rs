@@ -123,7 +123,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn latest_retains_a_complete_older_manifest_during_mutation() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));
@@ -139,7 +139,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn acknowledging_a_delivered_revision_does_not_hide_a_newer_one() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));
@@ -152,7 +152,7 @@ mod tests {
         assert!(reader.is_dirty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn exact_read_requires_the_settled_revision_to_be_published() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));

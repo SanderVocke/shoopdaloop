@@ -465,7 +465,7 @@ mod tests {
         actions
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn control_opens_closed_dialog_and_callback_emits_exact_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -509,7 +509,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn content_button_click_emits_exact_typed_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -561,7 +561,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn page_and_visibility_state_persist_but_new_generation_resets() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -660,7 +660,7 @@ mod tests {
         assert!(!component.states[&dialogs[0].id].open);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn script_dialog_height_stabilizes_across_frames() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -692,7 +692,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn simple_and_paged_windows_paint_at_minimum_and_common_sizes() {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();
