@@ -102,6 +102,14 @@ pub struct CompositeLoopWidget {
     content_size: egui::Vec2,
     #[cfg(test)]
     drop_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    highlighted_iteration: Option<u64>,
+    #[cfg(test)]
+    highlighted_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    timeline_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    timeline_left: Option<f32>,
 }
 
 impl Default for CompositeLoopWidget {
@@ -117,6 +125,14 @@ impl Default for CompositeLoopWidget {
             content_size: egui::Vec2::ZERO,
             #[cfg(test)]
             drop_rect: None,
+            #[cfg(test)]
+            highlighted_iteration: None,
+            #[cfg(test)]
+            highlighted_rect: None,
+            #[cfg(test)]
+            timeline_rect: None,
+            #[cfg(test)]
+            timeline_left: None,
         }
     }
 }
@@ -138,6 +154,10 @@ impl CompositeLoopWidget {
             self.rendered_track_heights.clear();
             self.content_size = egui::Vec2::ZERO;
             self.drop_rect = None;
+            self.highlighted_iteration = None;
+            self.highlighted_rect = None;
+            self.timeline_rect = None;
+            self.timeline_left = None;
         }
 
         let fit_width = (ui.available_width() - TRACK_LABEL_WIDTH).max(1.0);
@@ -172,19 +192,11 @@ impl CompositeLoopWidget {
             }
         });
 
+        let mut drop_iteration = None;
         let (_drop_zone, dropped) = ui.dnd_drop_zone::<LoopDragPayload, _>(
             egui::Frame::new().inner_margin(egui::Margin::same(3)),
             |ui| {
-                if details.events.is_empty() {
-                    ui.add_sized(
-                        [ui.available_width().max(160.0), 56.0],
-                        egui::Label::new(
-                            "The composite schedule is empty. Drag a loop here to add it.",
-                        ),
-                    );
-                } else {
-                    self.show_timeline(ui, details);
-                }
+                drop_iteration = self.show_timeline(ui, details);
             },
         );
         #[cfg(test)]
@@ -193,27 +205,33 @@ impl CompositeLoopWidget {
         }
         dropped
             .filter(|payload| payload.loop_id != loop_id)
-            .map(|payload| {
-                vec![AppIntent::ComposeLoopSerial {
+            .zip(drop_iteration)
+            .map(|(payload, start_iteration)| {
+                vec![AppIntent::ComposeLoopAt {
                     target_loop_id: loop_id,
                     source_loop_id: payload.loop_id,
+                    start_iteration,
                 }]
             })
             .unwrap_or_default()
     }
 
-    fn show_timeline(&mut self, ui: &mut egui::Ui, details: &CompositeDetailsState) {
+    fn show_timeline(&mut self, ui: &mut egui::Ui, details: &CompositeDetailsState) -> Option<u64> {
         let packed = pack_swimlanes(details);
         let timeline_cycles = timeline_cycles(details);
-        let timeline_width = timeline_cycles as f32 * self.cycle_width;
+        let visible_timeline_width = (ui.available_width() - TRACK_LABEL_WIDTH).max(1.0);
+        let visible_cycles = (visible_timeline_width / self.cycle_width).ceil() as u64;
+        let displayed_cycles = timeline_cycles.saturating_add(1).max(visible_cycles).max(1);
+        let timeline_width = displayed_cycles as f32 * self.cycle_width;
         let content_width = (TRACK_LABEL_WIDTH + timeline_width)
             .max(ui.available_width())
             .max(TRACK_LABEL_WIDTH + 1.0);
-        let rows_height = packed
+        let rows_height = (packed
             .iter()
             .map(|track| track_height(track.lane_count))
             .sum::<f32>()
-            + packed.len().saturating_sub(1) as f32 * TRACK_GAP;
+            + packed.len().saturating_sub(1) as f32 * TRACK_GAP)
+            .max(if details.events.is_empty() { 56.0 } else { 0.0 });
         let content_height = HEADER_HEIGHT + TRACK_GAP + rows_height;
         #[cfg(test)]
         {
@@ -232,6 +250,11 @@ impl CompositeLoopWidget {
                 let clip_rect = ui.clip_rect();
                 let painter = ui.painter_at(rect);
                 let timeline_left = rect.left() + TRACK_LABEL_WIDTH;
+                #[cfg(test)]
+                {
+                    self.timeline_rect = Some(rect);
+                    self.timeline_left = Some(timeline_left);
+                }
                 let frame_to_x = |frame: u64| {
                     let cycle_length = details.cycle_length_frames.max(1) as f64;
                     timeline_left
@@ -239,7 +262,20 @@ impl CompositeLoopWidget {
                 };
 
                 painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
-                self.paint_grid(&painter, clip_rect, rect, timeline_left, timeline_cycles);
+                self.paint_grid(&painter, clip_rect, rect, timeline_left, displayed_cycles);
+
+                if details.events.is_empty() {
+                    painter.text(
+                        egui::pos2(
+                            timeline_left + timeline_width * 0.5,
+                            rect.top() + HEADER_HEIGHT + TRACK_GAP + rows_height * 0.5,
+                        ),
+                        egui::Align2::CENTER_CENTER,
+                        "The composite schedule is empty. Drag a loop here to add it.",
+                        egui::FontId::proportional(12.0),
+                        colors::MUTED_FOREGROUND,
+                    );
+                }
 
                 let mut row_top = rect.top() + HEADER_HEIGHT + TRACK_GAP;
                 for (track_state, track_layout) in details.tracks.iter().zip(&packed) {
@@ -315,7 +351,45 @@ impl CompositeLoopWidget {
                     );
                     row_top += height + TRACK_GAP;
                 }
-            });
+
+                let payload = egui::DragAndDrop::payload::<LoopDragPayload>(ui.ctx());
+                let pointer = ui.ctx().pointer_hover_pos();
+                let hovered_iteration = payload
+                    .filter(|payload| payload.loop_id != self.loop_id)
+                    .zip(pointer)
+                    .filter(|(_, pointer)| {
+                        rect.contains(*pointer)
+                            && clip_rect.contains(*pointer)
+                            && pointer.x >= timeline_left
+                    })
+                    .map(|(_, pointer)| {
+                        ((pointer.x - timeline_left) / self.cycle_width).floor() as u64
+                    })
+                    .filter(|iteration| *iteration < displayed_cycles);
+                if let Some(iteration) = hovered_iteration {
+                    let column_rect = egui::Rect::from_min_size(
+                        egui::pos2(
+                            timeline_left + iteration as f32 * self.cycle_width,
+                            rect.top(),
+                        ),
+                        egui::vec2(self.cycle_width, content_height),
+                    )
+                    .intersect(clip_rect);
+                    painter.rect_stroke(
+                        column_rect,
+                        0.0,
+                        egui::Stroke::new(2.0, colors::LOOP_TARGET_EDGE),
+                        egui::StrokeKind::Inside,
+                    );
+                    #[cfg(test)]
+                    {
+                        self.highlighted_iteration = Some(iteration);
+                        self.highlighted_rect = Some(column_rect);
+                    }
+                }
+                hovered_iteration
+            })
+            .inner
     }
 
     #[cfg(test)]
@@ -487,7 +561,10 @@ mod tests {
         let source = LoopId::from_raw(9);
         let state = details(Vec::new());
         let _ = widget_frame(&context, &mut widget, target, &state, Vec::new());
-        let drop_center = widget.drop_rect.unwrap().center();
+        let drop_center = egui::pos2(
+            widget.timeline_left.unwrap() + DEFAULT_CYCLE_WIDTH * 1.5,
+            widget.timeline_rect.unwrap().center().y,
+        );
 
         egui::DragAndDrop::set_payload(&context, LoopDragPayload { loop_id: source });
         let _ = widget_frame(
@@ -505,6 +582,8 @@ mod tests {
                 },
             ],
         );
+        assert_eq!(widget.highlighted_iteration, Some(1));
+        assert!(widget.highlighted_rect.unwrap().contains(drop_center));
         let intents = widget_frame(
             &context,
             &mut widget,
@@ -519,9 +598,10 @@ mod tests {
         );
         assert_eq!(
             intents,
-            [AppIntent::ComposeLoopSerial {
+            [AppIntent::ComposeLoopAt {
                 target_loop_id: target,
                 source_loop_id: source,
+                start_iteration: 1,
             }]
         );
 
