@@ -61,6 +61,40 @@ TRACE="$TRACE_DIR/capture.tracy"
 
 `tracy-query` reads captures; it does not create them.
 
+## Obtain a trace from CI
+
+Native cargo-nextest jobs capture each eligible test attempt in process. CI enables coarse tracing and detailed engine events. Passing attempts discard their captures; an eligible test that unwinds or returns `Err` publishes a finalized `.tracy` file. Abort, signal, timeout, OOM, panic-abort, `#[should_panic]`, and unsupported harness failures cannot be captured by this integration.
+
+Every matrix job runs an `if: always()` artifact-upload step. When finalized failure traces exist, they are uploaded for 14 days in an artifact named:
+
+```text
+tracy-nextest-<target>-<arch>-<profile>-<run-id>
+```
+
+A successful job, or a failure outside an eligible captured test, normally has no Tracy artifact. Only finalized `*.tracy` files are uploaded; partial captures are excluded.
+
+Inspect and download available traces with GitHub CLI:
+
+```sh
+RUN_ID=<github-actions-run-id>
+
+# Confirm the run, commit, matrix failures, and artifact names.
+gh run view "$RUN_ID" --json status,conclusion,headSha,url,jobs
+gh api "repos/{owner}/{repo}/actions/runs/$RUN_ID/artifacts" \
+  --jq '.artifacts[] | select(.name | startswith("tracy-nextest-")) | .name'
+
+# Download every Tracy artifact from the run.
+mkdir -p "traces/ci-$RUN_ID"
+gh run download "$RUN_ID" \
+  --pattern 'tracy-nextest-*' \
+  --dir "traces/ci-$RUN_ID"
+find "traces/ci-$RUN_ID" -type f -name '*.tracy' -print
+```
+
+Match the artifact's target, architecture, and profile to the failing job. Preserve the trace filename: it identifies the nextest binary, test, attempt, and unique attempt digest. Then obtain the matching v0.4.0 `tracy-query` binary as described above, validate each trace with `check`, `range`, `info`, and `sources`, and follow the investigation workflow below. Detailed `engine.rt.*` zones may be absent when the failing test never starts or advances an engine even though the CI tracing gate is enabled.
+
+For general workflow status and log investigation before trace analysis, read `.agents/info/ci-debug.md`.
+
 ## Build and run the native application
 
 Build the native application:
