@@ -46,6 +46,8 @@ pub struct LoopWidget {
     test_balance_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_convert_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_drag_preview_rect: Option<egui::Rect>,
 }
 
 fn paint_icon(
@@ -92,6 +94,66 @@ fn icon_for_state(
         LoopMode::Stopped => (ICON_STOP, colors::MUTED_FOREGROUND, false),
         _ => (ICON_HELP, colors::MUTED_FOREGROUND, false),
     }
+}
+
+fn paint_drag_preview(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    state: &LoopState,
+    size: egui::Vec2,
+    background: egui::Color32,
+    border_color: egui::Color32,
+) -> Option<egui::Rect> {
+    if !response.dragged()
+        || egui::DragAndDrop::payload::<LoopDragPayload>(ui.ctx())
+            .is_none_or(|payload| payload.loop_id != state.id)
+    {
+        return None;
+    }
+    let pointer = ui.ctx().pointer_interact_pos()?;
+    let rect = egui::Rect::from_center_size(pointer, size);
+    let layer_id = egui::LayerId::new(
+        egui::Order::Tooltip,
+        ui.id().with(("loop_drag_preview", state.id)),
+    );
+    let mut painter = ui.ctx().layer_painter(layer_id);
+    painter.set_opacity(0.62);
+    painter.rect_filled(rect, 2.0, background);
+    painter.rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(2.0, border_color),
+        egui::StrokeKind::Inside,
+    );
+    let icon_rect = egui::Rect::from_min_size(rect.min, egui::vec2(24.0, 24.0));
+    let (icon, color, fx) = icon_for_state(
+        state.mode,
+        state.empty,
+        state.composite_kind == CompositeKind::Regular,
+        state.composite_kind == CompositeKind::Script,
+    );
+    paint_icon(&painter, icon_rect.center(), icon, 21.0, color);
+    if fx {
+        painter.text(
+            icon_rect.right_bottom() - egui::vec2(1.0, 1.0),
+            egui::Align2::RIGHT_BOTTOM,
+            "FX",
+            egui::FontId::proportional(7.0),
+            colors::FOREGROUND,
+        );
+    }
+    let name_rect = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + 24.0, rect.top()),
+        egui::pos2(rect.right() - 6.0, rect.bottom()),
+    );
+    painter.with_clip_rect(name_rect).text(
+        name_rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        &state.name,
+        egui::FontId::proportional(11.0),
+        colors::FOREGROUND,
+    );
+    Some(rect)
 }
 
 fn loop_icon_button(
@@ -308,6 +370,7 @@ impl LoopWidget {
         #[cfg(test)]
         {
             self.test_convert_rect = None;
+            self.test_drag_preview_rect = None;
         }
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
         response.dnd_set_drag_payload(LoopDragPayload { loop_id: state.id });
@@ -879,6 +942,15 @@ impl LoopWidget {
             .open_memory(context_requested.then_some(egui::SetOpenCommand::Bool(true)))
             .show(|ui| self.show_context_menu(ui, state, &mut result));
 
+        let drag_preview_rect =
+            paint_drag_preview(ui, &response, state, size, background, border_color);
+        #[cfg(test)]
+        {
+            self.test_drag_preview_rect = drag_preview_rect;
+        }
+        #[cfg(not(test))]
+        let _ = drag_preview_rect;
+
         result.hover_active = hover_allowed
             && loop_visible
             && (controls_visible
@@ -1339,6 +1411,10 @@ mod tests {
         assert_eq!(
             egui::DragAndDrop::payload::<LoopDragPayload>(&context).as_deref(),
             Some(&LoopDragPayload { loop_id: state.id })
+        );
+        assert_eq!(
+            widget.test_drag_preview_rect.unwrap().center(),
+            start + egui::vec2(30.0, 20.0)
         );
         let _ = frame(
             &context,
