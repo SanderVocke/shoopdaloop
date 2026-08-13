@@ -2,7 +2,7 @@
 
 ## Status and execution contract
 
-- Status: implementation complete locally; CI canary and full matrix verification are pending.
+- Status: complete; local gates, the intentional-failure artifact canary, and the full CI matrix are verified.
 - Keep this plan updated as work progresses and check off completed items.
 - Commit each completed stage or meaningful milestone.
 - Implementation steps may be revised when new evidence warrants it.
@@ -22,18 +22,18 @@ In scope: workspace Cargo configuration and lockfile, native tracing capture cod
 
 ## Immutable acceptance criteria
 
-- [ ] `.agents/skills/tracy/SKILL.md` downloads `tracy-query` from `SanderVocke/tracy-extensions` release `v0.4.0`, selects the correct existing platform asset, obtains the matching `tracy-query/SKILL.md` from the v0.4.0 source tag, and contains no operational dependency on the archived repository or v0.1.0 assets.
-- [ ] Cargo resolves exactly one patched `tracy-client-sys` 0.28.0 from the pinned `tracy-extensions` v0.4.0 source for native capture/test builds, with unmodified exact `tracy-client` 0.18.4 and `tracing-tracy` 0.11.4 using compatible manual-lifetime features; `cargo tree -i tracy-client-sys` proves the resolution.
-- [ ] `shoopdaloop` exposes one tracing mode: `--tracing` always performs embedded capture, `--tracing-capture` is removed, and `--tracing-engine-detail` requires `--tracing`.
-- [ ] `shoopdaloop --tracing` requires no `tracy-capture` executable, `TRACY_CAPTURE_TOOL`, wrapper, signal handling, TCP connection, or helper process. It configures embedded capture before Tracy starts and saves a non-empty, valid capture under `./traces` on orderly shutdown.
-- [ ] Application capture uses the upstream one-lifecycle contract: one configure/start/finalize sequence per process, an output path that does not already exist, joined/quiescent instrumentation producers and dropped span guards before finalization, atomic publication, explicit errors, and no `.partial` file represented as a successful trace.
-- [ ] TCP/live-profiler support is removed as explicitly approved: the linked Tracy client uses only the embedded transport, and documentation does not suggest that a Tracy GUI or external capture server can attach live.
-- [ ] A pinned cargo-nextest version compatible with the upstream integration (initial pin: 0.9.116) runs every CI Rust test command that cargo-nextest supports; unsupported harness cases remain explicit and documented rather than silently omitted.
-- [ ] The CI nextest profile has `fail-fast = false`, starts with four test threads as the medium-aggressive setting, and preserves or strengthens serialization for Carla worker/deadline-sensitive and other measured high-resource tests. Concurrency is reduced only in response to recorded local/CI evidence.
-- [ ] Under `TRACY_NEXTEST_CAPTURE=failure`, every opted-in passing attempt leaves no final `.tracy`, and every opted-in unwind panic or `Result::Err` publishes one uniquely named, non-empty finalized trace while preserving the original test result. Unsupported abort, signal, timeout, OOM, panic-abort, `#[should_panic]`, and async/custom-harness cases are documented as not capturable by this integration.
-- [ ] A checked-in, ignored/opt-in ShoopDaLoop failure smoke fixture exercises real repository code/instrumentation. Local and opt-in CI runs intentionally fail it, observe the expected nonzero test result, verify the produced trace with v0.4.0 `tracy-query check`, `range`, `info`, and a semantic marker query, and find no `.partial` file.
-- [ ] GitHub Actions uploads finalized nextest failure traces with `if: always()` and matrix-unique artifact names. A recorded CI smoke run proves an intentional failure trace is present in the uploaded artifact; the normal required CI path remains green and never runs the intentional failure by default.
-- [ ] The final workspace test gates pass under nextest with the existing required feature/backend environment, formatting and `RUSTFLAGS="-D warnings"` build gates pass, tracing coverage remains closed, and affected tracing/testing documentation no longer instructs users or CI to use external `tracy-capture` or serial `cargo test` where superseded.
+- [x] `.agents/skills/tracy/SKILL.md` downloads `tracy-query` from `SanderVocke/tracy-extensions` release `v0.4.0`, selects the correct existing platform asset, obtains the matching `tracy-query/SKILL.md` from the v0.4.0 source tag, and contains no operational dependency on the archived repository or v0.1.0 assets.
+- [x] Cargo resolves exactly one patched `tracy-client-sys` 0.28.0 from the pinned `tracy-extensions` v0.4.0 source for native capture/test builds, with unmodified exact `tracy-client` 0.18.4 and `tracing-tracy` 0.11.4 using compatible manual-lifetime features; `cargo tree -i tracy-client-sys` proves the resolution.
+- [x] `shoopdaloop` exposes one tracing mode: `--tracing` always performs embedded capture, `--tracing-capture` is removed, and `--tracing-engine-detail` requires `--tracing`.
+- [x] `shoopdaloop --tracing` requires no `tracy-capture` executable, `TRACY_CAPTURE_TOOL`, wrapper, signal handling, TCP connection, or helper process. It configures embedded capture before Tracy starts and saves a non-empty, valid capture under `./traces` on orderly shutdown.
+- [x] Application capture uses the upstream one-lifecycle contract: one configure/start/finalize sequence per process, an output path that does not already exist, joined/quiescent instrumentation producers and dropped span guards before finalization, atomic publication, explicit errors, and no `.partial` file represented as a successful trace.
+- [x] TCP/live-profiler support is removed as explicitly approved: the linked Tracy client uses only the embedded transport, and documentation does not suggest that a Tracy GUI or external capture server can attach live.
+- [x] A pinned cargo-nextest version compatible with the upstream integration (initial pin: 0.9.116) runs every CI Rust test command that cargo-nextest supports; unsupported harness cases remain explicit and documented rather than silently omitted.
+- [x] The CI nextest profile has `fail-fast = false`, starts with four test threads as the medium-aggressive setting, and preserves or strengthens serialization for Carla worker/deadline-sensitive and other measured high-resource tests. Concurrency is reduced only in response to recorded local/CI evidence.
+- [x] Under `TRACY_NEXTEST_CAPTURE=failure`, every opted-in passing attempt leaves no final `.tracy`, and every opted-in unwind panic or `Result::Err` publishes one uniquely named, non-empty finalized trace while preserving the original test result. Unsupported abort, signal, timeout, OOM, panic-abort, `#[should_panic]`, and async/custom-harness cases are documented as not capturable by this integration.
+- [x] A checked-in, ignored/opt-in ShoopDaLoop failure smoke fixture exercises real repository code/instrumentation. Local and opt-in CI runs intentionally fail it, observe the expected nonzero test result, verify the produced trace with v0.4.0 `tracy-query check`, `range`, `info`, and a semantic marker query, and find no `.partial` file.
+- [x] GitHub Actions uploads finalized nextest failure traces with `if: always()` and matrix-unique artifact names. A recorded CI smoke run proves an intentional failure trace is present in the uploaded artifact; the normal required CI path remains green and never runs the intentional failure by default.
+- [x] The final workspace test gates pass under nextest with the existing required feature/backend environment, formatting and `RUSTFLAGS="-D warnings"` build gates pass, tracing coverage remains closed, and affected tracing/testing documentation no longer instructs users or CI to use external `tracy-capture` or serial `cargo test` where superseded.
 
 ## Design rules and constraints
 
@@ -116,9 +116,11 @@ Verification: nextest's listed test set matches the intended cargo-test baseline
 - [x] Add a non-default `workflow_dispatch` input or equivalent opt-in canary path on the Linux debug job that creates a fresh trace directory and runs only the ignored intentional-failure fixture.
 - [x] Have the canary assert that nextest returned nonzero for the expected failure, then download/use the v0.4.0 Linux `tracy-query` asset to validate the final trace and stable semantic marker; fail the canary for no trace, multiple unexpected traces, a partial, or a query failure.
 - [x] Add an `if: always()` upload step with a matrix/run-unique artifact name, `if-no-files-found: ignore`, bounded retention, and a path matching only finalized `.tracy` files.
-- [ ] Push the canary milestone, trigger it, download the artifact, rerun `tracy-query check` locally, and record the workflow URL/run ID, artifact name, trace name, intentional test failure, and validation result in this plan.
+- [x] Push the canary milestone, trigger it, download the artifact, rerun `tracy-query check` locally, and record the workflow URL/run ID, artifact name, trace name, intentional test failure, and validation result in this plan.
 
 Verification: GitHub Actions visibly executes an intentional Shoop test failure, subsequent validation and upload steps run, the downloaded artifact contains the valid queried trace, and the overall controlled canary reports success only because the expected failure was positively checked.
+
+CI evidence: <https://github.com/SanderVocke/shoopdaloop/actions/runs/31729877552> completed successfully. Artifact `tracy-nextest-linux-x86_64-debug-31729877552` contained exactly one 725-byte trace named `shoop_common__nextest_capture_smoke--intentional_failure_publishes_trace--attempt-1--fa17a94e3b9f6bf4.tracy`. Downloaded validation with v0.4.0 `tracy-query check`, `range`, `info`, and the `shoop.nextest_capture.smoke.failure` semantic query succeeded; no partial was present.
 
 ### Stage 7 — Final CI migration and end-to-end validation
 
@@ -126,8 +128,10 @@ Verification: GitHub Actions visibly executes an intentional Shoop test failure,
 - [x] Set `TRACY_NEXTEST_CAPTURE=failure` and a fresh absolute matrix-specific output directory for captured test steps; retain required `SHOOP_ALLOW_MISSING_BACKENDS`, `SHOOP_REQUIRE_CARLA_TESTS`, features, release mode, and warning flags.
 - [x] Keep failure-trace upload after test steps with `if: always()` so an earlier test failure cannot skip artifact publication; do not upload empty/partial files.
 - [x] Run the full local gates: `cargo fmt --all -- --check`, `RUSTFLAGS="-D warnings" cargo build --workspace`, `python3 scripts/check_tracing_coverage.py --require-closed`, and `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run normal CI across Linux, Windows, macOS, debug/release, and web matrix entries; investigate failures at four threads before adding narrowly justified overrides. Re-run the opt-in intentional-failure canary after the final workflow shape.
-- [ ] Audit final dependency trees, trace artifact names/retention, documentation searches, normal application startup without tracing, embedded application capture, pass-discard behavior, failing-test save behavior, and unsupported-failure documentation.
-- [ ] Remove any temporary non-ignored failure or one-off workflow code; retain only the ignored opt-in smoke fixture/canary and the standard failure upload path.
+- [x] Run normal CI across Linux, Windows, macOS, debug/release, and web matrix entries; investigate failures at four threads before adding narrowly justified overrides. Re-run the opt-in intentional-failure canary after the final workflow shape.
+- [x] Audit final dependency trees, trace artifact names/retention, documentation searches, normal application startup without tracing, embedded application capture, pass-discard behavior, failing-test save behavior, and unsupported-failure documentation.
+- [x] Remove any temporary non-ignored failure or one-off workflow code; retain only the ignored opt-in smoke fixture/canary and the standard failure upload path.
+
+CI evidence: run 31729877552 passed all eight Linux, Windows, macOS, and web debug/release jobs using the final workflow. The initial run exposed non-PIC Unix shared-library linkage and Windows canonical-path CMake issues; CI now prepares tag-pinned v0.4.0 native libraries with PIC and ordinary checkout paths before Cargo consumes them.
 
 Verification: all normal required CI jobs pass using nextest, the canary artifact proof still passes, `--tracing` produces a valid in-process application trace without external tools or live TCP support, passing tests publish no failure traces, an eligible failure publishes and uploads one valid trace, and all immutable acceptance criteria above are checked.
