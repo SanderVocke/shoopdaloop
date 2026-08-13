@@ -5,30 +5,27 @@
 
 # ShoopDaLoop — Limitless Looping
 
-ShoopDaLoop is a playful cross-platform (including web) live-looping application for audio and MIDI. It organizes loops into a track grid and supports free-form jamming, controller-driven workflows, and prepared performances.
+ShoopDaLoop is a playful cross-platform live-looping application for audio and MIDI. It organizes loops into a track grid and supports free-form jamming, controller-driven workflows, and prepared performances.
 
-The application is feature-complete for its current design. Releases before 1.0 remain development releases: test them thoroughly before relying on them in a performance.
+Releases before 1.0 remain development releases: I wouldn't recommend relying on them in a performance, but if you do, test thoroughly beforehand.
 
 [User and developer documentation](https://sandervocke.github.io/shoopdaloop/) is published from this repository.
 
 ## Current features
 
-- Audio and MIDI loops in aligned track columns.
-- A sync loop, synchronized or immediate transitions, fixed-cycle recording, selection, targeting, solo behavior, and retroactive grab recording.
-- Regular tracks and dry/wet tracks with independent audio/MIDI topology.
-- External FX/synth processing, built-in Tiny Synth/FX, and native Carla Rack/Patchbay hosting when native FX support is enabled.
-- JACK, CPAL+midir, and dummy/offline drivers on desktop.
-- Web Audio/AudioWorklet and permission-gated Web MIDI in supported browsers.
-- Connection management for application and host audio/MIDI ports.
+- Run on any major OS and in the browser - check the latest web [self-contained web development build](https://github.com/SanderVocke/shoopdaloop/releases/download/dev-web/shoopdaloop-web-wasm32-release.html) by just opening it in your browser!
+- Audio and MIDI loops grouped in track columns which share input/output ports.
+- A sync loop controls synchronization. Others are multiples of its length.
+- Record/play MIDI and/or audio live, through FX/synth racks if desired.
+- For tracks with FX/synth racks, you can re-play recorded content through the synth/FX live and e.g. adjust parameters or switch instruments on-the-fly.
+- FX/synth options include built-in Carla plugin host integration, externally routed (e.g. external JACK apps/equipment), or a built-in demonstration mini-suite of (bad) synths and effects.
+- Audio drivers on desktop are multi-platform based on CPAL + midir, or a dedicated JACK driver for advanced port routing.
+- Web Audio/AudioWorklet and Web MIDI in supported browsers.
 - Session load/save plus loop audio/MIDI import and export.
 - Generated audio or MIDI click tracks.
-- Embedded Lua scripting, keyboard control, and an APC Mini controller script.
-- Native and browser settings with explicit save, validation, and recovery behavior.
-- Optional Tracy profiling and capture on native builds.
+- Embedded Lua scripting for control. Built-in scripts for keyboard control and APC Mini controller.
 
 ## Screenshot
-
-The repository currently retains an older interface screenshot while updated screenshots are prepared.
 
 ![Screenshot](docs/source/resources/screenshot.png)
 
