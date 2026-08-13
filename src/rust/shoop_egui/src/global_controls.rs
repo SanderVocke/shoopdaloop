@@ -248,7 +248,11 @@ impl GlobalControls {
                 } else {
                     colors::MUTED_FOREGROUND
                 }),
-                "Solo within track",
+                if state.solo {
+                    "Play and stop others in same track(s)"
+                } else {
+                    "Allow multiple loops to play in same track(s)"
+                },
             );
             self.record_rect(TestGlobalControl::Solo, &response);
             if response.clicked() {
@@ -275,11 +279,11 @@ impl GlobalControls {
                 .apply_n_cycles
                 .resolve(state.apply_n_cycles, self.apply_n_cycles_dragging);
             let mut step_changed = false;
-            let response = egui::Frame::new()
+            let framed = egui::Frame::new()
                 .fill(colors::CONTROL_BACKGROUND)
                 .stroke(egui::Stroke::new(1.0, colors::MUTED_FOREGROUND))
                 .corner_radius(3)
-                .inner_margin(egui::Margin::symmetric(4, 1))
+                .inner_margin(egui::Margin::symmetric(4, 4))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         if ui.small_button("−").clicked() {
@@ -302,9 +306,9 @@ impl GlobalControls {
                         value
                     })
                     .inner
-                })
-                .inner;
-            self.record_rect(TestGlobalControl::ApplyNCycles, &response);
+                });
+            let response = framed.inner;
+            self.record_rect(TestGlobalControl::ApplyNCycles, &framed.response);
             if response.drag_started() || response.dragged() {
                 self.apply_n_cycles_dragging = true;
             }
@@ -541,6 +545,13 @@ mod tests {
         let mut controls = GlobalControls::default();
         frame(&context, &mut controls, &state, Vec::new());
 
+        assert_eq!(
+            controls
+                .test_rect(TestGlobalControl::ApplyNCycles)
+                .unwrap()
+                .height(),
+            CONTROL_BUTTON_SIZE[1]
+        );
         for control in [
             TestGlobalControl::DefaultRecordingAction,
             TestGlobalControl::PlayAfterRecord,

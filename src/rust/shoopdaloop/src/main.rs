@@ -1414,7 +1414,7 @@ fn main() {
     };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("ShoopDaLoop (dummy engine)")
+            .with_title("ShoopDaLoop")
             .with_icon(application_icon())
             .with_inner_size([1000.0, 700.0])
             .with_min_inner_size([360.0, 200.0]),

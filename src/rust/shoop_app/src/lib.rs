@@ -4750,6 +4750,16 @@ impl ApplicationModel {
                 display_peaks(&backend_state.audio_peaks, model.state.stereo);
             model.state.midi_activity = backend_state.midi_activity;
         }
+        for track in &mut self.tracks {
+            track.controls.output_midi_activity = combined_output_midi_activity(
+                track.controls.output_midi_activity,
+                track.loops.iter().filter_map(|loop_id| {
+                    self.loops
+                        .get(loop_id)
+                        .map(|loop_| loop_.state.midi_activity)
+                }),
+            );
+        }
         let app_loop_by_backend = self
             .loops
             .values()
@@ -7252,6 +7262,13 @@ fn backend_loop_mode(mode: LoopMode) -> BackendLoopMode {
     }
 }
 
+fn combined_output_midi_activity(
+    port_activity: bool,
+    loop_activity: impl IntoIterator<Item = bool>,
+) -> bool {
+    port_activity || loop_activity.into_iter().any(|active| active)
+}
+
 fn display_peaks(peaks: &[f32], stereo: bool) -> (f32, f32) {
     if stereo {
         let left = peaks.first().copied().unwrap_or(-200.0);
@@ -7283,6 +7300,13 @@ mod tests {
     use shoop_backend::{BackendPortDataType, BackendPortDirection, EngineBackend, FakeBackend};
 
     use super::*;
+
+    #[test]
+    fn track_output_midi_activity_includes_port_and_loop_playback() {
+        assert!(combined_output_midi_activity(false, [false, true]));
+        assert!(combined_output_midi_activity(true, [false, false]));
+        assert!(!combined_output_midi_activity(false, [false, false]));
+    }
 
     #[test]
     fn display_peaks_preserves_stereo_and_uses_the_loudest_other_channel_count() {

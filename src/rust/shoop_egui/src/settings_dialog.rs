@@ -190,28 +190,30 @@ impl SettingsDialog {
                     return;
                 }
 
-                self.show_category_tabs(ui);
-                ui.separator();
                 let active_category = self.active_category.clone().unwrap_or_default();
-                egui::ScrollArea::vertical()
-                    .id_salt("settings_values")
-                    .scroll_source(crate::control_safe_scroll_source())
-                    .show(ui, |ui| {
-                        if active_category == "Audio" {
-                            self.show_audio(ui, audio_drivers, &mut response);
-                        } else {
-                            self.show_definitions(ui, &active_category);
-                        }
-                        if active_category == "Scripts" {
-                            ui.add_space(8.0);
-                            self.show_script_runtime(
-                                ui,
-                                scripting,
-                                script_paths,
-                                &mut response,
-                            );
-                        }
-                    });
+                ui.horizontal_top(|ui| {
+                    self.show_category_tabs(ui);
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .id_salt("settings_values")
+                        .scroll_source(crate::control_safe_scroll_source())
+                        .show(ui, |ui| {
+                            if active_category == "Audio" {
+                                self.show_audio(ui, audio_drivers, &mut response);
+                            } else {
+                                self.show_definitions(ui, &active_category);
+                            }
+                            if active_category == "Scripts" {
+                                ui.add_space(8.0);
+                                self.show_script_runtime(
+                                    ui,
+                                    scripting,
+                                    script_paths,
+                                    &mut response,
+                                );
+                            }
+                        });
+                });
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Reset all").clicked() {
@@ -283,15 +285,19 @@ impl SettingsDialog {
     }
 
     fn show_category_tabs(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::horizontal()
+        ui.set_width(110.0);
+        egui::ScrollArea::vertical()
             .id_salt("settings_category_tabs")
+            .auto_shrink([false, true])
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(100.0);
                     for category in self.categories() {
+                        let selected = self.active_category.as_deref() == Some(category.as_str());
                         if ui
-                            .selectable_label(
-                                self.active_category.as_deref() == Some(category.as_str()),
-                                &category,
+                            .add_sized(
+                                [ui.available_width(), 24.0],
+                                egui::Button::selectable(selected, &category),
                             )
                             .clicked()
                         {

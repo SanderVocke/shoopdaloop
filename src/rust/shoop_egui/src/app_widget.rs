@@ -16,7 +16,7 @@ use shoop_settings::{
 use std::sync::Arc;
 
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
-const LOGO_AREA_HEIGHT: f32 = 98.0;
+const LOGO_AREA_HEIGHT: f32 = 112.0;
 const SYNC_TRACK_HEIGHT: f32 = 118.0;
 const SIDEBAR_SECTION_GAP: f32 = 8.0;
 
@@ -762,7 +762,8 @@ impl AppWidget {
                     });
             }
             Some(BottomPane::Piano) => {
-                let destinations = piano_destinations(state);
+                let destination_ids = piano_destinations(state);
+                let destination_centers = self.tracks.track_centers(&destination_ids);
                 egui::Panel::bottom("piano")
                     .resizable(true)
                     .default_size(165.0)
@@ -776,7 +777,7 @@ impl AppWidget {
                     .show(ui, |ui| {
                         actions.extend(
                             self.piano
-                                .show(ui, &destinations)
+                                .show(ui, !destination_ids.is_empty(), &destination_centers)
                                 .into_iter()
                                 .map(AppAction::Piano),
                         );
@@ -803,7 +804,12 @@ impl AppWidget {
                     .filter(|track| !track.is_sync)
                     .cloned()
                     .collect();
-                let response = self.tracks.show(ui, &main_tracks, &state.track_processors);
+                let response = self.tracks.show_with_global_controls(
+                    ui,
+                    &main_tracks,
+                    &state.track_processors,
+                    &state.global_controls,
+                );
                 if response.add_track_requested {
                     self.open_add_track_dialog(main_tracks.len(), settings_state);
                 }
@@ -1499,16 +1505,22 @@ impl AppWidget {
     }
 
     fn show_logo(&mut self, ui: &mut egui::Ui, state: &AppState) {
+        ui.add_space(6.0);
         if let Some(logo) = &self.logo {
             let size = logo.size_vec2();
-            let width = ui.available_width().min(140.0);
+            let width = (ui.available_width() - 12.0).max(1.0).min(128.0);
             let height = width * size.y / size.x;
             ui.add(egui::Image::new((logo.id(), egui::vec2(width, height))));
         } else {
             ui.heading("ShoopDaLoop");
         }
+        ui.add_space(3.0);
         if !state.status.version.is_empty() {
-            ui.label(format!("ShoopDaLoop v{}", state.status.version));
+            ui.label(
+                egui::RichText::new(format!("ShoopDaLoop v{}", state.status.version))
+                    .size(10.0)
+                    .color(colors::MUTED_FOREGROUND),
+            );
         }
     }
 
@@ -1579,7 +1591,14 @@ impl AppWidget {
         ui.painter()
             .circle_filled(rect.center(), 4.0, health.color());
         response.on_hover_ui(|ui| {
-            ui.label(format!("Audio backend: {:?}", state.status.audio_driver));
+            let backend_type = state
+                .audio_drivers
+                .active
+                .as_ref()
+                .map(|active| active.configured.kind().label())
+                .unwrap_or("Unavailable");
+            ui.label(format!("Backend type: {backend_type}"));
+            ui.label(format!("Driver status: {:?}", state.status.audio_driver));
             ui.label(if callbacks_active {
                 "Audio callbacks are active"
             } else {
@@ -1613,7 +1632,9 @@ impl AppWidget {
         state: &AppState,
         actions: &mut Vec<AppAction>,
     ) {
-        let response = self.sync_track.show(ui, sync);
+        let response = self
+            .sync_track
+            .show_with_global_controls(ui, sync, &state.global_controls);
         actions.extend(response.io_intents.iter().cloned());
         actions.extend(response.loop_actions.into_iter().map(|(loop_id, action)| {
             AppAction::Loop {
@@ -1691,7 +1712,7 @@ fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
     });
 }
 
-fn piano_destinations(state: &AppState) -> Vec<String> {
+fn piano_destinations(state: &AppState) -> Vec<crate::TrackId> {
     state
         .tracks
         .iter()
@@ -1711,7 +1732,7 @@ fn piano_destinations(state: &AppState) -> Vec<String> {
                     })
                 })
         })
-        .map(|track| track.name.clone())
+        .map(|track| track.id)
         .collect()
 }
 
@@ -2037,7 +2058,35 @@ mod tests {
     fn open_piano_routes_pointer_note_actions_as_application_intents() {
         let context = egui::Context::default();
         crate::initialize(&context);
-        let state = AppState::default();
+        let track_id = crate::TrackId::from_raw(1);
+        let port_id = crate::PortId::from_raw(1);
+        let state = AppState {
+            tracks: vec![TrackState {
+                id: track_id,
+                port_ids: Arc::from([port_id]),
+                controls: crate::TrackControlState {
+                    input_monitoring: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            connections: Arc::new(crate::ConnectionViewState {
+                application_ports: Arc::from([crate::ApplicationPortState {
+                    id: port_id,
+                    owner: crate::ApplicationPortOwner::Track {
+                        track_id,
+                        kind: crate::TrackPortOwnerKind::Main,
+                    },
+                    name: "midi_in".to_owned(),
+                    data_type: crate::PortDataType::Midi,
+                    direction: crate::PortDirection::Input,
+                    role: crate::PortRole::MidiInput,
+                    connection_policy: crate::ConnectionPolicy::UserManaged,
+                }]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
         let mut widget = AppWidget::default();
         frame(&context, &mut widget, &state, Vec::new());
         let piano_toggle = widget.piano_toggle_rect.unwrap().center();
@@ -2150,7 +2199,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert_eq!(piano_destinations(&state), ["Listening"]);
+        assert_eq!(piano_destinations(&state), [first_id]);
     }
 
     fn settings_frame(

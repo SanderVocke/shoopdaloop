@@ -11,6 +11,7 @@ mod fonts;
 mod global_controls;
 mod key_input;
 mod loop_widget;
+mod meter_ballistics;
 mod midi_sequence_widget;
 mod optimistic_value;
 mod piano_pane;

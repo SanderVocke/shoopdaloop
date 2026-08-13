@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    colors, AppIntent, FxLifecycle, LoopId, LoopWidget, LoopWidgetAction, TrackControls,
-    TrackProcessorDescriptor, TrackState, TrackWidgetAction,
+    colors, AppIntent, FxLifecycle, GlobalControlState, LoopId, LoopWidget, LoopWidgetAction,
+    TrackControls, TrackProcessorDescriptor, TrackState, TrackWidgetAction,
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
 
@@ -106,14 +106,27 @@ impl TrackWidget {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, state: &TrackState) -> TrackWidgetResponse {
+        self.show_with_global_controls(ui, state, &GlobalControlState::default())
+    }
+
+    pub fn show_with_global_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &TrackState,
+        global_controls: &GlobalControlState,
+    ) -> TrackWidgetResponse {
         let item_spacing_y = ui.spacing().item_spacing.y;
         ui.spacing_mut().item_spacing.y = 0.0;
-        let mut response = self.show_content(ui, state, !state.is_sync);
-        response.actions.extend(self.show_controls_with_height(
-            ui,
-            &state.controls,
-            !state.is_sync,
-        ));
+        let mut response =
+            self.show_content_with_global_controls(ui, state, !state.is_sync, global_controls);
+        response
+            .actions
+            .extend(self.show_controls_with_height_and_global_controls(
+                ui,
+                &state.controls,
+                !state.is_sync,
+                global_controls,
+            ));
         ui.spacing_mut().item_spacing.y = item_spacing_y;
         response
     }
@@ -124,7 +137,28 @@ impl TrackWidget {
         state: &TrackState,
         show_add_loop: bool,
     ) -> TrackWidgetResponse {
-        self.show_content_with_processor(ui, state, None, show_add_loop)
+        self.show_content_with_global_controls(
+            ui,
+            state,
+            show_add_loop,
+            &GlobalControlState::default(),
+        )
+    }
+
+    pub fn show_content_with_global_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &TrackState,
+        show_add_loop: bool,
+        global_controls: &GlobalControlState,
+    ) -> TrackWidgetResponse {
+        self.show_content_with_processor_and_global_controls(
+            ui,
+            state,
+            None,
+            show_add_loop,
+            global_controls,
+        )
     }
 
     pub fn show_content_with_processor(
@@ -134,16 +168,41 @@ impl TrackWidget {
         processor: Option<&TrackProcessorDescriptor>,
         show_add_loop: bool,
     ) -> TrackWidgetResponse {
-        self.show_content_with_processor_min_height(ui, state, processor, show_add_loop, 0.0)
+        self.show_content_with_processor_and_global_controls(
+            ui,
+            state,
+            processor,
+            show_add_loop,
+            &GlobalControlState::default(),
+        )
     }
 
-    pub(crate) fn show_content_with_processor_min_height(
+    pub fn show_content_with_processor_and_global_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &TrackState,
+        processor: Option<&TrackProcessorDescriptor>,
+        show_add_loop: bool,
+        global_controls: &GlobalControlState,
+    ) -> TrackWidgetResponse {
+        self.show_content_with_processor_min_height_and_global_controls(
+            ui,
+            state,
+            processor,
+            show_add_loop,
+            0.0,
+            global_controls,
+        )
+    }
+
+    pub(crate) fn show_content_with_processor_min_height_and_global_controls(
         &mut self,
         ui: &mut egui::Ui,
         state: &TrackState,
         processor: Option<&TrackProcessorDescriptor>,
         show_add_loop: bool,
         min_height: f32,
+        global_controls: &GlobalControlState,
     ) -> TrackWidgetResponse {
         let _span = tracing::trace_span!(
             "frontend.egui.track",
@@ -180,7 +239,13 @@ impl TrackWidget {
                         let widget = self.loop_widgets.entry(loop_state.id).or_default();
                         let loop_response = ui.push_id(loop_state.id, |ui| {
                             let size = egui::vec2(ui.available_width(), 26.0);
-                            widget.show_with_hover(ui, loop_state, size, hover_allowed)
+                            widget.show_with_hover(
+                                ui,
+                                loop_state,
+                                size,
+                                hover_allowed,
+                                global_controls,
+                            )
                         });
                         if loop_response.inner.hover_active {
                             self.hovered_loop = Some(loop_state.id);
@@ -248,14 +313,24 @@ impl TrackWidget {
         ui: &mut egui::Ui,
         state: &crate::TrackControlState,
     ) -> Vec<TrackWidgetAction> {
-        self.show_controls_with_height(ui, state, true)
+        self.show_controls_with_global_controls(ui, state, &GlobalControlState::default())
     }
 
-    fn show_controls_with_height(
+    pub fn show_controls_with_global_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &crate::TrackControlState,
+        global_controls: &GlobalControlState,
+    ) -> Vec<TrackWidgetAction> {
+        self.show_controls_with_height_and_global_controls(ui, state, true, global_controls)
+    }
+
+    fn show_controls_with_height_and_global_controls(
         &mut self,
         ui: &mut egui::Ui,
         state: &crate::TrackControlState,
         fill_available: bool,
+        global_controls: &GlobalControlState,
     ) -> Vec<TrackWidgetAction> {
         let frame = egui::Frame::new()
             .fill(track_background(state))
@@ -300,7 +375,9 @@ impl TrackWidget {
         }
         content_ui.set_width(self.rendered_content_width);
         content_ui.set_min_height(TRACK_CONTROLS_HEIGHT);
-        let actions = self.controls.show(&mut content_ui, state);
+        let actions =
+            self.controls
+                .show_with_global_controls(&mut content_ui, state, global_controls);
         let content_rect = egui::Rect::from_min_size(
             frame_content_min,
             egui::vec2(self.rendered_content_width, frame_content_height),

@@ -1,10 +1,13 @@
 use crate::{
-    colors, dial::paint_dial, optimistic_value::OptimisticValue, TrackControlState,
-    TrackWidgetAction, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
+    colors, dial::paint_dial, meter_ballistics::PeakMeterAnimation,
+    optimistic_value::OptimisticValue, GlobalControlState, TrackControlState, TrackWidgetAction,
+    MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
 };
 use egui_material_icons::icons::{ICON_HEARING, ICON_VOLUME_MUTE, ICON_VOLUME_UP};
 
 const METER_MIN_DB: f32 = -50.0;
+const MIDI_ACTIVITY_WIDTH: f32 = 7.0;
+const MIDI_ACTIVITY_GAP: f32 = 2.0;
 
 #[derive(Debug, Default)]
 pub struct TrackControls {
@@ -16,6 +19,10 @@ pub struct TrackControls {
     input_gain_dragging: bool,
     input_balance: OptimisticValue<f32>,
     input_balance_drag_start: Option<f32>,
+    output_peak_left: PeakMeterAnimation,
+    output_peak_right: PeakMeterAnimation,
+    input_peak_left: PeakMeterAnimation,
+    input_peak_right: PeakMeterAnimation,
     #[cfg(test)]
     test_rects: TestTrackControlRects,
 }
@@ -45,16 +52,45 @@ struct TestTrackControlRects {
     input_balance: Option<egui::Rect>,
 }
 
+fn input_monitoring_tooltip(
+    state: &TrackControlState,
+    global_controls: &GlobalControlState,
+) -> &'static str {
+    if state.input_monitoring {
+        "Mute input"
+    } else if global_controls.auto_mute_other_track_inputs {
+        "Unmute (and mute others)"
+    } else {
+        "Unmute"
+    }
+}
+
 impl TrackControls {
     pub fn show(&mut self, ui: &mut egui::Ui, state: &TrackControlState) -> Vec<TrackWidgetAction> {
+        self.show_with_global_controls(ui, state, &GlobalControlState::default())
+    }
+
+    pub fn show_with_global_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &TrackControlState,
+        global_controls: &GlobalControlState,
+    ) -> Vec<TrackWidgetAction> {
         let mut actions = Vec::new();
 
         if state.has_output {
+            let (left_db, right_db) = animated_peaks(
+                ui,
+                &mut self.output_peak_left,
+                &mut self.output_peak_right,
+                state.output_peak_left_db,
+                state.output_peak_right_db,
+            );
             let (response, mut row) = meter_row(
                 ui,
                 state.output_stereo,
-                state.output_peak_left_db,
-                state.output_peak_right_db,
+                left_db,
+                right_db,
                 state.output_midi_activity,
             );
             self.record_rect(TestTrackControl::OutputMeter, &response);
@@ -83,7 +119,12 @@ impl TrackControls {
                 let mut gain = self
                     .output_gain
                     .resolve(state.output_gain_db, self.output_gain_dragging);
-                let response = gain_slider(ui, &mut gain, gain_width)
+                let fill = if state.output_muted {
+                    colors::MUTED_SLIDER_FILL
+                } else {
+                    colors::COLORED_HIGHLIGHT
+                };
+                let response = gain_slider(ui, &mut gain, gain_width, fill)
                     .on_hover_text(format!("Output gain: {gain:.1} dB"));
                 self.record_rect(TestTrackControl::OutputGain, &response);
                 if response.drag_started() || response.dragged() {
@@ -113,11 +154,18 @@ impl TrackControls {
         }
 
         if state.has_input {
+            let (left_db, right_db) = animated_peaks(
+                ui,
+                &mut self.input_peak_left,
+                &mut self.input_peak_right,
+                state.input_peak_left_db,
+                state.input_peak_right_db,
+            );
             let (response, mut row) = meter_row(
                 ui,
                 state.input_stereo,
-                state.input_peak_left_db,
-                state.input_peak_right_db,
+                left_db,
+                right_db,
                 state.input_midi_activity,
             );
             self.record_rect(TestTrackControl::InputMeter, &response);
@@ -132,7 +180,7 @@ impl TrackControls {
                     egui::Button::new(ICON_HEARING.rich_text().size(16.0).color(color))
                         .frame(false),
                 )
-                .on_hover_text("Enable/disable input monitoring");
+                .on_hover_text(input_monitoring_tooltip(state, global_controls));
             self.record_rect(TestTrackControl::InputMonitoring, &response);
             if response.clicked() {
                 actions.push(TrackWidgetAction::InputMonitoringChanged {
@@ -147,7 +195,12 @@ impl TrackControls {
                 let mut gain = self
                     .input_gain
                     .resolve(state.input_gain_db, self.input_gain_dragging);
-                let response = gain_slider(ui, &mut gain, gain_width)
+                let fill = if state.input_monitoring {
+                    colors::COLORED_HIGHLIGHT
+                } else {
+                    colors::MUTED_SLIDER_FILL
+                };
+                let response = gain_slider(ui, &mut gain, gain_width, fill)
                     .on_hover_text(format!("Input gain: {gain:.1} dB"));
                 self.record_rect(TestTrackControl::InputGain, &response);
                 if response.drag_started() || response.dragged() {
@@ -212,12 +265,34 @@ impl TrackControls {
     }
 }
 
-fn gain_slider(ui: &mut egui::Ui, gain: &mut f32, width: f32) -> egui::Response {
+fn animated_peaks(
+    ui: &egui::Ui,
+    left: &mut PeakMeterAnimation,
+    right: &mut PeakMeterAnimation,
+    target_left_db: f32,
+    target_right_db: f32,
+) -> (f32, f32) {
+    let now = ui.input(|input| input.time);
+    let left = left.update(target_left_db, METER_MIN_DB, now);
+    let right = right.update(target_right_db, METER_MIN_DB, now);
+    if left.animating || right.animating {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(16));
+    }
+    (left.db, right.db)
+}
+
+fn gain_slider(
+    ui: &mut egui::Ui,
+    gain: &mut f32,
+    width: f32,
+    fill: egui::Color32,
+) -> egui::Response {
     let slider_width = ui.spacing().slider_width;
     ui.spacing_mut().slider_width = width;
     let response = ui
         .scope(|ui| {
-            ui.visuals_mut().selection.bg_fill = colors::COLORED_HIGHLIGHT;
+            ui.visuals_mut().selection.bg_fill = fill;
             ui.add(
                 egui::Slider::new(gain, MIN_TRACK_GAIN_DB..=MAX_TRACK_GAIN_DB)
                     .show_value(false)
@@ -323,20 +398,21 @@ fn meter_row(
         );
     }
 
+    let midi_rect = egui::Rect::from_min_max(
+        egui::pos2(rect.right() - MIDI_ACTIVITY_WIDTH, rect.top() + 2.0),
+        egui::pos2(rect.right(), rect.bottom() - 2.0),
+    );
     if midi_activity {
-        painter.rect_filled(
-            egui::Rect::from_min_max(
-                egui::pos2(rect.right() - 6.0, rect.top()),
-                rect.right_bottom(),
-            ),
-            1.0,
-            colors::MIDI_ACTIVITY,
-        );
+        painter.rect_filled(midi_rect, 1.0, colors::MIDI_ACTIVITY);
     }
+    let controls_rect = egui::Rect::from_min_max(
+        rect.min,
+        egui::pos2(midi_rect.left() - MIDI_ACTIVITY_GAP, rect.bottom()),
+    );
     let row = ui.new_child(
         egui::UiBuilder::new()
             .id_salt(("meter_controls", rect.min.y.to_bits()))
-            .max_rect(rect)
+            .max_rect(controls_rect)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
     (response, row)
@@ -413,6 +489,22 @@ mod tests {
                 },
             ],
         )
+    }
+
+    #[test]
+    fn input_monitoring_tooltip_describes_exclusive_unmute_behavior() {
+        let mut state = TrackControlState::default();
+        let mut globals = GlobalControlState::default();
+        assert_eq!(input_monitoring_tooltip(&state, &globals), "Unmute");
+
+        globals.auto_mute_other_track_inputs = true;
+        assert_eq!(
+            input_monitoring_tooltip(&state, &globals),
+            "Unmute (and mute others)"
+        );
+
+        state.input_monitoring = true;
+        assert_eq!(input_monitoring_tooltip(&state, &globals), "Mute input");
     }
 
     #[test]
