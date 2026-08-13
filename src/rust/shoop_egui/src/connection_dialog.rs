@@ -930,22 +930,13 @@ impl ConnectionDialog {
                 None
             };
             let text_rect = rect.shrink2(egui::vec2(12.0, 3.0));
-            let align = if column.connector_on_right() {
-                egui::Align2::LEFT_CENTER
-            } else {
-                egui::Align2::RIGHT_CENTER
-            };
-            let text = match (status_glyph, column.connector_on_right()) {
-                (Some(glyph), true) => format!("{glyph}  {}", endpoint.label),
-                (Some(glyph), false) => format!("{}  {glyph}", endpoint.label),
-                (None, _) => endpoint.label.clone(),
+            let text = match status_glyph {
+                Some(glyph) => format!("{glyph}  {}", endpoint.label),
+                None => endpoint.label.clone(),
             };
             ui.painter().with_clip_rect(text_rect).text(
-                match align {
-                    egui::Align2::LEFT_CENTER => text_rect.left_center(),
-                    _ => text_rect.right_center(),
-                },
-                align,
+                text_rect.left_center(),
+                egui::Align2::LEFT_CENTER,
                 text,
                 egui::FontId::proportional(GRAPH_FONT_SIZE),
                 data_type_color(endpoint.data_type),

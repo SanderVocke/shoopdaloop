@@ -194,25 +194,29 @@ impl SettingsDialog {
                 ui.horizontal_top(|ui| {
                     self.show_category_tabs(ui);
                     ui.separator();
-                    egui::ScrollArea::vertical()
-                        .id_salt("settings_values")
-                        .scroll_source(crate::control_safe_scroll_source())
-                        .show(ui, |ui| {
-                            if active_category == "Audio" {
-                                self.show_audio(ui, audio_drivers, &mut response);
-                            } else {
-                                self.show_definitions(ui, &active_category);
-                            }
-                            if active_category == "Scripts" {
-                                ui.add_space(8.0);
-                                self.show_script_runtime(
-                                    ui,
-                                    scripting,
-                                    script_paths,
-                                    &mut response,
-                                );
-                            }
-                        });
+                    ui.vertical(|ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("settings_values")
+                            .scroll_source(crate::control_safe_scroll_source())
+                            .show(ui, |ui| {
+                                ui.vertical(|ui| {
+                                    if active_category == "Audio" {
+                                        self.show_audio(ui, audio_drivers, &mut response);
+                                    } else {
+                                        self.show_definitions(ui, &active_category);
+                                    }
+                                    if active_category == "Scripts" {
+                                        ui.add_space(8.0);
+                                        self.show_script_runtime(
+                                            ui,
+                                            scripting,
+                                            script_paths,
+                                            &mut response,
+                                        );
+                                    }
+                                });
+                            });
+                    });
                 });
                 ui.separator();
                 ui.horizontal(|ui| {
