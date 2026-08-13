@@ -120,7 +120,7 @@ Verification: nextest's listed test set matches the intended cargo-test baseline
 
 Verification: GitHub Actions visibly executes an intentional Shoop test failure, subsequent validation and upload steps run, the downloaded artifact contains the valid queried trace, and the overall controlled canary reports success only because the expected failure was positively checked.
 
-CI evidence: <https://github.com/SanderVocke/shoopdaloop/actions/runs/31729877552> completed successfully. Artifact `tracy-nextest-linux-x86_64-debug-31729877552` contained exactly one 725-byte trace named `shoop_common__nextest_capture_smoke--intentional_failure_publishes_trace--attempt-1--fa17a94e3b9f6bf4.tracy`. Downloaded validation with v0.4.0 `tracy-query check`, `range`, `info`, and the `shoop.nextest_capture.smoke.failure` semantic query succeeded; no partial was present.
+CI evidence: <https://github.com/SanderVocke/shoopdaloop/actions/runs/31729877552> completed successfully. Artifact `tracy-nextest-linux-x86_64-debug-31729877552` contained exactly one 725-byte trace named `shoop_common__nextest_capture_smoke--intentional_failure_publishes_trace--attempt-1--fa17a94e3b9f6bf4.tracy`. Downloaded validation with v0.4.0 `tracy-query check`, `range`, `info`, and the `shoop.nextest_capture.smoke.failure` semantic query succeeded; no partial was present. Final-head run <https://github.com/SanderVocke/shoopdaloop/actions/runs/31731665854> also completed successfully on rerun attempt 2 and uploaded `tracy-nextest-linux-x86_64-debug-31731665854`; attempt 1's only failure was an unrelated browser self-test timeout and passed unchanged on rerun.
 
 ### Stage 7 — Final CI migration and end-to-end validation
 
@@ -132,6 +132,6 @@ CI evidence: <https://github.com/SanderVocke/shoopdaloop/actions/runs/3172987755
 - [x] Audit final dependency trees, trace artifact names/retention, documentation searches, normal application startup without tracing, embedded application capture, pass-discard behavior, failing-test save behavior, and unsupported-failure documentation.
 - [x] Remove any temporary non-ignored failure or one-off workflow code; retain only the ignored opt-in smoke fixture/canary and the standard failure upload path.
 
-CI evidence: run 31729877552 passed all eight Linux, Windows, macOS, and web debug/release jobs using the final workflow. The initial run exposed non-PIC Unix shared-library linkage and Windows canonical-path CMake issues; CI now prepares tag-pinned v0.4.0 native libraries with PIC and ordinary checkout paths before Cargo consumes them.
+CI evidence: runs 31729877552 and final-head rerun 31731665854 passed all eight Linux, Windows, macOS, and web debug/release jobs using the final workflow. The initial run exposed non-PIC Unix shared-library linkage and Windows canonical-path CMake issues; CI now prepares tag-pinned v0.4.0 native libraries with PIC and ordinary checkout paths before Cargo consumes them.
 
 Verification: all normal required CI jobs pass using nextest, the canary artifact proof still passes, `--tracing` produces a valid in-process application trace without external tools or live TCP support, passing tests publish no failure traces, an eligible failure publishes and uploads one valid trace, and all immutable acceptance criteria above are checked.
