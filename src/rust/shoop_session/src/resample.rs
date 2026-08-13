@@ -56,12 +56,6 @@ pub fn resample_session(
                     channel.preplay_frames =
                         scale_duration(channel.preplay_frames, source, target_sample_rate)?;
                 }
-                if let Some(composite) = &mut loop_.composite {
-                    for event in composite.playlists.iter_mut().flatten().flatten() {
-                        event.delay_frames =
-                            scale_duration(event.delay_frames, source, target_sample_rate)?;
-                    }
-                }
             }
         }
     }

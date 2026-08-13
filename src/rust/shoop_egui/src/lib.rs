@@ -11,6 +11,7 @@ mod fonts;
 mod global_controls;
 mod key_input;
 mod loop_widget;
+mod meter_ballistics;
 mod midi_sequence_widget;
 mod optimistic_value;
 mod piano_pane;
@@ -53,6 +54,10 @@ pub use waveform_widget::WaveformWidget;
 pub fn initialize(context: &egui::Context) {
     fonts::initialize(context);
     egui_material_icons::initialize(context);
+    context.all_styles_mut(|style| {
+        style.visuals.widgets.hovered.bg_fill = colors::HOVER_BACKGROUND;
+        style.visuals.widgets.hovered.weak_bg_fill = colors::HOVER_BACKGROUND;
+    });
 }
 
 fn control_safe_scroll_source() -> egui::scroll_area::ScrollSource {

@@ -325,7 +325,7 @@ mod tests {
                     composite: Some(CompositeDocument {
                         kind: CompositeKindDocument::Script,
                         playlists: vec![vec![vec![CompositeEventDocument {
-                            delay_frames: 240,
+                            delay: 2,
                             loop_id: 10,
                             mode: Some("playing".to_owned()),
                             n_cycles: Some(2),
@@ -601,8 +601,8 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .playlists[0][0][0]
-                .delay_frames,
-            240
+                .delay,
+            2
         );
         assert!(matches!(
             decoded.document.track_groups[0].tracks[3].topology,
@@ -806,6 +806,17 @@ mod tests {
         assert_eq!(midi.events[0].frame, 67);
         assert_eq!(midi.events[1].frame, 134);
         assert_eq!(midi.start_state, vec![vec![0xB0, 7, 100]]);
+
+        let deferred = resample_session(&deferred_feature_bundle(), 32_000).unwrap();
+        assert_eq!(
+            deferred.document.track_groups[0].tracks[2].loops[0]
+                .composite
+                .as_ref()
+                .unwrap()
+                .playlists[0][0][0]
+                .delay,
+            2
+        );
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

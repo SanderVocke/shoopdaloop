@@ -1,12 +1,14 @@
 use egui_material_icons::icons::{
-    ICON_BORDER_CLEAR, ICON_DELETE, ICON_EXCLAMATION, ICON_FIBER_MANUAL_RECORD, ICON_HEARING,
-    ICON_MENU, ICON_PLAY_ARROW, ICON_STOP, ICON_TIMER,
+    ICON_ARROW_DOWNWARD, ICON_BORDER_CLEAR, ICON_DELETE, ICON_FIBER_MANUAL_RECORD, ICON_HEARING,
+    ICON_HOURGLASS_EMPTY, ICON_MENU, ICON_PLAY_ARROW, ICON_STOP,
 };
 
 use crate::{
     colors, optimistic_value::OptimisticValue, DefaultRecordingAction, GlobalControlAction,
     GlobalControlState,
 };
+
+const CONTROL_BUTTON_SIZE: [f32; 2] = [34.0, 28.0];
 
 #[derive(Debug, Default)]
 pub struct GlobalControls {
@@ -144,13 +146,44 @@ impl GlobalControls {
             self.record_rect(TestGlobalControl::Clear, &response);
 
             ui.separator();
-            let recording_label = match state.default_recording_action {
-                DefaultRecordingAction::Record => "REC",
-                DefaultRecordingAction::Grab => "GRAB",
+            let recording_is_record =
+                state.default_recording_action == DefaultRecordingAction::Record;
+            let recording_icons = if recording_is_record {
+                [
+                    LayeredIcon {
+                        icon: ICON_ARROW_DOWNWARD,
+                        offset: egui::vec2(-4.0, 3.0),
+                        color: colors::MUTED_FOREGROUND,
+                        size: 17.0,
+                    },
+                    LayeredIcon {
+                        icon: ICON_FIBER_MANUAL_RECORD,
+                        offset: egui::vec2(4.0, -3.0),
+                        color: colors::RECORD_ACTION,
+                        size: 20.0,
+                    },
+                ]
+            } else {
+                [
+                    LayeredIcon {
+                        icon: ICON_FIBER_MANUAL_RECORD,
+                        offset: egui::vec2(4.0, -3.0),
+                        color: colors::MUTED_FOREGROUND,
+                        size: 17.0,
+                    },
+                    LayeredIcon {
+                        icon: ICON_ARROW_DOWNWARD,
+                        offset: egui::vec2(-4.0, 3.0),
+                        color: colors::RECORD_ACTION,
+                        size: 20.0,
+                    },
+                ]
             };
-            let response = ui
-                .button(recording_label)
-                .on_hover_text("Default recording action");
+            let response = layered_icon_button(
+                ui,
+                recording_icons,
+                "Default recording action: click to switch between record and grab",
+            );
             self.record_rect(TestGlobalControl::DefaultRecordingAction, &response);
             if response.clicked() {
                 let next = match state.default_recording_action {
@@ -160,20 +193,31 @@ impl GlobalControls {
                 actions.push(GlobalControlAction::SetDefaultRecordingAction(next));
             }
 
-            let play_after_text = egui::RichText::new(format!(
-                "{}{}",
-                ICON_FIBER_MANUAL_RECORD.codepoint, ICON_PLAY_ARROW.codepoint
-            ))
-            .family(ICON_FIBER_MANUAL_RECORD.font_family())
-            .size(20.0)
-            .color(if state.play_after_record {
-                colors::FOREGROUND
-            } else {
-                colors::MUTED_FOREGROUND
-            });
-            let response = ui
-                .selectable_label(state.play_after_record, play_after_text)
-                .on_hover_text("Play after recording");
+            let play_after_color = |enabled_color| {
+                if state.play_after_record {
+                    enabled_color
+                } else {
+                    colors::MUTED_FOREGROUND
+                }
+            };
+            let response = layered_icon_button(
+                ui,
+                [
+                    LayeredIcon {
+                        icon: ICON_FIBER_MANUAL_RECORD,
+                        offset: egui::vec2(-4.0, 3.0),
+                        color: play_after_color(colors::RECORD_ACTION),
+                        size: 18.0,
+                    },
+                    LayeredIcon {
+                        icon: ICON_PLAY_ARROW,
+                        offset: egui::vec2(4.0, -3.0),
+                        color: play_after_color(colors::PLAYING_STATE),
+                        size: 20.0,
+                    },
+                ],
+                "Play after recording",
+            );
             self.record_rect(TestGlobalControl::PlayAfterRecord, &response);
             if response.clicked() {
                 actions.push(GlobalControlAction::SetPlayAfterRecord(
@@ -181,33 +225,49 @@ impl GlobalControls {
                 ));
             }
 
-            let sync_icon = if state.sync {
-                ICON_TIMER
-            } else {
-                ICON_EXCLAMATION
-            };
-            let response = ui
-                .selectable_label(state.sync, sync_icon.rich_text().size(20.0))
-                .on_hover_text("Synchronized actions");
+            let response = control_button(
+                ui,
+                ICON_HOURGLASS_EMPTY
+                    .rich_text()
+                    .size(20.0)
+                    .color(if state.sync {
+                        colors::COLORED_HIGHLIGHT
+                    } else {
+                        colors::MUTED_FOREGROUND
+                    }),
+                "Synchronized actions",
+            );
             self.record_rect(TestGlobalControl::Sync, &response);
             if response.clicked() {
                 actions.push(GlobalControlAction::SetSync(!state.sync));
             }
-            let response = ui
-                .selectable_label(state.solo, egui::RichText::new("S").size(18.0))
-                .on_hover_text("Solo within track");
+            let response = control_button(
+                ui,
+                egui::RichText::new("S").size(18.0).color(if state.solo {
+                    colors::COLORED_HIGHLIGHT
+                } else {
+                    colors::MUTED_FOREGROUND
+                }),
+                if state.solo {
+                    "Play and stop others in same track(s)"
+                } else {
+                    "Allow multiple loops to play in same track(s)"
+                },
+            );
             self.record_rect(TestGlobalControl::Solo, &response);
             if response.clicked() {
                 actions.push(GlobalControlAction::SetSolo(!state.solo));
             }
-            let exclusive_input_text = egui::RichText::new(format!("{} 1", ICON_HEARING.codepoint))
-                .family(ICON_HEARING.font_family())
-                .size(18.0);
-            let response = ui
-                .selectable_label(state.auto_mute_other_track_inputs, exclusive_input_text)
-                .on_hover_text(
-                    "Automatically mute other track inputs when enabling input monitoring",
-                );
+            let input_color = if state.auto_mute_other_track_inputs {
+                colors::COLORED_HIGHLIGHT
+            } else {
+                colors::MUTED_FOREGROUND
+            };
+            let response = exclusive_input_button(
+                ui,
+                input_color,
+                "One track at a time: mute other track inputs when enabling monitoring",
+            );
             self.record_rect(TestGlobalControl::AutoMuteOtherTrackInputs, &response);
             if response.clicked() {
                 actions.push(GlobalControlAction::SetAutoMuteOtherTrackInputs(
@@ -218,18 +278,41 @@ impl GlobalControls {
             let mut cycles = self
                 .apply_n_cycles
                 .resolve(state.apply_n_cycles, self.apply_n_cycles_dragging);
-            let response = ui
-                .add(
-                    egui::DragValue::new(&mut cycles)
-                        .range(0..=i32::MAX as u32)
-                        .prefix("cycles "),
-                )
-                .on_hover_text("Recording length in sync cycles; 0 means infinite");
-            self.record_rect(TestGlobalControl::ApplyNCycles, &response);
+            let mut step_changed = false;
+            let framed = egui::Frame::new()
+                .fill(colors::CONTROL_BACKGROUND)
+                .stroke(egui::Stroke::new(1.0, colors::MUTED_FOREGROUND))
+                .corner_radius(3)
+                .inner_margin(egui::Margin::symmetric(4, 4))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.small_button("−").clicked() {
+                            cycles = cycles.saturating_sub(1);
+                            step_changed = true;
+                        }
+                        let value = ui
+                            .add(
+                                egui::DragValue::new(&mut cycles)
+                                    .range(0..=i32::MAX as u32)
+                                    .custom_formatter(cycles_text),
+                            )
+                            .on_hover_text(
+                                "Recording length in sync cycles; infinity means unlimited",
+                            );
+                        if ui.small_button("+").clicked() {
+                            cycles = cycles.saturating_add(1).min(i32::MAX as u32);
+                            step_changed = true;
+                        }
+                        value
+                    })
+                    .inner
+                });
+            let response = framed.inner;
+            self.record_rect(TestGlobalControl::ApplyNCycles, &framed.response);
             if response.drag_started() || response.dragged() {
                 self.apply_n_cycles_dragging = true;
             }
-            if response.changed() {
+            if response.changed() || step_changed {
                 self.apply_n_cycles.set(cycles);
                 actions.push(GlobalControlAction::SetApplyNCycles(cycles));
             }
@@ -309,6 +392,73 @@ impl GlobalControls {
     }
 }
 
+#[derive(Clone, Copy)]
+struct LayeredIcon {
+    icon: egui_material_icons::MaterialIcon,
+    offset: egui::Vec2,
+    color: egui::Color32,
+    size: f32,
+}
+
+fn layered_icon_button(
+    ui: &mut egui::Ui,
+    icons: [LayeredIcon; 2],
+    tooltip: &str,
+) -> egui::Response {
+    let response = ui.add_sized(CONTROL_BUTTON_SIZE, egui::Button::new(""));
+    for layer in icons {
+        ui.painter().text(
+            response.rect.center() + layer.offset,
+            egui::Align2::CENTER_CENTER,
+            layer.icon.codepoint,
+            egui::FontId::new(layer.size, layer.icon.font_family()),
+            layer.color,
+        );
+    }
+    response.on_hover_text(tooltip)
+}
+
+fn exclusive_input_button(
+    ui: &mut egui::Ui,
+    color: egui::Color32,
+    tooltip: &str,
+) -> egui::Response {
+    let response = ui.add_sized(CONTROL_BUTTON_SIZE, egui::Button::new(""));
+    let center = response.rect.center();
+    ui.painter().text(
+        center + egui::vec2(-2.0, -1.0),
+        egui::Align2::CENTER_CENTER,
+        ICON_HEARING.codepoint,
+        egui::FontId::new(20.0, ICON_HEARING.font_family()),
+        color,
+    );
+    ui.painter().text(
+        center + egui::vec2(7.0, 4.0),
+        egui::Align2::CENTER_CENTER,
+        "1",
+        egui::FontId::proportional(11.0),
+        color,
+    );
+    response.on_hover_text(tooltip)
+}
+
+fn control_button(
+    ui: &mut egui::Ui,
+    content: impl Into<egui::WidgetText>,
+    tooltip: &str,
+) -> egui::Response {
+    ui.add_sized(CONTROL_BUTTON_SIZE, egui::Button::new(content))
+        .on_hover_text(tooltip)
+}
+
+fn cycles_text(value: f64, _decimals: std::ops::RangeInclusive<usize>) -> String {
+    if value.round() == 0.0 {
+        "∞".to_owned()
+    } else {
+        format!("{value:.0}")
+    }
+}
+
 fn icon_button(
     ui: &mut egui::Ui,
     icon: egui_material_icons::MaterialIcon,
@@ -379,6 +529,41 @@ mod tests {
                 },
             ],
         )
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn zero_cycles_are_displayed_as_infinity() {
+        assert_eq!(cycles_text(0.0, 0..=0), "∞");
+        assert_eq!(cycles_text(3.0, 0..=0), "3");
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn mode_controls_share_one_hover_target_size() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = GlobalControlState::default();
+        let mut controls = GlobalControls::default();
+        frame(&context, &mut controls, &state, Vec::new());
+
+        assert_eq!(
+            controls
+                .test_rect(TestGlobalControl::ApplyNCycles)
+                .unwrap()
+                .height(),
+            CONTROL_BUTTON_SIZE[1]
+        );
+        for control in [
+            TestGlobalControl::DefaultRecordingAction,
+            TestGlobalControl::PlayAfterRecord,
+            TestGlobalControl::Sync,
+            TestGlobalControl::Solo,
+            TestGlobalControl::AutoMuteOtherTrackInputs,
+        ] {
+            assert_eq!(
+                controls.test_rect(control).unwrap().size(),
+                egui::vec2(CONTROL_BUTTON_SIZE[0], CONTROL_BUTTON_SIZE[1])
+            );
+        }
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

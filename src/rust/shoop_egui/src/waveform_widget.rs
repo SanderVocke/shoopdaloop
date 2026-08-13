@@ -205,7 +205,7 @@ impl WaveformWidget {
             painter.vline(
                 x,
                 top.min(bottom)..=top.max(bottom),
-                egui::Stroke::new(1.0, colors::AUDIO_ACTIVITY),
+                egui::Stroke::new(1.0, colors::WAVEFORM_LINE),
             );
         }
 

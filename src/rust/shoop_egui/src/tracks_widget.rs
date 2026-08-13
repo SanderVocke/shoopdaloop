@@ -1,4 +1,8 @@
-use crate::{AppIntent, TrackProcessorDescriptor, TrackState, TrackWidget};
+use std::collections::BTreeMap;
+
+use crate::{
+    AppIntent, GlobalControlState, TrackId, TrackProcessorDescriptor, TrackState, TrackWidget,
+};
 use egui_material_icons::icons::ICON_ADD;
 
 #[derive(Debug, Default)]
@@ -12,6 +16,7 @@ pub struct TracksWidgetResponse {
 #[derive(Debug, Default)]
 pub struct TracksWidget {
     track_widgets: Vec<TrackWidget>,
+    track_centers: BTreeMap<TrackId, f32>,
     #[cfg(test)]
     test_empty_prompt_shown: bool,
 }
@@ -23,6 +28,16 @@ impl TracksWidget {
         tracks: &[TrackState],
         processors: &[TrackProcessorDescriptor],
     ) -> TracksWidgetResponse {
+        self.show_with_global_controls(ui, tracks, processors, &GlobalControlState::default())
+    }
+
+    pub fn show_with_global_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        tracks: &[TrackState],
+        processors: &[TrackProcessorDescriptor],
+        global_controls: &GlobalControlState,
+    ) -> TracksWidgetResponse {
         let _span = tracing::trace_span!(
             "frontend.egui.tracks",
             track_count = tracks.len(),
@@ -31,6 +46,7 @@ impl TracksWidget {
         .entered();
         self.track_widgets
             .resize_with(tracks.len(), TrackWidget::default);
+        let mut track_centers = BTreeMap::new();
         let mut result = TracksWidgetResponse::default();
         #[cfg(test)]
         {
@@ -53,22 +69,27 @@ impl TracksWidget {
                             ui.horizontal_top(|ui| {
                                 ui.spacing_mut().item_spacing.x = 3.0;
                                 for (track, widget) in tracks.iter().zip(&mut self.track_widgets) {
-                                    ui.push_id(track.id, |ui| {
+                                    let track_response = ui.push_id(track.id, |ui| {
                                         let processor = track.fx.as_ref().and_then(|fx| {
                                             processors
                                                 .iter()
                                                 .find(|candidate| candidate.id == fx.processor_type)
                                         });
                                         let response = widget
-                                            .show_content_with_processor_min_height(
+                                            .show_content_with_processor_min_height_and_global_controls(
                                                 ui,
                                                 track,
                                                 processor,
                                                 true,
                                                 loop_height,
+                                                global_controls,
                                             );
                                         collect_response(&mut result, track, response);
                                     });
+                                    track_centers.insert(
+                                        track.id,
+                                        track_response.response.rect.center().x,
+                                    );
                                 }
                                 if tracks.is_empty() {
                                     ui.add_sized(
@@ -92,18 +113,24 @@ impl TracksWidget {
                         for (track, widget) in tracks.iter().zip(&mut self.track_widgets) {
                             ui.push_id((track.id, "controls"), |ui| {
                                 result.intents.extend(
-                                    widget.show_controls(ui, &track.controls).into_iter().map(
-                                        |action| AppIntent::Track {
+                                    widget
+                                        .show_controls_with_global_controls(
+                                            ui,
+                                            &track.controls,
+                                            global_controls,
+                                        )
+                                        .into_iter()
+                                        .map(|action| AppIntent::Track {
                                             track_id: track.id,
                                             action,
-                                        },
-                                    ),
+                                        }),
                                 );
                             });
                         }
                     });
                 });
             });
+        self.track_centers = track_centers;
         if result.add_track_requested || !result.intents.is_empty() {
             tracing::debug!(
                 target: "Frontend.Egui",
@@ -113,6 +140,13 @@ impl TracksWidget {
             );
         }
         result
+    }
+
+    pub fn track_centers(&self, track_ids: &[TrackId]) -> Vec<f32> {
+        track_ids
+            .iter()
+            .filter_map(|id| self.track_centers.get(id).copied())
+            .collect()
     }
 }
 
@@ -235,6 +269,13 @@ mod tests {
             assert_eq!(content.bottom(), controls.top());
             assert_eq!(controls.bottom(), 400.0);
         }
+        let centers = widget.track_centers(&[
+            TrackId::from_raw(1),
+            TrackId::from_raw(3),
+            TrackId::from_raw(99),
+        ]);
+        assert_eq!(centers.len(), 2);
+        assert!(centers[0] < centers[1]);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

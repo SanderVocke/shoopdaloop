@@ -1533,6 +1533,11 @@ pub enum AppIntent {
         target_loop_id: LoopId,
         source_loop_id: LoopId,
     },
+    ComposeLoopAt {
+        target_loop_id: LoopId,
+        source_loop_id: LoopId,
+        start_iteration: u64,
+    },
     KeyEvent(KeyEvent),
     AddScriptSource {
         name: String,
@@ -1753,6 +1758,7 @@ impl AppIntent {
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
+            Self::ComposeLoopAt { .. } => "loop.compose_at",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
@@ -2033,6 +2039,20 @@ mod tests {
             AppIntent::ComposeLoopSerial {
                 target_loop_id: loop_id,
                 source_loop_id,
+            }
+        );
+        let positioned = AppIntent::ComposeLoopAt {
+            target_loop_id: loop_id,
+            source_loop_id,
+            start_iteration: 3,
+        };
+        assert_eq!(positioned.kind(), "loop.compose_at");
+        assert_eq!(
+            positioned,
+            AppIntent::ComposeLoopAt {
+                target_loop_id: loop_id,
+                source_loop_id,
+                start_iteration: 3,
             }
         );
         assert_eq!(

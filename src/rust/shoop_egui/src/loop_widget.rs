@@ -1,13 +1,14 @@
 use egui_material_icons::icons::{
     ICON_ARROW_DOWNWARD, ICON_BORDER_CLEAR, ICON_EDIT_NOTE, ICON_FIBER_MANUAL_RECORD, ICON_HELP,
-    ICON_PLAY_ARROW, ICON_STAR, ICON_STOP, ICON_TIMER, ICON_VIEW_LIST,
+    ICON_HOURGLASS_EMPTY, ICON_PLAY_ARROW, ICON_STAR, ICON_STOP, ICON_VIEW_LIST,
 };
 use egui_material_icons::MaterialIcon;
 
 use crate::{
     colors, composite_loop_widget::LoopDragPayload, dial::paint_dial,
-    optimistic_value::OptimisticValue, AppIntent, CompositeKind, LoopAudioExportFormat, LoopMode,
-    LoopState, LoopWidgetAction, SelectionModifiers,
+    meter_ballistics::PeakMeterAnimation, optimistic_value::OptimisticValue, AppIntent,
+    CompositeKind, GlobalControlState, LoopAudioExportFormat, LoopMode, LoopState,
+    LoopWidgetAction, SelectionModifiers,
 };
 
 #[derive(Debug, Default)]
@@ -27,6 +28,8 @@ pub struct LoopWidget {
     play_popup_until: f64,
     record_popup_until: f64,
     balance_popup_until: f64,
+    peak_left: PeakMeterAnimation,
+    peak_right: PeakMeterAnimation,
     #[cfg(test)]
     test_play_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -43,6 +46,8 @@ pub struct LoopWidget {
     test_balance_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_convert_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_drag_preview_rect: Option<egui::Rect>,
 }
 
 fn paint_icon(
@@ -91,26 +96,148 @@ fn icon_for_state(
     }
 }
 
+fn paint_drag_preview(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    state: &LoopState,
+    size: egui::Vec2,
+    background: egui::Color32,
+    border_color: egui::Color32,
+) -> Option<egui::Rect> {
+    if !response.dragged()
+        || egui::DragAndDrop::payload::<LoopDragPayload>(ui.ctx())
+            .is_none_or(|payload| payload.loop_id != state.id)
+    {
+        return None;
+    }
+    let pointer = ui.ctx().pointer_interact_pos()?;
+    let rect = egui::Rect::from_center_size(pointer, size);
+    let layer_id = egui::LayerId::new(
+        egui::Order::Tooltip,
+        ui.id().with(("loop_drag_preview", state.id)),
+    );
+    let mut painter = ui.ctx().layer_painter(layer_id);
+    painter.set_opacity(0.62);
+    painter.rect_filled(rect, 2.0, background);
+    painter.rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(2.0, border_color),
+        egui::StrokeKind::Inside,
+    );
+    let icon_rect = egui::Rect::from_min_size(rect.min, egui::vec2(24.0, 24.0));
+    let (icon, color, fx) = icon_for_state(
+        state.mode,
+        state.empty,
+        state.composite_kind == CompositeKind::Regular,
+        state.composite_kind == CompositeKind::Script,
+    );
+    paint_icon(&painter, icon_rect.center(), icon, 21.0, color);
+    if fx {
+        painter.text(
+            icon_rect.right_bottom() - egui::vec2(1.0, 1.0),
+            egui::Align2::RIGHT_BOTTOM,
+            "FX",
+            egui::FontId::proportional(7.0),
+            colors::FOREGROUND,
+        );
+    }
+    let name_rect = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + 24.0, rect.top()),
+        egui::pos2(rect.right() - 6.0, rect.bottom()),
+    );
+    painter.with_clip_rect(name_rect).text(
+        name_rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        &state.name,
+        egui::FontId::proportional(11.0),
+        colors::FOREGROUND,
+    );
+    Some(rect)
+}
+
+fn loop_icon_button(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    id_salt: &'static str,
+    icon: MaterialIcon,
+    icon_size: f32,
+    color: egui::Color32,
+    tooltip: &str,
+) -> egui::Response {
+    let response = ui.interact(rect, ui.id().with(id_salt), egui::Sense::click());
+    paint_loop_button_background(ui, &response, rect);
+    paint_icon(ui.painter(), rect.center(), icon, icon_size, color);
+    tooltip_above(response, tooltip)
+}
+
 fn popup_icon_button(
     ui: &mut egui::Ui,
     size: egui::Vec2,
     icon: MaterialIcon,
     icon_size: f32,
     color: egui::Color32,
+    background: egui::Color32,
     tooltip: &str,
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-    let visuals = ui.style().interact(&response);
-    ui.painter()
-        .rect_filled(rect, egui::CornerRadius::same(2), visuals.bg_fill);
-    ui.painter().rect_stroke(
-        rect,
-        egui::CornerRadius::same(2),
-        visuals.bg_stroke,
-        egui::StrokeKind::Inside,
-    );
+    ui.painter().rect_filled(rect, 0.0, background);
+    paint_loop_button_background(ui, &response, rect);
     paint_icon(ui.painter(), rect.center(), icon, icon_size, color);
-    response.on_hover_text(tooltip)
+    tooltip_above(response, tooltip)
+}
+
+fn paint_loop_button_background(ui: &egui::Ui, response: &egui::Response, rect: egui::Rect) {
+    if response.hovered() || response.is_pointer_button_down_on() || response.has_focus() {
+        ui.painter().rect_filled(
+            rect.shrink2(egui::vec2(0.0, 2.0)),
+            0.0,
+            colors::LOOP_CONTROL_HOVER,
+        );
+    }
+}
+
+fn action_timing(sync: bool) -> &'static str {
+    if sync {
+        "synced"
+    } else {
+        "unsynced"
+    }
+}
+
+fn action_tooltip(
+    action: &str,
+    controls: &GlobalControlState,
+    records: bool,
+    solo: bool,
+) -> String {
+    let mut description = action.to_owned();
+    if records && controls.apply_n_cycles > 0 {
+        let cycles = controls.apply_n_cycles;
+        description.push_str(&format!(
+            " for {cycles} {}",
+            if cycles == 1 { "cycle" } else { "cycles" }
+        ));
+    }
+    if records && controls.play_after_record {
+        description.push_str(" then play");
+    }
+    if solo && controls.solo {
+        description.push_str(" and stop others in same track(s)");
+    }
+    format!("{description} ({})", action_timing(controls.sync))
+}
+
+fn tooltip_above(response: egui::Response, tooltip: &str) -> egui::Response {
+    let mut popup = egui::Tooltip::for_enabled(&response);
+    popup.popup = popup
+        .popup
+        .align(egui::RectAlign::TOP)
+        .align_alternatives(&[]);
+    popup.show(|ui| {
+        ui.label(tooltip);
+    });
+    response
 }
 
 fn peak_fraction(db: f32, minimum_db: f32) -> f32 {
@@ -161,7 +288,7 @@ impl LoopWidget {
             ui.separator();
         }
         if state.has_audio {
-            if ui.button("Save exact audio…").clicked() {
+            if ui.button("Save audio…").clicked() {
                 result.io_intents.push(AppIntent::RequestLoopAudioExport {
                     loop_id: state.id,
                     format: LoopAudioExportFormat::Exact,
@@ -218,7 +345,17 @@ impl LoopWidget {
         state: &LoopState,
         size: egui::Vec2,
     ) -> LoopWidgetResponse {
-        self.show_with_hover(ui, state, size, true)
+        self.show_with_global_controls(ui, state, size, &GlobalControlState::default())
+    }
+
+    pub fn show_with_global_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &LoopState,
+        size: egui::Vec2,
+        controls: &GlobalControlState,
+    ) -> LoopWidgetResponse {
+        self.show_with_hover(ui, state, size, true, controls)
     }
 
     pub(crate) fn show_with_hover(
@@ -227,15 +364,17 @@ impl LoopWidget {
         state: &LoopState,
         size: egui::Vec2,
         hover_allowed: bool,
+        controls: &GlobalControlState,
     ) -> LoopWidgetResponse {
         let mut result = LoopWidgetResponse::default();
         #[cfg(test)]
         {
             self.test_convert_rect = None;
+            self.test_drag_preview_rect = None;
         }
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
         response.dnd_set_drag_payload(LoopDragPayload { loop_id: state.id });
-        response.context_menu(|ui| self.show_context_menu(ui, state, &mut result));
+        let mut context_requested = response.secondary_clicked();
         let loop_visible = ui.clip_rect().intersect(rect).is_positive();
         if !loop_visible {
             self.play_popup_until = 0.0;
@@ -247,7 +386,12 @@ impl LoopWidget {
             && response.contains_pointer()
             && ui.rect_contains_pointer(rect);
         let rounding = egui::CornerRadius::same(2);
-        let background = if state.composite_kind == CompositeKind::Regular {
+        let background = if matches!(
+            state.mode,
+            LoopMode::Recording | LoopMode::RecordingDryIntoWet
+        ) {
+            colors::LOOP_RECORDING_BACKGROUND
+        } else if state.composite_kind == CompositeKind::Regular {
             colors::LOOP_REGULAR_COMPOSITE
         } else if state.composite_kind == CompositeKind::Script {
             colors::LOOP_SCRIPT_COMPOSITE
@@ -291,11 +435,19 @@ impl LoopWidget {
         let meter_color = colors::AUDIO_ACTIVITY;
         let meter_top = (rect.bottom() - 5.0).max(rect.top());
         let meter_bottom = (rect.bottom() - 2.0).max(meter_top);
+        let now = ui.input(|input| input.time);
+        let minimum_db = if state.stereo { -50.0 } else { -30.0 };
+        let peak_left = self.peak_left.update(state.peak_left_db, minimum_db, now);
+        let peak_right = self.peak_right.update(state.peak_right_db, minimum_db, now);
+        if peak_left.animating || peak_right.animating {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(16));
+        }
         if state.stereo {
             let center = rect.center().x;
             let half_width = (rect.width() - 4.0).max(0.0) / 2.0;
-            let left_width = half_width * peak_fraction(state.peak_left_db, -50.0);
-            let right_width = half_width * peak_fraction(state.peak_right_db, -50.0);
+            let left_width = half_width * peak_fraction(peak_left.db, minimum_db);
+            let right_width = half_width * peak_fraction(peak_right.db, minimum_db);
             ui.painter().rect_filled(
                 egui::Rect::from_min_max(
                     egui::pos2(center - left_width, meter_top),
@@ -314,7 +466,7 @@ impl LoopWidget {
             );
         } else {
             let meter_width =
-                (rect.width() - 4.0).max(0.0) * peak_fraction(state.peak_left_db, -30.0);
+                (rect.width() - 4.0).max(0.0) * peak_fraction(peak_left.db, minimum_db);
             ui.painter().rect_filled(
                 egui::Rect::from_min_size(
                     egui::pos2(rect.left() + 2.0, meter_top),
@@ -361,7 +513,7 @@ impl LoopWidget {
                 paint_icon(
                     ui.painter(),
                     icon_rect.center(),
-                    ICON_TIMER,
+                    ICON_HOURGLASS_EMPTY,
                     20.0,
                     colors::FOREGROUND,
                 );
@@ -430,6 +582,7 @@ impl LoopWidget {
             ui.id().with("loop_state_icon"),
             egui::Sense::click(),
         );
+        context_requested |= icon_response.secondary_clicked();
         if icon_response.double_clicked() {
             result.actions.push(LoopWidgetAction::IconDoubleClicked);
         } else if icon_response.clicked() {
@@ -446,15 +599,15 @@ impl LoopWidget {
                 egui::vec2(18.0, 18.0),
             )
         });
-        let controls_left = rect.left() + 20.0;
+        let controls_left = rect.left() + 25.0;
         let controls_right = dial_rect
             .map(|dial| dial.left() - 2.0)
             .unwrap_or(rect.right() - 2.0);
         let gap = 1.0;
-        let button_width = ((controls_right - controls_left - gap * 2.0) / 3.0).clamp(1.0, 18.0);
-        let button_height = (rect.height() - 4.0).min(22.0).max(1.0);
+        let button_width = ((controls_right - controls_left - gap * 2.0) / 3.0).clamp(1.0, 20.0);
+        let button_height = rect.height().min(26.0).max(1.0);
         let play_rect = egui::Rect::from_min_size(
-            egui::pos2(controls_left, rect.top() + 2.0),
+            egui::pos2(controls_left, rect.center().y - button_height / 2.0),
             egui::vec2(button_width, button_height),
         );
         let record_rect = play_rect.translate(egui::vec2(button_width + gap, 0.0));
@@ -479,7 +632,6 @@ impl LoopWidget {
             self.test_gain_rect = dial_rect;
             self.test_balance_rect = balance_rect;
         }
-        let now = ui.input(|input| input.time);
         let pointer = ui.input(|input| input.pointer.hover_pos());
         let non_script = state.composite_kind != CompositeKind::Script;
         let play_hovered = hovered && pointer.is_some_and(|pointer| play_rect.contains(pointer));
@@ -500,27 +652,36 @@ impl LoopWidget {
             && non_script
             && (record_hovered || now < self.record_popup_until);
         let controls_visible = hovered || show_play_popup || show_record_popup;
-        let icon_size = button_width.min(button_height) * 0.9;
+        let icon_size = button_width.min(button_height) * 0.95;
+        let play_tooltip = action_tooltip("Play", controls, false, true);
+        let record_tooltip = action_tooltip("Record", controls, true, true);
+        let stop_tooltip = action_tooltip("Stop", controls, false, false);
+        let play_dry_tooltip =
+            action_tooltip("Play dry through live effects", controls, false, true);
+        let grab_tooltip = action_tooltip("Grab always-on recording", controls, true, true);
 
         if controls_visible {
-            if ui
-                .put(
-                    play_rect,
-                    egui::Button::new(ICON_PLAY_ARROW.rich_text().size(icon_size).color(
-                        if non_script {
-                            colors::PLAY_ACTION
-                        } else {
-                            colors::FOREGROUND
-                        },
-                    )),
-                )
-                .on_hover_text("Play")
-                .clicked()
-            {
+            let play_response = loop_icon_button(
+                ui,
+                play_rect,
+                "play",
+                ICON_PLAY_ARROW,
+                icon_size,
+                if non_script {
+                    colors::PLAY_ACTION
+                } else {
+                    colors::FOREGROUND
+                },
+                &play_tooltip,
+            );
+            context_requested |= play_response.secondary_clicked();
+            if play_response.clicked() {
                 result.actions.push(LoopWidgetAction::PlayClicked);
             }
             if non_script {
-                let record_response = ui.put(record_rect, egui::Button::new(""));
+                let record_response =
+                    ui.interact(record_rect, ui.id().with("record"), egui::Sense::click());
+                paint_loop_button_background(ui, &record_response, record_rect);
                 paint_icon(
                     ui.painter(),
                     record_rect.center(),
@@ -540,23 +701,23 @@ impl LoopWidget {
                         colors::PLAY_ACTION,
                     );
                 }
-                if record_response.on_hover_text("Record").clicked() {
+                let record_response = tooltip_above(record_response, &record_tooltip);
+                context_requested |= record_response.secondary_clicked();
+                if record_response.clicked() {
                     result.actions.push(LoopWidgetAction::RecordClicked);
                 }
             }
-            if ui
-                .put(
-                    stop_rect,
-                    egui::Button::new(
-                        ICON_STOP
-                            .rich_text()
-                            .size(icon_size)
-                            .color(colors::FOREGROUND),
-                    ),
-                )
-                .on_hover_text("Stop")
-                .clicked()
-            {
+            let stop_response = loop_icon_button(
+                ui,
+                stop_rect,
+                "stop",
+                ICON_STOP,
+                icon_size,
+                colors::FOREGROUND,
+                &stop_tooltip,
+            );
+            context_requested |= stop_response.secondary_clicked();
+            if stop_response.clicked() {
                 result.actions.push(LoopWidgetAction::StopClicked);
             }
         } else {
@@ -589,7 +750,8 @@ impl LoopWidget {
                         ICON_PLAY_ARROW,
                         icon_size,
                         colors::DRY_THROUGH_WET,
-                        "Play dry through live effects",
+                        background,
+                        &play_dry_tooltip,
                     );
                     #[cfg(test)]
                     {
@@ -598,9 +760,18 @@ impl LoopWidget {
                     if response.clicked() {
                         result.actions.push(LoopWidgetAction::PlayDryClicked);
                     }
-                    response.contains_pointer()
+                    let contains_pointer = response.contains_pointer();
+                    let secondary_clicked = response.secondary_clicked()
+                        || (contains_pointer
+                            && ui.input(|input| {
+                                input
+                                    .pointer
+                                    .button_released(egui::PointerButton::Secondary)
+                            }));
+                    (contains_pointer, secondary_clicked)
                 });
-            if hover_allowed && popup.inner {
+            context_requested |= popup.inner.1;
+            if hover_allowed && popup.inner.0 {
                 self.play_popup_until = now + 0.08;
             }
         }
@@ -617,7 +788,8 @@ impl LoopWidget {
                         ICON_ARROW_DOWNWARD,
                         icon_size,
                         colors::RECORD_ACTION,
-                        "Grab always-on recording",
+                        background,
+                        &grab_tooltip,
                     );
                     if state.play_after_record {
                         paint_icon(
@@ -640,14 +812,25 @@ impl LoopWidget {
                         ICON_FIBER_MANUAL_RECORD,
                         icon_size,
                         colors::DRY_THROUGH_WET,
-                        "Re-record dry through live effects",
+                        background,
+                        "Re-record dry through live effects for one loop cycle",
                     );
                     if rerecord.clicked() {
                         result.actions.push(LoopWidgetAction::RerecordClicked);
                     }
-                    grab.contains_pointer() || rerecord.contains_pointer()
+                    let contains_pointer = grab.contains_pointer() || rerecord.contains_pointer();
+                    let secondary_clicked = grab.secondary_clicked()
+                        || rerecord.secondary_clicked()
+                        || (contains_pointer
+                            && ui.input(|input| {
+                                input
+                                    .pointer
+                                    .button_released(egui::PointerButton::Secondary)
+                            }));
+                    (contains_pointer, secondary_clicked)
                 });
-            if hover_allowed && popup.inner {
+            context_requested |= popup.inner.1;
+            if hover_allowed && popup.inner.0 {
                 self.record_popup_until = now + 0.08;
             }
         }
@@ -658,6 +841,7 @@ impl LoopWidget {
                 ui.id().with("loop_gain"),
                 egui::Sense::click_and_drag(),
             );
+            context_requested |= dial_response.secondary_clicked();
             let displayed_gain = self
                 .gain
                 .resolve(state.gain, self.gain_drag_start.is_some());
@@ -732,16 +916,41 @@ impl LoopWidget {
                                 self.balance_drag_start = None;
                             }
                             paint_dial(ui, &response, allocated, (balance + 1.0) / 2.0, "B");
-                            response
-                                .on_hover_text("Loop stereo balance")
-                                .contains_pointer()
+                            let contains_pointer = response.contains_pointer();
+                            let secondary_clicked = response.secondary_clicked()
+                                || (contains_pointer
+                                    && ui.input(|input| {
+                                        input
+                                            .pointer
+                                            .button_released(egui::PointerButton::Secondary)
+                                    }));
+                            (
+                                response
+                                    .on_hover_text("Loop stereo balance")
+                                    .contains_pointer(),
+                                secondary_clicked,
+                            )
                         });
-                    if popup.inner {
+                    context_requested |= popup.inner.1;
+                    if popup.inner.0 {
                         self.balance_popup_until = now + 0.08;
                     }
                 }
             }
         }
+        egui::Popup::context_menu(&response)
+            .open_memory(context_requested.then_some(egui::SetOpenCommand::Bool(true)))
+            .show(|ui| self.show_context_menu(ui, state, &mut result));
+
+        let drag_preview_rect =
+            paint_drag_preview(ui, &response, state, size, background, border_color);
+        #[cfg(test)]
+        {
+            self.test_drag_preview_rect = drag_preview_rect;
+        }
+        #[cfg(not(test))]
+        let _ = drag_preview_rect;
+
         result.hover_active = hover_allowed
             && loop_visible
             && (controls_visible
@@ -867,6 +1076,45 @@ mod tests {
         )
     }
 
+    fn secondary_click(
+        context: &egui::Context,
+        widget: &mut LoopWidget,
+        state: &LoopState,
+        position: egui::Pos2,
+        time: f64,
+    ) -> LoopWidgetResponse {
+        let _ = frame(
+            context,
+            widget,
+            state,
+            time,
+            vec![
+                pointer(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Secondary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame(
+            context,
+            widget,
+            state,
+            time + 0.01,
+            vec![
+                pointer(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Secondary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        )
+    }
+
     fn context_menu_frame(
         context: &egui::Context,
         widget: &mut LoopWidget,
@@ -898,6 +1146,63 @@ mod tests {
             balance: 0.5,
             ..Default::default()
         }
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn action_tooltips_describe_active_global_behavior() {
+        let mut controls = GlobalControlState {
+            sync: true,
+            play_after_record: true,
+            solo: false,
+            apply_n_cycles: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            action_tooltip("Record", &controls, true, true),
+            "Record then play (synced)"
+        );
+        assert_eq!(
+            action_tooltip("Stop", &controls, false, false),
+            "Stop (synced)"
+        );
+
+        controls.sync = false;
+        controls.play_after_record = false;
+        assert_eq!(
+            action_tooltip("Record", &controls, true, true),
+            "Record (unsynced)"
+        );
+
+        controls.solo = true;
+        controls.apply_n_cycles = 2;
+        assert_eq!(
+            action_tooltip("Record", &controls, true, true),
+            "Record for 2 cycles and stop others in same track(s) (unsynced)"
+        );
+        assert_eq!(
+            action_tooltip("Play", &controls, false, true),
+            "Play and stop others in same track(s) (unsynced)"
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn action_buttons_use_the_full_row_height_without_covering_the_state_icon() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = state();
+        let mut widget = LoopWidget::default();
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.0,
+            vec![pointer(egui::pos2(100.0, 13.0))],
+        );
+
+        let play = widget.test_play_rect.unwrap();
+        assert!(play.left() >= 24.0);
+        assert_eq!(play.y_range(), 0.0..=26.0);
+        assert!(widget.test_record_rect.unwrap().left() > play.right());
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
@@ -969,6 +1274,56 @@ mod tests {
             vec![pointer(record_popup.center())],
         );
         assert!(widget.record_popup_until > 2.02);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn context_menu_opens_from_state_actions_dial_and_dropped_controls() {
+        for target in [
+            "state", "play", "record", "stop", "dial", "dropped", "balance",
+        ] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            let state = state();
+            let mut widget = LoopWidget::default();
+            let _ = frame(
+                &context,
+                &mut widget,
+                &state,
+                1.0,
+                vec![pointer(egui::pos2(100.0, 13.0))],
+            );
+            let position = match target {
+                "state" => egui::pos2(10.0, 13.0),
+                "play" => widget.test_play_rect.unwrap().center(),
+                "record" => widget.test_record_rect.unwrap().center(),
+                "stop" => widget
+                    .test_record_rect
+                    .unwrap()
+                    .translate(egui::vec2(
+                        widget.test_record_rect.unwrap().width() + 1.0,
+                        0.0,
+                    ))
+                    .center(),
+                "dial" => widget.test_gain_rect.unwrap().center(),
+                "dropped" => {
+                    let record = widget.test_record_rect.unwrap().center();
+                    let _ = frame(&context, &mut widget, &state, 1.05, vec![pointer(record)]);
+                    widget.test_record_popup_rect.unwrap().center_top()
+                        + egui::vec2(0.0, widget.test_record_rect.unwrap().height() / 2.0)
+                }
+                "balance" => {
+                    let gain = widget.test_gain_rect.unwrap().center();
+                    let _ = frame(&context, &mut widget, &state, 1.05, vec![pointer(gain)]);
+                    widget.test_balance_rect.unwrap().center()
+                }
+                _ => unreachable!(),
+            };
+            let _ = secondary_click(&context, &mut widget, &state, position, 1.1);
+            assert!(
+                widget.test_convert_rect.is_some(),
+                "context menu did not open from {target}"
+            );
+        }
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
@@ -1056,6 +1411,10 @@ mod tests {
         assert_eq!(
             egui::DragAndDrop::payload::<LoopDragPayload>(&context).as_deref(),
             Some(&LoopDragPayload { loop_id: state.id })
+        );
+        assert_eq!(
+            widget.test_drag_preview_rect.unwrap().center(),
+            start + egui::vec2(30.0, 20.0)
         );
         let _ = frame(
             &context,

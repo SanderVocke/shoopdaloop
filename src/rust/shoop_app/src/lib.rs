@@ -663,7 +663,7 @@ fn composite_with_appended_sources(
     }
     let playlist = &mut composite.playlists[0];
     let events = add.iter().map(|source| CompositeEventDocument {
-        delay_frames: 0,
+        delay: 0,
         loop_id: source.raw(),
         mode: None,
         n_cycles: None,
@@ -677,6 +677,25 @@ fn composite_with_appended_sources(
     } else {
         playlist.extend(events.map(|event| vec![event]));
     }
+    composite
+}
+
+fn composite_with_source_at(
+    existing: &CompositeDocument,
+    source: LoopId,
+    start_iteration: u64,
+) -> CompositeDocument {
+    let mut composite = existing.clone();
+    composite.kind = CompositeKindDocument::Regular;
+    for event in composite.playlists.iter_mut().flatten().flatten() {
+        event.mode = None;
+    }
+    composite.playlists.push(vec![vec![CompositeEventDocument {
+        delay: start_iteration,
+        loop_id: source.raw(),
+        mode: None,
+        n_cycles: None,
+    }]]);
     composite
 }
 
@@ -999,6 +1018,11 @@ impl ApplicationModel {
                 target_loop_id,
                 source_loop_id,
             } => self.compose_loop_serial(backend, target_loop_id, source_loop_id),
+            AppIntent::ComposeLoopAt {
+                target_loop_id,
+                source_loop_id,
+                start_iteration,
+            } => self.compose_loop_at(backend, target_loop_id, source_loop_id, start_iteration),
             AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
             AppIntent::AddScriptSource {
                 name,
@@ -3748,7 +3772,6 @@ impl ApplicationModel {
         let Some(sync_source) = self.sync_backend_loop() else {
             return Ok(None);
         };
-        let sync_length = u64::from(self.sync_length());
         let timelines = composite
             .playlists
             .iter()
@@ -3770,15 +3793,9 @@ impl ApplicationModel {
                                     }
                                     None => return Ok(None),
                                 };
-                                let delay = if event.delay_frames == 0 {
-                                    0
-                                } else if sync_length > 0 && event.delay_frames % sync_length == 0 {
-                                    i64::try_from(event.delay_frames / sync_length).map_err(
-                                        |_| "composite delay exceeds engine range".to_owned(),
-                                    )?
-                                } else {
-                                    return Ok(None);
-                                };
+                                let delay = i64::try_from(event.delay).map_err(|_| {
+                                    "composite delay exceeds engine range".to_owned()
+                                })?;
                                 let mode = match event.mode.as_deref() {
                                     None => None,
                                     Some("stopped") => Some(BackendLoopMode::Stopped),
@@ -3908,6 +3925,68 @@ impl ApplicationModel {
                 parallel: false,
             },
         )
+    }
+
+    fn compose_loop_at(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        source: LoopId,
+        start_iteration: u64,
+    ) -> Result<(), String> {
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        let existing = target_model
+            .composite
+            .as_ref()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        if !self.loops.contains_key(&source) {
+            return Err(format!("stale or unknown composition source {source}"));
+        }
+        if source == target || self.composite_references(source, target, &mut BTreeSet::new()) {
+            return Err(format!(
+                "adding loop {source} to composite {target} would create a cycle"
+            ));
+        }
+        if !backend.supports_composite_loops() {
+            return Err("positioned composite schedules require backend support".to_owned());
+        }
+
+        let composite = composite_with_source_at(existing, source, start_iteration);
+        let previous_backend_composite = target_model.backend_composite;
+        let config = self.backend_composite_config(&composite)?.ok_or_else(|| {
+            "positioned composite schedule is not backend-configurable".to_owned()
+        })?;
+        let backend_composite = match previous_backend_composite {
+            Some(id) => {
+                backend
+                    .configure_composite_loop(id, &config)
+                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                id
+            }
+            None => self
+                .create_and_configure_backend_composite(backend, &composite)?
+                .ok_or_else(|| "could not create positioned composite schedule".to_owned())?,
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let mut sections = target_model.script_composition.clone();
+        sections.push(vec![source]);
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.script_composition = sections;
+        target_model.length = length;
+        target_model.state.empty = false;
+        target_model.state.composite_kind = shoop_app_api::CompositeKind::Regular;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = Some(backend_composite);
+        target_model.backend_composite_signature = signature;
+        Ok(())
     }
 
     fn composite_references(
@@ -4673,16 +4752,8 @@ impl ApplicationModel {
             controls.output_gain_db = backend_state.output_gain_db;
             controls.output_balance = backend_state.output_balance;
             controls.output_muted = backend_state.output_muted;
-            controls.output_peak_left_db = backend_state
-                .output_peaks
-                .first()
-                .copied()
-                .unwrap_or(-200.0);
-            controls.output_peak_right_db = backend_state
-                .output_peaks
-                .get(1)
-                .copied()
-                .unwrap_or(controls.output_peak_left_db);
+            (controls.output_peak_left_db, controls.output_peak_right_db) =
+                display_peaks(&backend_state.output_peaks, controls.output_stereo);
             controls.output_midi_activity = backend_state.output_midi_activity;
             controls.has_input = input_audio_channels > 0 || input_midi;
             controls.has_input_audio = input_audio_channels > 0;
@@ -4690,13 +4761,8 @@ impl ApplicationModel {
             controls.input_gain_db = backend_state.input_gain_db;
             controls.input_balance = backend_state.input_balance;
             controls.input_monitoring = backend_state.input_monitoring;
-            controls.input_peak_left_db =
-                backend_state.input_peaks.first().copied().unwrap_or(-200.0);
-            controls.input_peak_right_db = backend_state
-                .input_peaks
-                .get(1)
-                .copied()
-                .unwrap_or(controls.input_peak_left_db);
+            (controls.input_peak_left_db, controls.input_peak_right_db) =
+                display_peaks(&backend_state.input_peaks, controls.input_stereo);
             controls.input_midi_activity = backend_state.input_midi_activity;
             controls.latest_input_midi_message =
                 backend_state.latest_input_midi_message.map(|message| {
@@ -4759,13 +4825,19 @@ impl ApplicationModel {
             }
             model.state.gain = backend_state.gain;
             model.state.balance = backend_state.balance;
-            model.state.peak_left_db = backend_state.audio_peaks.first().copied().unwrap_or(-200.0);
-            model.state.peak_right_db = backend_state
-                .audio_peaks
-                .get(1)
-                .copied()
-                .unwrap_or(model.state.peak_left_db);
+            (model.state.peak_left_db, model.state.peak_right_db) =
+                display_peaks(&backend_state.audio_peaks, model.state.stereo);
             model.state.midi_activity = backend_state.midi_activity;
+        }
+        for track in &mut self.tracks {
+            track.controls.output_midi_activity = combined_output_midi_activity(
+                track.controls.output_midi_activity,
+                track.loops.iter().filter_map(|loop_id| {
+                    self.loops
+                        .get(loop_id)
+                        .map(|loop_| loop_.state.midi_activity)
+                }),
+            );
         }
         let app_loop_by_backend = self
             .loops
@@ -5970,7 +6042,7 @@ impl ApplicationModel {
     }
 
     fn composite_details_snapshot(&self, composite: &CompositeDocument) -> CompositeDetailsState {
-        let cycle_length_frames = u64::from(self.sync_length());
+        let cycle_length_frames = u64::from(self.sync_length()).max(1);
         let tracks = self
             .tracks
             .iter()
@@ -6011,10 +6083,10 @@ impl ApplicationModel {
                             cycle.saturating_mul(u64::from(cycles))
                         })
                         .unwrap_or(natural_duration);
-                    let start_frame = section_start.saturating_add(event.delay_frames);
+                    let delay_frames = event.delay.saturating_mul(cycle_length_frames);
+                    let start_frame = section_start.saturating_add(delay_frames);
                     let end_frame = start_frame.saturating_add(duration);
-                    section_duration =
-                        section_duration.max(event.delay_frames.saturating_add(duration));
+                    section_duration = section_duration.max(delay_frames.saturating_add(duration));
                     timeline_length_frames = timeline_length_frames.max(end_frame);
                     events.push(CompositeEventDetailsState {
                         loop_id: source.id,
@@ -7269,6 +7341,24 @@ fn backend_loop_mode(mode: LoopMode) -> BackendLoopMode {
     }
 }
 
+fn combined_output_midi_activity(
+    port_activity: bool,
+    loop_activity: impl IntoIterator<Item = bool>,
+) -> bool {
+    port_activity || loop_activity.into_iter().any(|active| active)
+}
+
+fn display_peaks(peaks: &[f32], stereo: bool) -> (f32, f32) {
+    if stereo {
+        let left = peaks.first().copied().unwrap_or(-200.0);
+        let right = peaks.get(1).copied().unwrap_or(left);
+        (left, right)
+    } else {
+        let peak = peaks.iter().copied().fold(-200.0, f32::max);
+        (peak, peak)
+    }
+}
+
 fn app_loop_mode(mode: BackendLoopMode) -> LoopMode {
     match mode {
         BackendLoopMode::Unknown => LoopMode::Unknown,
@@ -7289,6 +7379,20 @@ mod tests {
     use shoop_backend::{BackendPortDataType, BackendPortDirection, EngineBackend, FakeBackend};
 
     use super::*;
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn track_output_midi_activity_includes_port_and_loop_playback() {
+        assert!(combined_output_midi_activity(false, [false, true]));
+        assert!(combined_output_midi_activity(true, [false, false]));
+        assert!(!combined_output_midi_activity(false, [false, false]));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn display_peaks_preserves_stereo_and_uses_the_loudest_other_channel_count() {
+        assert_eq!(display_peaks(&[-12.0, -6.0], true), (-12.0, -6.0));
+        assert_eq!(display_peaks(&[-18.0, -3.0, -9.0], false), (-3.0, -3.0));
+        assert_eq!(display_peaks(&[], false), (-200.0, -200.0));
+    }
 
     fn wait_for(
         handle: &ApplicationHandle,
@@ -9117,27 +9221,27 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 vec![
                     vec![
                         CompositeEventDocument {
-                            delay_frames: 10,
+                            delay: 1,
                             loop_id: rhythm_a.raw(),
                             mode: Some("playing".to_owned()),
                             n_cycles: None,
                         },
                         CompositeEventDocument {
-                            delay_frames: 20,
+                            delay: 2,
                             loop_id: rhythm_b.raw(),
                             mode: Some("recording".to_owned()),
                             n_cycles: Some(2),
                         },
                     ],
                     vec![CompositeEventDocument {
-                        delay_frames: 5,
+                        delay: 1,
                         loop_id: melody.raw(),
                         mode: Some("playing_dry_through_wet".to_owned()),
                         n_cycles: None,
                     }],
                 ],
                 vec![vec![CompositeEventDocument {
-                    delay_frames: 30,
+                    delay: 3,
                     loop_id: rhythm_b.raw(),
                     mode: Some("playing".to_owned()),
                     n_cycles: None,
@@ -9182,13 +9286,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 ))
                 .collect::<Vec<_>>(),
             [
-                (rhythm_a, 10, 110, 0, 0),
-                (rhythm_b, 20, 120, 0, 0),
-                (melody, 125, 225, 0, 1),
-                (rhythm_b, 30, 80, 1, 0),
+                (rhythm_a, 50, 150, 0, 0),
+                (rhythm_b, 100, 200, 0, 0),
+                (melody, 250, 350, 0, 1),
+                (rhythm_b, 150, 200, 1, 0),
             ]
         );
-        assert_eq!(details.timeline_length_frames, 225);
+        assert_eq!(details.timeline_length_frames, 350);
         assert_eq!(details.events[1].forced_n_cycles, Some(2));
         assert_eq!(details.events[1].mode.as_deref(), Some("recording"));
 
@@ -9220,8 +9324,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let updated = model.loops[&target].composite.as_ref().unwrap();
         assert_eq!(updated.kind, CompositeKindDocument::Regular);
         assert_eq!(updated.playlists.len(), 2);
-        assert_eq!(updated.playlists[0][0][0].delay_frames, 10);
-        assert_eq!(updated.playlists[1][0][0].delay_frames, 30);
+        assert_eq!(updated.playlists[0][0][0].delay, 1);
+        assert_eq!(updated.playlists[1][0][0].delay, 3);
         assert_eq!(
             updated.playlists[0].last().unwrap()[0].loop_id,
             melody.raw()
@@ -9332,7 +9436,41 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             composed.composite.as_ref().unwrap().playlists[0][0][0].loop_id,
             source.raw()
         );
-        let before = composed.composite.clone();
+
+        backend.enable_composite_loops();
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 100;
+        model.loops.get_mut(&source).unwrap().length = 100;
+        backend
+            .set_loop_length(model.loops[&sync].backend_id, 100)
+            .unwrap();
+        backend
+            .set_loop_length(model.loops[&source].backend_id, 100)
+            .unwrap();
+        model
+            .compose_loop_at(&mut backend, target, source, 3)
+            .unwrap();
+        let positioned = &model.loops[&target];
+        assert_eq!(positioned.composite.as_ref().unwrap().playlists.len(), 2);
+        assert_eq!(
+            positioned.composite.as_ref().unwrap().playlists[1][0][0].delay,
+            3
+        );
+        assert_eq!(positioned.length, 400);
+        assert!(positioned.backend_composite.is_some());
+        assert_eq!(
+            model
+                .details_snapshot()
+                .unwrap()
+                .composite
+                .unwrap()
+                .events
+                .iter()
+                .map(|event| event.start_frame)
+                .collect::<Vec<_>>(),
+            [0, 300]
+        );
+        let before = positioned.composite.clone();
         assert!(model
             .compose_loop_serial(&mut backend, target, target)
             .unwrap_err()
@@ -9346,7 +9484,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
             kind: CompositeKindDocument::Regular,
             playlists: vec![vec![vec![CompositeEventDocument {
-                delay_frames: 0,
+                delay: 0,
                 loop_id: target.raw(),
                 mode: None,
                 n_cycles: None,
@@ -9446,20 +9584,20 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     playlists: vec![
                         vec![
                             vec![CompositeEventDocument {
-                                delay_frames: 25,
+                                delay: 1,
                                 loop_id: source_a,
                                 mode: Some("recording".to_owned()),
                                 n_cycles: Some(3),
                             }],
                             vec![CompositeEventDocument {
-                                delay_frames: 10,
+                                delay: 2,
                                 loop_id: source_b,
                                 mode: Some("playing".to_owned()),
                                 n_cycles: None,
                             }],
                         ],
                         vec![vec![CompositeEventDocument {
-                            delay_frames: 75,
+                            delay: 3,
                             loop_id: source_b,
                             mode: Some("playing_dry_through_wet".to_owned()),
                             n_cycles: Some(2),
@@ -9489,7 +9627,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 let details = loaded.details.as_ref().unwrap().composite.as_ref().unwrap();
                 assert_eq!(details.kind, shoop_app_api::CompositeKind::Script);
                 assert_eq!(details.events.len(), 3);
-                assert_eq!(details.events[0].start_frame, 25);
+                assert_eq!(details.events[0].start_frame, 1);
                 assert_eq!(details.events[0].mode.as_deref(), Some("recording"));
                 assert_eq!(details.events[0].forced_n_cycles, Some(3));
                 assert_eq!(details.events[2].playlist_index, 1);
