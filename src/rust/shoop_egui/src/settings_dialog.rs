@@ -191,33 +191,54 @@ impl SettingsDialog {
                 }
 
                 let active_category = self.active_category.clone().unwrap_or_default();
-                ui.horizontal_top(|ui| {
-                    self.show_category_tabs(ui);
-                    ui.separator();
-                    ui.vertical(|ui| {
-                        egui::ScrollArea::vertical()
-                            .id_salt("settings_values")
-                            .scroll_source(crate::control_safe_scroll_source())
-                            .show(ui, |ui| {
-                                ui.vertical(|ui| {
-                                    if active_category == "Audio" {
-                                        self.show_audio(ui, audio_drivers, &mut response);
-                                    } else {
-                                        self.show_definitions(ui, &active_category);
-                                    }
-                                    if active_category == "Scripts" {
-                                        ui.add_space(8.0);
-                                        self.show_script_runtime(
-                                            ui,
-                                            scripting,
-                                            script_paths,
-                                            &mut response,
-                                        );
-                                    }
-                                });
-                            });
-                    });
-                });
+                let footer_height = 32.0;
+                let body_size = egui::vec2(
+                    ui.available_width(),
+                    (ui.available_height() - footer_height).max(80.0),
+                );
+                ui.allocate_ui_with_layout(
+                    body_size,
+                    egui::Layout::left_to_right(egui::Align::Min),
+                    |ui| {
+                        let tabs_size = egui::vec2(110.0, ui.available_height());
+                        ui.allocate_ui_with_layout(
+                            tabs_size,
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| self.show_category_tabs(ui),
+                        );
+                        ui.separator();
+                        let content_size = ui.available_size();
+                        ui.allocate_ui_with_layout(
+                            content_size,
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("settings_values")
+                                    .auto_shrink([false, false])
+                                    .scroll_source(crate::control_safe_scroll_source())
+                                    .show(ui, |ui| {
+                                        ui.set_min_width(ui.available_width());
+                                        ui.vertical(|ui| {
+                                            if active_category == "Audio" {
+                                                self.show_audio(ui, audio_drivers, &mut response);
+                                            } else {
+                                                self.show_definitions(ui, &active_category);
+                                            }
+                                            if active_category == "Scripts" {
+                                                ui.add_space(8.0);
+                                                self.show_script_runtime(
+                                                    ui,
+                                                    scripting,
+                                                    script_paths,
+                                                    &mut response,
+                                                );
+                                            }
+                                        });
+                                    });
+                            },
+                        );
+                    },
+                );
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Reset all").clicked() {
