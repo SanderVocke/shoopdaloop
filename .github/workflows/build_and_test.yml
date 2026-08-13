@@ -126,6 +126,17 @@ jobs:
           cache-on-failure: "true"
           cache-bin: ${{ matrix.target == 'web' }}
 
+      - name: Restore embedded Tracy native cache
+        if: env.ACT != 'true'
+        id: tracy-native-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .tracy-extensions
+            .tracy-native
+          # Increment r1 when the native CMake configuration changes.
+          key: tracy-native-v0.4.0-r1-${{ matrix.os }}-${{ runner.arch }}
+
       - name: Check local act prerequisites
         if: env.ACT == 'true'
         run: |
@@ -172,36 +183,60 @@ jobs:
         if: matrix.target != 'windows'
         shell: bash
         run: |
-          git clone --depth 1 --branch v0.4.0 https://github.com/SanderVocke/tracy-extensions.git .tracy-extensions
-          cmake -S .tracy-extensions -B .tracy-native \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DTRACY_QUERY_FULLY_STATIC=OFF \
-            -DTRACY_NATIVE_ON_DEMAND=ON \
-            -DTRACY_NATIVE_MANUAL_LIFETIME=ON \
-            -DTRACY_NATIVE_DELAYED_INIT=ON \
-            -DTRACY_NATIVE_TIMER_FALLBACK=ON
-          cmake --build .tracy-native --config Release \
-            --target tracy_embedded_capture_native --parallel 2
+          if [ "${{ steps.tracy-native-cache.outputs.cache-hit }}" != "true" ]; then
+            git clone --depth 1 --branch v0.4.0 https://github.com/SanderVocke/tracy-extensions.git .tracy-extensions
+            cmake -S .tracy-extensions -B .tracy-native \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+              -DTRACY_QUERY_FULLY_STATIC=OFF \
+              -DTRACY_NATIVE_ON_DEMAND=ON \
+              -DTRACY_NATIVE_MANUAL_LIFETIME=ON \
+              -DTRACY_NATIVE_DELAYED_INIT=ON \
+              -DTRACY_NATIVE_TIMER_FALLBACK=ON
+            cmake --build .tracy-native --config Release \
+              --target tracy_embedded_capture_native --parallel 2
+          fi
+          test -f .tracy-native/tracy-embedded-capture/libtracy_embedded_capture_native.a
+          test -f .tracy-native/_deps/tracy_capstone-build/libcapstone.a
+          test -f .tracy-native/_deps/tracy_zstd-build/lib/libzstd.a
           echo "TRACY_QUERY_CMAKE_BUILD_DIR=$PWD/.tracy-native" >> "$GITHUB_ENV"
 
       - name: Prepare embedded Tracy native library on Windows
         if: matrix.target == 'windows'
         shell: pwsh
         run: |
-          git clone --depth 1 --branch v0.4.0 https://github.com/SanderVocke/tracy-extensions.git .tracy-extensions
-          cmake -S .tracy-extensions -B .tracy-native `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON `
-            -DTRACY_QUERY_FULLY_STATIC=OFF `
-            -DTRACY_QUERY_STATIC_MSVC_RUNTIME=OFF `
-            -DTRACY_NATIVE_ON_DEMAND=ON `
-            -DTRACY_NATIVE_MANUAL_LIFETIME=ON `
-            -DTRACY_NATIVE_DELAYED_INIT=ON `
-            -DTRACY_NATIVE_TIMER_FALLBACK=ON
-          cmake --build .tracy-native --config Release `
-            --target tracy_embedded_capture_native --parallel 2
+          if ('${{ steps.tracy-native-cache.outputs.cache-hit }}' -ne 'true') {
+            git clone --depth 1 --branch v0.4.0 https://github.com/SanderVocke/tracy-extensions.git .tracy-extensions
+            cmake -S .tracy-extensions -B .tracy-native `
+              -DCMAKE_BUILD_TYPE=Release `
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON `
+              -DTRACY_QUERY_FULLY_STATIC=OFF `
+              -DTRACY_QUERY_STATIC_MSVC_RUNTIME=OFF `
+              -DTRACY_NATIVE_ON_DEMAND=ON `
+              -DTRACY_NATIVE_MANUAL_LIFETIME=ON `
+              -DTRACY_NATIVE_DELAYED_INIT=ON `
+              -DTRACY_NATIVE_TIMER_FALLBACK=ON
+            cmake --build .tracy-native --config Release `
+              --target tracy_embedded_capture_native --parallel 2
+          }
+          $libraries = @(
+            '.tracy-native\tracy-embedded-capture\Release\tracy_embedded_capture_native.lib',
+            '.tracy-native\_deps\tracy_capstone-build\Release\capstone.lib',
+            '.tracy-native\_deps\tracy_zstd-build\lib\Release\zstd_static.lib'
+          )
+          foreach ($library in $libraries) {
+            if (-not (Test-Path $library -PathType Leaf)) { throw "Missing cached Tracy library: $library" }
+          }
           "TRACY_QUERY_CMAKE_BUILD_DIR=$PWD\.tracy-native" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Save embedded Tracy native cache
+        if: env.ACT != 'true' && steps.tracy-native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .tracy-extensions
+            .tracy-native
+          key: ${{ steps.tracy-native-cache.outputs.cache-primary-key }}
 
       - name: Build pinned Linux Carla runtime
         if: matrix.target == 'linux'
