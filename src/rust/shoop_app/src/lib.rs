@@ -4673,16 +4673,8 @@ impl ApplicationModel {
             controls.output_gain_db = backend_state.output_gain_db;
             controls.output_balance = backend_state.output_balance;
             controls.output_muted = backend_state.output_muted;
-            controls.output_peak_left_db = backend_state
-                .output_peaks
-                .first()
-                .copied()
-                .unwrap_or(-200.0);
-            controls.output_peak_right_db = backend_state
-                .output_peaks
-                .get(1)
-                .copied()
-                .unwrap_or(controls.output_peak_left_db);
+            (controls.output_peak_left_db, controls.output_peak_right_db) =
+                display_peaks(&backend_state.output_peaks, controls.output_stereo);
             controls.output_midi_activity = backend_state.output_midi_activity;
             controls.has_input = input_audio_channels > 0 || input_midi;
             controls.has_input_audio = input_audio_channels > 0;
@@ -4690,13 +4682,8 @@ impl ApplicationModel {
             controls.input_gain_db = backend_state.input_gain_db;
             controls.input_balance = backend_state.input_balance;
             controls.input_monitoring = backend_state.input_monitoring;
-            controls.input_peak_left_db =
-                backend_state.input_peaks.first().copied().unwrap_or(-200.0);
-            controls.input_peak_right_db = backend_state
-                .input_peaks
-                .get(1)
-                .copied()
-                .unwrap_or(controls.input_peak_left_db);
+            (controls.input_peak_left_db, controls.input_peak_right_db) =
+                display_peaks(&backend_state.input_peaks, controls.input_stereo);
             controls.input_midi_activity = backend_state.input_midi_activity;
             controls.latest_input_midi_message =
                 backend_state.latest_input_midi_message.map(|message| {
@@ -4759,13 +4746,19 @@ impl ApplicationModel {
             }
             model.state.gain = backend_state.gain;
             model.state.balance = backend_state.balance;
-            model.state.peak_left_db = backend_state.audio_peaks.first().copied().unwrap_or(-200.0);
-            model.state.peak_right_db = backend_state
-                .audio_peaks
-                .get(1)
-                .copied()
-                .unwrap_or(model.state.peak_left_db);
+            (model.state.peak_left_db, model.state.peak_right_db) =
+                display_peaks(&backend_state.audio_peaks, model.state.stereo);
             model.state.midi_activity = backend_state.midi_activity;
+        }
+        for track in &mut self.tracks {
+            track.controls.output_midi_activity = combined_output_midi_activity(
+                track.controls.output_midi_activity,
+                track.loops.iter().filter_map(|loop_id| {
+                    self.loops
+                        .get(loop_id)
+                        .map(|loop_| loop_.state.midi_activity)
+                }),
+            );
         }
         let app_loop_by_backend = self
             .loops
@@ -7269,6 +7262,24 @@ fn backend_loop_mode(mode: LoopMode) -> BackendLoopMode {
     }
 }
 
+fn combined_output_midi_activity(
+    port_activity: bool,
+    loop_activity: impl IntoIterator<Item = bool>,
+) -> bool {
+    port_activity || loop_activity.into_iter().any(|active| active)
+}
+
+fn display_peaks(peaks: &[f32], stereo: bool) -> (f32, f32) {
+    if stereo {
+        let left = peaks.first().copied().unwrap_or(-200.0);
+        let right = peaks.get(1).copied().unwrap_or(left);
+        (left, right)
+    } else {
+        let peak = peaks.iter().copied().fold(-200.0, f32::max);
+        (peak, peak)
+    }
+}
+
 fn app_loop_mode(mode: BackendLoopMode) -> LoopMode {
     match mode {
         BackendLoopMode::Unknown => LoopMode::Unknown,
@@ -7289,6 +7300,20 @@ mod tests {
     use shoop_backend::{BackendPortDataType, BackendPortDirection, EngineBackend, FakeBackend};
 
     use super::*;
+
+    #[test]
+    fn track_output_midi_activity_includes_port_and_loop_playback() {
+        assert!(combined_output_midi_activity(false, [false, true]));
+        assert!(combined_output_midi_activity(true, [false, false]));
+        assert!(!combined_output_midi_activity(false, [false, false]));
+    }
+
+    #[test]
+    fn display_peaks_preserves_stereo_and_uses_the_loudest_other_channel_count() {
+        assert_eq!(display_peaks(&[-12.0, -6.0], true), (-12.0, -6.0));
+        assert_eq!(display_peaks(&[-18.0, -3.0, -9.0], false), (-3.0, -3.0));
+        assert_eq!(display_peaks(&[], false), (-200.0, -200.0));
+    }
 
     fn wait_for(
         handle: &ApplicationHandle,

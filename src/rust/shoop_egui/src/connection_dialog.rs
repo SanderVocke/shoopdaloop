@@ -6,9 +6,11 @@ use crate::{
     TrackId,
 };
 
-const COLUMN_WIDTH: f32 = 190.0;
-const COLUMN_GAP: f32 = 72.0;
+const COLUMN_WIDTH: f32 = 145.0;
+const COLUMN_GAP: f32 = 56.0;
 const ENDPOINT_HEIGHT: f32 = 28.0;
+const GRAPH_FONT_SIZE: f32 = 12.0;
+const DEFAULT_WINDOW_WIDTH: f32 = 780.0;
 const CONNECTOR_RADIUS: f32 = 5.0;
 const CONNECTOR_HIT_RADIUS: f32 = 11.0;
 const CURVE_HIT_DISTANCE: f32 = 7.0;
@@ -489,6 +491,7 @@ pub struct ConnectionDialog {
     scope: ConnectionScope,
     filters: ConnectionFilters,
     drag: Option<DragState>,
+    open_generation: u64,
     #[cfg(test)]
     endpoint_rects: BTreeMap<EndpointId, egui::Rect>,
     #[cfg(test)]
@@ -508,6 +511,7 @@ impl Default for ConnectionDialog {
             scope: ConnectionScope::AllTracks,
             filters: ConnectionFilters::for_scope(ConnectionScope::AllTracks),
             drag: None,
+            open_generation: 0,
             #[cfg(test)]
             endpoint_rects: BTreeMap::new(),
             #[cfg(test)]
@@ -527,6 +531,7 @@ impl ConnectionDialog {
         self.scope = scope;
         self.filters = ConnectionFilters::for_scope(scope);
         self.drag = None;
+        self.open_generation = self.open_generation.wrapping_add(1);
         self.open = true;
     }
 
@@ -577,11 +582,12 @@ impl ConnectionDialog {
         };
         let mut open = self.open;
         let mut intents = Vec::new();
+        let default_height = self.initial_window_height(context, state);
         egui::Window::new(title)
-            .id(egui::Id::new("connections_dialog"))
+            .id(egui::Id::new(("connections_dialog", self.open_generation)))
             .open(&mut open)
             .resizable(true)
-            .default_size([980.0, 560.0])
+            .default_size([DEFAULT_WINDOW_WIDTH, default_height])
             .min_size([360.0, 220.0])
             .show(context, |ui| {
                 if matches!(self.scope, ConnectionScope::Track(_)) && scoped_track.is_none() {
@@ -594,6 +600,39 @@ impl ConnectionDialog {
         }
         self.open = open;
         intents
+    }
+
+    fn initial_window_height(&self, context: &egui::Context, state: &AppState) -> f32 {
+        let content_height = if state.connections.loading {
+            90.0
+        } else {
+            let graph = ConnectionGraph::build(state, &self.filters);
+            let tallest_column = GraphColumn::ORDERED
+                .into_iter()
+                .map(|column| {
+                    let endpoints = graph.column(column);
+                    let groups = endpoints
+                        .iter()
+                        .map(|endpoint| endpoint.group.as_str())
+                        .collect::<BTreeSet<_>>()
+                        .len();
+                    34.0 + endpoints.len() as f32 * ENDPOINT_HEIGHT + groups as f32 * 24.0
+                })
+                .fold(0.0, f32::max);
+            let warning_height = if dual_route_warning(&state.connections) {
+                58.0
+            } else {
+                0.0
+            };
+            let error_height = if state.connections.errors.is_empty() {
+                0.0
+            } else {
+                32.0
+            };
+            82.0 + warning_height + tallest_column + error_height
+        };
+        let max_height = (context.content_rect().height() * 0.9).max(220.0);
+        content_height.clamp(220.0, max_height)
     }
 
     fn show_contents(&mut self, ui: &mut egui::Ui, state: &AppState, intents: &mut Vec<AppIntent>) {
@@ -787,7 +826,7 @@ impl ConnectionDialog {
         ui.set_min_width(COLUMN_WIDTH);
         ui.set_max_width(COLUMN_WIDTH);
         ui.vertical_centered(|ui| {
-            ui.label(crate::fonts::bold_text(column.label()));
+            ui.label(crate::fonts::bold_text(column.label()).size(GRAPH_FONT_SIZE));
         });
         ui.separator();
         let endpoints = graph.column(column);
@@ -804,7 +843,7 @@ impl ConnectionDialog {
         for endpoint in endpoints {
             if previous_group != Some(endpoint.group.as_str()) {
                 ui.add_space(4.0);
-                ui.label(crate::fonts::bold_italic_text(&endpoint.group));
+                ui.label(crate::fonts::bold_italic_text(&endpoint.group).size(GRAPH_FONT_SIZE));
                 previous_group = Some(&endpoint.group);
             }
             let (rect, row_response) = ui.allocate_exact_size(
@@ -891,24 +930,15 @@ impl ConnectionDialog {
                 None
             };
             let text_rect = rect.shrink2(egui::vec2(12.0, 3.0));
-            let align = if column.connector_on_right() {
-                egui::Align2::LEFT_CENTER
-            } else {
-                egui::Align2::RIGHT_CENTER
-            };
-            let text = match (status_glyph, column.connector_on_right()) {
-                (Some(glyph), true) => format!("{glyph}  {}", endpoint.label),
-                (Some(glyph), false) => format!("{}  {glyph}", endpoint.label),
-                (None, _) => endpoint.label.clone(),
+            let text = match status_glyph {
+                Some(glyph) => format!("{glyph}  {}", endpoint.label),
+                None => endpoint.label.clone(),
             };
             ui.painter().with_clip_rect(text_rect).text(
-                match align {
-                    egui::Align2::LEFT_CENTER => text_rect.left_center(),
-                    _ => text_rect.right_center(),
-                },
-                align,
+                text_rect.left_center(),
+                egui::Align2::LEFT_CENTER,
                 text,
-                egui::TextStyle::Body.resolve(ui.style()),
+                egui::FontId::proportional(GRAPH_FONT_SIZE),
                 data_type_color(endpoint.data_type),
             );
             anchors.insert(
@@ -2202,6 +2232,12 @@ mod tests {
             .iter()
             .copied()
             .filter(|point| clip.shrink(8.0).contains(*point))
+            .filter(|point| {
+                dialog
+                    .endpoint_rects
+                    .values()
+                    .all(|rect| !rect.expand(CONNECTOR_HIT_RADIUS).contains(*point))
+            })
             .min_by(|left, right| {
                 left.distance(clip.center())
                     .total_cmp(&right.distance(clip.center()))

@@ -16,6 +16,9 @@ use shoop_settings::{
 use std::sync::Arc;
 
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
+const LOGO_AREA_HEIGHT: f32 = 112.0;
+const SYNC_TRACK_HEIGHT: f32 = 118.0;
+const SIDEBAR_SECTION_GAP: f32 = 8.0;
 
 pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
     SettingKey::new("tracks.new.default_audio_channels");
@@ -498,6 +501,8 @@ pub struct AppWidget {
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
     pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
     pending_ephemeral_scripts: VecDeque<PendingEphemeralScript>,
+    last_callback_count: u64,
+    callbacks_active_until: f64,
     #[cfg(test)]
     ephemeral_script_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -510,6 +515,8 @@ pub struct AppWidget {
     details_toggle_rect: Option<egui::Rect>,
     #[cfg(test)]
     piano_toggle_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    xrun_menu_rect: Option<egui::Rect>,
     #[cfg(test)]
     reset_xruns_rect: Option<egui::Rect>,
 }
@@ -551,6 +558,8 @@ impl AppWidget {
             io_channel_selections: BTreeMap::new(),
             pressed_script_keys: BTreeMap::new(),
             pending_ephemeral_scripts: VecDeque::new(),
+            last_callback_count: 0,
+            callbacks_active_until: 0.0,
             #[cfg(test)]
             ephemeral_script_accept_rect: None,
             #[cfg(test)]
@@ -563,6 +572,8 @@ impl AppWidget {
             details_toggle_rect: None,
             #[cfg(test)]
             piano_toggle_rect: None,
+            #[cfg(test)]
+            xrun_menu_rect: None,
             #[cfg(test)]
             reset_xruns_rect: None,
         }
@@ -662,9 +673,15 @@ impl AppWidget {
                     });
             });
 
-        egui::Panel::bottom("bottom_pane_toggle")
+        egui::Panel::bottom("bottom_bar")
             .resizable(false)
+            .show_separator_line(false)
             .exact_size(24.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(colors::DARK_BACKGROUND)
+                    .inner_margin(egui::Margin::symmetric(6, 1)),
+            )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     for (pane, label) in [
@@ -682,7 +699,50 @@ impl AppWidget {
                             self.set_bottom_pane(next, &mut actions);
                         }
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.show_bottom_status(ui, state, &mut actions)
+                    });
                 });
+            });
+
+        egui::Panel::right("logo_and_sync")
+            .resizable(false)
+            .show_separator_line(false)
+            .exact_size(150.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(colors::SIDEBAR_BACKGROUND)
+                    .inner_margin(egui::Margin::same(5)),
+            )
+            .show(ui, |ui| {
+                let sidebar = ui.max_rect();
+                let logo_rect = egui::Rect::from_min_size(
+                    egui::pos2(sidebar.left(), sidebar.bottom() - LOGO_AREA_HEIGHT),
+                    egui::vec2(sidebar.width(), LOGO_AREA_HEIGHT),
+                );
+                ui.scope_builder(
+                    egui::UiBuilder::new()
+                        .id_salt("logo_area")
+                        .max_rect(logo_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Center)),
+                    |ui| self.show_logo(ui, state),
+                );
+                if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
+                    let sync_rect = egui::Rect::from_min_size(
+                        egui::pos2(
+                            sidebar.left(),
+                            logo_rect.top() - SIDEBAR_SECTION_GAP - SYNC_TRACK_HEIGHT,
+                        ),
+                        egui::vec2(sidebar.width(), SYNC_TRACK_HEIGHT),
+                    );
+                    ui.scope_builder(
+                        egui::UiBuilder::new()
+                            .id_salt("sync_track_area")
+                            .max_rect(sync_rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                        |ui| self.show_sync_track(ui, sync, state, &mut actions),
+                    );
+                }
             });
 
         match self.bottom_pane {
@@ -702,7 +762,8 @@ impl AppWidget {
                     });
             }
             Some(BottomPane::Piano) => {
-                let destinations = piano_destinations(state);
+                let destination_ids = piano_destinations(state);
+                let destination_centers = self.tracks.track_centers(&destination_ids);
                 egui::Panel::bottom("piano")
                     .resizable(true)
                     .default_size(165.0)
@@ -716,7 +777,7 @@ impl AppWidget {
                     .show(ui, |ui| {
                         actions.extend(
                             self.piano
-                                .show(ui, &destinations)
+                                .show(ui, !destination_ids.is_empty(), &destination_centers)
                                 .into_iter()
                                 .map(AppAction::Piano),
                         );
@@ -724,53 +785,6 @@ impl AppWidget {
             }
             None => {}
         }
-
-        egui::Panel::right("logo_status_and_sync")
-            .resizable(false)
-            .show_separator_line(false)
-            .exact_size(220.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(colors::SIDEBAR_BACKGROUND)
-                    .inner_margin(egui::Margin::same(5)),
-            )
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("status_and_sync_scroll")
-                    .scroll_source(crate::control_safe_scroll_source())
-                    .show(ui, |ui| {
-                        self.show_logo_and_status(ui, state, &mut actions);
-                        if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
-                            ui.add_space(8.0);
-                            ui.separator();
-                            let response = self.sync_track.show(ui, sync);
-                            actions.extend(response.io_intents.iter().cloned());
-                            actions.extend(response.loop_actions.into_iter().map(
-                                |(loop_id, action)| AppAction::Loop {
-                                    track_id: sync.id,
-                                    loop_id,
-                                    action,
-                                },
-                            ));
-                            if response.connections_requested {
-                                self.connections.open(ConnectionScope::Track(sync.id));
-                            }
-                            if let Some(loop_id) = response.click_track_requested {
-                                if let Some(loop_state) =
-                                    sync.loops.iter().find(|loop_| loop_.id == loop_id)
-                                {
-                                    self.click_track.open(loop_state, &state.click_track);
-                                }
-                            }
-                            actions.extend(response.actions.into_iter().map(|action| {
-                                AppAction::Track {
-                                    track_id: sync.id,
-                                    action,
-                                }
-                            }));
-                        }
-                    });
-            });
 
         egui::CentralPanel::default()
             .frame(
@@ -790,7 +804,12 @@ impl AppWidget {
                     .filter(|track| !track.is_sync)
                     .cloned()
                     .collect();
-                let response = self.tracks.show(ui, &main_tracks, &state.track_processors);
+                let response = self.tracks.show_with_global_controls(
+                    ui,
+                    &main_tracks,
+                    &state.track_processors,
+                    &state.global_controls,
+                );
                 if response.add_track_requested {
                     self.open_add_track_dialog(main_tracks.len(), settings_state);
                 }
@@ -1485,77 +1504,187 @@ impl AppWidget {
         self.logo = Some(context.load_texture("shoopdaloop-logo", color_image, Default::default()));
     }
 
-    fn show_logo_and_status(
+    fn show_logo(&mut self, ui: &mut egui::Ui, state: &AppState) {
+        ui.add_space(6.0);
+        if let Some(logo) = &self.logo {
+            let size = logo.size_vec2();
+            let width = (ui.available_width() - 12.0).max(1.0).min(128.0);
+            let height = width * size.y / size.x;
+            ui.add(egui::Image::new((logo.id(), egui::vec2(width, height))));
+        } else {
+            ui.heading("ShoopDaLoop");
+        }
+        ui.add_space(3.0);
+        if !state.status.version.is_empty() {
+            ui.label(
+                egui::RichText::new(format!("ShoopDaLoop v{}", state.status.version))
+                    .size(10.0)
+                    .color(colors::MUTED_FOREGROUND),
+            );
+        }
+    }
+
+    fn show_bottom_status(
         &mut self,
         ui: &mut egui::Ui,
         state: &AppState,
         actions: &mut Vec<AppAction>,
     ) {
-        ui.vertical_centered(|ui| {
-            if let Some(logo) = &self.logo {
-                let size = logo.size_vec2();
-                let width = ui.available_width().min(145.0);
-                let height = width * size.y / size.x;
-                ui.add(egui::Image::new((logo.id(), egui::vec2(width, height))));
-            } else {
-                ui.heading("ShoopDaLoop");
-            }
-            if !state.status.version.is_empty() {
-                ui.label(format!("ShoopDaLoop v{}", state.status.version));
-            }
-        });
-
-        ui.add_space(12.0);
-        ui.label("DSP");
-        ui.add(
-            egui::ProgressBar::new((state.status.dsp_load_percent / 100.0).clamp(0.0, 1.0))
-                .text(format!("{:.1}%", state.status.dsp_load_percent)),
-        );
-        ui.horizontal(|ui| {
-            ui.label(format!("xruns: {}", state.status.xruns));
-            let reset = ui.small_button("reset");
+        #[cfg(test)]
+        {
+            self.reset_xruns_rect = None;
+        }
+        let xruns = ui
+            .add(egui::Label::new(format!("({})", state.status.xruns)).sense(egui::Sense::click()))
+            .on_hover_text("Audio xruns; click to reset");
+        #[cfg(test)]
+        {
+            self.xrun_menu_rect = Some(xruns.rect);
+        }
+        egui::Popup::menu(&xruns).show(|ui| {
+            let reset = ui.button("Reset xruns to 0");
             #[cfg(test)]
             {
                 self.reset_xruns_rect = Some(reset.rect);
             }
             if reset.clicked() {
                 actions.push(AppAction::ResetXruns);
+                ui.close();
             }
         });
-        ui.label(format!("audio: {:?}", state.status.audio_driver));
-        if state.status.callback_count > 0 {
-            ui.label(format!("callbacks: {}", state.status.callback_count));
-            ui.label(format!(
-                "I/O peak: {:.3} / {:.3}",
-                state.status.input_peak, state.status.output_peak
-            ));
-        }
-        if state.status.command_overflows > 0
-            || state.status.render_memory_growths > 0
-            || state.status.storage_low_channels > 0
-            || state.status.storage_exhaustions > 0
-        {
-            ui.colored_label(
-                colors::WARNING,
-                format!(
-                    "audio warnings: queue {} / render memory {} / storage low {} / exhausted {}",
-                    state.status.command_overflows,
-                    state.status.render_memory_growths,
-                    state.status.storage_low_channels,
-                    state.status.storage_exhaustions
-                ),
-            );
-        }
+        ui.add(
+            egui::ProgressBar::new((state.status.dsp_load_percent / 100.0).clamp(0.0, 1.0))
+                .desired_width(86.0)
+                .desired_height(4.0)
+                .fill(colors::COLORED_HIGHLIGHT)
+                .corner_radius(0),
+        );
+        ui.label("DSP");
         ui.separator();
-        ui.label(format!("latency: {} frames", state.status.buffer_size));
-        match state.status.latency_ms() {
-            Some(latency) => {
-                ui.label(format!("{latency:.2} ms"));
+        let milliseconds = state
+            .status
+            .latency_ms()
+            .map(|latency| format!("{latency:.2} ms"))
+            .unwrap_or_else(|| "-- ms".to_owned());
+        ui.label(format!(
+            "latency: {} frames | {milliseconds}",
+            state.status.buffer_size
+        ));
+        self.show_backend_status(ui, state);
+    }
+
+    fn show_backend_status(&mut self, ui: &mut egui::Ui, state: &AppState) {
+        let now = ui.input(|input| input.time);
+        if state.status.callback_count != self.last_callback_count {
+            self.last_callback_count = state.status.callback_count;
+            self.callbacks_active_until = now + 1.0;
+        }
+        let callbacks_active = state.status.callback_count > 0 && now < self.callbacks_active_until;
+        if callbacks_active {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(
+                    self.callbacks_active_until - now,
+                ));
+        }
+        let health = backend_health(state.status.audio_driver, callbacks_active);
+        let (rect, response) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+        ui.painter()
+            .circle_filled(rect.center(), 4.0, health.color());
+        response.on_hover_ui(|ui| {
+            let backend_type = state
+                .audio_drivers
+                .active
+                .as_ref()
+                .map(|active| active.configured.kind().label())
+                .unwrap_or("Unavailable");
+            ui.label(format!("Backend type: {backend_type}"));
+            ui.label(format!("Driver status: {:?}", state.status.audio_driver));
+            ui.label(if callbacks_active {
+                "Audio callbacks are active"
+            } else {
+                "Audio callbacks are not currently advancing"
+            });
+            ui.label(format!("Callbacks: {}", state.status.callback_count));
+            if state.audio_drivers.switch.status != crate::AudioDriverSwitchStatus::Idle {
+                ui.label(format!(
+                    "Driver switch: {:?}",
+                    state.audio_drivers.switch.status
+                ));
             }
-            None => {
-                ui.label("-- ms");
+            if !state.audio_drivers.switch.message.is_empty() {
+                ui.label(&state.audio_drivers.switch.message);
+            }
+            if let Some(error) = state
+                .notifications
+                .iter()
+                .rev()
+                .find(|notification| notification.level == crate::NotificationLevel::Error)
+            {
+                ui.colored_label(colors::ERROR, format!("Latest error: {}", error.message));
+            }
+        });
+    }
+
+    fn show_sync_track(
+        &mut self,
+        ui: &mut egui::Ui,
+        sync: &crate::TrackState,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        let response = self
+            .sync_track
+            .show_with_global_controls(ui, sync, &state.global_controls);
+        actions.extend(response.io_intents.iter().cloned());
+        actions.extend(response.loop_actions.into_iter().map(|(loop_id, action)| {
+            AppAction::Loop {
+                track_id: sync.id,
+                loop_id,
+                action,
+            }
+        }));
+        if response.connections_requested {
+            self.connections.open(ConnectionScope::Track(sync.id));
+        }
+        if let Some(loop_id) = response.click_track_requested {
+            if let Some(loop_state) = sync.loops.iter().find(|loop_| loop_.id == loop_id) {
+                self.click_track.open(loop_state, &state.click_track);
             }
         }
+        actions.extend(response.actions.into_iter().map(|action| AppAction::Track {
+            track_id: sync.id,
+            action,
+        }));
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BackendHealth {
+    Active,
+    Waiting,
+    Failed,
+}
+
+impl BackendHealth {
+    fn color(self) -> egui::Color32 {
+        match self {
+            Self::Active => colors::SUCCESS,
+            Self::Waiting => colors::WARNING,
+            Self::Failed => colors::STRONG_ERROR,
+        }
+    }
+}
+
+fn backend_health(driver: crate::AudioDriverState, callbacks_active: bool) -> BackendHealth {
+    use crate::AudioDriverState;
+    match driver {
+        AudioDriverState::Dummy | AudioDriverState::Running if callbacks_active => {
+            BackendHealth::Active
+        }
+        AudioDriverState::Denied | AudioDriverState::Unsupported | AudioDriverState::Failed => {
+            BackendHealth::Failed
+        }
+        _ => BackendHealth::Waiting,
     }
 }
 
@@ -1583,7 +1712,7 @@ fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
     });
 }
 
-fn piano_destinations(state: &AppState) -> Vec<String> {
+fn piano_destinations(state: &AppState) -> Vec<crate::TrackId> {
     state
         .tracks
         .iter()
@@ -1603,7 +1732,7 @@ fn piano_destinations(state: &AppState) -> Vec<String> {
                     })
                 })
         })
-        .map(|track| track.name.clone())
+        .map(|track| track.id)
         .collect()
 }
 
@@ -1629,6 +1758,26 @@ mod tests {
     use shoop_settings::{
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
+
+    #[test]
+    fn backend_health_requires_live_callbacks_and_distinguishes_waiting_from_failure() {
+        assert_eq!(
+            backend_health(crate::AudioDriverState::Running, true),
+            BackendHealth::Active
+        );
+        assert_eq!(
+            backend_health(crate::AudioDriverState::Running, false),
+            BackendHealth::Waiting
+        );
+        assert_eq!(
+            backend_health(crate::AudioDriverState::AwaitingGesture, false),
+            BackendHealth::Waiting
+        );
+        assert_eq!(
+            backend_health(crate::AudioDriverState::Failed, false),
+            BackendHealth::Failed
+        );
+    }
 
     #[test]
     fn bottom_panel_starts_closed() {
@@ -1861,6 +2010,9 @@ mod tests {
         };
         let mut widget = AppWidget::default();
         frame(&context, &mut widget, &state, Vec::new());
+        let menu = widget.xrun_menu_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, menu).is_empty());
+        frame(&context, &mut widget, &state, Vec::new());
         let reset = widget.reset_xruns_rect.unwrap().center();
         assert_eq!(
             click(&context, &mut widget, &state, reset),
@@ -1906,7 +2058,35 @@ mod tests {
     fn open_piano_routes_pointer_note_actions_as_application_intents() {
         let context = egui::Context::default();
         crate::initialize(&context);
-        let state = AppState::default();
+        let track_id = crate::TrackId::from_raw(1);
+        let port_id = crate::PortId::from_raw(1);
+        let state = AppState {
+            tracks: vec![TrackState {
+                id: track_id,
+                port_ids: Arc::from([port_id]),
+                controls: crate::TrackControlState {
+                    input_monitoring: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            connections: Arc::new(crate::ConnectionViewState {
+                application_ports: Arc::from([crate::ApplicationPortState {
+                    id: port_id,
+                    owner: crate::ApplicationPortOwner::Track {
+                        track_id,
+                        kind: crate::TrackPortOwnerKind::Main,
+                    },
+                    name: "midi_in".to_owned(),
+                    data_type: crate::PortDataType::Midi,
+                    direction: crate::PortDirection::Input,
+                    role: crate::PortRole::MidiInput,
+                    connection_policy: crate::ConnectionPolicy::UserManaged,
+                }]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
         let mut widget = AppWidget::default();
         frame(&context, &mut widget, &state, Vec::new());
         let piano_toggle = widget.piano_toggle_rect.unwrap().center();
@@ -2019,7 +2199,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert_eq!(piano_destinations(&state), ["Listening"]);
+        assert_eq!(piano_destinations(&state), [first_id]);
     }
 
     fn settings_frame(
