@@ -3851,6 +3851,7 @@ dependencies = [
  "assert_no_alloc",
  "ctor",
  "tracy-client",
+ "tracy-client-sys",
  "tracy-nextest-capture",
 ]
 

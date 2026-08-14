@@ -11,6 +11,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[doc(hidden)]
 pub use tracy_client;
 
+#[cfg(all(feature = "tracy", target_env = "msvc"))]
+#[link(name = "msvcprt")]
+unsafe extern "C" {}
+
 static TRACING_ENABLED: AtomicBool = AtomicBool::new(false);
 static TRACING_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);
 static ENGINE_DETAIL_ENABLED: AtomicBool = AtomicBool::new(false);
