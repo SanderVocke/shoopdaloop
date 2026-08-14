@@ -1,7 +1,7 @@
 ---
 name: tracy
 description: Capture and investigate native ShoopDaLoop Tracy profiles, including GUI/application intent flow, engine control and graph work, realtime audio timing, Tiny Synth/FX processing, queues, scheduling, and state publication from .tracy files.
-compatibility: The native application emits Tracy 0.13.1-compatible captures through the tracy-extensions 0.5.0 embedded backend. Querying requires the matching static tracy-query 0.5.0 release binary.
+compatibility: The native application emits Tracy 0.13.1-compatible captures through the tracy-extensions 0.6.0 embedded backend. Querying requires the matching static tracy-query 0.6.0 release binary.
 ---
 
 # Debug ShoopDaLoop with Tracy
@@ -12,10 +12,10 @@ Use the versioned `tracy-query` skill distributed with `tracy-extensions` for co
 
 ## Obtain `tracy-query` and its skill
 
-Use the `tracy-extensions` v0.5.0 release and the matching tagged query skill:
+Use the `tracy-extensions` v0.6.0 release and the matching tagged query skill:
 
-- Release page: <https://github.com/SanderVocke/tracy-extensions/releases/tag/v0.5.0>
-- Query skill: <https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.5.0/tracy-query/SKILL.md>
+- Release page: <https://github.com/SanderVocke/tracy-extensions/releases/tag/v0.6.0>
+- Query skill: <https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.6.0/tracy-query/SKILL.md>
 
 Choose the static binary for the current platform:
 
@@ -33,13 +33,13 @@ TRACE_DIR=traces/investigation
 ASSET=tracy-query-linux-x86_64 # select for the current OS and architecture
 
 mkdir -p "$TRACE_DIR"
-gh release download v0.5.0 \
+gh release download v0.6.0 \
   --repo SanderVocke/tracy-extensions \
   --pattern "$ASSET" \
   --dir "$TRACE_DIR" \
   --clobber
 curl --fail --location \
-  https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.5.0/tracy-query/SKILL.md \
+  https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.6.0/tracy-query/SKILL.md \
   --output "$TRACE_DIR/tracy-query-SKILL.md"
 chmod +x "$TRACE_DIR/$ASSET"
 ```
@@ -91,7 +91,7 @@ gh run download "$RUN_ID" \
 find "traces/ci-$RUN_ID" -type f -name '*.tracy' -print
 ```
 
-Match the artifact's target, architecture, and profile to the failing job. Preserve the trace filename: it identifies the nextest binary, test, attempt, and unique attempt digest. Then obtain the matching v0.5.0 `tracy-query` binary as described above, validate each trace with `check`, `range`, `info`, and `sources`, and follow the investigation workflow below. Detailed `engine.rt.*` zones may be absent when the failing test never starts or advances an engine even though the CI tracing gate is enabled.
+Match the artifact's target, architecture, and profile to the failing job. Preserve the trace filename: it identifies the nextest binary, test, attempt, and unique attempt digest. Then obtain the matching v0.6.0 `tracy-query` binary as described above, validate each trace with `check`, `range`, `info`, and `sources`, and follow the investigation workflow below. Detailed `engine.rt.*` zones may be absent when the failing test never starts or advances an engine even though the CI tracing gate is enabled.
 
 For general workflow status and log investigation before trace analysis, read `.agents/info/ci-debug.md`.
 
@@ -111,6 +111,8 @@ The application executable has two tracing options:
 ```
 
 Tracing uses the embedded in-process backend. There is no live TCP profiler mode, external `tracy-capture` executable, capture-tool environment variable, or CLI output-directory option. The output directory is `traces` relative to the application's working directory.
+
+Tracing can also be started after launch from **Settings > Developer**, optionally with detailed engine events. While active, the bottom bar reports event-storage memory usage and offers **Save** and **Discard**. Either action stops the current capture; another capture can then be started in the same process. Application captures begin after runtime initialization so that long-lived worker guards predate reusable capture cycles.
 
 The audio backend is selected through persisted application settings, not a `--backend` argument. Reproduce with the configured JACK, CPAL+midir, or dummy backend that matters to the issue.
 
@@ -150,8 +152,6 @@ ShoopDaLoop uses fixed, bounded zone names. User labels, paths, processor state,
 
 Expected native GUI zones include:
 
-- `app.egui.run`: native eframe lifetime.
-- `frontend.egui.initialize`: settings, widget, backend, and runtime initialization.
 - `frontend.egui.update`: one top-level GUI update.
 - `frontend.egui.frame`: widget rendering, with revision and bounded state counts.
 - `frontend.egui.tracks` and `frontend.egui.track`: track collection and per-track rendering.
@@ -161,7 +161,7 @@ Expected native GUI zones include:
 - `frontend.app.intent_handle`: actor-side handling with the same `intent_id` and intent kind.
 - `frontend.app.intent_apply`: model mutation, revision, and success/error outcome.
 - `frontend.app.update`, `frontend.app.backend_advance`, `frontend.app.backend_snapshot_apply`, and `frontend.app.snapshot_publish`: polling, state application, and publication.
-- `frontend.app.runtime_start`, `frontend.app.runtime_shutdown`, and `worker.application`: actor lifecycle.
+- `frontend.app.runtime_shutdown`: actor shutdown. Startup and long-lived worker zones normally predate application captures.
 
 A UI intent normally nests `frontend.app.intent_dispatch` inside `frontend.egui.intent_dispatch` on the GUI thread. Join only the app dispatch zone to `frontend.app.intent_handle` by `intent_id`; the egui zone itself does not carry that ID. `frontend.app.intent_apply` then contains the resulting backend and `engine.control.*` work when it is synchronous.
 

@@ -42,7 +42,9 @@ pub use global_controls::GlobalControls;
 pub use loop_widget::{LoopWidget, LoopWidgetResponse};
 pub use midi_sequence_widget::MidiSequenceWidget;
 pub use piano_pane::{c_label, is_black, PianoLayout, PianoPane, MIDDLE_C, MIDI_NOTE_COUNT};
-pub use settings_dialog::{SettingsAction, SettingsDialog, SettingsDialogResponse};
+pub use settings_dialog::{
+    SettingsAction, SettingsDialog, SettingsDialogResponse, TracingStatus, TracingStopped,
+};
 pub use shoop_app_api::*;
 pub use shoop_settings::*;
 pub use track_controls::TrackControls;

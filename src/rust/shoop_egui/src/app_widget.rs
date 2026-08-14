@@ -5,8 +5,8 @@ use crate::{
     is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
     AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
     DetailsPane, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
-    SettingsAction, SettingsDialog, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec,
-    TrackSpecTopology, TrackWidget, TracksWidget,
+    SettingsAction, SettingsDialog, TracingStatus, TracingStopped, TrackProcessorDescriptor,
+    TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
@@ -517,8 +517,14 @@ pub struct AppWidget {
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
     pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
     pending_ephemeral_scripts: VecDeque<PendingEphemeralScript>,
+    tracing_status: TracingStatus,
+    tracing_stopped: Option<TracingStopped>,
     last_callback_count: u64,
     callbacks_active_until: f64,
+    #[cfg(test)]
+    tracing_save_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    tracing_discard_rect: Option<egui::Rect>,
     #[cfg(test)]
     ephemeral_script_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -574,8 +580,14 @@ impl AppWidget {
             io_channel_selections: BTreeMap::new(),
             pressed_script_keys: BTreeMap::new(),
             pending_ephemeral_scripts: VecDeque::new(),
+            tracing_status: TracingStatus::default(),
+            tracing_stopped: None,
             last_callback_count: 0,
             callbacks_active_until: 0.0,
+            #[cfg(test)]
+            tracing_save_rect: None,
+            #[cfg(test)]
+            tracing_discard_rect: None,
             #[cfg(test)]
             ephemeral_script_accept_rect: None,
             #[cfg(test)]
@@ -612,6 +624,15 @@ impl AppWidget {
 
     pub fn set_click_track_preview_available(&mut self, available: bool) {
         self.click_track.set_preview_available(available);
+    }
+
+    pub fn set_tracing_status(&mut self, status: TracingStatus) {
+        self.tracing_status = status;
+        self.settings.set_tracing_status(status);
+    }
+
+    pub fn notify_tracing_stopped(&mut self, stopped: TracingStopped) {
+        self.tracing_stopped = Some(stopped);
     }
 
     pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
@@ -718,7 +739,7 @@ impl AppWidget {
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.show_bottom_status(ui, state, &mut actions)
+                        self.show_bottom_status(ui, state, &mut actions, &mut settings_actions)
                     });
                 });
             });
@@ -864,6 +885,7 @@ impl AppWidget {
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
         self.show_ephemeral_script_confirmation(ui.ctx(), state, &mut actions);
+        self.show_tracing_stopped(ui.ctx());
         if !actions.is_empty() || !settings_actions.is_empty() {
             tracing::debug!(
                 target: "Frontend.Egui",
@@ -1562,6 +1584,7 @@ impl AppWidget {
         ui: &mut egui::Ui,
         state: &AppState,
         actions: &mut Vec<AppAction>,
+        settings_actions: &mut Vec<SettingsAction>,
     ) {
         #[cfg(test)]
         {
@@ -1604,6 +1627,64 @@ impl AppWidget {
             state.status.buffer_size
         ));
         self.show_backend_status(ui, state);
+        if self.tracing_status.active {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Tracing active ({})",
+                    format_memory_usage(self.tracing_status.memory_usage_bytes)
+                ));
+                let save = ui.small_button("Save");
+                let discard = ui.small_button("Discard");
+                #[cfg(test)]
+                {
+                    self.tracing_save_rect = Some(save.rect);
+                    self.tracing_discard_rect = Some(discard.rect);
+                }
+                if save.clicked() {
+                    settings_actions.push(SettingsAction::StopTracing { save: true });
+                }
+                if discard.clicked() {
+                    settings_actions.push(SettingsAction::StopTracing { save: false });
+                }
+            });
+        } else {
+            #[cfg(test)]
+            {
+                self.tracing_save_rect = None;
+                self.tracing_discard_rect = None;
+            }
+        }
+    }
+
+    fn show_tracing_stopped(&mut self, context: &egui::Context) {
+        let Some(stopped) = self.tracing_stopped.clone() else {
+            return;
+        };
+        let mut open = true;
+        let mut acknowledged = false;
+        egui::Window::new("Tracing stopped")
+            .id(egui::Id::new("tracing_stopped"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(context, |ui| {
+                match &stopped {
+                    TracingStopped::Saved(path) => {
+                        ui.label("The trace was stopped and saved to:");
+                        ui.monospace(path);
+                    }
+                    TracingStopped::Discarded => {
+                        ui.label("The trace was stopped and discarded.");
+                    }
+                }
+                if ui.button("OK").clicked() {
+                    acknowledged = true;
+                }
+            });
+        if acknowledged || !open {
+            self.tracing_stopped = None;
+        }
     }
 
     fn show_backend_status(&mut self, ui: &mut egui::Ui, state: &AppState) {
@@ -1708,6 +1789,21 @@ impl BackendHealth {
     }
 }
 
+fn format_memory_usage(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * KIB;
+    const GIB: u64 = 1024 * MIB;
+    if bytes >= GIB {
+        format!("{:.1} GiB", bytes as f64 / GIB as f64)
+    } else if bytes >= MIB {
+        format!("{:.1} MiB", bytes as f64 / MIB as f64)
+    } else if bytes >= KIB {
+        format!("{:.1} KiB", bytes as f64 / KIB as f64)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 fn backend_health(driver: crate::AudioDriverState, callbacks_active: bool) -> BackendHealth {
     use crate::AudioDriverState;
     match driver {
@@ -1809,6 +1905,70 @@ mod tests {
             backend_health(crate::AudioDriverState::Failed, false),
             BackendHealth::Failed
         );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn tracing_memory_usage_uses_readable_binary_units() {
+        assert_eq!(format_memory_usage(0), "0 B");
+        assert_eq!(format_memory_usage(1536), "1.5 KiB");
+        assert_eq!(format_memory_usage(3 * 1024 * 1024), "3.0 MiB");
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn active_tracing_status_offers_save_action() {
+        let context = egui::Context::default();
+        let mut widget = AppWidget::default();
+        widget.set_tracing_status(TracingStatus {
+            available: true,
+            active: true,
+            memory_usage_bytes: 3 * 1024 * 1024,
+        });
+        let state = AppState::default();
+        let frame = |widget: &mut AppWidget, events: Vec<egui::Event>| {
+            let mut settings_actions = Vec::new();
+            let _ = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 100.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| widget.show_bottom_status(ui, &state, &mut Vec::new(), &mut settings_actions),
+            );
+            settings_actions
+        };
+
+        frame(&mut widget, Vec::new());
+        let save = widget.tracing_save_rect.unwrap().center();
+        frame(
+            &mut widget,
+            vec![
+                egui::Event::PointerMoved(save),
+                egui::Event::PointerButton {
+                    pos: save,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let actions = frame(
+            &mut widget,
+            vec![
+                egui::Event::PointerMoved(save),
+                egui::Event::PointerButton {
+                    pos: save,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(actions
+            .iter()
+            .any(|action| matches!(action, SettingsAction::StopTracing { save: true })));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

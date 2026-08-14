@@ -32,6 +32,39 @@ pub enum CaptureError {
     MissingOutput(PathBuf),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaptureDisposition {
+    Save,
+    Discard,
+}
+
+impl CaptureDisposition {
+    const fn as_ffi(self) -> i32 {
+        match self {
+            Self::Save => tracy_client_sys::TRACY_EMBEDDED_CAPTURE_SAVE,
+            Self::Discard => tracy_client_sys::TRACY_EMBEDDED_CAPTURE_DISCARD,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CaptureStatus {
+    pub active: bool,
+    pub event_storage_bytes: u64,
+}
+
+impl CaptureStatus {
+    pub fn current() -> Self {
+        let state = unsafe { tracy_client_sys::___tracy_embedded_capture_get_state() };
+        let event_storage_bytes =
+            unsafe { tracy_client_sys::___tracy_embedded_capture_get_event_storage_bytes() };
+        Self {
+            active: state == tracy_client_sys::TRACY_EMBEDDED_CAPTURE_CAPTURING,
+            event_storage_bytes: event_storage_bytes.max(0) as u64,
+        }
+    }
+}
+
 pub struct CaptureSession {
     path: PathBuf,
     finished: bool,
@@ -66,24 +99,7 @@ impl CaptureSession {
     }
 
     pub fn wait_until_capturing(&self) -> Result<(), CaptureError> {
-        let deadline = Instant::now() + START_TIMEOUT;
-        loop {
-            let state = unsafe { tracy_client_sys::___tracy_embedded_capture_get_state() };
-            if state == tracy_client_sys::TRACY_EMBEDDED_CAPTURE_CAPTURING {
-                info!("Embedded Tracy capture started: {}", self.path.display());
-                return Ok(());
-            }
-            if state == tracy_client_sys::TRACY_EMBEDDED_CAPTURE_FAILED {
-                return Err(embedded_error(state));
-            }
-            if Instant::now() >= deadline {
-                return Err(CaptureError::StartTimeout {
-                    timeout: START_TIMEOUT,
-                    state,
-                });
-            }
-            std::thread::sleep(POLL_INTERVAL);
-        }
+        wait_until_capturing(&self.path)
     }
 
     pub fn finish(&mut self) -> Result<(), CaptureError> {
@@ -126,6 +142,85 @@ impl CaptureSession {
     }
 }
 
+pub struct ReusableCaptureSession {
+    path: PathBuf,
+    stopped: bool,
+}
+
+impl ReusableCaptureSession {
+    pub fn start(output_dir: &Path, label: &str) -> Result<Self, CaptureError> {
+        verify_abi()?;
+        std::fs::create_dir_all(output_dir)
+            .map_err(|source| io_error("create capture output directory", output_dir, source))?;
+        let output_dir = output_dir.canonicalize().map_err(|source| {
+            io_error("canonicalize capture output directory", output_dir, source)
+        })?;
+        let path = next_capture_path(&output_dir, label);
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| CaptureError::NonUtf8Path(path.clone()))?;
+        let status = unsafe {
+            tracy_client_sys::___tracy_embedded_capture_start(
+                path_str.as_ptr().cast(),
+                path_str.len(),
+                CHANNEL_CAPACITY,
+                WORKER_MEMORY_LIMIT,
+            )
+        };
+        check_status(status)?;
+        info!(
+            "Starting reusable embedded Tracy capture {}",
+            path.display()
+        );
+        Ok(Self {
+            path,
+            stopped: false,
+        })
+    }
+
+    pub fn wait_until_capturing(&self) -> Result<(), CaptureError> {
+        wait_until_capturing(&self.path)
+    }
+
+    pub fn stop(&mut self, disposition: CaptureDisposition) -> Result<(), CaptureError> {
+        if self.stopped {
+            return Ok(());
+        }
+        let status = unsafe {
+            tracy_client_sys::___tracy_embedded_capture_stop_with_disposition(disposition.as_ffi())
+        };
+        check_status(status)?;
+        self.stopped = true;
+
+        if disposition == CaptureDisposition::Save {
+            let metadata = self
+                .path
+                .metadata()
+                .map_err(|_| CaptureError::MissingOutput(self.path.clone()))?;
+            if metadata.len() == 0 {
+                return Err(CaptureError::MissingOutput(self.path.clone()));
+            }
+            info!(
+                "Finalized reusable embedded Tracy capture {} ({} bytes)",
+                self.path.display(),
+                metadata.len()
+            );
+        } else {
+            info!("Discarded reusable embedded Tracy capture");
+        }
+        Ok(())
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+pub fn shutdown_reusable_profiler() -> Result<(), CaptureError> {
+    let status = unsafe { tracy_client_sys::___tracy_embedded_capture_shutdown() };
+    check_status(status)
+}
+
 fn verify_abi() -> Result<(), CaptureError> {
     let actual = unsafe { tracy_client_sys::___tracy_embedded_capture_abi_version() };
     let expected = tracy_client_sys::TRACY_EMBEDDED_CAPTURE_ABI_VERSION;
@@ -133,6 +228,27 @@ fn verify_abi() -> Result<(), CaptureError> {
         Ok(())
     } else {
         Err(CaptureError::AbiMismatch { expected, actual })
+    }
+}
+
+fn wait_until_capturing(path: &Path) -> Result<(), CaptureError> {
+    let deadline = Instant::now() + START_TIMEOUT;
+    loop {
+        let state = unsafe { tracy_client_sys::___tracy_embedded_capture_get_state() };
+        if state == tracy_client_sys::TRACY_EMBEDDED_CAPTURE_CAPTURING {
+            info!("Embedded Tracy capture started: {}", path.display());
+            return Ok(());
+        }
+        if state == tracy_client_sys::TRACY_EMBEDDED_CAPTURE_FAILED {
+            return Err(embedded_error(state));
+        }
+        if Instant::now() >= deadline {
+            return Err(CaptureError::StartTimeout {
+                timeout: START_TIMEOUT,
+                state,
+            });
+        }
+        std::thread::sleep(POLL_INTERVAL);
     }
 }
 

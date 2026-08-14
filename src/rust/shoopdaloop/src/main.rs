@@ -13,7 +13,10 @@ use clap::Parser;
 use std::{
     io::Write,
     path::Path,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc, Mutex,
+    },
     time::Instant,
 };
 #[cfg(target_arch = "wasm32")]
@@ -37,6 +40,8 @@ use shoop_egui::{
     register_settings, AppIntent, AppSnapshot, AppWidget, ScriptKind, SettingsAction,
     SettingsRegistryBuilder, UI_SCALE_FACTOR,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
 use shoop_app::CooperativeApplicationRuntime;
@@ -97,42 +102,119 @@ struct NativeCli {
 
 #[cfg(not(target_arch = "wasm32"))]
 struct NativeTracing {
-    capture: Option<shoop_common::tracing_capture::CaptureSession>,
+    capture: Option<shoop_common::tracing_capture::ReusableCaptureSession>,
+    start_on_app_init: Option<bool>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl NativeTracing {
-    fn start(cli: &NativeCli) -> anyhow::Result<Self> {
-        shoop_common::tracing_helpers::set_tracing_enabled(cli.tracing);
-        shoop_common::tracing_helpers::set_engine_detail_enabled(cli.tracing_engine_detail);
-        let capture = cli
-            .tracing
-            .then(|| {
-                shoop_common::tracing_capture::CaptureSession::configure(
-                    Path::new("traces"),
-                    "application",
-                )
-            })
-            .transpose()?;
+    fn initialize(cli: &NativeCli) -> anyhow::Result<Self> {
+        use shoop_common::tracing_capture::{CaptureDisposition, ReusableCaptureSession};
+
+        shoop_common::tracing_helpers::set_engine_detail_enabled(false);
+        shoop_common::tracing_helpers::set_tracing_enabled(true);
+        shoop_common::tracing_helpers::set_tracing_output_enabled(true);
+        let mut bootstrap =
+            ReusableCaptureSession::start(&std::env::temp_dir(), "shoopdaloop-initialization")?;
         shoop_common::init()?;
-        if let Some(capture) = &capture {
-            capture.wait_until_capturing()?;
-        }
-        tracing::info!(
-            target: "Frontend.Egui",
-            capture = cli.tracing,
-            engine_detail = cli.tracing_engine_detail,
-            "frontend.egui.tracing_started"
-        );
-        Ok(Self { capture })
+        bootstrap.wait_until_capturing()?;
+        shoop_common::tracing_helpers::set_tracing_output_enabled(false);
+        shoop_common::tracing_helpers::set_tracing_enabled(false);
+        bootstrap.stop(CaptureDisposition::Discard)?;
+        Ok(Self {
+            capture: None,
+            start_on_app_init: cli.tracing.then_some(cli.tracing_engine_detail),
+        })
     }
 
-    fn shutdown(&mut self) -> anyhow::Result<()> {
-        if let Some(mut capture) = self.capture.take() {
-            capture.finish()?;
+    fn start_requested_capture(&mut self) -> anyhow::Result<()> {
+        if let Some(engine_detail) = self.start_on_app_init.take() {
+            self.start_capture(engine_detail)?;
         }
         Ok(())
     }
+
+    fn start_capture(&mut self, engine_detail: bool) -> anyhow::Result<()> {
+        if self.capture.is_some() {
+            return Ok(());
+        }
+        let capture = shoop_common::tracing_capture::ReusableCaptureSession::start(
+            Path::new("traces"),
+            "application",
+        )?;
+        capture.wait_until_capturing()?;
+        shoop_common::tracing_helpers::set_engine_detail_enabled(engine_detail);
+        shoop_common::tracing_helpers::set_tracing_output_enabled(true);
+        shoop_common::tracing_helpers::set_tracing_enabled(true);
+        tracing::info!(
+            target: "Frontend.Egui",
+            capture = true,
+            engine_detail,
+            "frontend.egui.tracing_started"
+        );
+        self.capture = Some(capture);
+        Ok(())
+    }
+
+    fn quiesce_capture(&self) -> anyhow::Result<()> {
+        if self.capture.is_none() {
+            anyhow::bail!("tracing is not active");
+        }
+        shoop_common::tracing_helpers::set_tracing_output_enabled(false);
+        shoop_common::tracing_helpers::set_tracing_enabled(false);
+        Ok(())
+    }
+
+    fn stop_capture(&mut self, save: bool) -> anyhow::Result<TracingStopped> {
+        use shoop_common::tracing_capture::CaptureDisposition;
+
+        let Some(capture) = self.capture.as_mut() else {
+            anyhow::bail!("tracing is not active");
+        };
+        shoop_common::tracing_helpers::set_engine_detail_enabled(false);
+        let disposition = if save {
+            CaptureDisposition::Save
+        } else {
+            CaptureDisposition::Discard
+        };
+        capture.stop(disposition)?;
+        let stopped = if save {
+            TracingStopped::Saved(capture.path().display().to_string())
+        } else {
+            TracingStopped::Discarded
+        };
+        self.capture = None;
+        Ok(stopped)
+    }
+
+    fn status(&self) -> TracingStatus {
+        let status = shoop_common::tracing_capture::CaptureStatus::current();
+        TracingStatus {
+            available: true,
+            active: status.active,
+            memory_usage_bytes: status.event_storage_bytes,
+        }
+    }
+
+    fn shutdown(&mut self) -> anyhow::Result<()> {
+        if self.capture.is_some() {
+            self.quiesce_capture()?;
+            self.stop_capture(true)?;
+        }
+        shoop_common::tracing_capture::shutdown_reusable_profiler()?;
+        Ok(())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+type SharedNativeTracing = Arc<Mutex<NativeTracing>>;
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Copy)]
+enum PendingTracingAction {
+    Start { engine_detail: bool },
+    Stop { save: bool },
+    FinishStop { save: bool },
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -156,6 +238,10 @@ struct UnifiedApp {
     settings: SettingsManager,
     #[cfg(not(target_arch = "wasm32"))]
     pending_audio_settings: Option<PendingAudioSettings>,
+    #[cfg(not(target_arch = "wasm32"))]
+    tracing: Option<SharedNativeTracing>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_tracing_action: Option<PendingTracingAction>,
     last_update: Instant,
     #[cfg(target_arch = "wasm32")]
     browser_self_test: BrowserSelfTest,
@@ -223,6 +309,10 @@ impl UnifiedApp {
             settings,
             #[cfg(not(target_arch = "wasm32"))]
             pending_audio_settings: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            tracing: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_tracing_action: None,
             last_update: Instant::now(),
             #[cfg(target_arch = "wasm32")]
             browser_self_test: BrowserSelfTest::from_location(),
@@ -242,7 +332,67 @@ impl UnifiedApp {
 
 impl UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
+    fn process_tracing(&mut self) {
+        let Some(tracing) = self.tracing.as_ref().cloned() else {
+            self.widget.set_tracing_status(TracingStatus::default());
+            self.pending_tracing_action = None;
+            return;
+        };
+        if let Some(action) = self.pending_tracing_action.take() {
+            let result = tracing
+                .lock()
+                .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))
+                .and_then(|mut tracing| match action {
+                    PendingTracingAction::Start { engine_detail } => {
+                        tracing.start_capture(engine_detail).map(|()| None)
+                    }
+                    PendingTracingAction::Stop { save } => {
+                        tracing.quiesce_capture()?;
+                        self.pending_tracing_action =
+                            Some(PendingTracingAction::FinishStop { save });
+                        Ok(None)
+                    }
+                    PendingTracingAction::FinishStop { save } => {
+                        tracing.stop_capture(save).map(Some)
+                    }
+                });
+            match result {
+                Ok(Some(stopped)) => self.widget.notify_tracing_stopped(stopped),
+                Ok(None) => {}
+                Err(error) => self.settings.report_action_error(error.to_string()),
+            }
+        }
+        let status = tracing
+            .lock()
+            .map(|tracing| tracing.status())
+            .unwrap_or_default();
+        self.widget.set_tracing_status(status);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn handle_settings_action(&mut self, action: SettingsAction) {
+        let action = match action {
+            SettingsAction::StartTracing { engine_detail } => {
+                if self.tracing.is_some() {
+                    self.pending_tracing_action =
+                        Some(PendingTracingAction::Start { engine_detail });
+                } else {
+                    self.settings
+                        .report_action_error("Tracing is unavailable in this build");
+                }
+                return;
+            }
+            SettingsAction::StopTracing { save } => {
+                if self.tracing.is_some() {
+                    self.pending_tracing_action = Some(PendingTracingAction::Stop { save });
+                } else {
+                    self.settings
+                        .report_action_error("Tracing is unavailable in this build");
+                }
+                return;
+            }
+            action => action,
+        };
         let kind = action.kind();
         let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
         let result = match action {
@@ -310,6 +460,9 @@ impl UnifiedApp {
             SettingsAction::RequestReloadUserScript { script_id } => {
                 self.runtime.reload_user_script(script_id)
             }
+            SettingsAction::StartTracing { .. } | SettingsAction::StopTracing { .. } => {
+                unreachable!("tracing actions are handled before traced settings actions")
+            }
         };
         if let Err(error) = result {
             self.settings.report_action_error(error.to_string());
@@ -357,6 +510,11 @@ impl UnifiedApp {
                 self.settings.report_action_error(
                     "Path-based user scripts are unavailable in browser builds",
                 );
+                return;
+            }
+            SettingsAction::StartTracing { .. } | SettingsAction::StopTracing { .. } => {
+                self.settings
+                    .report_action_error("Tracing is unavailable in browser builds");
                 return;
             }
         };
@@ -881,6 +1039,8 @@ fn save_file_output(
 
 impl eframe::App for UnifiedApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.process_tracing();
         self.show(ui);
     }
 }
@@ -1361,16 +1521,24 @@ impl Runtime {
 
 fn create_app(
     context: &eframe::CreationContext<'_>,
+    #[cfg(not(target_arch = "wasm32"))] tracing: Option<SharedNativeTracing>,
 ) -> Result<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>> {
     shoop_egui::initialize(&context.egui_ctx);
-    UnifiedApp::new()
-        .map(|app| {
-            if let Ok(scale) = app.settings.active().get(UI_SCALE_FACTOR) {
-                context.egui_ctx.set_zoom_factor(scale as f32);
-            }
-            Box::new(app) as Box<dyn eframe::App>
-        })
-        .map_err(|error| error.into())
+    let app = UnifiedApp::new()?;
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut app = app;
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(tracing) = tracing {
+        tracing
+            .lock()
+            .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))?
+            .start_requested_capture()?;
+        app.tracing = Some(tracing);
+    }
+    if let Ok(scale) = app.settings.active().get(UI_SCALE_FACTOR) {
+        context.egui_ctx.set_zoom_factor(scale as f32);
+    }
+    Ok(Box::new(app) as Box<dyn eframe::App>)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1407,17 +1575,24 @@ fn main() {
             }
         }
     }
-    let mut tracing_runtime = match NativeTracing::start(&cli) {
-        Ok(tracing) => tracing,
+    let tracing_runtime = match NativeTracing::initialize(&cli) {
+        Ok(tracing) => Arc::new(Mutex::new(tracing)),
         Err(error) => {
             eprintln!("Could not initialize tracing: {error:#}");
             std::process::exit(1);
         }
     };
     if cli.tracing_smoke_test {
-        tracing::info!(target: "Frontend.Egui", "frontend.egui.tracing_smoke_test");
-        if let Err(error) = tracing_runtime.shutdown() {
-            eprintln!("Failed to shut down Tracy capture: {error:#}");
+        let result = tracing_runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))
+            .and_then(|mut tracing| {
+                tracing.start_requested_capture()?;
+                tracing::info!(target: "Frontend.Egui", "frontend.egui.tracing_smoke_test");
+                tracing.shutdown()
+            });
+        if let Err(error) = result {
+            eprintln!("Failed to run Tracy capture smoke test: {error:#}");
             std::process::exit(1);
         }
         return;
@@ -1430,11 +1605,17 @@ fn main() {
             .with_min_inner_size([360.0, 200.0]),
         ..Default::default()
     };
-    let result = {
-        let _span = tracing::info_span!("app.egui.run").entered();
-        eframe::run_native("ShoopDaLoop", options, Box::new(create_app))
-    };
-    if let Err(error) = tracing_runtime.shutdown() {
+    let app_tracing = Arc::clone(&tracing_runtime);
+    let result = eframe::run_native(
+        "ShoopDaLoop",
+        options,
+        Box::new(move |context| create_app(context, Some(Arc::clone(&app_tracing)))),
+    );
+    let shutdown = tracing_runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))
+        .and_then(|mut tracing| tracing.shutdown());
+    if let Err(error) = shutdown {
         eprintln!("Failed to shut down Tracy capture: {error:#}");
         std::process::exit(1);
     }
