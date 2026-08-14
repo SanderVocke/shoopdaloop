@@ -33,7 +33,7 @@ pub use app_widget::{
     CPAL_INPUT_CHANNELS, CPAL_INPUT_DEVICE, CPAL_MIDI_INPUTS, CPAL_MIDI_OUTPUTS,
     CPAL_OUTPUT_CHANNELS, CPAL_OUTPUT_DEVICE, CPAL_SAMPLE_RATE, DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
     DEFAULT_NEW_TRACK_MIDI, DUMMY_BUFFER_SIZE, DUMMY_SAMPLE_RATE, JACK_CLIENT_NAME,
-    KEYBOARD_SCRIPT_ENABLED, SELECTED_AUDIO_DRIVER, USER_SCRIPTS,
+    KEYBOARD_SCRIPT_ENABLED, SELECTED_AUDIO_DRIVER, UI_SCALE_FACTOR, USER_SCRIPTS,
 };
 pub use composite_loop_widget::CompositeLoopWidget;
 pub use connection_dialog::{ConnectionDialog, ConnectionScope};
@@ -53,7 +53,6 @@ pub use waveform_widget::WaveformWidget;
 
 pub fn initialize(context: &egui::Context) {
     fonts::initialize(context);
-    egui_material_icons::initialize(context);
     context.all_styles_mut(|style| {
         style.visuals.widgets.hovered.bg_fill = colors::HOVER_BACKGROUND;
         style.visuals.widgets.hovered.weak_bg_fill = colors::HOVER_BACKGROUND;

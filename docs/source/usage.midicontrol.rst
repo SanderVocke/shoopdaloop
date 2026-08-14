@@ -2,9 +2,10 @@ MIDI controllers
 ----------------
 
 ShoopDaLoop controller integration is script-based. Open **Settings → Scripts**
-to enable the bundled APC Mini script or manage other scripts. The same surface
-shows script lifecycle, help, logs, callbacks, timers, logical MIDI rules,
-matched and connected endpoints, queue drops, and failures.
+to enable the bundled APC Mini script or manage other scripts. Scripts are
+grouped by kind in a table; its icon controls open separate help, log, and status
+windows showing callbacks, timers, logical MIDI rules, matched and connected
+endpoints, queue drops, and failures.
 
 Native builds discover MIDI through the selected JACK or midir service. Browser
 builds discover physical endpoints after the independent **Enable Web MIDI +

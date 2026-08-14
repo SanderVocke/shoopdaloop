@@ -17,6 +17,7 @@ pub struct LoopWidgetResponse {
     pub io_intents: Vec<AppIntent>,
     pub click_track_requested: bool,
     pub(crate) hover_active: bool,
+    close_context_menu: bool,
 }
 
 #[derive(Debug, Default)]
@@ -30,6 +31,10 @@ pub struct LoopWidget {
     balance_popup_until: f64,
     peak_left: PeakMeterAnimation,
     peak_right: PeakMeterAnimation,
+    name_edit: String,
+    source_name: String,
+    #[cfg(test)]
+    test_name_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_play_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -267,7 +272,36 @@ impl LoopWidget {
         state: &LoopState,
         result: &mut LoopWidgetResponse,
     ) {
-        ui.label(&state.name);
+        ui.label("Name");
+        let name_id = ui.make_persistent_id("loop_name");
+        let has_focus = ui.memory(|memory| memory.has_focus(name_id));
+        if !has_focus && self.source_name != state.name {
+            self.name_edit.clone_from(&state.name);
+            self.source_name.clone_from(&state.name);
+        }
+        let name = ui.add(
+            egui::TextEdit::singleline(&mut self.name_edit)
+                .id(name_id)
+                .desired_width(180.0),
+        );
+        #[cfg(test)]
+        {
+            self.test_name_rect = Some(name.rect);
+        }
+        let enter_pressed = has_focus && ui.input(|input| input.key_pressed(egui::Key::Enter));
+        if enter_pressed || name.lost_focus() {
+            if self.name_edit != state.name {
+                self.source_name.clone_from(&self.name_edit);
+                result
+                    .actions
+                    .push(LoopWidgetAction::NameChanged(self.name_edit.clone()));
+            }
+            if enter_pressed {
+                name.surrender_focus();
+                result.close_context_menu = true;
+            }
+        }
+        ui.separator();
         if can_convert_to_composite(state) {
             let convert = ui.button("Convert to composite");
             #[cfg(test)]
@@ -369,6 +403,7 @@ impl LoopWidget {
         let mut result = LoopWidgetResponse::default();
         #[cfg(test)]
         {
+            self.test_name_rect = None;
             self.test_convert_rect = None;
             self.test_drag_preview_rect = None;
         }
@@ -938,9 +973,14 @@ impl LoopWidget {
                 }
             }
         }
+        let popup_id = egui::Popup::default_response_id(&response);
         egui::Popup::context_menu(&response)
             .open_memory(context_requested.then_some(egui::SetOpenCommand::Bool(true)))
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| self.show_context_menu(ui, state, &mut result));
+        if result.close_context_menu {
+            egui::Popup::close_id(ui.ctx(), popup_id);
+        }
 
         let drag_preview_rect =
             paint_drag_preview(ui, &response, state, size, background, border_color);
@@ -1324,6 +1364,59 @@ mod tests {
                 "context menu did not open from {target}"
             );
         }
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn context_menu_edits_the_loop_name_inline() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = LoopState {
+            name: String::new(),
+            ..state()
+        };
+        let mut widget = LoopWidget::default();
+        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let _ = secondary_click(&context, &mut widget, &state, egui::pos2(100.0, 13.0), 1.1);
+        let _ = frame(&context, &mut widget, &state, 1.15, Vec::new());
+        let name_rect = widget.test_name_rect.unwrap();
+        let name = name_rect.center();
+        let _ = click(&context, &mut widget, &state, name, 1.2);
+        assert!(
+            widget.test_name_rect.is_some(),
+            "context menu closed when the name field was focused"
+        );
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.3,
+            vec![egui::Event::Text("Verse".to_owned())],
+        );
+        assert_eq!(widget.name_edit, "Verse", "name field was not focused");
+        let response = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.4,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            response.actions,
+            [LoopWidgetAction::NameChanged("Verse".to_owned())]
+        );
+        assert!(response.close_context_menu);
+        assert!(!egui::Popup::is_any_open(&context));
+        let _ = frame(&context, &mut widget, &state, 1.5, Vec::new());
+        assert!(
+            widget.test_name_rect.is_none(),
+            "context menu stayed open after accepting the name"
+        );
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

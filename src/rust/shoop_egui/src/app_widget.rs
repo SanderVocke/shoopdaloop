@@ -9,7 +9,7 @@ use crate::{
     TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
-    SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
+    SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
     SettingsRegistryBuilder, SettingsRegistryError, SettingsSnapshot, SettingsViewState,
     StringToggleList,
 };
@@ -23,6 +23,7 @@ const SIDEBAR_SECTION_GAP: f32 = 8.0;
 pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
     SettingKey::new("tracks.new.default_audio_channels");
 pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
+pub const UI_SCALE_FACTOR: SettingKey<f64> = SettingKey::new("appearance.ui_scale_factor");
 pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.keyboard.enabled");
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
@@ -73,6 +74,22 @@ pub fn register_settings(
         .category_order(10)
         .setting_order(20)
         .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            UI_SCALE_FACTOR,
+            1.0,
+            "Appearance",
+            "Pixels-per-point scale",
+            "Multiplier for egui's native pixels-per-point value, scaling the entire UI.",
+        )
+        .category_order(2)
+        .setting_order(10)
+        .effect(SettingEffect::ExplicitApply)
+        .editor(SettingEditor::Number {
+            min: 0.75,
+            max: 2.0,
+        }),
     )
 }
 
@@ -456,6 +473,7 @@ pub fn register_script_settings(
 enum AddTrackMode {
     #[default]
     Regular,
+    Trigger,
     DryWet,
 }
 
@@ -492,8 +510,6 @@ pub struct AppWidget {
     add_track_mode: AddTrackMode,
     add_track_audio_channels: u32,
     add_track_midi: bool,
-    add_track_dry_audio_channels: u32,
-    add_track_wet_audio_channels: u32,
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
     logo: Option<egui::TextureHandle>,
@@ -511,6 +527,8 @@ pub struct AppWidget {
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_cancel_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    add_track_midi_id: Option<egui::Id>,
     #[cfg(test)]
     details_toggle_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -549,8 +567,6 @@ impl AppWidget {
             add_track_mode: AddTrackMode::Regular,
             add_track_audio_channels: 2,
             add_track_midi: false,
-            add_track_dry_audio_channels: 2,
-            add_track_wet_audio_channels: 2,
             add_track_dry_midi: false,
             add_track_processor: None,
             logo: None,
@@ -568,6 +584,8 @@ impl AppWidget {
             add_track_accept_rect: None,
             #[cfg(test)]
             add_track_cancel_rect: None,
+            #[cfg(test)]
+            add_track_midi_id: None,
             #[cfg(test)]
             details_toggle_rect: None,
             #[cfg(test)]
@@ -963,8 +981,6 @@ impl AppWidget {
             .active
             .get(DEFAULT_NEW_TRACK_MIDI)
             .expect("registered MIDI setting must retain its type");
-        self.add_track_dry_audio_channels = self.add_track_audio_channels;
-        self.add_track_wet_audio_channels = self.add_track_audio_channels;
         self.add_track_dry_midi = self.add_track_midi;
         self.add_track_processor = None;
         self.add_track_open = true;
@@ -996,8 +1012,7 @@ impl AppWidget {
         self.add_track_mode = AddTrackMode::DryWet;
         self.add_track_open = true;
         self.add_track_processor = Some(processor.id.clone());
-        self.add_track_dry_audio_channels = 2;
-        self.add_track_wet_audio_channels = 2;
+        self.add_track_audio_channels = 2;
         self.add_track_dry_midi = true;
         self.add_track_open
             && processor.label == "Tiny Synth/FX"
@@ -1295,7 +1310,6 @@ impl AppWidget {
             .resizable(false)
             .open(&mut open)
             .show(context, |ui| {
-                ui.label("Choose regular looping or separate dry and wet media.");
                 egui::Grid::new("add_track_fields")
                     .num_columns(2)
                     .spacing([10.0, 6.0])
@@ -1304,112 +1318,123 @@ impl AppWidget {
                         ui.text_edit_singleline(&mut self.add_track_name);
                         ui.end_row();
                         ui.label("Track type:");
-                        egui::ComboBox::from_id_salt("add_track_mode")
-                            .selected_text(match self.add_track_mode {
-                                AddTrackMode::Regular => "Regular",
-                                AddTrackMode::DryWet => "Dry + Wet",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.add_track_mode,
-                                    AddTrackMode::Regular,
-                                    "Regular",
-                                );
-                                ui.selectable_value(
-                                    &mut self.add_track_mode,
-                                    AddTrackMode::DryWet,
-                                    "Dry + Wet",
-                                );
-                            });
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::Regular,
+                                "Regular",
+                            );
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::Trigger,
+                                "Trigger",
+                            );
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::DryWet,
+                                "Dry + Wet",
+                            );
+                        });
                         ui.end_row();
-                        match self.add_track_mode {
-                            AddTrackMode::Regular => {
-                                ui.label("Audio:");
-                                show_audio_channel_count(
-                                    ui,
-                                    "add_track_audio",
-                                    &mut self.add_track_audio_channels,
-                                );
-                                ui.end_row();
-                                ui.label("MIDI:");
-                                ui.checkbox(&mut self.add_track_midi, "Enabled");
-                                ui.end_row();
-                            }
-                            AddTrackMode::DryWet => {
-                                let selected_processor =
-                                    self.add_track_processor.as_ref().and_then(|selected| {
-                                        processors
-                                            .iter()
-                                            .find(|processor| processor.id == *selected)
-                                    });
-                                ui.label("Dry audio:");
-                                show_audio_channel_count(
-                                    ui,
-                                    "add_track_dry_audio",
-                                    &mut self.add_track_dry_audio_channels,
-                                );
-                                ui.end_row();
-                                let matching_audio = selected_processor.is_some_and(|processor| {
-                                    processor.constraints.matching_audio_channels
-                                });
-                                if matching_audio {
-                                    self.add_track_wet_audio_channels =
-                                        self.add_track_dry_audio_channels;
+                        let selected_processor =
+                            self.add_track_processor.as_ref().and_then(|selected| {
+                                processors
+                                    .iter()
+                                    .find(|processor| processor.id == *selected)
+                            });
+                        let midi_policy = selected_processor
+                            .map(|processor| processor.constraints.midi)
+                            .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
+                        if self.add_track_mode == AddTrackMode::DryWet
+                            && selected_processor.is_some()
+                        {
+                            match midi_policy {
+                                crate::TrackProcessorMidiPolicy::Required => {
+                                    self.add_track_dry_midi = true;
                                 }
-                                ui.label("Wet audio:");
-                                ui.add_enabled_ui(!matching_audio, |ui| {
-                                    show_audio_channel_count(
-                                        ui,
-                                        "add_track_wet_audio",
-                                        &mut self.add_track_wet_audio_channels,
-                                    );
-                                });
-                                ui.end_row();
-                                let midi_policy = selected_processor
-                                    .map(|processor| processor.constraints.midi)
-                                    .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
-                                if selected_processor.is_some() {
-                                    match midi_policy {
-                                        crate::TrackProcessorMidiPolicy::Required => {
-                                            self.add_track_dry_midi = true;
-                                        }
-                                        crate::TrackProcessorMidiPolicy::Unsupported => {
-                                            self.add_track_dry_midi = false;
-                                        }
-                                        crate::TrackProcessorMidiPolicy::Optional => {}
-                                    }
+                                crate::TrackProcessorMidiPolicy::Unsupported => {
+                                    self.add_track_dry_midi = false;
                                 }
-                                ui.label("Dry MIDI:");
-                                ui.add_enabled_ui(
-                                    midi_policy == crate::TrackProcessorMidiPolicy::Optional,
-                                    |ui| {
-                                        ui.checkbox(&mut self.add_track_dry_midi, "Enabled");
-                                    },
-                                );
-                                ui.end_row();
-                                ui.label("Processing:");
-                                let selected = selected_processor
-                                    .map(|processor| processor.label.as_str())
-                                    .unwrap_or("No processors available");
-                                egui::ComboBox::from_id_salt("add_track_processor")
-                                    .selected_text(selected)
-                                    .show_ui(ui, |ui| {
-                                        for processor in processors {
-                                            ui.add_enabled_ui(processor.available, |ui| {
-                                                ui.selectable_value(
-                                                    &mut self.add_track_processor,
-                                                    Some(processor.id.clone()),
-                                                    &processor.label,
-                                                );
-                                            });
-                                            if let Some(reason) = &processor.unavailable_reason {
-                                                ui.small(reason);
-                                            }
-                                        }
-                                    });
-                                ui.end_row();
+                                crate::TrackProcessorMidiPolicy::Optional => {}
                             }
                         }
+
+                        let audio_enabled = self.add_track_mode != AddTrackMode::Trigger;
+                        ui.add_enabled(audio_enabled, egui::Label::new("Audio:"));
+                        ui.add_enabled_ui(audio_enabled, |ui| {
+                            show_audio_channel_count(
+                                ui,
+                                "add_track_audio",
+                                &mut self.add_track_audio_channels,
+                            );
+                        });
+                        ui.end_row();
+
+                        let midi_applicable = match self.add_track_mode {
+                            AddTrackMode::Regular => true,
+                            AddTrackMode::Trigger => false,
+                            AddTrackMode::DryWet => {
+                                midi_policy != crate::TrackProcessorMidiPolicy::Unsupported
+                            }
+                        };
+                        ui.add_enabled(midi_applicable, egui::Label::new("MIDI:"));
+                        let (mut displayed_midi, midi_editable) = match self.add_track_mode {
+                            AddTrackMode::Regular => (self.add_track_midi, true),
+                            AddTrackMode::Trigger => (false, false),
+                            AddTrackMode::DryWet => (
+                                self.add_track_dry_midi,
+                                midi_policy == crate::TrackProcessorMidiPolicy::Optional,
+                            ),
+                        };
+                        let midi = ui
+                            .push_id("add_track_midi", |ui| {
+                                ui.add_enabled(
+                                    midi_editable,
+                                    egui::Checkbox::new(&mut displayed_midi, "Enabled"),
+                                )
+                            })
+                            .inner;
+                        #[cfg(test)]
+                        {
+                            self.add_track_midi_id = Some(midi.id);
+                        }
+                        if midi.changed() {
+                            match self.add_track_mode {
+                                AddTrackMode::Regular => self.add_track_midi = displayed_midi,
+                                AddTrackMode::DryWet => self.add_track_dry_midi = displayed_midi,
+                                AddTrackMode::Trigger => {}
+                            }
+                        }
+                        ui.end_row();
+
+                        let processing_enabled = self.add_track_mode == AddTrackMode::DryWet;
+                        ui.add_enabled(processing_enabled, egui::Label::new("Processing:"));
+                        let selected = if processing_enabled {
+                            selected_processor
+                                .map(|processor| processor.label.as_str())
+                                .unwrap_or("No processors available")
+                        } else {
+                            "Not applicable"
+                        };
+                        ui.add_enabled_ui(processing_enabled, |ui| {
+                            egui::ComboBox::from_id_salt("add_track_processor")
+                                .selected_text(selected)
+                                .show_ui(ui, |ui| {
+                                    for processor in processors {
+                                        ui.add_enabled_ui(processor.available, |ui| {
+                                            ui.selectable_value(
+                                                &mut self.add_track_processor,
+                                                Some(processor.id.clone()),
+                                                &processor.label,
+                                            );
+                                        });
+                                        if let Some(reason) = &processor.unavailable_reason {
+                                            ui.small(reason);
+                                        }
+                                    }
+                                });
+                        });
+                        ui.end_row();
                     });
                 let spec = self.add_track_spec();
                 let validation = spec
@@ -1430,7 +1455,10 @@ impl AppWidget {
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
-                    let add = ui.add_enabled(validation.is_ok(), egui::Button::new("Add"));
+                    let add = ui.add_enabled(
+                        validation.is_ok(),
+                        egui::Button::new("Add").min_size(egui::vec2(64.0, 28.0)),
+                    );
                     #[cfg(test)]
                     {
                         self.add_track_accept_rect = Some(add.rect);
@@ -1438,7 +1466,8 @@ impl AppWidget {
                     if add.clicked() {
                         accepted = true;
                     }
-                    let cancel = ui.button("Cancel");
+                    let cancel =
+                        ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 28.0)));
                     #[cfg(test)]
                     {
                         self.add_track_cancel_rect = Some(cancel.rect);
@@ -1467,9 +1496,13 @@ impl AppWidget {
                 audio_channels: self.add_track_audio_channels,
                 midi: self.add_track_midi,
             },
+            AddTrackMode::Trigger => TrackSpecTopology::Direct {
+                audio_channels: 0,
+                midi: false,
+            },
             AddTrackMode::DryWet => TrackSpecTopology::DryWet {
-                dry_audio_channels: self.add_track_dry_audio_channels,
-                wet_audio_channels: self.add_track_wet_audio_channels,
+                dry_audio_channels: self.add_track_audio_channels,
+                wet_audio_channels: self.add_track_audio_channels,
                 dry_midi: self.add_track_dry_midi,
                 processor_type: self.add_track_processor.clone()?,
             },
@@ -1696,19 +1729,27 @@ fn audio_channel_selection_action(task_id: crate::TaskId, channels: &[u32]) -> A
 }
 
 fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
-    ui.horizontal(|ui| {
-        egui::ComboBox::from_id_salt(id)
-            .selected_text(audio_channel_label(*channels))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(channels, 0, "Disabled");
-                ui.selectable_value(channels, 1, "Mono");
-                ui.selectable_value(channels, 2, "Stereo");
-                for custom in 3..=10 {
-                    ui.selectable_value(channels, custom, format!("Custom ({custom})"));
-                }
-            });
-        ui.add(egui::DragValue::new(channels).range(0..=u32::MAX).speed(1))
-            .on_hover_text("Custom channel count");
+    ui.push_id(id, |ui| {
+        ui.horizontal(|ui| {
+            ui.selectable_value(channels, 0, "Disabled");
+            ui.selectable_value(channels, 1, "Mono");
+            ui.selectable_value(channels, 2, "Stereo");
+
+            let custom_selected = *channels > 2;
+            if ui.selectable_label(custom_selected, "Other").clicked() && !custom_selected {
+                *channels = 3;
+            }
+            let mut custom_channels = (*channels).max(3);
+            let custom = ui.add_enabled(
+                *channels > 2,
+                egui::DragValue::new(&mut custom_channels)
+                    .range(3..=u32::MAX)
+                    .speed(1),
+            );
+            if custom.changed() {
+                *channels = custom_channels;
+            }
+        });
     });
 }
 
@@ -1734,15 +1775,6 @@ fn piano_destinations(state: &AppState) -> Vec<crate::TrackId> {
         })
         .map(|track| track.id)
         .collect()
-}
-
-fn audio_channel_label(channels: u32) -> String {
-    match channels {
-        0 => "Disabled".to_owned(),
-        1 => "Mono".to_owned(),
-        2 => "Stereo".to_owned(),
-        channels => format!("Custom ({channels})"),
-    }
 }
 
 #[cfg(test)]
@@ -2286,15 +2318,53 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
-    fn dry_wet_dialog_uses_empty_and_synthetic_processor_catalogs() {
+    fn add_track_midi_widget_keeps_its_id_across_track_types() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState::default();
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Track".to_owned();
+
+        frame(&context, &mut widget, &state, Vec::new());
+        let id = widget.add_track_midi_id.unwrap();
+        for mode in [AddTrackMode::Trigger, AddTrackMode::DryWet] {
+            widget.add_track_mode = mode;
+            frame(&context, &mut widget, &state, Vec::new());
+            assert_eq!(widget.add_track_midi_id, Some(id));
+        }
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn trigger_track_has_no_audio_or_midi() {
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Trigger".to_owned();
+        widget.add_track_mode = AddTrackMode::Trigger;
+        widget.add_track_audio_channels = 4;
+        widget.add_track_midi = true;
+
+        assert_eq!(
+            widget.accept_add_track(&[]),
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
+                name: "Trigger".to_owned(),
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 0,
+                    midi: false,
+                },
+            }))
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn dry_wet_dialog_uses_matching_audio_and_processor_catalogs() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut widget = AppWidget::default();
         widget.add_track_open = true;
         widget.add_track_name = "Processed".to_owned();
         widget.add_track_mode = AddTrackMode::DryWet;
-        widget.add_track_dry_audio_channels = 2;
-        widget.add_track_wet_audio_channels = 1;
+        widget.add_track_audio_channels = 2;
         widget.add_track_dry_midi = true;
         frame(&context, &mut widget, &AppState::default(), Vec::new());
         assert!(widget.add_track_processor.is_none());
@@ -2333,7 +2403,7 @@ mod tests {
                 name: "Processed".to_owned(),
                 topology: TrackSpecTopology::DryWet {
                     dry_audio_channels: 2,
-                    wet_audio_channels: 1,
+                    wet_audio_channels: 2,
                     dry_midi: true,
                     processor_type: processor.id,
                 },
@@ -2401,7 +2471,7 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
-    fn scripts_tab_renders_lifecycle_errors_logs_and_midi_diagnostics() {
+    fn scripts_tab_renders_grouped_controls_for_runtime_diagnostics() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut builder = SettingsRegistryBuilder::default();
@@ -2469,6 +2539,9 @@ mod tests {
         assert!(widget.settings.is_open());
 
         assert!(widget.settings.restart_rect(script_id).is_some());
+        assert!(widget.settings.log_rect(script_id).is_some());
+        assert!(widget.settings.documentation_rect(script_id).is_some());
+        assert!(widget.settings.status_rect(script_id).is_some());
         assert!(widget.settings.reload_rect(script_id).is_some());
     }
 

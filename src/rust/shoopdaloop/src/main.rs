@@ -35,7 +35,7 @@ use shoop_egui::register_script_settings;
 use shoop_egui::{register_audio_settings, AudioDriverConfig};
 use shoop_egui::{
     register_settings, AppIntent, AppSnapshot, AppWidget, ScriptKind, SettingsAction,
-    SettingsRegistryBuilder,
+    SettingsRegistryBuilder, UI_SCALE_FACTOR,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -887,6 +887,7 @@ impl eframe::App for UnifiedApp {
 
 const KEYBOARD_SCRIPT_FILENAME: &str = "keyboard.lua";
 const APC_MINI_SCRIPT_FILENAME: &str = "akai_apc_mini_mk1.lua";
+const DIALOG_EXAMPLE_SCRIPT_FILENAME: &str = "dialogs.lua";
 
 #[cfg(not(target_arch = "wasm32"))]
 fn configured_startup_scripts(
@@ -905,10 +906,17 @@ fn configured_startup_scripts(
             kind: ScriptKind::Bundled,
             enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
         },
+        StartupScript {
+            name: DIALOG_EXAMPLE_SCRIPT_FILENAME.to_owned(),
+            source: shoop_scripting::DIALOG_EXAMPLE_SCRIPT.to_owned(),
+            kind: ScriptKind::Example,
+            enabled: false,
+        },
     ];
     let mut identities = vec![
         KEYBOARD_SCRIPT_FILENAME.to_owned(),
         APC_MINI_SCRIPT_FILENAME.to_owned(),
+        "examples/dialogs.lua".to_owned(),
     ];
     let mut warnings = Vec::new();
     for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
@@ -1173,6 +1181,12 @@ fn browser_startup_scripts(
             kind: ScriptKind::Bundled,
             enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
         },
+        StartupScript {
+            name: DIALOG_EXAMPLE_SCRIPT_FILENAME.to_owned(),
+            source: shoop_scripting::DIALOG_EXAMPLE_SCRIPT.to_owned(),
+            kind: ScriptKind::Example,
+            enabled: false,
+        },
     ])
 }
 
@@ -1350,7 +1364,12 @@ fn create_app(
 ) -> Result<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>> {
     shoop_egui::initialize(&context.egui_ctx);
     UnifiedApp::new()
-        .map(|app| Box::new(app) as Box<dyn eframe::App>)
+        .map(|app| {
+            if let Ok(scale) = app.settings.active().get(UI_SCALE_FACTOR) {
+                context.egui_ctx.set_zoom_factor(scale as f32);
+            }
+            Box::new(app) as Box<dyn eframe::App>
+        })
         .map_err(|error| error.into())
 }
 
@@ -4295,15 +4314,18 @@ mod tests {
             .unwrap();
         let settings = registry.resolve(&document, 2).snapshot;
         let (scripts, paths, warnings) = configured_startup_scripts(&settings).unwrap();
-        assert_eq!(scripts.len(), 3);
-        assert_eq!(paths.len(), 3);
+        assert_eq!(scripts.len(), 4);
+        assert_eq!(paths.len(), 4);
         assert_eq!(scripts[0].kind, ScriptKind::Bundled);
         assert_eq!(scripts[0].source, shoop_scripting::KEYBOARD_SCRIPT);
         assert!(scripts[0].enabled);
         assert_eq!(scripts[1].kind, ScriptKind::Bundled);
         assert!(!scripts[1].enabled);
-        assert_eq!(scripts[2].kind, ScriptKind::User);
+        assert_eq!(scripts[2].kind, ScriptKind::Example);
+        assert_eq!(scripts[2].source, shoop_scripting::DIALOG_EXAMPLE_SCRIPT);
         assert!(!scripts[2].enabled);
+        assert_eq!(scripts[3].kind, ScriptKind::User);
+        assert!(!scripts[3].enabled);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing.lua"));
         assert!(validate_script_draft(&draft).is_err());
@@ -4344,7 +4366,7 @@ mod tests {
             .reconcile_script_settings(&manager.active())
             .unwrap();
         let snapshot = wait_for_script_configuration(&mut runtime);
-        assert_eq!(snapshot.scripting.scripts.len(), 3);
+        assert_eq!(snapshot.scripting.scripts.len(), 4);
 
         let mut removal = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
         removal.set(
@@ -4356,7 +4378,7 @@ mod tests {
         runtime
             .reconcile_script_settings(&manager.active())
             .unwrap();
-        let after_removal = wait_for_script_count(&mut runtime, 2);
+        let after_removal = wait_for_script_count(&mut runtime, 3);
         assert!(!after_removal
             .scripting
             .scripts
@@ -4434,7 +4456,7 @@ mod tests {
                 .scripts
                 .iter()
                 .any(|script| script.name == "controller.lua" && script.enabled);
-            if snapshot.scripting.scripts.len() == 3
+            if snapshot.scripting.scripts.len() == 4
                 && keyboard_disabled
                 && apc_enabled
                 && user_enabled

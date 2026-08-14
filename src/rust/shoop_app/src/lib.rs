@@ -3554,6 +3554,12 @@ impl ApplicationModel {
             ));
         }
         match action {
+            LoopAction::NameChanged(name) => {
+                let model = self.loops.get_mut(&loop_id).expect("loop was checked");
+                model.name.clone_from(&name);
+                model.state.name = name;
+                Ok(())
+            }
             LoopAction::IconClicked(modifiers) => {
                 let was_selected = self
                     .loops
@@ -7473,6 +7479,26 @@ mod tests {
         assert!(snapshot.tracks[0].loops[0].sync);
         assert!(snapshot.tracks[0].id.is_valid());
         assert!(snapshot.tracks[0].loops[0].id.is_valid());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn loop_name_change_is_published() {
+        let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let initial = runtime.handle().snapshot();
+        let track_id = initial.tracks[0].id;
+        let loop_id = initial.tracks[0].loops[0].id;
+        runtime
+            .handle()
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::NameChanged("Count-in".to_owned()),
+            })
+            .unwrap();
+        let snapshot = wait_for(&runtime.handle(), |snapshot| {
+            snapshot.tracks[0].loops[0].name == "Count-in"
+        });
+        assert_eq!(snapshot.tracks[0].loops[0].name, "Count-in");
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

@@ -8,6 +8,7 @@ shoop_app_api = { path = "../shoop_app_api" }
 shoop_settings = { path = "../shoop_settings" }
 egui = { workspace = true }
 egui_material_icons = { workspace = true }
+egui_commonmark = { workspace = true }
 image = { workspace = true }
 tracing = { workspace = true }
 

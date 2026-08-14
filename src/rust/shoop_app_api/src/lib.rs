@@ -1031,6 +1031,7 @@ pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 1 };
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
     Bundled,
+    Example,
     User,
     Session,
     Ephemeral,
@@ -1415,6 +1416,7 @@ impl Default for ClickTrackRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LoopAction {
+    NameChanged(String),
     IconClicked(SelectionModifiers),
     IconDoubleClicked,
     PlayClicked,
@@ -1661,6 +1663,7 @@ pub enum AppIntent {
 impl LoopAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::NameChanged(_) => "loop.name",
             Self::IconClicked(_) => "loop.icon_clicked",
             Self::IconDoubleClicked => "loop.icon_double_clicked",
             Self::PlayClicked => "loop.play",
@@ -2054,6 +2057,10 @@ mod tests {
                 source_loop_id,
                 start_iteration: 3,
             }
+        );
+        assert_eq!(
+            LoopAction::NameChanged("Verse".to_owned()).kind(),
+            "loop.name"
         );
         assert_eq!(
             LoopAction::ConvertToComposite.kind(),

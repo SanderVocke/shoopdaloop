@@ -4,14 +4,15 @@ Tracks
 Adding a track
 ~~~~~~~~~~~~~~
 
-Use **Add Track** to create either a **Regular** or **Dry + Wet** track. The
-dialog configures the display name, audio-channel counts, optional MIDI, and,
-for processed tracks, the processor kind.
+Use **Add Track** to create a **Regular**, **Trigger**, or **Dry + Wet** track.
+Trigger tracks have no audio or MIDI channels. The dialog configures the display
+name, audio-channel counts, optional MIDI, and, for processed tracks, the
+processor kind.
 
 Native processor choices are External, Tiny Synth/FX, and feature-dependent
-Carla modes. Browser builds offer Tiny Synth/FX. Tiny Synth/FX requires matched
-dry/wet audio counts and one MIDI input; External and Carla tracks allow
-independent dry and wet counts.
+Carla modes. Browser builds offer Tiny Synth/FX. New Dry + Wet tracks use one
+shared audio-channel count for their matched dry inputs and wet outputs. Tiny
+Synth/FX additionally requires one MIDI input.
 
 Track controls
 ~~~~~~~~~~~~~~
