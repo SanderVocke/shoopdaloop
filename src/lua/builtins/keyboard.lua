@@ -153,7 +153,9 @@ local handle_keyboard = function(event)
     local modifiers = event.modifiers
     if event.type == shoop_control.constants.KeyEventType_Pressed then
         local as_number = as_number_key(key)
-        if is_direction_key(key) then
+        if key == shoop_control.constants.Key_Control then
+            shoop_helpers.toggle_sync_active()
+        elseif is_direction_key(key) then
             handle_direction_key(key, modifiers)
         elseif key == shoop_control.constants.Key_Space then
             handle_default_loop_action()
@@ -192,7 +194,9 @@ local handle_keyboard = function(event)
         end
     elseif event.type == shoop_control.constants.KeyEventType_Released then
         local as_number = as_number_key(key)
-        if key == shoop_control.constants.Key_Period then
+        if key == shoop_control.constants.Key_Control then
+            shoop_helpers.toggle_sync_active()
+        elseif key == shoop_control.constants.Key_Period then
             shoop_helpers.stop_sampler()
         elseif as_number ~= nil then
             handle_number_released(as_number, modifiers)

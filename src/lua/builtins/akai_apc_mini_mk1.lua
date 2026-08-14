@@ -295,6 +295,19 @@ local handle_loop_released = function(coords)
     end
 end
 
+local loop_state_color = function(mode, length)
+    if mode == shoop_control.constants.LoopMode_Playing or
+       mode == shoop_control.constants.LoopMode_PlayingDryThroughWet then
+        return LED_green
+    elseif mode == shoop_control.constants.LoopMode_Recording or
+           mode == shoop_control.constants.LoopMode_RecordingDryIntoWet then
+        return LED_red
+    elseif length > 0 then
+        return LED_yellow
+    end
+    return LED_off
+end
+
 -- Based on a event that happened on a particular loop, update that loop's
 -- color and send it to the device.
 local push_loop_color = function(coords, event)
@@ -308,53 +321,36 @@ local push_loop_color = function(coords, event)
         prev_color = loop_colors[coords[1]][coords[2]]
     end
 
-    local color = LED_off
-    if event.mode == shoop_control.constants.LoopMode_Playing or
-       event.mode == shoop_control.constants.LoopMode_PlayingDryThroughWet then
-        color = LED_green
-    elseif event.mode == shoop_control.constants.LoopMode_Recording or
-           event.mode == shoop_control.constants.LoopMode_RecordingDryIntoWet then
-        color = LED_red
-    elseif event.length > 0 then
-        color = LED_yellow
-    end
-
+    local color = loop_state_color(event.mode, event.length)
     if prev_color ~= color then
         set_led_by_coords(coords, color)
         loop_colors[coords[1]][coords[2]] = color
     end
 end
 
--- Get the color of the loop, based on what we have sent in the
--- past. It is not actually queried from the device.
-local get_loop_color = function(coords)
-    if loop_colors[coords[1]] ~= nil then
-        if loop_colors[coords[2]] ~= nil then
-            return loop_colors[coords[1]][coords[2]]
-        end
+local push_current_loop_color = function(coords)
+    local modes = shoop_control.loop_get_mode(coords)
+    local lengths = shoop_control.loop_get_length(coords)
+    local color = LED_off
+    if #modes == 1 and #lengths == 1 then
+        color = loop_state_color(modes[1], lengths[1])
     end
-    return nil
+    if loop_colors[coords[1]] == nil then
+        loop_colors[coords[1]] = {}
+    end
+    loop_colors[coords[1]][coords[2]] = color
+    set_led_by_coords(coords, color)
 end
 
--- For all colors we are tracking, send them to the loop(s) again.
+-- Query and resend every loop color so reset also reflects changes which
+-- happened before this script started or while the controller was disconnected.
 local push_all_loop_colors = function()
     for i = 0, 7 do
         for j = 0, 7 do
-            local coords = {i,j}
-            local color = get_loop_color(coords)
-            if color == nil then
-                color = LED_off
-            end
-            set_led_by_coords(coords, color)
+            push_current_loop_color({i,j})
         end
     end
-    -- Sync loop
-    local sync_coords = {-1, 0}
-    local sync_color = get_loop_color(sync_coords)
-    if sync_color == nil then
-        sync_color = LED_off
-    end
-    set_led_by_coords(sync_coords, sync_color)
+    push_current_loop_color({-1, 0})
 end
 
 -- Check the state of global ShoopDaLoop controls and update the resp. buttons' colors

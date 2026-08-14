@@ -4,10 +4,28 @@ use crate::{KeyEvent, KeyEventType};
 
 pub fn translate_events(
     events: &[egui::Event],
+    modifiers: egui::Modifiers,
     text_entry_active: bool,
     pressed: &mut BTreeMap<egui::Key, (i64, i64)>,
+    control_pressed: &mut bool,
 ) -> Vec<KeyEvent> {
     let mut translated = Vec::new();
+    let focus_lost = events
+        .iter()
+        .any(|event| matches!(event, egui::Event::WindowFocused(false)));
+    let control_active = modifiers.ctrl && !text_entry_active && !focus_lost;
+    if control_active != *control_pressed {
+        *control_pressed = control_active;
+        translated.push(KeyEvent {
+            event_type: if control_active {
+                KeyEventType::Pressed
+            } else {
+                KeyEventType::Released
+            },
+            key: 16_777_249,
+            modifiers: script_modifiers(modifiers),
+        });
+    }
     for event in events {
         match event {
             egui::Event::Key {
@@ -151,40 +169,84 @@ mod tests {
             ctrl: true,
             ..Default::default()
         };
+        let mut control_pressed = false;
         let events = translate_events(
             &[
                 key(egui::Key::Space, true, false, modifiers),
                 key(egui::Key::Space, true, true, modifiers),
                 key(egui::Key::Space, false, false, modifiers),
             ],
+            modifiers,
             false,
             &mut pressed,
+            &mut control_pressed,
         );
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].key, 32);
-        assert_eq!(events[0].modifiers, 33_554_432 | 67_108_864);
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].key, 16_777_249);
         assert_eq!(events[0].event_type, KeyEventType::Pressed);
-        assert_eq!(events[1].event_type, KeyEventType::Released);
+        assert_eq!(events[1].key, 32);
+        assert_eq!(events[1].modifiers, 33_554_432 | 67_108_864);
+        assert_eq!(events[1].event_type, KeyEventType::Pressed);
+        assert_eq!(events[2].event_type, KeyEventType::Released);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
     fn text_entry_suppresses_new_keys_and_focus_loss_releases_held_keys() {
         let mut pressed = BTreeMap::new();
+        let mut control_pressed = false;
         assert!(translate_events(
             &[key(egui::Key::R, true, false, egui::Modifiers::NONE)],
+            egui::Modifiers::NONE,
             true,
             &mut pressed,
+            &mut control_pressed,
         )
         .is_empty());
         translate_events(
             &[key(egui::Key::R, true, false, egui::Modifiers::NONE)],
+            egui::Modifiers::NONE,
             false,
             &mut pressed,
+            &mut control_pressed,
         );
-        let released = translate_events(&[egui::Event::WindowFocused(false)], false, &mut pressed);
+        let released = translate_events(
+            &[egui::Event::WindowFocused(false)],
+            egui::Modifiers::NONE,
+            false,
+            &mut pressed,
+            &mut control_pressed,
+        );
         assert_eq!(released.len(), 1);
         assert_eq!(released[0].key, 82);
         assert_eq!(released[0].event_type, KeyEventType::Released);
         assert!(pressed.is_empty());
+    }
+
+    #[test]
+    fn control_modifier_transitions_emit_standalone_key_events() {
+        let mut pressed = BTreeMap::new();
+        let mut control_pressed = false;
+        let modifiers = egui::Modifiers {
+            ctrl: true,
+            ..Default::default()
+        };
+        let pressed_events =
+            translate_events(&[], modifiers, false, &mut pressed, &mut control_pressed);
+        assert_eq!(pressed_events.len(), 1);
+        assert_eq!(pressed_events[0].key, 16_777_249);
+        assert_eq!(pressed_events[0].event_type, KeyEventType::Pressed);
+        assert_eq!(pressed_events[0].modifiers, 67_108_864);
+
+        let released_events = translate_events(
+            &[],
+            egui::Modifiers::NONE,
+            false,
+            &mut pressed,
+            &mut control_pressed,
+        );
+        assert_eq!(released_events.len(), 1);
+        assert_eq!(released_events[0].key, 16_777_249);
+        assert_eq!(released_events[0].event_type, KeyEventType::Released);
+        assert!(!control_pressed);
     }
 }

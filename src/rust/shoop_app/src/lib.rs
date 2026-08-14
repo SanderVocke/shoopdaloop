@@ -3412,6 +3412,10 @@ impl ApplicationModel {
             .iter_mut()
             .find(|track| track.id == track_id)
             .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        if matches!(&action, TrackAction::OutputBalanceChanged(_)) && !track.controls.output_stereo
+        {
+            return Ok(());
+        }
         let backend_action = match action {
             TrackAction::NameChanged(name) => {
                 track.name = name;
@@ -8927,6 +8931,25 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         };
         press(&mut runtime, 16_777_236, 0);
         assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 73, 0);
+        assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
+        press(&mut runtime, 16_777_236, 0);
+        assert!(runtime.snapshot().tracks[2].loops[0].selected);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        press(&mut runtime, 73, 0);
+        assert!(!runtime.snapshot().tracks[1].controls.input_monitoring);
+        assert!(runtime.snapshot().tracks[2].controls.input_monitoring);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(false),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         press(&mut runtime, 16_777_236, 0);
         assert!(runtime.snapshot().tracks[2].loops[0].selected);
         press(&mut runtime, 16_777_234, 67_108_864);
@@ -8945,10 +8968,14 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
 
         press(&mut runtime, 49, 0);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 1);
         press(&mut runtime, 50, 0);
         assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 12);
         key(&mut runtime, 49, 0, KeyEventType::Released);
         key(&mut runtime, 50, 0, KeyEventType::Released);
+        press(&mut runtime, 51, 0);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 3);
+        key(&mut runtime, 51, 0, KeyEventType::Released);
         runtime
             .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
             .unwrap();
@@ -9024,6 +9051,21 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Recording
         );
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 82, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 80, 0);
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 80, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 76, 0);
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 76, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 77, 0);
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 77, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
         press(&mut runtime, 83, 0);
         press(&mut runtime, 76, 0);
         assert_eq!(
@@ -9037,6 +9079,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
         press(&mut runtime, 83, 0);
         press(&mut runtime, 71, 0);
+        let after_grab = runtime.snapshot();
+        assert!(after_grab
+            .notifications
+            .iter()
+            .any(|notification| notification
+                .message
+                .contains("cannot grab before the sync loop has a length")));
         press(&mut runtime, 80, 0);
         press(&mut runtime, 78, 0);
         assert_eq!(
@@ -9052,6 +9101,22 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.snapshot().tracks[1].loops[2].mode,
             LoopMode::Recording
         );
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 78, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[3].mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 79, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[3].mode,
+            LoopMode::Playing
+        );
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[2].mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 16_777_236, 0);
         press(&mut runtime, 84, 0);
         press(&mut runtime, 16_777_237, 0);
         press(&mut runtime, 87, 0);
@@ -9062,6 +9127,170 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(runtime.snapshot().scripting.scripts[0]
             .latest_error
             .is_none());
+    }
+
+    #[test]
+    fn production_keyboard_selects_sync_fallback_and_ctrl_momentary_toggle() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "keyboard.lua".to_owned(),
+                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        let key = |runtime: &mut CooperativeApplicationRuntime,
+                   key: i64,
+                   modifiers: i64,
+                   event_type: KeyEventType| {
+            runtime
+                .dispatch(AppIntent::KeyEvent(KeyEvent {
+                    event_type,
+                    key,
+                    modifiers,
+                }))
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::ZERO);
+        };
+        key(&mut runtime, 16_777_236, 0, KeyEventType::Pressed);
+        assert!(runtime.snapshot().tracks[0].loops[0].selected);
+
+        key(&mut runtime, 16_777_249, 67_108_864, KeyEventType::Pressed);
+        assert!(runtime.snapshot().global_controls.sync);
+        key(&mut runtime, 16_777_249, 0, KeyEventType::Released);
+        assert!(!runtime.snapshot().global_controls.sync);
+        assert!(runtime.snapshot().scripting.scripts[0]
+            .latest_error
+            .is_none());
+    }
+
+    #[test]
+    fn production_keyboard_default_action_covers_stopped_cancel_and_grab_policy() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Track".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "keyboard.lua".to_owned(),
+                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        let press = |runtime: &mut CooperativeApplicationRuntime, key: i64| {
+            runtime
+                .dispatch(AppIntent::KeyEvent(KeyEvent {
+                    event_type: KeyEventType::Pressed,
+                    key,
+                    modifiers: 0,
+                }))
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::ZERO);
+        };
+        press(&mut runtime, 16_777_236);
+        let loop_id = runtime.model.tracks[1].loops[0];
+        let backend_id = runtime.model.loops[&loop_id].backend_id;
+        runtime.backend.set_loop_length(backend_id, 100).unwrap();
+        runtime.tick(Duration::ZERO);
+
+        press(&mut runtime, 32);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        press(&mut runtime, 32);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Stopped
+        );
+        press(&mut runtime, 46);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::KeyEvent(KeyEvent {
+                event_type: KeyEventType::Released,
+                key: 46,
+                modifiers: 0,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Stopped
+        );
+
+        runtime
+            .backend
+            .transition_loop(backend_id, BackendLoopMode::Recording, Some(2))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].next_mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 32);
+        assert_ne!(
+            runtime.snapshot().tracks[1].loops[0].next_mode,
+            LoopMode::Recording
+        );
+
+        press(&mut runtime, 87);
+        assert!(runtime
+            .snapshot()
+            .notifications
+            .iter()
+            .any(|notification| notification
+                .message
+                .contains("cannot record with targeted: no loop is targeted")));
+        press(&mut runtime, 16_777_216);
+        let notifications_before_empty_w = runtime.snapshot().notifications.len();
+        press(&mut runtime, 87);
+        assert_eq!(
+            runtime.snapshot().notifications.len(),
+            notifications_before_empty_w + 1
+        );
+        press(&mut runtime, 16_777_236);
+        press(&mut runtime, 67);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetDefaultRecordingAction(
+                    shoop_app_api::DefaultRecordingAction::Grab,
+                ),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        press(&mut runtime, 32);
+        assert!(runtime
+            .snapshot()
+            .notifications
+            .iter()
+            .any(|notification| notification
+                .message
+                .contains("cannot grab before the sync loop has a length")));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
@@ -10355,7 +10584,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime
                 .dispatch(AppIntent::AddTrack(DirectTrackSpec {
                     name: format!("Track {index}"),
-                    audio_channels: 2,
+                    audio_channels: if index == 0 { 1 } else { 2 },
                     midi: false,
                 }))
                 .unwrap();
@@ -10443,6 +10672,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         }
         assert!(reset.len() >= 67);
         assert!(reset.iter().all(|(_, message)| message.len() == 3));
+        assert!(reset.iter().any(|(_, message)| message == &[0x90, 83, 0]));
+        assert!(reset.iter().any(|(_, message)| message == &[0x90, 87, 1]));
 
         let send_note = |runtime: &mut CooperativeApplicationRuntime,
                          midi: &shoop_scripting::FakeMidiControl,
@@ -10455,6 +10686,67 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.tick(Duration::from_millis(2));
             runtime.tick(Duration::ZERO);
         };
+        let mut global_feedback = Vec::new();
+        for action in [
+            GlobalControlAction::SetSolo(true),
+            GlobalControlAction::SetSolo(false),
+            GlobalControlAction::SetSync(true),
+            GlobalControlAction::SetSync(false),
+        ] {
+            runtime.dispatch(AppIntent::Global(action)).unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::from_millis(2));
+            global_feedback.extend(midi_control.take_sent());
+        }
+        for _ in 0..10 {
+            runtime.tick(Duration::from_millis(1));
+            global_feedback.extend(midi_control.take_sent());
+        }
+        for expected in [[0x90, 83, 1], [0x90, 83, 0], [0x90, 87, 0], [0x90, 87, 1]] {
+            assert!(
+                global_feedback
+                    .iter()
+                    .any(|(_, message)| message == &expected),
+                "missing {expected:?} in {global_feedback:?}"
+            );
+        }
+
+        for note in [98, 86, 84, 85, 82, 70, 71, 68, 69] {
+            send_note(&mut runtime, &midi_control, note, true);
+            send_note(&mut runtime, &midi_control, note, false);
+            let feedback = midi_control.take_sent();
+            assert!(feedback
+                .iter()
+                .any(|(_, message)| message == &[0x90, note, 1]));
+            assert!(feedback
+                .iter()
+                .any(|(_, message)| message == &[0x90, note, 0]));
+        }
+
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(7)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 71, true);
+        send_note(&mut runtime, &midi_control, 71, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 7);
+        let mut debug_reset = midi_control.take_sent();
+        for _ in 0..70 {
+            runtime.tick(Duration::from_millis(1));
+            debug_reset.extend(midi_control.take_sent());
+        }
+        assert!(debug_reset.len() >= 67);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
+        runtime.tick(Duration::from_millis(2));
+        assert_eq!(runtime.snapshot().tracks[1].controls.output_gain_db, 0.0);
+
         let grid_note = 56;
         send_note(&mut runtime, &midi_control, grid_note, true);
         let after_default = runtime.snapshot();
@@ -10465,6 +10757,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             after_default.scripting.scripts[0],
             after_default.notifications
         );
+        send_note(&mut runtime, &midi_control, 70, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 70, false);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
         send_note(&mut runtime, &midi_control, 82, true);
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 82, false);
@@ -10472,6 +10771,25 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Stopped
         );
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 82, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert!(runtime.snapshot().tracks[1].loops[0].empty);
+        send_note(&mut runtime, &midi_control, 85, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 85, false);
+        assert!(runtime
+            .snapshot()
+            .notifications
+            .iter()
+            .any(|notification| notification
+                .message
+                .contains("cannot grab before the sync loop has a length")));
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 82, false);
 
         send_note(&mut runtime, &midi_control, 86, true);
         send_note(&mut runtime, &midi_control, grid_note, true);
@@ -10488,6 +10806,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 71, false);
         assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 1);
+        send_note(&mut runtime, &midi_control, 71, true);
+        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 71, false);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 0);
 
         send_note(&mut runtime, &midi_control, 68, true);
         midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
@@ -10498,11 +10820,49 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(runtime.snapshot().tracks[1].controls.output_muted);
         send_note(&mut runtime, &midi_control, 69, true);
         midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
+        midi_control.push_input("apc-source", vec![0xb0, 49, 127]);
         runtime.tick(Duration::from_millis(2));
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 69, false);
-        assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 1.0);
+        assert!(!runtime.snapshot().tracks[1].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 0.0);
+        assert!(runtime.snapshot().tracks[2].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[2].controls.output_balance, 1.0);
         assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
+
+        send_note(&mut runtime, &midi_control, 68, true);
+        midi_control.push_input("apc-source", vec![0xb0, 56, 127]);
+        runtime.tick(Duration::from_millis(2));
+        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 68, false);
+        assert_eq!(runtime.snapshot().tracks[0].controls.output_gain_db, 20.0);
+        assert!(runtime.snapshot().tracks[0].controls.output_muted);
+        send_note(&mut runtime, &midi_control, 69, true);
+        midi_control.push_input("apc-source", vec![0xb0, 56, 0]);
+        runtime.tick(Duration::from_millis(2));
+        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 69, false);
+        assert!(!runtime.snapshot().tracks[0].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[0].controls.output_balance, 0.0);
+        assert!(runtime.snapshot().tracks[0].controls.input_monitoring);
+
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        send_note(&mut runtime, &midi_control, 69, true);
+        send_note(&mut runtime, &midi_control, 57, true);
+        send_note(&mut runtime, &midi_control, 69, false);
+        assert!(!runtime.snapshot().tracks[1].controls.input_monitoring);
+        assert!(runtime.snapshot().tracks[2].controls.input_monitoring);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(false),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         runtime
             .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
             .unwrap();
@@ -10642,6 +11002,28 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.snapshot().tracks[3].loops[0].id
         );
 
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 70, true);
+        send_note(&mut runtime, &midi_control, 56, true);
+        send_note(&mut runtime, &midi_control, 56, false);
+        send_note(&mut runtime, &midi_control, 59, true);
+        send_note(&mut runtime, &midi_control, 59, false);
+        send_note(&mut runtime, &midi_control, 70, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        let extended_sections = &runtime.model.loops[&target_id].script_composition;
+        assert_eq!(extended_sections.len(), 2);
+        assert_eq!(
+            extended_sections[0],
+            [
+                runtime.snapshot().tracks[2].loops[0].id,
+                runtime.snapshot().tracks[3].loops[0].id,
+            ]
+        );
+        assert_eq!(
+            extended_sections[1],
+            [runtime.snapshot().tracks[4].loops[0].id]
+        );
+
         // Re-enter composition mode and release each source before pressing the next one,
         // proving the production controller's regular serial append path as well.
         send_note(&mut runtime, &midi_control, 98, true);
@@ -10652,11 +11034,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         send_note(&mut runtime, &midi_control, 60, false);
         send_note(&mut runtime, &midi_control, 61, true);
         send_note(&mut runtime, &midi_control, 61, false);
+        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 88, false);
         send_note(&mut runtime, &midi_control, 70, false);
         send_note(&mut runtime, &midi_control, 98, false);
         let serial_target = runtime.snapshot().tracks[4].loops[0].id;
         let serial_sections = &runtime.model.loops[&serial_target].script_composition;
-        assert_eq!(serial_sections.len(), 2);
+        assert_eq!(serial_sections.len(), 3);
         assert_eq!(
             serial_sections[0],
             [runtime.snapshot().tracks[5].loops[0].id]
@@ -10664,6 +11048,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(
             serial_sections[1],
             [runtime.snapshot().tracks[6].loops[0].id]
+        );
+        assert_eq!(
+            serial_sections[2],
+            [runtime.snapshot().tracks[0].loops[0].id]
         );
         assert!(runtime.snapshot().scripting.scripts[0]
             .latest_error
@@ -10715,6 +11103,149 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         assert_eq!(midi_control.active_connections(), 0);
+    }
+
+    #[test]
+    fn production_apc_reset_restores_authoritative_loop_colors() {
+        let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
+        midi_control.set_endpoints(vec![
+            shoop_scripting::MidiEndpoint {
+                id: "apc-source".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Output,
+            },
+            shoop_scripting::MidiEndpoint {
+                id: "apc-sink".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Input,
+            },
+        ]);
+        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+            Box::new(FakeBackend::default()),
+            Box::new(midi),
+        )
+        .unwrap();
+        for index in 0..2 {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: format!("Track {index}"),
+                    audio_channels: 2,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let initial_loop_id = runtime.model.tracks[1].loops[2];
+        let initial_backend_id = runtime.model.loops[&initial_loop_id].backend_id;
+        runtime
+            .backend
+            .set_loop_length(initial_backend_id, 100)
+            .unwrap();
+        runtime
+            .backend
+            .transition_loop(initial_backend_id, BackendLoopMode::Recording, None)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "akai_apc_mini_mk1.lua".to_owned(),
+                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        runtime.tick(Duration::from_millis(1_000));
+        let mut initial_reset = midi_control.take_sent();
+        for _ in 0..70 {
+            runtime.tick(Duration::from_millis(1));
+            initial_reset.extend(midi_control.take_sent());
+        }
+        assert!(initial_reset
+            .iter()
+            .any(|(_, message)| message == &[0x90, 40, 3]));
+
+        let send_note = |runtime: &mut CooperativeApplicationRuntime,
+                         midi: &shoop_scripting::FakeMidiControl,
+                         note: u8,
+                         pressed: bool| {
+            midi.push_input(
+                "apc-source",
+                vec![if pressed { 0x90 } else { 0x80 }, note, 0x7f],
+            );
+            runtime.tick(Duration::from_millis(2));
+            runtime.tick(Duration::ZERO);
+        };
+        let collect = |runtime: &mut CooperativeApplicationRuntime,
+                       midi: &shoop_scripting::FakeMidiControl| {
+            let mut messages = midi.take_sent();
+            for _ in 0..20 {
+                runtime.tick(Duration::from_millis(1));
+                messages.extend(midi.take_sent());
+            }
+            messages
+        };
+
+        send_note(&mut runtime, &midi_control, 56, true);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 56, 3]));
+        runtime.tick(Duration::from_millis(100));
+        send_note(&mut runtime, &midi_control, 56, true);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 56, 1]));
+        let loop_id = runtime.model.tracks[1].loops[0];
+        let backend_id = runtime.model.loops[&loop_id].backend_id;
+        runtime.backend.set_loop_length(backend_id, 100).unwrap();
+        runtime.tick(Duration::ZERO);
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, 56, true);
+        send_note(&mut runtime, &midi_control, 82, false);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 56, 5]));
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, 56, true);
+        send_note(&mut runtime, &midi_control, 82, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 56, 0]));
+
+        send_note(&mut runtime, &midi_control, 84, true);
+        send_note(&mut runtime, &midi_control, 41, true);
+        send_note(&mut runtime, &midi_control, 84, false);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 41, 3]));
+        midi_control.set_endpoints(Vec::new());
+        runtime.tick(Duration::from_millis(500));
+        midi_control.set_endpoints(vec![
+            shoop_scripting::MidiEndpoint {
+                id: "apc-source".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Output,
+            },
+            shoop_scripting::MidiEndpoint {
+                id: "apc-sink".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Input,
+            },
+        ]);
+        runtime.tick(Duration::from_millis(500));
+        runtime.tick(Duration::from_millis(1_000));
+        let mut reset = midi_control.take_sent();
+        for _ in 0..70 {
+            runtime.tick(Duration::from_millis(1));
+            reset.extend(midi_control.take_sent());
+        }
+        assert!(reset.iter().any(|(_, message)| message == &[0x90, 41, 3]));
+        assert!(!reset.iter().any(|(_, message)| message == &[0x90, 41, 0]));
     }
 
     #[cfg(target_os = "linux")]

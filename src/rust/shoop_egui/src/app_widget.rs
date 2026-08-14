@@ -516,6 +516,7 @@ pub struct AppWidget {
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
     pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
+    script_control_pressed: bool,
     pending_ephemeral_scripts: VecDeque<PendingEphemeralScript>,
     tracing_status: TracingStatus,
     tracing_stopped: Option<TracingStopped>,
@@ -579,6 +580,7 @@ impl AppWidget {
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
             pressed_script_keys: BTreeMap::new(),
+            script_control_pressed: false,
             pending_ephemeral_scripts: VecDeque::new(),
             tracing_status: TracingStatus::default(),
             tracing_stopped: None,
@@ -663,12 +665,16 @@ impl AppWidget {
         )
         .entered();
         self.ensure_logo(ui.ctx());
-        let events = ui.ctx().input(|input| input.events.clone());
+        let (events, modifiers) = ui
+            .ctx()
+            .input(|input| (input.events.clone(), input.modifiers));
         let text_entry_active = ui.ctx().egui_wants_keyboard_input();
         let mut actions = crate::key_input::translate_events(
             &events,
+            modifiers,
             text_entry_active,
             &mut self.pressed_script_keys,
+            &mut self.script_control_pressed,
         )
         .into_iter()
         .map(AppAction::KeyEvent)
