@@ -55,7 +55,7 @@ jobs:
             binary: target/release/shoopdaloop
             artifact: shoopdaloop-linux-x86_64-release.tar.gz
           - target: windows
-            os: windows-2022
+            os: windows-2025
             arch: x86_64
             profile: debug
             cargo_args: ""
@@ -63,7 +63,7 @@ jobs:
             binary: target/debug/shoopdaloop.exe
             artifact: shoopdaloop-windows-x86_64-debug.zip
           - target: windows
-            os: windows-2022
+            os: windows-2025
             arch: x86_64
             profile: release
             cargo_args: --release
