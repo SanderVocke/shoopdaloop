@@ -3412,6 +3412,10 @@ impl ApplicationModel {
             .iter_mut()
             .find(|track| track.id == track_id)
             .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        if matches!(&action, TrackAction::OutputBalanceChanged(_)) && !track.controls.output_stereo
+        {
+            return Ok(());
+        }
         let backend_action = match action {
             TrackAction::NameChanged(name) => {
                 track.name = name;
@@ -9100,7 +9104,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[test]
-    fn production_keyboard_selects_sync_fallback_and_characterizes_missing_ctrl_toggle() {
+    fn production_keyboard_selects_sync_fallback_and_ctrl_momentary_toggle() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         runtime
@@ -9134,10 +9138,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(runtime.snapshot().tracks[0].loops[0].selected);
 
         key(&mut runtime, 16_777_249, 67_108_864, KeyEventType::Pressed);
-        assert!(
-            !runtime.snapshot().global_controls.sync,
-            "the advertised momentary Ctrl sync toggle is not implemented"
-        );
+        assert!(runtime.snapshot().global_controls.sync);
         key(&mut runtime, 16_777_249, 0, KeyEventType::Released);
         assert!(!runtime.snapshot().global_controls.sync);
         assert!(runtime.snapshot().scripting.scripts[0]
@@ -10793,14 +10794,14 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(runtime.snapshot().tracks[1].controls.output_muted);
         send_note(&mut runtime, &midi_control, 69, true);
         midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
+        midi_control.push_input("apc-source", vec![0xb0, 49, 127]);
         runtime.tick(Duration::from_millis(2));
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 69, false);
-        assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 1.0);
-        assert!(
-            !runtime.snapshot().tracks[1].controls.output_stereo,
-            "the APC PAN fader currently changes mono tracks despite the advertised stereo-only behavior"
-        );
+        assert!(!runtime.snapshot().tracks[1].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 0.0);
+        assert!(runtime.snapshot().tracks[2].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[2].controls.output_balance, 1.0);
         assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
 
         send_note(&mut runtime, &midi_control, 68, true);
@@ -10815,7 +10816,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime.tick(Duration::from_millis(2));
         send_note(&mut runtime, &midi_control, 88, true);
         send_note(&mut runtime, &midi_control, 69, false);
-        assert_eq!(runtime.snapshot().tracks[0].controls.output_balance, -1.0);
+        assert!(!runtime.snapshot().tracks[0].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[0].controls.output_balance, 0.0);
         assert!(runtime.snapshot().tracks[0].controls.input_monitoring);
 
         runtime
@@ -11078,7 +11080,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[test]
-    fn production_apc_led_colors_and_reconnect_reset_characterize_cached_color_bug() {
+    fn production_apc_reset_restores_authoritative_loop_colors() {
         let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
         midi_control.set_endpoints(vec![
             shoop_scripting::MidiEndpoint {
@@ -11107,6 +11109,17 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .unwrap();
         }
         runtime.tick(Duration::ZERO);
+        let initial_loop_id = runtime.model.tracks[1].loops[2];
+        let initial_backend_id = runtime.model.loops[&initial_loop_id].backend_id;
+        runtime
+            .backend
+            .set_loop_length(initial_backend_id, 100)
+            .unwrap();
+        runtime
+            .backend
+            .transition_loop(initial_backend_id, BackendLoopMode::Recording, None)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         runtime
             .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
             .unwrap();
@@ -11118,11 +11131,16 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 enabled: true,
             })
             .unwrap();
+        runtime.tick(Duration::from_millis(1));
         runtime.tick(Duration::from_millis(1_000));
+        let mut initial_reset = midi_control.take_sent();
         for _ in 0..70 {
             runtime.tick(Duration::from_millis(1));
-            midi_control.take_sent();
+            initial_reset.extend(midi_control.take_sent());
         }
+        assert!(initial_reset
+            .iter()
+            .any(|(_, message)| message == &[0x90, 40, 3]));
 
         let send_note = |runtime: &mut CooperativeApplicationRuntime,
                          midi: &shoop_scripting::FakeMidiControl,
@@ -11200,11 +11218,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.tick(Duration::from_millis(1));
             reset.extend(midi_control.take_sent());
         }
-        assert!(reset.iter().any(|(_, message)| message == &[0x90, 41, 0]));
-        assert!(
-            !reset.iter().any(|(_, message)| message == &[0x90, 41, 3]),
-            "reset loses the cached color when the loop's y coordinate has no cache row"
-        );
+        assert!(reset.iter().any(|(_, message)| message == &[0x90, 41, 3]));
+        assert!(!reset.iter().any(|(_, message)| message == &[0x90, 41, 0]));
     }
 
     #[cfg(target_os = "linux")]
