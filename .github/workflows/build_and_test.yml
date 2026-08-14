@@ -100,10 +100,13 @@ jobs:
       - name: Generate Rust coverage
         env:
           SHOOP_ALLOW_MISSING_BACKENDS: 1
-        run: >-
-          cargo llvm-cov nextest --locked --workspace
-          --features shoop_engine/app_backend --profile ci
-          --lcov --output-path lcov.info
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-rust-coverage
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo llvm-cov nextest --locked --workspace \
+            --features shoop_engine/app_backend --profile ci \
+            --lcov --output-path lcov.info
 
       - name: Publish Rust coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -113,6 +116,15 @@ jobs:
           disable_search: true
           fail_ci_if_error: true
           flags: rust
+
+      - name: Upload Tracy failure captures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tracy-nextest-rust-coverage-${{ github.run_id }}
+          path: ${{ runner.temp }}/tracy-nextest-rust-coverage/*.tracy
+          if-no-files-found: ignore
+          retention-days: 14
 
   build_and_test:
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
