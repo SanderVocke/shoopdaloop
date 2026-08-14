@@ -76,10 +76,11 @@ On load:
 - Unknown keys remain opaque JSON values and are preserved byte-semantically as JSON values across a same-version save. They are not exposed to consumers or the settings dialog.
 - Duplicate registrations, invalid defaults, incompatible editor/type combinations, and typed reads using the wrong key type are programming errors rejected while composing/testing the registry.
 
-Version 1 registers the cross-target track defaults and bundled-script toggles below. Native composition additionally registers the ordered user-script path list and audio-driver preferences. Browser composition omits machine-path and native-audio definitions and preserves them as unknown values if encountered.
+Version 1 registers the cross-target appearance scale, track defaults, and bundled-script toggles below. Native composition additionally registers the ordered user-script path list and audio-driver preferences. Browser composition omits machine-path and native-audio definitions and preserves them as unknown values if encountered.
 
 | Key | Type | Default | Effect |
 |---|---|---:|---|
+| `appearance.ui_scale_factor` | number | `1.0` | Explicit Apply and save; allowed range is 0.75–2.0 |
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
 | `scripting.bundled.keyboard.enabled` | boolean | `true` | After a successful Save |
@@ -107,6 +108,8 @@ Version 1 registers the cross-target track defaults and bundled-script toggles b
 These optional keys do not change document version 1. Each driver keeps an independent configured profile. Saving a profile does not change the running backend. A confirmed runtime Switch updates `audio.selected_driver` only after backend commit and persists the complete draft before reporting full success. Native startup attempts the saved driver/configuration first and falls back to dummy/offline with a diagnostic if it is unavailable; fallback does not overwrite the preference.
 
 An ordered string/toggle list is a JSON array. Each entry is exactly an object with a non-empty unique `value` string and an `enabled` boolean. Array order is retained. The generic editor supports editing, toggling, adding, removing, and resetting entries. Invalid or duplicate entries reject a draft; malformed stored values produce a diagnostic and use the registered default.
+
+The UI scale multiplies egui's monitor-native pixels-per-point value and is applied at startup. Moving its slider only changes the settings draft; applying it requires the explicit **Apply and save** action.
 
 The track defaults do not change an existing track, an already-open Add Track draft, or session data. Bundled script toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state. Both bundled scripts remain discoverable on native and browser targets; only `keyboard.lua` runs by default.
 

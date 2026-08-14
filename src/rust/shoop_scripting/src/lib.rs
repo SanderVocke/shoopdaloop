@@ -2422,11 +2422,45 @@ end, function() end, 10)
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
+    fn dialog_example_is_available_and_runs_on_demand() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add(
+                "dialogs.lua",
+                DIALOG_EXAMPLE_SCRIPT,
+                ScriptKind::Example,
+                false,
+            )
+            .unwrap();
+        let initial = manager.states();
+        assert_eq!(initial[0].id, id);
+        assert_eq!(initial[0].kind, ScriptKind::Example);
+        assert_eq!(initial[0].lifecycle, ScriptLifecycle::Inactive);
+        assert!(initial[0].documentation.is_some());
+
+        manager.start(id).unwrap();
+        assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Listening);
+        assert!(manager
+            .dialogs()
+            .iter()
+            .any(|dialog| dialog.name == "Lua dialog example"));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn documentation_is_extracted_from_the_leading_comment_block() {
         assert_eq!(
-            extract_documentation("-- First\n-- second\n\nprint('x')\n-- later"),
-            Some("First\nsecond\n".to_owned())
+            extract_documentation("-- # First\n-- | A | B |\n\nprint('x')\n-- later"),
+            Some("# First\n| A | B |\n".to_owned())
         );
         assert_eq!(extract_documentation("print('x')"), None);
+
+        let keyboard = extract_documentation(KEYBOARD_SCRIPT).unwrap();
+        assert!(keyboard.starts_with("# Keyboard controls\n"));
+        assert!(keyboard.contains("| Key | Action |"));
+        let apc = extract_documentation(AKAI_APC_MINI_MK1_SCRIPT).unwrap();
+        assert!(apc.starts_with("# Akai APC Mini MK1 controls\n"));
+        assert!(apc.contains("| Device label | ShoopDaLoop function |"));
+        let example = extract_documentation(DIALOG_EXAMPLE_SCRIPT).unwrap();
+        assert!(example.starts_with("# Script dialog example\n"));
     }
 }

@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 
-use egui_material_icons::icons::ICON_QUESTION_MARK;
-
 use crate::{
     AppAction, ScriptDialogContent, ScriptDialogElement, ScriptDialogId, ScriptDialogKind,
     ScriptDialogState,
@@ -25,18 +23,25 @@ pub struct ScriptDialogs {
     button_rects: BTreeMap<(ScriptDialogId, crate::ScriptDialogButtonId), egui::Rect>,
     #[cfg(test)]
     next_rects: BTreeMap<ScriptDialogId, egui::Rect>,
-    #[cfg(test)]
-    help_rects: BTreeMap<ScriptDialogId, egui::Rect>,
 }
 
 impl ScriptDialogs {
     pub fn show_control(&mut self, ui: &mut egui::Ui, dialogs: &[ScriptDialogState]) {
         self.synchronize(dialogs);
-        let _menu = ui.menu_button("Dialogs", |ui| {
-            if dialogs.is_empty() {
-                ui.label("No script dialogs");
-                return;
+        if dialogs.is_empty() {
+            #[cfg(test)]
+            {
+                self.control_rect = None;
             }
+            return;
+        }
+        let count = dialogs.len();
+        let label = if count == 1 {
+            "1 Script Dialog".to_owned()
+        } else {
+            format!("{count} Script Dialogs")
+        };
+        let _menu = ui.menu_button(label, |ui| {
             for dialog in dialogs {
                 let duplicate = dialogs
                     .iter()
@@ -63,8 +68,6 @@ impl ScriptDialogs {
         {
             self.control_rect = Some(_menu.response.rect);
         }
-        ui.label(dialogs.len().to_string())
-            .on_hover_text("Number of active script dialogs");
     }
 
     pub fn show_windows(
@@ -94,14 +97,14 @@ impl ScriptDialogs {
                         egui::vec2(ui.available_width(), ui.spacing().interact_size.y),
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| {
-                            let _help = ui
-                                .small_button(ICON_QUESTION_MARK.rich_text())
-                                .on_hover_text(format!(
-                                    "Owned by Lua script: {}",
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "owned by {}",
                                     dialog.owner_script_name
-                                ));
-                            #[cfg(test)]
-                            self.help_rects.insert(dialog.id, _help.rect);
+                                ))
+                                .italics()
+                                .weak(),
+                            );
                         },
                     );
                     ui.separator();
@@ -466,6 +469,88 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
+    fn control_is_hidden_without_dialogs_and_combines_count_with_label() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut component = ScriptDialogs::default();
+        let empty = context.run_ui(Default::default(), |ui| {
+            component.show_control(ui, &[]);
+        });
+        assert!(component.control_rect.is_none());
+        assert!(empty.shapes.is_empty());
+
+        let dialogs = (1..=10)
+            .map(|id| simple(id, id, &format!("Dialog {id}"), 0))
+            .collect::<Vec<_>>();
+        let output = context.run_ui(Default::default(), |ui| {
+            component.show_control(ui, &dialogs);
+        });
+        assert!(component.control_rect.is_some());
+
+        fn collect_text(shape: &egui::Shape, text: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(value) => text.push(value.galley.text().to_owned()),
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collect_text(shape, text);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut text = Vec::new();
+        for shape in output.shapes {
+            collect_text(&shape.shape, &mut text);
+        }
+        assert!(text.iter().any(|text| text == "10 Script Dialogs"));
+        assert!(!text.iter().any(|text| text == "10"));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn dialog_window_shows_its_owner_as_plain_italic_text() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let dialogs = [simple(2, 7, "Owned dialog", 1)];
+        let mut component = ScriptDialogs::default();
+        frame(
+            &context,
+            &mut component,
+            &dialogs,
+            Vec::new(),
+            egui::vec2(900.0, 600.0),
+        );
+        let output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                component.show_windows(ui.ctx(), &dialogs);
+            },
+        );
+
+        fn collect_text(shape: &egui::Shape, text: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(value) => text.push(value.galley.text().to_owned()),
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collect_text(shape, text);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut text = Vec::new();
+        for shape in output.shapes {
+            collect_text(&shape.shape, &mut text);
+        }
+        assert!(text.iter().any(|text| text == "owned by owner-7.lua"));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn control_opens_closed_dialog_and_callback_emits_exact_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -493,7 +578,6 @@ mod tests {
             egui::vec2(900.0, 600.0),
         );
         assert!(component.states[&dialogs[0].id].open);
-        assert!(component.help_rects.contains_key(&dialogs[0].id));
 
         let button_id = ScriptDialogButtonId::from_raw(30);
         assert!(component
