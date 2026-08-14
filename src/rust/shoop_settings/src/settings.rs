@@ -1012,7 +1012,7 @@ mod tests {
         .to_string()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn current_document_is_deterministic_and_round_trips() {
         let document = SettingsDocument {
             writer_version: "test".to_owned(),
@@ -1029,7 +1029,7 @@ mod tests {
         assert_eq!(decode_settings(&first).unwrap(), document);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn format_and_every_version_boundary_are_checked_before_values() {
         let predecessor = r#"{"schema":"settings.1","configuration":{}}"#;
         assert_eq!(
@@ -1062,7 +1062,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn migration_dispatch_chains_in_order_and_stops_on_failure() {
         fn first(mut value: Value) -> Result<Value, String> {
             value["values"]["order"] = Value::String("first".to_owned());
@@ -1092,7 +1092,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn registration_rejects_duplicates_bad_keys_editors_and_defaults() {
         let mut builder = SettingsRegistryBuilder::default();
         builder
@@ -1130,7 +1130,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn resolution_uses_defaults_warns_for_invalid_and_preserves_unknown() {
         let registry = registry();
         let document = decode_settings(&current_document(serde_json::json!({
@@ -1161,7 +1161,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn typed_reads_and_draft_validation_reject_mismatches_and_stale_shape() {
         let registry = registry();
         let snapshot = registry.defaults(9);
@@ -1185,7 +1185,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ordered_string_toggle_lists_round_trip_and_reject_invalid_entries() {
         let mut builder = SettingsRegistryBuilder::default();
         builder
@@ -1265,7 +1265,7 @@ mod tests {
         assert_eq!(resolved.diagnostics.len(), 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn definition_order_is_stable_and_reset_uses_registered_defaults() {
         let registry = registry();
         assert_eq!(registry.definitions()[0].key(), ENABLED.id());

@@ -3170,7 +3170,7 @@ mod tests {
         Port::Dummy(DummyAudioPort::new(PortId(id), name, dir, 4))
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_new_session_is_up_to_date_and_empty() {
         let mut s = Session::default();
         check!(s.graph_up_to_date());
@@ -3178,7 +3178,7 @@ mod tests {
         s.process(4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn adding_entities_invalidates_the_graph() {
         let mut s = Session::default();
         s.add_port(internal("p", 4));
@@ -3194,7 +3194,7 @@ mod tests {
     }
 
     /// The property that lets a stale cycle run safely: existing work keeps happening.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_stale_graph_keeps_running_the_previous_schedule() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
@@ -3232,7 +3232,7 @@ mod tests {
     /// breaks: the change made below is absent from the schedule, yet the session reports
     /// itself current, so nothing ever arms another rebuild and the new port stays unrouted
     /// forever -- silence with no stale-cycle count to point at it.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_change_arriving_during_a_build_leaves_the_graph_stale() {
         let mut s = Session::default();
         let_assert!(Ok(()) = s.apply_graph_changes());
@@ -3254,7 +3254,7 @@ mod tests {
         check!(s.graph_up_to_date());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn installing_a_schedule_built_from_the_current_topology_marks_it_current() {
         let mut s = Session::default();
         s.add_port(internal("p", 4));
@@ -3273,7 +3273,7 @@ mod tests {
     /// disconnect and disable but never shrink an arena -- so every index the older schedule
     /// holds still names the same object. Were any removal to compact its arena, this would
     /// index past the end or, worse, drive the wrong loop.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_schedule_built_before_a_removal_still_installs_and_runs() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
@@ -3311,7 +3311,7 @@ mod tests {
     /// own node -- its `prepare` (which clears the buffer each cycle) and its `process`
     /// (gain, muting, metering). So the routing lands early and the port-level processing
     /// lands on apply; neither state is broken, which is what makes deferral safe.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_port_added_mid_stream_is_fed_but_not_yet_processed() {
         let mut s = Session::default();
         let l = s.create_loop();
@@ -3342,7 +3342,7 @@ mod tests {
     }
 
     /// Pass-through routing is read live, so a disconnect does not wait for a reschedule.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_disconnect_takes_effect_before_the_graph_is_reapplied() {
         let mut s = Session::default();
         let from = s.add_port(internal("from", 4));
@@ -3373,7 +3373,7 @@ mod tests {
     }
 
     /// Indices held by an older schedule must stay valid, which is why removal keeps slots.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn removal_never_shrinks_the_arenas() {
         let mut s = Session::default();
         let p = s.add_port(internal("p", 4));
@@ -3390,7 +3390,7 @@ mod tests {
         check!(s.n_channels() == channels);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn wiring_rejects_unknown_indices() {
         let mut s = Session::default();
         let l = s.create_loop();
@@ -3403,7 +3403,7 @@ mod tests {
         check!(s.set_loop_sync_source(l, Some(l)) == Err(SessionError::SelfSync(l)));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn the_schedule_matches_the_direct_loop_topology() {
         let mut s = Session::default();
         let p1 = s.add_port(internal("p1", 4));
@@ -3430,7 +3430,7 @@ mod tests {
     }
 
     /// Records from a dummy input, then plays back into a dummy output.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn records_then_plays_back_end_to_end() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
@@ -3506,7 +3506,7 @@ mod tests {
         (session, loop_, output)
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn external_processor_node_records_the_staged_return_it_monitors() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -3574,7 +3574,7 @@ mod tests {
         check!(monitored == vec![5.0, 6.0, 7.0, 8.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn test_processor_mode_matrix_routes_exact_wet_samples() {
         let (mut session, loop_, output) = test_processor_session(true);
         session
@@ -3677,7 +3677,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn test_processor_maps_timestamped_midi_to_both_outputs() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -3701,7 +3701,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn parallel_test_processors_do_not_share_routes() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -3739,7 +3739,7 @@ mod tests {
         check!(session.port_mut(output_b).unwrap().buffer(4) == [5.0; 4]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn test_processor_unmonitored_recording_captures_wet_without_output() {
         let (mut session, loop_, output) = test_processor_session(false);
         session
@@ -3775,7 +3775,7 @@ mod tests {
         check!(output == vec![0.0; 4]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_channel_without_an_input_records_silence() {
         let mut s = Session::default();
         let output = s.add_port(dummy(1, "out", PortDirection::Output));
@@ -3789,7 +3789,7 @@ mod tests {
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playback_is_additive_onto_the_output_port() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
@@ -3812,7 +3812,7 @@ mod tests {
         check!(buf == vec![1.0, 1.0, 1.0, 1.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn two_channels_mix_into_one_output_port() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
@@ -3843,7 +3843,7 @@ mod tests {
         check!(buf == vec![11.0, 11.0, 11.0, 11.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn channels_on_different_output_ports_do_not_bleed_into_each_other() {
         let mut s = Session::default();
         let out_a = s.add_port(internal("outA", 4));
@@ -3875,7 +3875,7 @@ mod tests {
         check!(s.port_mut(out_b).unwrap().buffer(4).to_vec() == vec![10.0, 10.0, 10.0, 10.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn an_input_less_channel_does_not_pick_up_another_channels_input() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
@@ -3908,7 +3908,7 @@ mod tests {
     }
 
     /// Records MIDI from a dummy input, then plays it back to a dummy output.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn removing_a_channel_disconnects_and_silences_it() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
@@ -3934,7 +3934,7 @@ mod tests {
         s.process(4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn removing_a_loop_detaches_anything_syncing_to_it() {
         let mut s = Session::default();
         let source = s.create_loop();
@@ -3950,7 +3950,7 @@ mod tests {
         check!(s.sync_source_of(follower) == None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn removing_a_loop_empties_and_stops_it() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
@@ -3970,7 +3970,7 @@ mod tests {
         s.process(4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn removing_a_port_disconnects_both_directions_and_its_channels() {
         let mut s = Session::default();
         let a = s.add_port(internal("a", 4));
@@ -3992,7 +3992,7 @@ mod tests {
         check!(s.n_ports() == 3);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn removing_something_that_is_not_there_is_an_error() {
         let mut s = Session::default();
         check!(s.remove_loop(3).is_err());
@@ -4000,7 +4000,7 @@ mod tests {
         check!(s.remove_audio_channel(0).is_err());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn removing_a_midi_channel_as_audio_is_refused() {
         let mut s = Session::default();
         let l = s.create_loop();
@@ -4010,7 +4010,7 @@ mod tests {
         let_assert!(Ok(()) = s.remove_midi_channel(c));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn records_then_plays_back_midi_end_to_end() {
         use crate::midi;
         let mut s = Session::default();
@@ -4055,7 +4055,7 @@ mod tests {
         check!(got[1].data() == midi::note_off(0, 60, 64).as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacing_midi_through_a_session_overwrites_loaded_events() {
         use crate::midi;
         let mut s = Session::default();
@@ -4099,7 +4099,7 @@ mod tests {
         check!(contents[1].data() == midi::note_off(0, 64, 0).as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn muting_midi_passthrough_cleans_forwarded_notes_exactly_once() {
         use crate::midi;
         let mut s = Session::default();
@@ -4171,7 +4171,7 @@ mod tests {
             .is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_midi_channel_without_ports_still_advances_the_loop() {
         let mut s = Session::default();
         let l = s.create_loop();
@@ -4182,7 +4182,7 @@ mod tests {
         check!(s.loop_(l).unwrap().length() == 4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn audio_and_midi_channels_coexist_on_one_loop() {
         use crate::midi;
         let mut s = Session::default();
@@ -4213,7 +4213,7 @@ mod tests {
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn two_midi_channels_are_routed_to_their_own_ports() {
         use crate::midi;
         let mut s = Session::default();
@@ -4239,7 +4239,7 @@ mod tests {
         check!(s.loop_(l).unwrap().midi_channel(1).unwrap().n_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn midi_channels_on_different_loops_do_not_share_input() {
         use crate::midi;
         let mut s = Session::default();
@@ -4265,7 +4265,7 @@ mod tests {
         check!(s.loop_(l2).unwrap().midi_channel(0).unwrap().n_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn recording_midi_over_two_cycles_does_not_duplicate() {
         use crate::midi;
         let mut s = Session::default();
@@ -4287,7 +4287,7 @@ mod tests {
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playing_midi_over_two_cycles_does_not_resend() {
         use crate::midi;
         let mut s = Session::default();
@@ -4333,7 +4333,7 @@ mod tests {
 
     /// A loop whose end falls inside the buffer must be advanced in two pieces.
     /// Processing it in one go would overrun its point of interest.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_loop_ending_mid_buffer_is_split_into_sub_blocks() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 8));
@@ -4367,7 +4367,7 @@ mod tests {
         check!(s.n_stuck_cycles() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_loop_shorter_than_the_buffer_wraps_repeatedly_in_one_cycle() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 8));
@@ -4393,7 +4393,7 @@ mod tests {
         check!(s.n_stuck_cycles() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn co_processed_loops_stay_aligned_across_a_wrap() {
         let mut s = Session::default();
         let out_a = s.add_port(internal("outA", 8));
@@ -4433,7 +4433,7 @@ mod tests {
         check!(s.n_stuck_cycles() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn co_processed_loops_share_a_step() {
         let mut s = Session::default();
         let l1 = s.create_loop();
@@ -4450,7 +4450,7 @@ mod tests {
         check!(step.len() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_loop_with_no_sync_source_transitions_immediately() {
         let mut s = Session::default();
         let l = s.create_loop();
@@ -4465,7 +4465,7 @@ mod tests {
         check!(s.loop_(l).unwrap().mode() == LoopMode::Recording);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_synced_loop_waits_for_its_sources_trigger() {
         let mut s = Session::default();
         let sync = s.create_loop();
@@ -4497,7 +4497,7 @@ mod tests {
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Playing);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_follower_is_not_triggered_without_its_source_wrapping() {
         let mut s = Session::default();
         let sync = s.create_loop();
@@ -4519,7 +4519,7 @@ mod tests {
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Stopped);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn clearing_a_sync_source_restores_immediate_transitions() {
         let mut s = Session::default();
         let sync = s.create_loop();
@@ -4539,7 +4539,7 @@ mod tests {
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Recording);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_sync_cycle_does_not_recurse() {
         let mut s = Session::default();
         let a = s.create_loop();
@@ -4559,7 +4559,7 @@ mod tests {
         check!(s.n_stuck_cycles() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn all_loops_are_co_processed() {
         let mut s = Session::default();
         for _ in 0..3 {
@@ -4576,7 +4576,7 @@ mod tests {
         check!(step.len() == 3);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_passthrough_cycle_is_reported() {
         let mut s = Session::default();
         let a = s.add_port(internal("a", 4));
@@ -4587,7 +4587,7 @@ mod tests {
     }
 
     #[cfg(feature = "carla")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn inactive_carla_fx_chain_bypasses_processing_and_tails() {
         let _exclusive = crate::carla_native::lock_carla_test();
         let Ok(host) = crate::carla_native::CarlaNativeHost::instantiate(
@@ -4622,7 +4622,7 @@ mod tests {
     }
 
     #[cfg(feature = "carla")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn fake_carla_processor_node_records_its_wet_output() {
         let mut host =
             crate::carla_processor::FakeCarlaProcessor::new(crate::FXChainType::CarlaRack, 1, 4);
@@ -4663,7 +4663,7 @@ mod tests {
     }
 
     #[cfg(feature = "carla")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bridged_carla_session_path_has_no_allocation_or_mutex() {
         let fake = crate::carla_processor::FakeCarlaProcessor::new(
             crate::FXChainType::CarlaRack,
@@ -4702,7 +4702,7 @@ mod tests {
     }
 
     #[cfg(feature = "carla")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn carla_fx_chain_audio_route_runs_from_session_ports_to_wet_output() {
         let _exclusive = crate::carla_native::lock_carla_test();
         let Ok(mut host) = crate::carla_native::CarlaNativeHost::instantiate(
@@ -4747,7 +4747,7 @@ mod tests {
         assert!(wet.iter().all(|s| s.is_finite()));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn global_fx_controls_filter_and_feed_active_processors_without_recording() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -4786,7 +4786,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn global_fx_control_drives_tiny_synth_cc_mapping_while_track_lane_stays_additive() {
         use crate::tiny_synth_fx::{
             TinySynthFxControlState, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
@@ -4836,7 +4836,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn global_fx_fanout_is_additive_and_preserves_lane_order() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -4890,7 +4890,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn inactive_processor_keeps_latest_global_control_until_real_activation() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -4935,7 +4935,7 @@ mod tests {
         assert!(session.processors[0].global_pending.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn full_pending_state_drains_over_bounded_active_blocks_after_ordinary_midi() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -4996,7 +4996,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn external_global_control_is_written_before_the_send_port_processes() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -5032,7 +5032,7 @@ mod tests {
         assert_eq!(outgoing[0].data(), midi::pitch_wheel(3, 2_000));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn removing_global_input_clears_deferred_state_and_stops_replay() {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -5062,7 +5062,7 @@ mod tests {
     }
 
     #[cfg(feature = "carla")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn unavailable_carla_processor_does_not_retain_global_controls() {
         #[derive(Debug)]
         struct UnavailableCarla(crate::carla_processor::FakeCarlaProcessor);
@@ -5136,7 +5136,7 @@ mod tests {
         assert!(session.processors[0].global_pending.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn sample_rate_and_buffer_size_round_trip() {
         let mut s = Session::default();
         s.set_sample_rate(48000);
@@ -5145,7 +5145,7 @@ mod tests {
         check!(s.buffer_size() == 256);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn several_cycles_accumulate_a_recording() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));

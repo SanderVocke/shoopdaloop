@@ -258,12 +258,12 @@ mod tests {
         b.events().unwrap().iter().map(|e| e.time).collect()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn reports_its_data_type() {
         check!(port().data_type() == PortDataType::Midi);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn tracks_state_of_incoming_messages() {
         let mut p = port();
         let input = [
@@ -277,7 +277,7 @@ mod tests {
         check!(p.n_notes_active() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn counts_input_events() {
         let mut p = port();
         p.process(4, Some(&[ev(0, &midi::note_on(0, 60, 1))]), None);
@@ -288,7 +288,7 @@ mod tests {
         check!(p.n_input_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn latest_input_message_is_exact_persistent_and_pre_mute() {
         let mut p = port();
         for data in [
@@ -319,7 +319,7 @@ mod tests {
         check!(p.latest_input_message().unwrap().data() == [0xb4, 19, 88]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn forwards_events_to_the_output_sink() {
         let mut p = port();
         let mut out = MidiSortingBuffer::with_capacity(8);
@@ -333,7 +333,7 @@ mod tests {
         check!(p.n_output_events() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn an_input_only_port_counts_no_output() {
         let mut p = port();
         p.process(4, Some(&[ev(0, &midi::note_on(0, 60, 1))]), None);
@@ -343,7 +343,7 @@ mod tests {
         check!(p.n_output_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn muting_stops_output_but_not_state_tracking() {
         let mut p = port();
         p.set_muted(true);
@@ -360,7 +360,7 @@ mod tests {
         check!(p.n_input_events() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn muting_passthrough_queues_cleanup_for_forwarded_notes_once() {
         let mut p = port();
         p.record_passthrough(&[
@@ -384,7 +384,7 @@ mod tests {
         check!(p.take_passthrough_cleanup().is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn released_and_never_forwarded_notes_need_no_passthrough_cleanup() {
         let mut p = port();
         p.record_passthrough(&[
@@ -396,7 +396,7 @@ mod tests {
         check!(p.take_passthrough_cleanup().is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn muting_then_unmuting_before_processing_preserves_pending_cleanup() {
         let mut p = port();
         p.record_passthrough(&[ev(0, &midi::note_on(0, 60, 100))]);
@@ -409,7 +409,7 @@ mod tests {
         p.finish_passthrough_cleanup(cleanup);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn untracked_port_has_no_state() {
         let mut p = MidiPort::with_ringbuffer_capacity(TrackWhat::NOTHING, 64);
         p.process(4, Some(&[ev(0, &midi::note_on(0, 60, 1))]), None);
@@ -419,7 +419,7 @@ mod tests {
         check!(p.n_input_events() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn capture_is_off_until_asked_for() {
         let mut p = port();
         check!(p.ringbuffer_n_samples() == 0);
@@ -430,7 +430,7 @@ mod tests {
         check!(snap.n_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn capture_retains_recent_messages() {
         let mut p = port();
         p.set_ringbuffer_n_samples(100);
@@ -442,7 +442,7 @@ mod tests {
         check!(snap.n_events() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn snapshot_clears_the_target_when_capture_is_inactive() {
         let p = port();
         let mut snap = MidiStorage::with_capacity_elems(8);
@@ -452,7 +452,7 @@ mod tests {
         check!(snap.n_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn messages_ageing_out_of_capture_update_the_lagging_state() {
         let mut p = port();
         // A window of only 4 frames, so messages age out quickly.
@@ -468,7 +468,7 @@ mod tests {
         check!(p.ringbuffer_tail_state().note_velocity(0, 60) == Some(100));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn shrinking_the_capture_window_is_reflected() {
         let mut p = port();
         p.set_ringbuffer_n_samples(100);
@@ -478,7 +478,7 @@ mod tests {
         check!(p.ringbuffer_n_samples() == 5);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_cycle_with_no_input_still_ages_capture() {
         let mut p = port();
         p.set_ringbuffer_n_samples(8);
@@ -489,7 +489,7 @@ mod tests {
         check!(p.ringbuffer_n_samples() == 8);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn output_event_count_resets() {
         let mut p = port();
         let mut out = MidiSortingBuffer::with_capacity(8);

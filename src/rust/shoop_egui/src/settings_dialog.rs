@@ -937,7 +937,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dialog_paints_category_tabs_at_minimum_and_common_sizes() {
         let (registry, state) = fixture();
         let context = egui::Context::default();
@@ -965,7 +965,7 @@ mod tests {
         assert_eq!(dialog.categories(), ["Other", "Track defaults"]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn audio_category_and_exact_rate_warning_paint_at_supported_sizes() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_audio_settings(&mut builder).unwrap();
@@ -1046,7 +1046,7 @@ mod tests {
         assert_eq!(dialog.audio_target, Some(AudioDriverKind::Dummy));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn save_preserves_stable_typed_draft_and_reset_restores_defaults() {
         let (registry, state) = fixture();
         let mut dialog = SettingsDialog::new(registry.clone());
@@ -1067,7 +1067,7 @@ mod tests {
         assert!(!draft.get(FLAG).unwrap());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn user_script_paths_are_typed_deduplicated_draft_values() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_settings(&mut builder).unwrap();
@@ -1103,7 +1103,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn runtime_script_controls_emit_typed_actions_inside_the_settings_content() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_settings(&mut builder).unwrap();
@@ -1243,7 +1243,7 @@ mod tests {
         )));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn recovery_and_diagnostics_paint_without_editing_rejected_values() {
         let (registry, mut state) = fixture();
         state.recovery_required = true;

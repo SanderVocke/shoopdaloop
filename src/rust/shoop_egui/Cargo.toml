@@ -12,6 +12,7 @@ image = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+tracy-nextest-capture = { workspace = true }
 serde_json = { workspace = true }
 
 [lints]

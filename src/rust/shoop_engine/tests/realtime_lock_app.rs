@@ -14,7 +14,7 @@ impl Drop for DisableGuard {
     }
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_app_processing_uses_only_explicit_realtime_lock_permissions() {
     const BUFFER: u32 = 64;
 

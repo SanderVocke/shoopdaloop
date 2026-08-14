@@ -12,5 +12,8 @@ shoop_app_api = { path = "../shoop_app_api" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 midir = { workspace = true }
 
+[dev-dependencies]
+tracy-nextest-capture = { workspace = true }
+
 [lints]
 workspace = true

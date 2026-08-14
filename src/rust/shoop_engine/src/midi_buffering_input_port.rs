@@ -96,14 +96,14 @@ mod tests {
         msgs.iter().map(|m| m.time).collect()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn starts_empty() {
         let p = MidiBufferingInputPort::with_reserve(8);
         check!(p.n_events() == 0);
         check!(p.data_type() == PortDataType::Midi);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn buffers_the_sources_messages() {
         let mut p = MidiBufferingInputPort::with_reserve(8);
         p.prepare(4);
@@ -114,7 +114,7 @@ mod tests {
         check!(times(p.events()) == vec![1, 3]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn arrival_order_is_preserved() {
         let mut p = MidiBufferingInputPort::with_reserve(8);
         p.prepare(4);
@@ -129,7 +129,7 @@ mod tests {
         check!(times(p.events()) == vec![3, 1]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn prepare_discards_the_previous_cycle() {
         let mut p = MidiBufferingInputPort::with_reserve(8);
         p.prepare(4);
@@ -139,7 +139,7 @@ mod tests {
         check!(p.n_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn muting_buffers_nothing() {
         let mut p = MidiBufferingInputPort::with_reserve(8);
         p.midi_mut().set_muted(true);
@@ -151,7 +151,7 @@ mod tests {
         check!(p.midi().n_notes_active() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn buffered_messages_update_port_state() {
         let mut p = MidiBufferingInputPort::with_reserve(8);
         p.prepare(4);
@@ -161,7 +161,7 @@ mod tests {
         check!(p.midi().n_input_events() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn exceeding_the_reservation_is_counted() {
         let mut p = MidiBufferingInputPort::with_reserve(2);
         p.prepare(4);
@@ -177,7 +177,7 @@ mod tests {
         check!(p.n_overflows() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn several_sources_accumulate_within_one_cycle() {
         let mut p = MidiBufferingInputPort::with_reserve(8);
         p.prepare(4);
@@ -186,7 +186,7 @@ mod tests {
         check!(times(p.events()) == vec![1, 2]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn an_empty_source_is_harmless() {
         let mut p = MidiBufferingInputPort::with_reserve(8);
         p.prepare(4);

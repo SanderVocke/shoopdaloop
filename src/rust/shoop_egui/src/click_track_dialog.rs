@@ -463,7 +463,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn defaults_fill_and_capability_reconciliation_are_stable_by_loop_id() {
         let state = state();
         let target = &state.tracks[0].loops[0];
@@ -488,7 +488,7 @@ mod tests {
         assert_eq!(dialog.drafts[&target.id].kind, ClickTrackKind::Audio);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn validation_covers_fractional_bpm_limits_and_kind_specific_state() {
         let state = state();
         let target = &state.tracks[0].loops[0];
@@ -506,7 +506,7 @@ mod tests {
         assert!(validate_draft(&draft, target, &state.click_track, 48_000).is_err());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cancel_closes_without_discarding_the_stable_loop_draft() {
         let state = state();
         let target = &state.tracks[0].loops[0];
@@ -519,7 +519,7 @@ mod tests {
         assert_eq!(dialog.drafts[&target.id].bpm, 123.5);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn preview_and_generate_actions_preserve_the_exact_stable_target_and_draft() {
         let state = state();
         let target = &state.tracks[0].loops[0];
@@ -540,7 +540,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dialog_paints_at_minimum_and_common_sizes_and_drops_stale_target() {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();
@@ -570,7 +570,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn preview_is_disabled_when_the_platform_has_no_audio_path() {
         let context = egui::Context::default();
         crate::initialize(&context);

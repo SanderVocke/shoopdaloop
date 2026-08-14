@@ -285,7 +285,7 @@ mod tests {
         msgs.iter().map(|m| m.time).collect()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn reports_its_identity() {
         let p = input_port();
         check!(p.id() == PortId(1));
@@ -294,7 +294,7 @@ mod tests {
         check!(p.data_type() == PortDataType::Midi);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn is_readable_and_writable_in_both_directions() {
         for p in [input_port(), output_port()] {
             check!(p.has_internal_read_access());
@@ -304,7 +304,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn connectability_follows_direction() {
         check!(input_port().input_connectability() == PortConnectability::EXTERNAL);
         check!(input_port().output_connectability() == PortConnectability::INTERNAL);
@@ -312,7 +312,7 @@ mod tests {
         check!(output_port().output_connectability() == PortConnectability::EXTERNAL);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn queued_messages_are_kept_in_time_order() {
         let mut p = input_port();
         check!(p.queue_empty());
@@ -323,14 +323,14 @@ mod tests {
         check!(times(p.visible_events()) == vec![1, 5]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn oversized_queued_messages_are_refused() {
         let mut p = input_port();
         check!(!p.queue_msg(0, &[1, 2, 3, 4, 5]));
         check!(p.queue_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn only_messages_within_the_cycle_are_visible() {
         let mut p = input_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
@@ -341,7 +341,7 @@ mod tests {
         check!(p.n_events() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn the_queue_advances_across_cycles() {
         let mut p = input_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
@@ -357,7 +357,7 @@ mod tests {
         check!(times(p.visible_events()) == vec![2]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn messages_falling_behind_the_queue_are_dropped() {
         let mut p = input_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
@@ -368,7 +368,7 @@ mod tests {
         check!(p.queue_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn clear_queues_resets_everything() {
         let mut p = output_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
@@ -379,14 +379,14 @@ mod tests {
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_second_request_is_refused_while_one_is_outstanding() {
         let mut p = output_port();
         let_assert!(Ok(()) = p.request_data(8));
         check!(p.request_data(4) == Err(RequestPending));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn written_output_is_captured_during_a_request() {
         let mut p = output_port();
         let_assert!(Ok(()) = p.request_data(4));
@@ -401,7 +401,7 @@ mod tests {
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn captured_times_are_relative_to_the_request() {
         let mut p = output_port();
         let_assert!(Ok(()) = p.request_data(8));
@@ -417,7 +417,7 @@ mod tests {
         check!(times(&p.take_written_requested_msgs()) == vec![2, 5]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn output_beyond_the_request_is_not_captured() {
         let mut p = output_port();
         let_assert!(Ok(()) = p.request_data(2));
@@ -429,7 +429,7 @@ mod tests {
         check!(times(&p.take_written_requested_msgs()) == vec![1]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn nothing_is_captured_without_a_request() {
         let mut p = output_port();
         p.prepare(4);
@@ -438,7 +438,7 @@ mod tests {
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_muted_port_captures_nothing() {
         let mut p = output_port();
         p.midi_mut().set_muted(true);
@@ -449,7 +449,7 @@ mod tests {
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn an_input_port_does_not_capture_written_output() {
         let mut p = input_port();
         let_assert!(Ok(()) = p.request_data(4));
@@ -460,7 +460,7 @@ mod tests {
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn written_output_is_sorted_before_capture() {
         let mut p = output_port();
         let_assert!(Ok(()) = p.request_data(8));
@@ -471,7 +471,7 @@ mod tests {
         check!(times(&p.take_written_requested_msgs()) == vec![2, 5]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn prepare_clears_the_written_buffer() {
         let mut p = output_port();
         p.prepare(4);
@@ -481,7 +481,7 @@ mod tests {
         check!(p.buffer().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn incoming_messages_update_port_state() {
         let mut p = input_port();
         p.queue_msg(1, &midi::note_on(0, 60, 100));
@@ -492,7 +492,7 @@ mod tests {
         check!(p.midi().n_input_events() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_request_holds_the_input_queue_in_place() {
         let mut p = output_port();
         p.queue_msg(6, &midi::note_on(0, 60, 1));
@@ -506,7 +506,7 @@ mod tests {
         check!(!p.queue_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn close_is_harmless() {
         let mut p = input_port();
         p.close();

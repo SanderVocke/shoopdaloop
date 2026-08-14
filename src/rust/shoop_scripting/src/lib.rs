@@ -916,7 +916,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn runtime_is_constructed_and_used_on_its_actor_thread() {
         let value = std::thread::spawn(|| {
             let runtime = LuaRuntime::new().unwrap();
@@ -928,7 +928,7 @@ mod tests {
         assert_eq!(value, 42);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn production_lua_sources_are_embedded_and_syntactically_valid() {
         let runtime = LuaRuntime::new().unwrap();
         runtime
@@ -945,7 +945,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn compatibility_require_and_print_are_isolated_per_runtime() {
         let first = LuaRuntime::new().unwrap();
         first
@@ -968,7 +968,7 @@ mod tests {
         assert_eq!(second.logs()[0].message, "second");
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn api_version_announcement_is_mandatory_stable_and_side_effect_free() {
         for (source, expected) in [
             ("return", "must be the first Shoop API call"),
@@ -1033,7 +1033,7 @@ mod tests {
         assert!(bridge.borrow().operations.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dialogs_preserve_order_styles_opening_callbacks_and_runtime_ownership() {
         let mut manager = ScriptManager::new();
         let id = manager
@@ -1130,7 +1130,7 @@ d.open('Simple')
         assert!(manager.dialogs().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dialog_definition_validation_and_failed_startup_leave_no_runtime_state() {
         for (body, expected) in [
             (
@@ -1184,7 +1184,7 @@ d.open('Simple')
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Error);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn complete_control_surface_is_installed_with_stable_constants() {
         let runtime = LuaRuntime::new().unwrap();
         runtime
@@ -1240,7 +1240,7 @@ d.open('Simple')
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn every_control_function_is_invoked_with_retained_shapes_and_selectors() {
         let bridge = Rc::new(RefCell::new(ControlBridge {
             snapshot: ControlSnapshot {
@@ -1427,7 +1427,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
         assert_eq!(bridge.borrow().operations.len(), 31);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn control_queries_follow_track_and_loop_coordinate_reordering() {
         let bridge = Rc::new(RefCell::new(ControlBridge {
             snapshot: ControlSnapshot {
@@ -1488,7 +1488,7 @@ if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('t
             .unwrap();
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn control_argument_validation_is_observable_and_non_mutating() {
         let first_loop = LoopId::from_raw(10);
         let bridge = Rc::new(RefCell::new(ControlBridge {
@@ -1561,7 +1561,7 @@ c.track_set_muted(99, true)
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn input_mute_control_and_helper_preserve_legacy_and_exclusive_semantics() {
         let sync = TrackId::from_raw(1);
         let first = TrackId::from_raw(2);
@@ -1644,7 +1644,7 @@ if c.get_auto_mute_other_track_inputs() then error('global setter') end
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn control_queries_and_mutations_have_ordered_read_your_writes_behavior() {
         let first_loop = LoopId::from_raw(10);
         let second_loop = LoopId::from_raw(11);
@@ -1738,7 +1738,7 @@ if not c.get_solo() then error('solo') end
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn manager_tracks_lifecycle_errors_restart_and_teardown() {
         let mut manager = ScriptManager::new();
         let finished = manager
@@ -1778,7 +1778,7 @@ if not c.get_solo() then error('solo') end
         assert_eq!(manager.states().len(), 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ephemeral_versions_stop_active_names_and_retain_restartable_sources() {
         let mut manager = ScriptManager::new();
         let listener =
@@ -1820,7 +1820,7 @@ if not c.get_solo() then error('solo') end
         assert_eq!(manager.states()[1].lifecycle, ScriptLifecycle::Listening);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn callbacks_and_monotonic_timers_are_ordered_and_script_owned() {
         let mut manager = ScriptManager::new();
         let id = manager
@@ -1871,7 +1871,7 @@ c.register_one_shot_timer_cb(10, function() print_info('timer') end)
         assert_eq!(manager.logs(id).unwrap().len(), 4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn callbacks_expose_complete_payloads_and_are_non_reentrant() {
         let mut manager = ScriptManager::new();
         let id = manager
@@ -1948,7 +1948,7 @@ end)
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn timers_are_due_ordered_non_reentrant_capped_and_cancelled_on_stop() {
         let mut manager = ScriptManager::new();
         let id = manager
@@ -2018,7 +2018,7 @@ c.register_one_shot_timer_cb(5, function() print_info('five-b') end)
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn callback_failure_is_observable_without_stopping_other_scripts() {
         let mut manager = ScriptManager::new();
         let failing = manager
@@ -2047,7 +2047,7 @@ c.register_one_shot_timer_cb(5, function() print_info('five-b') end)
         assert_eq!(manager.logs(healthy).unwrap()[0].message, "healthy");
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn midi_service_autoconnects_hotplugs_delivers_exact_bytes_and_throttles_output() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![
@@ -2149,7 +2149,7 @@ end, 100)
         assert_eq!(control.active_connections(), 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn positive_midi_rate_limit_never_catches_up_with_a_same_pump_burst() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![
@@ -2215,7 +2215,7 @@ end, function() end, 10)
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn midi_connection_failures_back_off_and_recover() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![MidiEndpoint {
@@ -2249,7 +2249,7 @@ end, function() end, 10)
         assert_eq!(manager.states()[0].midi.connections, 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn invalid_midi_rules_and_messages_are_observable() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![MidiEndpoint {
@@ -2306,7 +2306,7 @@ end, function() end, 10)
     }
 
     #[cfg(target_os = "linux")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn native_virtual_midi_round_trip_when_host_facilities_are_available() {
         use midir::os::unix::{VirtualInput, VirtualOutput};
 
@@ -2380,7 +2380,7 @@ end, function() end, 10)
         drop(sink);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn user_source_reload_is_syntax_checked_and_preserves_identity() {
         let mut manager = ScriptManager::new();
         let id = manager
@@ -2408,7 +2408,7 @@ end, function() end, 10)
         assert_eq!(manager.states()[0].id, id);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn manager_rejects_bad_source_and_protects_non_user_records() {
         let mut manager = ScriptManager::new();
         assert!(manager
@@ -2421,7 +2421,7 @@ end, function() end, 10)
         assert!(manager.forget(bundled).is_err());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn documentation_is_extracted_from_the_leading_comment_block() {
         assert_eq!(
             extract_documentation("-- First\n-- second\n\nprint('x')\n-- later"),

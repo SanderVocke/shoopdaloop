@@ -720,7 +720,7 @@ mod tests {
         response
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn monitored_input_accents_the_whole_track() {
         assert_eq!(
             track_background(&crate::TrackControlState {
@@ -735,7 +735,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn processor_facets_render_status_controls_and_logs_without_affecting_direct_tracks() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -821,7 +821,7 @@ mod tests {
         assert!(direct_widget.test_fx_rect.is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn track_and_sync_options_menus_request_connection_scope() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -842,7 +842,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn loop_widget_presentation_state_follows_stable_ids_across_reordering() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -873,7 +873,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn popup_hover_keeps_the_source_loop_as_the_only_hover_owner() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -921,7 +921,7 @@ mod tests {
         assert_eq!(widget.hovered_loop, Some(first));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn fixed_width_track_ignores_resize_drags() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -961,7 +961,7 @@ mod tests {
         assert!(widget.width_drag_start.is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn content_and_controls_share_a_bounded_drag_resizable_width() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1111,7 +1111,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn loops_stack_vertically_inside_a_horizontal_track_row() {
         let context = egui::Context::default();
         crate::initialize(&context);

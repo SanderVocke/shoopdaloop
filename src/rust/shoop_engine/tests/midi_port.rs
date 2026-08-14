@@ -47,7 +47,7 @@ fn cycle(p: &mut MidiPort, n_frames: u32, input: &[MidiStorageElem]) -> Vec<Midi
     out.events().expect("sorted").to_vec()
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_port_receive() {
     let mut p = port();
 
@@ -61,7 +61,7 @@ fn midi_port_receive() {
     check!(pairs(&got) == pairs(&input));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_port_mute_stops_output() {
     let mut p = port();
     p.set_muted(true);
@@ -75,7 +75,7 @@ fn midi_port_mute_stops_output() {
     check!(p.n_output_events() == 0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_port_message_counters() {
     let mut p = port();
 
@@ -93,7 +93,7 @@ fn midi_port_message_counters() {
     check!(p.n_output_events() == 0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_port_note_tracker() {
     let mut p = port();
     check!(p.n_notes_active() == 0);
@@ -119,7 +119,7 @@ fn midi_port_note_tracker() {
     check!(p.n_notes_active() == 0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_port_receives_a_run_of_messages_in_order() {
     let mut p = port();
     let input = [
@@ -135,7 +135,7 @@ fn midi_port_receives_a_run_of_messages_in_order() {
 }
 
 /// within a cycle, so what they write has to come out ordered by time.
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_port_output_is_sorted_by_time() {
     let mut out = MidiSortingBuffer::default();
     out.write(1, &[0, 1, 2]);

@@ -140,7 +140,7 @@ mod tests {
         times(&t)
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn starts_empty() {
         let r = rb(64, 100);
         check!(r.n_events() == 0);
@@ -148,7 +148,7 @@ mod tests {
         check!(r.current_end_time() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn put_places_messages_at_absolute_times() {
         let mut r = rb(64, 100);
         r.next_buffer(10, None);
@@ -162,7 +162,7 @@ mod tests {
         check!(times(r.storage()) == vec![3, 15]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn put_past_the_current_buffer_end_is_rejected() {
         let mut r = rb(64, 100);
         r.next_buffer(10, None);
@@ -173,7 +173,7 @@ mod tests {
         check!(r.put(10, &midi::note_on(0, 60, 1), None));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn advancing_time_trims_messages_out_of_the_window() {
         let mut r = rb(64, 10);
         r.next_buffer(5, None);
@@ -187,7 +187,7 @@ mod tests {
         check!(times(r.storage()) == Vec::<u32>::new());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn trimming_reports_dropped_messages() {
         let mut r = rb(64, 10);
         r.next_buffer(5, None);
@@ -200,7 +200,7 @@ mod tests {
         check!(dropped == vec![0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn set_n_samples_shrinks_the_window_immediately() {
         let mut r = rb(64, 100);
         r.next_buffer(10, None);
@@ -213,7 +213,7 @@ mod tests {
         check!(times(r.storage()) == vec![9]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn window_start_time_is_derived_from_the_window_length() {
         let mut r = rb(64, 10);
         r.next_buffer(4, None);
@@ -230,7 +230,7 @@ mod tests {
         check!(r.current_buffer_start_time() == 4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn snapshot_rebases_times_to_the_window_start() {
         let mut r = rb(64, 10);
         r.next_buffer(10, None);
@@ -243,7 +243,7 @@ mod tests {
         check!(snap(&r, None) == vec![2]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn snapshot_offset_selects_a_shorter_tail() {
         let mut r = rb(64, 100);
         r.next_buffer(20, None);
@@ -256,7 +256,7 @@ mod tests {
         check!(snap(&r, None) == vec![1, 15]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn snapshot_does_not_disturb_the_ringbuffer() {
         let mut r = rb(64, 100);
         r.next_buffer(20, None);
@@ -266,7 +266,7 @@ mod tests {
         check!(times(r.storage()) == before);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn timestamps_are_rebased_low_instead_of_wrapping() {
         let mut r = rb(64, 1000);
         // Park time near the top of the u32 range while empty, then open a
@@ -293,7 +293,7 @@ mod tests {
         check!(r.current_buffer_start_time() - low == distance_before_end);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn full_buffer_drops_oldest_on_put() {
         let mut r = rb(2, 1000);
         r.next_buffer(100, None);

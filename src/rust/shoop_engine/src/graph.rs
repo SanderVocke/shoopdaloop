@@ -214,7 +214,7 @@ mod tests {
     // Each audio port contributes two nodes (prepare, process_and_internal_
     // connections); each channel two (prepare_buffers, process); each loop one.
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn two_ports() {
         // p1 -> p2 internal connection.
         let nodes = specs(&[
@@ -235,7 +235,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn direct_loop() {
         // 0 p1::prepare, 1 p2::prepare, 2 p1::process, 3 p2::process,
         // 4 channel::prepare_buffers, 5 channel::process, 6 loop::process
@@ -263,7 +263,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn two_direct_loops_co_processed() {
         // Two loops declared as co-process partners must land in one step.
         let mut nodes = specs(&[
@@ -298,7 +298,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn incoming_edges_are_equivalent_to_outgoing() {
         let a = specs(&[("a", &[1]), ("b", &[])]);
         let mut b = specs(&[("a", &[]), ("b", &[])]);
@@ -308,7 +308,7 @@ mod tests {
         check!(sa == sb);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn co_process_grouping_is_order_independent() {
         // Constraint declared on one side only still merges both.
         let mut nodes = specs(&[("a", &[]), ("b", &[]), ("c", &[])]);
@@ -319,13 +319,13 @@ mod tests {
         check!(schedule.contains(&vec![NodeIdx(1)]));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn detects_cycle() {
         let nodes = specs(&[("a", &[1]), ("b", &[0])]);
         check!(processing_order(&nodes) == Err(GraphError::Cycle));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn detects_co_process_cycle() {
         // a must precede b, but they are forced into the same step.
         let mut nodes = specs(&[("a", &[1]), ("b", &[])]);
@@ -335,13 +335,13 @@ mod tests {
         check!(schedule == vec![vec![NodeIdx(0), NodeIdx(1)]]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn rejects_out_of_range_index() {
         let nodes = specs(&[("a", &[5])]);
         check!(processing_order(&nodes) == Err(GraphError::BadIndex(5, 1)));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn empty_graph() {
         let_assert!(Ok(schedule) = processing_order(&[]));
         check!(schedule.is_empty());

@@ -7,5 +7,8 @@ edition = "2021"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
+[dev-dependencies]
+tracy-nextest-capture = { workspace = true }
+
 [lints]
 workspace = true

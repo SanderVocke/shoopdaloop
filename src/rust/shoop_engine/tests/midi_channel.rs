@@ -5,7 +5,7 @@ use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::midi_channel::MidiChannel;
 use shoop_engine::midi_storage::MidiStorageElem;
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn midi_channel_set_contents_indefinite_size() {
     // Capacity for one message, then handed three: setting contents has to grow the
     // storage rather than drop what does not fit.

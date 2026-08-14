@@ -34,7 +34,7 @@ fn all_close(got: &[f32], want: &[f32]) -> bool {
     got.len() == want.len() && got.iter().zip(want).all(|(a, b)| close(*a, *b))
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_in_properties() {
     let p = in_port(4);
 
@@ -44,7 +44,7 @@ fn dummy_audio_in_properties() {
     check!(!p.has_implicit_output_sink());
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_in_buffers() {
     let mut p = in_port(4);
 
@@ -57,7 +57,7 @@ fn dummy_audio_in_buffers() {
     check!(p.buffer(10)[3] == 0.25);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_in_queue() {
     let mut p = in_port(4);
     let samples = [0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0];
@@ -78,7 +78,7 @@ fn dummy_audio_in_queue() {
     check!(all_close(p.buffer(3), &[0.0, 0.0, 0.0]));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_in_gain() {
     let mut p = in_port(4);
     p.queue_data(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -89,7 +89,7 @@ fn dummy_audio_in_gain() {
     check!(all_close(p.buffer(3), &[0.0, 0.5, 1.0]));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_in_mute() {
     let mut p = in_port(4);
     p.queue_data(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -100,7 +100,7 @@ fn dummy_audio_in_mute() {
     check!(all_close(p.buffer(3), &[0.0, 0.0, 0.0]));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_in_peak() {
     let mut p = in_port(4);
     p.queue_data(&[5.0, 4.0, 3.0, 2.0, 1.0, 0.0]);
@@ -125,7 +125,7 @@ fn dummy_audio_in_peak() {
     check!(close(p.audio().output_peak(), 2.0));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_in_get_ringbuffer_data() {
     let mut p = in_port(4);
 
@@ -139,7 +139,7 @@ fn dummy_audio_in_get_ringbuffer_data() {
     check!(last[..4] == [0.0, 0.1, 0.2, 0.3]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_out_properties() {
     let p = out_port();
 
@@ -149,7 +149,7 @@ fn dummy_audio_out_properties() {
     check!(p.has_implicit_output_sink());
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_out_buffers() {
     let mut p = out_port();
 
@@ -160,7 +160,7 @@ fn dummy_audio_out_buffers() {
     check!(p.buffer(10)[3] == 0.25);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_out_queue() {
     let mut p = out_port();
     let samples = [0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0];
@@ -175,7 +175,7 @@ fn dummy_audio_out_queue() {
     check!(dequeued == samples);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_out_gain() {
     let mut p = out_port();
     p.request_data(3);
@@ -189,7 +189,7 @@ fn dummy_audio_out_gain() {
     check!(all_close(&dequeued, &[0.0, 0.5, 1.0]));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_out_mute() {
     let mut p = out_port();
     p.request_data(3);
@@ -203,7 +203,7 @@ fn dummy_audio_out_mute() {
     check!(all_close(&dequeued, &[0.0, 0.0, 0.0]));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_out_peak() {
     let mut p = out_port();
 
@@ -227,7 +227,7 @@ fn dummy_audio_out_peak() {
     check!(close(p.audio().output_peak(), 0.0));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn dummy_audio_out_noop_zero() {
     let mut p = out_port();
     p.request_data(6);

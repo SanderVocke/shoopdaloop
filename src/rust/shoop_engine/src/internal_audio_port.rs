@@ -133,7 +133,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn reports_its_identity() {
         let p = port(4);
         check!(p.name() == "p1");
@@ -142,7 +142,7 @@ mod tests {
         check!(p.output_connectability() == PortConnectability::INTERNAL);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn is_internally_accessible_only() {
         let p = port(4);
         check!(p.has_internal_read_access());
@@ -152,7 +152,7 @@ mod tests {
         check!(!p.has_implicit_output_sink());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cannot_be_connected_externally() {
         let mut p = port(4);
         check!(p.external_connection_status().is_empty());
@@ -160,7 +160,7 @@ mod tests {
         check!(p.disconnect_external("system:capture_1") == Err(NotExternallyConnectable));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn prepare_clears_the_buffer() {
         let mut p = port(4);
         p.buffer(4).copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
@@ -168,7 +168,7 @@ mod tests {
         check!(p.buffer(4) == [0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn buffer_grows_for_a_larger_cycle() {
         let mut p = port(2);
         check!(p.buffer(2).len() == 2);
@@ -177,7 +177,7 @@ mod tests {
         check!(p.buffer(2).len() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_zero_frame_port_still_yields_a_buffer() {
         let mut p = port(0);
         check!(p.buffer(0).is_empty());
@@ -185,7 +185,7 @@ mod tests {
         check!(p.buffer(3).len() == 3);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn process_applies_gain_to_what_was_written() {
         let mut p = port(4);
         p.prepare(4);
@@ -195,7 +195,7 @@ mod tests {
         check!(p.buffer(4) == [0.2, 0.4, 0.6, 0.8]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn process_meters_and_captures() {
         let mut p = port(4);
         p.audio_mut().set_ringbuffer_n_samples(8);
@@ -207,7 +207,7 @@ mod tests {
         check!(snap.contiguous() == vec![0.5, -0.25, 0.0, 0.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn muting_silences_the_routed_signal() {
         let mut p = port(4);
         p.audio_mut().set_muted(true);
@@ -217,7 +217,7 @@ mod tests {
         check!(p.buffer(4) == [0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_full_cycle_accumulates_from_silence() {
         let mut p = port(4);
         // Two writers adding into the same port, as the graph does.
@@ -236,7 +236,7 @@ mod tests {
         check!(p.buffer(4) == [0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn process_grows_the_buffer_if_needed() {
         let mut p = port(2);
         // Process a longer cycle than the port was built for.
@@ -244,7 +244,7 @@ mod tests {
         check!(p.buffer(8).len() == 8);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn close_is_harmless() {
         let mut p = port(4);
         p.close();

@@ -184,7 +184,7 @@ mod tests {
         (from..from + n).map(|i| i as f32).collect()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn starts_empty() {
         let q = BufferQueue::new(4, 3);
         check!(q.n_samples() == 0);
@@ -192,7 +192,7 @@ mod tests {
         check!(q.snapshot().contiguous().is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn first_write_allocates_a_buffer() {
         let mut q = BufferQueue::new(4, 3);
         q.put(&ramp(0, 2));
@@ -201,7 +201,7 @@ mod tests {
         check!(q.snapshot().contiguous() == ramp(0, 2));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn writes_fill_then_spill_into_new_buffers() {
         let mut q = BufferQueue::new(4, 8);
         q.put(&ramp(0, 10));
@@ -210,7 +210,7 @@ mod tests {
         check!(q.snapshot().contiguous() == ramp(0, 10));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn successive_writes_are_contiguous() {
         let mut q = BufferQueue::new(4, 8);
         q.put(&ramp(0, 3));
@@ -220,7 +220,7 @@ mod tests {
         check!(q.snapshot().contiguous() == ramp(0, 11));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn exactly_filling_a_buffer_does_not_allocate_early() {
         let mut q = BufferQueue::new(4, 8);
         q.put(&ramp(0, 4));
@@ -232,7 +232,7 @@ mod tests {
         check!(q.n_samples() == 5);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn oldest_buffers_are_retired_at_the_limit() {
         let mut q = BufferQueue::new(4, 2);
         q.put(&ramp(0, 12));
@@ -242,7 +242,7 @@ mod tests {
         check!(q.snapshot().contiguous() == ramp(4, 8));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_single_buffer_limit_keeps_only_the_newest() {
         let mut q = BufferQueue::new(4, 1);
         q.put(&ramp(0, 10));
@@ -251,7 +251,7 @@ mod tests {
         check!(q.snapshot().contiguous() == ramp(8, 2));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn zero_limit_still_keeps_one_buffer() {
         // a zero limit is unsafe there. Here one buffer is always retained.
         let mut q = BufferQueue::new(4, 0);
@@ -260,7 +260,7 @@ mod tests {
         check!(q.n_samples() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn snapshot_last_buffer_is_only_partly_filled() {
         let mut q = BufferQueue::new(4, 8);
         q.put(&ramp(0, 6));
@@ -273,7 +273,7 @@ mod tests {
         check!(s.contiguous().len() == 6);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn range_visitor_crosses_wrapped_chunks_without_copying() {
         let mut q = BufferQueue::new(4, 2);
         q.put(&ramp(0, 14));
@@ -282,7 +282,7 @@ mod tests {
         check!(visited == ramp(9, 4));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn snapshot_is_unaffected_by_later_writes() {
         let mut q = BufferQueue::new(4, 8);
         q.put(&ramp(0, 4));
@@ -293,7 +293,7 @@ mod tests {
         check!(q.n_samples() == 8);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn set_max_buffers_discards_contents() {
         let mut q = BufferQueue::new(4, 8);
         q.put(&ramp(0, 10));
@@ -306,7 +306,7 @@ mod tests {
         check!(q.snapshot().contiguous() == ramp(0, 3));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn set_min_n_samples_rounds_up() {
         let mut q = BufferQueue::new(4, 1);
         q.set_min_n_samples(9);
@@ -317,7 +317,7 @@ mod tests {
         check!(q.max_buffers() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn writing_more_than_the_whole_window_at_once() {
         let mut q = BufferQueue::new(4, 2);
         // One write larger than the entire capacity: only the tail survives.
@@ -327,7 +327,7 @@ mod tests {
         check!(q.snapshot().contiguous() == ramp(12, 8));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn empty_write_is_a_no_op() {
         let mut q = BufferQueue::new(4, 2);
         q.put(&[]);

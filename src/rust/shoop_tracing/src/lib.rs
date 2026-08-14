@@ -11,9 +11,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[doc(hidden)]
 pub use tracy_client;
 
+#[cfg(all(feature = "tracy", target_env = "msvc"))]
+#[link(name = "msvcprt")]
+unsafe extern "C" {}
+
 static TRACING_ENABLED: AtomicBool = AtomicBool::new(false);
 static TRACING_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);
 static ENGINE_DETAIL_ENABLED: AtomicBool = AtomicBool::new(false);
+
+#[ctor::ctor(unsafe)]
+fn configure_ci_tracing() {
+    if std::env::var_os("SHOOP_CI_TRACING_ENGINE_DETAIL").is_some() {
+        set_tracing_enabled(true);
+        set_engine_detail_enabled(true);
+    }
+}
 
 /// Enable or disable all application tracing.
 pub fn set_tracing_enabled(enabled: bool) {
@@ -304,7 +316,7 @@ mod tests {
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn gates_keep_detail_subordinate_and_quiesce_output() {
         let _guard = TEST_LOCK.lock().unwrap();
         set_tracing_enabled(false);
@@ -328,7 +340,7 @@ mod tests {
         set_tracing_enabled(false);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn disabled_span_does_not_enter_tracy() {
         let _guard = TEST_LOCK.lock().unwrap();
         set_tracing_enabled(false);
@@ -338,7 +350,7 @@ mod tests {
     }
 
     #[cfg(feature = "tracy")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn prewarm_reuses_the_static_location() {
         fn location() -> &'static tracy_client::SpanLocation {
             tracy_client::span_location!("engine.rt.prewarm_test")

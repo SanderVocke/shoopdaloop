@@ -61,7 +61,7 @@ mod tests {
         assert!((left - right).abs() < 0.001, "{left} != {right}");
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn attacks_immediately_then_holds_before_releasing() {
         let mut meter = PeakMeterAnimation::default();
         close(meter.update(-50.0, -50.0, 0.0).db, -50.0);
@@ -76,7 +76,7 @@ mod tests {
         assert!(falling.animating);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn release_is_time_based_and_never_falls_below_the_current_signal() {
         let mut meter = PeakMeterAnimation::default();
         meter.update(0.0, -50.0, 0.0);
@@ -87,7 +87,7 @@ mod tests {
         assert!(!second.animating);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn full_scale_reaches_the_floor_in_about_seven_tenths_of_a_second_after_hold() {
         let mut meter = PeakMeterAnimation::default();
         meter.update(0.0, -50.0, 0.0);
@@ -96,7 +96,7 @@ mod tests {
         assert!(!reading.animating);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn invalid_values_are_silence_and_values_are_clamped_to_the_meter_range() {
         let mut meter = PeakMeterAnimation::default();
         close(meter.update(f32::NAN, -50.0, 0.0).db, -50.0);

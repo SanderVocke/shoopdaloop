@@ -1354,7 +1354,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn graph_classifies_four_columns_and_prunes_incompatible_system_ports() {
         let state = state();
         let graph = ConnectionGraph::build(
@@ -1381,7 +1381,7 @@ mod tests {
             .all(|endpoint| endpoint.full_name != "orphan:midi_source"));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn data_type_and_multi_track_filters_remove_endpoints_and_routes() {
         let state = state();
         let midi_track_one = ConnectionGraph::build(
@@ -1437,7 +1437,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn system_and_application_groups_use_user_facing_names_and_stable_fallbacks() {
         let mut state = state();
         Arc::make_mut(&mut state.connections).host_ports = Arc::from([
@@ -1469,7 +1469,7 @@ mod tests {
         assert_eq!(graph.column(GraphColumn::ShoopSinks)[0].group, "One");
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn selected_tracks_exclude_lua_ports_but_global_filter_groups_them_by_script() {
         let mut state = state();
         let script_id = ScriptId::from_raw(7);
@@ -1551,7 +1551,7 @@ mod tests {
         }));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dual_route_warning_uses_confirmed_truth_only() {
         let mut state = state();
         let connections = Arc::make_mut(&mut state.connections);
@@ -1602,7 +1602,7 @@ mod tests {
         assert!(!dual_route_warning(&state.connections));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn system_columns_exclude_active_shoop_instance_ports_only() {
         let mut state = state();
         state.audio_drivers.active = Some(crate::ResolvedAudioDriverConfig {
@@ -1680,7 +1680,7 @@ mod tests {
         assert!(is_application_owned_host(&state, &fallback_host));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn duplicate_display_names_retain_distinct_stable_host_identities() {
         let mut state = state();
         let connections = Arc::make_mut(&mut state.connections);
@@ -1719,7 +1719,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn compatibility_rejects_wrong_lanes_types_managed_and_existing_pairs() {
         let state = state();
         let mut graph = ConnectionGraph::build(
@@ -1739,7 +1739,7 @@ mod tests {
         assert!(!graph.compatible_drop(&host_source, &app_sink));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pending_disconnect_overrides_confirmed_and_errors_remain_visible() {
         let mut state = state();
         let connections = Arc::make_mut(&mut state.connections);
@@ -1767,7 +1767,7 @@ mod tests {
         }));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn failed_route_can_be_retried_after_remaining_visible() {
         let mut state = state();
         Arc::make_mut(&mut state.connections).errors = Arc::from([ConnectionErrorState {
@@ -1788,7 +1788,7 @@ mod tests {
         assert!(graph.compatible_drop(&source, &sink));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn open_always_applies_global_or_track_filter_presets() {
         let mut dialog = ConnectionDialog::default();
         dialog.filters.audio = false;
@@ -1806,7 +1806,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn layout_paints_all_columns_at_small_and_common_sizes() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1827,7 +1827,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn endpoint_rows_use_type_colors_without_letter_type_prefixes() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1911,7 +1911,7 @@ mod tests {
         assert!(endpoint_hover(midi, true).contains("\nMIDI source"));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn loading_unavailable_and_no_filter_results_are_safe_and_truthful() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2041,7 +2041,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dragging_across_either_lane_emits_one_exact_connect_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2076,7 +2076,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn invalid_managed_and_pending_drops_emit_no_intents() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2109,7 +2109,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn clicking_confirmed_user_managed_curve_emits_exact_disconnect() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2141,7 +2141,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn nearby_curves_disconnect_only_the_nearest_route() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2197,7 +2197,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_horizontally_scrolled_visible_curve_remains_interactive() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2293,7 +2293,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn managed_and_pending_curves_cannot_be_disconnected() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2332,7 +2332,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn filter_or_snapshot_change_cancels_an_active_drag() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2369,7 +2369,7 @@ mod tests {
         assert!(dialog.drag.is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn large_graph_uses_linear_endpoint_layout_and_paints_visible_routes() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2458,7 +2458,7 @@ mod tests {
         assert_eq!(dialog.route_points.len(), 40);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn stale_track_warning_does_not_block_switching_back_to_all_tracks() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2478,7 +2478,7 @@ mod tests {
         assert!(!dialog.endpoint_rects.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn empty_host_inventory_keeps_application_ports_visible() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2494,7 +2494,7 @@ mod tests {
         assert_eq!(dialog.endpoint_rects.len(), 3);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn name_splitting_matches_grouping_contract() {
         assert_eq!(
             external_name_parts("client:port:part"),

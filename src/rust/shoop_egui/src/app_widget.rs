@@ -1759,7 +1759,7 @@ mod tests {
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn backend_health_requires_live_callbacks_and_distinguishes_waiting_from_failure() {
         assert_eq!(
             backend_health(crate::AudioDriverState::Running, true),
@@ -1779,12 +1779,12 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bottom_panel_starts_closed() {
         assert_eq!(AppWidget::default().bottom_pane, None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn connection_open_api_applies_global_sync_and_main_track_presets() {
         let mut widget = AppWidget::default();
         assert_eq!(widget.open_connection_scope(), None);
@@ -1810,7 +1810,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn carla_hosting_setting_validates_modes_and_preserves_unknown_keys() {
         let mut builder = SettingsRegistryBuilder::default();
         register_carla_settings(&mut builder).unwrap();
@@ -1928,7 +1928,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ephemeral_script_load_waits_for_confirmation_and_emits_source() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1997,7 +1997,7 @@ mod tests {
         assert!(widget.pending_ephemeral_scripts.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn xrun_reset_button_emits_one_reset_action() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2020,7 +2020,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn details_and_piano_toggle_one_bottom_pane_without_stacking() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2038,7 +2038,7 @@ mod tests {
         assert_eq!(widget.bottom_pane, None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn switching_away_from_piano_releases_a_held_note() {
         let mut widget = AppWidget::default();
         widget.bottom_pane = Some(BottomPane::Piano);
@@ -2054,7 +2054,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn open_piano_routes_pointer_note_actions_as_application_intents() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2139,7 +2139,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn piano_destination_summary_uses_monitored_track_midi_input_roles() {
         let first_id = crate::TrackId::from_raw(1);
         let muted_id = crate::TrackId::from_raw(2);
@@ -2225,7 +2225,7 @@ mod tests {
         response.unwrap()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn audio_settings_keep_independent_driver_configs_and_validate_mapping() {
         let mut builder = SettingsRegistryBuilder::default();
         register_audio_settings(&mut builder).unwrap();
@@ -2260,7 +2260,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn add_track_accept_emits_validated_spec() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2285,7 +2285,7 @@ mod tests {
         assert!(!widget.add_track_open);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dry_wet_dialog_uses_empty_and_synthetic_processor_catalogs() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2341,7 +2341,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cancelling_add_track_has_no_action() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2355,7 +2355,7 @@ mod tests {
         assert!(!widget.add_track_open);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ordered_audio_export_selection_emits_the_task_scoped_confirmation() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2400,7 +2400,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn scripts_tab_renders_lifecycle_errors_logs_and_midi_diagnostics() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2472,7 +2472,7 @@ mod tests {
         assert!(widget.settings.reload_rect(script_id).is_some());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn complete_application_state_produces_paint_commands() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2531,7 +2531,7 @@ mod tests {
         assert!(uploaded_logo);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bundled_script_registry_excludes_native_user_path_workflow() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -2545,7 +2545,7 @@ mod tests {
         assert!(!defaults.get(APC_MINI_SCRIPT_ENABLED).unwrap());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn add_track_defaults_are_registered_and_read_only_when_a_new_draft_opens() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();

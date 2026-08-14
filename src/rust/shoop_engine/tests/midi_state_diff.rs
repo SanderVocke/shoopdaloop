@@ -23,7 +23,7 @@ fn tracker() -> MidiStateTracker {
     })
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn channel_pressure_diff_uses_the_correct_status_byte() {
     let mut a = tracker();
     let mut b = tracker();
@@ -44,7 +44,7 @@ fn channel_pressure_diff_uses_the_correct_status_byte() {
     check!(diff[0][0] == 0xD0);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn channel_pressure_is_independent_from_the_pitch_wheel() {
     let mut a = tracker();
     let mut b = tracker();
@@ -64,7 +64,7 @@ fn channel_pressure_is_independent_from_the_pitch_wheel() {
     check!(!diff.iter().any(|m| m[0] == 0xE0));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn channel_pressure_carries_its_own_channel() {
     let mut a = tracker();
     let mut b = tracker();
@@ -80,7 +80,7 @@ fn channel_pressure_carries_its_own_channel() {
 }
 
 /// The converse of the cases above: moving the pitch wheel must not emit a channel
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn the_pitch_wheel_is_independent_from_channel_pressure() {
     let mut a = tracker();
     let mut b = tracker();

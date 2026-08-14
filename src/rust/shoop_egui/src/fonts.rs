@@ -99,7 +99,7 @@ fn named_family(name: &str) -> egui::FontFamily {
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bundled_roboto_faces_are_registered() {
         let definitions = roboto_font_definitions();
         for name in [

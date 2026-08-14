@@ -71,7 +71,7 @@ fn save_settings_file_with(
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn missing_file_is_first_run_and_save_creates_parents() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("nested").join("settings.json");
@@ -83,7 +83,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn save_replaces_complete_prior_bytes() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -93,7 +93,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn failed_commit_retains_prior_bytes_and_cleans_temporary_file() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn invalid_parent_is_reported_without_replacing_it() {
         let directory = tempfile::tempdir().unwrap();
         let parent = directory.path().join("not-a-directory");
@@ -115,7 +115,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(parent).unwrap(), "keep");
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn default_path_uses_compatibility_identity() {
         let path = default_settings_path().unwrap();
         assert_eq!(path.file_name().unwrap(), SETTINGS_FILENAME);

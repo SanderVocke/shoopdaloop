@@ -70,7 +70,7 @@ impl TryFrom<&str> for CarlaHostingMode {
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn carla_hosting_modes_have_stable_validated_strings() {
         for mode in [CarlaHostingMode::InProcess, CarlaHostingMode::Subprocess] {
             assert_eq!(mode.as_str().parse::<CarlaHostingMode>().unwrap(), mode);

@@ -1205,7 +1205,7 @@ mod tests {
         serde_json::from_str(host.handle_json(&json)).unwrap()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn worklet_composite_contract_controls_and_publishes_independent_parent_state() {
         let mut host = WorkletHost::new(1_000, 8).unwrap();
         assert!(matches!(
@@ -1368,7 +1368,7 @@ mod tests {
         assert!(isolated.composites[1].active_children.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn protocol_orders_commands_and_runs_non_silent_full_duplex_cycles() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1481,7 +1481,7 @@ mod tests {
         assert_eq!(snapshot.loops[0].balance, 0.5);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn midi_details_are_bounded_and_chunked_without_session_capture() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1580,7 +1580,7 @@ mod tests {
         assert!(host.capture_bytes.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn tiny_synth_fx_runs_all_shapes_and_controls_in_the_worklet() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1789,7 +1789,7 @@ mod tests {
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn normalized_routes_mutate_authoritatively_without_stopping_audio() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1894,7 +1894,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn track_midi_injection_needs_no_web_midi_endpoint() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1978,7 +1978,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn web_midi_commands_route_record_monitor_and_playback() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let endpoints = vec![
@@ -2185,7 +2185,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn global_web_midi_dual_route_survives_capture_replace_and_stays_allocation_free() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let endpoint = "webmidi:source:global-dual";
@@ -2317,7 +2317,7 @@ mod tests {
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 0, 128)));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn session_capture_and_replacement_use_bounded_chunks_and_keep_processing() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let mut sequence = 1_u64;
@@ -2441,7 +2441,7 @@ mod tests {
         assert_eq!(snapshot.loops[0].length, 4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn targeted_loop_content_transfer_commits_once_without_stopping_callbacks() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let mut sequence = 1_u64;
@@ -2611,7 +2611,7 @@ mod tests {
         assert_eq!(after.loops[0].length, 2048);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn command_capacity_and_shutdown_fail_visibly() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let oversized = vec![b'x'; COMMAND_MAX_BYTES + 1];
@@ -2628,7 +2628,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn stale_duplicate_and_malformed_commands_are_rejected_observably() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let mismatched = serde_json::to_vec(&CommandEnvelope {

@@ -7,7 +7,12 @@ edition = "2021"
 
 [dependencies]
 assert_no_alloc = { workspace = true }
+ctor = { workspace = true }
 tracy-client = { workspace = true, optional = true }
+tracy-client-sys = { workspace = true, optional = true }
+
+[dev-dependencies]
+tracy-nextest-capture = { workspace = true }
 
 [lints]
 workspace = true
@@ -15,4 +20,4 @@ workspace = true
 [features]
 default = ["tracy"]
 prebuild = []
-tracy = ["dep:tracy-client"]
+tracy = ["dep:tracy-client", "dep:tracy-client-sys"]

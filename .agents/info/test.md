@@ -1,4 +1,4 @@
-- Complete Rust suite: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1`.
+- Complete Rust suite: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` (requires cargo-nextest 0.9.116).
 - Formatting: `cargo fmt --all -- --check`.
 - Warning-denying build: `RUSTFLAGS="-D warnings" cargo build --workspace`.
 - Tracing inventory: `python3 scripts/check_tracing_coverage.py --require-closed`.

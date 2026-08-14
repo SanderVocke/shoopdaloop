@@ -177,7 +177,7 @@ fn render(partitions: &[usize]) -> (Vec<f32>, Vec<(u64, LoopIdentity, BoundaryTa
     (audio, trace)
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn session_rechecks_primitive_generations_before_timeline_installation() {
     let mut session = Session::default();
     let child = session.create_loop();
@@ -204,7 +204,7 @@ fn session_rechecks_primitive_generations_before_timeline_installation() {
     ));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn session_rejects_cycles_spanning_composite_and_primitive_sync_edges() {
     let mut session = Session::default();
     let source_basic = session.create_loop();
@@ -237,7 +237,7 @@ fn session_rejects_cycles_spanning_composite_and_primitive_sync_edges() {
     ));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn mid_callback_composite_transition_changes_the_exact_first_output_sample() {
     let (audio, trace) = render(&[8]);
     assert_eq!(audio, vec![0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0]);
@@ -254,7 +254,7 @@ fn mid_callback_composite_transition_changes_the_exact_first_output_sample() {
     }));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn callback_size_and_arbitrary_partitions_do_not_change_audio_or_transition_trace() {
     let contiguous = render(&[12]);
     let split = render(&[3, 2, 1, 4, 2]);
@@ -267,7 +267,7 @@ fn callback_size_and_arbitrary_partitions_do_not_change_audio_or_transition_trac
     );
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn a_source_that_wraps_multiple_times_advances_every_composite_boundary() {
     let mut fixture = audio_fixture();
     fixture.session.process(12);
@@ -282,7 +282,7 @@ fn a_source_that_wraps_multiple_times_advances_every_composite_boundary() {
     assert_eq!(fixture.session.position_of(fixture.child), Some(0));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn iteration_aligned_composite_events_reuse_the_source_poi() {
     let mut with_composite = audio_fixture();
     // Consume the timestamp-zero control boundary before comparing steady-state work.
@@ -300,7 +300,7 @@ fn iteration_aligned_composite_events_reuse_the_source_poi() {
     assert_eq!(without.n_sub_blocks_last_cycle(), 1);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn sub_block_overflow_latches_and_never_processes_the_remainder_late() {
     let mut session = Session::default();
     let source = session.create_loop();
@@ -320,7 +320,7 @@ fn sub_block_overflow_latches_and_never_processes_the_remainder_late() {
     assert_eq!(session.position_of(source), frozen_position);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn composite_to_primitive_to_composite_propagation_settles_before_audio_advances() {
     let mut session = Session::default();
     let clock = session.create_loop();
@@ -388,7 +388,7 @@ fn composite_to_primitive_to_composite_propagation_settles_before_audio_advances
         .any(|entry| entry.at_sample == 1 && entry.target == basic(child as u32)));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn an_explicit_script_stop_commits_at_its_source_boundary() {
     let mut session = Session::default();
     let source_loop = session.create_loop();
@@ -469,7 +469,7 @@ fn an_explicit_script_stop_commits_at_its_source_boundary() {
     assert_eq!(session.loop_(child_loop).unwrap().mode(), LoopMode::Stopped);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn timestamped_script_modes_commit_before_post_boundary_samples() {
     let mut session = Session::default();
     let sync = session.create_loop();

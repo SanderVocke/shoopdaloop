@@ -8,7 +8,7 @@
 use assert2::check;
 use shoop_engine::buffer_queue::BufferQueue;
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn buffer_queue_starting_state() {
     let q = BufferQueue::new(10, 10);
 
@@ -17,7 +17,7 @@ fn buffer_queue_starting_state() {
     check!(q.snapshot().buffers.is_empty());
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn buffer_queue_single_buf_full() {
     let mut q = BufferQueue::new(10, 10);
     let data: Vec<f32> = (1..=10).map(|v| v as f32).collect();
@@ -31,7 +31,7 @@ fn buffer_queue_single_buf_full() {
     check!(s.buffers[0] == data);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn buffer_queue_single_buf_partial() {
     let mut q = BufferQueue::new(10, 10);
     let data: Vec<f32> = (1..=10).map(|v| v as f32).collect();
@@ -47,7 +47,7 @@ fn buffer_queue_single_buf_partial() {
     check!(s.contiguous() == data[..3]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn buffer_queue_two_bufs_full() {
     let mut q = BufferQueue::new(4, 4);
     let data: Vec<f32> = (1..=8).map(|v| v as f32).collect();
@@ -62,7 +62,7 @@ fn buffer_queue_two_bufs_full() {
     check!(s.buffers[1] == data[4..]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn buffer_queue_two_bufs_partial() {
     let mut q = BufferQueue::new(4, 4);
     let data: Vec<f32> = (1..=6).map(|v| v as f32).collect();
@@ -78,7 +78,7 @@ fn buffer_queue_two_bufs_partial() {
     check!(s.contiguous() == data);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn buffer_queue_drop_buffer() {
     // Room for two buffers of two samples, so a third buffer pushes the first out.
     let mut q = BufferQueue::new(2, 2);
@@ -103,7 +103,7 @@ fn buffer_queue_drop_buffer() {
     check!(s.buffers[1] == vec![5.0, 6.0]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn buffer_queue_drop_buffer_then_lower_the_limit() {
     let mut q = BufferQueue::new(2, 2);
 
@@ -121,7 +121,7 @@ fn buffer_queue_drop_buffer_then_lower_the_limit() {
     check!(s.buffers[0] == vec![9.0, 10.0]);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn buffer_queue_snapshot_then_drop() {
     let mut q = BufferQueue::new(2, 2);
 

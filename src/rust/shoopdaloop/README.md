@@ -18,21 +18,21 @@ cargo run -p shoopdaloop
 cargo run -p shoopdaloop --no-default-features
 ```
 
-Live profiling requires a Tracy 0.13.1 profiler:
+`--tracing` captures Tracy 0.13.1-compatible profiling data in process and writes a numbered file below `./traces` after the application exits normally. It does not expose a live TCP profiler endpoint or require an external capture tool:
 
 ```sh
 cargo run -p shoopdaloop -- --tracing
 ```
 
-To write a capture, install the Tracy 0.13.1 `tracy-capture` executable on `PATH` or select it with `TRACY_CAPTURE_TOOL`. Captures are written below `./traces` and finalized after the application exits normally:
+Add detailed engine instrumentation when needed:
 
 ```sh
 cargo run -p shoopdaloop -- \
-  --tracing-capture \
+  --tracing \
   --tracing-engine-detail
 ```
 
-`--tracing-engine-detail` requires either `--tracing` or `--tracing-capture` and increases callback overhead and capture volume.
+`--tracing-engine-detail` requires `--tracing` and increases callback overhead and capture volume. Abort, fatal signals, forced termination, OOM, and power loss cannot finalize an in-process trace.
 
 On first run this starts the dummy/offline engine. Open **Settings** and select **Audio** to configure every driver family supported by the build and currently discovered JACK/CPAL devices, then use **Switch** for a confirmation-gated runtime change. The warning identifies the resolved source and target rates; a changed rate explicitly resamples all loop audio, exact MIDI, lengths, offsets, preplay, ring-buffer durations, and cycle timing through the session resampler. Successful switches are saved for the next launch, while unavailable saved drivers fall back to dummy with a diagnostic without overwriting the preference. Native MIDI controller discovery uses the host MIDI service. Select **Scripts** to manage the embedded keyboard/APC scripts or path-based user scripts. This is the only script-management dialog. ``keyboard.lua`` is enabled on first run; bundled toggles and ordered user path/enabled entries are preserved in the application settings document after **Save**. Runtime-only Stop, Restart, and Reload controls plus lifecycle, documentation, logs, callbacks/timers, MIDI connections, dropped messages, and failures are visible in the same tab.
 

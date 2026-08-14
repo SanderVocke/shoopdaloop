@@ -1148,7 +1148,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn action_tooltips_describe_active_global_behavior() {
         let mut controls = GlobalControlState {
             sync: true,
@@ -1185,7 +1185,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn action_buttons_use_the_full_row_height_without_covering_the_state_icon() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1205,7 +1205,7 @@ mod tests {
         assert!(widget.test_record_rect.unwrap().left() > play.right());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn clipped_loop_does_not_activate_hover_overlays() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1234,7 +1234,7 @@ mod tests {
         assert_eq!(widget.play_popup_until, 0.0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn hover_overlays_extend_outside_the_row_and_retain_child_hover() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1276,7 +1276,7 @@ mod tests {
         assert!(widget.record_popup_until > 2.02);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn context_menu_opens_from_state_actions_dial_and_dropped_controls() {
         for target in [
             "state", "play", "record", "stop", "dial", "dropped", "balance",
@@ -1326,7 +1326,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn context_menu_routes_conversion_only_for_primitive_loops() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1378,7 +1378,7 @@ mod tests {
         assert!(!can_convert_to_composite(&composite));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dragging_a_loop_sets_and_releases_its_stable_payload() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1431,7 +1431,7 @@ mod tests {
         assert!(egui::DragAndDrop::payload::<LoopDragPayload>(&context).is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn click_track_context_action_applies_only_to_primitive_media_loops() {
         assert!(can_generate_click_track(&LoopState {
             has_audio: true,
@@ -1449,7 +1449,7 @@ mod tests {
         }));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn script_composites_do_not_open_record_or_dry_variants() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1470,7 +1470,7 @@ mod tests {
         assert!(widget.test_gain_rect.is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn stereo_balance_popup_is_outside_gain_and_double_click_resets() {
         let context = egui::Context::default();
         crate::initialize(&context);

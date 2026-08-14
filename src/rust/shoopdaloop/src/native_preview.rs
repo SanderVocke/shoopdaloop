@@ -148,7 +148,7 @@ mod tests {
     use shoop_backend::FakeBackend;
     use std::sync::Arc;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn invalid_preview_fails_without_opening_hardware() {
         let runtime =
             shoop_app::ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();

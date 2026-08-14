@@ -569,7 +569,7 @@ mod tests {
         s.iter().map(|e| e.time).collect()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn starts_empty() {
         let s = storage(4);
         check!(s.n_events() == 0);
@@ -578,7 +578,7 @@ mod tests {
         check!(s.capacity_elems() == 4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn appends_in_order() {
         let mut s = storage(4);
         check!(s.append(0, &note(1), false, None));
@@ -589,7 +589,7 @@ mod tests {
         check!(first.data() == &note(1));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn refuses_out_of_order() {
         let mut s = storage(4);
         check!(s.append(10, &note(1), false, None));
@@ -600,7 +600,7 @@ mod tests {
         check!(s.n_events() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn refuses_when_full_without_replace() {
         let mut s = storage(2);
         check!(s.append(0, &note(1), false, None));
@@ -610,7 +610,7 @@ mod tests {
         check!(times(&s) == vec![0, 1]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replaces_a_middle_interval_without_disturbing_outer_events() {
         let mut s = storage(6);
         s.append(0, &note(1), false, None);
@@ -627,7 +627,7 @@ mod tests {
         check!(s.iter().map(|event| event.data()[1]).collect::<Vec<_>>() == vec![1, 8, 9, 4]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacement_is_atomic_when_capacity_is_insufficient() {
         let mut s = storage(3);
         s.append(0, &note(1), false, None);
@@ -648,7 +648,7 @@ mod tests {
         check!(times(&s) == vec![0, 2, 6]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replacement_linearizes_wrapped_storage_and_invalidates_cursors() {
         let mut s = storage(4);
         s.append(0, &note(1), false, None);
@@ -666,7 +666,7 @@ mod tests {
         check!(times(&s) == vec![1, 2, 4]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn replace_drops_oldest_and_reports_it() {
         let mut s = storage(2);
         s.append(0, &note(1), false, None);
@@ -681,7 +681,7 @@ mod tests {
         check!(times(&s) == vec![1, 2]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn rejects_oversized_and_empty_payloads() {
         let mut s = storage(4);
         check!(!s.append(0, &[], false, None));
@@ -690,7 +690,7 @@ mod tests {
         check!(s.n_events() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn prepend_inserts_before_oldest() {
         let mut s = storage(4);
         s.append(10, &note(1), false, None);
@@ -701,14 +701,14 @@ mod tests {
         check!(s.n_events() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn prepend_refuses_when_full() {
         let mut s = storage(1);
         s.append(5, &note(1), false, None);
         check!(!s.prepend(1, &note(2)));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn clear_empties() {
         let mut s = storage(4);
         s.append(0, &note(1), false, None);
@@ -717,7 +717,7 @@ mod tests {
         check!(times(&s) == Vec::<u32>::new());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn copy_into_compacts_from_zero() {
         let mut s = storage(3);
         // Wrap the ring so tail is not 0.
@@ -734,7 +734,7 @@ mod tests {
         check!(dst.tail_offset() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn for_each_modify_visits_in_order() {
         let mut s = storage(4);
         s.append(0, &note(1), false, None);
@@ -743,7 +743,7 @@ mod tests {
         check!(times(&s) == vec![100, 101]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cursor_walks_all_messages_then_invalidates() {
         let mut s = storage(4);
         for i in 0..3 {
@@ -762,7 +762,7 @@ mod tests {
         check!(!c.valid());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cursor_on_empty_storage_is_invalid() {
         let s = storage(4);
         let c = s.create_cursor();
@@ -770,7 +770,7 @@ mod tests {
         check!(c.get(&s) == None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cursor_tracks_previous_element() {
         let mut s = storage(4);
         s.append(0, &note(1), false, None);
@@ -783,7 +783,7 @@ mod tests {
         check!(!c.wrapped(&s));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn find_time_forward_lands_on_first_at_or_after() {
         let mut s = storage(8);
         for t in [0u32, 10, 20, 30] {
@@ -797,7 +797,7 @@ mod tests {
         check!(e.time == 20);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn find_time_forward_reports_skipped_messages() {
         let mut s = storage(8);
         for t in [0u32, 10, 20] {
@@ -812,7 +812,7 @@ mod tests {
         check!(skipped == vec![0, 10]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn find_time_forward_past_the_end_invalidates() {
         let mut s = storage(8);
         s.append(0, &note(1), false, None);
@@ -822,7 +822,7 @@ mod tests {
         check!(!c.valid());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn find_time_forward_stays_put_when_already_there() {
         let mut s = storage(8);
         s.append(5, &note(1), false, None);
@@ -834,7 +834,7 @@ mod tests {
         check!(c.is_at_start(&s));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn find_fn_forward_uses_the_predicate() {
         let mut s = storage(8);
         s.append(0, &[0x90, 1, 1], false, None);
@@ -846,7 +846,7 @@ mod tests {
         check!(e.time == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cursor_re_anchors_after_its_element_is_dropped() {
         let mut s = storage(2);
         s.append(0, &note(1), false, None);
@@ -861,7 +861,7 @@ mod tests {
         check!(c.get(&s).map(|e| e.time) == Some(1));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cursor_untouched_by_drops_it_does_not_point_at() {
         let mut s = storage(3);
         s.append(0, &note(1), false, None);
@@ -874,7 +874,7 @@ mod tests {
         check!(c.get(&s).map(|e| e.time) == Some(1));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn clear_invalidates_pre_existing_cursors() {
         let mut s = storage(4);
         for i in 0..3 {
@@ -901,7 +901,7 @@ mod tests {
         check!(fresh.get(&s).map(|e| e.time) == Some(100));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_head_drops_newer_messages() {
         let mut s = storage(8);
         for t in [0u32, 10, 20, 30] {
@@ -919,7 +919,7 @@ mod tests {
         check!(s.first_index() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_tail_drops_older_messages() {
         let mut s = storage(8);
         for t in [0u32, 10, 20, 30] {
@@ -935,7 +935,7 @@ mod tests {
         check!(s.first_index() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_leaves_untouched_storage_alone() {
         let mut s = storage(8);
         for t in [10u32, 20] {
@@ -949,7 +949,7 @@ mod tests {
         check!(times(&s) == vec![10, 20]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_can_empty_the_storage() {
         let mut s = storage(8);
         s.append(10, &note(1), false, None);
@@ -961,7 +961,7 @@ mod tests {
         check!(times(&s) == vec![50]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_on_empty_storage_is_a_no_op() {
         let mut s = storage(4);
         s.truncate(5, TruncateSide::Head, None);
@@ -969,7 +969,7 @@ mod tests {
         check!(s.n_events() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_fn_uses_the_predicate() {
         let mut s = storage(8);
         s.append(0, &[0x90, 1, 1], false, None);
@@ -979,7 +979,7 @@ mod tests {
         check!(times(&s) == vec![0, 1]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_head_checks_the_newest_message_first() {
         let mut s = storage(8);
         s.append(0, &[0x90, 1, 1], false, None);
@@ -997,7 +997,7 @@ mod tests {
         check!(times(&s) == vec![0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_tail_invalidates_cursors_rather_than_re_anchoring() {
         let mut s = storage(8);
         for t in [0u32, 10, 20, 30] {
@@ -1011,7 +1011,7 @@ mod tests {
         check!(!c.valid());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_keeps_cursors_still_inside_the_window() {
         let mut s = storage(8);
         for t in [0u32, 10, 20, 30] {
@@ -1025,7 +1025,7 @@ mod tests {
         check!(c.get(&s).map(|e| e.time) == Some(20));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn truncate_head_invalidates_cursors_past_the_new_end() {
         let mut s = storage(8);
         for t in [0u32, 10, 20, 30] {
@@ -1039,7 +1039,7 @@ mod tests {
         check!(!c.valid());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn contents_equal_ignores_time() {
         let mut s = storage(4);
         s.append(0, &note(60), false, None);
@@ -1049,7 +1049,7 @@ mod tests {
         check!(v[0] != v[1]); // times differ
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn zero_capacity_storage_accepts_nothing() {
         let mut s = storage(0);
         check!(!s.append(0, &note(1), false, None));
