@@ -191,6 +191,18 @@ SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/ap
 
 Also run the focused test filters used during development and record them near the affected table rows. A failing newly added regression test is allowed, but the final summary must identify its row, command, failure, suspected broken layer, and why the test was retained. No unresolved table placeholder may remain.
 
+## Suspicious-finding remediation goals
+
+The three characterization tests must be converted to regression tests that assert the advertised behavior, and production code must be corrected until those assertions pass.
+
+| Audit row | Remediation goal | Regression evidence required | Status |
+|---|---|---|---|
+| `AK-04` | Rebuild reset output from authoritative loop state and preserve correct cached colors across reconnects. | Initial/reset and reconnect assertions expect active-loop colors, not the defective off state. | PLANNED |
+| `AK-28` | Make output PAN a no-op for mono tracks while retaining normal stereo balance control. | The APC integration test expects unchanged mono balance and changed stereo balance. | PLANNED |
+| `KB-24` | Emit standalone CTRL press/release events and momentarily toggle synchronization without breaking CTRL + arrow expansion. | Input translation and bundled-keyboard tests expect sync inversion while held and restoration on release. | PLANNED |
+
+The remediation is complete only when all three rows are promoted to `PASS`, the characterization wording is removed, focused regression tests pass, and the full validation gates pass.
+
 ## Final audit summary
 
 - **PASS — expected and sufficiently tested: 59 rows.** All rows except `AK-04`, `AK-28`, and `KB-24` have sound static paths and combined contextual/lower-level Rust evidence reaching the relevant application, MIDI, backend, or engine boundary.
