@@ -173,7 +173,14 @@ def normalize(args: argparse.Namespace) -> None:
     resource_candidates.sort(key=lambda path: (len(path.parts), str(path)))
     shutil.copytree(resource_candidates[0], output / "resources", symlinks=False)
 
-    if args.platform == "linux":
+    if args.platform == "windows":
+        # Carla starts frozen UIs from an 8.3 resource path, which prevents
+        # their literal "resources" suffix check from finding the parent.
+        copy_file(
+            output / "lib" / "libcarla_utils.dll",
+            output / "resources" / "libcarla_utils.dll",
+        )
+    elif args.platform == "linux":
         bundle_linux_dependencies(output)
 
     # Carla's frozen external UI resolves libcarla_utils and its dependency
@@ -271,6 +278,8 @@ def verify_component(root: Path, platform: str | None = None) -> dict:
         f"resources/{HELPER_NAMES[manifest['platform']][0]}",
         f"resources/{HELPER_NAMES[manifest['platform']][1]}",
     }
+    if manifest["platform"] == "windows":
+        required.add("resources/libcarla_utils.dll")
     if not required <= actual:
         raise RuntimeError(f"Carla component is incomplete: {sorted(required-actual)}")
     if (root / "runtime-lock.json").read_bytes() != LOCK.read_bytes():
