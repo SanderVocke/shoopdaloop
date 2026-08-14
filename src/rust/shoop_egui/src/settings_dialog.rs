@@ -22,6 +22,19 @@ use crate::{
     APC_MINI_SCRIPT_ENABLED, KEYBOARD_SCRIPT_ENABLED, UI_SCALE_FACTOR, USER_SCRIPTS,
 };
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TracingStatus {
+    pub available: bool,
+    pub active: bool,
+    pub memory_usage_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TracingStopped {
+    Saved(String),
+    Discarded,
+}
+
 #[derive(Clone, Debug)]
 pub enum SettingsAction {
     Save(SettingsDraft),
@@ -39,6 +52,12 @@ pub enum SettingsAction {
     RequestReloadUserScript {
         script_id: ScriptId,
     },
+    StartTracing {
+        engine_detail: bool,
+    },
+    StopTracing {
+        save: bool,
+    },
 }
 
 impl SettingsAction {
@@ -52,6 +71,9 @@ impl SettingsAction {
             Self::RequestAddUserScript => "settings.add_user_script",
             Self::RequestEphemeralScriptPicker => "settings.pick_ephemeral_script",
             Self::RequestReloadUserScript { .. } => "settings.reload_user_script",
+            Self::StartTracing { .. } => "developer.tracing.start",
+            Self::StopTracing { save: true } => "developer.tracing.save",
+            Self::StopTracing { save: false } => "developer.tracing.discard",
         }
     }
 }
@@ -73,6 +95,10 @@ pub struct SettingsDialog {
     script_documentation_windows: BTreeSet<ScriptId>,
     script_status_windows: BTreeSet<ScriptId>,
     markdown_cache: CommonMarkCache,
+    tracing_status: TracingStatus,
+    tracing_engine_detail: bool,
+    #[cfg(test)]
+    tracing_start_rect: Option<egui::Rect>,
     #[cfg(test)]
     setting_card_rects: Vec<egui::Rect>,
     #[cfg(test)]
@@ -108,6 +134,10 @@ impl SettingsDialog {
             script_documentation_windows: BTreeSet::new(),
             script_status_windows: BTreeSet::new(),
             markdown_cache: CommonMarkCache::default(),
+            tracing_status: TracingStatus::default(),
+            tracing_engine_detail: false,
+            #[cfg(test)]
+            tracing_start_rect: None,
             #[cfg(test)]
             setting_card_rects: Vec::new(),
             #[cfg(test)]
@@ -139,6 +169,10 @@ impl SettingsDialog {
 
     pub const fn is_open(&self) -> bool {
         self.open
+    }
+
+    pub fn set_tracing_status(&mut self, status: TracingStatus) {
+        self.tracing_status = status;
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -274,6 +308,8 @@ impl SettingsDialog {
                                                     script_paths,
                                                     &mut response,
                                                 );
+                                            } else if active_category == "Developer" {
+                                                self.show_developer(ui, &mut response);
                                             } else {
                                                 self.show_definitions(ui, &active_category);
                                             }
@@ -349,6 +385,9 @@ impl SettingsDialog {
         if !categories.iter().any(|category| category == "Audio") {
             categories.insert(0, "Audio".to_owned());
         }
+        if !categories.iter().any(|category| category == "Developer") {
+            categories.push("Developer".to_owned());
+        }
         categories
     }
 
@@ -408,6 +447,40 @@ impl SettingsDialog {
         }
         for diagnostic in state.diagnostics.iter() {
             ui.colored_label(colors::WARNING, &diagnostic.message);
+        }
+    }
+
+    fn show_developer(&mut self, ui: &mut egui::Ui, response: &mut SettingsDialogResponse) {
+        ui.label(
+            "Capture performance data or investigate UI/audio bugs. Tracing can be stopped again, but capturing may degrade performance.",
+        );
+        ui.add_space(8.0);
+        ui.checkbox(
+            &mut self.tracing_engine_detail,
+            "include detailed engine events",
+        );
+        let start = ui.add_enabled(
+            self.tracing_status.available && !self.tracing_status.active,
+            egui::Button::new("Start tracing"),
+        );
+        #[cfg(test)]
+        {
+            self.tracing_start_rect = Some(start.rect);
+        }
+        if start.clicked() {
+            response
+                .settings_actions
+                .push(SettingsAction::StartTracing {
+                    engine_detail: self.tracing_engine_detail,
+                });
+        }
+        if self.tracing_status.active {
+            ui.colored_label(colors::WARNING, "Tracing is already active");
+        } else if !self.tracing_status.available {
+            ui.colored_label(
+                colors::MUTED_FOREGROUND,
+                "Tracing is unavailable in this build.",
+            );
         }
     }
 
@@ -1423,7 +1496,71 @@ mod tests {
             assert!(!output.shapes.is_empty());
             assert!(dialog.is_open());
         }
-        assert_eq!(dialog.categories(), ["Other", "Track defaults"]);
+        assert_eq!(
+            dialog.categories(),
+            ["Other", "Track defaults", "Developer"]
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn developer_category_starts_tracing_with_engine_detail() {
+        let (registry, _) = fixture();
+        let context = egui::Context::default();
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.set_tracing_status(TracingStatus {
+            available: true,
+            active: false,
+            memory_usage_bytes: 0,
+        });
+        dialog.tracing_engine_detail = true;
+        let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
+            let mut response = SettingsDialogResponse::default();
+            let _ = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(500.0, 300.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| dialog.show_developer(ui, &mut response),
+            );
+            response
+        };
+
+        frame(&mut dialog, Vec::new());
+        let start = dialog.tracing_start_rect.unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response.settings_actions.iter().any(|action| matches!(
+            action,
+            SettingsAction::StartTracing {
+                engine_detail: true
+            }
+        )));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
