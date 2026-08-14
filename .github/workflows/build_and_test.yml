@@ -422,6 +422,19 @@ jobs:
         run: |
           & ".\\${{ matrix.binary }}" --probe-carla-native
           if ($LASTEXITCODE -ne 0) { throw "Carla Native probe failed with exit code $LASTEXITCODE" }
+          @'
+          import subprocess
+          binary = r"${{ matrix.binary }}"
+          process = subprocess.Popen([binary, "--probe-carla-native-ui"])
+          try:
+              returncode = process.wait(timeout=30)
+          except subprocess.TimeoutExpired:
+              subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], check=False)
+              raise RuntimeError("Carla Native UI probe timed out")
+          if returncode != 0:
+              raise RuntimeError(f"Carla Native UI probe failed with exit code {returncode}")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Carla Native UI probe failed" }
 
       - name: Build web application
         if: matrix.target == 'web'
