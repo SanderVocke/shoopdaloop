@@ -24,7 +24,7 @@ pub const DRY_THROUGH_WET: Color32 = Color32::from_rgb(255, 165, 0);
 pub const MIDI_ACTIVITY: Color32 = Color32::from_rgb(72, 156, 230);
 pub const AUDIO_ACTIVITY: Color32 = Color32::from_rgb(0, 188, 212);
 
-pub const LOOP_REGULAR_COMPOSITE: Color32 = Color32::from_rgb(255, 192, 203);
+pub const LOOP_REGULAR_COMPOSITE: Color32 = Color32::from_rgb(156, 96, 112);
 pub const LOOP_SCRIPT_COMPOSITE: Color32 = Color32::from_rgb(119, 170, 119);
 pub const LOOP_AUDIO_BACKGROUND: Color32 = Color32::from_rgb(0, 0, 68);
 pub const LOOP_RECORDING_BACKGROUND: Color32 = Color32::from_rgb(68, 0, 0);

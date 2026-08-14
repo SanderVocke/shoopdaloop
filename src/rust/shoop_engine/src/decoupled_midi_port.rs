@@ -135,7 +135,7 @@ mod tests {
         DecoupledMidiPort::new("ctrl-out", D::Output, cap)
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn reports_its_identity() {
         let p = input(8);
         check!(p.name() == "ctrl-in");
@@ -144,7 +144,7 @@ mod tests {
         check!(p.n_queued() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn incoming_messages_are_queued_then_popped_in_order() {
         let mut p = input(8);
         p.process_incoming(&[ev(0, &midi::note_on(0, 60, 1)), ev(1, &midi::cc(0, 7, 9))]);
@@ -157,20 +157,20 @@ mod tests {
         let_assert!(Ok(None) = p.pop_incoming());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn an_output_port_does_not_queue_arrivals() {
         let mut p = output(8);
         p.process_incoming(&[ev(0, &midi::note_on(0, 60, 1))]);
         check!(p.n_queued() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn popping_from_an_output_port_is_refused() {
         let mut p = output(8);
         check!(p.pop_incoming() == Err(NotAnInputPort));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn outgoing_messages_are_drained_into_the_sink() {
         let mut p = output(8);
         check!(p.push_outgoing(ev(0, &midi::note_on(0, 60, 100))));
@@ -184,7 +184,7 @@ mod tests {
         check!(sink.n_events() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn draining_preserves_queue_order_for_equal_times() {
         let mut p = output(8);
         p.push_outgoing(ev(0, &midi::note_off(0, 60, 0)));
@@ -198,7 +198,7 @@ mod tests {
         check!(midi::is_note_on(evs[1].data()));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn an_input_port_does_not_drain_to_a_sink() {
         let mut p = input(8);
         p.push_outgoing(ev(0, &midi::note_on(0, 60, 1)));
@@ -209,7 +209,7 @@ mod tests {
         check!(p.n_queued() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_full_queue_drops_and_counts() {
         let mut p = input(2);
         p.process_incoming(&[
@@ -224,7 +224,7 @@ mod tests {
         check!(midi::note(m.data()) == 60);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn push_outgoing_reports_a_full_queue() {
         let mut p = output(1);
         check!(p.push_outgoing(ev(0, &midi::note_on(0, 60, 1))));
@@ -232,7 +232,7 @@ mod tests {
         check!(p.n_dropped() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn draining_makes_room_again() {
         let mut p = output(1);
         check!(p.push_outgoing(ev(0, &midi::note_on(0, 60, 1))));
@@ -242,7 +242,7 @@ mod tests {
         check!(p.n_dropped() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn close_discards_queued_messages() {
         let mut p = input(8);
         p.process_incoming(&[ev(0, &midi::note_on(0, 60, 1))]);
@@ -250,7 +250,7 @@ mod tests {
         check!(p.n_queued() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_cycle_with_no_arrivals_changes_nothing() {
         let mut p = input(8);
         p.process_incoming(&[]);

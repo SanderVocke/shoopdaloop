@@ -1,53 +1,33 @@
--- keyboard.lua: Handle keyboard events.
+-- # Keyboard controls
 --
--- This script allows controlling ShoopDaLoop through keyboard keys.
+-- Control ShoopDaLoop directly from the computer keyboard.
 --
--- -  Arrow keys: Move the selection around. If the selection is empty, select the
---                loop at the origin. If multiple loops are selected, move all of
---                them as long as the group does not go out of bounds.
---                Holding the Ctrl key while pressing an arrow key will expand the
---                selection instead of moving it.
--- -  Escape key: Clear the selection.
--- -  Space key:  Perform the default action on the selected loop(s). The default
---                action is to cycle between recording, playing and stopped modes
---                respectively.
--- -  R key:      Set the selected loop(s) to recording mode.
---                If none selected, select all recording loops.
--- -  P key:      Set the selected loop(s) to playing mode.
---                If none selected, select all playing loops.
--- -  S key:      Set the selected loop(s) to stopped mode.
---                If none selected, stop all loops.
--- -  L key:      Set the selected loop(s) to playing dry through wet mode.
---                If none selected, select all "playing dry through wet" loops.
--- -  M key:      Set the selected loop(s) to recording dry into wet mode.
---                If none selected, select all "recording dry into wet" loops.
--- -  I key:      Toggle input mute for the track(s) containing selected loops.
---                Unmuting respects the global auto-mute-other-inputs control.
--- -  N key:      "Record next": Queue recording into the first empty loop of the
---                currently selected/recording track.
--- -  G key:      "Grab": grabs data from the running buffer to record it retro-
---                actively.
--- -  O key:      "Overdub": Queue recording into the first empty loop of the
---                currently selected/recording track while playing back currently
---                recording loops.
--- -  T key:      Target the selected loop. If more than one loop is selected, one
---                of the selected loops is arbitrarily chosen. If already the target,
---                loop is untargeted.
--- -  U key:      Untarget all loops.
--- -  W key:      Record the selected loop(s) in sync with the targeted loop(s).
--- -  C key:      Clear the selected loop(s).
--- -  "." key:    Sampling mode. Selected loop(s) record/play immediately until
---                key is released, without regard for sync with other loops.
--- -  0-9 keys:   Set the amount of sync loop cycles to apply future actions for.
---                0 disables this - all actions will be open-ended.
---                Most numbers higher than 10 can also be achieved by e.g. first
---                pressing and holding '1' and then also pressing '2' to set it
---                to '12'.
+-- ## Key bindings
 --
--- Note that for the loop-transitioning keys in the list above, whether the loop
--- transitions instantly or in sync with the sync loop depends on the global
--- "synchronization active" state. This can be toggled in the UI or momentarily
--- toggled by holding the Ctrl button.
+-- | Key | Action |
+-- | --- | --- |
+-- | **Arrow keys** | Move the selection. With no selection, select the loop at the origin. Hold **Ctrl** to expand the selection instead of moving it. |
+-- | **Escape** | Clear the selection. |
+-- | **Space** | Perform the default action on selected loops, cycling between recording, playing, and stopped. |
+-- | **R** | Record selected loops. With no selection, select all recording loops. |
+-- | **P** | Play selected loops. With no selection, select all playing loops. |
+-- | **S** | Stop selected loops. With no selection, stop all loops. |
+-- | **L** | Play selected loops dry through wet. With no selection, select all loops already playing dry through wet. |
+-- | **M** | Record selected loops dry into wet. With no selection, select all loops already recording dry into wet. |
+-- | **I** | Toggle input mute for tracks containing selected loops. Unmuting respects the global auto-mute-other-inputs control. |
+-- | **N** | **Record next:** queue recording into the first empty loop of the selected or recording track. |
+-- | **G** | **Grab:** retroactively record data from the running buffer. |
+-- | **O** | **Overdub:** queue recording into the first empty loop while currently recording loops play back. |
+-- | **T** | Toggle one selected loop as the target. If several loops are selected, one is chosen. |
+-- | **U** | Untarget all loops. |
+-- | **W** | Record selected loops in sync with targeted loops. |
+-- | **C** | Clear selected loops. |
+-- | **.** | Sampling mode: selected loops record or play immediately until the key is released, without synchronization. |
+-- | **0–9** | Set the number of sync-loop cycles for future actions. **0** makes actions open-ended. Hold digits together to enter larger values, for example **1**, then **2**, for **12**. |
+--
+-- ## Synchronization
+--
+-- Loop-transition actions follow the global **synchronization active** state. Toggle it in the UI, or hold **Ctrl** to invert it momentarily.
 
 if shoop_announce_api_version then
     shoop_announce_api_version(1, 1)

@@ -161,7 +161,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn translates_script_values_modifiers_and_suppresses_repeats() {
         let mut pressed = BTreeMap::new();
         let modifiers = egui::Modifiers {
@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(events[2].event_type, KeyEventType::Released);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn text_entry_suppresses_new_keys_and_focus_loss_releases_held_keys() {
         let mut pressed = BTreeMap::new();
         let mut control_pressed = false;

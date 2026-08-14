@@ -174,7 +174,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn realtime_detection_contract() {
         clear_first_violation();
         set_enabled(false);
@@ -225,7 +225,7 @@ mod tests {
         set_enabled(false);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn wrapper_preserves_poisoning_and_mutable_access() {
         let mut mutex = Mutex::new(1_u32);
         *mutex.get_mut().unwrap() = 2;
@@ -243,7 +243,7 @@ mod tests {
         assert!(!mutex.is_poisoned());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn checked_guard_interoperates_with_condvar() {
         let pair = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
         let worker = Arc::clone(&pair);

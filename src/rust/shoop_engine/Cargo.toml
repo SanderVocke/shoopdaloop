@@ -62,6 +62,7 @@ native_audio_backend = ["jack", "cpal", "midir"]
 app_backend = ["native_audio_backend"]
 
 [dev-dependencies]
+tracy-nextest-capture = { workspace = true }
 assert2 = { workspace = true }
 rtrb = { workspace = true }
 tracy-client = { workspace = true }

@@ -1,21 +1,21 @@
 ---
 name: tracy
 description: Capture and investigate native ShoopDaLoop Tracy profiles, including GUI/application intent flow, engine control and graph work, realtime audio timing, Tiny Synth/FX processing, queues, scheduling, and state publication from .tracy files.
-compatibility: The native application emits Tracy 0.13.1-compatible captures. Querying requires the matching static tracy-query release binary.
+compatibility: The native application emits Tracy 0.13.1-compatible captures through the tracy-extensions 0.6.0 embedded backend. Querying requires the matching static tracy-query 0.6.0 release binary.
 ---
 
 # Debug ShoopDaLoop with Tracy
 
 Use this skill for the native `shoopdaloop` application. It does not describe the legacy frontend, its self-tests, or its CLI and trace data.
 
-Use the versioned `tracy-query` skill distributed with `tracy-query` for complete query syntax. This skill covers ShoopDaLoop-specific capture and interpretation.
+Use the versioned `tracy-query` skill distributed with `tracy-extensions` for complete query syntax. This skill covers ShoopDaLoop-specific capture and interpretation.
 
 ## Obtain `tracy-query` and its skill
 
-Download both from the `tracy-query` v0.1.0 release:
+Use the `tracy-extensions` v0.6.0 release and the matching tagged query skill:
 
-- Release page: <https://github.com/SanderVocke/tracy-query/releases/tag/v0.1.0>
-- Query skill: <https://github.com/SanderVocke/tracy-query/releases/download/v0.1.0/SKILL.md>
+- Release page: <https://github.com/SanderVocke/tracy-extensions/releases/tag/v0.6.0>
+- Query skill: <https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.6.0/tracy-query/SKILL.md>
 
 Choose the static binary for the current platform:
 
@@ -32,16 +32,19 @@ For example:
 TRACE_DIR=traces/investigation
 ASSET=tracy-query-linux-x86_64 # select for the current OS and architecture
 
-gh release download v0.1.0 \
-  --repo SanderVocke/tracy-query \
+mkdir -p "$TRACE_DIR"
+gh release download v0.6.0 \
+  --repo SanderVocke/tracy-extensions \
   --pattern "$ASSET" \
-  --pattern SKILL.md \
   --dir "$TRACE_DIR" \
   --clobber
+curl --fail --location \
+  https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.6.0/tracy-query/SKILL.md \
+  --output "$TRACE_DIR/tracy-query-SKILL.md"
 chmod +x "$TRACE_DIR/$ASSET"
 ```
 
-Read the downloaded `SKILL.md` before querying. Keep downloaded binaries with investigation artifacts or in a temporary tools directory; do not commit them.
+Read the downloaded `tracy-query-SKILL.md` before querying. Keep downloaded binaries with investigation artifacts or in a temporary tools directory; do not commit them.
 
 Validate the tool and capture before analysis:
 
@@ -58,6 +61,40 @@ TRACE="$TRACE_DIR/capture.tracy"
 
 `tracy-query` reads captures; it does not create them.
 
+## Obtain a trace from CI
+
+Native cargo-nextest jobs capture each eligible test attempt in process. CI enables coarse tracing and detailed engine events. Passing attempts discard their captures; an eligible test that unwinds or returns `Err` publishes a finalized `.tracy` file. Abort, signal, timeout, OOM, panic-abort, `#[should_panic]`, and unsupported harness failures cannot be captured by this integration.
+
+Every matrix job runs an `if: always()` artifact-upload step. When finalized failure traces exist, they are uploaded for 14 days in an artifact named:
+
+```text
+tracy-nextest-<target>-<arch>-<profile>-<run-id>
+```
+
+A successful job, or a failure outside an eligible captured test, normally has no Tracy artifact. Only finalized `*.tracy` files are uploaded; partial captures are excluded.
+
+Inspect and download available traces with GitHub CLI:
+
+```sh
+RUN_ID=<github-actions-run-id>
+
+# Confirm the run, commit, matrix failures, and artifact names.
+gh run view "$RUN_ID" --json status,conclusion,headSha,url,jobs
+gh api "repos/{owner}/{repo}/actions/runs/$RUN_ID/artifacts" \
+  --jq '.artifacts[] | select(.name | startswith("tracy-nextest-")) | .name'
+
+# Download every Tracy artifact from the run.
+mkdir -p "traces/ci-$RUN_ID"
+gh run download "$RUN_ID" \
+  --pattern 'tracy-nextest-*' \
+  --dir "traces/ci-$RUN_ID"
+find "traces/ci-$RUN_ID" -type f -name '*.tracy' -print
+```
+
+Match the artifact's target, architecture, and profile to the failing job. Preserve the trace filename: it identifies the nextest binary, test, attempt, and unique attempt digest. Then obtain the matching v0.6.0 `tracy-query` binary as described above, validate each trace with `check`, `range`, `info`, and `sources`, and follow the investigation workflow below. Detailed `engine.rt.*` zones may be absent when the failing test never starts or advances an engine even though the CI tracing gate is enabled.
+
+For general workflow status and log investigation before trace analysis, read `.agents/info/ci-debug.md`.
+
 ## Build and run the native application
 
 Build the native application:
@@ -66,21 +103,22 @@ Build the native application:
 cargo build -p shoopdaloop
 ```
 
-The application executable has three tracing options:
+The application executable has two tracing options:
 
 ```text
---tracing                enable live Tracy profiling
---tracing-capture        start tracy-capture and write below ./traces
---tracing-engine-detail  add detailed realtime engine zones; requires either mode
+--tracing                capture Tracy profiling data below ./traces
+--tracing-engine-detail  add detailed realtime engine zones; requires --tracing
 ```
 
-There are no CLI options for selecting the capture executable or output directory. `TRACY_CAPTURE_TOOL` selects the executable; otherwise it is resolved as `tracy-capture` on `PATH`. The output directory is `traces` relative to the application's working directory.
+Tracing uses the embedded in-process backend. There is no live TCP profiler mode, external `tracy-capture` executable, capture-tool environment variable, or CLI output-directory option. The output directory is `traces` relative to the application's working directory.
+
+Tracing can also be started after launch from **Settings > Developer**, optionally with detailed engine events. While active, the bottom bar reports event-storage memory usage and offers **Save** and **Discard**. Either action stops the current capture; another capture can then be started in the same process. Application captures begin after runtime initialization so that long-lived worker guards predate reusable capture cycles.
 
 The audio backend is selected through persisted application settings, not a `--backend` argument. Reproduce with the configured JACK, CPAL+midir, or dummy backend that matters to the issue.
 
-### Live profiling
+### Capture a `.tracy` file
 
-Connect a matching Tracy 0.13.1 profiler, then run:
+For a coarse capture:
 
 ```sh
 cargo run -p shoopdaloop -- --tracing
@@ -94,33 +132,17 @@ cargo run -p shoopdaloop -- \
   --tracing-engine-detail
 ```
 
-### Capture a `.tracy` file
+Omit engine detail for lower callback overhead and smaller captures. Quit normally so all application and engine workers quiesce and the in-process finalizer can atomically publish the capture. Abort, fatal signals, forced termination, OOM, and power loss cannot finalize an in-process trace.
 
-Install the Tracy 0.13.1 `tracy-capture` executable. It is distinct from `tracy-query`.
-
-```sh
-TRACY_CAPTURE_TOOL="$(command -v tracy-capture)" \
-  cargo run -p shoopdaloop -- \
-    --tracing-capture \
-    --tracing-engine-detail
-```
-
-`--tracing-capture` enables tracing automatically. Omit engine detail for lower callback overhead and smaller captures. Quit normally so the capture can disconnect and finalize.
-
-A capture run creates:
-
-- a non-empty numbered file such as `traces/0001-application.tracy`;
-- `traces/manifest.tsv`, with an `application` label row;
-- `traces/tracy-capture.log`.
+A successful run creates a non-empty numbered file such as `traces/0001-application.tracy`. An interrupted or failed finalizer may leave a `.partial` file; never treat it as a capture.
 
 Before interpreting a capture, require all of the following:
 
-1. Application output reports `Finalized Tracy capture`.
+1. Application output reports `Finalized embedded Tracy capture`.
 2. The selected `.tracy` file is non-empty.
-3. `manifest.tsv` has the corresponding successful application row.
-4. `tracy-capture.log` reports that Tracy saved the trace.
-5. Application output and the trace contain no instrumentation-failure diagnostic.
-6. `tracy-query check` succeeds.
+3. No corresponding `.partial` file exists.
+4. Application output and the trace contain no instrumentation-failure diagnostic.
+5. `tracy-query check` succeeds.
 
 ## Expected application trace data
 
@@ -130,8 +152,6 @@ ShoopDaLoop uses fixed, bounded zone names. User labels, paths, processor state,
 
 Expected native GUI zones include:
 
-- `app.egui.run`: native eframe lifetime.
-- `frontend.egui.initialize`: settings, widget, backend, and runtime initialization.
 - `frontend.egui.update`: one top-level GUI update.
 - `frontend.egui.frame`: widget rendering, with revision and bounded state counts.
 - `frontend.egui.tracks` and `frontend.egui.track`: track collection and per-track rendering.
@@ -141,7 +161,7 @@ Expected native GUI zones include:
 - `frontend.app.intent_handle`: actor-side handling with the same `intent_id` and intent kind.
 - `frontend.app.intent_apply`: model mutation, revision, and success/error outcome.
 - `frontend.app.update`, `frontend.app.backend_advance`, `frontend.app.backend_snapshot_apply`, and `frontend.app.snapshot_publish`: polling, state application, and publication.
-- `frontend.app.runtime_start`, `frontend.app.runtime_shutdown`, and `worker.application`: actor lifecycle.
+- `frontend.app.runtime_shutdown`: actor shutdown. Startup and long-lived worker zones normally predate application captures.
 
 A UI intent normally nests `frontend.app.intent_dispatch` inside `frontend.egui.intent_dispatch` on the GUI thread. Join only the app dispatch zone to `frontend.app.intent_handle` by `intent_id`; the egui zone itself does not carry that ID. `frontend.app.intent_apply` then contains the resulting backend and `engine.control.*` work when it is synchronous.
 

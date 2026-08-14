@@ -22,7 +22,7 @@ fn backend() -> (AudioDriver, BackendSession) {
     (driver, session)
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn composite_configuration_rejects_cross_session_handles() {
     let (_first_driver, first) = backend();
     let (_second_driver, second) = backend();
@@ -44,7 +44,7 @@ fn composite_configuration_rejects_cross_session_handles() {
     assert!(error.to_string().contains("another session"), "{error:#}");
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn application_backend_rejects_a_primitive_self_sync_edge() {
     let (_driver, session) = backend();
     let loop_ = session.create_loop().unwrap();
@@ -81,7 +81,7 @@ fn descriptor(
     }
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn pending_composite_accepts_controls_queued_after_installation() {
     let session = BackendSession::new().unwrap();
     let sync = session.create_loop().unwrap();
@@ -152,7 +152,7 @@ fn pending_composite_accepts_controls_queued_after_installation() {
     }
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn application_backend_creates_configures_controls_and_observes_engine_composite() {
     let (_driver, session) = backend();
     let sync = session.create_loop().unwrap();
@@ -276,7 +276,7 @@ fn application_backend_creates_configures_controls_and_observes_engine_composite
     assert_eq!(child.get_state().unwrap().mode, LoopMode::Stopped);
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn application_composite_registry_rejects_a_cycle_transactionally() {
     let (_driver, session) = backend();
     let sync = session.create_loop().unwrap();

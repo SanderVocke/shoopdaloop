@@ -1,3 +1,16 @@
+-- # Script dialog example
+--
+-- Demonstrates script-owned ShoopDaLoop dialogs using the `shoop_dialog` module.
+--
+-- ## Windows
+--
+-- | Window | Kind | Demonstrates |
+-- | --- | --- | --- |
+-- | Lua dialog example | Simple | Rich text, a callback button, and opening another dialog. |
+-- | Lua dialog guide | Paged | Multiple pages and retained page selection. |
+--
+-- The **Apply and show guide** button enables solo mode and opens the paged guide.
+
 shoop_announce_api_version(1, 0)
 
 local shoop_control = require('shoop_control')

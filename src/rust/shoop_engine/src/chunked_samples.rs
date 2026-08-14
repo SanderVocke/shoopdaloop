@@ -238,7 +238,7 @@ mod tests {
     use super::*;
     use assert2::{check, let_assert};
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn starts_with_one_chunk() {
         let s = ChunkedSamples::<f32>::with_chunk_size(4);
         check!(s.n_chunks() == 1);
@@ -249,7 +249,7 @@ mod tests {
         check!(s.get(4) == None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ensure_available_grows_by_chunk() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         check!(s.ensure_available(3) == false); // already addressable
@@ -263,7 +263,7 @@ mod tests {
         check!(s.n_chunks() == 6);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn indexing_spans_chunks() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.ensure_available(9);
@@ -276,7 +276,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn space_for_sample_is_distance_to_chunk_end() {
         let s = ChunkedSamples::<f32>::with_chunk_size(4);
         check!(s.space_for_sample(0) == 4);
@@ -286,7 +286,7 @@ mod tests {
         check!(s.space_for_sample(5) == 3);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn chunk_slice_stops_at_chunk_boundary() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.ensure_available(7);
@@ -297,7 +297,7 @@ mod tests {
         check!(s.chunk_slice(8) == None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn contiguous_copy_respects_max_length() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.set_contents(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
@@ -309,7 +309,7 @@ mod tests {
         check!(s.contiguous_copy(100) == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn set_contents_then_reset() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.set_contents(&[1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -321,14 +321,14 @@ mod tests {
         check!(s.get(0) == Some(&0.0));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn set_contents_empty_keeps_one_chunk() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.set_contents(&[]);
         check!(s.n_chunks() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn exact_multiple_does_not_over_allocate() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.set_contents(&[1.0, 2.0, 3.0, 4.0]);
@@ -336,7 +336,7 @@ mod tests {
         check!(s.n_samples() == 4);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn growth_takes_from_the_reserve_without_allocating() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 3);
         // One chunk in use, the requested three still in reserve.
@@ -349,7 +349,7 @@ mod tests {
         check!(s.n_allocations() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn growth_past_the_reserve_allocates_and_says_so() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 1);
         check!(s.n_spare() == 1);
@@ -359,7 +359,7 @@ mod tests {
         check!(s.n_allocations() == 1);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bounded_capacity_refuses_growth_without_allocating() {
         let mut samples = ChunkedSamples::<f32>::with_bounded_capacity(4, 8);
         assert!(samples.can_ensure_available(7));
@@ -371,7 +371,7 @@ mod tests {
         assert_eq!(samples.n_allocations(), allocations);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bounded_capacity_can_be_prepared_on_demand() {
         let mut samples = ChunkedSamples::<f32>::with_bounded_capacity_unprepared(4, 12);
         assert_eq!(samples.n_chunks(), 1);
@@ -384,7 +384,7 @@ mod tests {
         assert_eq!(samples.n_allocations(), 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn reset_recycles_chunks_instead_of_freeing_them() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 3);
         s.ensure_available(11);
@@ -401,7 +401,7 @@ mod tests {
         check!(s.n_allocations() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn recycled_chunks_are_cleared_before_reuse() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 3);
         s.ensure_available(7);
@@ -416,7 +416,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn set_contents_reuses_the_reserve() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 4);
         s.set_contents(&[1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -438,7 +438,7 @@ mod tests {
         ChunkedSamples::<f32>::with_chunk_size(0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn fill_overwrites_across_chunk_boundaries() {
         let mut c: ChunkedSamples<f32> = ChunkedSamples::with_chunk_size(4);
         c.set_contents(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]);
@@ -449,14 +449,14 @@ mod tests {
         check!(c.contiguous_copy(10) == vec![0.0; 9].into_iter().chain([10.0]).collect::<Vec<_>>());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn fill_grows_to_the_length_asked_for() {
         let mut c: ChunkedSamples<f32> = ChunkedSamples::with_chunk_size(4);
         c.fill(6, 0.5);
         check!(c.contiguous_copy(6) == vec![0.5; 6]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn filling_nothing_leaves_the_contents_alone() {
         let mut c: ChunkedSamples<f32> = ChunkedSamples::with_chunk_size(4);
         c.set_contents(&[1.0, 2.0]);

@@ -8,12 +8,15 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 #[cfg(not(target_arch = "wasm32"))]
-use clap::{ArgGroup, Parser};
+use clap::Parser;
 #[cfg(not(target_arch = "wasm32"))]
 use std::{
     io::Write,
-    path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender},
+    path::Path,
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc, Mutex,
+    },
     time::Instant,
 };
 #[cfg(target_arch = "wasm32")]
@@ -35,8 +38,10 @@ use shoop_egui::register_script_settings;
 use shoop_egui::{register_audio_settings, AudioDriverConfig};
 use shoop_egui::{
     register_settings, AppIntent, AppSnapshot, AppWidget, ScriptKind, SettingsAction,
-    SettingsRegistryBuilder,
+    SettingsRegistryBuilder, UI_SCALE_FACTOR,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
 use shoop_app::CooperativeApplicationRuntime;
@@ -72,23 +77,17 @@ fn application_icon() -> egui::IconData {
 #[derive(Debug, Parser)]
 #[command(name = "shoopdaloop")]
 #[command(about = "ShoopDaLoop application")]
-#[command(group(
-    ArgGroup::new("tracing_mode")
-        .args(["tracing", "tracing_capture"])
-        .multiple(true)
-))]
 struct NativeCli {
-    /// Enable live Tracy profiling.
+    /// Capture Tracy profiling data to ./traces.
     #[arg(long)]
     tracing: bool,
 
-    /// Capture Tracy profiling data to ./traces with tracy-capture.
-    #[arg(long)]
-    tracing_capture: bool,
-
-    /// Add detailed per-node engine zones. Requires a tracing mode.
-    #[arg(long, requires = "tracing_mode")]
+    /// Add detailed per-node engine zones. Requires tracing.
+    #[arg(long, requires = "tracing")]
     tracing_engine_detail: bool,
+
+    #[arg(long, hide = true, requires = "tracing")]
+    tracing_smoke_test: bool,
 
     /// Validate the bundled Carla runtime and exit without opening the GUI.
     #[cfg(feature = "native-fx")]
@@ -103,53 +102,119 @@ struct NativeCli {
 
 #[cfg(not(target_arch = "wasm32"))]
 struct NativeTracing {
-    capture_active: bool,
+    capture: Option<shoop_common::tracing_capture::ReusableCaptureSession>,
+    start_on_app_init: Option<bool>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl NativeTracing {
-    fn start(cli: &NativeCli) -> anyhow::Result<Self> {
-        shoop_common::tracing_helpers::set_tracing_enabled(cli.tracing || cli.tracing_capture);
-        shoop_common::tracing_helpers::set_engine_detail_enabled(cli.tracing_engine_detail);
-        shoop_common::init()?;
+    fn initialize(cli: &NativeCli) -> anyhow::Result<Self> {
+        use shoop_common::tracing_capture::{CaptureDisposition, ReusableCaptureSession};
 
-        let mut tracing = Self {
-            capture_active: false,
-        };
-        if cli.tracing_capture {
-            let tool = shoop_common::tracing_capture::resolve_capture_tool(None)?;
-            shoop_common::tracing_capture::configure(
-                shoop_common::tracing_capture::CaptureConfig::new(tool, PathBuf::from("traces")),
-            )?;
-            shoop_common::tracing_capture::start_default_capture()?;
-            tracing.capture_active = true;
+        shoop_common::tracing_helpers::set_engine_detail_enabled(false);
+        shoop_common::tracing_helpers::set_tracing_enabled(true);
+        shoop_common::tracing_helpers::set_tracing_output_enabled(true);
+        let mut bootstrap =
+            ReusableCaptureSession::start(&std::env::temp_dir(), "shoopdaloop-initialization")?;
+        shoop_common::init()?;
+        bootstrap.wait_until_capturing()?;
+        shoop_common::tracing_helpers::set_tracing_output_enabled(false);
+        shoop_common::tracing_helpers::set_tracing_enabled(false);
+        bootstrap.stop(CaptureDisposition::Discard)?;
+        Ok(Self {
+            capture: None,
+            start_on_app_init: cli.tracing.then_some(cli.tracing_engine_detail),
+        })
+    }
+
+    fn start_requested_capture(&mut self) -> anyhow::Result<()> {
+        if let Some(engine_detail) = self.start_on_app_init.take() {
+            self.start_capture(engine_detail)?;
         }
+        Ok(())
+    }
+
+    fn start_capture(&mut self, engine_detail: bool) -> anyhow::Result<()> {
+        if self.capture.is_some() {
+            return Ok(());
+        }
+        let capture = shoop_common::tracing_capture::ReusableCaptureSession::start(
+            Path::new("traces"),
+            "application",
+        )?;
+        capture.wait_until_capturing()?;
+        shoop_common::tracing_helpers::set_engine_detail_enabled(engine_detail);
+        shoop_common::tracing_helpers::set_tracing_output_enabled(true);
+        shoop_common::tracing_helpers::set_tracing_enabled(true);
         tracing::info!(
             target: "Frontend.Egui",
-            live = cli.tracing,
-            capture = cli.tracing_capture,
-            engine_detail = cli.tracing_engine_detail,
+            capture = true,
+            engine_detail,
             "frontend.egui.tracing_started"
         );
-        Ok(tracing)
+        self.capture = Some(capture);
+        Ok(())
+    }
+
+    fn quiesce_capture(&self) -> anyhow::Result<()> {
+        if self.capture.is_none() {
+            anyhow::bail!("tracing is not active");
+        }
+        shoop_common::tracing_helpers::set_tracing_output_enabled(false);
+        shoop_common::tracing_helpers::set_tracing_enabled(false);
+        Ok(())
+    }
+
+    fn stop_capture(&mut self, save: bool) -> anyhow::Result<TracingStopped> {
+        use shoop_common::tracing_capture::CaptureDisposition;
+
+        let Some(capture) = self.capture.as_mut() else {
+            anyhow::bail!("tracing is not active");
+        };
+        shoop_common::tracing_helpers::set_engine_detail_enabled(false);
+        let disposition = if save {
+            CaptureDisposition::Save
+        } else {
+            CaptureDisposition::Discard
+        };
+        capture.stop(disposition)?;
+        let stopped = if save {
+            TracingStopped::Saved(capture.path().display().to_string())
+        } else {
+            TracingStopped::Discarded
+        };
+        self.capture = None;
+        Ok(stopped)
+    }
+
+    fn status(&self) -> TracingStatus {
+        let status = shoop_common::tracing_capture::CaptureStatus::current();
+        TracingStatus {
+            available: true,
+            active: status.active,
+            memory_usage_bytes: status.event_storage_bytes,
+        }
     }
 
     fn shutdown(&mut self) -> anyhow::Result<()> {
-        if self.capture_active {
-            self.capture_active = false;
-            shoop_common::tracing_capture::shutdown()?;
+        if self.capture.is_some() {
+            self.quiesce_capture()?;
+            self.stop_capture(true)?;
         }
+        shoop_common::tracing_capture::shutdown_reusable_profiler()?;
         Ok(())
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl Drop for NativeTracing {
-    fn drop(&mut self) {
-        if let Err(error) = self.shutdown() {
-            eprintln!("Failed to shut down Tracy capture: {error}");
-        }
-    }
+type SharedNativeTracing = Arc<Mutex<NativeTracing>>;
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Copy)]
+enum PendingTracingAction {
+    Start { engine_detail: bool },
+    Stop { save: bool },
+    FinishStop { save: bool },
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -173,6 +238,10 @@ struct UnifiedApp {
     settings: SettingsManager,
     #[cfg(not(target_arch = "wasm32"))]
     pending_audio_settings: Option<PendingAudioSettings>,
+    #[cfg(not(target_arch = "wasm32"))]
+    tracing: Option<SharedNativeTracing>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_tracing_action: Option<PendingTracingAction>,
     last_update: Instant,
     #[cfg(target_arch = "wasm32")]
     browser_self_test: BrowserSelfTest,
@@ -240,6 +309,10 @@ impl UnifiedApp {
             settings,
             #[cfg(not(target_arch = "wasm32"))]
             pending_audio_settings: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            tracing: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_tracing_action: None,
             last_update: Instant::now(),
             #[cfg(target_arch = "wasm32")]
             browser_self_test: BrowserSelfTest::from_location(),
@@ -259,7 +332,67 @@ impl UnifiedApp {
 
 impl UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
+    fn process_tracing(&mut self) {
+        let Some(tracing) = self.tracing.as_ref().cloned() else {
+            self.widget.set_tracing_status(TracingStatus::default());
+            self.pending_tracing_action = None;
+            return;
+        };
+        if let Some(action) = self.pending_tracing_action.take() {
+            let result = tracing
+                .lock()
+                .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))
+                .and_then(|mut tracing| match action {
+                    PendingTracingAction::Start { engine_detail } => {
+                        tracing.start_capture(engine_detail).map(|()| None)
+                    }
+                    PendingTracingAction::Stop { save } => {
+                        tracing.quiesce_capture()?;
+                        self.pending_tracing_action =
+                            Some(PendingTracingAction::FinishStop { save });
+                        Ok(None)
+                    }
+                    PendingTracingAction::FinishStop { save } => {
+                        tracing.stop_capture(save).map(Some)
+                    }
+                });
+            match result {
+                Ok(Some(stopped)) => self.widget.notify_tracing_stopped(stopped),
+                Ok(None) => {}
+                Err(error) => self.settings.report_action_error(error.to_string()),
+            }
+        }
+        let status = tracing
+            .lock()
+            .map(|tracing| tracing.status())
+            .unwrap_or_default();
+        self.widget.set_tracing_status(status);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn handle_settings_action(&mut self, action: SettingsAction) {
+        let action = match action {
+            SettingsAction::StartTracing { engine_detail } => {
+                if self.tracing.is_some() {
+                    self.pending_tracing_action =
+                        Some(PendingTracingAction::Start { engine_detail });
+                } else {
+                    self.settings
+                        .report_action_error("Tracing is unavailable in this build");
+                }
+                return;
+            }
+            SettingsAction::StopTracing { save } => {
+                if self.tracing.is_some() {
+                    self.pending_tracing_action = Some(PendingTracingAction::Stop { save });
+                } else {
+                    self.settings
+                        .report_action_error("Tracing is unavailable in this build");
+                }
+                return;
+            }
+            action => action,
+        };
         let kind = action.kind();
         let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
         let result = match action {
@@ -327,6 +460,9 @@ impl UnifiedApp {
             SettingsAction::RequestReloadUserScript { script_id } => {
                 self.runtime.reload_user_script(script_id)
             }
+            SettingsAction::StartTracing { .. } | SettingsAction::StopTracing { .. } => {
+                unreachable!("tracing actions are handled before traced settings actions")
+            }
         };
         if let Err(error) = result {
             self.settings.report_action_error(error.to_string());
@@ -374,6 +510,11 @@ impl UnifiedApp {
                 self.settings.report_action_error(
                     "Path-based user scripts are unavailable in browser builds",
                 );
+                return;
+            }
+            SettingsAction::StartTracing { .. } | SettingsAction::StopTracing { .. } => {
+                self.settings
+                    .report_action_error("Tracing is unavailable in browser builds");
                 return;
             }
         };
@@ -898,12 +1039,15 @@ fn save_file_output(
 
 impl eframe::App for UnifiedApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.process_tracing();
         self.show(ui);
     }
 }
 
 const KEYBOARD_SCRIPT_FILENAME: &str = "keyboard.lua";
 const APC_MINI_SCRIPT_FILENAME: &str = "akai_apc_mini_mk1.lua";
+const DIALOG_EXAMPLE_SCRIPT_FILENAME: &str = "dialogs.lua";
 
 #[cfg(not(target_arch = "wasm32"))]
 fn configured_startup_scripts(
@@ -922,10 +1066,17 @@ fn configured_startup_scripts(
             kind: ScriptKind::Bundled,
             enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
         },
+        StartupScript {
+            name: DIALOG_EXAMPLE_SCRIPT_FILENAME.to_owned(),
+            source: shoop_scripting::DIALOG_EXAMPLE_SCRIPT.to_owned(),
+            kind: ScriptKind::Example,
+            enabled: false,
+        },
     ];
     let mut identities = vec![
         KEYBOARD_SCRIPT_FILENAME.to_owned(),
         APC_MINI_SCRIPT_FILENAME.to_owned(),
+        "examples/dialogs.lua".to_owned(),
     ];
     let mut warnings = Vec::new();
     for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
@@ -1190,6 +1341,12 @@ fn browser_startup_scripts(
             kind: ScriptKind::Bundled,
             enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
         },
+        StartupScript {
+            name: DIALOG_EXAMPLE_SCRIPT_FILENAME.to_owned(),
+            source: shoop_scripting::DIALOG_EXAMPLE_SCRIPT.to_owned(),
+            kind: ScriptKind::Example,
+            enabled: false,
+        },
     ])
 }
 
@@ -1364,11 +1521,24 @@ impl Runtime {
 
 fn create_app(
     context: &eframe::CreationContext<'_>,
+    #[cfg(not(target_arch = "wasm32"))] tracing: Option<SharedNativeTracing>,
 ) -> Result<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>> {
     shoop_egui::initialize(&context.egui_ctx);
-    UnifiedApp::new()
-        .map(|app| Box::new(app) as Box<dyn eframe::App>)
-        .map_err(|error| error.into())
+    let app = UnifiedApp::new()?;
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut app = app;
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(tracing) = tracing {
+        tracing
+            .lock()
+            .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))?
+            .start_requested_capture()?;
+        app.tracing = Some(tracing);
+    }
+    if let Ok(scale) = app.settings.active().get(UI_SCALE_FACTOR) {
+        context.egui_ctx.set_zoom_factor(scale as f32);
+    }
+    Ok(Box::new(app) as Box<dyn eframe::App>)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1405,13 +1575,28 @@ fn main() {
             }
         }
     }
-    let mut tracing_runtime = match NativeTracing::start(&cli) {
-        Ok(tracing) => tracing,
+    let tracing_runtime = match NativeTracing::initialize(&cli) {
+        Ok(tracing) => Arc::new(Mutex::new(tracing)),
         Err(error) => {
             eprintln!("Could not initialize tracing: {error:#}");
             std::process::exit(1);
         }
     };
+    if cli.tracing_smoke_test {
+        let result = tracing_runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))
+            .and_then(|mut tracing| {
+                tracing.start_requested_capture()?;
+                tracing::info!(target: "Frontend.Egui", "frontend.egui.tracing_smoke_test");
+                tracing.shutdown()
+            });
+        if let Err(error) = result {
+            eprintln!("Failed to run Tracy capture smoke test: {error:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("ShoopDaLoop")
@@ -1420,11 +1605,17 @@ fn main() {
             .with_min_inner_size([360.0, 200.0]),
         ..Default::default()
     };
-    let result = {
-        let _span = tracing::info_span!("app.egui.run").entered();
-        eframe::run_native("ShoopDaLoop", options, Box::new(create_app))
-    };
-    if let Err(error) = tracing_runtime.shutdown() {
+    let app_tracing = Arc::clone(&tracing_runtime);
+    let result = eframe::run_native(
+        "ShoopDaLoop",
+        options,
+        Box::new(move |context| create_app(context, Some(Arc::clone(&app_tracing)))),
+    );
+    let shutdown = tracing_runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("tracing controller lock is poisoned"))
+        .and_then(|mut tracing| tracing.shutdown());
+    if let Err(error) = shutdown {
         eprintln!("Failed to shut down Tracy capture: {error:#}");
         std::process::exit(1);
     }
@@ -3893,7 +4084,7 @@ mod tests {
     use super::*;
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn application_icon_is_embedded() {
         let icon = application_icon();
         assert_eq!((icon.width, icon.height), (256, 256));
@@ -3903,31 +4094,33 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[test]
-    fn native_cli_parses_tracing_modes() {
-        let live = NativeCli::try_parse_from(["shoopdaloop", "--tracing"]).unwrap();
-        assert!(live.tracing);
-        assert!(!live.tracing_capture);
-        assert!(!live.tracing_engine_detail);
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn native_cli_parses_tracing_mode() {
+        let tracing = NativeCli::try_parse_from(["shoopdaloop", "--tracing"]).unwrap();
+        assert!(tracing.tracing);
+        assert!(!tracing.tracing_engine_detail);
+        assert!(!tracing.tracing_smoke_test);
 
-        let capture = NativeCli::try_parse_from([
-            "shoopdaloop",
-            "--tracing-capture",
-            "--tracing-engine-detail",
-        ])
-        .unwrap();
-        assert!(!capture.tracing);
-        assert!(capture.tracing_capture);
-        assert!(capture.tracing_engine_detail);
+        let detailed =
+            NativeCli::try_parse_from(["shoopdaloop", "--tracing", "--tracing-engine-detail"])
+                .unwrap();
+        assert!(detailed.tracing);
+        assert!(detailed.tracing_engine_detail);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn native_cli_rejects_removed_capture_option() {
+        assert!(NativeCli::try_parse_from(["shoopdaloop", "--tracing-capture"]).is_err());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn native_cli_rejects_engine_detail_without_tracing_mode() {
         assert!(NativeCli::try_parse_from(["shoopdaloop", "--tracing-engine-detail"]).is_err());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn web_shell_targets_the_application_canvas() {
         let html = include_str!("../index.html");
         assert!(html.contains("data-trunk"));
@@ -3941,7 +4134,7 @@ mod tests {
         assert!(html.contains("Roboto-BoldItalic.ttf"));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn confirmed_driver_switch_is_saved_once_and_completed_after_persistence() {
         let mut app = UnifiedApp::new().unwrap();
         app.runtime.tick(Duration::ZERO);
@@ -4010,7 +4203,7 @@ mod tests {
         assert!(app.pending_audio_settings.is_none());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn failed_driver_settings_save_retries_without_switching_backend_again() {
         let directory = tempfile::tempdir().unwrap();
         let blocker = directory.path().join("blocked");
@@ -4114,7 +4307,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn persisted_dummy_configuration_is_used_on_restart() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -4159,7 +4352,7 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn runtime_applies_carla_hosting_setting_before_backend_start() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -4177,7 +4370,7 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn carla_hosting_mode_persists_but_does_not_change_the_running_backend() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -4203,7 +4396,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn unavailable_saved_preference_falls_back_without_overwriting_settings() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -4248,7 +4441,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ephemeral_script_files_require_lua_utf8_and_valid_syntax() {
         assert!(is_lua_file_name("controller.lua"));
         assert!(is_lua_file_name("controller.LUA"));
@@ -4265,7 +4458,7 @@ mod tests {
         assert!(load_ephemeral_script_bytes("controller.lua".to_owned(), b"function(").is_err());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn startup_script_adapter_resolves_typed_bundles_files_and_missing_paths() {
         let directory = tempfile::tempdir().unwrap();
         let user_script = directory.path().join("user.lua");
@@ -4302,21 +4495,24 @@ mod tests {
             .unwrap();
         let settings = registry.resolve(&document, 2).snapshot;
         let (scripts, paths, warnings) = configured_startup_scripts(&settings).unwrap();
-        assert_eq!(scripts.len(), 3);
-        assert_eq!(paths.len(), 3);
+        assert_eq!(scripts.len(), 4);
+        assert_eq!(paths.len(), 4);
         assert_eq!(scripts[0].kind, ScriptKind::Bundled);
         assert_eq!(scripts[0].source, shoop_scripting::KEYBOARD_SCRIPT);
         assert!(scripts[0].enabled);
         assert_eq!(scripts[1].kind, ScriptKind::Bundled);
         assert!(!scripts[1].enabled);
-        assert_eq!(scripts[2].kind, ScriptKind::User);
+        assert_eq!(scripts[2].kind, ScriptKind::Example);
+        assert_eq!(scripts[2].source, shoop_scripting::DIALOG_EXAMPLE_SCRIPT);
         assert!(!scripts[2].enabled);
+        assert_eq!(scripts[3].kind, ScriptKind::User);
+        assert!(!scripts[3].enabled);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing.lua"));
         assert!(validate_script_draft(&draft).is_err());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn committed_settings_reconcile_scripts_and_failed_save_leaves_runtime_unchanged() {
         let directory = tempfile::tempdir().unwrap();
         let script_path = directory.path().join("controller.lua");
@@ -4351,7 +4547,7 @@ mod tests {
             .reconcile_script_settings(&manager.active())
             .unwrap();
         let snapshot = wait_for_script_configuration(&mut runtime);
-        assert_eq!(snapshot.scripting.scripts.len(), 3);
+        assert_eq!(snapshot.scripting.scripts.len(), 4);
 
         let mut removal = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
         removal.set(
@@ -4363,7 +4559,7 @@ mod tests {
         runtime
             .reconcile_script_settings(&manager.active())
             .unwrap();
-        let after_removal = wait_for_script_count(&mut runtime, 2);
+        let after_removal = wait_for_script_count(&mut runtime, 3);
         assert!(!after_removal
             .scripting
             .scripts
@@ -4441,7 +4637,7 @@ mod tests {
                 .scripts
                 .iter()
                 .any(|script| script.name == "controller.lua" && script.enabled);
-            if snapshot.scripting.scripts.len() == 3
+            if snapshot.scripting.scripts.len() == 4
                 && keyboard_disabled
                 && apc_enabled
                 && user_enabled
@@ -4453,7 +4649,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn startup_path_association_preserves_rejected_slots_and_duplicate_names() {
         let first = shoop_egui::ScriptId::from_raw(11);
         let second = shoop_egui::ScriptId::from_raw(12);
@@ -4470,7 +4666,7 @@ mod tests {
         assert_eq!(paths.get(&second).map(String::as_str), Some("second.lua"));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn native_atomic_replace_overwrites_and_cleans_up_failed_temporary_files() {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("session.shoop");
@@ -4489,7 +4685,7 @@ mod tests {
             .exists());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn unified_application_paints_at_minimum_and_common_sizes() {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();
@@ -4510,7 +4706,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn unified_native_app_runs_paints_invokes_and_removes_lua_dialogs() {
         let context = egui::Context::default();
         shoop_egui::initialize(&context);
@@ -4649,7 +4845,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn native_dummy_workflow_creates_records_and_controls_tracks_and_loops() {
         let mut app = UnifiedApp::new().unwrap();
         let track_specs = [

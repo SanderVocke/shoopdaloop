@@ -8,7 +8,7 @@ use shoop_engine::carla_subprocess::{
 use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration};
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
         .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))
@@ -30,7 +30,7 @@ fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     assert_eq!(worker.save_state().unwrap(), "{}");
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn application_supervisor_recovers_checkpoint_activity_and_logs() {
     let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop")
         .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop"))
@@ -69,7 +69,7 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
         .all(|log| log.stdout.is_empty() && log.stderr.is_empty()));
 }
 
-#[test]
+#[tracy_nextest_capture::tracy_capture_test]
 fn application_worker_hosts_the_real_carla_native_runtime_when_available() {
     if let Err(reason) = carla_runtime_availability() {
         if std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_some() {

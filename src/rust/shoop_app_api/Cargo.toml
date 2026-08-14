@@ -3,5 +3,8 @@ name = "shoop_app_api"
 version.workspace = true
 edition = "2021"
 
+[dev-dependencies]
+tracy-nextest-capture = { workspace = true }
+
 [lints]
 workspace = true

@@ -20,7 +20,7 @@ impl<T: Copy + PartialEq> OptimisticValue<T> {
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pending_value_survives_stale_publication_until_acknowledged() {
         let mut value = OptimisticValue::default();
         value.set(2);

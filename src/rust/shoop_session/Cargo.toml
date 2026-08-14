@@ -13,5 +13,8 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 zip = { workspace = true }
 
+[dev-dependencies]
+tracy-nextest-capture = { workspace = true }
+
 [lints]
 workspace = true

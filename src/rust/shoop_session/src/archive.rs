@@ -905,7 +905,7 @@ pub(crate) const STANDALONE_MIDI_FORMAT: &str = MIDI_FORMAT;
 mod tests {
     use super::*;
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn version_dispatch_accepts_current_and_rejects_other_major_or_minor() {
         assert!(check_version(
             SESSION_FORMAT,
@@ -937,7 +937,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn unsafe_archive_paths_are_rejected() {
         let cursor = Cursor::new(Vec::new());
         let mut writer = ZipWriter::new(cursor);
@@ -956,7 +956,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn duplicate_archive_paths_are_rejected() {
         let cursor = Cursor::new(Vec::new());
         let mut writer = ZipWriter::new(cursor);

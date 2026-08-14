@@ -10,30 +10,25 @@ Disabled
   Omit tracing options. Gated helpers avoid Tracy calls.
 
 Coarse
-  Use ``--tracing`` for a live profiler or ``--tracing-capture`` for a file.
-  This includes GUI/application spans, engine control/graph work, and bounded
-  callback/session categories.
+  Use ``--tracing`` to capture in process. This includes GUI/application spans,
+  engine control/graph work, and bounded callback/session categories. There is
+  no live TCP profiler mode or external capture executable.
 
 Engine detail
-  Add ``--tracing-engine-detail`` to either mode for per-stage realtime zones.
-  This increases callback overhead and capture size.
+  Add ``--tracing-engine-detail`` for per-stage realtime zones. This increases
+  callback overhead and capture size.
 
-Run a live profile::
+Capture a file::
 
-  cargo run -p shoopdaloop -- --tracing
+  cargo run -p shoopdaloop -- \
+    --tracing \
+    --tracing-engine-detail
 
-Capture a file using ``TRACY_CAPTURE_TOOL`` or ``tracy-capture`` on ``PATH``::
-
-  TRACY_CAPTURE_TOOL="$(command -v tracy-capture)" \
-    cargo run -p shoopdaloop -- \
-      --tracing-capture \
-      --tracing-engine-detail
-
-Quit normally so capture shutdown finalizes the numbered ``.tracy`` file below
-``traces/``. The directory also contains ``manifest.tsv`` with a generic
-``label`` column and ``tracy-capture.log``. Require a non-empty capture, a
-successful manifest row, a saved-trace log entry, and a successful Tracy parser
-check before analysis.
+Quit normally so application and engine workers quiesce and capture shutdown
+atomically publishes the numbered ``.tracy`` file below ``traces/``. Require a
+non-empty capture, no corresponding ``.partial`` file, and a successful Tracy
+parser check before analysis. Abort, fatal signals, forced termination, OOM,
+and power loss cannot finalize an in-process trace.
 
 Trace structure
 ~~~~~~~~~~~~~~~

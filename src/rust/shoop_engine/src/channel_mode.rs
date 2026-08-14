@@ -134,7 +134,7 @@ mod tests {
         loop_mode_to_channel_process_flags(loop_mode, channel_mode)
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn discriminants_match_c_abi() {
         check!(C::Disabled as u32 == 0);
         check!(C::Direct as u32 == 1);
@@ -142,7 +142,7 @@ mod tests {
         check!(C::Wet as u32 == 3);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn disabled_never_does_anything() {
         for m in [
             L::Stopped,
@@ -156,7 +156,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn direct_channel_simple_modes() {
         check!(flags(L::Stopped, C::Direct) == ProcessFlags::NONE);
         check!(flags(L::Playing, C::Direct) == ProcessFlags::PLAYBACK);
@@ -164,7 +164,7 @@ mod tests {
         check!(flags(L::Replacing, C::Direct) == ProcessFlags::REPLACE);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn dry_wet_split_on_advanced_modes() {
         // Dry-through-wet: dry plays out, wet passes the live signal (nothing).
         check!(flags(L::PlayingDryThroughWet, C::Dry) == ProcessFlags::PLAYBACK);
@@ -177,13 +177,13 @@ mod tests {
         check!(flags(L::Playing, C::Wet) == ProcessFlags::PLAYBACK);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn direct_follows_advanced_modes_too() {
         check!(flags(L::PlayingDryThroughWet, C::Direct) == ProcessFlags::PLAYBACK);
         check!(flags(L::RecordingDryIntoWet, C::Direct) == ProcessFlags::REPLACE);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn position_offsets_by_start_offset() {
         let p = channel_process_params(L::Playing, L::Unknown, None, None, 10, 4, C::Direct);
         check!(p.flags == ProcessFlags::PLAYBACK);
@@ -194,7 +194,7 @@ mod tests {
         check!(p.position == 6);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pre_play_reaches_back_before_start_offset() {
         // Stopped, but Playing is one trigger away with 3 samples to go.
         let p = channel_process_params(L::Stopped, L::Playing, Some(0), Some(3), 0, 5, C::Direct);
@@ -202,14 +202,14 @@ mod tests {
         check!(p.position == 2); // start_offset - eta
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pre_record_sets_flag_without_moving_position() {
         let p = channel_process_params(L::Stopped, L::Recording, Some(0), Some(3), 7, 5, C::Direct);
         check!(p.flags.contains(ProcessFlags::PRE_RECORD));
         check!(p.position == 12); // unchanged: position + start_offset
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn pre_roll_requires_imminent_transition() {
         // Delay of 1 cycle: not yet.
         let p = channel_process_params(L::Stopped, L::Playing, Some(1), Some(3), 0, 5, C::Direct);
@@ -225,7 +225,7 @@ mod tests {
         check!(p.flags == ProcessFlags::NONE);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn already_recording_does_not_pre_record() {
         let p = channel_process_params(
             L::Recording,
@@ -240,7 +240,7 @@ mod tests {
         check!(!p.flags.contains(ProcessFlags::PRE_RECORD));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playing_channel_does_not_pre_play_again() {
         // Already playing, so the pre-play branch is skipped; a planned record
         // still arms pre-record.
@@ -250,14 +250,14 @@ mod tests {
         check!(p.position == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn unknown_next_mode_disables_pre_roll() {
         let p = channel_process_params(L::Stopped, L::Unknown, Some(0), Some(3), 0, 5, C::Direct);
         check!(p.flags == ProcessFlags::NONE);
         check!(p.position == 5);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn disabled_channel_ignores_pre_roll() {
         let p = channel_process_params(L::Stopped, L::Playing, Some(0), Some(3), 0, 5, C::Disabled);
         check!(p.flags == ProcessFlags::NONE);

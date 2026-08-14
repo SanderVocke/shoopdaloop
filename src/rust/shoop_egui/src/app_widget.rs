@@ -5,11 +5,11 @@ use crate::{
     is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
     AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
     DetailsPane, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
-    SettingsAction, SettingsDialog, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec,
-    TrackSpecTopology, TrackWidget, TracksWidget,
+    SettingsAction, SettingsDialog, TracingStatus, TracingStopped, TrackProcessorDescriptor,
+    TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
-    SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
+    SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
     SettingsRegistryBuilder, SettingsRegistryError, SettingsSnapshot, SettingsViewState,
     StringToggleList,
 };
@@ -23,6 +23,7 @@ const SIDEBAR_SECTION_GAP: f32 = 8.0;
 pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
     SettingKey::new("tracks.new.default_audio_channels");
 pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
+pub const UI_SCALE_FACTOR: SettingKey<f64> = SettingKey::new("appearance.ui_scale_factor");
 pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.keyboard.enabled");
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
@@ -73,6 +74,22 @@ pub fn register_settings(
         .category_order(10)
         .setting_order(20)
         .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            UI_SCALE_FACTOR,
+            1.0,
+            "Appearance",
+            "Pixels-per-point scale",
+            "Multiplier for egui's native pixels-per-point value, scaling the entire UI.",
+        )
+        .category_order(2)
+        .setting_order(10)
+        .effect(SettingEffect::ExplicitApply)
+        .editor(SettingEditor::Number {
+            min: 0.75,
+            max: 2.0,
+        }),
     )
 }
 
@@ -456,6 +473,7 @@ pub fn register_script_settings(
 enum AddTrackMode {
     #[default]
     Regular,
+    Trigger,
     DryWet,
 }
 
@@ -492,8 +510,6 @@ pub struct AppWidget {
     add_track_mode: AddTrackMode,
     add_track_audio_channels: u32,
     add_track_midi: bool,
-    add_track_dry_audio_channels: u32,
-    add_track_wet_audio_channels: u32,
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
     logo: Option<egui::TextureHandle>,
@@ -502,8 +518,14 @@ pub struct AppWidget {
     pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
     script_control_pressed: bool,
     pending_ephemeral_scripts: VecDeque<PendingEphemeralScript>,
+    tracing_status: TracingStatus,
+    tracing_stopped: Option<TracingStopped>,
     last_callback_count: u64,
     callbacks_active_until: f64,
+    #[cfg(test)]
+    tracing_save_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    tracing_discard_rect: Option<egui::Rect>,
     #[cfg(test)]
     ephemeral_script_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -512,6 +534,8 @@ pub struct AppWidget {
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_cancel_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    add_track_midi_id: Option<egui::Id>,
     #[cfg(test)]
     details_toggle_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -550,8 +574,6 @@ impl AppWidget {
             add_track_mode: AddTrackMode::Regular,
             add_track_audio_channels: 2,
             add_track_midi: false,
-            add_track_dry_audio_channels: 2,
-            add_track_wet_audio_channels: 2,
             add_track_dry_midi: false,
             add_track_processor: None,
             logo: None,
@@ -560,8 +582,14 @@ impl AppWidget {
             pressed_script_keys: BTreeMap::new(),
             script_control_pressed: false,
             pending_ephemeral_scripts: VecDeque::new(),
+            tracing_status: TracingStatus::default(),
+            tracing_stopped: None,
             last_callback_count: 0,
             callbacks_active_until: 0.0,
+            #[cfg(test)]
+            tracing_save_rect: None,
+            #[cfg(test)]
+            tracing_discard_rect: None,
             #[cfg(test)]
             ephemeral_script_accept_rect: None,
             #[cfg(test)]
@@ -570,6 +598,8 @@ impl AppWidget {
             add_track_accept_rect: None,
             #[cfg(test)]
             add_track_cancel_rect: None,
+            #[cfg(test)]
+            add_track_midi_id: None,
             #[cfg(test)]
             details_toggle_rect: None,
             #[cfg(test)]
@@ -596,6 +626,15 @@ impl AppWidget {
 
     pub fn set_click_track_preview_available(&mut self, available: bool) {
         self.click_track.set_preview_available(available);
+    }
+
+    pub fn set_tracing_status(&mut self, status: TracingStatus) {
+        self.tracing_status = status;
+        self.settings.set_tracing_status(status);
+    }
+
+    pub fn notify_tracing_stopped(&mut self, stopped: TracingStopped) {
+        self.tracing_stopped = Some(stopped);
     }
 
     pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
@@ -706,7 +745,7 @@ impl AppWidget {
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.show_bottom_status(ui, state, &mut actions)
+                        self.show_bottom_status(ui, state, &mut actions, &mut settings_actions)
                     });
                 });
             });
@@ -852,6 +891,7 @@ impl AppWidget {
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
         self.show_ephemeral_script_confirmation(ui.ctx(), state, &mut actions);
+        self.show_tracing_stopped(ui.ctx());
         if !actions.is_empty() || !settings_actions.is_empty() {
             tracing::debug!(
                 target: "Frontend.Egui",
@@ -969,8 +1009,6 @@ impl AppWidget {
             .active
             .get(DEFAULT_NEW_TRACK_MIDI)
             .expect("registered MIDI setting must retain its type");
-        self.add_track_dry_audio_channels = self.add_track_audio_channels;
-        self.add_track_wet_audio_channels = self.add_track_audio_channels;
         self.add_track_dry_midi = self.add_track_midi;
         self.add_track_processor = None;
         self.add_track_open = true;
@@ -1002,8 +1040,7 @@ impl AppWidget {
         self.add_track_mode = AddTrackMode::DryWet;
         self.add_track_open = true;
         self.add_track_processor = Some(processor.id.clone());
-        self.add_track_dry_audio_channels = 2;
-        self.add_track_wet_audio_channels = 2;
+        self.add_track_audio_channels = 2;
         self.add_track_dry_midi = true;
         self.add_track_open
             && processor.label == "Tiny Synth/FX"
@@ -1301,7 +1338,6 @@ impl AppWidget {
             .resizable(false)
             .open(&mut open)
             .show(context, |ui| {
-                ui.label("Choose regular looping or separate dry and wet media.");
                 egui::Grid::new("add_track_fields")
                     .num_columns(2)
                     .spacing([10.0, 6.0])
@@ -1310,112 +1346,123 @@ impl AppWidget {
                         ui.text_edit_singleline(&mut self.add_track_name);
                         ui.end_row();
                         ui.label("Track type:");
-                        egui::ComboBox::from_id_salt("add_track_mode")
-                            .selected_text(match self.add_track_mode {
-                                AddTrackMode::Regular => "Regular",
-                                AddTrackMode::DryWet => "Dry + Wet",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.add_track_mode,
-                                    AddTrackMode::Regular,
-                                    "Regular",
-                                );
-                                ui.selectable_value(
-                                    &mut self.add_track_mode,
-                                    AddTrackMode::DryWet,
-                                    "Dry + Wet",
-                                );
-                            });
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::Regular,
+                                "Regular",
+                            );
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::Trigger,
+                                "Trigger",
+                            );
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::DryWet,
+                                "Dry + Wet",
+                            );
+                        });
                         ui.end_row();
-                        match self.add_track_mode {
-                            AddTrackMode::Regular => {
-                                ui.label("Audio:");
-                                show_audio_channel_count(
-                                    ui,
-                                    "add_track_audio",
-                                    &mut self.add_track_audio_channels,
-                                );
-                                ui.end_row();
-                                ui.label("MIDI:");
-                                ui.checkbox(&mut self.add_track_midi, "Enabled");
-                                ui.end_row();
-                            }
-                            AddTrackMode::DryWet => {
-                                let selected_processor =
-                                    self.add_track_processor.as_ref().and_then(|selected| {
-                                        processors
-                                            .iter()
-                                            .find(|processor| processor.id == *selected)
-                                    });
-                                ui.label("Dry audio:");
-                                show_audio_channel_count(
-                                    ui,
-                                    "add_track_dry_audio",
-                                    &mut self.add_track_dry_audio_channels,
-                                );
-                                ui.end_row();
-                                let matching_audio = selected_processor.is_some_and(|processor| {
-                                    processor.constraints.matching_audio_channels
-                                });
-                                if matching_audio {
-                                    self.add_track_wet_audio_channels =
-                                        self.add_track_dry_audio_channels;
+                        let selected_processor =
+                            self.add_track_processor.as_ref().and_then(|selected| {
+                                processors
+                                    .iter()
+                                    .find(|processor| processor.id == *selected)
+                            });
+                        let midi_policy = selected_processor
+                            .map(|processor| processor.constraints.midi)
+                            .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
+                        if self.add_track_mode == AddTrackMode::DryWet
+                            && selected_processor.is_some()
+                        {
+                            match midi_policy {
+                                crate::TrackProcessorMidiPolicy::Required => {
+                                    self.add_track_dry_midi = true;
                                 }
-                                ui.label("Wet audio:");
-                                ui.add_enabled_ui(!matching_audio, |ui| {
-                                    show_audio_channel_count(
-                                        ui,
-                                        "add_track_wet_audio",
-                                        &mut self.add_track_wet_audio_channels,
-                                    );
-                                });
-                                ui.end_row();
-                                let midi_policy = selected_processor
-                                    .map(|processor| processor.constraints.midi)
-                                    .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
-                                if selected_processor.is_some() {
-                                    match midi_policy {
-                                        crate::TrackProcessorMidiPolicy::Required => {
-                                            self.add_track_dry_midi = true;
-                                        }
-                                        crate::TrackProcessorMidiPolicy::Unsupported => {
-                                            self.add_track_dry_midi = false;
-                                        }
-                                        crate::TrackProcessorMidiPolicy::Optional => {}
-                                    }
+                                crate::TrackProcessorMidiPolicy::Unsupported => {
+                                    self.add_track_dry_midi = false;
                                 }
-                                ui.label("Dry MIDI:");
-                                ui.add_enabled_ui(
-                                    midi_policy == crate::TrackProcessorMidiPolicy::Optional,
-                                    |ui| {
-                                        ui.checkbox(&mut self.add_track_dry_midi, "Enabled");
-                                    },
-                                );
-                                ui.end_row();
-                                ui.label("Processing:");
-                                let selected = selected_processor
-                                    .map(|processor| processor.label.as_str())
-                                    .unwrap_or("No processors available");
-                                egui::ComboBox::from_id_salt("add_track_processor")
-                                    .selected_text(selected)
-                                    .show_ui(ui, |ui| {
-                                        for processor in processors {
-                                            ui.add_enabled_ui(processor.available, |ui| {
-                                                ui.selectable_value(
-                                                    &mut self.add_track_processor,
-                                                    Some(processor.id.clone()),
-                                                    &processor.label,
-                                                );
-                                            });
-                                            if let Some(reason) = &processor.unavailable_reason {
-                                                ui.small(reason);
-                                            }
-                                        }
-                                    });
-                                ui.end_row();
+                                crate::TrackProcessorMidiPolicy::Optional => {}
                             }
                         }
+
+                        let audio_enabled = self.add_track_mode != AddTrackMode::Trigger;
+                        ui.add_enabled(audio_enabled, egui::Label::new("Audio:"));
+                        ui.add_enabled_ui(audio_enabled, |ui| {
+                            show_audio_channel_count(
+                                ui,
+                                "add_track_audio",
+                                &mut self.add_track_audio_channels,
+                            );
+                        });
+                        ui.end_row();
+
+                        let midi_applicable = match self.add_track_mode {
+                            AddTrackMode::Regular => true,
+                            AddTrackMode::Trigger => false,
+                            AddTrackMode::DryWet => {
+                                midi_policy != crate::TrackProcessorMidiPolicy::Unsupported
+                            }
+                        };
+                        ui.add_enabled(midi_applicable, egui::Label::new("MIDI:"));
+                        let (mut displayed_midi, midi_editable) = match self.add_track_mode {
+                            AddTrackMode::Regular => (self.add_track_midi, true),
+                            AddTrackMode::Trigger => (false, false),
+                            AddTrackMode::DryWet => (
+                                self.add_track_dry_midi,
+                                midi_policy == crate::TrackProcessorMidiPolicy::Optional,
+                            ),
+                        };
+                        let midi = ui
+                            .push_id("add_track_midi", |ui| {
+                                ui.add_enabled(
+                                    midi_editable,
+                                    egui::Checkbox::new(&mut displayed_midi, "Enabled"),
+                                )
+                            })
+                            .inner;
+                        #[cfg(test)]
+                        {
+                            self.add_track_midi_id = Some(midi.id);
+                        }
+                        if midi.changed() {
+                            match self.add_track_mode {
+                                AddTrackMode::Regular => self.add_track_midi = displayed_midi,
+                                AddTrackMode::DryWet => self.add_track_dry_midi = displayed_midi,
+                                AddTrackMode::Trigger => {}
+                            }
+                        }
+                        ui.end_row();
+
+                        let processing_enabled = self.add_track_mode == AddTrackMode::DryWet;
+                        ui.add_enabled(processing_enabled, egui::Label::new("Processing:"));
+                        let selected = if processing_enabled {
+                            selected_processor
+                                .map(|processor| processor.label.as_str())
+                                .unwrap_or("No processors available")
+                        } else {
+                            "Not applicable"
+                        };
+                        ui.add_enabled_ui(processing_enabled, |ui| {
+                            egui::ComboBox::from_id_salt("add_track_processor")
+                                .selected_text(selected)
+                                .show_ui(ui, |ui| {
+                                    for processor in processors {
+                                        ui.add_enabled_ui(processor.available, |ui| {
+                                            ui.selectable_value(
+                                                &mut self.add_track_processor,
+                                                Some(processor.id.clone()),
+                                                &processor.label,
+                                            );
+                                        });
+                                        if let Some(reason) = &processor.unavailable_reason {
+                                            ui.small(reason);
+                                        }
+                                    }
+                                });
+                        });
+                        ui.end_row();
                     });
                 let spec = self.add_track_spec();
                 let validation = spec
@@ -1436,7 +1483,10 @@ impl AppWidget {
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
-                    let add = ui.add_enabled(validation.is_ok(), egui::Button::new("Add"));
+                    let add = ui.add_enabled(
+                        validation.is_ok(),
+                        egui::Button::new("Add").min_size(egui::vec2(64.0, 28.0)),
+                    );
                     #[cfg(test)]
                     {
                         self.add_track_accept_rect = Some(add.rect);
@@ -1444,7 +1494,8 @@ impl AppWidget {
                     if add.clicked() {
                         accepted = true;
                     }
-                    let cancel = ui.button("Cancel");
+                    let cancel =
+                        ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 28.0)));
                     #[cfg(test)]
                     {
                         self.add_track_cancel_rect = Some(cancel.rect);
@@ -1473,9 +1524,13 @@ impl AppWidget {
                 audio_channels: self.add_track_audio_channels,
                 midi: self.add_track_midi,
             },
+            AddTrackMode::Trigger => TrackSpecTopology::Direct {
+                audio_channels: 0,
+                midi: false,
+            },
             AddTrackMode::DryWet => TrackSpecTopology::DryWet {
-                dry_audio_channels: self.add_track_dry_audio_channels,
-                wet_audio_channels: self.add_track_wet_audio_channels,
+                dry_audio_channels: self.add_track_audio_channels,
+                wet_audio_channels: self.add_track_audio_channels,
                 dry_midi: self.add_track_dry_midi,
                 processor_type: self.add_track_processor.clone()?,
             },
@@ -1535,6 +1590,7 @@ impl AppWidget {
         ui: &mut egui::Ui,
         state: &AppState,
         actions: &mut Vec<AppAction>,
+        settings_actions: &mut Vec<SettingsAction>,
     ) {
         #[cfg(test)]
         {
@@ -1577,6 +1633,64 @@ impl AppWidget {
             state.status.buffer_size
         ));
         self.show_backend_status(ui, state);
+        if self.tracing_status.active {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Tracing active ({})",
+                    format_memory_usage(self.tracing_status.memory_usage_bytes)
+                ));
+                let save = ui.small_button("Save");
+                let discard = ui.small_button("Discard");
+                #[cfg(test)]
+                {
+                    self.tracing_save_rect = Some(save.rect);
+                    self.tracing_discard_rect = Some(discard.rect);
+                }
+                if save.clicked() {
+                    settings_actions.push(SettingsAction::StopTracing { save: true });
+                }
+                if discard.clicked() {
+                    settings_actions.push(SettingsAction::StopTracing { save: false });
+                }
+            });
+        } else {
+            #[cfg(test)]
+            {
+                self.tracing_save_rect = None;
+                self.tracing_discard_rect = None;
+            }
+        }
+    }
+
+    fn show_tracing_stopped(&mut self, context: &egui::Context) {
+        let Some(stopped) = self.tracing_stopped.clone() else {
+            return;
+        };
+        let mut open = true;
+        let mut acknowledged = false;
+        egui::Window::new("Tracing stopped")
+            .id(egui::Id::new("tracing_stopped"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(context, |ui| {
+                match &stopped {
+                    TracingStopped::Saved(path) => {
+                        ui.label("The trace was stopped and saved to:");
+                        ui.monospace(path);
+                    }
+                    TracingStopped::Discarded => {
+                        ui.label("The trace was stopped and discarded.");
+                    }
+                }
+                if ui.button("OK").clicked() {
+                    acknowledged = true;
+                }
+            });
+        if acknowledged || !open {
+            self.tracing_stopped = None;
+        }
     }
 
     fn show_backend_status(&mut self, ui: &mut egui::Ui, state: &AppState) {
@@ -1681,6 +1795,21 @@ impl BackendHealth {
     }
 }
 
+fn format_memory_usage(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * KIB;
+    const GIB: u64 = 1024 * MIB;
+    if bytes >= GIB {
+        format!("{:.1} GiB", bytes as f64 / GIB as f64)
+    } else if bytes >= MIB {
+        format!("{:.1} MiB", bytes as f64 / MIB as f64)
+    } else if bytes >= KIB {
+        format!("{:.1} KiB", bytes as f64 / KIB as f64)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 fn backend_health(driver: crate::AudioDriverState, callbacks_active: bool) -> BackendHealth {
     use crate::AudioDriverState;
     match driver {
@@ -1702,19 +1831,27 @@ fn audio_channel_selection_action(task_id: crate::TaskId, channels: &[u32]) -> A
 }
 
 fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
-    ui.horizontal(|ui| {
-        egui::ComboBox::from_id_salt(id)
-            .selected_text(audio_channel_label(*channels))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(channels, 0, "Disabled");
-                ui.selectable_value(channels, 1, "Mono");
-                ui.selectable_value(channels, 2, "Stereo");
-                for custom in 3..=10 {
-                    ui.selectable_value(channels, custom, format!("Custom ({custom})"));
-                }
-            });
-        ui.add(egui::DragValue::new(channels).range(0..=u32::MAX).speed(1))
-            .on_hover_text("Custom channel count");
+    ui.push_id(id, |ui| {
+        ui.horizontal(|ui| {
+            ui.selectable_value(channels, 0, "Disabled");
+            ui.selectable_value(channels, 1, "Mono");
+            ui.selectable_value(channels, 2, "Stereo");
+
+            let custom_selected = *channels > 2;
+            if ui.selectable_label(custom_selected, "Other").clicked() && !custom_selected {
+                *channels = 3;
+            }
+            let mut custom_channels = (*channels).max(3);
+            let custom = ui.add_enabled(
+                *channels > 2,
+                egui::DragValue::new(&mut custom_channels)
+                    .range(3..=u32::MAX)
+                    .speed(1),
+            );
+            if custom.changed() {
+                *channels = custom_channels;
+            }
+        });
     });
 }
 
@@ -1742,15 +1879,6 @@ fn piano_destinations(state: &AppState) -> Vec<crate::TrackId> {
         .collect()
 }
 
-fn audio_channel_label(channels: u32) -> String {
-    match channels {
-        0 => "Disabled".to_owned(),
-        1 => "Mono".to_owned(),
-        2 => "Stereo".to_owned(),
-        channels => format!("Custom ({channels})"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -1765,7 +1893,7 @@ mod tests {
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn backend_health_requires_live_callbacks_and_distinguishes_waiting_from_failure() {
         assert_eq!(
             backend_health(crate::AudioDriverState::Running, true),
@@ -1785,12 +1913,76 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn tracing_memory_usage_uses_readable_binary_units() {
+        assert_eq!(format_memory_usage(0), "0 B");
+        assert_eq!(format_memory_usage(1536), "1.5 KiB");
+        assert_eq!(format_memory_usage(3 * 1024 * 1024), "3.0 MiB");
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn active_tracing_status_offers_save_action() {
+        let context = egui::Context::default();
+        let mut widget = AppWidget::default();
+        widget.set_tracing_status(TracingStatus {
+            available: true,
+            active: true,
+            memory_usage_bytes: 3 * 1024 * 1024,
+        });
+        let state = AppState::default();
+        let frame = |widget: &mut AppWidget, events: Vec<egui::Event>| {
+            let mut settings_actions = Vec::new();
+            let _ = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 100.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| widget.show_bottom_status(ui, &state, &mut Vec::new(), &mut settings_actions),
+            );
+            settings_actions
+        };
+
+        frame(&mut widget, Vec::new());
+        let save = widget.tracing_save_rect.unwrap().center();
+        frame(
+            &mut widget,
+            vec![
+                egui::Event::PointerMoved(save),
+                egui::Event::PointerButton {
+                    pos: save,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let actions = frame(
+            &mut widget,
+            vec![
+                egui::Event::PointerMoved(save),
+                egui::Event::PointerButton {
+                    pos: save,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(actions
+            .iter()
+            .any(|action| matches!(action, SettingsAction::StopTracing { save: true })));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bottom_panel_starts_closed() {
         assert_eq!(AppWidget::default().bottom_pane, None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn connection_open_api_applies_global_sync_and_main_track_presets() {
         let mut widget = AppWidget::default();
         assert_eq!(widget.open_connection_scope(), None);
@@ -1816,7 +2008,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn carla_hosting_setting_validates_modes_and_preserves_unknown_keys() {
         let mut builder = SettingsRegistryBuilder::default();
         register_carla_settings(&mut builder).unwrap();
@@ -1934,7 +2126,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ephemeral_script_load_waits_for_confirmation_and_emits_source() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2003,7 +2195,7 @@ mod tests {
         assert!(widget.pending_ephemeral_scripts.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn xrun_reset_button_emits_one_reset_action() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2026,7 +2218,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn details_and_piano_toggle_one_bottom_pane_without_stacking() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2044,7 +2236,7 @@ mod tests {
         assert_eq!(widget.bottom_pane, None);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn switching_away_from_piano_releases_a_held_note() {
         let mut widget = AppWidget::default();
         widget.bottom_pane = Some(BottomPane::Piano);
@@ -2060,7 +2252,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn open_piano_routes_pointer_note_actions_as_application_intents() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2145,7 +2337,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn piano_destination_summary_uses_monitored_track_midi_input_roles() {
         let first_id = crate::TrackId::from_raw(1);
         let muted_id = crate::TrackId::from_raw(2);
@@ -2231,7 +2423,7 @@ mod tests {
         response.unwrap()
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn audio_settings_keep_independent_driver_configs_and_validate_mapping() {
         let mut builder = SettingsRegistryBuilder::default();
         register_audio_settings(&mut builder).unwrap();
@@ -2266,7 +2458,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn add_track_accept_emits_validated_spec() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2291,16 +2483,54 @@ mod tests {
         assert!(!widget.add_track_open);
     }
 
-    #[test]
-    fn dry_wet_dialog_uses_empty_and_synthetic_processor_catalogs() {
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn add_track_midi_widget_keeps_its_id_across_track_types() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState::default();
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Track".to_owned();
+
+        frame(&context, &mut widget, &state, Vec::new());
+        let id = widget.add_track_midi_id.unwrap();
+        for mode in [AddTrackMode::Trigger, AddTrackMode::DryWet] {
+            widget.add_track_mode = mode;
+            frame(&context, &mut widget, &state, Vec::new());
+            assert_eq!(widget.add_track_midi_id, Some(id));
+        }
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn trigger_track_has_no_audio_or_midi() {
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Trigger".to_owned();
+        widget.add_track_mode = AddTrackMode::Trigger;
+        widget.add_track_audio_channels = 4;
+        widget.add_track_midi = true;
+
+        assert_eq!(
+            widget.accept_add_track(&[]),
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
+                name: "Trigger".to_owned(),
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 0,
+                    midi: false,
+                },
+            }))
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn dry_wet_dialog_uses_matching_audio_and_processor_catalogs() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut widget = AppWidget::default();
         widget.add_track_open = true;
         widget.add_track_name = "Processed".to_owned();
         widget.add_track_mode = AddTrackMode::DryWet;
-        widget.add_track_dry_audio_channels = 2;
-        widget.add_track_wet_audio_channels = 1;
+        widget.add_track_audio_channels = 2;
         widget.add_track_dry_midi = true;
         frame(&context, &mut widget, &AppState::default(), Vec::new());
         assert!(widget.add_track_processor.is_none());
@@ -2339,7 +2569,7 @@ mod tests {
                 name: "Processed".to_owned(),
                 topology: TrackSpecTopology::DryWet {
                     dry_audio_channels: 2,
-                    wet_audio_channels: 1,
+                    wet_audio_channels: 2,
                     dry_midi: true,
                     processor_type: processor.id,
                 },
@@ -2347,7 +2577,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn cancelling_add_track_has_no_action() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2361,7 +2591,7 @@ mod tests {
         assert!(!widget.add_track_open);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ordered_audio_export_selection_emits_the_task_scoped_confirmation() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2406,8 +2636,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn scripts_tab_renders_lifecycle_errors_logs_and_midi_diagnostics() {
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn scripts_tab_renders_grouped_controls_for_runtime_diagnostics() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut builder = SettingsRegistryBuilder::default();
@@ -2475,10 +2705,13 @@ mod tests {
         assert!(widget.settings.is_open());
 
         assert!(widget.settings.restart_rect(script_id).is_some());
+        assert!(widget.settings.log_rect(script_id).is_some());
+        assert!(widget.settings.documentation_rect(script_id).is_some());
+        assert!(widget.settings.status_rect(script_id).is_some());
         assert!(widget.settings.reload_rect(script_id).is_some());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn complete_application_state_produces_paint_commands() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2537,7 +2770,7 @@ mod tests {
         assert!(uploaded_logo);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bundled_script_registry_excludes_native_user_path_workflow() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -2551,7 +2784,7 @@ mod tests {
         assert!(!defaults.get(APC_MINI_SCRIPT_ENABLED).unwrap());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn add_track_defaults_are_registered_and_read_only_when_a_new_draft_opens() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();

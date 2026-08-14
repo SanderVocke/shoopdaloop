@@ -500,7 +500,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn overlap_containment_equal_starts_and_touching_edges_pack_deterministically() {
         let state = details(vec![
             event(4, 1, 20, 40),
@@ -522,7 +522,7 @@ mod tests {
         assert_eq!(lanes, [(2, 0), (1, 1), (4, 2), (3, 0)]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn independent_duplicate_spans_get_separate_lanes_and_empty_tracks_keep_one() {
         let state = details(vec![event(1, 1, 0, 10), event(1, 1, 0, 10)]);
         let packed = pack_swimlanes(&state);
@@ -553,7 +553,7 @@ mod tests {
         intents
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn timeline_accepts_typed_loop_drops_and_ignores_self_or_outside_drops() {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
@@ -644,7 +644,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn empty_composite_paints_an_explicit_schedule_message() {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
@@ -658,7 +658,7 @@ mod tests {
         assert!(widget.rendered_events.is_empty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn widget_paints_named_events_grows_rows_and_has_bounded_zoomed_overflow() {
         let context = egui::Context::default();
         let state = details(vec![event(1, 1, 0, 300), event(2, 1, 100, 200)]);
@@ -699,7 +699,7 @@ mod tests {
         assert!(widget.cycle_width <= MAX_CYCLE_WIDTH);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn narrow_and_wide_panes_report_horizontal_and_vertical_overflow() {
         let tracks = (1..=8)
             .map(|id| CompositeTrackDetailsState {

@@ -438,7 +438,7 @@ mod tests {
         out
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn no_channels_behaves_like_a_bare_loop() {
         let mut l = AudioMidiLoop::default();
         check!(l.mode() == L::Stopped);
@@ -448,7 +448,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn adding_and_removing_channels() {
         let mut l = AudioMidiLoop::default();
         check!(l.n_audio_channels() == 0);
@@ -464,7 +464,7 @@ mod tests {
         check!(l.delete_audio_channel(5) == false);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn recording_drives_the_channel() {
         let mut l = loop_with_channel();
         l.set_mode(L::Recording);
@@ -474,7 +474,7 @@ mod tests {
         check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playback_reads_the_channel() {
         let mut l = loop_with_channel();
         l.audio_channel_mut(0)
@@ -488,7 +488,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn playback_short_of_the_end_does_not_wrap() {
         let mut l = loop_with_channel();
         l.audio_channel_mut(0)
@@ -501,7 +501,7 @@ mod tests {
         check!(l.position() == 3);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn channel_poi_constrains_the_loop() {
         let mut l = loop_with_channel();
         l.set_length(100);
@@ -519,7 +519,7 @@ mod tests {
         check!(l.next_poi() == Some(8));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn loop_end_wins_when_it_is_earlier_than_the_channel() {
         let mut l = loop_with_channel();
         l.set_length(3);
@@ -529,7 +529,7 @@ mod tests {
         check!(l.next_poi() == Some(3));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn channel_poi_survives_loop_state_changes() {
         let mut l = loop_with_channel();
         l.audio_channel_mut(0).unwrap().set_playback_buffer_size(5);
@@ -544,7 +544,7 @@ mod tests {
 
     /// channel is the one case where the loop can outrun a channel's input buffer.
     /// The channel reports it rather than overrunning, and the loop still advances.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn bounded_audio_exhaustion_stops_recording_without_partial_growth() {
         let mut loop_ = AudioMidiLoop::default();
         loop_.add_audio_channel_with_bounded_capacity(4, 4, C::Direct);
@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(loop_.audio_channel(0).unwrap().length(), 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn process_reports_channel_errors_without_stopping_the_loop() {
         let mut l = loop_with_channel();
         l.audio_channel_mut(0)
@@ -590,7 +590,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn multiple_channels_each_get_their_buffers() {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel(4, C::Direct);
@@ -610,7 +610,7 @@ mod tests {
         check!(l.audio_channel(1).unwrap().data() == vec![3.0, 4.0]);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn adding_and_removing_midi_channels() {
         let mut l = AudioMidiLoop::default();
         check!(l.n_midi_channels() == 0);
@@ -623,7 +623,7 @@ mod tests {
         check!(!l.delete_midi_channel(9));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn midi_channel_records_and_plays_through_the_loop() {
         let mut l = AudioMidiLoop::default();
         l.add_midi_channel(64, C::Direct);
@@ -669,7 +669,7 @@ mod tests {
         check!(out[1].data() == off.as_slice());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn midi_channel_poi_constrains_the_loop() {
         let mut l = AudioMidiLoop::default();
         l.add_midi_channel(64, C::Direct);
@@ -680,7 +680,7 @@ mod tests {
         check!(l.next_poi() == Some(6));
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn earliest_poi_across_audio_and_midi_wins() {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel(4, C::Direct);
@@ -702,7 +702,7 @@ mod tests {
     /// point of interest is respected: unlike audio, MIDI has no `Replace` path, so
     /// every mode it acts on is accounted for in `next_poi`. Its own unit tests
     /// cover those errors by calling the channel directly.
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn a_midi_channel_is_never_asked_to_exceed_its_buffers() {
         let mut l = AudioMidiLoop::default();
         l.add_midi_channel(64, C::Direct);
@@ -719,7 +719,7 @@ mod tests {
         check!(l.length() == 2);
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn planned_transition_still_works_with_channels() {
         let mut l = loop_with_channel();
         l.set_sync_source(Some(SyncSourceState::default()));

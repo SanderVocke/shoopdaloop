@@ -1,6 +1,6 @@
 use super::{
     AudioContentSnapshot, ContentRevision, ContentStatus, CurrentDataError, MidiContentSnapshot,
-    SnapshotCurrentness, SnapshotRead,
+    SnapshotCurrentness, SnapshotRead, StaleReason,
 };
 use arc_swap::ArcSwap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -69,10 +69,33 @@ impl<T: ContentSnapshot> ManifestPublisher<T> {
 
 impl<T: ContentSnapshot> ManifestReader<T> {
     pub fn latest(&self) -> SnapshotRead<T> {
-        SnapshotRead {
-            snapshot: self.shared.current.load_full(),
-            currentness: self.shared.status.currentness(),
+        let snapshot = self.shared.current.load_full();
+        self.read_snapshot(snapshot)
+    }
+
+    fn read_snapshot(&self, snapshot: Arc<T>) -> SnapshotRead<T> {
+        let mut currentness = self.shared.status.currentness();
+        if currentness == SnapshotCurrentness::Current {
+            let settled = self.shared.status.settled_revision();
+            let published = snapshot.revision();
+            if published < settled {
+                currentness = SnapshotCurrentness::Stale(StaleReason::PublicationPending {
+                    settled,
+                    published,
+                });
+            }
         }
+        SnapshotRead {
+            snapshot,
+            currentness,
+        }
+    }
+
+    #[cfg(test)]
+    fn latest_after_snapshot_load(&self, after_load: impl FnOnce()) -> SnapshotRead<T> {
+        let snapshot = self.shared.current.load_full();
+        after_load();
+        self.read_snapshot(snapshot)
     }
 
     pub fn try_current(&self) -> Result<Arc<T>, CurrentDataError> {
@@ -110,8 +133,9 @@ impl<T: ContentSnapshot> ManifestReader<T> {
 mod tests {
     use super::*;
     use crate::content_snapshot::{
-        AudioSnapshotMetadata, ContentMutation, SessionContentEpoch, StaleReason,
+        AudioSnapshotMetadata, ContentMutation, MidiSnapshotMetadata, SessionContentEpoch,
     };
+    use crate::MidiEvent;
 
     fn audio(revision: u64, samples: &[f32]) -> AudioContentSnapshot {
         AudioContentSnapshot::new(
@@ -123,7 +147,63 @@ mod tests {
         )
     }
 
-    #[test]
+    fn midi(revision: u64, events: &[MidiEvent]) -> MidiContentSnapshot {
+        MidiContentSnapshot::new(
+            ContentRevision(revision),
+            MidiSnapshotMetadata { length: 32 },
+            Arc::from([Arc::<[MidiEvent]>::from(events)]),
+        )
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn audio_snapshot_loaded_before_publication_is_not_reported_current() {
+        let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
+        let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));
+        assert!(status.begin_mutation(ContentMutation::Loading));
+        let revision = status.next_revision();
+        status.finish_mutation(revision);
+
+        let read = reader.latest_after_snapshot_load(|| publisher.publish(audio(1, &[1.0])));
+
+        assert!(read.snapshot.contiguous().is_empty());
+        assert_eq!(
+            read.currentness,
+            SnapshotCurrentness::Stale(StaleReason::PublicationPending {
+                settled: revision,
+                published: ContentRevision(0),
+            })
+        );
+        assert_eq!(reader.try_current().unwrap().contiguous(), vec![1.0]);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn midi_snapshot_loaded_before_publication_is_not_reported_current() {
+        let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
+        let event = MidiEvent {
+            time: 4,
+            data: vec![0x90, 60, 100],
+        };
+        let (publisher, reader) = manifest_pair(midi(0, &[]), Arc::clone(&status));
+        assert!(status.begin_mutation(ContentMutation::Loading));
+        let revision = status.next_revision();
+        status.finish_mutation(revision);
+
+        let read = reader.latest_after_snapshot_load(|| {
+            publisher.publish(midi(1, std::slice::from_ref(&event)))
+        });
+
+        assert!(read.snapshot.contiguous().is_empty());
+        assert_eq!(
+            read.currentness,
+            SnapshotCurrentness::Stale(StaleReason::PublicationPending {
+                settled: revision,
+                published: ContentRevision(0),
+            })
+        );
+        assert_eq!(reader.try_current().unwrap().contiguous(), vec![event]);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn latest_retains_a_complete_older_manifest_during_mutation() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));
@@ -139,7 +219,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn acknowledging_a_delivered_revision_does_not_hide_a_newer_one() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));
@@ -152,7 +232,7 @@ mod tests {
         assert!(reader.is_dirty());
     }
 
-    #[test]
+    #[tracy_nextest_capture::tracy_capture_test]
     fn exact_read_requires_the_settled_revision_to_be_published() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));

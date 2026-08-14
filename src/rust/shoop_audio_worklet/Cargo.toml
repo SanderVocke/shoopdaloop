@@ -12,6 +12,7 @@ shoop_backend = { path = "../shoop_backend" }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+tracy-nextest-capture = { workspace = true }
 assert_no_alloc = { workspace = true }
 
 [lints]

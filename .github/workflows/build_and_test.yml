@@ -8,6 +8,12 @@ on:
     branches: ["master"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+    inputs:
+      tracy_failure_canary:
+        description: Run the intentional nextest failure-capture canary
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "0 2 * * *"
 
@@ -21,8 +27,93 @@ concurrency:
 env:
   RUST_BACKTRACE: "1"
   PIP_BREAK_SYSTEM_PACKAGES: "1"
+  # Enable coarse and detailed engine events in every native nextest capture.
+  SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
+  rust_coverage:
+    name: Rust coverage (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust stable with coverage tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.116
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential libasound2-dev libfluidsynth-dev libgl1-mesa-dev libgtk-3-dev \
+            libgtk2.0-dev libjack-jackd2-dev liblo-dev libmagic-dev libpulse-dev \
+            libsndfile1-dev libx11-dev libxcb-icccm4-dev libxcb-image0-dev \
+            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
+            libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev
+
+      - name: Prepare prebuilt embedded Tracy native library
+        shell: bash
+        run: |
+          asset=tracy-embedded-native-linux-x86_64.tar.gz
+          root="$RUNNER_TEMP/tracy-embedded-native"
+          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0
+          rm -rf "$root"
+          mkdir -p "$root/download" "$root/extracted"
+          curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
+          curl -L --fail --retry 3 "$base/SHA256SUMS" -o "$root/download/SHA256SUMS"
+          python3 - "$root/download" "$asset" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          asset = sys.argv[2]
+          matches = [
+              line.split()[0]
+              for line in (root / "SHA256SUMS").read_text().splitlines()
+              if line.endswith(f"  {asset}")
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one checksum for {asset}, found {len(matches)}")
+          actual = hashlib.sha256((root / asset).read_bytes()).hexdigest()
+          if actual != matches[0]:
+              raise SystemExit(f"SHA-256 mismatch for {asset}: {actual} != {matches[0]}")
+          PY
+          tar -xzf "$root/download/$asset" -C "$root/extracted"
+          test -f "$root/extracted/tracy-embedded-native/manifest.txt"
+          echo "TRACY_CLIENT_SYS_PREBUILT_DIR=$root/extracted/tracy-embedded-native" >> "$GITHUB_ENV"
+
+      - name: Generate Rust coverage
+        env:
+          SHOOP_ALLOW_MISSING_BACKENDS: 1
+        run: >-
+          cargo llvm-cov nextest --locked --workspace
+          --features shoop_engine/app_backend --profile ci
+          --lcov --output-path lcov.info
+
+      - name: Publish Rust coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          disable_search: true
+          fail_ci_if_error: true
+          flags: rust
+
   build_and_test:
     name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
     runs-on: ${{ matrix.os }}
@@ -47,7 +138,7 @@ jobs:
             binary: target/release/shoopdaloop
             artifact: shoopdaloop-linux-x86_64-release.tar.gz
           - target: windows
-            os: windows-2022
+            os: windows-2025
             arch: x86_64
             profile: debug
             cargo_args: ""
@@ -55,7 +146,7 @@ jobs:
             binary: target/debug/shoopdaloop.exe
             artifact: shoopdaloop-windows-x86_64-debug.zip
           - target: windows
-            os: windows-2022
+            os: windows-2025
             arch: x86_64
             profile: release
             cargo_args: --release
@@ -126,6 +217,16 @@ jobs:
           python3 --version
           if [ "${{ matrix.target }}" = "web" ]; then trunk --version; fi
 
+      - name: Install cargo-nextest
+        if: env.ACT != 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.116
+
+      - name: Check local cargo-nextest prerequisite
+        if: env.ACT == 'true'
+        run: cargo nextest --version
+
       - name: Install Linux build dependencies
         if: matrix.target == 'linux' && env.ACT != 'true'
         run: |
@@ -149,6 +250,68 @@ jobs:
             cargo install --locked trunk --version 0.21.14
           fi
           trunk --version
+
+      - name: Prepare prebuilt embedded Tracy native library on Unix
+        if: matrix.target != 'windows'
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            linux|web) asset=tracy-embedded-native-linux-x86_64.tar.gz ;;
+            macos) asset=tracy-embedded-native-macos-arm64.tar.gz ;;
+            *) exit 1 ;;
+          esac
+          root="$RUNNER_TEMP/tracy-embedded-native"
+          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0
+          rm -rf "$root"
+          mkdir -p "$root/download" "$root/extracted"
+          curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
+          curl -L --fail --retry 3 "$base/SHA256SUMS" -o "$root/download/SHA256SUMS"
+          python3 - "$root/download" "$asset" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          asset = sys.argv[2]
+          matches = [
+              line.split()[0]
+              for line in (root / "SHA256SUMS").read_text().splitlines()
+              if line.endswith(f"  {asset}")
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one checksum for {asset}, found {len(matches)}")
+          actual = hashlib.sha256((root / asset).read_bytes()).hexdigest()
+          if actual != matches[0]:
+              raise SystemExit(f"SHA-256 mismatch for {asset}: {actual} != {matches[0]}")
+          PY
+          tar -xzf "$root/download/$asset" -C "$root/extracted"
+          test -f "$root/extracted/tracy-embedded-native/manifest.txt"
+          echo "TRACY_CLIENT_SYS_PREBUILT_DIR=$root/extracted/tracy-embedded-native" >> "$GITHUB_ENV"
+
+      - name: Prepare prebuilt embedded Tracy native library on Windows
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $Asset = "tracy-embedded-native-windows-x86_64.zip"
+          $Root = Join-Path $env:RUNNER_TEMP "tracy-embedded-native"
+          $Download = Join-Path $Root "download"
+          $Extracted = Join-Path $Root "extracted"
+          $Base = "https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0"
+          Remove-Item $Root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $Download, $Extracted | Out-Null
+          curl.exe --fail --location --retry 3 "$Base/$Asset" --output (Join-Path $Download $Asset)
+          if ($LASTEXITCODE -ne 0) { throw "Embedded Tracy bundle download failed" }
+          curl.exe --fail --location --retry 3 "$Base/SHA256SUMS" --output (Join-Path $Download "SHA256SUMS")
+          if ($LASTEXITCODE -ne 0) { throw "Embedded Tracy checksum download failed" }
+          $Matches = @(Get-Content (Join-Path $Download "SHA256SUMS") | Where-Object { $_ -match "  $([regex]::Escape($Asset))$" })
+          if ($Matches.Count -ne 1) { throw "Expected one checksum for $Asset, found $($Matches.Count)" }
+          $Expected = ($Matches[0] -split " ")[0]
+          $Actual = (Get-FileHash (Join-Path $Download $Asset) -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($Actual -ne $Expected) { throw "SHA-256 mismatch for $Asset`: $Actual != $Expected" }
+          Expand-Archive (Join-Path $Download $Asset) $Extracted -Force
+          $Bundle = Join-Path $Extracted "tracy-embedded-native"
+          if (-not (Test-Path (Join-Path $Bundle "manifest.txt"))) { throw "Embedded Tracy manifest is missing" }
+          "TRACY_CLIENT_SYS_PREBUILT_DIR=$Bundle" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build pinned Linux Carla runtime
         if: matrix.target == 'linux'
@@ -342,6 +505,19 @@ jobs:
         run: |
           & ".\\${{ matrix.binary }}" --probe-carla-native
           if ($LASTEXITCODE -ne 0) { throw "Carla Native probe failed with exit code $LASTEXITCODE" }
+          @'
+          import subprocess
+          binary = r"${{ matrix.binary }}"
+          process = subprocess.Popen([binary, "--probe-carla-native-ui"])
+          try:
+              returncode = process.wait(timeout=30)
+          except subprocess.TimeoutExpired:
+              subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], check=False)
+              raise RuntimeError("Carla Native UI probe timed out")
+          if returncode != 0:
+              raise RuntimeError(f"Carla Native UI probe failed with exit code {returncode}")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Carla Native UI probe failed" }
 
       - name: Build web application
         if: matrix.target == 'web'
@@ -471,15 +647,18 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_ALLOW_MISSING_BACKENDS: 1
-        run: >-
-          cargo test --locked ${{ matrix.cargo_args }}
-          -p shoop_app_api
-          -p shoop_engine
-          -p shoop_backend
-          -p shoop_app
-          -p shoop_egui
-          -p shoopdaloop
-          -- --test-threads=1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        shell: bash
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo nextest run --locked ${{ matrix.cargo_args }} --profile ci \
+            -p shoop_app_api \
+            -p shoop_engine \
+            -p shoop_backend \
+            -p shoop_app \
+            -p shoop_egui \
+            -p shoopdaloop
 
       - name: Test complete retained workspace
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -487,7 +666,11 @@ jobs:
           RUSTFLAGS: -D warnings
           SHOOP_ALLOW_MISSING_BACKENDS: 1
           SHOOP_REQUIRE_CARLA_TESTS: 1
-        run: cargo test --locked --workspace --features shoop_engine/app_backend -- --test-threads=1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
 
       - name: Smoke-test Carla benchmarks
         if: matrix.target == 'linux' && matrix.profile == 'release'
@@ -503,18 +686,24 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_REQUIRE_CARLA_TESTS: 1
-        run: cargo test --locked -p shoop_engine --features carla carla_native::tests::probes_and_runs_installed_carla_when_available -- --exact --test-threads=1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        run: >-
+          cargo nextest run --locked -p shoop_engine --features carla --profile ci
+          -E 'test(=carla_native::tests::probes_and_runs_installed_carla_when_available)'
 
       - name: Run real Carla runtime and worker suites on Windows
         if: matrix.target == 'windows' && matrix.profile == 'debug'
         env:
           RUSTFLAGS: -D warnings
           SHOOP_REQUIRE_CARLA_TESTS: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
         shell: pwsh
         run: |
-          cargo test --locked -p shoop_engine --features carla carla_native::tests::probes_and_runs_installed_carla_when_available -- --exact --test-threads=1
+          cargo nextest run --locked -p shoop_engine --features carla --profile ci -E 'test(=carla_native::tests::probes_and_runs_installed_carla_when_available)'
           if ($LASTEXITCODE -ne 0) { throw "real Carla engine suite failed" }
-          cargo test --locked -p shoopdaloop --test carla_worker_entry application_worker_hosts_the_real_carla_native_runtime_when_available -- --exact --test-threads=1
+          cargo nextest run --locked -p shoopdaloop --test carla_worker_entry --profile ci -E 'test(=application_worker_hosts_the_real_carla_native_runtime_when_available)'
           if ($LASTEXITCODE -ne 0) { throw "real Carla worker suite failed" }
 
       - name: Audit native feature and dependency isolation
@@ -537,11 +726,45 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
           SHOOP_TEST_CARLA_UI: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
         run: |
           ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
-          xvfb-run -a cargo test --locked ${{ matrix.cargo_args }} -p shoop_engine --features carla carla_native::tests::shows_and_hides_carla_ui_when_opted_in -- --test-threads=1
+          xvfb-run -a cargo nextest run --locked ${{ matrix.cargo_args }} -p shoop_engine --features carla --profile ci -E 'test(=carla_native::tests::shows_and_hides_carla_ui_when_opted_in)'
           sleep 1
           ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
+
+      - name: Run intentional Tracy failure-capture canary
+        if: matrix.target == 'linux' && matrix.profile == 'debug' && inputs.tracy_failure_canary
+        env:
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-canary
+        shell: bash
+        run: |
+          rm -rf "$TRACY_NEXTEST_OUTPUT_DIR"
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          set +e
+          cargo nextest run --locked -p shoop_common --test nextest_capture_smoke \
+            --profile ci --run-ignored ignored-only \
+            -E 'test(intentional_failure_publishes_trace)' \
+            > "$RUNNER_TEMP/tracy-nextest-canary.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/tracy-nextest-canary.log"
+          test "$status" -ne 0
+          grep 'intentional Tracy nextest capture smoke failure' "$RUNNER_TEMP/tracy-nextest-canary.log"
+          mapfile -t traces < <(find "$TRACY_NEXTEST_OUTPUT_DIR" -maxdepth 1 -name '*.tracy' -type f)
+          test "${#traces[@]}" -eq 1
+          ! find "$TRACY_NEXTEST_OUTPUT_DIR" -name '*.partial' -print -quit | grep -q .
+          curl -L --fail --retry 3 \
+            -o "$RUNNER_TEMP/tracy-query" \
+            https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0/tracy-query-linux-x86_64
+          chmod +x "$RUNNER_TEMP/tracy-query"
+          "$RUNNER_TEMP/tracy-query" check "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" range "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" info "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind message \
+            --filter 'message.text=shoop\.nextest_capture\.smoke\.failure' "${traces[0]}"
 
       - name: Check formatting and tracing inventory
         if: matrix.target == 'linux' && matrix.profile == 'debug'
@@ -561,12 +784,16 @@ jobs:
         if: matrix.target == 'web'
         env:
           RUSTFLAGS: -D warnings
-        run: >-
-          cargo test --locked ${{ matrix.cargo_args }}
-          -p shoop_audio_protocol
-          -p shoop_audio_worklet
-          -p shoop_egui
-          -p shoopdaloop
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        shell: bash
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo nextest run --locked ${{ matrix.cargo_args }} --profile ci \
+            -p shoop_audio_protocol \
+            -p shoop_audio_worklet \
+            -p shoop_egui \
+            -p shoopdaloop
 
       - name: Check WebAssembly packages
         if: matrix.target == 'web'
@@ -645,3 +872,12 @@ jobs:
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         run: xvfb-run -a python3 browser_firefox_smoke.py
+
+      - name: Upload Tracy failure captures
+        if: always() && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tracy-nextest-${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/tracy-nextest-*/*.tracy
+          if-no-files-found: ignore
+          retention-days: 14
