@@ -65,6 +65,38 @@ jobs:
             libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev
 
+      - name: Prepare prebuilt embedded Tracy native library
+        shell: bash
+        run: |
+          asset=tracy-embedded-native-linux-x86_64.tar.gz
+          root="$RUNNER_TEMP/tracy-embedded-native"
+          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0
+          rm -rf "$root"
+          mkdir -p "$root/download" "$root/extracted"
+          curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
+          curl -L --fail --retry 3 "$base/SHA256SUMS" -o "$root/download/SHA256SUMS"
+          python3 - "$root/download" "$asset" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          asset = sys.argv[2]
+          matches = [
+              line.split()[0]
+              for line in (root / "SHA256SUMS").read_text().splitlines()
+              if line.endswith(f"  {asset}")
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one checksum for {asset}, found {len(matches)}")
+          actual = hashlib.sha256((root / asset).read_bytes()).hexdigest()
+          if actual != matches[0]:
+              raise SystemExit(f"SHA-256 mismatch for {asset}: {actual} != {matches[0]}")
+          PY
+          tar -xzf "$root/download/$asset" -C "$root/extracted"
+          test -f "$root/extracted/tracy-embedded-native/manifest.txt"
+          echo "TRACY_CLIENT_SYS_PREBUILT_DIR=$root/extracted/tracy-embedded-native" >> "$GITHUB_ENV"
+
       - name: Generate Rust coverage
         env:
           SHOOP_ALLOW_MISSING_BACKENDS: 1
