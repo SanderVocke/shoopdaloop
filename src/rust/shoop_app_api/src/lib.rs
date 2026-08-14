@@ -1455,6 +1455,7 @@ pub enum TinySynthFxControl {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackAction {
+    Remove,
     NameChanged(String),
     OutputGainChanged(f32),
     OutputBalanceChanged(f32),
@@ -1706,6 +1707,7 @@ impl TinySynthFxControl {
 impl TrackAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::Remove => "track.remove",
             Self::NameChanged(_) => "track.name",
             Self::OutputGainChanged(_) => "track.output_gain",
             Self::OutputBalanceChanged(_) => "track.output_balance",

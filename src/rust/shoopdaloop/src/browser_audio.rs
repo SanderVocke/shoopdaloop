@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1006,9 +1006,19 @@ struct LoopContentReplaceAssembly {
     complete: bool,
 }
 
+#[derive(Default)]
+struct BrowserTrackResources {
+    loops: Vec<BackendLoopId>,
+    ports: Vec<BackendPortId>,
+}
+
 pub struct WebAudioBackend {
     transport: Rc<RefCell<Transport>>,
     snapshot: BackendSnapshot,
+    track_resources: BTreeMap<BackendTrackId, BrowserTrackResources>,
+    removed_tracks: BTreeSet<BackendTrackId>,
+    removed_loops: BTreeSet<BackendLoopId>,
+    removed_ports: BTreeSet<BackendPortId>,
     next_track_id: u64,
     next_loop_id: u64,
     next_composite_id: u64,
@@ -1055,6 +1065,10 @@ impl WebAudioBackend {
                     },
                     ..Default::default()
                 },
+                track_resources: BTreeMap::new(),
+                removed_tracks: BTreeSet::new(),
+                removed_loops: BTreeSet::new(),
+                removed_ports: BTreeSet::new(),
                 next_track_id: 1,
                 next_loop_id: 1,
                 next_composite_id: 1,
@@ -1465,6 +1479,10 @@ impl WebAudioBackend {
         self.next_composite_id = 1;
         self.snapshot.connections.application_ports.clear();
         self.snapshot.connections.confirmed_links.clear();
+        self.track_resources.clear();
+        self.removed_tracks.clear();
+        self.removed_loops.clear();
+        self.removed_ports.clear();
         self.waveforms.clear();
         self.midi_data.clear();
         for source_track in &session.tracks {
@@ -1474,6 +1492,13 @@ impl WebAudioBackend {
             self.snapshot
                 .tracks
                 .insert(created.track_id, source_track.state.clone());
+            self.track_resources.insert(
+                created.track_id,
+                BrowserTrackResources {
+                    loops: created.loops.clone(),
+                    ports: created.ports.iter().map(|port| port.id).collect(),
+                },
+            );
             for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
                 self.snapshot.loops.insert(
                     *loop_id,
@@ -1559,6 +1584,11 @@ impl WebAudioBackend {
         self.snapshot.connections.application_ports = wire
             .application_ports
             .into_iter()
+            .filter(|port| {
+                !self
+                    .removed_ports
+                    .contains(&BackendPortId::from_raw(port.id))
+            })
             .map(|port| {
                 let id = BackendPortId::from_raw(port.id);
                 (
@@ -1597,6 +1627,11 @@ impl WebAudioBackend {
         self.snapshot.connections.confirmed_links = wire
             .confirmed_links
             .into_iter()
+            .filter(|link| {
+                !self
+                    .removed_ports
+                    .contains(&BackendPortId::from_raw(link.application_port_id))
+            })
             .map(|link| BackendConfirmedLink {
                 application_port_id: BackendPortId::from_raw(link.application_port_id),
                 host_port_id: link.host_port_id,
@@ -1606,6 +1641,11 @@ impl WebAudioBackend {
         self.snapshot.tracks.extend(
             wire.tracks
                 .into_iter()
+                .filter(|track| {
+                    !self
+                        .removed_tracks
+                        .contains(&BackendTrackId::from_raw(track.id))
+                })
                 .map(|track| {
                     (
                         BackendTrackId::from_raw(track.id),
@@ -1693,6 +1733,11 @@ impl WebAudioBackend {
         self.snapshot.loops.extend(
             wire.loops
                 .into_iter()
+                .filter(|loop_| {
+                    !self
+                        .removed_loops
+                        .contains(&BackendLoopId::from_raw(loop_.id))
+                })
                 .map(|loop_| {
                     (
                         BackendLoopId::from_raw(loop_.id),
@@ -1967,6 +2012,13 @@ impl Backend for WebAudioBackend {
                 }
                 self.snapshot.connections.revision =
                     self.snapshot.connections.revision.wrapping_add(1);
+                self.track_resources.insert(
+                    track_id,
+                    BrowserTrackResources {
+                        loops: loops.clone(),
+                        ports: ports.iter().map(|port| port.id).collect(),
+                    },
+                );
                 for loop_id in &loops {
                     self.snapshot.loops.insert(
                         *loop_id,
@@ -2127,6 +2179,13 @@ impl Backend for WebAudioBackend {
                 .insert(port.id, port.clone());
         }
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
+        self.track_resources.insert(
+            track_id,
+            BrowserTrackResources {
+                loops: loops.clone(),
+                ports: ports.iter().map(|port| port.id).collect(),
+            },
+        );
         for loop_id in &loops {
             self.snapshot.loops.insert(
                 *loop_id,
@@ -2146,6 +2205,37 @@ impl Backend for WebAudioBackend {
         })
     }
 
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        if !self.snapshot.tracks.contains_key(&track_id) {
+            return Ok(());
+        }
+        self.submit(Command::RemoveTrack {
+            track_id: track_id.raw(),
+        })?;
+        self.snapshot.tracks.remove(&track_id);
+        self.removed_tracks.insert(track_id);
+        if let Some(resources) = self.track_resources.remove(&track_id) {
+            for loop_id in resources.loops {
+                self.removed_loops.insert(loop_id);
+                self.snapshot.loops.remove(&loop_id);
+                self.waveform_revisions.remove(&loop_id);
+                self.waveforms.remove(&loop_id);
+                self.midi_data_generations.remove(&loop_id);
+                self.midi_data.remove(&loop_id);
+            }
+            for port_id in resources.ports {
+                self.removed_ports.insert(port_id);
+                self.snapshot.connections.application_ports.remove(&port_id);
+                self.snapshot
+                    .connections
+                    .confirmed_links
+                    .retain(|link| link.application_port_id != port_id);
+            }
+            self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
+        }
+        Ok(())
+    }
+
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
         if !self.snapshot.tracks.contains_key(&track_id) {
             return Err(anyhow!("unknown browser backend track {track_id:?}"));
@@ -2156,6 +2246,11 @@ impl Backend for WebAudioBackend {
             expected_loop_id: loop_id.raw(),
         })?;
         self.next_loop_id = self.next_loop_id.saturating_add(1);
+        self.track_resources
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("browser track resources are missing"))?
+            .loops
+            .push(loop_id);
         let track = &self.snapshot.tracks[&track_id];
         self.snapshot.loops.insert(
             loop_id,

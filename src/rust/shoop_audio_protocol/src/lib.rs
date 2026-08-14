@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 11;
+pub const PROTOCOL_VERSION: u16 = 12;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -56,6 +56,9 @@ pub enum Command {
         expected_loop_ids: Vec<u64>,
         port_name_base: String,
         topology: WireTrackTopology,
+    },
+    RemoveTrack {
+        track_id: u64,
     },
     AddLoop {
         track_id: u64,

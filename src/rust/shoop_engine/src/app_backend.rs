@@ -2187,6 +2187,86 @@ impl BackendSession {
             desired_play_after_record: Arc::new(AtomicBool::new(false)),
         })
     }
+    pub fn remove_loop(&self, loop_: &Loop) -> Result<CommandSequence> {
+        if !Arc::ptr_eq(&self.shared, &loop_.shared) {
+            return Err(anyhow!("loop belongs to another session"));
+        }
+        let control = Arc::clone(&loop_.control);
+        Ok(self.shared.send_topology(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = session.remove_loop(index);
+            }
+            control.mark_closed();
+        })?)
+    }
+
+    pub fn remove_audio_port(&self, port: &AudioPort) -> Result<CommandSequence> {
+        if !Arc::ptr_eq(&self.shared, &port.shared) {
+            return Err(anyhow!("audio port belongs to another session"));
+        }
+        let control = Arc::clone(&port.control);
+        Ok(self.shared.send_topology(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = session.remove_port(index);
+            }
+            control.mark_closed();
+        })?)
+    }
+
+    pub fn remove_midi_port(&self, port: &MidiPort) -> Result<CommandSequence> {
+        if !Arc::ptr_eq(&self.shared, &port.shared) {
+            return Err(anyhow!("MIDI port belongs to another session"));
+        }
+        let control = Arc::clone(&port.control);
+        Ok(self.shared.send_topology(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = session.remove_port(index);
+            }
+            control.mark_closed();
+        })?)
+    }
+
+    pub fn remove_processor(&self, title: &str) -> Result<CommandSequence> {
+        let title = title.to_owned();
+        Ok(self.shared.send_topology(move |session| {
+            session.remove_processor(&title);
+        })?)
+    }
+
+    pub fn remove_fx_chain(&self, chain: &FXChain) -> Result<CommandSequence> {
+        if !Arc::ptr_eq(&self.shared, &chain.shared) {
+            return Err(anyhow!("FX chain belongs to another session"));
+        }
+        let title = chain.title.clone();
+        let audio = chain
+            .audio_inputs
+            .iter()
+            .chain(&chain.audio_outputs)
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let midi = chain
+            .midi_inputs
+            .iter()
+            .chain(&chain.midi_outputs)
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        Ok(self.shared.send_topology(move |session| {
+            session.remove_processor(&title);
+            for control in &audio {
+                if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                    let _ = session.remove_port(index);
+                }
+                control.mark_closed();
+            }
+            for control in &midi {
+                if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                    let _ = session.remove_port(index);
+                }
+                control.mark_closed();
+            }
+        })?)
+    }
+
     pub fn primitive_sync_sources(&self) -> Vec<Option<usize>> {
         self.primitive_sync_sources_if_ready().unwrap_or_else(|| {
             self.shared
@@ -3343,6 +3423,66 @@ impl AudioDriver {
         }
         Ok(())
     }
+    pub fn unregister_audio_port(&self, port: &AudioPort) -> Result<()> {
+        let Some(jack) = self.jack() else {
+            return Ok(());
+        };
+        let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
+        let registered = {
+            let mut ports = jack.ports.lock().unwrap_or_else(|error| error.into_inner());
+            ports
+                .iter()
+                .position(|registered| match registered {
+                    JackRegisteredPort::AudioIn { control, .. }
+                    | JackRegisteredPort::AudioOut { control, .. } => {
+                        Arc::ptr_eq(control, &port.control)
+                    }
+                    _ => false,
+                })
+                .map(|index| ports.remove(index))
+        };
+        match registered {
+            Some(JackRegisteredPort::AudioIn { jack: port, .. }) => {
+                jack.client().unregister_port(port)?;
+            }
+            Some(JackRegisteredPort::AudioOut { jack: port, .. }) => {
+                jack.client().unregister_port(port)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn unregister_midi_port(&self, port: &MidiPort) -> Result<()> {
+        let Some(jack) = self.jack() else {
+            return Ok(());
+        };
+        let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
+        let registered = {
+            let mut ports = jack.ports.lock().unwrap_or_else(|error| error.into_inner());
+            ports
+                .iter()
+                .position(|registered| match registered {
+                    JackRegisteredPort::MidiIn { control, .. }
+                    | JackRegisteredPort::MidiOut { control, .. } => {
+                        Arc::ptr_eq(control, &port.control)
+                    }
+                    _ => false,
+                })
+                .map(|index| ports.remove(index))
+        };
+        match registered {
+            Some(JackRegisteredPort::MidiIn { jack: port, .. }) => {
+                jack.client().unregister_port(port)?;
+            }
+            Some(JackRegisteredPort::MidiOut { jack: port, .. }) => {
+                jack.client().unregister_port(port)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn register_midi_port(
         &self,
         name: &str,

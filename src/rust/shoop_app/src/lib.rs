@@ -3389,12 +3389,64 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn remove_track(&mut self, backend: &mut dyn Backend, track_id: TrackId) -> Result<(), String> {
+        let index = self
+            .tracks
+            .iter()
+            .position(|track| track.id == track_id && !track.is_sync)
+            .ok_or_else(|| format!("stale, unknown, or sync track {track_id}"))?;
+        let loop_ids = self.tracks[index]
+            .loops
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let referenced = self.loops.values().any(|model| {
+            !loop_ids.contains(&model.id)
+                && model.composite.as_ref().is_some_and(|composite| {
+                    composite
+                        .playlists
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .any(|event| loop_ids.contains(&LoopId::from_raw(event.loop_id)))
+                })
+        });
+        if referenced {
+            return Err(format!(
+                "cannot remove track {track_id} while its loops are used by a composite"
+            ));
+        }
+        for loop_id in &loop_ids {
+            if let Some(composite_id) = self.loops[loop_id].backend_composite {
+                backend
+                    .remove_composite_loop(composite_id)
+                    .map_err(|error| format!("could not remove track composite: {error}"))?;
+            }
+        }
+        let track = &self.tracks[index];
+        backend
+            .remove_track(track.backend_id)
+            .map_err(|error| format!("could not remove track {track_id}: {error}"))?;
+        for loop_id in &loop_ids {
+            self.script_composition_playback.remove(loop_id);
+            self.loops.remove(loop_id);
+        }
+        for port_id in track.port_ids.iter() {
+            self.connection_ports.remove(port_id);
+        }
+        self.tracks.remove(index);
+        self.refresh_selected_media(backend)
+    }
+
     fn handle_track_action(
         &mut self,
         backend: &mut dyn Backend,
         track_id: TrackId,
         action: TrackAction,
     ) -> Result<(), String> {
+        if action == TrackAction::Remove {
+            return self.remove_track(backend, track_id);
+        }
         if let TrackAction::InputMonitoringChanged {
             enabled,
             respect_auto_mute,
@@ -3417,6 +3469,7 @@ impl ApplicationModel {
             return Ok(());
         }
         let backend_action = match action {
+            TrackAction::Remove => unreachable!(),
             TrackAction::NameChanged(name) => {
                 track.name = name;
                 return Ok(());
@@ -7483,6 +7536,74 @@ mod tests {
         assert!(snapshot.tracks[0].loops[0].sync);
         assert!(snapshot.tracks[0].id.is_valid());
         assert!(snapshot.tracks[0].loops[0].id.is_valid());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn removing_and_recreating_a_track_reuses_its_port_names_without_stale_resources() {
+        let mut backend = EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let spec = DirectTrackSpec {
+            name: "Reusable Track".to_owned(),
+            audio_channels: 2,
+            midi: true,
+        };
+        model.add_track(&mut backend, spec.clone()).unwrap();
+        let track = model.tracks.last().unwrap();
+        let track_id = track.id;
+        let backend_track_id = track.backend_id;
+        let port_name_base = track.port_name_base.clone();
+        let old_loop_ids = track
+            .loops
+            .iter()
+            .map(|id| model.loops[id].backend_id)
+            .collect::<Vec<_>>();
+        let old_port_ids = track
+            .port_ids
+            .iter()
+            .map(|id| model.connection_ports[id].backend_id)
+            .collect::<Vec<_>>();
+        let before = backend.poll().unwrap();
+        let old_port_names = old_port_ids
+            .iter()
+            .map(|id| before.connections.application_ports[id].name.clone())
+            .collect::<Vec<_>>();
+
+        model
+            .handle_track_action(&mut backend, track_id, TrackAction::Remove)
+            .unwrap();
+        let removed = backend.poll().unwrap();
+        assert!(!removed.tracks.contains_key(&backend_track_id));
+        assert!(old_loop_ids
+            .iter()
+            .all(|loop_id| !removed.loops.contains_key(loop_id)));
+        assert!(old_port_ids
+            .iter()
+            .all(|port_id| !removed.connections.application_ports.contains_key(port_id)));
+        assert!(!model.tracks.iter().any(|track| track.id == track_id));
+
+        model.add_track(&mut backend, spec).unwrap();
+        let recreated = model.tracks.last().unwrap();
+        assert_eq!(recreated.port_name_base, port_name_base);
+        let new_port_ids = recreated
+            .port_ids
+            .iter()
+            .map(|id| model.connection_ports[id].backend_id)
+            .collect::<Vec<_>>();
+        assert!(new_port_ids
+            .iter()
+            .all(|port_id| !old_port_ids.contains(port_id)));
+        let snapshot = backend.poll().unwrap();
+        let new_port_names = new_port_ids
+            .iter()
+            .map(|id| snapshot.connections.application_ports[id].name.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(new_port_names, old_port_names);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
