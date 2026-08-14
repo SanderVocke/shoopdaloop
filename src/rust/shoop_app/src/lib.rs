@@ -3496,6 +3496,7 @@ impl ApplicationModel {
                     show_gain: audio_channels > 0,
                     has_audio: audio_channels > 0,
                     stereo: audio_channels == 2,
+                    empty: true,
                     ..Default::default()
                 },
                 length: 0,
@@ -3712,7 +3713,219 @@ impl ApplicationModel {
                 model.state.selected = true;
                 Ok(())
             }
+            LoopAction::Duplicate => self.duplicate_loop_below(backend, track_id, loop_id),
+            LoopAction::DuplicateTo(target) => {
+                self.duplicate_loop_into(backend, track_id, loop_id, target)
+            }
+            LoopAction::SwapWith(target) => self.swap_loops(track_id, loop_id, target),
         }
+    }
+
+    fn duplicate_loop_below(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+        source: LoopId,
+    ) -> Result<(), String> {
+        let track_index = self
+            .tracks
+            .iter()
+            .position(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        let source_index = self.tracks[track_index]
+            .loops
+            .iter()
+            .position(|id| *id == source)
+            .ok_or_else(|| format!("loop {source} does not belong to track {track_id}"))?;
+        let target = self.tracks[track_index].loops[source_index + 1..]
+            .iter()
+            .copied()
+            .find(|id| {
+                self.loops
+                    .get(id)
+                    .is_some_and(|model| model.state.empty && model.composite.is_none())
+            });
+        let target = match target {
+            Some(target) => target,
+            None => {
+                self.add_aligned_loop_row(backend, track_id)?;
+                *self.tracks[track_index]
+                    .loops
+                    .last()
+                    .expect("adding a row adds a loop to its target track")
+            }
+        };
+        self.duplicate_loop_into(backend, track_id, source, target)
+    }
+
+    fn duplicate_loop_into(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+        source: LoopId,
+        target: LoopId,
+    ) -> Result<(), String> {
+        if source == target {
+            return Err("a loop cannot be duplicated onto itself".to_owned());
+        }
+        let track = self
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        if !track.loops.contains(&source) || !track.loops.contains(&target) {
+            return Err(format!(
+                "loops {source} and {target} must belong to track {track_id}"
+            ));
+        }
+        if self.loops[&source].composite.is_some()
+            && self.composite_references(source, target, &mut BTreeSet::new())
+        {
+            return Err(format!(
+                "duplicating loop {source} onto {target} would create a cycle"
+            ));
+        }
+
+        let source_backend = self.loops[&source].backend_id;
+        let target_backend = self.loops[&target].backend_id;
+        let source_name = self.loops[&source].name.clone();
+        let source_state = self.loops[&source].state.clone();
+        let source_length = self.loops[&source].length;
+        let source_audio_data = self.loops[&source].audio_data.clone();
+        let source_midi_data = self.loops[&source].midi_data.clone();
+        let source_script_composition = self.loops[&source].script_composition.clone();
+        let source_composite = self.loops[&source].composite.clone();
+        let source_repeat_sync = self.loops[&source].repeat_sync;
+        let source_recorded_fx_state = self.loops[&source].recorded_fx_state.clone();
+        let previous_backend_composite = self.loops[&target].backend_composite;
+
+        let backend_composite = if let Some(composite) = &source_composite {
+            let created = self.create_and_configure_backend_composite(backend, composite)?;
+            if let Err(error) = backend.clear_loop(target_backend) {
+                if let Some(id) = created {
+                    let _ = backend.remove_composite_loop(id);
+                }
+                return Err(format!(
+                    "could not clear duplicate target {target}: {error}"
+                ));
+            }
+            created
+        } else {
+            let content = backend
+                .capture_session()
+                .map_err(|error| format!("could not capture loop {source}: {error}"))?
+                .tracks
+                .into_iter()
+                .flat_map(|track| track.loops)
+                .find(|content| content.source_id == source_backend.raw())
+                .ok_or_else(|| format!("backend content for loop {source} is unavailable"))?;
+            let gain = content.gain;
+            let balance = content.balance;
+            let update = BackendLoopContentUpdate {
+                audio: content
+                    .audio
+                    .into_iter()
+                    .enumerate()
+                    .map(|(channel, content)| BackendAudioChannelUpdate {
+                        channel,
+                        samples: content.samples,
+                        start_offset: Some(content.start_offset),
+                        preplay: Some(content.preplay),
+                    })
+                    .collect(),
+                midi: content
+                    .midi
+                    .into_iter()
+                    .enumerate()
+                    .map(|(channel, content)| BackendMidiChannelUpdate {
+                        channel,
+                        length: content.length,
+                        start_state: content.start_state,
+                        events: content.events,
+                        start_offset: Some(content.start_offset),
+                        preplay: Some(content.preplay),
+                    })
+                    .collect(),
+                length: Some(content.length),
+            };
+            if update.audio.is_empty() && update.midi.is_empty() {
+                backend.clear_loop(target_backend).map_err(|error| {
+                    format!("could not clear duplicate target {target}: {error}")
+                })?;
+            } else {
+                backend
+                    .replace_loop_content(target_backend, &update)
+                    .map_err(|error| format!("could not duplicate loop content: {error}"))?;
+            }
+            backend
+                .set_loop_gain(target_backend, gain)
+                .map_err(|error| format!("could not duplicate loop gain: {error}"))?;
+            backend
+                .set_loop_balance(target_backend, balance)
+                .map_err(|error| format!("could not duplicate loop balance: {error}"))?;
+            None
+        };
+        if let Some(id) = previous_backend_composite {
+            backend
+                .remove_composite_loop(id)
+                .map_err(|error| format!("could not replace duplicate target: {error}"))?;
+        }
+
+        self.script_composition_playback.remove(&target);
+        let signature = source_composite
+            .as_ref()
+            .map(|composite| self.composite_length_signature(composite))
+            .unwrap_or_default();
+        let model = self.loops.get_mut(&target).expect("target was checked");
+        model.name = source_name.clone();
+        model.state = source_state;
+        model.state.id = target;
+        model.state.name = source_name;
+        model.state.mode = LoopMode::Stopped;
+        model.state.position = 0.0;
+        model.state.next_mode = LoopMode::Unknown;
+        model.state.next_transition_delay = None;
+        model.state.selected = false;
+        model.state.targeted = false;
+        model.length = source_length;
+        model.position = 0;
+        model.audio_data = source_audio_data;
+        model.midi_data = source_midi_data;
+        model.script_composition = source_script_composition;
+        model.composite = source_composite;
+        model.backend_composite = backend_composite;
+        model.backend_composite_signature = signature;
+        model.repeat_sync = source_repeat_sync;
+        model.recorded_fx_state = source_recorded_fx_state;
+        Ok(())
+    }
+
+    fn swap_loops(
+        &mut self,
+        track_id: TrackId,
+        source: LoopId,
+        target: LoopId,
+    ) -> Result<(), String> {
+        if source == target {
+            return Err("a loop cannot be swapped with itself".to_owned());
+        }
+        let track = self
+            .tracks
+            .iter_mut()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        let source_index = track
+            .loops
+            .iter()
+            .position(|id| *id == source)
+            .ok_or_else(|| format!("loop {source} does not belong to track {track_id}"))?;
+        let target_index = track
+            .loops
+            .iter()
+            .position(|id| *id == target)
+            .ok_or_else(|| format!("loop {target} does not belong to track {track_id}"))?;
+        track.loops.swap(source_index, target_index);
+        Ok(())
     }
 
     fn composite_length_signature(&self, composite: &CompositeDocument) -> Vec<(LoopId, u32)> {
@@ -7503,6 +7716,143 @@ mod tests {
             snapshot.tracks[0].loops[0].name == "Count-in"
         });
         assert_eq!(snapshot.tracks[0].loops[0].name, "Count-in");
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn duplicate_uses_the_first_empty_slot_below_and_drop_actions_target_and_swap() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: true,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        let source = model.tracks[1].loops[1];
+        let occupied = model.tracks[1].loops[2];
+        let duplicate_target = model.tracks[1].loops[3];
+        let source_backend = model.loops[&source].backend_id;
+        let occupied_backend = model.loops[&occupied].backend_id;
+        let duplicate_backend = model.loops[&duplicate_target].backend_id;
+        let source_update = BackendLoopContentUpdate {
+            audio: vec![BackendAudioChannelUpdate {
+                channel: 0,
+                samples: vec![0.25, -0.5, 0.75, -1.0],
+                start_offset: Some(-2),
+                preplay: Some(3),
+            }],
+            midi: vec![BackendMidiChannelUpdate {
+                channel: 0,
+                length: 4,
+                start_state: vec![vec![0xB0, 7, 99]],
+                events: vec![BackendMidiEvent {
+                    time: 2,
+                    data: vec![0x90, 64, 100],
+                }],
+                start_offset: Some(-1),
+                preplay: Some(2),
+            }],
+            length: Some(4),
+        };
+        backend
+            .replace_loop_content(source_backend, &source_update)
+            .unwrap();
+        backend.set_loop_gain(source_backend, 0.42).unwrap();
+        backend.set_loop_balance(source_backend, -0.25).unwrap();
+        backend
+            .replace_loop_content(
+                occupied_backend,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![1.0, 1.0],
+                        start_offset: Some(0),
+                        preplay: Some(0),
+                    }],
+                    midi: Vec::new(),
+                    length: Some(2),
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                source,
+                LoopAction::NameChanged("Source".to_owned()),
+            )
+            .unwrap();
+
+        model
+            .handle_loop_action(&mut backend, track_id, source, LoopAction::Duplicate)
+            .unwrap();
+        assert!(model.loops[&model.tracks[1].loops[0]].state.empty);
+        assert_eq!(model.loops[&occupied].length, 2);
+        assert_eq!(model.loops[&duplicate_target].name, "Source");
+        assert_eq!(model.loops[&duplicate_target].length, 4);
+        let captured = backend.capture_session().unwrap();
+        let track = captured
+            .tracks
+            .iter()
+            .find(|track| {
+                track
+                    .loops
+                    .iter()
+                    .any(|loop_| loop_.source_id == source_backend.raw())
+            })
+            .unwrap();
+        let source_content = track
+            .loops
+            .iter()
+            .find(|loop_| loop_.source_id == source_backend.raw())
+            .unwrap();
+        let duplicate_content = track
+            .loops
+            .iter()
+            .find(|loop_| loop_.source_id == duplicate_backend.raw())
+            .unwrap();
+        assert_eq!(duplicate_content.length, source_content.length);
+        assert_eq!(duplicate_content.gain, source_content.gain);
+        assert_eq!(duplicate_content.balance, source_content.balance);
+        assert_eq!(duplicate_content.audio, source_content.audio);
+        assert_eq!(duplicate_content.midi, source_content.midi);
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                source,
+                LoopAction::DuplicateTo(occupied),
+            )
+            .unwrap();
+        assert_eq!(model.loops[&occupied].name, "Source");
+        assert_eq!(model.loops[&occupied].length, 4);
+
+        let before = model.tracks[1].loops.clone();
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                source,
+                LoopAction::SwapWith(duplicate_target),
+            )
+            .unwrap();
+        assert_eq!(model.tracks[1].loops[1], duplicate_target);
+        assert_eq!(model.tracks[1].loops[3], source);
+        assert_eq!(model.tracks[1].loops[0], before[0]);
+        assert_eq!(model.tracks[1].loops[2], before[2]);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

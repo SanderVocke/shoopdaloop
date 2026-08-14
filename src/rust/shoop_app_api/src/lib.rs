@@ -1429,6 +1429,9 @@ pub enum LoopAction {
     BalanceChanged(f32),
     RestoreRecordedFxState,
     ConvertToComposite,
+    Duplicate,
+    DuplicateTo(LoopId),
+    SwapWith(LoopId),
 }
 
 pub type LoopWidgetAction = LoopAction;
@@ -1676,6 +1679,9 @@ impl LoopAction {
             Self::BalanceChanged(_) => "loop.balance",
             Self::RestoreRecordedFxState => "loop.restore_recorded_fx",
             Self::ConvertToComposite => "loop.convert_to_composite",
+            Self::Duplicate => "loop.duplicate",
+            Self::DuplicateTo(_) => "loop.duplicate_to",
+            Self::SwapWith(_) => "loop.swap_with",
         }
     }
 }
