@@ -4474,15 +4474,15 @@ dependencies = [
 [[package]]
 name = "tracy-client-sys"
 version = "0.28.0"
-source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.4.0#8fe922290c1fedfb35779713ff91a8306ebb50a5"
+source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.5.0#e5e49ffa0f212690eeb8e35fddc603b50978a8e1"
 dependencies = [
  "windows-targets 0.52.6",
 ]
 
 [[package]]
 name = "tracy-nextest-capture"
-version = "0.4.0"
-source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.4.0#8fe922290c1fedfb35779713ff91a8306ebb50a5"
+version = "0.5.0"
+source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.5.0#e5e49ffa0f212690eeb8e35fddc603b50978a8e1"
 dependencies = [
  "sha2 0.10.9",
  "tracy-client",
@@ -4492,8 +4492,8 @@ dependencies = [
 
 [[package]]
 name = "tracy-nextest-capture-macros"
-version = "0.4.0"
-source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.4.0#8fe922290c1fedfb35779713ff91a8306ebb50a5"
+version = "0.5.0"
+source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.5.0#e5e49ffa0f212690eeb8e35fddc603b50978a8e1"
 dependencies = [
  "proc-macro2",
  "quote",

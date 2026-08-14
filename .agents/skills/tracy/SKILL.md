@@ -1,7 +1,7 @@
 ---
 name: tracy
 description: Capture and investigate native ShoopDaLoop Tracy profiles, including GUI/application intent flow, engine control and graph work, realtime audio timing, Tiny Synth/FX processing, queues, scheduling, and state publication from .tracy files.
-compatibility: The native application emits Tracy 0.13.1-compatible captures through the tracy-extensions 0.4.0 embedded backend. Querying requires the matching static tracy-query 0.4.0 release binary.
+compatibility: The native application emits Tracy 0.13.1-compatible captures through the tracy-extensions 0.5.0 embedded backend. Querying requires the matching static tracy-query 0.5.0 release binary.
 ---
 
 # Debug ShoopDaLoop with Tracy
@@ -12,10 +12,10 @@ Use the versioned `tracy-query` skill distributed with `tracy-extensions` for co
 
 ## Obtain `tracy-query` and its skill
 
-Use the `tracy-extensions` v0.4.0 release and the matching tagged query skill:
+Use the `tracy-extensions` v0.5.0 release and the matching tagged query skill:
 
-- Release page: <https://github.com/SanderVocke/tracy-extensions/releases/tag/v0.4.0>
-- Query skill: <https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.4.0/tracy-query/SKILL.md>
+- Release page: <https://github.com/SanderVocke/tracy-extensions/releases/tag/v0.5.0>
+- Query skill: <https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.5.0/tracy-query/SKILL.md>
 
 Choose the static binary for the current platform:
 
@@ -33,13 +33,13 @@ TRACE_DIR=traces/investigation
 ASSET=tracy-query-linux-x86_64 # select for the current OS and architecture
 
 mkdir -p "$TRACE_DIR"
-gh release download v0.4.0 \
+gh release download v0.5.0 \
   --repo SanderVocke/tracy-extensions \
   --pattern "$ASSET" \
   --dir "$TRACE_DIR" \
   --clobber
 curl --fail --location \
-  https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.4.0/tracy-query/SKILL.md \
+  https://raw.githubusercontent.com/SanderVocke/tracy-extensions/v0.5.0/tracy-query/SKILL.md \
   --output "$TRACE_DIR/tracy-query-SKILL.md"
 chmod +x "$TRACE_DIR/$ASSET"
 ```
@@ -91,7 +91,7 @@ gh run download "$RUN_ID" \
 find "traces/ci-$RUN_ID" -type f -name '*.tracy' -print
 ```
 
-Match the artifact's target, architecture, and profile to the failing job. Preserve the trace filename: it identifies the nextest binary, test, attempt, and unique attempt digest. Then obtain the matching v0.4.0 `tracy-query` binary as described above, validate each trace with `check`, `range`, `info`, and `sources`, and follow the investigation workflow below. Detailed `engine.rt.*` zones may be absent when the failing test never starts or advances an engine even though the CI tracing gate is enabled.
+Match the artifact's target, architecture, and profile to the failing job. Preserve the trace filename: it identifies the nextest binary, test, attempt, and unique attempt digest. Then obtain the matching v0.5.0 `tracy-query` binary as described above, validate each trace with `check`, `range`, `info`, and `sources`, and follow the investigation workflow below. Detailed `engine.rt.*` zones may be absent when the failing test never starts or advances an engine even though the CI tracing gate is enabled.
 
 For general workflow status and log investigation before trace analysis, read `.agents/info/ci-debug.md`.
 
