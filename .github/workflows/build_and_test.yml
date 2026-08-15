@@ -232,14 +232,22 @@ jobs:
             browser:
               - '.github/workflows/build_and_test.yml'
               - 'scripts/run_wasm_tests.py'
+              - 'scripts/wasm_test_inventory.py'
               - 'scripts/wasm_test_report.py'
+              - 'scripts/check_wasm_test_inventory_policy.py'
+              - 'tests/wasm_test_classification.toml'
               - 'src/rust/shoop_test_macros/**'
               - 'src/rust/shoop_wasm_test_support/**'
               - 'src/rust/shoop_wasm_runtime_tests/**'
               - 'src/rust/shoop_audio_worklet/**'
               - 'src/rust/shoop_worklet_client/**'
+              - 'src/rust/shoopdaloop/Cargo.toml'
               - 'src/rust/shoopdaloop/audio_worker.js'
+              - 'src/rust/shoopdaloop/audio_worklet.js'
               - 'src/rust/shoopdaloop/raw_wasm_host.js'
+              - 'src/rust/shoopdaloop/build_worklet.py'
+              - 'src/rust/shoopdaloop/src/browser_*.rs'
+              - 'src/rust/shoopdaloop/worker_fixture_contract.js'
               - 'tests/wasm/**'
 
       - name: Cache Rust builds
