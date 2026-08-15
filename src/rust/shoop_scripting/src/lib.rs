@@ -974,15 +974,15 @@ mod tests {
             ("return", "must be the first Shoop API call"),
             (
                 "shoop_announce_api_version(2, 0)",
-                "script requests 2.0, host supports 1.1",
+                "script requests 2.0, host supports 1.2",
             ),
             (
                 "shoop_announce_api_version(0, 0)",
-                "script requests 0.0, host supports 1.1",
+                "script requests 0.0, host supports 1.2",
             ),
             (
-                "shoop_announce_api_version(1, 2)",
-                "script requests 1.2, host supports 1.1",
+                "shoop_announce_api_version(1, 3)",
+                "script requests 1.3, host supports 1.2",
             ),
             (
                 "shoop_announce_api_version(-1, 0)",
@@ -1046,6 +1046,9 @@ d.simple('Simple', {
     d.rich_text('first', {strong=true, italics=true, monospace=true, underline=true, strikethrough=true}),
     d.button('No action'),
     d.button('Run', function() c.set_solo(true); d.open('Paged') end),
+    d.markdown('Choose [Clear solo](clear-solo).', {
+        ['clear-solo'] = function() c.set_solo(false) end,
+    }),
 })
 d.paged('Paged', {
     {d.rich_text('page one')},
@@ -1096,6 +1099,19 @@ d.open('Simple')
         assert_eq!(
             manager.take_control_operations(),
             [ControlOperation::SetSolo(true)]
+        );
+        let ScriptDialogElement::Markdown { text, links } = &simple.elements[3] else {
+            panic!("expected markdown");
+        };
+        assert_eq!(text, "Choose [Clear solo](clear-solo).");
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].destination, "clear-solo");
+        manager
+            .invoke_dialog_button(id, dialogs[0].id, links[0].callback_id)
+            .unwrap();
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSolo(false)]
         );
 
         let ScriptDialogKind::Paged(pages) = &dialogs[1].kind else {
@@ -1152,6 +1168,18 @@ d.open('Simple')
             (
                 "local d=require('shoop_dialog'); d.button('   ')",
                 "button label must not be empty",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.simple('x', {d.markdown('[x](go)', {[1]=function() end})})",
+                "markdown link destinations must be strings",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.simple('x', {d.markdown('[x](go)', {go=true})})",
+                "markdown link \"go\" callback must be a function",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.simple('x', {d.markdown('x', {['']=function() end})})",
+                "markdown link destination must not be empty",
             ),
             (
                 "local d=require('shoop_dialog'); d.open('missing')",

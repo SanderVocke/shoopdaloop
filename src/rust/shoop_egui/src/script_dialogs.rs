@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+
 use crate::{
     AppAction, ScriptDialogContent, ScriptDialogElement, ScriptDialogId, ScriptDialogKind,
     ScriptDialogState,
@@ -15,12 +17,15 @@ struct DialogPresentationState {
 #[derive(Default)]
 pub struct ScriptDialogs {
     states: BTreeMap<ScriptDialogId, DialogPresentationState>,
+    markdown_caches: BTreeMap<(ScriptDialogId, usize, usize), CommonMarkCache>,
     #[cfg(test)]
     control_rect: Option<egui::Rect>,
     #[cfg(test)]
     entry_rects: BTreeMap<ScriptDialogId, egui::Rect>,
     #[cfg(test)]
     button_rects: BTreeMap<(ScriptDialogId, crate::ScriptDialogButtonId), egui::Rect>,
+    #[cfg(test)]
+    link_rects: BTreeMap<(ScriptDialogId, crate::ScriptDialogButtonId), egui::Rect>,
     #[cfg(test)]
     next_rects: BTreeMap<ScriptDialogId, egui::Rect>,
 }
@@ -118,6 +123,7 @@ impl ScriptDialogs {
                                         dialog.owner_script_id,
                                         dialog.id,
                                         content,
+                                        0,
                                         &mut actions,
                                         self,
                                     )
@@ -136,6 +142,7 @@ impl ScriptDialogs {
                                             dialog.owner_script_id,
                                             dialog.id,
                                             content,
+                                            page + 1,
                                             &mut actions,
                                             self,
                                         );
@@ -188,6 +195,8 @@ impl ScriptDialogs {
     fn synchronize(&mut self, dialogs: &[ScriptDialogState]) {
         self.states
             .retain(|id, _| dialogs.iter().any(|dialog| dialog.id == *id));
+        self.markdown_caches
+            .retain(|(id, _, _), _| dialogs.iter().any(|dialog| dialog.id == *id));
         for dialog in dialogs {
             let state = self
                 .states
@@ -239,11 +248,12 @@ fn show_content(
     owner_script_id: crate::ScriptId,
     dialog_id: ScriptDialogId,
     content: &ScriptDialogContent,
+    content_index: usize,
     actions: &mut Vec<AppAction>,
     _dialogs: &mut ScriptDialogs,
 ) {
     ui.vertical(|ui| {
-        for element in content.elements.iter() {
+        for (element_index, element) in content.elements.iter().enumerate() {
             match element {
                 ScriptDialogElement::RichText { text, style } => {
                     let mut text = egui::RichText::new(text);
@@ -263,6 +273,33 @@ fn show_content(
                         text = text.strikethrough();
                     }
                     ui.add(egui::Label::new(text).wrap());
+                }
+                ScriptDialogElement::Markdown { text, links } => {
+                    let (_response, clicked) = {
+                        let cache = _dialogs
+                            .markdown_caches
+                            .entry((dialog_id, content_index, element_index))
+                            .or_default();
+                        for link in links.iter() {
+                            cache.add_link_hook(&link.destination);
+                        }
+                        let response = CommonMarkViewer::new().show(ui, cache, text);
+                        let clicked = links
+                            .iter()
+                            .filter(|link| cache.get_link_hook(&link.destination) == Some(true))
+                            .map(|link| link.callback_id)
+                            .collect::<Vec<_>>();
+                        (response, clicked)
+                    };
+                    for callback_id in clicked {
+                        actions.push(button_action(owner_script_id, dialog_id, callback_id));
+                    }
+                    #[cfg(test)]
+                    for link in links.iter() {
+                        _dialogs
+                            .link_rects
+                            .insert((dialog_id, link.callback_id), _response.response.rect);
+                    }
                 }
                 ScriptDialogElement::Button { id, label } => {
                     let response = ui.button(label);
@@ -298,7 +335,10 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::{ScriptDialogButtonId, ScriptDialogElement, ScriptDialogRichTextStyle, ScriptId};
+    use crate::{
+        ScriptDialogButtonId, ScriptDialogElement, ScriptDialogMarkdownLink,
+        ScriptDialogRichTextStyle, ScriptId,
+    };
 
     fn simple(id: u64, owner: u64, name: &str, open_request: u64) -> ScriptDialogState {
         ScriptDialogState {
@@ -327,6 +367,26 @@ mod tests {
                         label: "Apply".to_owned(),
                     },
                 ]),
+            }),
+            open_request,
+        }
+    }
+
+    fn markdown(id: u64, owner: u64, open_request: u64) -> ScriptDialogState {
+        let callback_id = ScriptDialogButtonId::from_raw(id * 10);
+        ScriptDialogState {
+            id: ScriptDialogId::from_raw(id),
+            owner_script_id: ScriptId::from_raw(owner),
+            owner_script_name: format!("owner-{owner}.lua"),
+            name: "Markdown".to_owned(),
+            kind: ScriptDialogKind::Simple(ScriptDialogContent {
+                elements: Arc::from([ScriptDialogElement::Markdown {
+                    text: "[Run callback](run)".to_owned(),
+                    links: Arc::from([ScriptDialogMarkdownLink {
+                        destination: "run".to_owned(),
+                        callback_id,
+                    }]),
+                }]),
             }),
             open_request,
         }
@@ -401,6 +461,7 @@ mod tests {
                     dialog.owner_script_id,
                     dialog.id,
                     content,
+                    0,
                     &mut actions,
                     component,
                 )
@@ -641,6 +702,59 @@ mod tests {
                 script_id: dialog.owner_script_id,
                 dialog_id: dialog.id,
                 button_id,
+            }]
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn markdown_link_click_emits_its_lua_callback_intent() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let dialog = markdown(7, 8, 1);
+        let ScriptDialogKind::Simple(content) = &dialog.kind else {
+            panic!("expected simple dialog");
+        };
+        let callback_id = ScriptDialogButtonId::from_raw(70);
+        let mut component = ScriptDialogs::default();
+        content_frame(&context, &mut component, &dialog, content, Vec::new());
+        let rect = component.link_rects[&(dialog.id, callback_id)];
+        let position = egui::pos2(rect.left() + 10.0, rect.center().y);
+        assert!(content_frame(
+            &context,
+            &mut component,
+            &dialog,
+            content,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]
+        )
+        .is_empty());
+        assert_eq!(
+            content_frame(
+                &context,
+                &mut component,
+                &dialog,
+                content,
+                vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ]
+            ),
+            [AppAction::InvokeScriptDialogButton {
+                script_id: dialog.owner_script_id,
+                dialog_id: dialog.id,
+                button_id: callback_id,
             }]
         );
     }

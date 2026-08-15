@@ -4,10 +4,10 @@ This contract applies to Lua scripts run by `shoopdaloop` on native and browser 
 
 ## API version announcement
 
-The current Shoop Lua API version is **1.1**. Every script must make this its first Shoop API call:
+The current Shoop Lua API version is **1.2**. Every script must make this its first Shoop API call:
 
 ```lua
-shoop_announce_api_version(1, 1)
+shoop_announce_api_version(1, 2)
 ```
 
 The announcement function is a permanent, unversioned global. Its name and two-integer `(major, minor)` signature do not depend on any module and are reserved to remain stable across future API versions.
@@ -35,6 +35,7 @@ Dialog names must be non-empty and are unique within one script runtime. Differe
 
 ```lua
 dialog.rich_text(text, style)
+dialog.markdown(text, link_callbacks)
 dialog.button(label, callback)
 ```
 
@@ -48,11 +49,27 @@ dialog.button(label, callback)
 
 `callback` is optional. A button without one is visible but has no action. Unknown style fields, empty button labels, and values of the wrong type are errors.
 
+`link_callbacks` is an optional table mapping Markdown link destinations to Lua functions:
+
+```lua
+dialog.markdown([[
+Use **Markdown** here. [Enable solo](enable-solo), or
+[visit the website](https://shoopdaloop.com).
+]], {
+    ['enable-solo'] = function()
+        require('shoop_control').set_solo(true)
+    end,
+})
+```
+
+A destination present in `link_callbacks` invokes its function instead of opening a URL. Matching is against the complete destination and is local to that Markdown element. Destinations without callbacks retain normal Markdown-link behavior. Link destinations must be non-empty strings and callback values must be functions.
+
 ### Simple dialogs
 
 ```lua
 dialog.simple(name, {
     dialog.rich_text('Recording is armed.', { strong = true }),
+    dialog.markdown('See the **recording controls** below.'),
     dialog.button('Stop', function()
         -- ordinary Shoop API calls are allowed here
     end),

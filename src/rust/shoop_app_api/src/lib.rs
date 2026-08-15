@@ -1026,7 +1026,7 @@ impl LuaApiVersion {
     }
 }
 
-pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 1 };
+pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 2 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
@@ -1143,10 +1143,20 @@ pub struct ScriptDialogRichTextStyle {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptDialogMarkdownLink {
+    pub destination: String,
+    pub callback_id: ScriptDialogButtonId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ScriptDialogElement {
     RichText {
         text: String,
         style: ScriptDialogRichTextStyle,
+    },
+    Markdown {
+        text: String,
+        links: Arc<[ScriptDialogMarkdownLink]>,
     },
     Button {
         id: Option<ScriptDialogButtonId>,
@@ -1485,6 +1495,7 @@ pub type TrackWidgetAction = TrackAction;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GlobalControlAction {
     StopAll,
+    MidiPanic,
     DeselectAll,
     ClearRecordings { include_sync: bool },
     ClearAll { include_sync: bool },
@@ -1741,6 +1752,7 @@ impl GlobalControlAction {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::StopAll => "global.stop_all",
+            Self::MidiPanic => "global.midi_panic",
             Self::DeselectAll => "global.deselect_all",
             Self::ClearRecordings { .. } => "global.clear_recordings",
             Self::ClearAll { .. } => "global.clear_all",
@@ -2083,6 +2095,11 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
+    fn global_controls_have_stable_intent_kinds() {
+        assert_eq!(GlobalControlAction::MidiPanic.kind(), "global.midi_panic");
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn tiny_synth_controls_have_stable_intent_kinds() {
         assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::SelectPreset("pad".to_owned())).kind(),
@@ -2149,7 +2166,7 @@ mod tests {
         assert!(!host.accepts(LuaApiVersion { major: 2, minor: 5 }));
         assert!(!host.accepts(LuaApiVersion { major: 1, minor: 4 }));
         assert!(!host.accepts(LuaApiVersion { major: 3, minor: 0 }));
-        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 1 });
+        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 2 });
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
@@ -2171,6 +2188,13 @@ mod tests {
                             ..Default::default()
                         },
                     },
+                    ScriptDialogElement::Markdown {
+                        text: "[More](more)".to_owned(),
+                        links: Arc::from([ScriptDialogMarkdownLink {
+                            destination: "more".to_owned(),
+                            callback_id: button_id,
+                        }]),
+                    },
                     ScriptDialogElement::Button {
                         id: Some(button_id),
                         label: "Run".to_owned(),
@@ -2182,7 +2206,7 @@ mod tests {
         let ScriptDialogKind::Simple(content) = &state.kind else {
             panic!("expected simple dialog");
         };
-        assert_eq!(content.elements.len(), 2);
+        assert_eq!(content.elements.len(), 3);
         assert_eq!(state.owner_script_id, script_id);
         assert_eq!(state.open_request, 3);
         assert_eq!(
