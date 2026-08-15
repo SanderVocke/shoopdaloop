@@ -46,9 +46,9 @@ The pre-migration baseline in `docs/wasm_test_baseline.md` records approximately
 6-7 minutes for the repeated Chrome work in each web job and 4 seconds for the
 old Firefox workflow itself (excluding browser setup). The post-migration
 workflow source has two `browser_smoke.mjs` invocations and one
-`browser_firefox_smoke.py` invocation. In PR #751 run `31905533513`, hosted
-Chromium took 3.3 seconds, self-contained Chromium 13.4 seconds, and Firefox
-44.9 seconds. Their approximately 62-second combined runner time excludes
+`browser_firefox_smoke.py` invocation. In PR #751 run `31910810734`, hosted
+Chromium took about 2.4 seconds, self-contained Chromium 14.4 seconds, and Firefox
+24.5 seconds. Their approximately 41-second combined runner time excludes
 artifact build and browser installation and is below the five-minute budget.
 
 The Wasm suite owns domain and production Worker behavior. Packaged-browser

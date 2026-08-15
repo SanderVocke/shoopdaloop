@@ -109,7 +109,7 @@ or runtime tests. CI retains only:
 2. self-contained Chromium embedded-asset AudioWorklet startup and callbacks;
 3. hosted Firefox startup and callbacks as the second implementation.
 
-Run `31905533513` measured 3.3 s, 13.4 s, and 44.9 s respectively (about 62 s
+Run `31910810734` measured about 2.4 s, 14.4 s, and 24.5 s respectively (about 41 s
 combined, excluding build/browser installation). Each observes application
 startup commands, a running driver, positive callback/frame progress in exact
 128-frame quanta, bounded overflow state, packaging policy, and clean browser
@@ -142,7 +142,7 @@ assertions are no longer packaged-smoke responsibilities.
 | Complete native nextest and Tracy capture retained | PASS: 1,428 passed, two skipped; macro expands to Tracy capture |
 | Every excluded/platform test reasoned | PASS: 255 explicit native exclusions; no pending/stale/overlap |
 | Raw logs, JUnit, overlap inventory, runner failure | PASS: report artifacts and fail-closed matrix |
-| Smoke reduced only after replacements, no lower-layer duplication | PASS: migration map, three-invocation guard, 62-second measured boundary |
+| Smoke reduced only after replacements, no lower-layer duplication | PASS: migration map, three-invocation guard, 41-second measured boundary |
 | Copyable local commands | PASS: technical README covers native/Wasm package/filter/runtime/policy/canary/smoke commands and pins |
 | No production fork for tests | PASS: boundary diff audit; exact production assets/protocol are reused |
 
@@ -165,5 +165,7 @@ From a clean tracked worktree on current `master`:
 - Parser fixtures, explicit native/Node/Chromium canaries, global timeout,
   smoke budget, tracing inventory, and source/runtime policy gates: pass.
 
-The final PR rollup and exact current CI run are recorded after the head run is
-green; no completion claim is made while that evidence is pending.
+PR #751 run `31910810734` passed Rust coverage and all eight platform/profile
+jobs. Docs run `31910810726`, all four CodeQL analyses in `31910810728`, and
+Codecov project/patch checks passed. The current implementation head therefore
+has complete repository, local-command, report-artifact, and CI evidence.

@@ -439,20 +439,22 @@ Verification:
 - [x] A failure in any Wasm testcase, Worker, browser runner, result parser, inventory comparison, asset server, or cleanup check fails the owning job and appears in JUnit.
 - [x] Local copyable commands reproduce every CI gate from a clean checkout.
 
-Evidence: the web debug cell installs Node 22.22.2, wasm-pack 0.15.0, and matched Chrome/ChromeDriver 147.0.7727.117, runs the required 1,179-test Node suite, policy-triggered identical Chromium suite, source/runtime hash gate, parser fixtures, smoke budget, and all 15 dependency trees. Scheduled/manual release cells run optimized Node and Chromium. Existing debug/release application/worklet builds, package contracts, import checks, raw-host checks, and artifact verification remain. `if: always()` uploads per-package raw logs/JUnit, aggregate summaries, inventory-policy timing/category reports, and checked-in classification. Run `31905533513` passed both web cells and every independent Wasm/smoke step; parser fixtures cover testcase, panic, malformed/truncated/count/zero, timeout, browser-crash, and synthetic runner failures. `src/rust/shoopdaloop/README.md` and `docs/wasm_test_baseline.md` provide pinned copyable full/package/filter/policy/smoke commands and diagnostics.
+Evidence: the web debug cell installs Node 22.22.2, wasm-pack 0.15.0, and matched Chrome/ChromeDriver 147.0.7727.117, runs the required 1,179-test Node suite, policy-triggered identical Chromium suite, source/runtime hash gate, parser fixtures, smoke budget, and all 15 dependency trees. Scheduled/manual release cells run optimized Node and Chromium. Existing debug/release application/worklet builds, package contracts, import checks, raw-host checks, and artifact verification remain. `if: always()` uploads per-package raw logs/JUnit, aggregate summaries, inventory-policy timing/category reports, and checked-in classification. Run `31910810734` passed both web cells and every independent Wasm/smoke step; parser fixtures cover testcase, panic, malformed/truncated/count/zero, timeout, browser-crash, and synthetic runner failures. `src/rust/shoopdaloop/README.md` and `docs/wasm_test_baseline.md` provide pinned copyable full/package/filter/policy/smoke commands and diagnostics.
 
 ### Stage 7 — Final end-to-end validation
 
-- [ ] Run formatting checks.
-- [ ] Run warning-denying native workspace builds.
-- [ ] Run the complete native nextest suite with required features, backend policy, and Tracy failure capture.
-- [ ] Run the complete canonical Node.js Wasm suite.
-- [ ] Run the complete canonical Chromium Wasm suite and browser-only additions.
-- [ ] Build debug/release application and worklet Wasm artifacts and inspect dependency isolation/imports.
-- [ ] Run the minimized hosted, self-contained, and secondary-browser smoke checks.
-- [ ] Verify JUnit, raw logs, aggregate summaries, classification, inventory, overlap, and runtime measurements from a clean checkout.
-- [ ] Verify intentional testcase failure, Worker crash, browser crash, malformed output, timeout, zero-discovery, count mismatch, and teardown failure all fail closed.
-- [ ] Confirm documentation commands and tool-version pins on a clean development environment.
-- [ ] Audit that no production protocol, scheduler, host bridge, or application behavior fork was added for tests.
+- [x] Run formatting checks.
+- [x] Run warning-denying native workspace builds.
+- [x] Run the complete native nextest suite with required features, backend policy, and Tracy failure capture.
+- [x] Run the complete canonical Node.js Wasm suite.
+- [x] Run the complete canonical Chromium Wasm suite and browser-only additions.
+- [x] Build debug/release application and worklet Wasm artifacts and inspect dependency isolation/imports.
+- [x] Run the minimized hosted, self-contained, and secondary-browser smoke checks.
+- [x] Verify JUnit, raw logs, aggregate summaries, classification, inventory, overlap, and runtime measurements from a clean checkout.
+- [x] Verify intentional testcase failure, Worker crash, browser crash, malformed output, timeout, zero-discovery, count mismatch, and teardown failure all fail closed.
+- [x] Confirm documentation commands and tool-version pins on a clean development environment.
+- [x] Audit that no production protocol, scheduler, host bridge, or application behavior fork was added for tests.
 
 Final evidence must map every acceptance criterion to concrete commands, reports, test IDs, artifacts, and CI jobs. It must show that all remaining platform-specific tests are explicitly classified and justified and that no removed packaged-smoke assertion lacks passing replacement evidence.
+
+Evidence: `docs/wasm_test_completion_audit.md` maps every goal, named artifact, orchestration requirement, fixture behavior, failure class, smoke assertion group, immutable acceptance criterion, and final command to concrete evidence. On current code, formatting/diff/tracing gates pass; warning-denying native all-target builds pass; native nextest passes 1,428 tests with two explicitly skipped; Node and pinned Chromium each pass the identical 1,179-test inventory; closed accounting reports 1,430 native IDs and 1,433 source declarations; debug/release application/worklet artifacts build with import-free worklets and clean dependency trees; and native/Node/Chromium canaries plus parser/global-timeout/Worker teardown gates fail closed. PR #751 run `31910810734` passed coverage and all eight platform/profile cells, including valid raw logs/JUnit/summaries/inventory artifacts and the three retained AudioWorklet smokes. Docs, CodeQL, Codecov project, and Codecov patch checks also passed.
