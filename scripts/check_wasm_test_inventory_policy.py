@@ -9,6 +9,7 @@ import json
 import pathlib
 import sys
 import tomllib
+import xml.etree.ElementTree as ET
 from collections import Counter
 
 from wasm_test_inventory import classify, source_tests, wasm_tests
@@ -74,6 +75,52 @@ def main() -> int:
                 for identifier in identifiers
             )
             document = json.loads(summary.read_text())
+            for package in document["packages"]:
+                log = ROOT / package["log"]
+                junit = ROOT / package["junit"]
+                if not log.is_file() or not junit.is_file():
+                    raise ValueError(
+                        f"{summary} package {package['package']} is missing raw log or JUnit"
+                    )
+                suite = ET.parse(junit).getroot()
+                properties = {
+                    item.attrib["name"]: item.attrib["value"]
+                    for item in suite.find("properties")
+                }
+                required = {
+                    "package",
+                    "runtime",
+                    "profile",
+                    "command",
+                    "returncode",
+                    "expected",
+                    "listed",
+                    "executed",
+                    "passed",
+                    "failed",
+                    "ignored",
+                    "raw_log",
+                    "filters",
+                    "features",
+                    "tool.node",
+                    "tool.rustc",
+                    "tool.wasm-pack",
+                    "tool.wasm-bindgen",
+                    "tool.wasm-bindgen-test",
+                }
+                missing = required - properties.keys()
+                if missing:
+                    raise ValueError(
+                        f"{junit} is missing properties: {', '.join(sorted(missing))}"
+                    )
+                if int(suite.attrib["tests"]) != package["tests"]:
+                    raise ValueError(f"{junit} testcase count differs from summary")
+                if int(suite.attrib["failures"]) != package["failed"]:
+                    raise ValueError(f"{junit} failure count differs from summary")
+                if int(suite.attrib["skipped"]) != package["ignored"]:
+                    raise ValueError(f"{junit} ignored count differs from summary")
+                if properties["raw_log"] != package["log"]:
+                    raise ValueError(f"{junit} raw-log reference differs from summary")
             runtime_reports.append(
                 {
                     "runtime": document["runtime"],
@@ -105,7 +152,13 @@ def main() -> int:
             f"runtime={policy['wasm_test_count']} summaries={len(args.summary)}: ok"
         )
         return 0
-    except (KeyError, OSError, ValueError, tomllib.TOMLDecodeError) as error:
+    except (
+        KeyError,
+        OSError,
+        ValueError,
+        ET.ParseError,
+        tomllib.TOMLDecodeError,
+    ) as error:
         print(f"Wasm inventory policy failed: {error}", file=sys.stderr)
         return 1
 
