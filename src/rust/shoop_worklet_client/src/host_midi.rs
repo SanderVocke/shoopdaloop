@@ -117,7 +117,7 @@ impl HostMidiBridge for InMemoryHostMidiBridge {
 mod tests {
     use super::*;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn in_memory_bridge_preserves_endpoint_identity_direction_and_bounded_drains() {
         let mut null = NullHostMidiBridge;
         assert_eq!(null.revision(), 0);

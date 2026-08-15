@@ -366,21 +366,23 @@ Evidence: `run_wasm_tests.py` validates pinned tools, discovers package metadata
 
 ### Stage 3 — Implement the multi-Worker remote-engine fixture
 
-- [ ] Add `shoop_wasm_runtime_tests` and the common fixture API without creating package dependency cycles.
-- [ ] Implement readiness, generations, production/fixture port ownership, bounded waits, and teardown accounting.
-- [ ] Implement the Node `worker_threads` bootstrap around exact production Worker/host modules.
-- [ ] Implement browser Worker/MessageChannel spawning through staged production assets and Blob module URLs.
-- [ ] Implement explicit process-quantum input/output and cooperative/realtime pause/resume/diagnostic controls without dynamic mode switching.
-- [ ] Expose bounded audio, MIDI/protocol event, diagnostic, revision, and callback observations.
-- [ ] Add single-Worker, multi-Worker, ordering, saturation, stale-generation, restart, cooperative, realtime, production shutdown, fixture shutdown, and teardown-failure contracts.
-- [ ] Verify that simultaneous Workers have independent engine state, IDs, sequences, ports, timers, failures, and cleanup.
+- [x] Add `shoop_wasm_runtime_tests` and the common fixture API without creating package dependency cycles.
+- [x] Implement readiness, generations, production/fixture port ownership, bounded waits, and teardown accounting.
+- [x] Implement the Node `worker_threads` bootstrap around exact production Worker/host modules.
+- [x] Implement browser Worker/MessageChannel spawning through staged production assets and Blob module URLs.
+- [x] Implement explicit process-quantum input/output and cooperative/realtime pause/resume/diagnostic controls without dynamic mode switching.
+- [x] Expose bounded audio, MIDI/protocol event, diagnostic, revision, and callback observations.
+- [x] Add single-Worker, multi-Worker, ordering, saturation, stale-generation, restart, cooperative, realtime, production shutdown, fixture shutdown, and teardown-failure contracts.
+- [x] Verify that simultaneous Workers have independent engine state, IDs, sequences, ports, timers, failures, and cleanup.
 
 Verification:
 
-- [ ] The same applicable multi-Worker scenarios pass in Node.js and Chromium; runtime-specific additions are separately reported.
-- [ ] Explicit-mode tests are deterministic across repeated and parallel runs.
-- [ ] Free-running tests use bounded observable conditions and leave no Workers, ports, timers, hosts, listeners, Blob URLs, or pending commands alive.
-- [ ] Production application envelopes remain byte-compatible and fixture commands never enter the production port.
+- [x] The same applicable multi-Worker scenarios pass in Node.js and Chromium; runtime-specific additions are separately reported.
+- [x] Explicit-mode tests are deterministic across repeated and parallel runs.
+- [x] Free-running tests use bounded observable conditions and leave no Workers, ports, timers, hosts, listeners, Blob URLs, or pending commands alive.
+- [x] Production application envelopes remain byte-compatible and fixture commands never enter the production port.
+
+Evidence: `shoop_wasm_runtime_tests/js/worker_fixture.js` exports `MultiWorkerFixture` and runtime-neutral contracts while importing the exact staged production Worker, raw host, and engine Wasm. Node uses a minimal `worker_threads` global shim; Chromium fetches CORS assets and owns revocable module Blob URLs. Four Rust Wasm tests cover two-instance explicit audio/isolation and leak detection; all three immutable processing modes with bounded progress, pause/resume, restart, and diagnostics; out-of-order sequence rejection, track creation, MIDI injection/observation, production shutdown; and command-capacity terminal failure isolated from a surviving peer. The migrated remote-client suite adds stale-generation, saturation, replay, readiness, transfer, and dual-client contracts. All applicable tests pass identically in Node and Chromium with real message channels, while the byte-stable protocol test verifies unchanged production envelopes.
 
 ### Stage 4 — Migrate portable Rust coverage
 

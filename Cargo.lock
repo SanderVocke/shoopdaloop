@@ -4023,7 +4023,9 @@ dependencies = [
  "shoop_app_api",
  "shoop_audio_protocol",
  "shoop_backend",
+ "shoop_wasm_test_support",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

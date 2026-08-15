@@ -52,8 +52,14 @@ reason = "Stage 4 portable-runtime migration and native-driver classification wa
 
 [[rules]]
 pattern = "shoop_worklet_client::*"
-category = "pending"
-reason = "Stage 4 portable-runtime migration wave."
+exclude = ["*::bounded_quiescence_wait_completes_only_after_pending_work_settles"]
+category = "shared"
+reason = "Platform-neutral client, transport, replay, readiness, transfer, and isolation tests run identically in native, Node, and Chromium."
+
+[[rules]]
+pattern = "shoop_worklet_client::*::bounded_quiescence_wait_completes_only_after_pending_work_settles"
+category = "native-platform"
+reason = "This bounded external wait deliberately uses std::time::Instant, which wasm32-unknown-unknown does not provide; logical quiescence behavior remains shared."
 
 [[rules]]
 pattern = "shoop_app::*"

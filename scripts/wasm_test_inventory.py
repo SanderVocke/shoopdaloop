@@ -117,7 +117,12 @@ def source_tests():
 
 
 def classify(identifier: str, rules: list[dict]):
-    matches = [rule for rule in rules if fnmatch.fnmatchcase(identifier, rule["pattern"])]
+    matches = [
+        rule
+        for rule in rules
+        if fnmatch.fnmatchcase(identifier, rule["pattern"])
+        and not any(fnmatch.fnmatchcase(identifier, exclude) for exclude in rule.get("exclude", []))
+    ]
     if not matches:
         raise ValueError(f"unclassified test: {identifier}")
     if len(matches) != 1:
