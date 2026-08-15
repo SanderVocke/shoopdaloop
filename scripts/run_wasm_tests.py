@@ -177,6 +177,7 @@ def invoke_package(
     reports: pathlib.Path,
     timeout: int,
     filters: list[str],
+    features: list[str],
 ):
     command = ["wasm-pack", "test"]
     command += ["--node"] if runtime == "node" else ["--headless", "--chrome"]
@@ -185,8 +186,11 @@ def invoke_package(
     command.append(str(package["path"]))
     if package["no_default_features"]:
         command.append("--no-default-features")
+    package_features = list(features)
     if runtime == "chrome" and package["browser_feature"]:
-        command += ["--features", package["browser_feature"]]
+        package_features.append(package["browser_feature"])
+    if package_features:
+        command += ["--features", ",".join(sorted(set(package_features)))]
     if filters:
         command += ["--", *filters]
 
@@ -257,6 +261,7 @@ def main() -> int:
     parser.add_argument("--profile", default="dev", choices=("dev", "ci"))
     parser.add_argument("--package", action="append")
     parser.add_argument("--filter", action="append", default=[])
+    parser.add_argument("--feature", action="append", default=[])
     parser.add_argument("--package-timeout", type=int, default=600)
     args = parser.parse_args()
 
@@ -286,6 +291,7 @@ def main() -> int:
                 reports=reports,
                 timeout=args.package_timeout,
                 filters=args.filter,
+                features=args.feature,
             )
             for package in packages
         ]
@@ -295,6 +301,7 @@ def main() -> int:
         "runtime": args.runtime,
         "profile": args.profile,
         "filters": args.filter,
+        "features": args.feature,
         "asset_manifest": manifest,
         "packages": results,
         "success": all(result["success"] for result in results),

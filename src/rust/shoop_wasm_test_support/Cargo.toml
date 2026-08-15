@@ -11,6 +11,7 @@ browser-feature = "wasm-test-browser"
 [features]
 default = []
 wasm-test-browser = []
+wasm-test-failure-canary = []
 
 [dependencies]
 shoop_test_macros = { path = "../shoop_test_macros" }

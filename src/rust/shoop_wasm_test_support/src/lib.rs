@@ -52,7 +52,10 @@ mod tests {
     }
 
     #[shoop_test]
-    #[ignore = "opt-in failure canary"]
+    #[cfg_attr(
+        not(feature = "wasm-test-failure-canary"),
+        ignore = "opt-in failure canary"
+    )]
     fn shared_failure_canary_is_ignored_by_default() {
         panic!("intentional shared test failure canary");
     }

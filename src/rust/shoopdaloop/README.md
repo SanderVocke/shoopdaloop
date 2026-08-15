@@ -170,6 +170,12 @@ python3 scripts/check_wasm_test_inventory_policy.py \
   --summary target/wasm-tests/dev/reports/node/summary.json \
   --summary target/wasm-tests/dev/reports/chrome/summary.json
 python3 scripts/check_wasm_smoke_budget.py
+
+# Explicit failure reproduction; this command must exit nonzero and retain JUnit.
+python3 scripts/run_wasm_tests.py --runtime node --profile ci \
+  --package shoop_wasm_test_support \
+  --feature wasm-test-failure-canary \
+  --filter shared_failure_canary_is_ignored_by_default
 ```
 
 Use `#[shoop_test]` from `shoop_wasm_test_support` for a deterministic test body that must retain its native nextest identity and also run under wasm-bindgen. Keep unsupported native imports behind narrow target gates. A genuinely native-driver or native-platform test remains `#[test]` and needs an explicit, narrow rule and reason in `tests/wasm_test_classification.toml`. Never hide an unclassified test with a broad package exclusion. Updating test membership intentionally also requires updating the reviewed count/hash policy in that file after reproducing the complete native, Node, and Chromium inventory from `docs/wasm_test_baseline.md`.
