@@ -34,3 +34,7 @@ threads-required = "num-test-threads"
 [[profile.ci.overrides]]
 filter = 'test(=native::tests::native_dummy_satisfies_topology_capture_and_same_driver_switch)'
 threads-required = "num-test-threads"
+
+[[profile.ci.overrides]]
+filter = 'binary_id(/shoopdaloop::bin.shoopdaloop/) & test(/^settings::tests::/)'
+threads-required = "num-test-threads"
