@@ -255,6 +255,47 @@ def invoke_package(
     }
 
 
+def synthetic_package_failure(
+    package: dict,
+    *,
+    runtime: str,
+    profile: str,
+    reports: pathlib.Path,
+    message: str,
+):
+    stem = f"{package['name']}-{runtime}"
+    log = reports / f"{stem}.log"
+    junit = reports / f"{stem}.xml"
+    output = message + "\n"
+    log.write_text(output)
+    parsed = write_junit(
+        junit,
+        package=package["name"],
+        runtime=runtime,
+        profile=profile,
+        command=[],
+        returncode=124,
+        elapsed_seconds=0.0,
+        output=output,
+    )
+    return {
+        "package": package["name"],
+        "runtime": runtime,
+        "profile": profile,
+        "command": [],
+        "returncode": 124,
+        "elapsed_seconds": 0.0,
+        "tests": parsed.listed,
+        "failed": parsed.failed,
+        "ignored": parsed.ignored,
+        "testcases": [dataclasses.asdict(case) for case in parsed.cases],
+        "malformed": list(parsed.malformed),
+        "success": False,
+        "log": str(log.relative_to(ROOT)),
+        "junit": str(junit.relative_to(ROOT)),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime", required=True, choices=("node", "chrome"))
@@ -263,6 +304,7 @@ def main() -> int:
     parser.add_argument("--filter", action="append", default=[])
     parser.add_argument("--feature", action="append", default=[])
     parser.add_argument("--package-timeout", type=int, default=600)
+    parser.add_argument("--global-timeout", type=int, default=3600)
     args = parser.parse_args()
 
     env = os.environ.copy()
@@ -282,19 +324,36 @@ def main() -> int:
         test_env["SHOOP_WASM_TEST_ASSET_DIR"] = str(assets)
         if base_url:
             test_env["SHOOP_WASM_TEST_ASSET_BASE"] = base_url
-        results = [
-            invoke_package(
-                package,
-                runtime=args.runtime,
-                profile=args.profile,
-                env=test_env,
-                reports=reports,
-                timeout=args.package_timeout,
-                filters=args.filter,
-                features=args.feature,
+        execution_started = time.monotonic()
+        results = []
+        for package in packages:
+            remaining = args.global_timeout - (time.monotonic() - execution_started)
+            if remaining <= 0:
+                results.append(
+                    synthetic_package_failure(
+                        package,
+                        runtime=args.runtime,
+                        profile=args.profile,
+                        reports=reports,
+                        message=(
+                            "Wasm global execution deadline exceeded after "
+                            f"{args.global_timeout} seconds"
+                        ),
+                    )
+                )
+                continue
+            results.append(
+                invoke_package(
+                    package,
+                    runtime=args.runtime,
+                    profile=args.profile,
+                    env=test_env,
+                    reports=reports,
+                    timeout=min(args.package_timeout, max(1, int(remaining))),
+                    filters=args.filter,
+                    features=args.feature,
+                )
             )
-            for package in packages
-        ]
 
     summary = {
         "schema": 1,
@@ -302,6 +361,8 @@ def main() -> int:
         "profile": args.profile,
         "filters": args.filter,
         "features": args.feature,
+        "package_timeout": args.package_timeout,
+        "global_timeout": args.global_timeout,
         "asset_manifest": manifest,
         "packages": results,
         "success": all(result["success"] for result in results),
