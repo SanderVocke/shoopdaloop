@@ -764,6 +764,12 @@ jobs:
           "$RUNNER_TEMP/tracy-query" info "${traces[0]}"
           "$RUNNER_TEMP/tracy-query" query --kind message \
             --filter 'message.text=shoop\.nextest_capture\.smoke\.failure' "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind cpu-zone \
+            --filter 'cpu-zone.name=^shoop\.nextest_capture\.smoke\.tracing_span$' "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind message \
+            --filter 'message.text=shoop\.nextest_capture\.smoke\.tracing_event' "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind message \
+            --filter 'message.text=shoop\.nextest_capture\.smoke\.log_event' "${traces[0]}"
 
       - name: Check formatting and tracing inventory
         if: matrix.target == 'linux' && matrix.profile == 'debug'

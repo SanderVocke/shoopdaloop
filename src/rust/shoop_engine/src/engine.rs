@@ -106,6 +106,8 @@ pub struct Stats {
     pub stuck_cycles: AtomicU32,
     /// Commands that arrived and were applied.
     pub commands_applied: AtomicU32,
+    /// Whether the engine is applying a batch removed from the visible command queue.
+    pub command_batch_in_flight: AtomicBool,
     /// Diagnostic trace publications skipped because every preallocated box was in use.
     pub trace_snapshots_dropped: AtomicU32,
     /// The newest command sequence that finished executing.
@@ -142,8 +144,8 @@ pub struct Stats {
     /// pay for one on every window whether or not anything had changed.
     ///
     /// A `true` reading can be trusted at once. A `false` reading only means the graph was
-    /// current when this was last written, so a caller must also satisfy itself that nothing
-    /// is still queued that could dirty it -- see [`EngineHandle::n_pending`].
+    /// current when this was last written, so a caller must also satisfy itself that no
+    /// topology command is queued or being applied.
     pub graph_stale: AtomicBool,
     /// Backend DSP load, as a percentage scaled by 100 so it fits an integer.
     ///
@@ -342,14 +344,7 @@ impl Engine {
     }
 
     fn process_inner(&mut self, n_frames: usize) {
-        {
-            let _span = shoop_tracing::realtime_span!("engine.rt.commands");
-            self.apply_commands();
-        }
-        {
-            let _span = shoop_tracing::realtime_span!("engine.rt.graph_state");
-            self.publish_graph_staleness();
-        }
+        self.apply_commands_and_publish_graph_staleness();
         self.cycle_inner(n_frames);
     }
 
@@ -424,16 +419,25 @@ impl Engine {
         let _span = shoop_tracing::realtime_span!("engine.rt.pump");
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
             crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
-                {
-                    let _commands_span = shoop_tracing::realtime_span!("engine.rt.commands");
-                    self.apply_commands();
-                }
-                {
-                    let _graph_span = shoop_tracing::realtime_span!("engine.rt.graph_state");
-                    self.publish_graph_staleness();
-                }
+                self.apply_commands_and_publish_graph_staleness();
             });
         });
+    }
+
+    fn apply_commands_and_publish_graph_staleness(&mut self) {
+        let batch_in_flight = {
+            let _span = shoop_tracing::realtime_span!("engine.rt.commands");
+            self.apply_commands()
+        };
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.graph_state");
+            self.publish_graph_staleness();
+        }
+        if batch_in_flight {
+            self.stats
+                .command_batch_in_flight
+                .store(false, Ordering::Release);
+        }
     }
 
     /// Publishes whether the schedule has fallen behind the topology.
@@ -446,8 +450,14 @@ impl Engine {
             .store(!self.session.graph_up_to_date(), Ordering::Relaxed);
     }
 
-    fn apply_commands(&mut self) {
+    fn apply_commands(&mut self) -> bool {
         let accepted = self.commands.slots();
+        if accepted == 0 {
+            return false;
+        }
+        self.stats
+            .command_batch_in_flight
+            .store(true, Ordering::Release);
         let mut applied = 0u32;
         for _ in 0..accepted {
             let Ok(mut queued) = self.commands.pop() else {
@@ -469,6 +479,7 @@ impl Engine {
                 .commands_applied
                 .fetch_add(applied, Ordering::Relaxed);
         }
+        true
     }
 }
 
@@ -943,6 +954,23 @@ mod tests {
         check!(e.session().loop_(0).expect("loop").position() == 0);
         // And the box came back to be freed on this side, as after a cycle.
         check!(h.reclaim() == 1);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn command_batch_visibility_covers_execution_through_staleness_publication() {
+        let (mut e, mut h) = engine();
+        let stats = Arc::clone(h.stats());
+        let observed = Arc::clone(&stats);
+        h.send(Box::new(move |s: &mut Session| {
+            assert!(observed.command_batch_in_flight.load(Ordering::Acquire));
+            s.create_loop();
+        }))
+        .expect("queue command");
+
+        e.pump();
+
+        assert!(!stats.command_batch_in_flight.load(Ordering::Acquire));
+        assert!(stats.graph_stale.load(Ordering::Relaxed));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
