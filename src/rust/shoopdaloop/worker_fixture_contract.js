@@ -13,7 +13,7 @@ function nextMessage(port, timeout = 5000) {
 }
 
 async function boot(module, mode) {
-  const worker = new Worker('./audio_worker.js');
+  const worker = new Worker('./audio_worker.js', { type: 'module' });
   ownedWorkers += 1;
   const application = new MessageChannel();
   const fixture = new MessageChannel();

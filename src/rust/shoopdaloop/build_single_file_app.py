@@ -98,10 +98,10 @@ def build_single_file(dist: Path, output: Path) -> None:
 
     raw_host_source = raw_host_script_path.read_text(encoding="utf-8")
     worklet_source = worklet_script_path.read_text(encoding="utf-8").replace(
-        "import './raw_wasm_host.js';\n", ""
+        "import { ShoopRawWasmHost } from './raw_wasm_host.js';\n", ""
     )
     worker_source = worker_script_path.read_text(encoding="utf-8").replace(
-        "importScripts('./raw_wasm_host.js');\n", ""
+        "import { ShoopRawWasmHost } from './raw_wasm_host.js';\n", ""
     )
     encoded_worklet_source = base64.b64encode(
         f"{raw_host_source}\n{worklet_source}".encode("utf-8")

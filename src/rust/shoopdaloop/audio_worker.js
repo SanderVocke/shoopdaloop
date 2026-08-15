@@ -1,4 +1,4 @@
-importScripts('./raw_wasm_host.js');
+import { ShoopRawWasmHost } from './raw_wasm_host.js';
 
 let applicationPort = null;
 let fixturePort = null;
@@ -196,7 +196,7 @@ self.onmessage = event => {
     protocolVersion = options.protocolVersion;
     applicationPort = options.applicationPort;
     fixturePort = options.fixturePort || null;
-    host = new globalThis.ShoopRawWasmHost(
+    host = new ShoopRawWasmHost(
       options.wasmModule,
       options.sampleRate,
       options.maxQuantum,

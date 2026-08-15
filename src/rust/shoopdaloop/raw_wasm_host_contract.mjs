@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import './raw_wasm_host.js';
+import { ShoopRawWasmHost } from './raw_wasm_host.js';
 
 const wasmPath = process.argv[2] || './dist/generated/shoop_audio_worklet.wasm';
 const bytes = await readFile(wasmPath);
@@ -7,7 +7,7 @@ const module = await WebAssembly.compile(bytes);
 if (WebAssembly.Module.imports(module).length !== 0) {
   throw new Error('raw host contract requires an import-free Wasm artifact');
 }
-const host = new globalThis.ShoopRawWasmHost(module, 48000, 2048, 262144);
+const host = new ShoopRawWasmHost(module, 48000, 2048, 262144);
 const poll = JSON.stringify({ version: 12, sequence: 1, command: { kind: 'poll' } });
 const first = JSON.parse(host.command(poll));
 if (first.version !== 12 || first.sequence !== 1 || first.event?.kind !== 'snapshot') {
@@ -35,7 +35,7 @@ try {
   shutdownRejected = true;
 }
 if (!shutdownRejected) throw new Error('destroyed raw host accepted processing');
-const trapped = new globalThis.ShoopRawWasmHost(module, 48000, 128, 262144);
+const trapped = new ShoopRawWasmHost(module, 48000, 128, 262144);
 trapped.host = 0xfffffff0;
 let trapObserved = false;
 try {

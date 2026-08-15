@@ -1,4 +1,4 @@
-import './raw_wasm_host.js';
+import { ShoopRawWasmHost } from './raw_wasm_host.js';
 
 class ShoopAudioProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -9,7 +9,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     try {
       const { wasmModule, maxQuantum, protocolVersion, commandMaxBytes } = options.processorOptions;
       this.protocolVersion = protocolVersion;
-      this.host = new globalThis.ShoopRawWasmHost(
+      this.host = new ShoopRawWasmHost(
         wasmModule,
         sampleRate,
         maxQuantum,

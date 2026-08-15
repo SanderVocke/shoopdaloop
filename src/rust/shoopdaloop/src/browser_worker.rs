@@ -5,7 +5,10 @@ use shoop_backend::BackendDriverState;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Event as WebEvent, MessageChannel, MessageEvent, MessagePort, Response, Worker};
+use web_sys::{
+    Event as WebEvent, MessageChannel, MessageEvent, MessagePort, Response, Worker, WorkerOptions,
+    WorkerType,
+};
 
 const WORKER_SCRIPT_URL: &str = "./audio_worker.js";
 const WORKLET_WASM_URL: &str = "./generated/shoop_audio_worklet.wasm";
@@ -49,7 +52,9 @@ impl BrowserWorkerDriver {
                 .and_then(|value| value.as_string())
                 .unwrap_or_else(|| WORKER_SCRIPT_URL.to_owned())
         };
-        let worker = Worker::new(&worker_url)
+        let worker_options = WorkerOptions::new();
+        worker_options.set_type(WorkerType::Module);
+        let worker = Worker::new_with_options(&worker_url, &worker_options)
             .map_err(|error| anyhow!("could not create browser engine Worker: {error:?}"))?;
 
         let channel = MessageChannel::new()

@@ -43,7 +43,7 @@ function shoopDecodeUtf8(bytes) {
   return output;
 }
 
-class ShoopRawWasmHost {
+export class ShoopRawWasmHost {
   constructor(wasmModule, sampleRate, maxQuantum, commandMaxBytes) {
     this.maxQuantum = maxQuantum;
     this.commandMaxBytes = commandMaxBytes;
@@ -144,5 +144,3 @@ class ShoopRawWasmHost {
     this.memoryBuffer = null;
   }
 }
-
-globalThis.ShoopRawWasmHost = ShoopRawWasmHost;
