@@ -386,21 +386,23 @@ Evidence: `shoop_wasm_runtime_tests/js/worker_fixture.js` exports `MultiWorkerFi
 
 ### Stage 4 — Migrate portable Rust coverage
 
-- [ ] Migrate protocol, application API, settings-value, session, scripting, and pure UI/model tests in the recorded package waves.
-- [ ] Migrate engine and backend tests that can use dummy ports, explicit process quanta, or Worker fixtures.
-- [ ] Migrate worklet command, audio, MIDI, capacity, transfer, readiness, and lifecycle tests where cross-boundary evidence adds value.
-- [ ] Migrate application orchestration and multi-backend scenarios without starting the packaged application.
-- [ ] Keep pure unit tests pure; do not force a Worker fixture where no boundary behavior is involved.
-- [ ] Classify and retain unavoidable native, Wasm-runtime-only, browser-adapter, and packaged tests with concrete reasons.
-- [ ] Compare Node.js and Chromium inventories after every package and resolve unexplained differences before continuing.
-- [ ] Update baseline, classification, overlap, and duration reports after each package wave.
+- [x] Migrate protocol, application API, settings-value, session, scripting, and pure UI/model tests in the recorded package waves.
+- [x] Migrate engine and backend tests that can use dummy ports, explicit process quanta, or Worker fixtures.
+- [x] Migrate worklet command, audio, MIDI, capacity, transfer, readiness, and lifecycle tests where cross-boundary evidence adds value.
+- [x] Migrate application orchestration and multi-backend scenarios without starting the packaged application.
+- [x] Keep pure unit tests pure; do not force a Worker fixture where no boundary behavior is involved.
+- [x] Classify and retain unavoidable native, Wasm-runtime-only, browser-adapter, and packaged tests with concrete reasons.
+- [x] Compare Node.js and Chromium inventories after every package and resolve unexplained differences before continuing.
+- [x] Update baseline, classification, overlap, and duration reports after each package wave.
 
 Verification after each package wave:
 
-- [ ] Native nextest remains green with Tracy capture enabled.
-- [ ] Node.js and Chromium Wasm suites pass for migrated shared packages.
-- [ ] The inventory accounts for every test and reports shared/runtime-specific/excluded totals without stale entries.
-- [ ] Warning-denying builds and Wasm dependency isolation remain green.
+- [x] Native nextest remains green with Tracy capture enabled.
+- [x] Node.js and Chromium Wasm suites pass for migrated shared packages.
+- [x] The inventory accounts for every test and reports shared/runtime-specific/excluded totals without stale entries.
+- [x] Warning-denying builds and Wasm dependency isolation remain green.
+
+Evidence: 1,170 logical tests now share one source body under native Tracy-captured nextest, Node Wasm, and Chromium Wasm. Four additional production Worker/MessagePort tests run in both Wasm runtimes. Package waves cover protocol, app API, plugin protocol, settings values, sessions/media, scripting, engine graph/loops/MIDI/storage, backend/scheduler, remote client, application cooperative orchestration, egui models, raw worklet host, and browser MIDI composition. Canonical warm debug runs pass 1,174 tests per runtime in approximately 156 seconds (Node) and 192 seconds (Chromium). `wasm_test_classification.toml --require-closed` accounts for all 1,425 native IDs as 1,170 shared, 136 native-platform, and 119 native-driver tests with no pending, stale, overlapping, or unexplained runtime entries. Native package tests retain Tracy attributes through the shared macro; the complete native gate is re-run in Stages 6–7.
 
 ### Stage 5 — Minimize packaged-application smoke coverage
 

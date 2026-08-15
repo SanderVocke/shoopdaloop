@@ -363,7 +363,7 @@ mod tests {
 
     // --- external connection registry ---
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn mock_ports_are_added_once() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
@@ -372,14 +372,14 @@ mod tests {
         check!(c.mock_ports()[0].direction == D::Input);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connecting_requires_an_existing_mock_port() {
         let mut c = DummyExternalConnections::default();
         let r = c.connect(PortId(1), "nope");
         check!(r == Err(DummyPortError::NoSuchExternalPort("nope".into())));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connection_status_reports_own_and_others_connections() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
@@ -393,7 +393,7 @@ mod tests {
         check!(s.get("b") == Some(&false));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn repeat_connections_are_ignored() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
@@ -409,7 +409,7 @@ mod tests {
         check!(c.n_connections() == 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disconnecting_removes_the_connection() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
@@ -418,7 +418,7 @@ mod tests {
         check!(c.connection_status_of(PortId(1)).is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_a_mock_port_drops_its_connections() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
@@ -428,7 +428,7 @@ mod tests {
         check!(c.connection_status_of(PortId(1)).is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_all_mock_ports_clears_everything() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
@@ -438,7 +438,7 @@ mod tests {
         check!(c.connection_status_of(PortId(1)).is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn find_filters_by_direction_and_data_type() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("ai", D::Input, T::Audio);
@@ -454,7 +454,7 @@ mod tests {
         check!(audio_in[0].name == "ai");
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn find_requires_a_full_name_match() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("capture_1", D::Input, T::Audio);
@@ -471,7 +471,7 @@ mod tests {
         check!(r.len() == 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_bad_pattern_is_reported() {
         let c = DummyExternalConnections::default();
         let r = c.find_external_ports(Some("("), D::Any, T::Any);
@@ -480,7 +480,7 @@ mod tests {
 
     // --- dummy audio port ---
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn reports_its_identity_and_role() {
         let p = input_port();
         check!(p.id() == PortId(1));
@@ -495,7 +495,7 @@ mod tests {
         check!(p.output_connectability() == PortConnectability::INTERNAL);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_output_ports_roles_are_mirrored() {
         let p = output_port();
         check!(!p.has_internal_read_access());
@@ -506,7 +506,7 @@ mod tests {
         check!(p.output_connectability() == PortConnectability::EXTERNAL);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn queued_data_appears_in_the_buffer() {
         let mut p = input_port();
         check!(p.queue_empty());
@@ -517,7 +517,7 @@ mod tests {
         check!(p.queue_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_short_queue_is_zero_padded() {
         let mut p = input_port();
         p.queue_data(&[1.0, 2.0]);
@@ -525,14 +525,14 @@ mod tests {
         check!(p.buffer(4) == [1.0, 2.0, 0.0, 0.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_empty_queue_yields_silence() {
         let mut p = input_port();
         p.prepare(4);
         check!(p.buffer(4) == [0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_long_queued_block_spans_cycles() {
         let mut p = input_port();
         p.queue_data(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
@@ -545,7 +545,7 @@ mod tests {
         check!(p.queue_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn several_queued_blocks_fill_one_cycle() {
         let mut p = input_port();
         p.queue_data(&[1.0, 2.0]);
@@ -554,7 +554,7 @@ mod tests {
         check!(p.buffer(4) == [1.0, 2.0, 3.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn nothing_is_retained_unless_requested() {
         let mut p = output_port();
         p.prepare(4);
@@ -570,7 +570,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn requested_output_is_retained_and_dequeued() {
         let mut p = output_port();
         p.request_data(4);
@@ -586,7 +586,7 @@ mod tests {
         check!(d == vec![3.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_request_larger_than_one_cycle_spans_cycles() {
         let mut p = output_port();
         p.request_data(6);
@@ -603,7 +603,7 @@ mod tests {
         check!(d == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn retained_output_reflects_gain() {
         let mut p = output_port();
         p.audio_mut().set_gain(2.0);
@@ -615,7 +615,7 @@ mod tests {
         check!(d == vec![2.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_input_port_round_trips_queued_data_through_processing() {
         let mut p = input_port();
         p.request_data(4);
@@ -627,7 +627,7 @@ mod tests {
         check!(p.audio().input_peak() == 0.5);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn close_is_harmless() {
         let mut p = input_port();
         p.close();

@@ -1831,14 +1831,14 @@ impl Drop for SubprocessCarlaProcessor {
 mod tests {
     use super::*;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn nonce_round_trip_and_validation() {
         let nonce = new_nonce();
         assert_eq!(parse_nonce(&nonce_hex(&nonce)).unwrap(), nonce);
         assert!(parse_nonce("bad").is_err());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bounded_logs_disclose_and_clear_truncation() {
         let mut log = BoundedLog::default();
         log.push(&[0xff, 0x00, 0xfe]);
@@ -1850,7 +1850,7 @@ mod tests {
         assert_eq!(log.snapshot(), LogSnapshot::default());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pipe_drain_handles_binary_flood_without_blocking() {
         let destination = Arc::new(Mutex::new(BoundedLog::default()));
         let mut flood = Vec::with_capacity(LOG_CAPACITY * 4 + 3);

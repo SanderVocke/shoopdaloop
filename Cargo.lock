@@ -3804,8 +3804,10 @@ dependencies = [
  "shoop_backend",
  "shoop_scripting",
  "shoop_session",
+ "shoop_wasm_test_support",
  "tracing",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -3836,7 +3838,9 @@ dependencies = [
  "serde_json",
  "shoop_audio_protocol",
  "shoop_backend",
+ "shoop_wasm_test_support",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -3850,7 +3854,9 @@ dependencies = [
  "shoop_engine",
  "shoop_plugin_protocol",
  "shoop_settings",
+ "shoop_wasm_test_support",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -3888,8 +3894,10 @@ dependencies = [
  "serde_json",
  "shoop_app_api",
  "shoop_settings",
+ "shoop_wasm_test_support",
  "tracing",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -3918,6 +3926,7 @@ dependencies = [
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_tracing",
+ "shoop_wasm_test_support",
  "tempfile",
  "thiserror 2.0.20",
  "tinyviolin",
@@ -3925,6 +3934,7 @@ dependencies = [
  "tracy-client",
  "tracy-nextest-capture",
  "uuid",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -4060,12 +4070,14 @@ dependencies = [
  "shoop_scripting",
  "shoop_session",
  "shoop_settings",
+ "shoop_wasm_test_support",
  "shoop_worklet_client",
  "tempfile",
  "tracing",
  "tracy-nextest-capture",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-bindgen-test",
  "web-sys",
  "web-time",
 ]

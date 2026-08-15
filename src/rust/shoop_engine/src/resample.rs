@@ -145,7 +145,7 @@ mod tests {
             .collect()
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn nothing_to_produce_gives_nothing() {
         let_assert!(Ok(out) = resample_interleaved(&ramp(10, 1), 1, 0));
         check!(out.is_empty());
@@ -153,14 +153,14 @@ mod tests {
         check!(out.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_input_gives_silence_of_the_requested_length() {
         let_assert!(Ok(out) = resample_interleaved(&[], 2, 8));
         check!(out.len() == 16);
         check!(out.iter().all(|&v| v == 0.0));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_ragged_input_is_refused() {
         // Five samples cannot be a whole number of stereo frames.
         check!(
@@ -172,14 +172,14 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_same_length_passes_straight_through() {
         let input = ramp(16, 2);
         let_assert!(Ok(out) = resample_interleaved(&input, 2, 16));
         check!(out == input);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_output_is_exactly_the_requested_length() {
         for (from, to) in [(100, 50), (100, 200), (100, 137), (7, 999), (999, 7)] {
             let_assert!(Ok(out) = resample_interleaved(&ramp(from, 2), 2, to));
@@ -187,7 +187,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channels_stay_separate() {
         // Channel 1 is offset by 1000, so any bleed between them is obvious.
         let_assert!(Ok(out) = resample_interleaved(&ramp(200, 2), 2, 100));
@@ -199,7 +199,7 @@ mod tests {
         check!(ch1.iter().all(|&v| v > 500.0));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_constant_signal_stays_constant() {
         // A ramp would be distorted by the filter's transient; a constant should come
         // back as itself apart from the edges.
@@ -215,7 +215,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_absurd_ratio_is_clamped_rather_than_refused() {
         // Far beyond the 64x bound, so the ratio is clamped and the result is padded
         // out to the requested length rather than failing.
@@ -223,7 +223,7 @@ mod tests {
         check!(out.len() == 4096);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_tail_repeats_rather_than_falling_silent() {
         // A constant input means any zero in the output is padding that should have
         // been a repeat.

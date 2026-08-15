@@ -271,7 +271,7 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn asynchronously_prepares_and_caches_samples() {
         let context = egui::Context::default();
         let samples: Arc<[f32]> = Arc::from(

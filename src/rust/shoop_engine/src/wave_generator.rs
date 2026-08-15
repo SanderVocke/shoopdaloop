@@ -303,7 +303,7 @@ mod tests {
         g
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn silence_until_a_note_arrives() {
         let mut g = gen();
         let mut out = vec![0.0f32; 256];
@@ -312,7 +312,7 @@ mod tests {
         check!(g.n_active_voices() == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_note_makes_a_sound() {
         let mut g = gen();
         let mut out = vec![0.0f32; 2048];
@@ -322,7 +322,7 @@ mod tests {
         check!(peak(&out) > 0.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_note_starts_at_the_frame_it_was_played() {
         let mut g = gen();
         let mut out = vec![0.0f32; 512];
@@ -333,7 +333,7 @@ mod tests {
         check!(peak(&out[256..]) > 0.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn releasing_a_note_frees_its_voice() {
         let mut g = gen();
         let mut out = vec![0.0f32; 512];
@@ -347,7 +347,7 @@ mod tests {
         check!(g.n_active_voices() == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_note_on_with_zero_velocity_is_a_note_off() {
         let mut g = gen();
         let mut out = vec![0.0f32; 512];
@@ -360,7 +360,7 @@ mod tests {
         check!(g.n_active_voices() == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_retriggered_note_does_not_take_a_second_voice() {
         let mut g = gen();
         let mut out = vec![0.0f32; 256];
@@ -369,7 +369,7 @@ mod tests {
         check!(g.n_active_voices() == 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_same_note_on_two_channels_is_two_voices() {
         let mut g = gen();
         let mut out = vec![0.0f32; 256];
@@ -383,7 +383,7 @@ mod tests {
         check!(g.n_active_voices() == 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn all_notes_off_silences_the_channel_only() {
         let mut g = gen();
         let mut out = vec![0.0f32; 256];
@@ -403,7 +403,7 @@ mod tests {
         check!(g.n_active_voices() == 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_full_pool_steals_the_oldest_voice() {
         let mut g = gen();
         let mut out = vec![0.0f32; 64];
@@ -419,7 +419,7 @@ mod tests {
         check!(g.n_active_voices() == N_VOICES);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_note_ramps_rather_than_stepping() {
         let mut g = gen();
         let mut out = vec![0.0f32; 480];
@@ -430,7 +430,7 @@ mod tests {
         check!(out[0].abs() < peak(&out) * 0.1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn output_is_added_so_sources_can_share_a_buffer() {
         let mut g = gen();
         let mut out = vec![0.5f32; 128];
@@ -439,7 +439,7 @@ mod tests {
         check!(out.iter().all(|&v| v == 0.5));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn every_waveform_makes_a_sound() {
         for w in [
             Waveform::Sine,
@@ -455,7 +455,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn concert_a_is_440_hz() {
         check!((note_to_hz(69) - 440.0).abs() < 0.001);
         check!((note_to_hz(81) - 880.0).abs() < 0.001);
@@ -464,7 +464,7 @@ mod tests {
 
     /// The frequency actually rendered, counted from zero crossings, so the oscillator is
     /// checked rather than only the note table.
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_rendered_note_has_the_right_frequency() {
         let mut g = gen();
         g.set_waveform(Waveform::Sine);
@@ -482,7 +482,7 @@ mod tests {
         check!((hz - 440.0).abs() < 2.0, "measured {hz} Hz");
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn reset_silences_everything_at_once() {
         let mut g = gen();
         let mut out = vec![0.0f32; 256];
@@ -498,7 +498,7 @@ mod tests {
     /// A note switched on and off at the same instant is silent, which is what the metronome was
     /// doing: both messages carried timestamp 0, so the voice was released before its attack had
     /// produced anything.
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_note_released_at_the_same_timestamp_makes_no_sound() {
         let mut g = WaveGenerator::default();
         g.set_sample_rate(48000);
@@ -515,7 +515,7 @@ mod tests {
     }
 
     /// Held for a cycle and released on the next, it sounds -- which is the fix.
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_note_held_for_a_cycle_sounds() {
         let mut g = WaveGenerator::default();
         g.set_sample_rate(48000);

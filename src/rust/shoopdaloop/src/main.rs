@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use std::time::Duration;
 
 #[cfg(target_arch = "wasm32")]
@@ -34,7 +37,7 @@ use shoop_egui::register_bundled_script_settings;
 use shoop_egui::register_carla_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::register_script_settings;
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 use shoop_egui::register_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::{register_audio_settings, AudioDriverConfig};
@@ -4107,8 +4110,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(target_arch = "wasm32"))]
     use std::thread;
 
+    #[cfg(not(target_arch = "wasm32"))]
     use shoop_egui::{
         ApplicationPortOwner, DirectTrackSpec, HostPortId, LoopAction, LoopMode, MidiNote,
         PianoAction, PortRole, SelectionModifiers, TrackAction,
@@ -4117,7 +4122,7 @@ mod tests {
     use super::*;
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn application_icon_is_embedded() {
         let icon = application_icon();
         assert_eq!((icon.width, icon.height), (256, 256));
@@ -4127,7 +4132,8 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_cli_parses_tracing_mode() {
         let tracing = NativeCli::try_parse_from(["shoopdaloop", "--tracing"]).unwrap();
         assert!(tracing.tracing);
@@ -4142,18 +4148,20 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_cli_rejects_removed_capture_option() {
         assert!(NativeCli::try_parse_from(["shoopdaloop", "--tracing-capture"]).is_err());
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_cli_rejects_engine_detail_without_tracing_mode() {
         assert!(NativeCli::try_parse_from(["shoopdaloop", "--tracing-engine-detail"]).is_err());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_shell_targets_the_application_canvas() {
         let html = include_str!("../index.html");
         assert!(html.contains("data-trunk"));
@@ -4167,7 +4175,7 @@ mod tests {
         assert!(html.contains("Roboto-BoldItalic.ttf"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn small_screens_use_a_larger_missing_setting_default() {
         assert_eq!(
             default_ui_scale_for_screen(Some(egui::vec2(1280.0, 800.0))),
@@ -4201,7 +4209,8 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn confirmed_driver_switch_is_saved_once_and_completed_after_persistence() {
         let mut app = UnifiedApp::new(1.0).unwrap();
         app.runtime.tick(Duration::ZERO);
@@ -4270,7 +4279,8 @@ mod tests {
         assert!(app.pending_audio_settings.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_driver_settings_save_retries_without_switching_backend_again() {
         let directory = tempfile::tempdir().unwrap();
         let blocker = directory.path().join("blocked");
@@ -4374,7 +4384,8 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn persisted_dummy_configuration_is_used_on_restart() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -4419,7 +4430,8 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn runtime_applies_carla_hosting_setting_before_backend_start() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -4437,7 +4449,8 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn carla_hosting_mode_persists_but_does_not_change_the_running_backend() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -4463,7 +4476,8 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn unavailable_saved_preference_falls_back_without_overwriting_settings() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -4508,7 +4522,8 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn ephemeral_script_files_require_lua_utf8_and_valid_syntax() {
         assert!(is_lua_file_name("controller.lua"));
         assert!(is_lua_file_name("controller.LUA"));
@@ -4525,7 +4540,8 @@ mod tests {
         assert!(load_ephemeral_script_bytes("controller.lua".to_owned(), b"function(").is_err());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn startup_script_adapter_resolves_typed_bundles_files_and_missing_paths() {
         let directory = tempfile::tempdir().unwrap();
         let user_script = directory.path().join("user.lua");
@@ -4579,7 +4595,8 @@ mod tests {
         assert!(validate_script_draft(&draft).is_err());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn committed_settings_reconcile_scripts_and_failed_save_leaves_runtime_unchanged() {
         let directory = tempfile::tempdir().unwrap();
         let script_path = directory.path().join("controller.lua");
@@ -4657,6 +4674,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn wait_for_settings_save(manager: &mut SettingsManager) {
         let deadline = Instant::now() + Duration::from_secs(3);
         while manager.view().persistence == shoop_settings::SettingsPersistenceState::Saving {
@@ -4666,6 +4684,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn wait_for_script_count(
         runtime: &mut Runtime,
         expected: usize,
@@ -4682,6 +4701,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn wait_for_script_configuration(runtime: &mut Runtime) -> std::sync::Arc<AppSnapshot> {
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
@@ -4716,7 +4736,8 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn startup_path_association_preserves_rejected_slots_and_duplicate_names() {
         let first = shoop_egui::ScriptId::from_raw(11);
         let second = shoop_egui::ScriptId::from_raw(12);
@@ -4733,7 +4754,8 @@ mod tests {
         assert_eq!(paths.get(&second).map(String::as_str), Some("second.lua"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_atomic_replace_overwrites_and_cleans_up_failed_temporary_files() {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("session.shoop");
@@ -4752,7 +4774,8 @@ mod tests {
             .exists());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn unified_application_paints_at_minimum_and_common_sizes() {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();
@@ -4773,7 +4796,8 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn unified_native_app_runs_paints_invokes_and_removes_lua_dialogs() {
         let context = egui::Context::default();
         shoop_egui::initialize(&context);
@@ -4912,7 +4936,8 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_workflow_creates_records_and_controls_tracks_and_loops() {
         let mut app = UnifiedApp::new(1.0).unwrap();
         let track_specs = [
@@ -5356,6 +5381,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn wait_for_click_generation(
         app: &UnifiedApp,
         loop_id: shoop_egui::LoopId,
@@ -5383,6 +5409,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn wait_for_loop_mode(
         app: &UnifiedApp,
         track_id: shoop_egui::TrackId,

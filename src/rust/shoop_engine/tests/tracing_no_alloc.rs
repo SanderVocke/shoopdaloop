@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! Verifies that tracing-enabled realtime cycles keep allocation permission inside the
 //! direct Tracy helpers. Ordinary engine work is still enclosed by the global guard.
 

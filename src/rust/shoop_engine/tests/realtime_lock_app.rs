@@ -14,7 +14,7 @@ impl Drop for DisableGuard {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_app_processing_uses_only_explicit_realtime_lock_permissions() {
     const BUFFER: u32 = 64;
 
@@ -79,3 +79,5 @@ fn dummy_app_processing_uses_only_explicit_realtime_lock_permissions() {
     realtime_lock_guard::set_enabled(false);
     assert_eq!(loop_.get_state().expect("state").position, BUFFER);
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

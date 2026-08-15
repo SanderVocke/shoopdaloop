@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 mod native;
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
@@ -6707,18 +6710,18 @@ mod tests {
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_satisfies_shared_composite_lifecycle_contract() {
         backend_composite_lifecycle_contract(&mut FakeBackend::default());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_backend_satisfies_shared_composite_lifecycle_contract() {
         let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
         backend_composite_lifecycle_contract(&mut backend);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_backend_composite_contract_is_independent_and_transactional() {
         let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
         let sync = backend.create_loop().unwrap();
@@ -6901,12 +6904,12 @@ mod tests {
         assert_eq!(backend.poll().unwrap().composites[&composite], before_stale);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn default_input_capture_is_thirty_seconds() {
         assert_eq!(INPUT_CAPTURE_CAPACITY_SECONDS, 30);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dry_wet_processor_mapping_is_ordered_and_clamps_unequal_shapes() {
         assert_eq!(
             dry_wet_processor_mapping(4, 1, true, 2, 16, true),
@@ -6926,7 +6929,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dry_wet_routing_matches_monitor_and_transition_truth_table() {
         let cases = [
             (
@@ -7012,7 +7015,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_publishes_empty_and_future_processor_catalogs() {
         let mut backend = FakeBackend::default();
         assert!(backend.track_processor_catalog().unwrap().is_empty());
@@ -7043,7 +7046,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_creates_and_round_trips_external_dry_wet_tracks() {
         let mut backend = FakeBackend::default();
         let created = backend
@@ -7134,7 +7137,7 @@ mod tests {
         assert_eq!(restored.capture_session().unwrap(), captured);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_backend_rejects_processed_sessions_before_replacement() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 1).unwrap();
@@ -7543,7 +7546,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_satisfies_contracts() {
         let mut backend = FakeBackend::default();
         backend_contract(&mut backend);
@@ -7551,7 +7554,7 @@ mod tests {
         connection_contract(&mut backend);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_dummy_backend_satisfies_contracts() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         backend_contract(&mut backend);
@@ -7559,19 +7562,19 @@ mod tests {
         connection_contract(&mut backend);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_and_engine_backends_satisfy_transactional_session_io_contract() {
         session_io_contract(&mut FakeBackend::default());
         session_io_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_and_engine_backends_update_loop_content_without_session_replacement() {
         loop_content_contract(&mut FakeBackend::default());
         loop_content_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn driver_catalog_and_switch_contracts_are_typed_and_transactional() {
         let mut backend = FakeBackend::default();
         let catalog = backend.audio_driver_state().unwrap();
@@ -7622,7 +7625,7 @@ mod tests {
         assert_eq!(active.buffer_size, 128);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_dummy_preflight_rejects_unconfirmed_rate_changes() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
@@ -7640,7 +7643,7 @@ mod tests {
         assert_eq!(backend.poll().unwrap().status.sample_rate, 48_000);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_connection_control_covers_churn_external_change_and_deferred_failure() {
         let mut backend = FakeBackend::default();
         let control = backend.connection_control();
@@ -7688,7 +7691,7 @@ mod tests {
         assert_eq!(failures[0].port_id, input);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_dummy_records_and_plays_real_engine_frames() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         let track = backend
@@ -7721,7 +7724,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_web_audio_host_inventory_preserves_application_ports() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -7758,7 +7761,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_midi_injection_records_without_host_endpoints_or_links() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -7834,7 +7837,7 @@ mod tests {
             .is_err());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_routes_record_monitor_and_playback_with_bounded_render_work() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -7998,7 +8001,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_dual_route_is_additive_but_only_track_copy_records() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -8075,7 +8078,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn missing_desired_global_web_midi_identity_survives_replace_and_reconnects() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -8121,7 +8124,7 @@ mod tests {
             }));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_input_fans_out_once_to_every_connected_track() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -8184,7 +8187,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_output_fanout_survives_bounded_drains_without_duplicates() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -8260,7 +8263,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn saturated_web_midi_render_is_allocation_free_and_counts_refusal() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -8312,7 +8315,7 @@ mod tests {
         });
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_processes_audio_midi_controls_and_session_state() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -8581,7 +8584,7 @@ mod tests {
         assert!(editor.midi_cc_assignments.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_records_the_same_sustained_wet_signal_that_is_monitored() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 1).unwrap();
@@ -8706,7 +8709,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_accepts_zero_mono_stereo_and_arbitrary_matched_channels() {
         for channels in [0, 1, 2, 7] {
             let mut backend = EngineBackend::new_dummy(48_000, 128).unwrap();
@@ -8779,7 +8782,7 @@ mod tests {
         assert!(backend.capture_session().unwrap().tracks.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disconnected_web_audio_input_records_silence() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 1).unwrap();
@@ -8817,7 +8820,7 @@ mod tests {
         assert!(recorded[0].iter().all(|sample| *sample == 0.0));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_backend_records_monitors_and_plays_non_zero_full_duplex_audio() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -8871,7 +8874,7 @@ mod tests {
         assert!(status.output_peak > 0.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_session_replacement_preserves_user_route_changes_over_defaults() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -8922,7 +8925,7 @@ mod tests {
         }));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_playback_deterministically_mixes_more_loop_channels_than_device_channels() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 2).unwrap();
@@ -8959,7 +8962,7 @@ mod tests {
             .all(|sample| (*sample - 0.9).abs() < 1.0e-6));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_and_midi_grab_adopt_recent_input_without_growing_in_the_callback() {
         let mut backend = EngineBackend::new_web_audio(128, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -9068,7 +9071,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_grab_preflights_every_target() {
         let mut backend = FakeBackend::default();
         let track = backend
@@ -9105,7 +9108,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn targeted_midi_data_preserves_channel_metadata_events_and_content() {
         let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
         let track = backend
@@ -9156,7 +9159,7 @@ mod tests {
         assert_eq!(backend.capture_session().unwrap(), before);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_runtime_progresses_only_from_explicit_quanta() {
         let mut runtime = EngineBackend::new_dummy_runtime(48_000, 128).unwrap();
         runtime.advance(Duration::from_secs(1));
@@ -9165,7 +9168,7 @@ mod tests {
         assert_eq!(runtime.processed_frames(), 128);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn elapsed_time_preserves_fractional_frame_remainders() {
         let mut backend = EngineBackend::new_dummy(1_000, 64).unwrap();
         backend.advance(Duration::from_micros(500));
@@ -9174,7 +9177,7 @@ mod tests {
         assert_eq!(backend.processed_frames(), 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn elapsed_time_processing_is_bounded_and_reports_dropped_time() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         backend.advance(Duration::from_secs(10));

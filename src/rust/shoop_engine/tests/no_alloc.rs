@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! Proves the process path does not allocate.
 //!
 //! This is the strongest argument for the Rust port: "is this realtime-safe?"

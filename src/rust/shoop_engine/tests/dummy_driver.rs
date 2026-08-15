@@ -34,7 +34,7 @@ fn processed(d: &mut DummyDriver, cycles: usize) -> Vec<u32> {
     (0..cycles).map(|_| d.next_chunk()).collect()
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_driver_automatic() {
     let mut d = driver(DriverMode::Automatic);
 
@@ -46,7 +46,7 @@ fn dummy_driver_automatic() {
     check!(chunks.iter().all(|&n| n == 256));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_driver_controlled() {
     let mut d = driver(DriverMode::Controlled);
 
@@ -66,7 +66,7 @@ fn dummy_driver_controlled() {
     d.close();
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_driver_input_port_default() {
     let mut p = in_port();
 
@@ -74,7 +74,7 @@ fn dummy_driver_input_port_default() {
     check!(p.buffer(8) == [0.0; 8]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_driver_input_port_queue() {
     let mut p = in_port();
     let data = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
@@ -85,7 +85,7 @@ fn dummy_driver_input_port_queue() {
     check!(p.buffer(8) == data);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_driver_input_port_queue_consume_multiple() {
     let mut p = in_port();
     p.queue_data(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
@@ -100,7 +100,7 @@ fn dummy_driver_input_port_queue_consume_multiple() {
     check!(p.buffer(8) == [5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_driver_input_port_queue_consume_combine() {
     let mut p = in_port();
     // Two separate queued blocks, which run together rather than each taking a cycle.
@@ -111,3 +111,5 @@ fn dummy_driver_input_port_queue_consume_combine() {
     p.process(10);
     check!(p.buffer(10) == [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0, 0.0, 0.0]);
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

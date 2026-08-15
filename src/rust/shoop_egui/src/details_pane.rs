@@ -79,7 +79,7 @@ mod tests {
     };
     use std::sync::Arc;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn composite_details_take_precedence_over_primitive_empty_state() {
         let context = egui::Context::default();
         let mut pane = DetailsPane::default();
@@ -115,7 +115,7 @@ mod tests {
         assert!(pane.midi_sequences.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_only_and_mixed_details_create_the_expected_lanes() {
         let context = egui::Context::default();
         let mut pane = DetailsPane::default();

@@ -762,7 +762,7 @@ mod tests {
     use super::*;
     use assert2::check;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn control_state_round_trips_library_state_and_gain() {
         let mut source = TinySynthFxControlState::new(48_000.0).unwrap();
         source.select_preset("pad").unwrap();
@@ -790,7 +790,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_cc_assignments_replace_source_and_target_conflicts() {
         let mut assignments = TinySynthFxMidiCcAssignments::default();
         check!(assignments.assign(TinySynthFxMidiCcAssignment {
@@ -831,7 +831,7 @@ mod tests {
         }));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_cc_controls_every_continuous_parameter_and_updates_control_state() {
         for parameter in TinySynthFxParameter::ALL {
             for cc_value in [0, 63, 127] {
@@ -859,7 +859,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn mapped_master_gain_starts_at_the_cc_sample_offset() {
         let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
         control.assign_midi_cc(TinySynthFxMidiCcAssignment {
@@ -878,7 +878,7 @@ mod tests {
         check!(output[4] < initial_gain);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_cc_mapping_requires_an_exact_channel_and_controller_match() {
         let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
         control.assign_midi_cc(TinySynthFxMidiCcAssignment {
@@ -898,7 +898,7 @@ mod tests {
         check!(editor.selected_preset_id.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn malformed_or_out_of_range_state_is_rejected() {
         assert!(TinySynthFxControlState::from_encoded(48_000.0, "not-state").is_err());
         let invalid_gain = format!(
@@ -925,7 +925,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn matched_mono_stereo_and_seven_channel_audio_mix_the_same_timed_synth() {
         for channels in [1, 2, 7] {
             let control = TinySynthFxControlState::new(48_000.0).unwrap();
@@ -958,7 +958,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unsupported_or_malformed_midi_preserves_the_audio_quantum() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut processor = control.prepare_processor(48_000.0, 1, 64).unwrap();
@@ -977,7 +977,7 @@ mod tests {
             .all(|sample| (*sample - expected).abs() < 1.0e-6));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn all_notes_off_and_all_sound_off_reach_tinyviolin_at_sample_offsets() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let note_on = MidiStorageElem::new(0, &[0x90, 69, 127]).unwrap();
@@ -1026,7 +1026,7 @@ mod tests {
             .all(|sample| sample.abs() < 1.0e-7));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn zero_audio_midi_and_effect_controls_are_stable() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut silent = control.prepare_processor(48_000.0, 0, 64).unwrap();
@@ -1067,7 +1067,7 @@ mod tests {
         processor.process(64, &[]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pitch_bend_and_modulation_wheel_reach_tinyviolin() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let note_on = MidiStorageElem::new(0, &[0x90, 69, 127]).unwrap();
@@ -1104,7 +1104,7 @@ mod tests {
             .any(|(modulated, centered)| (*modulated - *centered).abs() > 1.0e-4));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn master_gain_changes_are_smoothed_to_the_exact_target() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut processor = control.prepare_processor(48_000.0, 1, 128).unwrap();
@@ -1129,7 +1129,7 @@ mod tests {
             .all(|sample| (*sample - target).abs() < 1.0e-6));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn sustained_variable_block_processing_remains_finite_and_active() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut processor = control.prepare_processor(48_000.0, 2, 128).unwrap();
@@ -1154,7 +1154,7 @@ mod tests {
         assert!(observed_signal);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn presets_are_runtime_advertised_with_unique_stable_ids() {
         let presets = available_presets().collect::<Vec<_>>();
         assert!(presets.len() >= 12);

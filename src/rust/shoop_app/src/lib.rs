@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -8292,6 +8295,7 @@ fn app_loop_mode(mode: BackendLoopMode) -> LoopMode {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(target_arch = "wasm32"))]
     use std::time::Instant;
 
     use shoop_app_api::{SelectionModifiers, TrackAction};
@@ -8301,20 +8305,28 @@ mod tests {
 
     use super::*;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    fn cooperative_start_with_midi(
+        backend: Box<dyn Backend>,
+        midi: Box<dyn shoop_scripting::MidiControlService>,
+    ) -> Result<CooperativeApplicationRuntime> {
+        CooperativeApplicationRuntime::start_with_scripts_and_midi(backend, Vec::new(), midi)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn track_output_midi_activity_includes_port_and_loop_playback() {
         assert!(combined_output_midi_activity(false, [false, true]));
         assert!(combined_output_midi_activity(true, [false, false]));
         assert!(!combined_output_midi_activity(false, [false, false]));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn display_peaks_preserves_stereo_and_uses_the_loudest_other_channel_count() {
         assert_eq!(display_peaks(&[-12.0, -6.0], true), (-12.0, -6.0));
         assert_eq!(display_peaks(&[-18.0, -3.0, -9.0], false), (-3.0, -3.0));
         assert_eq!(display_peaks(&[], false), (-200.0, -200.0));
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn wait_for(
         handle: &ApplicationHandle,
         predicate: impl Fn(&AppSnapshot) -> bool,
@@ -8330,7 +8342,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn desired_control_helpers_cover_every_control_shape() {
         let mut backend_track = BackendTrackState::default();
         let mut controls = TrackControlState::default();
@@ -8500,7 +8512,8 @@ mod tests {
         (backend, model, track_id, target, sources)
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_initializes_a_distinct_sync_track() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let snapshot = runtime.handle().snapshot();
@@ -8512,7 +8525,7 @@ mod tests {
         assert!(snapshot.tracks[0].loops[0].id.is_valid());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_and_recreating_a_track_reuses_its_port_names_without_stale_resources() {
         let mut backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut model = ApplicationModel::initialize(
@@ -8589,7 +8602,8 @@ mod tests {
         assert_eq!(new_port_names, old_port_names);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_name_change_is_published() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let initial = runtime.handle().snapshot();
@@ -8609,7 +8623,7 @@ mod tests {
         assert_eq!(snapshot.tracks[0].loops[0].name, "Count-in");
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_and_track_move_actions_reorder_by_stable_insertion_target() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -8694,7 +8708,7 @@ mod tests {
         assert_eq!(model.tracks[track_index].loops, expected);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn duplicate_uses_the_first_empty_slot_below_and_drop_actions_target_and_swap() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -8831,7 +8845,8 @@ mod tests {
         assert_eq!(model.tracks[1].loops[2], before[2]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn application_publishes_backend_processor_capabilities() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new("future_browser_fx"),
@@ -8862,7 +8877,8 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn application_adds_external_dry_wet_tracks_from_processor_capabilities() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new(
@@ -8965,7 +8981,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_round_trips_controls_and_recorded_state() {
         let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -9220,7 +9236,7 @@ mod tests {
         assert_eq!(switched_editor.eq_high_db, 1.5);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn processed_track_session_round_trip_preserves_roles_state_and_recorded_take() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new(
@@ -9359,7 +9375,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_recorded_fx_restore_leaves_the_processed_track_usable() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new(
@@ -9451,7 +9467,8 @@ mod tests {
         }));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_starts_embedded_production_keyboard_script_without_checkout_files() {
         let runtime = ApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
@@ -9472,7 +9489,8 @@ mod tests {
         assert!(snapshot.scripting.scripts[0].latest_error.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn startup_script_ids_preserve_source_order_across_rejection_and_duplicate_names() {
         let runtime = ApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
@@ -9510,7 +9528,7 @@ mod tests {
         assert_eq!(snapshot.scripting.scripts[1].id, ids[2].unwrap());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_startup_runs_embedded_keyboard_on_the_application_owner() {
         let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
@@ -9547,11 +9565,11 @@ mod tests {
         assert!(runtime.snapshot().tracks[1].loops[0].selected);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn lua_control_ports_are_owner_managed_stable_and_visible_without_midi_hosts() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 2).unwrap();
-        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+        let mut runtime = cooperative_start_with_midi(
             Box::new(backend),
             Box::new(shoop_scripting::NullMidiService),
         )
@@ -9638,7 +9656,7 @@ mod tests {
         assert_eq!(restarted_ids, stable_ids);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_callback_can_request_script_dialog_opening() {
         let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
         midi_control.set_endpoints(vec![shoop_scripting::MidiEndpoint {
@@ -9646,11 +9664,8 @@ mod tests {
             name: "Controller".to_owned(),
             direction: shoop_scripting::MidiEndpointDirection::Output,
         }]);
-        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
-            Box::new(FakeBackend::default()),
-            Box::new(midi),
-        )
-        .unwrap();
+        let mut runtime =
+            cooperative_start_with_midi(Box::new(FakeBackend::default()), Box::new(midi)).unwrap();
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "midi-dialog.lua".to_owned(),
@@ -9674,7 +9689,7 @@ c.auto_open_device_specific_midi_control_input('Controller', function() d.open('
         assert_eq!(runtime.snapshot().scripting.dialogs[0].open_request, 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_track_and_control_views_share_canonical_host_rows() {
         let backend = FakeBackend::default();
         let backend_control = backend.connection_control();
@@ -9701,9 +9716,7 @@ c.auto_open_device_specific_midi_control_input('Controller', function() d.open('
                 direction: shoop_scripting::MidiEndpointDirection::Input,
             },
         ]);
-        let mut runtime =
-            CooperativeApplicationRuntime::start_with_midi(Box::new(backend), Box::new(midi))
-                .unwrap();
+        let mut runtime = cooperative_start_with_midi(Box::new(backend), Box::new(midi)).unwrap();
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
@@ -9758,7 +9771,8 @@ c.auto_open_device_specific_midi_control_input('Controller', function() d.open('
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_owns_script_lifecycle_and_publishes_plain_states() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -9808,7 +9822,8 @@ c.auto_open_device_specific_midi_control_input('Controller', function() d.open('
         wait_for(&handle, |snapshot| snapshot.scripting.scripts.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn threaded_actor_routes_script_dialog_callbacks_and_teardown() {
         let runtime = ApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
@@ -9858,7 +9873,7 @@ d.open('Actor dialog')
         wait_for(&handle, |snapshot| snapshot.scripting.dialogs.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn incompatible_script_version_is_published_as_error_without_side_effects() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9887,7 +9902,7 @@ d.open('Actor dialog')
         assert!(error.contains("script requests 1.3, host supports 1.2"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn auto_mute_policy_change_dispatches_lua_global_event() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9916,7 +9931,7 @@ c.register_global_event_cb(function() c.set_solo(true) end)
         assert!(runtime.snapshot().global_controls.solo);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn lua_respecting_input_unmute_applies_global_policy_through_application() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9968,7 +9983,8 @@ c.track_set_input_muted(1, false, true)
         assert!(snapshot.tracks[2].controls.input_monitoring);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn lua_control_batches_use_authoritative_application_and_backend_paths() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -10000,7 +10016,8 @@ c.loop_set_gain({-1, 0}, 0.25)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_keyboard_events_timers_and_committed_loop_events_are_dispatched() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -10062,7 +10079,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(handle.snapshot().scripting.scripts[0].logs.len(), 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_dialogs_publish_open_in_callbacks_invoke_exact_buttons_and_teardown() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -10171,7 +10188,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(stopped.scripting.dialogs[0].owner_script_name, "other.lua");
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_keyboard_script_handles_navigation_modes_numbers_targets_and_releases() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -10455,7 +10472,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .is_none());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_keyboard_selects_sync_fallback_and_ctrl_momentary_toggle() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -10498,7 +10515,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .is_none());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_keyboard_default_action_covers_stopped_cancel_and_grab_policy() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -10619,7 +10636,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .contains("cannot grab before the sync loop has a length")));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_snapshot_keeps_child_and_composite_transition_state_independent() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -10690,7 +10707,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(composite.next_mode_delay, None);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_keyboard_plays_manual_recording_on_next_sync_cycle() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
@@ -10765,7 +10782,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn composite_details_preserve_qml_schedule_semantics_and_canonical_session_data() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -10927,7 +10944,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(empty.events.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn gui_conversion_and_serial_composition_are_authoritative_and_cycle_safe() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -11091,7 +11108,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(saved_target.composite, before);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_backend_composite_reconfiguration_does_not_commit_application_schedule() {
         let mut backend = FakeBackend::default();
         backend.enable_composite_loops();
@@ -11135,7 +11152,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(backend.operations().len(), before_operations);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn rich_composite_survives_session_load_and_save_without_projection_loss() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -11234,7 +11251,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         panic!("baseline session save did not complete");
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn latest_global_or_script_repeat_sync_policy_applies_to_existing_and_new_loops() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -11290,7 +11307,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(model.loops[&loop_id].repeat_sync);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disabling_sync_makes_a_primitive_loop_repeat_at_its_own_boundary() {
         let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
         let mut model = ApplicationModel::initialize(
@@ -11341,7 +11358,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(state.position, 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn independently_playing_a_child_does_not_advance_its_composite() {
         let (mut backend, mut model, _, target, sources) = engine_model_with_regular_composite();
         backend
@@ -11363,7 +11380,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn gui_play_on_a_regular_composite_starts_the_composite_and_first_child() {
         let (mut backend, mut model, track_id, target, sources) =
             engine_model_with_regular_composite();
@@ -11388,7 +11405,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .all(|source| model.loops[source].state.mode == LoopMode::Stopped));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn public_intents_disable_repeat_sync_for_an_independently_wrapping_loop() {
         let backend = EngineBackend::new_dummy(1_000, 1).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -11460,7 +11477,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(loop_.position, 0.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn public_intents_drive_three_section_engine_composite_and_isolate_child_control() {
         let backend = EngineBackend::new_dummy(1_000, 1).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -11690,7 +11707,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn regular_script_composition_plays_serial_sections_and_wraps_without_sync() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -11784,7 +11801,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!model.script_composition_playback.contains_key(&target));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_composition_append_and_parallel_execute_on_engine_backend() {
         let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -11886,7 +11903,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unchanged_apc_script_drives_authoritative_state_and_bounded_led_output() {
         let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
         midi_control.set_endpoints(vec![
@@ -11901,11 +11918,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 direction: shoop_scripting::MidiEndpointDirection::Input,
             },
         ]);
-        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
-            Box::new(FakeBackend::default()),
-            Box::new(midi),
-        )
-        .unwrap();
+        let mut runtime =
+            cooperative_start_with_midi(Box::new(FakeBackend::default()), Box::new(midi)).unwrap();
         for index in 0..8 {
             runtime
                 .dispatch(AppIntent::AddTrack(DirectTrackSpec {
@@ -12431,7 +12445,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(midi_control.active_connections(), 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_apc_reset_restores_authoritative_loop_colors() {
         let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
         midi_control.set_endpoints(vec![
@@ -12446,11 +12460,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 direction: shoop_scripting::MidiEndpointDirection::Input,
             },
         ]);
-        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
-            Box::new(FakeBackend::default()),
-            Box::new(midi),
-        )
-        .unwrap();
+        let mut runtime =
+            cooperative_start_with_midi(Box::new(FakeBackend::default()), Box::new(midi)).unwrap();
         for index in 0..2 {
             runtime
                 .dispatch(AppIntent::AddTrack(DirectTrackSpec {
@@ -12575,7 +12586,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[cfg(target_os = "linux")]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unchanged_apc_script_uses_native_virtual_midi_when_available() {
         use midir::os::unix::{VirtualInput, VirtualOutput};
 
@@ -12614,7 +12625,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 return;
             }
         };
-        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+        let mut runtime = cooperative_start_with_midi(
             Box::new(FakeBackend::default()),
             Box::new(NativeMidiService::new()),
         )
@@ -12655,7 +12666,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         drop(sink);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_applies_intents_and_publishes_backend_state() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -12675,7 +12687,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(updated.revision > snapshot.revision);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_rejects_stale_and_mismatched_ids_observably() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -12703,7 +12716,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .contains("stale or unknown track"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_track_creation_is_observable_and_not_partially_published() {
         let mut backend = FakeBackend::default();
         backend.fail_track_creation_after(1);
@@ -12731,7 +12745,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .contains("injected track creation failure"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn direct_track_creation_and_aligned_rows_are_published() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -12766,7 +12781,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .all(|track| track.loops.len() == 9));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn auto_mute_other_track_inputs_is_respected_per_monitoring_request() {
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -12853,7 +12868,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(monitoring(&model), [false, true, true, true]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_panic_fans_out_all_channels_and_continues_after_track_failure() {
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -12924,7 +12939,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn piano_fanout_tracks_original_monitored_midi_recipients() {
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -13058,7 +13073,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn piano_partial_failure_keeps_successful_recipients_releasable() {
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -13110,7 +13125,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!model.active_piano_notes.contains_key(&64));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_backed_piano_fanout_records_into_each_monitored_midi_track() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -13171,7 +13186,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(captured.tracks[3].loops[0].midi.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn controls_selection_details_solo_and_fixed_recording_are_functional() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -13243,7 +13259,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(snapshot.global_controls.apply_n_cycles, 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_only_selection_publishes_immutable_midi_details() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -13333,7 +13349,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         ));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn default_click_targets_only_the_touched_loop_without_changing_selection() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -13389,7 +13405,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn target_delay_is_derived_from_target_and_sync_lengths() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -13430,7 +13446,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         )));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn expanded_loop_actions_route_modes_grab_and_balance() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -13524,7 +13540,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         )));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn grab_policy_covers_targeted_selection_solo_and_immediate_completion() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -13609,7 +13625,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         )));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn snapshot_reads_are_independent_of_actor_progress() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -13622,7 +13639,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!updated.global_controls.sync);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_publishes_owned_ports_and_serializes_connection_churn_and_failure() {
         let backend = FakeBackend::default();
         let control = backend.connection_control();
@@ -13782,7 +13800,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         });
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_connection_timeout_retains_confirmed_truth() {
         let backend = FakeBackend::default();
         let control = backend.connection_control();
@@ -13828,7 +13846,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         }));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unchanged_connection_views_are_structurally_shared_across_polls() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -13843,7 +13861,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         ));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_driver_switch_requires_confirmation_and_resamples_transactionally() {
         let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
@@ -13956,7 +13974,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_driver_switch_scales_recorded_loop_length_with_existing_resampler() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -14028,7 +14046,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn persistence_failure_keeps_new_driver_active_and_enables_save_retry() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14071,7 +14089,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cancelling_audio_driver_switch_leaves_runtime_unchanged() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14108,7 +14126,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(cancelled.audio_drivers.switch.message.contains("cancelled"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn active_io_task_rejects_audio_driver_preflight_without_mutation() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14135,7 +14153,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .any(|notification| notification.message.contains("I/O task is active")));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_audio_driver_switch_restores_prior_runtime_and_reports_failure() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();
@@ -14183,7 +14201,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn remap_failure_rolls_back_the_committed_target_driver() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();
@@ -14233,7 +14251,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(failed.tracks.len(), 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn rollback_failure_publishes_fatal_backend_state_with_both_errors() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();
@@ -14276,7 +14294,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .contains("could not remap switched session"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn changed_commit_time_rate_requires_a_second_confirmation() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();
@@ -14322,7 +14340,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .contains("Confirm again"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_blocks_confirmed_audio_driver_switch_without_stopping_recording() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14362,7 +14380,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(failed.status.sample_rate, 48_000);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_runtime_drives_the_engine_backed_dummy_workflow() {
         let backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -14450,7 +14468,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14571,7 +14589,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(scripts[1].kind, ScriptKind::Ephemeral);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_session_round_trip_warns_before_resampling_and_rejects_old_files() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14748,7 +14766,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .any(|notification| notification.message.contains("unsupported file format")));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn global_fx_port_round_trips_legacy_migrates_and_malformed_load_is_transactional() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14858,7 +14876,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(after.io_task.as_ref().unwrap().status, IoTaskStatus::Failed);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unsupported_deferred_topology_is_rejected_without_replacing_the_session() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14930,7 +14948,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         }));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn invalid_loop_media_inputs_finish_tasks_as_failed() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -14988,7 +15006,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_audio_and_midi_io_map_channels_and_warn_before_resampling() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -15313,7 +15331,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .any(|event| event.frame == 75 && event.data == [0x90, 60, 100]));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dry_wet_media_io_maps_and_exports_role_order_without_flattening() {
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
@@ -15446,7 +15464,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn click_generation_and_preview_preserve_opposite_media_and_stable_identity() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -15647,7 +15665,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_backed_click_updates_preserve_running_sync_and_follower_alignment() {
         let backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -15729,7 +15747,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(follower.next_mode, LoopMode::Playing);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn callback_overruns_are_accumulated_as_resettable_xruns() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -15760,7 +15778,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(model.status.xruns, 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn render_memory_growth_is_a_recoverable_warning() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -15785,7 +15803,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(model.notifications[1].message.contains('2'));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn generated_click_update_resets_target_offsets_and_preserves_other_media() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -15885,7 +15903,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(model.loops[&sync_id].length, 115_200);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn click_generation_rejects_conflicts_and_failed_update_keeps_content() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -15928,7 +15946,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .contains("another I/O task"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn structural_creation_and_removal_are_provisional_and_rejection_recovers() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -16078,7 +16096,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .all(|track| track.id != rejected_track_id));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn desired_controls_survive_stale_snapshots_ignore_stale_rejection_and_converge() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -16217,7 +16235,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .contains_key(&(backend_track, TrackControlKey::OutputGain)));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_runtime_bounds_command_work_and_reports_capacity() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();

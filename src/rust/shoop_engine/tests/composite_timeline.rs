@@ -81,7 +81,7 @@ fn start(
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn script_regular_natural_and_direct_conflicts_use_total_precedence() {
     let child = basic(1);
     let script = composite(10);
@@ -153,7 +153,7 @@ fn script_regular_natural_and_direct_conflicts_use_total_precedence() {
     ));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn same_class_conflicts_use_lower_source_identity_not_install_order() {
     let child = basic(1);
     let lower = composite(10);
@@ -195,7 +195,7 @@ fn same_class_conflicts_use_lower_source_identity_not_install_order() {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn nested_iteration_zero_propagates_through_several_levels_at_one_sample() {
     let child = basic(1);
     let leaf = composite(10);
@@ -244,7 +244,7 @@ fn nested_iteration_zero_propagates_through_several_levels_at_one_sample() {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn a_source_trigger_advances_the_schedule_at_the_exact_sample() {
     let child = basic(1);
     let source = basic(2);
@@ -283,7 +283,7 @@ fn a_source_trigger_advances_the_schedule_at_the_exact_sample() {
     );
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn composite_sync_triggers_propagate_transitively_without_snapshot_order() {
     let first_child = basic(1);
     let second_child = basic(2);
@@ -325,7 +325,7 @@ fn composite_sync_triggers_propagate_transitively_without_snapshot_order() {
         .any(|entry| entry.target == second_child && entry.at_sample == 4));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn a_composite_started_primitive_source_triggers_its_follower_in_the_same_boundary() {
     let child = basic(1);
     let primitive_source = basic(2);
@@ -361,7 +361,7 @@ fn a_composite_started_primitive_source_triggers_its_follower_in_the_same_bounda
         .any(|entry| entry.target == child && entry.at_sample == 1));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn one_composite_is_not_delivered_twice_when_a_trigger_appears_in_a_later_same_sample_wave() {
     let child = basic(1);
     let sync = basic(2);
@@ -384,7 +384,7 @@ fn one_composite_is_not_delivered_twice_when_a_trigger_appears_in_a_later_same_s
     assert_eq!(timeline.runtime(source).unwrap().iteration(), 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn direct_source_stop_suppresses_the_coincident_natural_trigger() {
     let child = basic(1);
     let source = basic(2);
@@ -431,7 +431,7 @@ fn direct_source_stop_suppresses_the_coincident_natural_trigger() {
     assert_eq!(timeline.runtime(composite).unwrap().iteration(), 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn timestamped_controls_keep_their_boundary_and_late_controls_are_rejected() {
     let mut timeline = CompositeBoundaryTimeline::default();
     let child = basic(1);
@@ -452,7 +452,7 @@ fn timestamped_controls_keep_their_boundary_and_late_controls_are_rejected() {
     assert_eq!(timeline.counters().late_controls, 1);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn control_queue_and_dependency_wave_capacities_are_enforced_before_processing() {
     let mut controls = CompositeBoundaryTimeline::new(
         vec![],
@@ -496,7 +496,7 @@ fn control_queue_and_dependency_wave_capacities_are_enforced_before_processing()
     ));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn trace_overflow_drops_diagnostics_without_affecting_the_runtime_transaction() {
     let child = basic(1);
     let source = composite(10);
@@ -521,7 +521,7 @@ fn trace_overflow_drops_diagnostics_without_affecting_the_runtime_transaction() 
     assert_eq!(timeline.runtime(source).unwrap().mode(), LoopMode::Playing);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn event_overflow_latches_before_runtime_or_target_commit() {
     let child = basic(1);
     let source = basic(2);
@@ -551,3 +551,5 @@ fn event_overflow_latches_before_runtime_or_target_commit() {
     assert!(timeline.trace().is_empty());
     assert_eq!(timeline.counters().primitive_event_overflows, 1);
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

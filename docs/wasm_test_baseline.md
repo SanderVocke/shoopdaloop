@@ -106,3 +106,18 @@ The baseline uses package-level pending rules only to ensure nothing disappears 
 - explicit native/platform review: common utilities, tracing, engine/backend physical drivers, global allocator/lock tests, filesystem guarantees, subprocesses, environment control, native UI, and Carla.
 
 `wasm_test_inventory.py` supplements native/Node/Chromium runner IDs with source declarations, rejects unmatched or overlapping rules, rejects stale rules, and requires identical shared Node/Chromium sets. The final gate additionally rejects every remaining `pending` classification.
+
+## Completed migration inventory
+
+After the package waves, `--require-closed` reports:
+
+| Category | Logical native tests |
+| --- | ---: |
+| shared | 1,170 |
+| native-platform | 136 |
+| native-driver | 119 |
+| **Native total** | **1,425** |
+
+Node and Chromium each execute the identical 1,170 shared IDs plus four `wasm-runtime` production Worker contracts, for **1,174 actual Wasm tests per runtime**. No classification remains pending. The resulting shared overlap is about 82% of the native inventory; the 255 exclusions are dominated by native app-backend/JACK/CPAL/midir/Carla features, global allocation and lock gates, OS threads/deadlines/filesystems, and native Tracy. Every exclusion has a checked-in pattern and reason.
+
+On the local warm debug-profile reference environment, the canonical package commands took about 156 seconds in Node and 192 seconds in headless Chromium, excluding the one-time staged worklet build. These values are diagnostic rather than acceptance thresholds and are recorded in each generated summary.

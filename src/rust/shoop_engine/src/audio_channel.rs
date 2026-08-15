@@ -909,7 +909,7 @@ mod tests {
         out
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn records_input_and_grows_length() {
         let mut ch = channel();
         cycle(&mut ch, L::Recording, 4, 0, 0, &[1.0, 2.0, 3.0, 4.0]);
@@ -917,7 +917,7 @@ mod tests {
         check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_spans_chunk_boundaries() {
         let mut ch = channel();
         // 6 samples into 4-sample chunks: split into two queued copies.
@@ -933,7 +933,7 @@ mod tests {
         check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_appends_at_existing_length() {
         let mut ch = channel();
         cycle(&mut ch, L::Recording, 3, 0, 0, &[1.0, 2.0, 3.0]);
@@ -942,7 +942,7 @@ mod tests {
         check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn plays_back_additively_with_gain() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -952,7 +952,7 @@ mod tests {
         check!(ch.played_back_sample() == Some(0));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_adds_on_top_of_existing_output() {
         let mut ch = channel();
         ch.load_data(&[1.0, 1.0]);
@@ -964,7 +964,7 @@ mod tests {
         check!(out == vec![11.0, 21.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_tracks_output_peak() {
         let mut ch = channel();
         ch.load_data(&[0.5, -0.9, 0.2, 0.0]);
@@ -974,7 +974,7 @@ mod tests {
         check!(ch.output_peak() == 0.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_stops_at_recorded_length() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0]);
@@ -983,7 +983,7 @@ mod tests {
         check!(out == vec![1.0, 2.0, 0.0, 0.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_past_recorded_length_stops_at_chunk_granularity() {
         let mut ch = channel();
         // Two full chunks of content, recorded length shortened to 2.
@@ -996,7 +996,7 @@ mod tests {
         check!(out == vec![1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_honours_start_offset() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -1005,7 +1005,7 @@ mod tests {
         check!(out == vec![3.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_before_start_offset_is_skipped_without_pre_play() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -1016,7 +1016,7 @@ mod tests {
         check!(out == vec![0.0, 0.0, 3.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_play_opens_the_window_earlier() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -1027,7 +1027,7 @@ mod tests {
         check!(out == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replace_overwrites_in_place_without_growing() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -1036,7 +1036,7 @@ mod tests {
         check!(ch.data() == vec![1.0, 9.0, 8.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replace_skips_negative_positions() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -1045,7 +1045,7 @@ mod tests {
         check!(ch.data() == vec![9.0, 6.0, 3.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replace_past_recorded_length_errors() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0]);
@@ -1057,7 +1057,7 @@ mod tests {
         check!(length == 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bounded_recording_exhaustion_is_visible_and_does_not_grow_storage() {
         let mut channel = AudioChannel::with_bounded_capacity(4, 8, C::Direct);
         channel.set_recording_buffer_size(9);
@@ -1068,7 +1068,7 @@ mod tests {
         assert_eq!(channel.storage_exhaustions(), 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn record_beyond_input_buffer_errors() {
         let mut ch = channel();
         ch.set_recording_buffer_size(2);
@@ -1084,7 +1084,7 @@ mod tests {
         check!(available == 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_beyond_output_buffer_errors() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0]);
@@ -1101,7 +1101,7 @@ mod tests {
         check!(available == 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn without_buffers_nothing_is_attempted() {
         let mut ch = channel();
         ch.clear_buffers();
@@ -1110,14 +1110,14 @@ mod tests {
         check!(ch.length() == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disabled_channel_does_nothing() {
         let mut ch = AudioChannel::with_chunk_size(4, C::Disabled);
         cycle(&mut ch, L::Recording, 4, 0, 0, &[1.0, 2.0, 3.0, 4.0]);
         check!(ch.length() == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_record_buffers_carry_over_into_record() {
         let mut ch = channel();
         // Recording is one trigger away, so this cycle pre-records.
@@ -1137,7 +1137,7 @@ mod tests {
         check!(ch.data() == vec![5.0, 6.0, 7.0, 8.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_record_discarded_when_recording_does_not_follow() {
         let mut ch = channel();
         ch.set_recording_buffer_size(2);
@@ -1154,7 +1154,7 @@ mod tests {
         check!(ch.start_offset() == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn next_poi_is_smallest_remaining_buffer() {
         let mut ch = channel();
         ch.set_playback_buffer_size(8);
@@ -1167,14 +1167,14 @@ mod tests {
         check!(ch.next_poi(L::Stopped, L::Unknown, None, None, 0) == None);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disabled_channel_has_no_poi() {
         let mut ch = AudioChannel::with_chunk_size(4, C::Disabled);
         ch.set_playback_buffer_size(8);
         check!(ch.next_poi(L::Playing, L::Unknown, None, None, 0) == None);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn data_seq_nr_advances_on_content_change() {
         let mut ch = channel();
         let before = ch.data_seq_nr();
@@ -1186,7 +1186,7 @@ mod tests {
         check!(ch.data_seq_nr() == after_record);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn clear_sets_length_and_resets_offset() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0]);
@@ -1196,7 +1196,7 @@ mod tests {
         check!(ch.start_offset() == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn stopped_channel_reports_no_played_back_sample() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0]);

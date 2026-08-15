@@ -265,7 +265,7 @@ impl AudioPort {
 
 #[cfg(test)]
 mod tests {
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_inserted_effect_processes_the_signal() {
         use crate::fx_chain::{EffectKind, FxChain};
 
@@ -286,7 +286,7 @@ mod tests {
         check!(buf[48] > 0.9);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn no_insert_leaves_the_signal_alone() {
         let mut p = AudioPort::new(0);
         let mut buf = vec![0.5f32; 16];
@@ -295,7 +295,7 @@ mod tests {
         check!(buf.iter().all(|&v| v == 0.5));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn muting_silences_the_effect_too() {
         use crate::fx_chain::{EffectKind, FxChain};
 
@@ -312,7 +312,7 @@ mod tests {
         check!(buf.iter().all(|&v| v == 0.0));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_insert_can_be_removed() {
         use crate::fx_chain::{EffectKind, FxChain};
 
@@ -337,7 +337,7 @@ mod tests {
         AudioPort::new(4)
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn abi_discriminants_match() {
         check!(PortDataType::Audio as u32 == 0);
         check!(PortDataType::Midi as u32 == 1);
@@ -349,7 +349,7 @@ mod tests {
         check!(PortConnectability::EXTERNAL.0 == 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connectability_combines() {
         let both = PortConnectability::INTERNAL.with(PortConnectability::EXTERNAL);
         check!(both.contains(PortConnectability::INTERNAL));
@@ -357,7 +357,7 @@ mod tests {
         check!(!PortConnectability::NONE.contains(PortConnectability::INTERNAL));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn defaults_pass_audio_through_unchanged() {
         let mut p = port();
         let mut buf = [0.25, -0.5, 0.75, -1.0];
@@ -366,7 +366,7 @@ mod tests {
         check!(p.data_type() == PortDataType::Audio);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn gain_scales_the_buffer() {
         let mut p = port();
         p.set_gain(2.0);
@@ -375,7 +375,7 @@ mod tests {
         check!(buf == [0.2, -0.4, 0.6, 0.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn muting_silences_the_buffer() {
         let mut p = port();
         p.set_muted(true);
@@ -384,7 +384,7 @@ mod tests {
         check!(buf == [0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn input_peak_is_measured_before_gain() {
         let mut p = port();
         p.set_gain(10.0);
@@ -394,7 +394,7 @@ mod tests {
         check!(p.input_peak() == 0.5);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn input_peak_is_measured_even_when_muted() {
         let mut p = port();
         p.set_muted(true);
@@ -406,7 +406,7 @@ mod tests {
         check!(p.output_peak() == 0.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn output_peak_reflects_gain() {
         let mut p = port();
         p.set_gain(2.0);
@@ -416,7 +416,7 @@ mod tests {
         check!(p.output_peak() == 0.5);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn peaks_accumulate_until_reset() {
         let mut p = port();
         p.process(&mut [0.8, 0.0, 0.0, 0.0]);
@@ -433,7 +433,7 @@ mod tests {
         check!(p.input_peak() == 0.1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn output_peak_holds_when_the_signal_goes_away() {
         let mut p = port();
         p.set_gain(2.0);
@@ -456,7 +456,7 @@ mod tests {
         check!(p.output_peak() < 1.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn capture_records_the_processed_signal() {
         let mut p = port();
         p.set_ringbuffer_n_samples(8);
@@ -467,7 +467,7 @@ mod tests {
         check!(snap.contiguous() == vec![0.2, 0.4, 0.6, 0.8]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn capture_records_silence_when_muted() {
         let mut p = port();
         p.set_ringbuffer_n_samples(8);
@@ -476,7 +476,7 @@ mod tests {
         check!(p.ringbuffer_contents().contiguous() == vec![0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn capture_window_drops_the_oldest_audio() {
         let mut p = AudioPort::new(4);
         // Two buffers of four samples.
@@ -489,7 +489,7 @@ mod tests {
         check!(snap.contiguous() == vec![5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn setting_the_capture_window_discards_what_was_held() {
         let mut p = port();
         p.set_ringbuffer_n_samples(8);
@@ -499,7 +499,7 @@ mod tests {
         check!(p.ringbuffer_n_samples() == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_port_without_capture_still_processes() {
         let mut p = AudioPort::without_ringbuffer();
         let mut buf = [0.5, 0.5];
@@ -510,7 +510,7 @@ mod tests {
         check!(p.ringbuffer_contents().n_samples == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_buffer_is_harmless() {
         let mut p = port();
         p.process(&mut []);

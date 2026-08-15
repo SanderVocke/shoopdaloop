@@ -529,7 +529,7 @@ mod tests {
         actions
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn control_is_hidden_without_dialogs_and_combines_count_with_label() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -567,7 +567,7 @@ mod tests {
         assert!(!text.iter().any(|text| text == "10"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dialog_window_shows_its_owner_as_plain_italic_text() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -611,7 +611,7 @@ mod tests {
         assert!(text.iter().any(|text| text == "owned by owner-7.lua"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn control_opens_closed_dialog_and_callback_emits_exact_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -654,7 +654,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn content_button_click_emits_exact_typed_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -706,7 +706,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn markdown_link_click_emits_its_lua_callback_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -759,7 +759,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn page_and_visibility_state_persist_but_new_generation_resets() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -858,7 +858,7 @@ mod tests {
         assert!(!component.states[&dialogs[0].id].open);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_dialog_height_stabilizes_across_frames() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -890,7 +890,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn simple_and_paged_windows_paint_at_minimum_and_common_sizes() {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();

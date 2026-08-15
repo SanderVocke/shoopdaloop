@@ -54,7 +54,7 @@ mod tests {
         CurrentDataError, SessionContentEpoch, SnapshotCurrentness, StaleReason,
     };
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fifo_transport_is_bounded_and_marks_saturation() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (mut sender, mut receiver) = bounded_transport(2, Arc::clone(&status));
@@ -74,7 +74,7 @@ mod tests {
         assert_eq!(receiver.try_recv(), None);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_failed_push_returns_ownership_to_the_process_side() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (mut sender, _receiver) = bounded_transport(1, status);

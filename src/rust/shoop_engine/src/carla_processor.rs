@@ -1043,7 +1043,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     use shoop_plugin_protocol::MAX_BLOCK_FRAMES;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_processor_round_trips_audio_midi_state_and_visibility() {
         let mut processor = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, 64);
         processor.set_active(true);
@@ -1068,7 +1068,7 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridge_realtime_endpoint_is_lock_free_allocation_free_and_bounded() {
         let fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 1_000, 100).unwrap();
@@ -1094,7 +1094,7 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridge_deadline_miss_returns_wet_silence() {
         let mut fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         fake.set_behavior(FakeProcessorBehavior {
@@ -1113,7 +1113,7 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridge_contains_processor_panics_and_publishes_failure() {
         let mut fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         fake.set_behavior(FakeProcessorBehavior {
@@ -1148,7 +1148,7 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridge_shutdown_soak_reclaims_threads_and_mappings() {
         for iteration in 0..100 {
             let fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
@@ -1166,7 +1166,8 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_processor_exposes_failures_and_delay() {
         let mut processor = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, 64);
         processor.set_behavior(FakeProcessorBehavior {
