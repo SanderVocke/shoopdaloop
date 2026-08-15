@@ -721,6 +721,47 @@ mod platform {
         }
     }
 
+    impl shoop_worklet_client::HostMidiBridge for BrowserMidiHub {
+        fn revision(&self) -> u64 {
+            self.endpoint_snapshot().revision
+        }
+
+        fn endpoints(&self) -> Vec<shoop_worklet_client::HostMidiEndpoint> {
+            BrowserMidiHub::endpoints(self)
+                .into_iter()
+                .map(|endpoint| shoop_worklet_client::HostMidiEndpoint {
+                    id: endpoint.id,
+                    name: endpoint.name,
+                    direction: match endpoint.direction {
+                        MidiEndpointDirection::Input => {
+                            shoop_worklet_client::HostMidiDirection::Input
+                        }
+                        MidiEndpointDirection::Output => {
+                            shoop_worklet_client::HostMidiDirection::Output
+                        }
+                    },
+                })
+                .collect()
+        }
+
+        fn drain_track_messages(
+            &mut self,
+            max_messages: usize,
+        ) -> Vec<shoop_worklet_client::HostMidiInput> {
+            BrowserMidiHub::drain_track_messages(self, max_messages)
+                .into_iter()
+                .map(|input| shoop_worklet_client::HostMidiInput {
+                    endpoint_id: input.endpoint_id,
+                    data: input.data,
+                })
+                .collect()
+        }
+
+        fn send(&mut self, endpoint_id: &str, message: &[u8]) -> anyhow::Result<()> {
+            BrowserMidiHub::send(self, endpoint_id, message)
+        }
+    }
+
     enum ControlConnection {
         Input(u64),
         Output(String),
@@ -945,7 +986,7 @@ mod platform {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use platform::{BrowserMidiController, BrowserMidiHub};
+pub use platform::BrowserMidiController;
 
 #[cfg(test)]
 mod tests {

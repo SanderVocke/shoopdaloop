@@ -791,6 +791,7 @@ jobs:
           cargo nextest run --locked ${{ matrix.cargo_args }} --profile ci \
             -p shoop_audio_protocol \
             -p shoop_audio_worklet \
+            -p shoop_worklet_client \
             -p shoop_egui \
             -p shoopdaloop
 
@@ -807,6 +808,7 @@ jobs:
         run: |
           cargo tree -p shoop_audio_worklet --target wasm32-unknown-unknown > /tmp/worklet-tree.txt
           cargo tree -p shoopdaloop --target wasm32-unknown-unknown --no-default-features > /tmp/browser-tree.txt
+          python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/worklet-tree.txt; then exit 1; fi
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"

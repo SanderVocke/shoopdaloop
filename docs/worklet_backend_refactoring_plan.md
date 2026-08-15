@@ -253,20 +253,22 @@ Evidence: [`worklet_backend_baseline.md`](worklet_backend_baseline.md) records t
 
 ### Stage 1 — Create the platform-neutral remote client crate
 
-- [ ] Add `shoop_worklet_client` to the workspace.
-- [ ] Move wire/backend conversion helpers into the new crate.
-- [ ] Move remote track/loop/composite resource bookkeeping and snapshot assembly.
-- [ ] Move waveform, MIDI-detail, session-capture, session-replacement, and loop-content transfer assembly.
-- [ ] Move the remote `Backend` implementation with behavior-preserving names and APIs.
-- [ ] Keep a temporary narrow adapter to the existing browser transport while extraction is incomplete.
-- [ ] Replace browser/UI type imports with domain types from backend and application API crates.
-- [ ] Add dependency-tree checks for browser, native driver, Carla, and native Tracy isolation.
+- [x] Add `shoop_worklet_client` to the workspace.
+- [x] Move wire/backend conversion helpers into the new crate.
+- [x] Move remote track/loop/composite resource bookkeeping and snapshot assembly.
+- [x] Move waveform, MIDI-detail, session-capture, session-replacement, and loop-content transfer assembly.
+- [x] Move the remote `Backend` implementation with behavior-preserving names and APIs.
+- [x] Keep a temporary narrow adapter to the existing browser transport while extraction is incomplete.
+- [x] Replace browser/UI type imports with domain types from backend and application API crates.
+- [x] Add dependency-tree checks for browser, native driver, Carla, and native Tracy isolation.
 
 Verification:
 
-- [ ] Native checks and existing browser builds pass without behavior changes.
-- [ ] Remote backend characterization tests pass from the new crate.
-- [ ] The new crate builds for native and `wasm32-unknown-unknown` with forbidden dependencies absent.
+- [x] Native checks and existing browser builds pass without behavior changes.
+- [x] Remote backend characterization tests pass from the new crate.
+- [x] The new crate builds for native and `wasm32-unknown-unknown` with forbidden dependencies absent.
+
+Evidence: `shoop_worklet_client` owns the remote backend, conversion, resource, snapshot, transfer, transport, and host-MIDI client code. Its native tests cover stable IDs, replay, response validation, readiness, snapshot assembly, and deterministic MIDI. Warning-denying browser compilation passes for `wasm32-unknown-unknown`, and `scripts/check_worklet_client_dependencies.py` verifies the normal dependency tree.
 
 ### Stage 2 — Extract transport core and restricted control handle
 
