@@ -70,7 +70,7 @@ export async function runWorkerFixtureContracts() {
   );
 
   const explicit = await boot(module, 'explicit');
-  await poll(explicit, 11);
+  await poll(explicit, 1);
   const processed = await fixtureCommand(explicit, {
     kind: 'process',
     frames: 128,
@@ -103,21 +103,36 @@ export async function runWorkerFixtureContracts() {
     if (resumed.diagnostics.processedQuanta <= paused.diagnostics.processedQuanta) {
       throw new Error(`${mode} Worker did not resume`);
     }
-    await poll(instance, mode === 'cooperative' ? 21 : 31);
+    await poll(instance, 1);
     await stop(instance);
     const restarted = await boot(module, mode);
-    await poll(restarted, mode === 'cooperative' ? 22 : 32);
+    await poll(restarted, 1);
     await stop(restarted);
   }
 
+  const productionShutdown = await boot(module, 'explicit');
+  const stoppedEnvelope = nextMessage(productionShutdown.application);
+  const stoppedFixture = nextMessage(productionShutdown.fixture);
+  productionShutdown.application.postMessage(JSON.stringify({
+    version: 12,
+    sequence: 1,
+    command: { kind: 'shutdown' },
+  }));
+  const stoppedEvent = JSON.parse(await stoppedEnvelope);
+  if (stoppedEvent.event?.kind !== 'stopped' || (await stoppedFixture).kind !== 'stopped') {
+    throw new Error('production shutdown did not stop the Worker host');
+  }
+  productionShutdown.worker.terminate();
+  ownedWorkers -= 1;
+
   const first = await boot(module, 'explicit');
   const second = await boot(module, 'explicit');
-  const [firstSnapshot, secondSnapshot] = await Promise.all([poll(first, 41), poll(second, 41)]);
+  const [firstSnapshot, secondSnapshot] = await Promise.all([poll(first, 1), poll(second, 1)]);
   if (firstSnapshot.callback_count !== 0 || secondSnapshot.callback_count !== 0) {
     throw new Error('fresh Worker instances shared engine progression');
   }
   await fixtureCommand(first, { kind: 'process', frames: 128, outputChannels: 0 });
-  const [advanced, isolated] = await Promise.all([poll(first, 42), poll(second, 42)]);
+  const [advanced, isolated] = await Promise.all([poll(first, 2), poll(second, 2)]);
   if (advanced.callback_count !== 1 || isolated.callback_count !== 0) {
     throw new Error('Worker instances leaked engine state');
   }
@@ -126,7 +141,7 @@ export async function runWorkerFixtureContracts() {
 
   for (let index = 0; index < 3; index += 1) {
     const instance = await boot(module, 'explicit');
-    await poll(instance, 50 + index);
+    await poll(instance, 1);
     await stop(instance);
   }
   if (ownedWorkers !== 0) throw new Error(`Worker fixture leaked ${ownedWorkers} instances`);

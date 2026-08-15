@@ -255,6 +255,17 @@ impl TransportCore {
             self.fail(message.clone());
             return Err(anyhow!(message));
         }
+        if event.sequence == 0 {
+            let Event::Error { message } = event.event else {
+                let message =
+                    "uncorrelated remote worklet event is not a terminal error".to_owned();
+                self.fail(message.clone());
+                return Err(anyhow!(message));
+            };
+            let message = format!("remote engine failure: {message}");
+            self.fail(message.clone());
+            return Err(anyhow!(message));
+        }
         if event.sequence != self.next_response_sequence {
             if !self.pending.contains_key(&event.sequence) {
                 self.duplicate_or_unknown_responses =
@@ -613,6 +624,24 @@ mod tests {
         .unwrap();
         assert!(wrong_version.receive(1, &event).is_err());
         assert_eq!(wrong_version.readiness().protocol, ProtocolState::Failed);
+
+        let (_, terminal) = transport_pair();
+        terminal
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        let error = terminal
+            .receive(
+                1,
+                &response(
+                    0,
+                    Event::Error {
+                        message: "worker trapped".to_owned(),
+                    },
+                ),
+            )
+            .unwrap_err();
+        assert_eq!(error.to_string(), "remote engine failure: worker trapped");
+        assert_eq!(terminal.readiness().engine, RemoteEngineState::Failed);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

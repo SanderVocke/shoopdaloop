@@ -7,6 +7,15 @@ let host = null;
 let scheduler = null;
 let terminal = false;
 
+function releaseAndClose(notifyStopped) {
+  scheduler?.stop();
+  host?.destroy();
+  if (notifyStopped) fixturePort?.postMessage({ kind: 'stopped' });
+  applicationPort?.close();
+  fixturePort?.close();
+  self.close();
+}
+
 function applicationFailure(message) {
   if (terminal) return;
   terminal = true;
@@ -17,7 +26,7 @@ function applicationFailure(message) {
     event: { kind: 'error', message },
   }));
   fixturePort?.postMessage({ kind: 'failure', message });
-  host?.destroy();
+  setTimeout(() => releaseAndClose(false), 0);
 }
 
 function handleApplicationCommand(message) {
@@ -35,6 +44,10 @@ function handleApplicationCommand(message) {
       response = JSON.stringify(event);
     }
     applicationPort.postMessage(response);
+    if (event.event?.kind === 'stopped') {
+      terminal = true;
+      setTimeout(() => releaseAndClose(true), 0);
+    }
   } catch (error) {
     applicationFailure(`Worker engine command failed: ${error?.stack || error}`);
   }
@@ -178,12 +191,7 @@ function handleFixtureCommand(message) {
 function shutdown() {
   if (terminal) return;
   terminal = true;
-  scheduler?.stop();
-  host?.destroy();
-  applicationPort?.close();
-  fixturePort?.postMessage({ kind: 'stopped' });
-  fixturePort?.close();
-  self.close();
+  releaseAndClose(true);
 }
 
 self.onmessage = event => {

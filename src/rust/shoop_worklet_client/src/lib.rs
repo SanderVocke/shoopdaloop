@@ -2037,15 +2037,23 @@ impl Backend for RemoteWorkletBackend {
         }
         self.transport_generation = transport.generation;
         self.sync_midi_endpoints()?;
+        let readiness = self.transport.borrow().readiness();
         let state = self.transport.borrow().driver_state();
         let running = matches!(state, BackendDriverState::Running);
         self.pump_midi_input(running)?;
         self.snapshot.status.driver_state = state;
         self.snapshot.status.command_overflows = self.transport.borrow().overflows();
-        if matches!(
-            state,
-            BackendDriverState::Running | BackendDriverState::Suspended
-        ) && self.poll_elapsed >= Duration::from_millis(u64::from(STATUS_INTERVAL_MS))
+        let engine_pollable = readiness.connection == ConnectionState::Attached
+            && readiness.protocol == ProtocolState::Negotiated
+            && readiness.replay == ReplayState::Complete
+            && matches!(
+                readiness.driver_state,
+                BackendDriverState::Running
+                    | BackendDriverState::Dummy
+                    | BackendDriverState::Suspended
+            );
+        if engine_pollable
+            && self.poll_elapsed >= Duration::from_millis(u64::from(STATUS_INTERVAL_MS))
             && self.transport.borrow().pending_len() < COMMAND_CAPACITY / 2
         {
             self.transport.borrow_mut().ephemeral(Command::Poll)?;
@@ -2878,6 +2886,39 @@ mod tests {
         assert!(backend
             .replace_loop_content_async(creation.loops[0], &loop_update)
             .is_err());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn negotiated_transport_polls_to_observe_the_engine_before_ready() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.set_driver_state(BackendDriverState::Running);
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        assert_eq!(
+            backend.poll().unwrap().status.driver_state,
+            BackendDriverState::Starting
+        );
+        sent.borrow_mut().clear();
+
+        backend.advance(Duration::from_millis(50));
+        backend.poll().unwrap();
+        let commands = sent
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert!(matches!(commands.first(), Some(Command::Poll)));
+        assert!(matches!(
+            commands.get(1),
+            Some(Command::DrainMidiOutput { .. })
+        ));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

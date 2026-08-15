@@ -34,6 +34,10 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
         response = JSON.stringify(event);
       }
       this.port.postMessage(response);
+      if (event.event?.kind === 'stopped') {
+        this.stopped = true;
+        this.host.destroy();
+      }
     } catch (error) {
       this.fail(`AudioWorklet control command failed: ${error?.stack || error}`);
     }
@@ -54,7 +58,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
 
   process(inputs, outputs) {
     if (this.initializationError) return this.fail(this.initializationError);
-    if (this.failureMessage) return false;
+    if (this.failureMessage || this.stopped) return false;
     const inputChannels = (inputs[0] || []).slice(0, 2);
     const outputChannels = (outputs[0] || []).slice(0, 2);
     const frames = outputChannels[0]?.length || inputChannels[0]?.length || 0;
