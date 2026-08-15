@@ -8295,7 +8295,9 @@ mod tests {
     use std::time::Instant;
 
     use shoop_app_api::{SelectionModifiers, TrackAction};
-    use shoop_backend::{BackendPortDataType, BackendPortDirection, EngineBackend, FakeBackend};
+    use shoop_backend::{
+        BackendPortDataType, BackendPortDirection, EngineBackend, FakeBackend, LocalDummyBackend,
+    };
 
     use super::*;
 
@@ -8329,7 +8331,7 @@ mod tests {
     }
 
     fn engine_model_with_regular_composite() -> (
-        EngineBackend,
+        LocalDummyBackend,
         ApplicationModel,
         TrackId,
         LoopId,
