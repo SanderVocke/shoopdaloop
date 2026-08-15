@@ -79,7 +79,14 @@ def validate_tools(runtime: str, env: dict[str, str]):
     for package, version in expected.items():
         if versions.get(package) != version:
             raise RuntimeError(f"expected {package} {version}, got {versions.get(package)!r}")
-    run_checked(["rustc", "--version"], env=env)
+    rustc = run_checked(["rustc", "--version"], env=env)
+    tools = {
+        "wasm-pack": wasm_pack,
+        "wasm-bindgen": WASM_BINDGEN_VERSION,
+        "wasm-bindgen-test": WASM_BINDGEN_TEST_VERSION,
+        "node": node,
+        "rustc": rustc,
+    }
     targets = run_checked(["rustup", "target", "list", "--installed"], env=env).splitlines()
     if "wasm32-unknown-unknown" not in targets:
         raise RuntimeError("the wasm32-unknown-unknown Rust target is not installed")
@@ -103,6 +110,9 @@ def validate_tools(runtime: str, env: dict[str, str]):
             raise RuntimeError(
                 f"expected ChromeDriver {CHROME_VERSION}, got {driver_version!r}"
             )
+        tools["chrome"] = browser_version
+        tools["chromedriver"] = driver_version
+    return tools
 
 
 def discover_packages(selected: set[str] | None, env: dict[str, str]):
@@ -190,6 +200,7 @@ def invoke_package(
     timeout: int,
     filters: list[str],
     features: list[str],
+    tool_versions: dict[str, str],
 ):
     command = ["wasm-pack", "test"]
     command += ["--node"] if runtime == "node" else ["--headless", "--chrome"]
@@ -239,6 +250,12 @@ def invoke_package(
         returncode=returncode,
         elapsed_seconds=elapsed,
         output=output,
+        extra_properties={
+            "raw_log": str(log.relative_to(ROOT)),
+            "filters": json.dumps(filters),
+            "features": json.dumps(features),
+            **{f"tool.{name}": value for name, value in tool_versions.items()},
+        },
     )
     valid = (
         parsed.listed > 0
@@ -274,6 +291,9 @@ def synthetic_package_failure(
     profile: str,
     reports: pathlib.Path,
     message: str,
+    filters: list[str],
+    features: list[str],
+    tool_versions: dict[str, str],
 ):
     stem = f"{package['name']}-{runtime}"
     log = reports / f"{stem}.log"
@@ -289,6 +309,12 @@ def synthetic_package_failure(
         returncode=124,
         elapsed_seconds=0.0,
         output=output,
+        extra_properties={
+            "raw_log": str(log.relative_to(ROOT)),
+            "filters": json.dumps(filters),
+            "features": json.dumps(features),
+            **{f"tool.{name}": value for name, value in tool_versions.items()},
+        },
     )
     return {
         "package": package["name"],
@@ -322,7 +348,11 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("RUSTFLAGS", "-D warnings")
     env.setdefault("WASM_BINDGEN_TEST_TIMEOUT", "60")
-    validate_tools(args.runtime, env)
+    tool_versions = validate_tools(args.runtime, env)
+    print(
+        "Wasm tools: "
+        + ", ".join(f"{name}={value}" for name, value in sorted(tool_versions.items()))
+    )
     packages = discover_packages(set(args.package) if args.package else None, env)
     assets, manifest = stage_assets(args.profile, env)
     reports = ROOT / "target" / "wasm-tests" / args.profile / "reports" / args.runtime
@@ -351,6 +381,9 @@ def main() -> int:
                             "Wasm global execution deadline exceeded after "
                             f"{args.global_timeout} seconds"
                         ),
+                        filters=args.filter,
+                        features=args.feature,
+                        tool_versions=tool_versions,
                     )
                 )
                 continue
@@ -364,6 +397,7 @@ def main() -> int:
                     timeout=min(args.package_timeout, max(1, int(remaining))),
                     filters=args.filter,
                     features=args.feature,
+                    tool_versions=tool_versions,
                 )
             )
 
@@ -375,6 +409,7 @@ def main() -> int:
         "features": args.feature,
         "package_timeout": args.package_timeout,
         "global_timeout": args.global_timeout,
+        "tool_versions": tool_versions,
         "asset_manifest": manifest,
         "packages": results,
         "success": all(result["success"] for result in results),

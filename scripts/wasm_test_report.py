@@ -93,6 +93,7 @@ def write_junit(
     returncode: int,
     elapsed_seconds: float,
     output: str,
+    extra_properties: dict[str, str] | None = None,
 ) -> ParsedReport:
     parsed = parse_output(output)
     synthetic: list[str] = list(parsed.malformed)
@@ -115,13 +116,14 @@ def write_junit(
         },
     )
     properties = ET.SubElement(suite, "properties")
-    for name, value in (
-        ("package", package),
-        ("runtime", runtime),
-        ("profile", profile),
-        ("command", " ".join(command)),
-        ("returncode", str(returncode)),
-    ):
+    base_properties = {
+        "package": package,
+        "runtime": runtime,
+        "profile": profile,
+        "command": " ".join(command),
+        "returncode": str(returncode),
+    }
+    for name, value in {**base_properties, **(extra_properties or {})}.items():
         ET.SubElement(properties, "property", {"name": name, "value": value})
 
     for case in parsed.cases:

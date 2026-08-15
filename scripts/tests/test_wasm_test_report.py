@@ -34,6 +34,11 @@ class ReportTests(unittest.TestCase):
                 returncode=status,
                 elapsed_seconds=1.25,
                 output=output,
+                extra_properties={
+                    "tool.node": "22.22.2",
+                    "filters": "[]",
+                    "raw_log": "target/wasm-tests/pilot.log",
+                },
             )
             return parsed, ET.parse(destination).getroot()
 
@@ -43,6 +48,13 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(xml.attrib["tests"], "3")
         self.assertEqual(xml.attrib["failures"], "0")
         self.assertEqual(xml.attrib["skipped"], "1")
+        properties = {
+            item.attrib["name"]: item.attrib["value"]
+            for item in xml.find("properties")
+        }
+        self.assertEqual(properties["tool.node"], "22.22.2")
+        self.assertEqual(properties["filters"], "[]")
+        self.assertEqual(properties["raw_log"], "target/wasm-tests/pilot.log")
 
     def test_testcase_failure_is_retained(self):
         parsed, xml = self.junit(FAILURE, 1)
