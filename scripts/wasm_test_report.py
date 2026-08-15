@@ -31,8 +31,16 @@ class ParsedReport:
     malformed: tuple[str, ...]
 
     @property
+    def passed(self) -> int:
+        return sum(case.status == "passed" for case in self.cases)
+
+    @property
     def failed(self) -> int:
         return sum(case.status == "failed" for case in self.cases)
+
+    @property
+    def executed(self) -> int:
+        return self.passed + self.failed
 
     @property
     def ignored(self) -> int:
@@ -122,6 +130,12 @@ def write_junit(
         "profile": profile,
         "command": " ".join(command),
         "returncode": str(returncode),
+        "expected": str(parsed.listed),
+        "listed": str(parsed.listed),
+        "executed": str(parsed.executed),
+        "passed": str(parsed.passed),
+        "failed": str(parsed.failed),
+        "ignored": str(parsed.ignored),
     }
     for name, value in {**base_properties, **(extra_properties or {})}.items():
         ET.SubElement(properties, "property", {"name": name, "value": value})
@@ -130,7 +144,7 @@ def write_junit(
         node = ET.SubElement(
             suite,
             "testcase",
-            {"name": case.name, "classname": package, "time": "0"},
+            {"name": f"{package}::{case.name}", "classname": package, "time": "0"},
         )
         if case.status == "failed":
             failure = ET.SubElement(node, "failure", {"message": "Wasm testcase failed"})

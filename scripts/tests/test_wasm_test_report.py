@@ -55,6 +55,16 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(properties["tool.node"], "22.22.2")
         self.assertEqual(properties["filters"], "[]")
         self.assertEqual(properties["raw_log"], "target/wasm-tests/pilot.log")
+        self.assertEqual(properties["expected"], "3")
+        self.assertEqual(properties["listed"], "3")
+        self.assertEqual(properties["executed"], "2")
+        self.assertEqual(properties["passed"], "2")
+        self.assertEqual(properties["failed"], "0")
+        self.assertEqual(properties["ignored"], "1")
+        self.assertEqual(
+            [case.attrib["name"] for case in xml.findall("testcase")],
+            ["pilot::crate::sync", "pilot::crate::panic", "pilot::crate::later"],
+        )
 
     def test_testcase_failure_is_retained(self):
         parsed, xml = self.junit(FAILURE, 1)

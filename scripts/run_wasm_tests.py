@@ -150,9 +150,51 @@ def sha256(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
+def asset_input_hash() -> str:
+    paths = [ROOT / "Cargo.lock", ROOT / "rust-toolchain.toml"]
+    paths.extend((ROOT / "src/rust").glob("*/Cargo.toml"))
+    paths.extend((ROOT / "src/rust").glob("**/*.rs"))
+    paths.extend(
+        [
+            ROOT / "src/rust/shoopdaloop/build_worklet.py",
+            ROOT / "src/rust/shoopdaloop/raw_wasm_host.js",
+            ROOT / "src/rust/shoopdaloop/audio_worker.js",
+            ROOT / "tests/wasm/node_worker_bootstrap.mjs",
+        ]
+    )
+    digest = hashlib.sha256()
+    for path in sorted(set(paths)):
+        digest.update(str(path.relative_to(ROOT)).encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def stage_assets(profile: str, env: dict[str, str]) -> tuple[pathlib.Path, dict]:
     cargo_profile = "release" if profile == "ci" else "debug"
     directory = ROOT / "target" / "wasm-tests" / profile / "assets"
+    inputs = asset_input_hash()
+    manifest_path = directory / "manifest.json"
+    if manifest_path.is_file():
+        try:
+            cached = json.loads(manifest_path.read_text())
+            valid = (
+                cached.get("schema") == 2
+                and cached.get("profile") == profile
+                and cached.get("input_sha256") == inputs
+                and bool(cached.get("assets"))
+                and all(
+                    (directory / name).is_file()
+                    and sha256(directory / name) == details["sha256"]
+                    for name, details in cached.get("assets", {}).items()
+                )
+            )
+            if valid:
+                print(f"Wasm assets: reused {directory.relative_to(ROOT)}")
+                return directory, cached
+        except (KeyError, OSError, ValueError, json.JSONDecodeError):
+            pass
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
@@ -180,8 +222,9 @@ def stage_assets(profile: str, env: dict[str, str]) -> tuple[pathlib.Path, dict]
             continue
         assets[path.name] = {"bytes": path.stat().st_size, "sha256": sha256(path)}
     manifest = {
-        "schema": 1,
+        "schema": 2,
         "profile": profile,
+        "input_sha256": inputs,
         "cargo_profile": cargo_profile,
         "git_head": run_checked(["git", "rev-parse", "HEAD"], env=env),
         "assets": assets,
@@ -274,6 +317,9 @@ def invoke_package(
         "returncode": returncode,
         "elapsed_seconds": elapsed,
         "tests": parsed.listed,
+        "listed": parsed.listed,
+        "executed": parsed.executed,
+        "passed": parsed.passed,
         "failed": parsed.failed,
         "ignored": parsed.ignored,
         "testcases": [dataclasses.asdict(case) for case in parsed.cases],
@@ -324,6 +370,9 @@ def synthetic_package_failure(
         "returncode": 124,
         "elapsed_seconds": 0.0,
         "tests": parsed.listed,
+        "listed": parsed.listed,
+        "executed": parsed.executed,
+        "passed": parsed.passed,
         "failed": parsed.failed,
         "ignored": parsed.ignored,
         "testcases": [dataclasses.asdict(case) for case in parsed.cases],
