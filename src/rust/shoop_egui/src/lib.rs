@@ -62,9 +62,38 @@ pub fn initialize(context: &egui::Context) {
     });
 }
 
+fn script_markdown_viewer(script_path: &str) -> egui_commonmark::CommonMarkViewer<'static> {
+    egui_commonmark::CommonMarkViewer::new()
+        .default_implicit_uri_scheme(script_markdown_base_uri(script_path))
+}
+
+fn script_markdown_base_uri(script_path: &str) -> String {
+    let parent = std::path::Path::new(script_path)
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new(""));
+    let mut uri = format!("file://{}", parent.display());
+    if !uri.ends_with(std::path::MAIN_SEPARATOR) {
+        uri.push(std::path::MAIN_SEPARATOR);
+    }
+    uri
+}
+
 fn control_safe_scroll_source() -> egui::scroll_area::ScrollSource {
     egui::scroll_area::ScrollSource {
         drag: egui::scroll_area::DragScroll::Never,
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn markdown_base_uri_uses_script_directory() {
+        let separator = std::path::MAIN_SEPARATOR;
+        assert_eq!(
+            super::script_markdown_base_uri(&format!("scripts{separator}controller.lua")),
+            format!("file://scripts{separator}")
+        );
+        assert_eq!(super::script_markdown_base_uri("controller.lua"), "file://");
     }
 }

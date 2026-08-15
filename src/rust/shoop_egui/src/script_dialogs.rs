@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use egui_commonmark::CommonMarkCache;
 
 use crate::{
     AppAction, ScriptDialogContent, ScriptDialogElement, ScriptDialogId, ScriptDialogKind,
@@ -79,6 +79,7 @@ impl ScriptDialogs {
         &mut self,
         context: &egui::Context,
         dialogs: &[ScriptDialogState],
+        script_paths: Option<&BTreeMap<crate::ScriptId, String>>,
     ) -> Vec<AppAction> {
         self.synchronize(dialogs);
         let mut actions = Vec::new();
@@ -91,6 +92,10 @@ impl ScriptDialogs {
             }
             let mut open = state.open;
             let mut page = state.page;
+            let script_path = script_paths
+                .and_then(|paths| paths.get(&dialog.owner_script_id))
+                .map(String::as_str)
+                .unwrap_or(&dialog.owner_script_name);
             egui::Window::new(&dialog.name)
                 .id(egui::Id::new(("script_dialog", dialog.id.raw())))
                 .open(&mut open)
@@ -121,6 +126,7 @@ impl ScriptDialogs {
                                     show_content(
                                         ui,
                                         dialog.owner_script_id,
+                                        script_path,
                                         dialog.id,
                                         content,
                                         0,
@@ -140,6 +146,7 @@ impl ScriptDialogs {
                                         show_content(
                                             ui,
                                             dialog.owner_script_id,
+                                            script_path,
                                             dialog.id,
                                             content,
                                             page + 1,
@@ -246,6 +253,7 @@ fn show_page_control(
 fn show_content(
     ui: &mut egui::Ui,
     owner_script_id: crate::ScriptId,
+    script_path: &str,
     dialog_id: ScriptDialogId,
     content: &ScriptDialogContent,
     content_index: usize,
@@ -283,7 +291,8 @@ fn show_content(
                         for link in links.iter() {
                             cache.add_link_hook(&link.destination);
                         }
-                        let response = CommonMarkViewer::new().show(ui, cache, text);
+                        let response =
+                            crate::script_markdown_viewer(script_path).show(ui, cache, text);
                         let clicked = links
                             .iter()
                             .filter(|link| cache.get_link_hook(&link.destination) == Some(true))
@@ -432,7 +441,7 @@ mod tests {
             },
             |ui| {
                 ui.horizontal(|ui| component.show_control(ui, dialogs));
-                actions.extend(component.show_windows(ui.ctx(), dialogs));
+                actions.extend(component.show_windows(ui.ctx(), dialogs, None));
             },
         );
         actions
@@ -459,6 +468,7 @@ mod tests {
                 show_content(
                     ui,
                     dialog.owner_script_id,
+                    &dialog.owner_script_name,
                     dialog.id,
                     content,
                     0,
@@ -589,7 +599,7 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                component.show_windows(ui.ctx(), &dialogs);
+                component.show_windows(ui.ctx(), &dialogs, None);
             },
         );
 
@@ -904,7 +914,7 @@ mod tests {
                 },
                 |ui| {
                     ui.horizontal(|ui| component.show_control(ui, &dialogs));
-                    component.show_windows(ui.ctx(), &dialogs);
+                    component.show_windows(ui.ctx(), &dialogs, None);
                 },
             );
             assert!(!output.shapes.is_empty());
