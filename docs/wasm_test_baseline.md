@@ -113,12 +113,12 @@ After the package waves, `--require-closed` reports:
 
 | Category | Logical native tests |
 | --- | ---: |
-| shared | 1,170 |
+| shared | 1,175 |
 | native-platform | 136 |
 | native-driver | 119 |
-| **Native total** | **1,425** |
+| **Native total** | **1,430** |
 
-The final source scanner records 1,428 declarations: the 1,424 native/cross-target declarations from Stage 1 plus four Wasm-runtime-only production Worker declarations. Node and Chromium each execute the identical 1,170 shared IDs plus four `wasm-runtime` production Worker contracts, for **1,174 actual Wasm tests per runtime**. No classification remains pending. The resulting shared overlap is about 82% of the native inventory; the 255 exclusions are dominated by native app-backend/JACK/CPAL/midir/Carla features, global allocation and lock gates, OS threads/deadlines/filesystems, and native Tracy. Every exclusion has a checked-in pattern and reason.
+The final source scanner records 1,433 declarations: the 1,424 native/cross-target declarations from Stage 1, four Wasm-runtime-only production Worker declarations, and five portable composite-editor tests merged from current `master`. Node and Chromium each execute the identical 1,175 shared IDs plus four `wasm-runtime` production Worker contracts, for **1,179 actual Wasm tests per runtime**. No classification remains pending. The resulting shared overlap is about 82% of the native inventory; the 255 exclusions are dominated by native app-backend/JACK/CPAL/midir/Carla features, global allocation and lock gates, OS threads/deadlines/filesystems, and native Tracy. Every exclusion has a checked-in pattern and reason.
 
 On the local warm debug-profile reference environment, the canonical package commands took about 156 seconds in Node and 192 seconds in headless Chromium, excluding the one-time staged worklet build. These values are diagnostic rather than acceptance thresholds and are recorded in each generated summary.
 
