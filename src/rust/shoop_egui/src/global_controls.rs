@@ -1,6 +1,6 @@
 use egui_material_icons::icons::{
     ICON_ARROW_DOWNWARD, ICON_BORDER_CLEAR, ICON_DELETE, ICON_FIBER_MANUAL_RECORD, ICON_HEARING,
-    ICON_HOURGLASS_EMPTY, ICON_MENU, ICON_PLAY_ARROW, ICON_STOP,
+    ICON_HOURGLASS_EMPTY, ICON_MENU, ICON_PLAY_ARROW, ICON_STOP, ICON_VOLUME_OFF,
 };
 
 use crate::{
@@ -30,6 +30,7 @@ enum TestGlobalControl {
     LoadSession,
     Settings,
     StopAll,
+    MidiPanic,
     DeselectAll,
     Clear,
     ClearRecordings,
@@ -50,6 +51,7 @@ struct TestGlobalControlRects {
     load_session: Option<egui::Rect>,
     settings: Option<egui::Rect>,
     stop_all: Option<egui::Rect>,
+    midi_panic: Option<egui::Rect>,
     deselect_all: Option<egui::Rect>,
     clear: Option<egui::Rect>,
     clear_recordings: Option<egui::Rect>,
@@ -110,6 +112,15 @@ impl GlobalControls {
             self.record_rect(TestGlobalControl::StopAll, &response);
             if response.clicked() {
                 actions.push(GlobalControlAction::StopAll);
+            }
+            let response = icon_button(
+                ui,
+                ICON_VOLUME_OFF,
+                "MIDI panic: send All Sound Off to all monitored MIDI tracks",
+            );
+            self.record_rect(TestGlobalControl::MidiPanic, &response);
+            if response.clicked() {
+                actions.push(GlobalControlAction::MidiPanic);
             }
             let response = icon_button(ui, ICON_BORDER_CLEAR, "Deselect all loops");
             self.record_rect(TestGlobalControl::DeselectAll, &response);
@@ -348,6 +359,7 @@ impl GlobalControls {
             TestGlobalControl::LoadSession => &mut self.test_rects.load_session,
             TestGlobalControl::Settings => &mut self.test_rects.settings,
             TestGlobalControl::StopAll => &mut self.test_rects.stop_all,
+            TestGlobalControl::MidiPanic => &mut self.test_rects.midi_panic,
             TestGlobalControl::DeselectAll => &mut self.test_rects.deselect_all,
             TestGlobalControl::Clear => &mut self.test_rects.clear,
             TestGlobalControl::ClearRecordings => &mut self.test_rects.clear_recordings,
@@ -377,6 +389,7 @@ impl GlobalControls {
             TestGlobalControl::LoadSession => self.test_rects.load_session,
             TestGlobalControl::Settings => self.test_rects.settings,
             TestGlobalControl::StopAll => self.test_rects.stop_all,
+            TestGlobalControl::MidiPanic => self.test_rects.midi_panic,
             TestGlobalControl::DeselectAll => self.test_rects.deselect_all,
             TestGlobalControl::Clear => self.test_rects.clear,
             TestGlobalControl::ClearRecordings => self.test_rects.clear_recordings,
@@ -606,6 +619,15 @@ mod tests {
         assert_eq!(
             click(&context, &mut controls, &state, TestGlobalControl::StopAll),
             vec![GlobalControlAction::StopAll]
+        );
+        assert_eq!(
+            click(
+                &context,
+                &mut controls,
+                &state,
+                TestGlobalControl::MidiPanic
+            ),
+            vec![GlobalControlAction::MidiPanic]
         );
         assert_eq!(
             click(

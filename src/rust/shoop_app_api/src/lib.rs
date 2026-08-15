@@ -1483,6 +1483,7 @@ pub type TrackWidgetAction = TrackAction;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GlobalControlAction {
     StopAll,
+    MidiPanic,
     DeselectAll,
     ClearRecordings { include_sync: bool },
     ClearAll { include_sync: bool },
@@ -1737,6 +1738,7 @@ impl GlobalControlAction {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::StopAll => "global.stop_all",
+            Self::MidiPanic => "global.midi_panic",
             Self::DeselectAll => "global.deselect_all",
             Self::ClearRecordings { .. } => "global.clear_recordings",
             Self::ClearAll { .. } => "global.clear_all",
@@ -2076,6 +2078,11 @@ mod tests {
             LoopAction::ConvertToComposite.kind(),
             "loop.convert_to_composite"
         );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn global_controls_have_stable_intent_kinds() {
+        assert_eq!(GlobalControlAction::MidiPanic.kind(), "global.midi_panic");
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

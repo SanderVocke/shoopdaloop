@@ -1152,7 +1152,7 @@ impl ApplicationModel {
                 let destinations = self
                     .tracks
                     .iter()
-                    .filter(|track| self.piano_track_is_eligible(track))
+                    .filter(|track| self.track_accepts_live_midi(track))
                     .map(|track| (track.id, track.backend_id))
                     .collect::<Vec<_>>();
                 let mut recipients = BTreeSet::new();
@@ -1192,7 +1192,38 @@ impl ApplicationModel {
         }
     }
 
-    fn piano_track_is_eligible(&self, track: &TrackModel) -> bool {
+    fn handle_midi_panic(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+        self.active_piano_notes.clear();
+        let destinations = self
+            .tracks
+            .iter()
+            .filter(|track| self.track_accepts_live_midi(track))
+            .map(|track| (track.id, track.backend_id))
+            .collect::<Vec<_>>();
+        let events = (0..16)
+            .map(|channel| BackendMidiEvent {
+                time: 0,
+                data: vec![0xb0 | channel, 120, 0],
+            })
+            .collect::<Vec<_>>();
+        let mut failures = Vec::new();
+        for (track_id, backend_id) in destinations {
+            if let Err(error) = backend.inject_midi_input(backend_id, &events) {
+                failures.push(format!("{track_id}: {error}"));
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "could not send MIDI panic to {} track(s): {}",
+                failures.len(),
+                failures.join("; ")
+            ))
+        }
+    }
+
+    fn track_accepts_live_midi(&self, track: &TrackModel) -> bool {
         track.controls.input_monitoring
             && track.port_ids.iter().any(|port_id| {
                 self.connection_ports.get(port_id).is_some_and(|port| {
@@ -4914,6 +4945,7 @@ impl ApplicationModel {
                         .map_err(|error| format!("could not stop loop: {error}"))?;
                 }
             }
+            GlobalControlAction::MidiPanic => self.handle_midi_panic(backend)?,
             GlobalControlAction::DeselectAll => {
                 for model in self.loops.values_mut() {
                     model.state.selected = false;
@@ -12062,6 +12094,77 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         model.apply_backend_snapshot(backend.poll().unwrap());
         assert_eq!(monitoring(&model), [false, true, true, true]);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn midi_panic_fans_out_all_channels_and_continues_after_track_failure() {
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        for (name, audio_channels, midi) in [
+            ("fails", 0, true),
+            ("works", 0, true),
+            ("inactive", 0, true),
+            ("audio", 1, false),
+        ] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi,
+                }),
+            );
+        }
+        for track_index in [1, 2, 4] {
+            let track_id = model.tracks[track_index].id;
+            model.handle_intent(
+                &mut backend,
+                AppIntent::Track {
+                    track_id,
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
+                },
+            );
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let failed = model.tracks[1].backend_id;
+        let successful = model.tracks[2].backend_id;
+        backend.fail_midi_input_for(failed);
+        model
+            .active_piano_notes
+            .insert(60, BTreeSet::from([model.tracks[1].id]));
+
+        let operation_start = backend.operations().len();
+        let error = model
+            .handle_global_action(&mut backend, GlobalControlAction::MidiPanic)
+            .unwrap_err();
+        assert!(error.contains("could not send MIDI panic to 1 track(s)"));
+        assert!(model.active_piano_notes.is_empty());
+        let injections = backend.operations()[operation_start..]
+            .iter()
+            .filter_map(|operation| match operation {
+                shoop_backend::FakeOperation::InjectMidiInput(track, events) => {
+                    Some((*track, events.clone()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(injections.len(), 1);
+        assert_eq!(injections[0].0, successful);
+        assert_eq!(
+            injections[0]
+                .1
+                .iter()
+                .map(|event| event.data.clone())
+                .collect::<Vec<_>>(),
+            (0..16)
+                .map(|channel| vec![0xb0 | channel, 120, 0])
+                .collect::<Vec<_>>()
+        );
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
