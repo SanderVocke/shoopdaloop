@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 mod archive;
 mod click_track;
 mod document;
@@ -439,7 +442,7 @@ mod tests {
         })
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_current_and_recorded_state_round_trip_and_validate_shape() {
         let bundle = tiny_synth_fx_bundle();
         let encoded = encode_session(&bundle, "tiny-test").unwrap();
@@ -495,7 +498,7 @@ mod tests {
         ));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn legacy_fx_chain_without_midi_assignments_defaults_to_empty() {
         let chain = tiny_synth_fx_bundle().document.track_groups[0].tracks[0]
             .fx_chain
@@ -507,14 +510,14 @@ mod tests {
         assert!(decoded.midi_cc_assignments.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn minimal_session_fixture_round_trips() {
         let bundle = SessionBundle::new(SessionDocument::empty(48_000));
         let encoded = encode_session(&bundle, "minimal-fixture").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn missing_auto_mute_other_track_inputs_defaults_off() {
         let mut bundle = direct_bundle(1);
         bundle.document.global.auto_mute_other_track_inputs = false;
@@ -528,7 +531,7 @@ mod tests {
         assert_eq!(decode_session(&without_field).unwrap(), bundle);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unsupported_older_and_future_major_archives_are_rejected() {
         let encoded = encode_session(
             &SessionBundle::new(SessionDocument::empty(48_000)),
@@ -547,7 +550,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn session_round_trip_is_exact_and_deterministic() {
         let bundle = direct_bundle(12);
         let first = encode_session(&bundle, "test").unwrap();
@@ -580,7 +583,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn deferred_feature_fixture_round_trips_without_field_loss() {
         let bundle = deferred_feature_bundle();
         let encoded = encode_session(&bundle, "deferred-fixture").unwrap();
@@ -615,7 +618,7 @@ mod tests {
         ));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn arbitrary_channel_loop_audio_round_trips() {
         let audio = LoopAudio {
             sample_rate: 96_000,
@@ -631,7 +634,7 @@ mod tests {
         assert_eq!(decode_loop_audio(&encoded).unwrap(), audio);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exact_and_standard_midi_preserve_order_and_bound_quantization() {
         let midi = ExactMidi {
             sample_rate: 48_000,
@@ -662,7 +665,7 @@ mod tests {
             .all(|events| events[0].frame <= events[1].frame));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn standard_midi_import_honors_tempo_maps_stable_tracks_and_sysex() {
         use midly::num::{u15, u24, u28, u4, u7};
         use midly::{
@@ -741,7 +744,7 @@ mod tests {
         assert!(imported.length_frames >= 72_001);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn float_wav_round_trip_is_exact() {
         let audio = LoopAudio {
             sample_rate: 44_100,
@@ -778,7 +781,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn resampling_converts_every_sample_domain_and_preserves_midi_order() {
         let bundle = direct_bundle(2);
         for rate in [44_100, 32_000, 96_000] {
@@ -819,7 +822,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn payload_hash_mismatch_is_rejected() {
         let encoded = encode_session(&direct_bundle(2), "hash-test").unwrap();
         let mut input = ZipArchive::new(Cursor::new(encoded)).unwrap();
@@ -846,7 +849,7 @@ mod tests {
         ));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn old_non_zip_and_resource_limit_fail_without_decoding() {
         assert!(matches!(
             decode_session(b"unsupported predecessor archive"),
@@ -865,7 +868,7 @@ mod tests {
         ));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn topology_channel_shapes_and_fx_state_references_are_validated() {
         let mut wrong_mode = direct_bundle(1);
         wrong_mode.document.track_groups[0].tracks[0].loops[0].channels[0].mode =
@@ -894,7 +897,7 @@ mod tests {
         ));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn stale_references_and_missing_media_are_rejected() {
         let mut bundle = direct_bundle(1);
         bundle.document.selected_loop_ids = vec![999_999];

@@ -3812,7 +3812,9 @@ dependencies = [
 name = "shoop_app_api"
 version = "0.3.0"
 dependencies = [
+ "shoop_wasm_test_support",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -3931,7 +3933,9 @@ version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
+ "shoop_wasm_test_support",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -3943,7 +3947,9 @@ dependencies = [
  "omnilua",
  "regex",
  "shoop_app_api",
+ "shoop_wasm_test_support",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -3956,8 +3962,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "shoop_wasm_test_support",
  "thiserror 2.0.20",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
  "zip",
 ]
 
@@ -3969,8 +3977,10 @@ dependencies = [
  "directories",
  "serde",
  "serde_json",
+ "shoop_wasm_test_support",
  "tempfile",
  "tracy-nextest-capture",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

@@ -273,7 +273,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn catalog_is_stable_sorted_and_all_assets_decode() {
         assert_eq!(
             click_sound_ids().collect::<Vec<_>>(),
@@ -291,7 +291,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn timing_preserves_fractional_bpm_and_odd_delay_boundaries() {
         let straight = generate_click_track_timing(timing(100.5, 4, 0.0), 48_000).unwrap();
         assert_eq!(straight.output_frames, 114_626);
@@ -305,7 +305,7 @@ mod tests {
         assert_eq!(full.click_start_frames, vec![0, 48_000, 48_000, 96_000]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn timing_rejects_invalid_and_unbounded_requests() {
         for spec in [
             timing(0.0, 4, 0.0),
@@ -326,7 +326,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_generation_cycles_pattern_resamples_and_truncates() {
         let spec = AudioClickTrackSpec {
             timing: timing(120.0, 4, 100.0),
@@ -357,7 +357,7 @@ mod tests {
         assert_eq!(only_primary.channels[0].samples.len(), 96_000);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_generation_uses_visible_defaults_and_clamps_final_note_off() {
         let midi = generate_midi_click_track(
             MidiClickTrackSpec {
@@ -382,7 +382,7 @@ mod tests {
             .all(|event| event.frame < midi.length_frames));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn hundred_percent_delayed_click_at_end_is_omitted_safely() {
         let midi = generate_midi_click_track(
             MidiClickTrackSpec {

@@ -17,28 +17,74 @@ reason = "Production Worker, MessagePort, and staged raw-engine contracts requir
 
 [[rules]]
 pattern = "shoop_app_api::*"
-category = "pending"
-reason = "Stage 4 protocol/value migration wave."
+category = "shared"
+reason = "Application domain value and validation tests are runtime-independent and pass in native, Node, and Chromium."
 
 [[rules]]
 pattern = "shoop_plugin_protocol::*"
-category = "pending"
-reason = "Stage 4 protocol/value migration wave."
+category = "shared"
+reason = "Plugin protocol serialization and capacity tests are portable data contracts."
 
 [[rules]]
 pattern = "shoop_settings::*"
-category = "pending"
-reason = "Stage 4 protocol/value migration wave."
+exclude = [
+  "*::missing_file_is_first_run_and_save_creates_parents",
+  "*::save_replaces_complete_prior_bytes",
+  "*::failed_commit_retains_prior_bytes_and_cleans_temporary_file",
+  "*::invalid_parent_is_reported_without_replacing_it",
+  "*::default_path_uses_compatibility_identity",
+]
+category = "shared"
+reason = "Settings schema, defaults, validation, and serialization tests are portable."
+
+[[rules]]
+pattern = "shoop_settings::*::missing_file_is_first_run_and_save_creates_parents"
+category = "native-platform"
+reason = "Exercises native atomic filesystem storage and parent creation."
+
+[[rules]]
+pattern = "shoop_settings::*::save_replaces_complete_prior_bytes"
+category = "native-platform"
+reason = "Exercises native atomic filesystem replacement guarantees."
+
+[[rules]]
+pattern = "shoop_settings::*::failed_commit_retains_prior_bytes_and_cleans_temporary_file"
+category = "native-platform"
+reason = "Exercises native temporary-file cleanup and atomic failure behavior."
+
+[[rules]]
+pattern = "shoop_settings::*::invalid_parent_is_reported_without_replacing_it"
+category = "native-platform"
+reason = "Exercises native filesystem type and replacement errors."
+
+[[rules]]
+pattern = "shoop_settings::*::default_path_uses_compatibility_identity"
+category = "native-platform"
+reason = "Exercises OS-native configuration-directory resolution."
 
 [[rules]]
 pattern = "shoop_session::*"
-category = "pending"
-reason = "Stage 4 protocol/value migration wave."
+category = "shared"
+reason = "Session, archive, media, resampling, and click-track tests operate on in-memory bytes and deterministic values."
 
 [[rules]]
 pattern = "shoop_scripting::*"
-category = "pending"
-reason = "Stage 4 portable-runtime migration wave."
+exclude = [
+  "*::runtime_is_constructed_and_used_on_its_actor_thread",
+  "*::native_virtual_midi_round_trip_when_host_facilities_are_available",
+]
+category = "shared"
+reason = "Lua runtime, API, callback, timer, dialog, and deterministic MIDI-service tests run portably."
+
+[[rules]]
+pattern = "shoop_scripting::*::runtime_is_constructed_and_used_on_its_actor_thread"
+category = "native-platform"
+reason = "Deliberately constructs and joins a native OS thread; Wasm runtime behavior is covered by shared owner-thread tests."
+
+[[rules]]
+pattern = "shoop_scripting::*::native_virtual_midi_round_trip_when_host_facilities_are_available"
+category = "native-driver"
+reason = "Requires Linux midir virtual ports and host MIDI facilities."
 
 [[rules]]
 pattern = "shoop_engine::*"

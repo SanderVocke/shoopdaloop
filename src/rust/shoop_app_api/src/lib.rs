@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use std::fmt;
 use std::sync::Arc;
 
@@ -1856,7 +1859,7 @@ pub struct AppNotification {
 mod tests {
     use super::*;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn ephemeral_script_names_track_source_versions_without_colliding() {
         assert!(is_ephemeral_script_version(
             "controller.lua",
@@ -1883,7 +1886,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn ids_retain_raw_identity_and_invalid_is_distinct() {
         let first = TrackId::from_raw(10);
         let second = TrackId::from_raw(11);
@@ -1916,7 +1919,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_spec_uses_capability_catalog_and_constraints() {
         let processor = synthetic_processor();
         let spec = TrackSpec {
@@ -1960,7 +1963,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_constraints_require_matched_audio_and_midi() {
         let constraints = TrackProcessorConstraints {
             max_dry_audio_channels: None,
@@ -1975,7 +1978,7 @@ mod tests {
         assert!(!constraints.accepts(1, 1, false));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn processor_descriptors_preserve_future_ui_facets() {
         let processor = synthetic_processor();
         assert_eq!(processor.id.as_str(), "browser_native_test");
@@ -1985,7 +1988,7 @@ mod tests {
         assert_eq!(AppSnapshot::default().track_processors.len(), 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn direct_track_spec_validates_name_and_audio_range() {
         assert_eq!(
             DirectTrackSpec {
@@ -2012,7 +2015,7 @@ mod tests {
         .is_ok());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn click_track_defaults_and_intents_preserve_visible_contract_and_target() {
         let request = ClickTrackRequest::default();
         assert_eq!(request.kind, ClickTrackKind::Audio);
@@ -2038,7 +2041,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_notes_validate_the_full_midi_range() {
         assert_eq!(MidiNote::new(0).unwrap().value(), 0);
         assert_eq!(MidiNote::new(60).unwrap().value(), 60);
@@ -2050,7 +2053,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn intents_preserve_stable_ids_and_selection_modifiers() {
         let track_id = TrackId::from_raw(7);
         let loop_id = LoopId::from_raw(42);
@@ -2105,12 +2108,12 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn global_controls_have_stable_intent_kinds() {
         assert_eq!(GlobalControlAction::MidiPanic.kind(), "global.midi_panic");
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_controls_have_stable_intent_kinds() {
         assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::SelectPreset("pad".to_owned())).kind(),
@@ -2148,7 +2151,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn latest_midi_message_only_recognizes_complete_control_changes() {
         assert_eq!(
             LatestMidiMessage::new([0xb7, 74, 99, 0], 3)
@@ -2169,7 +2172,7 @@ mod tests {
         assert!(LatestMidiMessage::new([0; 4], 5).is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn lua_api_versions_use_major_equality_and_minor_backwards_compatibility() {
         let host = LuaApiVersion { major: 2, minor: 4 };
         assert!(host.accepts(LuaApiVersion { major: 2, minor: 0 }));
@@ -2180,7 +2183,7 @@ mod tests {
         assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 2 });
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dialog_contract_preserves_plain_order_and_callback_identity() {
         let script_id = ScriptId::from_raw(8);
         let dialog_id = ScriptDialogId::from_raw(12);
@@ -2231,7 +2234,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_contract_preserves_plain_state_and_stable_intents() {
         let script_id = ScriptId::from_raw(8);
         let state = ScriptState {
@@ -2261,7 +2264,7 @@ mod tests {
         assert!(!AppSnapshot::default().scripting.supported);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connection_contract_preserves_identity_roles_and_exact_desired_state() {
         let port_id = PortId::from_raw(17);
         let track_id = TrackId::from_raw(3);
@@ -2324,7 +2327,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connection_snapshots_are_structurally_shared_and_independent() {
         let ports: Arc<[ApplicationPortState]> = Arc::from([]);
         let first = AppSnapshot {
@@ -2351,7 +2354,7 @@ mod tests {
         assert_eq!(first.connections.revision, 4);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_controls_are_clamped_to_ui_ranges() {
         let mut state = TrackControlState {
             output_gain_db: 50.0,
@@ -2367,7 +2370,7 @@ mod tests {
         assert_eq!(state.input_balance, 1.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_driver_configs_have_stable_kinds_and_independent_defaults() {
         let dummy = AudioDriverConfig::default();
         let jack = AudioDriverConfig::Jack(JackAudioDriverConfig::default());
@@ -2380,7 +2383,7 @@ mod tests {
         assert_ne!(dummy, jack);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn latency_is_calculated_from_buffer_size_and_sample_rate() {
         let status = StatusState {
             buffer_size: 256,
