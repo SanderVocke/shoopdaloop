@@ -650,6 +650,63 @@ pub struct BackendAudioDataChunk {
     pub samples: Vec<f32>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BackendOperationKind {
+    SessionCapture,
+    SessionReplacement,
+    LoopContentReplacement,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackendOperationProgress {
+    pub key: u64,
+    pub kind: BackendOperationKind,
+    pub completed: usize,
+    pub total: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BackendAsyncResult<T> {
+    Pending(BackendOperationProgress),
+    Ready(T),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BackendMutationKind {
+    DriverConfiguration,
+    TrackStructure,
+    CompositeStructure,
+    TrackControl,
+    TrackFxControl,
+    MidiInput,
+    LoopControl,
+    LoopContent,
+    SessionTransfer,
+    Connection,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BackendMutationDetail {
+    TrackCreation,
+    TrackRemoval,
+    LoopCreation { loop_id: BackendLoopId },
+    TrackControl(BackendTrackControl),
+    TrackFxControl(BackendTrackFxControl),
+    LoopGain(f32),
+    LoopBalance(f32),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackendMutationFailure {
+    pub driver_generation: u64,
+    pub sequence: u64,
+    pub operation_key: Option<u64>,
+    pub kind: BackendMutationKind,
+    pub entity: Option<u64>,
+    pub detail: Option<BackendMutationDetail>,
+    pub message: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
     pub status: BackendStatus,
@@ -658,6 +715,7 @@ pub struct BackendSnapshot {
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
     pub composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
     pub connections: BackendConnectionSnapshot,
+    pub mutation_failures: Vec<BackendMutationFailure>,
 }
 
 pub trait Backend {
@@ -834,12 +892,29 @@ pub trait Backend {
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         Err(anyhow!("session capture is unavailable"))
     }
+    fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+        self.capture_session().map(BackendAsyncResult::Ready)
+    }
     fn replace_session(
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let _ = session;
         Err(anyhow!("session replacement is unavailable"))
+    }
+    fn replace_session_async(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        self.replace_session(session).map(BackendAsyncResult::Ready)
+    }
+    fn replace_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.replace_loop_content(loop_id, update)
+            .map(BackendAsyncResult::Ready)
     }
     fn set_port_connected(
         &mut self,
@@ -1086,10 +1161,36 @@ pub struct BackendWebMidiOutputEvent {
     pub data: Vec<u8>,
 }
 
+/// Selects concrete session port implementations only; scheduling policy is
+/// owned by the surrounding driver and never branches on this value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum EngineBackendMode {
+enum EnginePortModel {
     Dummy,
     Physical,
+}
+
+/// Local elapsed-time policy. The engine runtime itself advances only through
+/// explicit process quanta supplied by a driver.
+#[derive(Clone, Copy, Default)]
+struct LocalElapsedScheduler {
+    frame_numerator: u128,
+}
+
+impl LocalElapsedScheduler {
+    fn frames_due(&mut self, elapsed: Duration, sample_rate: u32, buffer_size: u32) -> (u32, bool) {
+        self.frame_numerator = self
+            .frame_numerator
+            .saturating_add(elapsed.as_nanos().saturating_mul(sample_rate as u128));
+        let due = self.frame_numerator / NANOSECONDS_PER_SECOND;
+        let max_frames = buffer_size.saturating_mul(MAX_CYCLES_PER_ADVANCE) as u128;
+        let processed = due.min(max_frames) as u32;
+        self.frame_numerator -= processed as u128 * NANOSECONDS_PER_SECOND;
+        let overrun = due > max_frames;
+        if overrun {
+            self.frame_numerator = 0;
+        }
+        (processed, overrun)
+    }
 }
 
 pub struct EngineBackend {
@@ -1098,7 +1199,6 @@ pub struct EngineBackend {
     global_fx_port: BackendPortId,
     sample_rate: u32,
     buffer_size: u32,
-    elapsed_frame_numerator: u128,
     processed_frames: u64,
     xruns: u32,
     loops: BTreeMap<BackendLoopId, usize>,
@@ -1117,7 +1217,7 @@ pub struct EngineBackend {
     external_connections: DummyExternalConnections,
     web_midi_hosts: BTreeMap<String, BackendHostPortDescriptor>,
     desired_web_midi_connections: BTreeSet<(BackendPortId, String)>,
-    mode: EngineBackendMode,
+    port_model: EnginePortModel,
     callback_count: u64,
     input_peak: f32,
     output_peak: f32,
@@ -1127,6 +1227,27 @@ pub struct EngineBackend {
     web_midi_output_pending: VecDeque<BackendWebMidiOutputEvent>,
     web_midi_output_dropped: u32,
     web_midi_input_refused: u32,
+}
+
+/// Local deterministic driver wrapper. It owns elapsed-time policy while the
+/// enclosed engine runtime exposes only explicit quantum progression.
+pub struct LocalDummyBackend {
+    runtime: EngineBackend,
+    scheduler: LocalElapsedScheduler,
+}
+
+impl std::ops::Deref for LocalDummyBackend {
+    type Target = EngineBackend;
+
+    fn deref(&self) -> &Self::Target {
+        &self.runtime
+    }
+}
+
+impl std::ops::DerefMut for LocalDummyBackend {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.runtime
+    }
 }
 
 struct EngineComposite {
@@ -1179,7 +1300,14 @@ struct EngineTinyFx {
 }
 
 impl EngineBackend {
-    pub fn new_dummy(sample_rate: u32, buffer_size: u32) -> Result<Self> {
+    pub fn new_dummy(sample_rate: u32, buffer_size: u32) -> Result<LocalDummyBackend> {
+        Ok(LocalDummyBackend {
+            runtime: Self::new_dummy_runtime(sample_rate, buffer_size)?,
+            scheduler: LocalElapsedScheduler::default(),
+        })
+    }
+
+    fn new_dummy_runtime(sample_rate: u32, buffer_size: u32) -> Result<Self> {
         if sample_rate == 0 || buffer_size == 0 {
             return Err(anyhow!(
                 "dummy sample rate and buffer size must be non-zero"
@@ -1210,7 +1338,6 @@ impl EngineBackend {
             global_fx_port,
             sample_rate,
             buffer_size,
-            elapsed_frame_numerator: 0,
             processed_frames: 0,
             xruns: 0,
             loops: BTreeMap::new(),
@@ -1235,7 +1362,7 @@ impl EngineBackend {
             external_connections: representative_external_connections(),
             web_midi_hosts: BTreeMap::new(),
             desired_web_midi_connections: BTreeSet::new(),
-            mode: EngineBackendMode::Dummy,
+            port_model: EnginePortModel::Dummy,
             callback_count: 0,
             input_peak: 0.0,
             output_peak: 0.0,
@@ -1254,8 +1381,8 @@ impl EngineBackend {
                 "Web Audio sample rate must be non-zero and quantum must be in 1..={MAX_WEB_AUDIO_QUANTUM}"
             ));
         }
-        let mut backend = Self::new_dummy(sample_rate, max_quantum)?;
-        backend.mode = EngineBackendMode::Physical;
+        let mut backend = Self::new_dummy_runtime(sample_rate, max_quantum)?;
+        backend.port_model = EnginePortModel::Physical;
         backend.external_connections.remove_all_mock_ports();
         let global = ExternalMidiPort::new("global_fx_control_midi_in", PortDirection::Input);
         backend.session.remove_port(backend.global_fx_midi)?;
@@ -1533,7 +1660,7 @@ impl EngineBackend {
         input_channels: u32,
         output_channels: u32,
     ) -> Result<()> {
-        if self.mode != EngineBackendMode::Physical {
+        if self.port_model != EnginePortModel::Physical {
             return Err(anyhow!(
                 "device channels supplied to a non-physical backend"
             ));
@@ -1578,7 +1705,7 @@ impl EngineBackend {
         &mut self,
         endpoints: Vec<BackendHostPortDescriptor>,
     ) -> Result<()> {
-        if self.mode != EngineBackendMode::Physical {
+        if self.port_model != EnginePortModel::Physical {
             return Err(anyhow!(
                 "Web MIDI endpoints supplied to a non-physical backend"
             ));
@@ -1736,8 +1863,8 @@ impl EngineBackend {
         output_channels: usize,
         n_frames: usize,
     ) -> Result<()> {
-        if self.mode != EngineBackendMode::Physical {
-            return Err(anyhow!("audio quantum supplied to a non-physical backend"));
+        if self.port_model != EnginePortModel::Physical {
+            return Err(anyhow!("audio quantum supplied to a non-physical runtime"));
         }
         if n_frames == 0
             || n_frames > self.buffer_size as usize
@@ -1854,8 +1981,8 @@ impl EngineBackend {
     }
 
     fn audio_driver_runtime_state(&self) -> AudioDriverRuntimeState {
-        let (supported, configured, kind, instance_name) = match self.mode {
-            EngineBackendMode::Dummy => (
+        let (supported, configured, kind, instance_name) = match self.port_model {
+            EnginePortModel::Dummy => (
                 true,
                 AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                     sample_rate: self.sample_rate,
@@ -1864,7 +1991,7 @@ impl EngineBackend {
                 AudioDriverKind::Dummy,
                 "dummy".to_owned(),
             ),
-            EngineBackendMode::Physical => (
+            EnginePortModel::Physical => (
                 false,
                 AudioDriverConfig::WebAudio,
                 AudioDriverKind::WebAudio,
@@ -1919,7 +2046,7 @@ impl EngineBackend {
                 registry_id,
             },
         );
-        if self.mode == EngineBackendMode::Dummy {
+        if self.port_model == EnginePortModel::Dummy {
             self.external_connections.add_mock_port(
                 format!("shoop:{name}"),
                 engine_direction(direction),
@@ -2077,7 +2204,7 @@ impl EngineBackend {
                 BackendChannelMode::Dry => ChannelMode::Dry,
                 BackendChannelMode::Wet => ChannelMode::Wet,
             };
-            let channel = if self.mode == EngineBackendMode::Physical {
+            let channel = if self.port_model == EnginePortModel::Physical {
                 self.session
                     .add_audio_channel_with_bounded_capacity_unprepared(
                         engine_loop,
@@ -2163,7 +2290,7 @@ impl EngineBackend {
             let output_name = format!("{}_audio_wet_out_{}", request.port_name_base, index + 1);
             let input_registry_id = self.next_port_id();
             let output_registry_id = self.next_port_id();
-            let (input, output) = if self.mode == EngineBackendMode::Physical {
+            let (input, output) = if self.port_model == EnginePortModel::Physical {
                 let mut input = ExternalAudioPort::new(
                     input_name.clone(),
                     PortDirection::Input,
@@ -2237,7 +2364,7 @@ impl EngineBackend {
         }
         let midi_name = format!("{}_dry_midi_in", request.port_name_base);
         let midi_registry_id = self.next_port_id();
-        let midi_input = if self.mode == EngineBackendMode::Physical {
+        let midi_input = if self.port_model == EnginePortModel::Physical {
             let mut input = ExternalMidiPort::new(midi_name.clone(), PortDirection::Input);
             input.midi_mut().set_passthrough_muted(true);
             input
@@ -2271,7 +2398,7 @@ impl EngineBackend {
         let midi_input_port = Some(midi_descriptor.id);
         ports.push(midi_descriptor);
 
-        if self.mode == EngineBackendMode::Physical {
+        if self.port_model == EnginePortModel::Physical {
             let input_channels = WEB_AUDIO_CAPTURE_PORTS
                 .iter()
                 .filter(|host| {
@@ -2555,7 +2682,7 @@ impl EngineBackend {
                         .filter(|link| link.application_port_id == *port_id)
                         .map(|link| link.host_port_id.clone())
                         .collect::<BTreeSet<_>>();
-                    if self.mode == EngineBackendMode::Physical
+                    if self.port_model == EnginePortModel::Physical
                         && descriptor.data_type == BackendPortDataType::Midi
                     {
                         external_connections.extend(
@@ -2597,7 +2724,7 @@ impl EngineBackend {
             .filter(|link| link.application_port_id == self.global_fx_port)
             .map(|link| link.host_port_id.clone())
             .collect::<BTreeSet<_>>();
-        if self.mode == EngineBackendMode::Physical {
+        if self.port_model == EnginePortModel::Physical {
             global_connections.extend(
                 self.desired_web_midi_connections
                     .iter()
@@ -2651,9 +2778,9 @@ impl EngineBackend {
             ));
         }
         let mut replacement = BackendSessionReplacement::default();
-        let mut staged = match self.mode {
-            EngineBackendMode::Dummy => Self::new_dummy(self.sample_rate, self.buffer_size)?,
-            EngineBackendMode::Physical => Self::new_web_audio(self.sample_rate, self.buffer_size)?,
+        let mut staged = match self.port_model {
+            EnginePortModel::Dummy => Self::new_dummy_runtime(self.sample_rate, self.buffer_size)?,
+            EnginePortModel::Physical => Self::new_web_audio(self.sample_rate, self.buffer_size)?,
         };
         let source_global = data
             .global_ports
@@ -2769,7 +2896,7 @@ impl EngineBackend {
                 replacement
                     .ports
                     .insert(source_port.source_id, created_port.id);
-                if !(staged.mode == EngineBackendMode::Physical
+                if !(staged.port_model == EnginePortModel::Physical
                     && data.use_legacy_browser_default_routes)
                 {
                     let registry_id = staged
@@ -2796,7 +2923,7 @@ impl EngineBackend {
     }
 
     fn prepare_recording_storage(&mut self, loop_id: BackendLoopId) -> Result<()> {
-        if self.mode != EngineBackendMode::Physical {
+        if self.port_model != EnginePortModel::Physical {
             return Ok(());
         }
         let channels = self
@@ -3034,7 +3161,7 @@ impl Backend for EngineBackend {
         let AudioDriverConfig::Dummy(config) = config else {
             return Err(anyhow!("this backend supports only dummy-driver switching"));
         };
-        if self.mode != EngineBackendMode::Dummy {
+        if self.port_model != EnginePortModel::Dummy {
             return Err(anyhow!("Web Audio is selected automatically"));
         }
         if config.sample_rate == 0 || config.buffer_size == 0 {
@@ -3070,10 +3197,10 @@ impl Backend for EngineBackend {
                 resolved.sample_rate
             ));
         }
-        let mut target = EngineBackend::new_dummy(resolved.sample_rate, resolved.buffer_size)?;
+        let mut target =
+            EngineBackend::new_dummy_runtime(resolved.sample_rate, resolved.buffer_size)?;
         target.external_connections = self.external_connections.clone();
         let (mut replacement, mapping) = target.build_replacement(session)?;
-        replacement.elapsed_frame_numerator = self.elapsed_frame_numerator;
         replacement.processed_frames = self.processed_frames;
         replacement.xruns = self.xruns;
         *self = replacement;
@@ -3253,7 +3380,7 @@ impl Backend for EngineBackend {
             let output_name = format!("{}_direct_out{suffix}", request.port_name_base);
             let input_registry_id = self.next_port_id();
             let output_registry_id = self.next_port_id();
-            let (input, output) = if self.mode == EngineBackendMode::Physical {
+            let (input, output) = if self.port_model == EnginePortModel::Physical {
                 let mut input = ExternalAudioPort::new(
                     input_name.clone(),
                     PortDirection::Input,
@@ -3309,7 +3436,7 @@ impl Backend for EngineBackend {
             let output_name = format!("{}_direct_midi_out", request.port_name_base);
             let input_registry_id = self.next_port_id();
             let output_registry_id = self.next_port_id();
-            let (input, output) = if self.mode == EngineBackendMode::Physical {
+            let (input, output) = if self.port_model == EnginePortModel::Physical {
                 let mut input = ExternalMidiPort::new(input_name.clone(), PortDirection::Input);
                 input.midi_mut().set_passthrough_muted(true);
                 input
@@ -3364,7 +3491,7 @@ impl Backend for EngineBackend {
         } else {
             (None, None, None, None)
         };
-        if self.mode == EngineBackendMode::Physical {
+        if self.port_model == EnginePortModel::Physical {
             let input_channels = WEB_AUDIO_CAPTURE_PORTS
                 .iter()
                 .take_while(|host| {
@@ -4134,7 +4261,6 @@ impl Backend for EngineBackend {
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let (mut replacement, mapping) = self.build_replacement(session)?;
-        replacement.elapsed_frame_numerator = self.elapsed_frame_numerator;
         replacement.processed_frames = self.processed_frames;
         replacement.xruns = self.xruns;
         replacement.callback_count = self.callback_count;
@@ -4158,7 +4284,7 @@ impl Backend for EngineBackend {
         let local_direction = local.descriptor.direction;
         let local_data_type = local.descriptor.data_type;
         let registry_id = local.registry_id;
-        let is_web_midi = self.mode == EngineBackendMode::Physical
+        let is_web_midi = self.port_model == EnginePortModel::Physical
             && local_data_type == BackendPortDataType::Midi
             && external_port.starts_with("webmidi:");
         let candidate = self
@@ -4211,22 +4337,9 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
-    fn advance(&mut self, elapsed: Duration) {
-        if self.mode == EngineBackendMode::Physical {
-            return;
-        }
-        self.elapsed_frame_numerator = self
-            .elapsed_frame_numerator
-            .saturating_add(elapsed.as_nanos().saturating_mul(self.sample_rate as u128));
-        let due = self.elapsed_frame_numerator / NANOSECONDS_PER_SECOND;
-        let max_frames = self.buffer_size.saturating_mul(MAX_CYCLES_PER_ADVANCE) as u128;
-        let processed = due.min(max_frames) as u32;
-        self.elapsed_frame_numerator -= processed as u128 * NANOSECONDS_PER_SECOND;
-        if due > max_frames {
-            self.elapsed_frame_numerator = 0;
-            self.xruns = self.xruns.saturating_add(1);
-        }
-        self.advance_frames(processed);
+    fn advance(&mut self, _elapsed: Duration) {
+        // Runtime progression is supplied explicitly by a driver. Local
+        // elapsed-time behavior lives in LocalDummyBackend.
     }
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -4380,13 +4493,13 @@ impl Backend for EngineBackend {
             status: BackendStatus {
                 dsp_load_percent: 0.0,
                 xruns: self.xruns,
-                buffer_size: if self.mode == EngineBackendMode::Physical {
+                buffer_size: if self.port_model == EnginePortModel::Physical {
                     self.last_quantum
                 } else {
                     self.buffer_size
                 },
                 sample_rate: self.sample_rate,
-                driver_state: if self.mode == EngineBackendMode::Physical {
+                driver_state: if self.port_model == EnginePortModel::Physical {
                     BackendDriverState::Running
                 } else {
                     BackendDriverState::Dummy
@@ -4425,11 +4538,244 @@ impl Backend for EngineBackend {
             loops,
             composites,
             connections: self.connection_snapshot(),
+            mutation_failures: Vec::new(),
         })
     }
 
     fn wait_idle(&mut self) {
         let _ = self.apply_graph_changes();
+    }
+}
+
+impl Backend for LocalDummyBackend {
+    fn supports_composite_loops(&self) -> bool {
+        self.runtime.supports_composite_loops()
+    }
+
+    fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        self.runtime.track_processor_catalog()
+    }
+
+    fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
+        self.runtime.audio_driver_state()
+    }
+
+    fn preflight_audio_driver(
+        &mut self,
+        config: &AudioDriverConfig,
+    ) -> Result<ResolvedAudioDriverConfig> {
+        self.runtime.preflight_audio_driver(config)
+    }
+
+    fn switch_audio_driver(
+        &mut self,
+        config: &AudioDriverConfig,
+        confirmed_sample_rate: u32,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        let replacement =
+            self.runtime
+                .switch_audio_driver(config, confirmed_sample_rate, session)?;
+        self.scheduler = LocalElapsedScheduler::default();
+        Ok(replacement)
+    }
+
+    fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
+        self.runtime.create_track(request)
+    }
+
+    fn create_loop(&mut self) -> Result<BackendLoopId> {
+        self.runtime.create_loop()
+    }
+
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        self.runtime.create_composite_loop()
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        self.runtime.configure_composite_loop(composite_id, config)
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        self.runtime
+            .transition_composite_loop(composite_id, mode, cycles_delay, align_to_iteration)
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        enabled: bool,
+    ) -> Result<()> {
+        self.runtime
+            .set_composite_play_after_record(composite_id, enabled)
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        self.runtime.remove_composite_loop(composite_id)
+    }
+
+    fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
+        self.runtime.create_direct_track(request)
+    }
+
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        self.runtime.remove_track(track_id)
+    }
+
+    fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
+        self.runtime.add_loop_to_track(track_id)
+    }
+
+    fn set_track_control(
+        &mut self,
+        track_id: BackendTrackId,
+        control: BackendTrackControl,
+    ) -> Result<()> {
+        self.runtime.set_track_control(track_id, control)
+    }
+
+    fn inject_midi_input(
+        &mut self,
+        track_id: BackendTrackId,
+        events: &[BackendMidiEvent],
+    ) -> Result<()> {
+        self.runtime.inject_midi_input(track_id, events)
+    }
+
+    fn set_track_fx_control(
+        &mut self,
+        track_id: BackendTrackId,
+        control: BackendTrackFxControl,
+    ) -> Result<()> {
+        self.runtime.set_track_fx_control(track_id, control)
+    }
+
+    fn track_fx_state_string(&mut self, track_id: BackendTrackId) -> Result<Option<String>> {
+        self.runtime.track_fx_state_string(track_id)
+    }
+
+    fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
+        self.runtime.set_loop_gain(loop_id, gain)
+    }
+
+    fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()> {
+        self.runtime.set_loop_balance(loop_id, balance)
+    }
+
+    fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        self.runtime.grab_loops(requests)
+    }
+
+    fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
+        self.runtime.loop_audio_data(loop_id)
+    }
+
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        self.runtime.loop_midi_data(loop_id)
+    }
+
+    fn loop_audio_data_chunk(
+        &mut self,
+        loop_id: BackendLoopId,
+        channel: usize,
+        offset: usize,
+        max_samples: usize,
+    ) -> Result<BackendAudioDataChunk> {
+        self.runtime
+            .loop_audio_data_chunk(loop_id, channel, offset, max_samples)
+    }
+
+    fn set_loop_sync_source(
+        &mut self,
+        loop_id: BackendLoopId,
+        source: Option<BackendLoopId>,
+    ) -> Result<()> {
+        self.runtime.set_loop_sync_source(loop_id, source)
+    }
+
+    fn transition_loop(
+        &mut self,
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+    ) -> Result<()> {
+        self.runtime.transition_loop(loop_id, mode, cycles_delay)
+    }
+
+    fn transition_loop_aligned(
+        &mut self,
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_sync_at: Option<u32>,
+    ) -> Result<()> {
+        self.runtime
+            .transition_loop_aligned(loop_id, mode, cycles_delay, align_to_sync_at)
+    }
+
+    fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        self.runtime.clear_loop(loop_id)
+    }
+
+    fn replace_loop_content(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<()> {
+        self.runtime.replace_loop_content(loop_id, update)
+    }
+
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        self.runtime.set_loop_length(loop_id, length)
+    }
+
+    fn capture_session(&mut self) -> Result<BackendSessionData> {
+        self.runtime.capture_session()
+    }
+
+    fn replace_session(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        self.runtime.replace_session(session)
+    }
+
+    fn set_port_connected(
+        &mut self,
+        port_id: BackendPortId,
+        external_port: &str,
+        connected: bool,
+    ) -> Result<()> {
+        self.runtime
+            .set_port_connected(port_id, external_port, connected)
+    }
+
+    fn advance(&mut self, elapsed: Duration) {
+        let (processed, overrun) =
+            self.scheduler
+                .frames_due(elapsed, self.runtime.sample_rate, self.runtime.buffer_size);
+        if overrun {
+            self.runtime.xruns = self.runtime.xruns.saturating_add(1);
+        }
+        self.runtime.advance_frames(processed);
+    }
+
+    fn poll(&mut self) -> Result<BackendSnapshot> {
+        self.runtime.poll()
+    }
+
+    fn wait_idle(&mut self) {
+        self.runtime.wait_idle();
     }
 }
 
@@ -6308,6 +6654,7 @@ impl Backend for FakeBackend {
             loops: self.loops.clone(),
             composites: self.composites.clone(),
             connections: self.connection_snapshot(),
+            mutation_failures: Vec::new(),
         })
     }
 
@@ -8807,6 +9154,15 @@ mod tests {
         assert_eq!(channel.events[1].time, 19);
         assert!(channel.content_revision > 0);
         assert_eq!(backend.capture_session().unwrap(), before);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn engine_runtime_progresses_only_from_explicit_quanta() {
+        let mut runtime = EngineBackend::new_dummy_runtime(48_000, 128).unwrap();
+        runtime.advance(Duration::from_secs(1));
+        assert_eq!(runtime.processed_frames(), 0);
+        runtime.advance_frames(128);
+        assert_eq!(runtime.processed_frames(), 128);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

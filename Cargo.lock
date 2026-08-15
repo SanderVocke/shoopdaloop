@@ -3925,6 +3925,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_worklet_client"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "shoop_app_api",
+ "shoop_audio_protocol",
+ "shoop_backend",
+ "tracy-nextest-capture",
+]
+
+[[package]]
 name = "shoopdaloop"
 version = "0.3.0"
 dependencies = [
@@ -3946,6 +3958,7 @@ dependencies = [
  "shoop_scripting",
  "shoop_session",
  "shoop_settings",
+ "shoop_worklet_client",
  "tempfile",
  "tracing",
  "tracy-nextest-capture",

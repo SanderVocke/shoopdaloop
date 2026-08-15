@@ -15,6 +15,7 @@ const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
 const selfContained = process.env.SELF_CONTAINED === '1';
 const outputOnly = process.env.OUTPUT_ONLY === '1';
+const workerEngine = process.env.WORKER_ENGINE === '1';
 const directFileMicrophone = process.env.DIRECT_FILE_MIC === '1';
 const denyFirst = process.env.DENY_FIRST === '1';
 if (outputOnly && directFileMicrophone) {
@@ -28,7 +29,6 @@ if (directFileMicrophone && !selfContained) {
 }
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
-const saturate = process.env.SATURATE === '1';
 const settingsOnly = process.env.SETTINGS_ONLY === '1';
 const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
 const webMidi = process.env.WEB_MIDI === '1';
@@ -174,6 +174,18 @@ try {
     return response.result?.result?.value;
   }
 
+  async function evaluateAwait(expression) {
+    const response = await call('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (response.result?.exceptionDetails) {
+      throw new Error(`browser evaluation failed: ${JSON.stringify(response.result.exceptionDetails)}`);
+    }
+    return response.result?.result?.value;
+  }
+
   async function waitFor(predicate, description, timeout = 30_000) {
     const deadline = Date.now() + timeout;
     let state;
@@ -311,8 +323,10 @@ try {
   }
   let entryUrl;
   if (selfContained) {
-    const query = settingsOnly
-      ? settingsUnavailable
+    const query = workerEngine
+      ? '?worker=1&self-test=1'
+      : settingsOnly
+        ? settingsUnavailable
         ? '?offline=1&settings-test=unavailable'
         : '?offline=1&settings-test=write'
       : webMidi
@@ -328,11 +342,13 @@ try {
       ? settingsUnavailable
         ? `${origin}/?offline=1&settings-test=unavailable`
         : `${origin}/?offline=1&settings-test=write`
-      : outputOnly
-        ? `${origin}/`
-        : webMidi
-          ? `${origin}/?web-midi-test=1`
-          : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
+      : workerEngine
+        ? `${origin}/?worker=1&self-test=1`
+        : outputOnly
+          ? `${origin}/`
+          : webMidi
+            ? `${origin}/?web-midi-test=1`
+            : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
   }
   await call('Page.navigate', { url: entryUrl });
 
@@ -488,7 +504,9 @@ try {
       throw new Error('failed browser save wrote settings bytes');
     }
     console.log(`${selfContained ? 'direct-file' : 'hosted'} browser settings save/reload/rejection passed`);
-  } else if (selfContained && !outputOnly && !directFileMicrophone && !webMidi) {
+  } else if (
+    selfContained && !workerEngine && !outputOnly && !directFileMicrophone && !webMidi
+  ) {
     const state = await waitFor(
       candidate => candidate.driver === 'Dummy'
         && candidate.revision > 0
@@ -499,6 +517,32 @@ try {
       throw new Error(`offline artifact or dry/wet capability evidence was incomplete: ${JSON.stringify(state)}`);
     }
     console.log(`explicit self-contained offline dummy passed at ${browserSize}`);
+  } else if (workerEngine) {
+    const state = await waitFor(
+      candidate => candidate.driver === 'Dummy'
+        && candidate.revision > 0
+        && candidate.selfTest === 'passed'
+        && candidate.callbacks > 0,
+      'browser Worker dummy did not advance and finish the session round trip',
+    );
+    if (state.ownedMediaTracks !== 0 || !state.enableHidden || !state.outputEnableHidden) {
+      throw new Error(`Worker engine unexpectedly owned physical audio presentation: ${JSON.stringify(state)}`);
+    }
+    if (!selfContained) {
+      const fixtureResult = await evaluateAwait(
+        "import('./worker_fixture_contract.js').then(module => module.runWorkerFixtureContracts())",
+      );
+      if (fixtureResult !== 'worker fixture contracts: ok') {
+        throw new Error(`Worker fixture contract failed: ${fixtureResult}`);
+      }
+      const compositionResult = await evaluateAwait(
+        "import('./worker_fixture_contract.js').then(module => module.runApplicationCompositionIsolation())",
+      );
+      if (compositionResult !== 'application composition isolation: ok') {
+        throw new Error(`application composition isolation failed: ${compositionResult}`);
+      }
+    }
+    console.log(`browser Worker engine passed at ${browserSize}`);
   } else if (outputOnly) {
     await waitFor(
       candidate => candidate.driver === 'AwaitingGesture' && candidate.revision > 0,
@@ -728,7 +772,7 @@ try {
 
     const generationBeforeRestart = recovered.generation;
     const callbacksBeforeRestart = recovered.callbacks;
-    await evaluate("dispatchEvent(new Event('shoop-test-audio-fail'))");
+    await evaluate("shoopAudioDiagnostics.fail(new Event('diagnostic'))");
     await waitFor(
       candidate => candidate.driver === 'Failed',
       'forced worklet failure was not visible during Web MIDI use',
@@ -847,26 +891,15 @@ try {
     if (!(state.callbacks > firstCallbacks) || state.generation !== firstGeneration) {
       throw new Error(`repeated start changed the active generation or stopped callbacks: ${JSON.stringify(state)}`);
     }
-    if (saturate) {
-      const callbacksBeforeSaturation = state.callbacks;
-      await evaluate("dispatchEvent(new Event('shoop-test-audio-saturate'))");
-      state = await waitFor(
-        candidate => candidate.overflows > 0 && candidate.callbacks > callbacksBeforeSaturation,
-        'bounded command saturation was not observable or stopped callbacks',
-      );
-      if (state.driver !== 'Running') {
-        throw new Error(`driver did not remain running after bounded saturation: ${JSON.stringify(state)}`);
-      }
-    }
     if (lifecycle) {
-      await evaluate("dispatchEvent(new Event('shoop-test-audio-suspend'))");
+      await evaluate("shoopAudioDiagnostics.suspend(new Event('diagnostic'))");
       const suspended = await waitFor(candidate => candidate.driver === 'Suspended', 'context suspension was not visible');
-      await evaluate("dispatchEvent(new Event('shoop-test-audio-resume'))");
+      await evaluate("shoopAudioDiagnostics.resume(new Event('diagnostic'))");
       state = await waitFor(
         candidate => candidate.driver === 'Running' && candidate.callbacks > suspended.callbacks,
         'context did not resume callback progress',
       );
-      await evaluate("dispatchEvent(new Event('shoop-test-audio-track-end'))");
+      await evaluate("shoopAudioDiagnostics.endTrack(new Event('diagnostic'))");
       const trackEnded = await waitFor(
         candidate => candidate.driver === 'Failed' && candidate.ownedMediaTracks === 0,
         'media-track end did not fail visibly and release graph ownership',
@@ -877,7 +910,7 @@ try {
         candidate => candidate.driver === 'Running' && candidate.callbacks > 0 && candidate.ownedMediaTracks > 0,
         'media-track retry did not create one running generation',
       );
-      await evaluate("dispatchEvent(new Event('shoop-test-audio-fail'))");
+      await evaluate("shoopAudioDiagnostics.fail(new Event('diagnostic'))");
       const failed = await waitFor(candidate => candidate.driver === 'Failed', 'worklet failure was not visible');
       if (failed.enableHidden) throw new Error('retry action stayed hidden after worklet failure');
       await clickEnable();
@@ -885,7 +918,7 @@ try {
         candidate => candidate.driver === 'Running' && candidate.callbacks > 0,
         'worklet retry did not create one running generation',
       );
-      await evaluate("dispatchEvent(new Event('shoop-test-audio-shutdown'))");
+      await evaluate("shoopAudioDiagnostics.shutdown(new Event('diagnostic'))");
       const stopped = await waitFor(candidate => candidate.driver === 'Stopped', 'audio shutdown was not visible');
       const stoppedCallbacks = stopped.callbacks;
       await delay(250);

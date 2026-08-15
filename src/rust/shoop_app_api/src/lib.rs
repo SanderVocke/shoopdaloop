@@ -603,10 +603,19 @@ impl TrackControlState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum StructuralState {
+    #[default]
+    Confirmed,
+    Creating,
+    Removing,
+}
+
 #[derive(Clone, Debug)]
 pub struct LoopState {
     pub id: LoopId,
     pub name: String,
+    pub structural_state: StructuralState,
     pub length_frames: u64,
     pub position: f32,
     pub mode: LoopMode,
@@ -639,6 +648,7 @@ impl Default for LoopState {
         Self {
             id: LoopId::INVALID,
             name: "Loop".to_owned(),
+            structural_state: StructuralState::Confirmed,
             length_frames: 0,
             position: 0.0,
             mode: LoopMode::Unknown,
@@ -843,6 +853,7 @@ pub enum TrackTopology {
 pub struct TrackState {
     pub id: TrackId,
     pub name: String,
+    pub structural_state: StructuralState,
     pub is_sync: bool,
     pub topology: TrackTopology,
     pub fx: Option<TrackFxState>,

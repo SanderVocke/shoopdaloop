@@ -10,6 +10,9 @@ src/rust/shoop_app/src/lib.rs,application_ui_and_control,instrumented_direct,Con
 src/rust/shoop_app_api/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_audio_worklet/src/lib.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_worklet_client/src/host_midi.rs,non_realtime_support,instrumented_indirect,"Runs within traced application and browser MIDI orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_worklet_client/src/lib.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application polling and intent orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_worklet_client/src/transport.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application polling and driver callbacks; a separate span would duplicate its owning boundary."
 src/rust/shoop_backend/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_backend/src/native.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/app_widget.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
@@ -117,6 +120,7 @@ src/rust/shoop_tracing/src/lib.rs,mixed_realtime_and_control,instrumented_direct
 src/rust/shoopdaloop/src/browser_audio.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/browser_midi.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/browser_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoopdaloop/src/browser_worker.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application and remote-driver orchestration; browser Worker timing is reported through ordinary diagnostics."
 src/rust/shoopdaloop/src/main.rs,application_ui_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoopdaloop/src/native_preview.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/settings.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

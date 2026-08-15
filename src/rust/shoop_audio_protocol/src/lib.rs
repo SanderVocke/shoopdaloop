@@ -886,6 +886,26 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
+    fn production_envelopes_have_stable_json_bytes() {
+        let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
+        assert_eq!(
+            command,
+            r#"{"version":12,"sequence":17,"command":{"kind":"poll"}}"#
+        );
+
+        let event = serde_json::to_string(&EventEnvelope {
+            version: PROTOCOL_VERSION,
+            sequence: 17,
+            event: Event::Ack,
+        })
+        .unwrap();
+        assert_eq!(
+            event,
+            r#"{"version":12,"sequence":17,"event":{"kind":"ack"}}"#
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn protocol_round_trip_preserves_sequence_and_stable_ids() {
         let command = CommandEnvelope::new(
             42,
