@@ -103,6 +103,7 @@ def validate_tools(runtime: str, env: dict[str, str]):
         )
         if browser is None:
             raise RuntimeError("Chrome or Chromium is unavailable; set CHROME_BIN or PATH")
+        env["CHROME_BIN"] = browser
         browser_version = run_checked([browser, "--version"], env=env)
         if CHROME_VERSION not in browser_version:
             raise RuntimeError(f"expected Chrome {CHROME_VERSION}, got {browser_version!r}")
@@ -260,25 +261,47 @@ def invoke_package(
     if filters:
         command += ["--", *filters]
 
+    webdriver_config = package["path"] / "webdriver.json" if runtime == "chrome" else None
+    if webdriver_config and webdriver_config.exists():
+        raise RuntimeError(f"refusing to overwrite {webdriver_config}")
+    if webdriver_config:
+        webdriver_config.write_text(
+            json.dumps(
+                {
+                    "goog:chromeOptions": {
+                        "binary": env["CHROME_BIN"],
+                        "args": ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                    }
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+
     started = time.monotonic()
     try:
-        result = subprocess.run(
-            command,
-            cwd=ROOT,
-            env=env,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=timeout,
-        )
-        returncode = result.returncode
-        output = result.stdout
-    except subprocess.TimeoutExpired as error:
-        returncode = 124
-        output = (error.stdout or "") + (error.stderr or "")
-        if isinstance(output, bytes):
-            output = output.decode(errors="replace")
-        output += f"\nWasm package deadline exceeded after {timeout} seconds\n"
+        try:
+            result = subprocess.run(
+                command,
+                cwd=ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=timeout,
+            )
+            returncode = result.returncode
+            output = result.stdout
+        except subprocess.TimeoutExpired as error:
+            returncode = 124
+            output = (error.stdout or "") + (error.stderr or "")
+            if isinstance(output, bytes):
+                output = output.decode(errors="replace")
+            output += f"\nWasm package deadline exceeded after {timeout} seconds\n"
+    finally:
+        if webdriver_config:
+            webdriver_config.unlink(missing_ok=True)
     elapsed = time.monotonic() - started
     stem = f"{package['name']}-{runtime}"
     log = reports / f"{stem}.log"
