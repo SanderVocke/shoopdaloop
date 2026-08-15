@@ -28,8 +28,6 @@ enum AudioInputMode {
     OutputOnly,
 }
 
-pub use shoop_worklet_client::RemoteWorkletBackend as WebAudioBackend;
-
 struct BrowserMessageEndpoint(MessagePort);
 
 impl shoop_worklet_client::MessageEndpoint for BrowserMessageEndpoint {

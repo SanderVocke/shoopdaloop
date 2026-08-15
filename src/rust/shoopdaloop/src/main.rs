@@ -1379,7 +1379,7 @@ impl Runtime {
         let worker = location_search.contains("worker=1");
         let startup_scripts = browser_startup_scripts(settings)?;
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
-        let (backend, transport) = browser_audio::WebAudioBackend::new(midi.hub());
+        let (backend, transport) = shoop_worklet_client::RemoteWorkletBackend::new(midi.hub());
         let mode = if worker || offline {
             set_offline_audio_permission_presentation();
             BrowserRuntimeMode::Worker(browser_worker::BrowserWorkerDriver::new(transport)?)

@@ -1,4 +1,48 @@
 // Adapter-neutral bridge for the import-free Shoop engine Wasm ABI.
+// AudioWorkletGlobalScope does not consistently expose TextEncoder/TextDecoder,
+// so keep UTF-8 conversion self-contained.
+function shoopEncodeUtf8(value) {
+  const bytes = [];
+  for (const character of value) {
+    const code = character.codePointAt(0);
+    if (code < 0x80) bytes.push(code);
+    else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    else if (code < 0x10000) {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    } else {
+      bytes.push(
+        0xf0 | (code >> 18),
+        0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f),
+      );
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+function shoopDecodeUtf8(bytes) {
+  let output = '';
+  for (let index = 0; index < bytes.length;) {
+    const first = bytes[index++];
+    let code;
+    if (first < 0x80) code = first;
+    else if (first < 0xe0) code = ((first & 0x1f) << 6) | (bytes[index++] & 0x3f);
+    else if (first < 0xf0) {
+      code = ((first & 0x0f) << 12)
+        | ((bytes[index++] & 0x3f) << 6)
+        | (bytes[index++] & 0x3f);
+    } else {
+      code = ((first & 7) << 18)
+        | ((bytes[index++] & 0x3f) << 12)
+        | ((bytes[index++] & 0x3f) << 6)
+        | (bytes[index++] & 0x3f);
+    }
+    output += String.fromCodePoint(code);
+  }
+  return output;
+}
+
 class ShoopRawWasmHost {
   constructor(wasmModule, sampleRate, maxQuantum, commandMaxBytes) {
     this.maxQuantum = maxQuantum;
@@ -7,8 +51,6 @@ class ShoopRawWasmHost {
     this.exports = this.instance.exports;
     this.host = this.exports.shoop_worklet_create(sampleRate, maxQuantum);
     if (!this.host) throw new Error('could not create the Shoop Wasm host');
-    this.encoder = new TextEncoder();
-    this.decoder = new TextDecoder();
     this.memoryBuffer = null;
     this.memoryGrowths = 0;
     this.renderMemoryGrowths = 0;
@@ -35,7 +77,7 @@ class ShoopRawWasmHost {
 
   command(message) {
     if (typeof message !== 'string') throw new TypeError('Shoop commands must be JSON strings');
-    const encoded = this.encoder.encode(message);
+    const encoded = shoopEncodeUtf8(message);
     if (encoded.length > this.commandMaxBytes) throw new RangeError('Shoop command exceeds capacity');
     if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews(false);
     new Uint8Array(this.exports.memory.buffer, this.commandPointer, encoded.length).set(encoded);
@@ -48,7 +90,7 @@ class ShoopRawWasmHost {
     if (pointer + length > this.exports.memory.buffer.byteLength) {
       throw new Error('Shoop Wasm response is outside linear memory');
     }
-    const response = this.decoder.decode(
+    const response = shoopDecodeUtf8(
       new Uint8Array(this.exports.memory.buffer, pointer, length),
     );
     if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews(false);

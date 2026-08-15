@@ -1,3 +1,5 @@
+let ownedWorkers = 0;
+
 function nextMessage(port, timeout = 5000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Worker fixture message timed out')), timeout);
@@ -12,6 +14,7 @@ function nextMessage(port, timeout = 5000) {
 
 async function boot(module, mode) {
   const worker = new Worker('./audio_worker.js');
+  ownedWorkers += 1;
   const application = new MessageChannel();
   const fixture = new MessageChannel();
   worker.postMessage({
@@ -58,6 +61,7 @@ async function stop(instance) {
   const response = await stopped;
   if (response.kind !== 'stopped') throw new Error('Worker did not acknowledge shutdown');
   instance.worker.terminate();
+  ownedWorkers -= 1;
 }
 
 export async function runWorkerFixtureContracts() {
@@ -101,6 +105,9 @@ export async function runWorkerFixtureContracts() {
     }
     await poll(instance, mode === 'cooperative' ? 21 : 31);
     await stop(instance);
+    const restarted = await boot(module, mode);
+    await poll(restarted, mode === 'cooperative' ? 22 : 32);
+    await stop(restarted);
   }
 
   const first = await boot(module, 'explicit');
@@ -122,5 +129,6 @@ export async function runWorkerFixtureContracts() {
     await poll(instance, 50 + index);
     await stop(instance);
   }
+  if (ownedWorkers !== 0) throw new Error(`Worker fixture leaked ${ownedWorkers} instances`);
   return 'worker fixture contracts: ok';
 }

@@ -182,3 +182,29 @@ The initial `shoop_worklet_client` surface will contain:
 - remote client diagnostics needed for readiness, quiescence, and teardown verification.
 
 Backend IDs, snapshots, session/content types, processor descriptors, and audio-driver domain types remain defined in domain crates. Wire envelopes remain defined in `shoop_audio_protocol`. Browser DOM, Web Audio, Worker, MessagePort, and Web MIDI adapters remain in browser composition.
+
+## Final ownership after refactoring
+
+```text
+CooperativeApplicationRuntime -> dyn Backend
+  -> shoop_worklet_client::RemoteWorkletBackend
+       -> private transport core / authoritative remote snapshots
+       -> injected HostMidiBridge
+       -> MessageEndpoint (browser adapter only)
+
+Physical selection
+  BrowserAudioController (presentation + narrow diagnostics)
+    -> BrowserAudioDriver (AudioContext, media, node, handlers, generation)
+      -> AudioWorkletProcessor -> ShoopRawWasmHost -> import-free Wasm host
+
+Offline selection
+  BrowserWorkerDriver (Worker, application MessagePort, handlers, teardown)
+    -> WorkerScheduler (48 kHz, 128-frame realtime production policy)
+    -> ShoopRawWasmHost -> the same import-free Wasm host
+    -> optional, separately transferred fixture MessagePort
+       (explicit/cooperative/realtime control and bounded fixture audio)
+```
+
+The application never receives a transport core, browser message port, Worker, or physical graph. The client owns correlation, replay, readiness, quiescence, transfers, and authoritative snapshots. Desired continuous values and structural provisional states live in the application. Physical and Worker JavaScript share only the raw ABI bridge and production protocol; scheduling and browser-resource ownership remain adapter-specific.
+
+The browser `?offline=1` path no longer constructs an engine in the application realm. It uses the Worker remote path, requests no physical permissions, and reports dummy-driver identity after protocol negotiation, replay, and first engine observation. Hosted and self-contained packages include the same bridge, Worker, worklet, and Wasm bytes. Destruction is layered and idempotent: client detach closes its endpoint and cancels generation-bound work, each driver removes callbacks/resources, the Worker cancels timers and destroys or terminates its host, and the raw bridge exposes idempotent Wasm destruction.

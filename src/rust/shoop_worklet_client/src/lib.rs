@@ -2696,6 +2696,64 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
+    fn remote_clients_keep_sequences_resources_and_failures_isolated() {
+        let (mut first, first_control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        let (mut second, second_control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        first.midi_revision = 0;
+        second.midi_revision = 0;
+        let first_endpoint = MemoryEndpoint::default();
+        let second_endpoint = MemoryEndpoint::default();
+        let first_sent = first_endpoint.sent.clone();
+        let second_sent = second_endpoint.sent.clone();
+        first_control
+            .attach(Box::new(first_endpoint), 1, 0, 2)
+            .unwrap();
+        second_control
+            .attach(Box::new(second_endpoint), 1, 0, 2)
+            .unwrap();
+        deliver(&first_control, 1, 1, Event::Ack);
+        deliver(&second_control, 1, 1, Event::Ack);
+
+        let request = TrackRequest {
+            port_name_base: "isolated".to_owned(),
+            topology: BackendTrackTopology::Direct {
+                audio_channels: 0,
+                midi: false,
+            },
+            initial_loops: 1,
+        };
+        let first_creation = first.create_track(request.clone()).unwrap();
+        let second_creation = second.create_track(request).unwrap();
+        assert_eq!(first_creation.track_id.raw(), 1);
+        assert_eq!(second_creation.track_id.raw(), 1);
+        let sequence = |message: &String| {
+            serde_json::from_str::<CommandEnvelope>(message)
+                .unwrap()
+                .sequence
+        };
+        assert_eq!(sequence(first_sent.borrow().last().unwrap()), 2);
+        assert_eq!(sequence(second_sent.borrow().last().unwrap()), 2);
+
+        deliver(
+            &first_control,
+            1,
+            2,
+            Event::Error {
+                message: "first rejected".to_owned(),
+            },
+        );
+        deliver(&second_control, 1, 2, Event::Ack);
+        assert_eq!(first.poll().unwrap().mutation_failures.len(), 1);
+        assert!(second.poll().unwrap().mutation_failures.is_empty());
+        assert!(first.track_resources.is_empty());
+        assert_eq!(second.track_resources.len(), 1);
+
+        first_control.detach(false);
+        assert!(second_control.is_quiescent());
+        assert_eq!(second.track_resources.len(), 1);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn transfer_progress_and_rejection_are_typed_and_release_retained_state() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;

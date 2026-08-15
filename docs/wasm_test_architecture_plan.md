@@ -59,6 +59,19 @@ This plan assumes the following production refactoring has already landed:
 8. Browser-specific adapters and native driver adapters remain thin enough to test separately from portable behavior.
 9. Tests can reset all mutable application, worklet, timer, storage, and subscription state without restarting the browser process.
 
+### Prerequisite audit after production refactoring
+
+The production refactoring now provides the required seams, with these evidence-based implementation details for this downstream project:
+
+- `shoop_worklet_client` is the platform-neutral backend/client and owns bounded sequencing, generations, replay, readiness, typed outcomes, and quiescence. Browser drivers receive only `RemoteBackendControl` and a `MessageEndpoint` implementation.
+- `shoop_audio_worklet.wasm` is the standalone, import-free engine artifact. `raw_wasm_host.js` is the adapter-neutral ABI bridge used by both the physical AudioWorklet and browser Worker and has an actual-artifact Node contract test.
+- The Worker has **explicit**, bounded cooperative **free-running**, and realtime-paced modes. Explicit processing, staged fixture audio, mode control, and fixture diagnostics require a separately transferred fixture-only `MessagePort`; the production application port accepts only unchanged protocol JSON.
+- Browser Worker and AudioWorklet adapters share the Wasm bridge but not scheduler code. A Node fixture should reuse the raw bridge and production envelopes with `node:worker_threads`; it should not attempt to execute the browser-specific `importScripts`, timer, or `MessagePort` adapter unchanged.
+- Isolation/reset is achieved by constructing fresh client, ports, Wasm host, scheduler, and bridge state and then performing acknowledged shutdown/destruction. No global reset command or shared singleton is required.
+- Physical browser callbacks remain packaged-smoke evidence. Node scheduling is still not treated as AudioWorklet timing evidence.
+
+These details satisfy the prerequisite boundary without adding another production seam. Stage 0 of this plan must re-run the artifact, dependency, teardown, and multi-instance contracts rather than assuming that a browser Worker implementation is directly executable under Node.
+
 ## Current baseline
 
 The web CI matrix currently runs `cargo nextest` without a Wasm target for four selected packages, so those tests execute as native Linux binaries. The selected source inventory is roughly 200 tests, about 15% of the approximately 1,387 declared Rust tests. The actual Wasm target is checked and built but runs no Rust test harness.
