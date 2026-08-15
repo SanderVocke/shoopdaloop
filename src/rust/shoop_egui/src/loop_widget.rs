@@ -11,6 +11,24 @@ use crate::{
     LoopWidgetAction, SelectionModifiers,
 };
 
+const TOUCH_TAP_MAX_DISTANCE: f32 = 10.0;
+const TOUCH_TAP_MAX_DURATION: f64 = 0.8;
+
+#[derive(Debug)]
+struct LoopTouchGesture {
+    device_id: egui::TouchDeviceId,
+    touch_id: egui::TouchId,
+    start: egui::Pos2,
+    start_time: f64,
+    moved: bool,
+}
+
+#[derive(Debug, Default)]
+struct LoopTouchUpdate {
+    interacting: bool,
+    tapped: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct LoopWidgetResponse {
     pub actions: Vec<LoopWidgetAction>,
@@ -33,6 +51,7 @@ pub struct LoopWidget {
     peak_right: PeakMeterAnimation,
     name_edit: String,
     source_name: String,
+    touch_gesture: Option<LoopTouchGesture>,
     #[cfg(test)]
     test_name_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -268,6 +287,79 @@ fn generated_loop_name(name: &str) -> bool {
 }
 
 impl LoopWidget {
+    fn update_touch_gesture(
+        &mut self,
+        ui: &egui::Ui,
+        rect: egui::Rect,
+        context_menu_open: bool,
+    ) -> LoopTouchUpdate {
+        let had_gesture = self.touch_gesture.is_some();
+        let mut matched_event = false;
+        let mut tapped = false;
+        let any_touches = ui.input(|input| {
+            for event in &input.events {
+                let egui::Event::Touch {
+                    device_id,
+                    id,
+                    phase,
+                    pos,
+                    ..
+                } = event
+                else {
+                    continue;
+                };
+                match phase {
+                    egui::TouchPhase::Start
+                        if self.touch_gesture.is_none()
+                            && !context_menu_open
+                            && rect.contains(*pos) =>
+                    {
+                        matched_event = true;
+                        self.touch_gesture = Some(LoopTouchGesture {
+                            device_id: *device_id,
+                            touch_id: *id,
+                            start: *pos,
+                            start_time: input.time,
+                            moved: false,
+                        });
+                    }
+                    egui::TouchPhase::Move => {
+                        if let Some(gesture) = self.touch_gesture.as_mut().filter(|gesture| {
+                            gesture.device_id == *device_id && gesture.touch_id == *id
+                        }) {
+                            matched_event = true;
+                            gesture.moved |= gesture.start.distance(*pos) > TOUCH_TAP_MAX_DISTANCE;
+                        }
+                    }
+                    egui::TouchPhase::End | egui::TouchPhase::Cancel => {
+                        if self.touch_gesture.as_ref().is_some_and(|gesture| {
+                            gesture.device_id == *device_id && gesture.touch_id == *id
+                        }) {
+                            matched_event = true;
+                            let gesture = self
+                                .touch_gesture
+                                .take()
+                                .expect("touch gesture was checked");
+                            tapped = *phase == egui::TouchPhase::End
+                                && !gesture.moved
+                                && gesture.start.distance(*pos) <= TOUCH_TAP_MAX_DISTANCE
+                                && input.time - gesture.start_time <= TOUCH_TAP_MAX_DURATION;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            input.any_touches()
+        });
+        LoopTouchUpdate {
+            interacting: any_touches
+                || had_gesture
+                || matched_event
+                || self.touch_gesture.is_some(),
+            tapped,
+        }
+    }
+
     fn show_context_menu(
         &mut self,
         ui: &mut egui::Ui,
@@ -424,6 +516,20 @@ impl LoopWidget {
         }
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
         response.dnd_set_drag_payload(LoopDragPayload { loop_id: state.id });
+        let popup_id = egui::Popup::default_response_id(&response);
+        let touch =
+            self.update_touch_gesture(ui, rect, egui::Popup::is_id_open(ui.ctx(), popup_id));
+        let hover_allowed = hover_allowed && !touch.interacting;
+        if touch.interacting {
+            self.play_popup_until = 0.0;
+            self.record_popup_until = 0.0;
+            self.balance_popup_until = 0.0;
+            self.gain_drag_start = None;
+            self.balance_drag_start = None;
+        }
+        if touch.tapped {
+            result.actions.push(LoopWidgetAction::DefaultClicked);
+        }
         let mut context_requested = response.secondary_clicked();
         let loop_visible = ui.clip_rect().intersect(rect).is_positive();
         if !loop_visible {
@@ -633,14 +739,16 @@ impl LoopWidget {
             egui::Sense::click(),
         );
         context_requested |= icon_response.secondary_clicked();
-        if icon_response.double_clicked() {
-            result.actions.push(LoopWidgetAction::IconDoubleClicked);
-        } else if icon_response.clicked() {
-            result
-                .actions
-                .push(LoopWidgetAction::IconClicked(SelectionModifiers {
-                    additive: ui.input(|input| input.modifiers.command),
-                }));
+        if !touch.interacting {
+            if icon_response.double_clicked() {
+                result.actions.push(LoopWidgetAction::IconDoubleClicked);
+            } else if icon_response.clicked() {
+                result
+                    .actions
+                    .push(LoopWidgetAction::IconClicked(SelectionModifiers {
+                        additive: ui.input(|input| input.modifiers.command),
+                    }));
+            }
         }
 
         let dial_rect = state.show_gain.then(|| {
@@ -895,16 +1003,16 @@ impl LoopWidget {
             let displayed_gain = self
                 .gain
                 .resolve(state.gain, self.gain_drag_start.is_some());
-            if dial_response.drag_started() {
+            if !touch.interacting && dial_response.drag_started() {
                 self.gain_drag_start = Some(displayed_gain);
             }
             let mut gain = displayed_gain;
-            if dial_response.dragged() {
+            if !touch.interacting && dial_response.dragged() {
                 let start = self.gain_drag_start.unwrap_or(displayed_gain);
                 gain = (start - dial_response.total_drag_delta().unwrap_or_default().y / 100.0)
                     .clamp(0.0, 1.0);
             }
-            if dial_response.double_clicked() {
+            if !touch.interacting && dial_response.double_clicked() {
                 gain = 0.6;
             }
             if (gain - displayed_gain).abs() > f32::EPSILON {
@@ -988,7 +1096,6 @@ impl LoopWidget {
                 }
             }
         }
-        let popup_id = egui::Popup::default_response_id(&response);
         egui::Popup::context_menu(&response)
             .open_memory(context_requested.then_some(egui::SetOpenCommand::Bool(true)))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -1090,6 +1197,37 @@ mod tests {
 
     fn pointer(position: egui::Pos2) -> egui::Event {
         egui::Event::PointerMoved(position)
+    }
+
+    fn touch(position: egui::Pos2, phase: egui::TouchPhase) -> Vec<egui::Event> {
+        let mut events = Vec::new();
+        match phase {
+            egui::TouchPhase::Start => events.push(egui::Event::PointerButton {
+                pos: position,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            }),
+            egui::TouchPhase::Move => events.push(pointer(position)),
+            egui::TouchPhase::End => {
+                events.push(egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                });
+                events.push(egui::Event::PointerGone);
+            }
+            egui::TouchPhase::Cancel => {}
+        }
+        events.push(egui::Event::Touch {
+            device_id: egui::TouchDeviceId(1),
+            id: egui::TouchId(1),
+            phase,
+            pos: position,
+            force: None,
+        });
+        events
     }
 
     fn click(
@@ -1329,6 +1467,91 @@ mod tests {
             vec![pointer(record_popup.center())],
         );
         assert!(widget.record_popup_until > 2.02);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn short_touch_uses_default_action_without_hover_or_selection() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = state();
+        let mut widget = LoopWidget::default();
+        let position = egui::pos2(10.0, 13.0);
+        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let pressed = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.1,
+            touch(position, egui::TouchPhase::Start),
+        );
+        assert!(!pressed.hover_active);
+        assert!(pressed.actions.is_empty());
+
+        let released = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.2,
+            touch(position, egui::TouchPhase::End),
+        );
+        assert_eq!(released.actions, [LoopWidgetAction::DefaultClicked]);
+        assert!(!released.hover_active);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn moved_and_long_touches_do_not_trigger_the_default_action() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = state();
+        let mut widget = LoopWidget::default();
+        let position = egui::pos2(80.0, 13.0);
+        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.1,
+            touch(position, egui::TouchPhase::Start),
+        );
+        let moved = position + egui::vec2(20.0, 0.0);
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.2,
+            touch(moved, egui::TouchPhase::Move),
+        );
+        let released = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.3,
+            touch(moved, egui::TouchPhase::End),
+        );
+        assert!(released.actions.is_empty());
+
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            2.0,
+            touch(position, egui::TouchPhase::Start),
+        );
+        let held = frame(&context, &mut widget, &state, 2.81, Vec::new());
+        assert!(!held.hover_active);
+        assert!(held.actions.is_empty());
+        assert!(
+            widget.test_name_rect.is_some(),
+            "long touch did not open menu"
+        );
+        let released = frame(
+            &context,
+            &mut widget,
+            &state,
+            2.9,
+            touch(position, egui::TouchPhase::End),
+        );
+        assert!(released.actions.is_empty());
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

@@ -80,7 +80,7 @@ Version 1 registers the cross-target appearance scale, track defaults, and bundl
 
 | Key | Type | Default | Effect |
 |---|---|---:|---|
-| `appearance.ui_scale_factor` | number | `1.0` | Explicit Apply and save; allowed range is 0.75–2.0 |
+| `appearance.ui_scale_factor` | number | `1.0`, or `1.25` when the detected screen's shortest side is at most 800 UI points | Explicit Apply and save; allowed range is 0.75–2.0 |
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
 | `scripting.bundled.keyboard.enabled` | boolean | `true` | After a successful Save |
