@@ -535,6 +535,12 @@ try {
       if (fixtureResult !== 'worker fixture contracts: ok') {
         throw new Error(`Worker fixture contract failed: ${fixtureResult}`);
       }
+      const compositionResult = await evaluateAwait(
+        "import('./worker_fixture_contract.js').then(module => module.runApplicationCompositionIsolation())",
+      );
+      if (compositionResult !== 'application composition isolation: ok') {
+        throw new Error(`application composition isolation failed: ${compositionResult}`);
+      }
     }
     console.log(`browser Worker engine passed at ${browserSize}`);
   } else if (outputOnly) {

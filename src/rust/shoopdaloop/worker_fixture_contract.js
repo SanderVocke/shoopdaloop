@@ -147,3 +147,46 @@ export async function runWorkerFixtureContracts() {
   if (ownedWorkers !== 0) throw new Error(`Worker fixture leaked ${ownedWorkers} instances`);
   return 'worker fixture contracts: ok';
 }
+
+export async function runApplicationCompositionIsolation() {
+  const frames = [document.createElement('iframe'), document.createElement('iframe')];
+  for (const [index, frame] of frames.entries()) {
+    frame.hidden = true;
+    frame.src = `./?worker=1&self-test=1&session-only=1&instance=${index}`;
+    document.body.appendChild(frame);
+  }
+  const deadline = performance.now() + 30000;
+  const state = frame => {
+    const status = frame.contentDocument?.getElementById('runtime_status');
+    return {
+      test: status?.getAttribute('data-self-test'),
+      driver: status?.getAttribute('data-driver-state'),
+      callbacks: Number(status?.getAttribute('data-callback-count')),
+      revision: Number(status?.getAttribute('data-engine-revision')),
+    };
+  };
+  while (performance.now() < deadline) {
+    const states = frames.map(state);
+    if (states.every(candidate => candidate.test === 'passed'
+        && candidate.driver === 'Dummy'
+        && candidate.callbacks > 0
+        && candidate.revision > 0)) {
+      const retainedCallbacks = states[1].callbacks;
+      frames[0].remove();
+      const survivorDeadline = performance.now() + 5000;
+      while (performance.now() < survivorDeadline) {
+        if (state(frames[1]).callbacks > retainedCallbacks) {
+          frames[1].remove();
+          return 'application composition isolation: ok';
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      frames[1].remove();
+      throw new Error('surviving application stopped after peer teardown');
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  const states = frames.map(state);
+  frames.forEach(frame => frame.remove());
+  throw new Error(`application composition isolation timed out: ${JSON.stringify(states)}`);
+}
