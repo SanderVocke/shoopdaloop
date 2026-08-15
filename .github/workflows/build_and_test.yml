@@ -215,7 +215,26 @@ jobs:
         if: matrix.target == 'web' && env.ACT != 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: 22.x
+          node-version: 22.22.2
+
+      - name: Install pinned Chrome and matching ChromeDriver
+        if: matrix.target == 'web' && env.ACT != 'true'
+        id: pinned-chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: 147.0.7727.137
+          install-chromedriver: true
+
+      - name: Select pinned Chrome
+        if: matrix.target == 'web' && env.ACT != 'true'
+        shell: bash
+        run: |
+          chrome='${{ steps.pinned-chrome.outputs.chrome-path }}'
+          driver='${{ steps.pinned-chrome.outputs.chromedriver-path }}'
+          "$chrome" --version | grep '147.0.7727.137'
+          "$driver" --version | grep '147.0.7727.137'
+          echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
+          dirname "$driver" >> "$GITHUB_PATH"
 
       - name: Install pinned wasm-pack
         if: matrix.target == 'web' && env.ACT != 'true'

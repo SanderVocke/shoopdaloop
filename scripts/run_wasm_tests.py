@@ -23,7 +23,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 WASM_PACK_VERSION = "0.15.0"
 WASM_BINDGEN_VERSION = "0.2.127"
 WASM_BINDGEN_TEST_VERSION = "0.3.77"
-NODE_MAJOR = 22
+NODE_VERSION = "22.22.2"
+CHROME_VERSION = "147.0.7727.137"
 
 
 class AssetHandler(http.server.SimpleHTTPRequestHandler):
@@ -66,9 +67,9 @@ def validate_tools(runtime: str, env: dict[str, str]):
     wasm_pack = run_checked(["wasm-pack", "--version"], env=env)
     if wasm_pack != f"wasm-pack {WASM_PACK_VERSION}":
         raise RuntimeError(f"expected wasm-pack {WASM_PACK_VERSION}, got {wasm_pack!r}")
-    node = run_checked(["node", "--version"], env=env).lstrip("v").split(".")
-    if int(node[0]) != NODE_MAJOR:
-        raise RuntimeError(f"expected Node {NODE_MAJOR}.x, got {'.'.join(node)}")
+    node = run_checked(["node", "--version"], env=env).lstrip("v")
+    if node != NODE_VERSION:
+        raise RuntimeError(f"expected Node {NODE_VERSION}, got {node}")
     lock = tomllib.loads((ROOT / "Cargo.lock").read_text())
     versions = {package["name"]: package["version"] for package in lock["package"]}
     expected = {
@@ -83,14 +84,25 @@ def validate_tools(runtime: str, env: dict[str, str]):
     if "wasm32-unknown-unknown" not in targets:
         raise RuntimeError("the wasm32-unknown-unknown Rust target is not installed")
     if runtime == "chrome":
-        run_checked(["chromedriver", "--version"], env=env)
-        browser = next(
-            (candidate for candidate in ("google-chrome", "google-chrome-stable", "chromium") if shutil.which(candidate, path=env.get("PATH"))),
+        driver_version = run_checked(["chromedriver", "--version"], env=env)
+        explicit_browser = env.get("CHROME_BIN")
+        browser = explicit_browser or next(
+            (
+                candidate
+                for candidate in ("google-chrome", "google-chrome-stable", "chromium")
+                if shutil.which(candidate, path=env.get("PATH"))
+            ),
             None,
         )
         if browser is None:
-            raise RuntimeError("Chrome or Chromium is not available on PATH")
-        run_checked([browser, "--version"], env=env)
+            raise RuntimeError("Chrome or Chromium is unavailable; set CHROME_BIN or PATH")
+        browser_version = run_checked([browser, "--version"], env=env)
+        if CHROME_VERSION not in browser_version:
+            raise RuntimeError(f"expected Chrome {CHROME_VERSION}, got {browser_version!r}")
+        if CHROME_VERSION not in driver_version:
+            raise RuntimeError(
+                f"expected ChromeDriver {CHROME_VERSION}, got {driver_version!r}"
+            )
 
 
 def discover_packages(selected: set[str] | None, env: dict[str, str]):
