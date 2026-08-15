@@ -922,6 +922,13 @@ pub struct CompositeTrackDetailsState {
     pub name: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct CompositeEventId {
+    pub playlist_index: u32,
+    pub section_index: u32,
+    pub parallel_index: u32,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CompositeEventDetailsState {
     pub loop_id: LoopId,
@@ -1569,6 +1576,10 @@ pub enum AppIntent {
         source_loop_id: LoopId,
         start_iteration: u64,
     },
+    DeleteCompositeEvents {
+        target_loop_id: LoopId,
+        events: Vec<CompositeEventId>,
+    },
     KeyEvent(KeyEvent),
     AddScriptSource {
         name: String,
@@ -1799,6 +1810,7 @@ impl AppIntent {
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",
+            Self::DeleteCompositeEvents { .. } => "loop.composite.delete_events",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
@@ -2093,6 +2105,26 @@ mod tests {
                 target_loop_id: loop_id,
                 source_loop_id,
                 start_iteration: 3,
+            }
+        );
+        let delete = AppIntent::DeleteCompositeEvents {
+            target_loop_id: loop_id,
+            events: vec![CompositeEventId {
+                playlist_index: 1,
+                section_index: 2,
+                parallel_index: 3,
+            }],
+        };
+        assert_eq!(delete.kind(), "loop.composite.delete_events");
+        assert_eq!(
+            delete,
+            AppIntent::DeleteCompositeEvents {
+                target_loop_id: loop_id,
+                events: vec![CompositeEventId {
+                    playlist_index: 1,
+                    section_index: 2,
+                    parallel_index: 3,
+                }],
             }
         );
         assert_eq!(

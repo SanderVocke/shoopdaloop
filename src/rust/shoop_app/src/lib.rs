@@ -14,16 +14,17 @@ use shoop_app_api::{
     AudioChannelMappingState, AudioChannelSelectionState, AudioDriverConfig,
     AudioDriverRuntimeState, AudioDriverState, AudioDriverSwitchState, AudioDriverSwitchStatus,
     ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest,
-    ClickTrackState, CompositeDetailsState, CompositeEventDetailsState, CompositeTrackDetailsState,
-    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
-    ConnectionViewState, DefaultRecordingAction, DirectTrackSpec, GlobalControlAction, HostPortId,
-    HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
-    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
-    MidiSequenceChannelState, NotificationLevel, PendingConnectionState, PianoAction, PortDataType,
-    PortDirection, PortId, PortRole, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
-    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
-    TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
-    TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
+    ClickTrackState, CompositeDetailsState, CompositeEventDetailsState, CompositeEventId,
+    CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
+    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultRecordingAction,
+    DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
+    IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
+    LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState, NotificationLevel,
+    PendingConnectionState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
+    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
+    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
+    TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec,
+    TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAsyncResult, BackendAudioChannelUpdate, BackendAudioContent,
@@ -1250,6 +1251,10 @@ impl ApplicationModel {
                 source_loop_id,
                 start_iteration,
             } => self.compose_loop_at(backend, target_loop_id, source_loop_id, start_iteration),
+            AppIntent::DeleteCompositeEvents {
+                target_loop_id,
+                events,
+            } => self.delete_composite_events(backend, target_loop_id, &events),
             AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
             AppIntent::AddScriptSource {
                 name,
@@ -4667,6 +4672,168 @@ impl ApplicationModel {
         target_model.backend_composite = Some(backend_composite);
         target_model.backend_composite_signature = signature;
         Ok(())
+    }
+
+    fn delete_composite_events(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        events: &[CompositeEventId],
+    ) -> Result<(), String> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        let existing = target_model
+            .composite
+            .as_ref()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        let selected = events.iter().copied().collect::<BTreeSet<_>>();
+        let composite = self.composite_without_events_preserving_positions(existing, &selected)?;
+        let previous_backend_composite = target_model.backend_composite;
+        let backend_composite = match self.backend_composite_config(&composite)? {
+            Some(config) => match previous_backend_composite {
+                Some(id) => {
+                    backend
+                        .configure_composite_loop(id, &config)
+                        .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                    Some(id)
+                }
+                None => self.create_and_configure_backend_composite(backend, &composite)?,
+            },
+            None => {
+                if let Some(id) = previous_backend_composite {
+                    backend
+                        .remove_composite_loop(id)
+                        .map_err(|error| format!("could not remove composite loop: {error}"))?;
+                }
+                None
+            }
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let sections = composite
+            .playlists
+            .first()
+            .map(|playlist| {
+                playlist
+                    .iter()
+                    .map(|section| {
+                        section
+                            .iter()
+                            .map(|event| LoopId::from_raw(event.loop_id))
+                            .collect()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let empty = composite.playlists.iter().flatten().all(Vec::is_empty);
+        let composite_kind = match composite.kind {
+            CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
+            CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
+        };
+        self.script_composition_playback.remove(&target);
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.script_composition = sections;
+        target_model.length = length;
+        target_model.state.empty = empty;
+        target_model.state.composite_kind = composite_kind;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = backend_composite;
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn composite_without_events_preserving_positions(
+        &self,
+        existing: &CompositeDocument,
+        selected: &BTreeSet<CompositeEventId>,
+    ) -> Result<CompositeDocument, String> {
+        let sync_length = u64::from(self.sync_length()).max(1);
+        let mut composite = existing.clone();
+        let mut found = BTreeSet::new();
+        for (playlist_index, playlist) in composite.playlists.iter_mut().enumerate() {
+            let playlist_index = u32::try_from(playlist_index)
+                .map_err(|_| "composite playlist index exceeds editor range".to_owned())?;
+            let mut original_origin = 0_u64;
+            let mut new_origin = 0_u64;
+            for (section_index, section) in playlist.iter_mut().enumerate() {
+                let section_index = u32::try_from(section_index)
+                    .map_err(|_| "composite section index exceeds editor range".to_owned())?;
+                let original_duration =
+                    self.composite_section_duration_iterations(section, sync_length)?;
+                let delay_compensation =
+                    original_origin.checked_sub(new_origin).ok_or_else(|| {
+                        "composite deletion moved a section past its original position".to_owned()
+                    })?;
+                let mut retained = Vec::with_capacity(section.len());
+                for (parallel_index, event) in section.iter().enumerate() {
+                    let parallel_index = u32::try_from(parallel_index)
+                        .map_err(|_| "composite event index exceeds editor range".to_owned())?;
+                    let id = CompositeEventId {
+                        playlist_index,
+                        section_index,
+                        parallel_index,
+                    };
+                    if selected.contains(&id) {
+                        found.insert(id);
+                    } else {
+                        let mut event = event.clone();
+                        event.delay =
+                            event.delay.checked_add(delay_compensation).ok_or_else(|| {
+                                "composite delay overflow while preserving event position"
+                                    .to_owned()
+                            })?;
+                        retained.push(event);
+                    }
+                }
+                let new_duration =
+                    self.composite_section_duration_iterations(&retained, sync_length)?;
+                *section = retained;
+                original_origin = original_origin
+                    .checked_add(original_duration)
+                    .ok_or_else(|| "composite timeline duration overflow".to_owned())?;
+                new_origin = new_origin
+                    .checked_add(new_duration)
+                    .ok_or_else(|| "composite timeline duration overflow".to_owned())?;
+            }
+        }
+        if found != *selected {
+            return Err("composite deletion references a stale event".to_owned());
+        }
+        Ok(composite)
+    }
+
+    fn composite_section_duration_iterations(
+        &self,
+        section: &[CompositeEventDocument],
+        sync_length: u64,
+    ) -> Result<u64, String> {
+        section.iter().try_fold(0_u64, |duration, event| {
+            let event_duration = match event.n_cycles {
+                Some(0) => return Err("composite event has a zero cycle count".to_owned()),
+                Some(cycles) => u64::from(cycles),
+                None => {
+                    let source = self
+                        .loops
+                        .get(&LoopId::from_raw(event.loop_id))
+                        .ok_or_else(|| format!("stale composition source {}", event.loop_id))?;
+                    u64::from(source.length).div_ceil(sync_length).max(1)
+                }
+            };
+            let end = event
+                .delay
+                .checked_add(event_duration)
+                .ok_or_else(|| "composite event duration overflow".to_owned())?;
+            Ok(duration.max(end))
+        })
     }
 
     fn composite_references(
@@ -11133,6 +11300,113 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(model.loops[&target].script_composition, before_sections);
         assert_eq!(model.loops[&target].backend_composite, before_backend);
         assert_eq!(backend.operations().len(), before_operations);
+
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 1;
+        model.loops.get_mut(&source).unwrap().length = 1;
+        backend
+            .set_loop_length(model.loops[&sync].backend_id, 1)
+            .unwrap();
+        backend
+            .set_loop_length(model.loops[&source].backend_id, 1)
+            .unwrap();
+        model
+            .compose_loop_serial(&mut backend, target, source)
+            .unwrap();
+        let before_composite = model.loops[&target].composite.clone();
+        let before_sections = model.loops[&target].script_composition.clone();
+        let before_backend = model.loops[&target].backend_composite;
+        backend.fail_next_composite_configuration("injected composite deletion failure");
+        assert!(model
+            .delete_composite_events(
+                &mut backend,
+                target,
+                &[CompositeEventId {
+                    playlist_index: 0,
+                    section_index: 0,
+                    parallel_index: 0,
+                }],
+            )
+            .unwrap_err()
+            .contains("injected composite deletion failure"));
+        assert_eq!(model.loops[&target].composite, before_composite);
+        assert_eq!(model.loops[&target].script_composition, before_sections);
+        assert_eq!(model.loops[&target].backend_composite, before_backend);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn composite_event_deletion_keeps_later_sections_at_their_absolute_positions() {
+        let (mut backend, mut model, _, target, sources) = engine_model_with_regular_composite();
+        let before =
+            model.composite_details_snapshot(model.loops[&target].composite.as_ref().unwrap());
+        let last_start = before
+            .events
+            .iter()
+            .find(|event| event.loop_id == sources[2])
+            .unwrap()
+            .start_frame;
+
+        model
+            .delete_composite_events(
+                &mut backend,
+                target,
+                &[
+                    CompositeEventId {
+                        playlist_index: 0,
+                        section_index: 0,
+                        parallel_index: 0,
+                    },
+                    CompositeEventId {
+                        playlist_index: 0,
+                        section_index: 1,
+                        parallel_index: 0,
+                    },
+                ],
+            )
+            .unwrap();
+
+        let composite = model.loops[&target].composite.as_ref().unwrap();
+        assert!(composite.playlists[0][0].is_empty());
+        assert!(composite.playlists[0][1].is_empty());
+        assert_eq!(composite.playlists[0][2].len(), 1);
+        let after = model.composite_details_snapshot(composite);
+        assert_eq!(after.events.len(), 1);
+        assert_eq!(after.events[0].loop_id, sources[2]);
+        assert_eq!(after.events[0].start_frame, last_start);
+        assert_eq!(
+            model.loops[&target].length,
+            before.timeline_length_frames as u32
+        );
+
+        let unchanged = model.loops[&target].composite.clone();
+        assert!(model
+            .delete_composite_events(
+                &mut backend,
+                target,
+                &[CompositeEventId {
+                    playlist_index: 0,
+                    section_index: 99,
+                    parallel_index: 0,
+                }],
+            )
+            .unwrap_err()
+            .contains("stale event"));
+        assert_eq!(model.loops[&target].composite, unchanged);
+
+        model
+            .delete_composite_events(
+                &mut backend,
+                target,
+                &[CompositeEventId {
+                    playlist_index: 0,
+                    section_index: 2,
+                    parallel_index: 0,
+                }],
+            )
+            .unwrap();
+        assert!(model.loops[&target].composite.is_some());
+        assert!(model.loops[&target].state.empty);
+        assert_eq!(model.loops[&target].length, 0);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
