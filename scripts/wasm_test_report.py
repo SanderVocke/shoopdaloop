@@ -48,6 +48,18 @@ class ParsedReport:
 
 
 
+def xml_safe(output: str) -> str:
+    without_ansi = ANSI.sub("", output)
+    return "".join(
+        character
+        for character in without_ansi
+        if ord(character) in (0x09, 0x0A, 0x0D)
+        or 0x20 <= ord(character) <= 0xD7FF
+        or 0xE000 <= ord(character) <= 0xFFFD
+        or 0x10000 <= ord(character) <= 0x10FFFF
+    )
+
+
 def parse_output(output: str) -> ParsedReport:
     clean = ANSI.sub("", output).replace("\r\n", "\n")
     cases: list[Case] = []
@@ -104,6 +116,7 @@ def write_junit(
     extra_properties: dict[str, str] | None = None,
 ) -> ParsedReport:
     parsed = parse_output(output)
+    junit_output = xml_safe(output)
     synthetic: list[str] = list(parsed.malformed)
     if parsed.listed == 0:
         synthetic.append("runner discovered zero tests")
@@ -148,7 +161,7 @@ def write_junit(
         )
         if case.status == "failed":
             failure = ET.SubElement(node, "failure", {"message": "Wasm testcase failed"})
-            failure.text = output
+            failure.text = junit_output
         elif case.status == "ignored":
             ET.SubElement(node, "skipped", {"message": case.detail or "ignored"})
 
@@ -159,10 +172,10 @@ def write_junit(
             {"name": f"runner_failure_{index}", "classname": f"{package}.runner", "time": "0"},
         )
         failure = ET.SubElement(node, "failure", {"message": message})
-        failure.text = output
+        failure.text = junit_output
 
     out = ET.SubElement(suite, "system-out")
-    out.text = output
+    out.text = junit_output
     destination.parent.mkdir(parents=True, exist_ok=True)
     ET.ElementTree(suite).write(destination, encoding="utf-8", xml_declaration=True)
     return parsed

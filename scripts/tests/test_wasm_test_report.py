@@ -66,6 +66,13 @@ class ReportTests(unittest.TestCase):
             ["pilot::crate::sync", "pilot::crate::panic", "pilot::crate::later"],
         )
 
+    def test_ansi_and_xml_control_bytes_are_sanitized_from_junit(self):
+        parsed, xml = self.junit("\x1b[32m" + SUCCESS + "\x1b[0m\x00")
+        self.assertEqual(parsed.listed, 3)
+        serialized = ET.tostring(xml, encoding="unicode")
+        self.assertNotIn("\x1b", serialized)
+        self.assertNotIn("\x00", serialized)
+
     def test_testcase_failure_is_retained(self):
         parsed, xml = self.junit(FAILURE, 1)
         self.assertEqual(parsed.failed, 1)
