@@ -5,7 +5,7 @@ use crate::{
     LoopId, LoopWidget, LoopWidgetAction, TrackControls, TrackProcessorDescriptor, TrackState,
     TrackWidgetAction,
 };
-use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT, ICON_MUSIC_NOTE};
+use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
 
 use crate::tiny_synth_fx_editor::TinySynthFxEditor;
 
@@ -579,7 +579,7 @@ impl TrackWidget {
 
                 if state.is_sync {
                     let click_track = ui
-                        .add(egui::Button::new(ICON_MUSIC_NOTE.rich_text().size(17.0)))
+                        .add(egui::Button::new(egui::RichText::new("C")))
                         .on_hover_text("Generate a click track");
                     #[cfg(test)]
                     {
