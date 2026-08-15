@@ -71,11 +71,15 @@ fn script_markdown_base_uri(script_path: &str) -> String {
     let parent = std::path::Path::new(script_path)
         .parent()
         .unwrap_or_else(|| std::path::Path::new(""));
-    let mut uri = format!("file://{}", parent.display());
-    if !uri.ends_with(std::path::MAIN_SEPARATOR) {
-        uri.push(std::path::MAIN_SEPARATOR);
+    if parent.as_os_str().is_empty() {
+        "file://".to_owned()
+    } else {
+        let mut uri = format!("file://{}", parent.display());
+        if !uri.ends_with(std::path::MAIN_SEPARATOR) {
+            uri.push(std::path::MAIN_SEPARATOR);
+        }
+        uri
     }
-    uri
 }
 
 fn control_safe_scroll_source() -> egui::scroll_area::ScrollSource {
