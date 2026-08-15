@@ -135,7 +135,7 @@ Generated `dist`, worklet, staging, and artifact files are not committed.
 
 ## Cross-target CI
 
-`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a hosted bundle archive and a separately downloadable self-contained HTML file. The matrix has no coverage flavor yet.
+`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a hosted bundle archive and a separately downloadable self-contained HTML file. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in Node 22 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
 
 For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
 
@@ -149,34 +149,47 @@ act pull_request -W .github/workflows/build_and_test.yml \
   -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
 ```
 
-The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local workflow skips GitHub cache/upload actions and browser/device automation while still building, packaging, validating, testing, and checking dependency isolation. GitHub-hosted runners remain authoritative for uploads, caches, Chrome/Firefox, Windows, and macOS.
+The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local workflow skips GitHub cache/upload actions and browser/device automation while still building, packaging, validating, and checking dependency isolation. GitHub-hosted runners remain authoritative for uploads, caches, Chrome/Firefox, Windows, and macOS.
+
+## Cross-target test workflow
+
+Install Node 22.x, wasm-pack 0.15.0, the repository Rust toolchain, and the `wasm32-unknown-unknown` target. From the repository root:
+
+```sh
+# Complete shared suite in one runtime.
+python3 scripts/run_wasm_tests.py --runtime node --profile dev
+python3 scripts/run_wasm_tests.py --runtime chrome --profile dev
+
+# One package and optional wasm-bindgen name filters for iteration.
+python3 scripts/run_wasm_tests.py --runtime node --profile dev \
+  --package shoop_worklet_client --filter restart
+
+# Policy, parser, smoke-budget, and dependency gates.
+python3 -m unittest scripts.tests.test_wasm_test_report
+python3 scripts/check_wasm_test_inventory_policy.py \
+  --summary target/wasm-tests/dev/reports/node/summary.json \
+  --summary target/wasm-tests/dev/reports/chrome/summary.json
+python3 scripts/check_wasm_smoke_budget.py
+```
+
+Use `#[shoop_test]` from `shoop_wasm_test_support` for a deterministic test body that must retain its native nextest identity and also run under wasm-bindgen. Keep unsupported native imports behind narrow target gates. A genuinely native-driver or native-platform test remains `#[test]` and needs an explicit, narrow rule and reason in `tests/wasm_test_classification.toml`. Never hide an unclassified test with a broad package exclusion. Updating test membership intentionally also requires updating the reviewed count/hash policy in that file after reproducing the complete native, Node, and Chromium inventory from `docs/wasm_test_baseline.md`.
+
+The orchestrator discovers package opt-in metadata, builds one profile-specific production worklet artifact, stages hashed assets outside the source tree, and runs each package with a deadline. Reports live under `target/wasm-tests/<profile>/reports/<runtime>`. A compile error, missing tool, malformed/truncated output, runner/browser/Worker failure, timeout, zero discovery, count mismatch, test failure, or teardown failure exits nonzero and retains JUnit where a runner log exists.
 
 ## Browser verification
 
-After building, run Chrome/Chromium with a deterministic generated fake microphone:
+Domain, Worker, settings, Web MIDI, lifecycle, and stress behavior belongs in the shared Wasm suite. Packaged-browser CI retains only these irreducible physical AudioWorklet smokes after building artifacts:
 
 ```sh
-node --experimental-websocket browser_smoke.mjs
-WEB_MIDI=1 node --experimental-websocket browser_smoke.mjs
-WEB_MIDI=1 WEB_MIDI_DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
-BROWSER_SIZE=360,200 node --experimental-websocket browser_smoke.mjs
-DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
-LIFECYCLE=1 node --experimental-websocket browser_smoke.mjs
-STRESS=1 node --experimental-websocket browser_smoke.mjs
+cd src/rust/shoopdaloop
 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
-WORKER_ENGINE=1 node --experimental-websocket browser_smoke.mjs
-SELF_CONTAINED=1 node --experimental-websocket browser_smoke.mjs
-SELF_CONTAINED=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
-SELF_CONTAINED=1 WORKER_ENGINE=1 node --experimental-websocket browser_smoke.mjs
-SELF_CONTAINED=1 DIRECT_FILE_MIC=1 node --experimental-websocket browser_smoke.mjs
-SETTINGS_ONLY=1 node --experimental-websocket browser_smoke.mjs
-SETTINGS_ONLY=1 SETTINGS_UNAVAILABLE=1 node --experimental-websocket browser_smoke.mjs
-SELF_CONTAINED=1 SETTINGS_ONLY=1 node --experimental-websocket browser_smoke.mjs
+SELF_CONTAINED=1 OUTPUT_ONLY=1 \
+  SELF_CONTAINED_PATH=../../../artifacts/shoopdaloop-web-wasm32-debug.html \
+  node --experimental-websocket browser_smoke.mjs
 xvfb-run -a python3 browser_firefox_smoke.py
-STRESS=1 xvfb-run -a python3 browser_firefox_smoke.py
 ```
 
-The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The ordinary hosted tests open and paint the Dry + Wet form with the cross-target Tiny Synth/FX processor catalog, open the global connection surface, prove real audio route mutation, record/playback, session replacement, transactional External/Carla rejection with retained media/callback progress, source-bearing Lua, and keyboard control. `WEB_MIDI=1` installs a deterministic browser API before startup while retaining the production adapter: it proves explicit SysEx permission, canonical endpoint publication, user-managed track and owner-managed APC links, exact input recording/control fanout, playback/control output, refusal and saturation counters, hotplug reconnect, worklet restart, and continuing callbacks. Its denial mode proves retry. Stress and lifecycle modes retain the audio/storage gates. Settings modes still cover APC's healthy zero-host state before MIDI permission, Scripts UI, persistence failures, and version rejection. Hosted and self-contained workflows execute the same production assets. Offline tests prove the Worker-backed remote path; the hosted Worker fixture additionally verifies explicit, cooperative, realtime-paced, pause/resume/shutdown, bounded audio capture, repeated lifecycle, and multi-instance isolation contracts.
+The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` for non-standard executable paths. These smokes assert only packaged loading, application-to-worklet startup commands, genuine 128-frame callback progress, hosted/self-contained policy, and clean process teardown. `docs/wasm_smoke_migration.md` maps every retired browser assertion to deterministic Rust/Wasm evidence and is enforced by the three-invocation CI budget.
 
 Compiler-only checks from the repository root:
 

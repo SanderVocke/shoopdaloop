@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Minimal Firefox smoke for genuine AudioWorklet startup and callback progress."""
+
 import contextlib
 import os
 import subprocess
@@ -22,8 +24,6 @@ def main() -> None:
     options = Options()
     if not os.environ.get("DISPLAY"):
         options.add_argument("-headless")
-    options.set_preference("media.navigator.streams.fake", True)
-    options.set_preference("media.navigator.permission.disabled", True)
     options.set_preference("media.autoplay.default", 0)
     options.set_preference("media.autoplay.blocking_policy", 0)
     options.set_preference("webgl.disabled", False)
@@ -36,75 +36,61 @@ def main() -> None:
     try:
         driver = webdriver.Firefox(options=options)
         driver.set_window_size(900, 600)
-        stress = os.environ.get("STRESS") == "1"
-        driver.get(f"http://{HOST}:{PORT}/?self-test=1{'&stress=1' if stress else ''}")
+        driver.get(f"http://{HOST}:{PORT}/")
+
         deadline = time.monotonic() + 20
         initial_state = {}
         while time.monotonic() < deadline:
-            status = driver.find_element("id", "runtime_status")
+            status = driver.find_element(By.ID, "runtime_status")
             initial_state = {
-                "text": status.text,
-                "self_test": status.get_attribute("data-self-test"),
                 "driver": status.get_attribute("data-driver-state"),
-                "source": driver.page_source[:200],
+                "revision": int(
+                    status.get_attribute("data-engine-revision") or 0
+                ),
             }
-            if initial_state["self_test"] == "awaiting-audio":
+            if initial_state["driver"] == "AwaitingGesture" and initial_state["revision"] > 0:
                 break
             time.sleep(0.1)
         else:
-            raise RuntimeError(f"Firefox did not present the enable-audio action: {initial_state}")
-        driver.find_element("id", "enable_audio").click()
-        deadline = time.monotonic() + (360 if stress else 120)
+            raise RuntimeError(
+                f"Firefox did not present the output-audio action: {initial_state}"
+            )
+
+        driver.find_element(By.ID, "enable_output_audio").click()
+        deadline = time.monotonic() + 120
         state = {}
         while time.monotonic() < deadline:
-            status = driver.find_element("id", "runtime_status")
+            status = driver.find_element(By.ID, "runtime_status")
             state = {
-                "self_test": status.get_attribute("data-self-test"),
                 "driver": status.get_attribute("data-driver-state"),
-                "self_test_error": status.get_attribute("data-self-test-error"),
-                "dry_wet_form": status.get_attribute("data-dry-wet-form"),
                 "callbacks": int(status.get_attribute("data-callback-count") or 0),
-                "input_peak": float(status.get_attribute("data-input-peak") or 0),
-                "output_peak": float(status.get_attribute("data-output-peak") or 0),
+                "frames": int(status.get_attribute("data-processed-frames") or 0),
                 "quantum": int(status.get_attribute("data-render-quantum") or 0),
-                "overflows": int(status.get_attribute("data-command-overflows") or 0),
-                "xruns": int(status.get_attribute("data-xruns") or 0),
+                "overflows": int(
+                    status.get_attribute("data-command-overflows") or 0
+                ),
                 "owned_media_tracks": int(
                     status.get_attribute("data-owned-media-tracks") or 0
                 ),
-                "web_midi": status.get_attribute("data-web-midi"),
-                "web_midi_button": driver.find_element(By.ID, "enable_midi").text,
-                "midi_host_ports": int(
-                    status.get_attribute("data-midi-host-ports") or 0
-                ),
             }
-            if state["self_test"] == "passed":
+            if state["driver"] == "Running" and state["callbacks"] > 0:
                 break
-            if state["self_test"] == "failed" or state["driver"] in {"Denied", "Failed"}:
+            if state["driver"] in {"Denied", "Failed"}:
                 raise RuntimeError(f"Firefox browser audio failed: {state}")
             time.sleep(0.1)
         else:
             raise RuntimeError(f"Firefox browser audio timed out: {state}")
-        unsupported_midi_is_visible = (
-            state["web_midi"] != "Unsupported"
-            or "unsupported" in state["web_midi_button"].lower()
-        )
+
         if not (
-            state["driver"] == "Running"
-            and state["callbacks"] > 0
-            and state["input_peak"] > 0
-            and state["output_peak"] > 0
-            and state["quantum"] > 0
+            state["frames"] >= state["callbacks"] * 128
+            and state["quantum"] == 128
             and state["overflows"] == 0
-            and state["xruns"] == 0
-            and state["owned_media_tracks"] > 0
-            and state["dry_wet_form"] == "tiny-synth-fx"
-            and state["web_midi"] in {"Unsupported", "AwaitingGesture"}
-            and unsupported_midi_is_visible
-            and state["midi_host_ports"] == 0
+            and state["owned_media_tracks"] == 0
+            and not driver.find_element(By.ID, "enable_audio").get_attribute("hidden")
+            and bool(driver.find_element(By.ID, "enable_output_audio").get_attribute("hidden"))
         ):
-            raise RuntimeError(f"Firefox browser evidence is incomplete: {state}")
-        print(f"Firefox Web Audio self-test passed: {state}")
+            raise RuntimeError(f"Firefox AudioWorklet evidence is incomplete: {state}")
+        print(f"Firefox AudioWorklet smoke passed: {state}")
     finally:
         if driver is not None:
             with contextlib.suppress(Exception):

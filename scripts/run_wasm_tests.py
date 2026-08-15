@@ -107,6 +107,7 @@ def discover_packages(selected: set[str] | None, env: dict[str, str]):
                 "name": package["name"],
                 "path": pathlib.Path(package["manifest_path"]).parent,
                 "browser_feature": config.get("browser-feature"),
+                "no_default_features": config.get("no-default-features", False),
             }
         )
     packages.sort(key=lambda package: package["name"])
@@ -182,6 +183,8 @@ def invoke_package(
     if profile == "ci":
         command.append("--release")
     command.append(str(package["path"]))
+    if package["no_default_features"]:
+        command.append("--no-default-features")
     if runtime == "chrome" and package["browser_feature"]:
         command += ["--features", package["browser_feature"]]
     if filters:
