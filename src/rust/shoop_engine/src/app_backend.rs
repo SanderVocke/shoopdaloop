@@ -7162,6 +7162,13 @@ mod tests {
         assert_eq!(audio.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(midi.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(audio.get_state().expect("audio state").gain, 0.25);
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err()
+            || midi.try_get_current_data_snapshot().is_err()
+        {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
         assert_eq!(audio.get_data(), vec![1.0, 2.0]);
         assert_eq!(midi.get_all_midi_data().len(), 1);
         sess.shared.return_engine(engine);

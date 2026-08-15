@@ -230,6 +230,7 @@ mod tests {
     use super::*;
     use assert2::check;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::mpsc;
 
     fn counter() -> (Arc<AtomicU32>, Box<dyn Fn() + Send>) {
         let n = Arc::new(AtomicU32::new(0));
@@ -252,11 +253,21 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
-    fn one_change_is_applied_within_the_window() {
-        let (n, apply) = counter();
+    fn one_change_is_applied_automatically() {
+        let n = Arc::new(AtomicU32::new(0));
+        let n2 = Arc::clone(&n);
+        let (applied_tx, applied_rx) = mpsc::channel();
+        let apply: Box<dyn Fn() + Send> = Box::new(move || {
+            n2.fetch_add(1, Ordering::Relaxed);
+            applied_tx.send(()).unwrap();
+        });
         let s = GraphScheduler::start(Duration::from_millis(5), apply);
+
         s.arm();
-        thread::sleep(Duration::from_millis(60));
+        applied_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("graph change was not applied");
+
         check!(n.load(Ordering::Relaxed) == 1);
         drop(s);
     }

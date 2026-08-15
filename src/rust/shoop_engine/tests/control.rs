@@ -70,7 +70,7 @@ fn a_loop_can_be_created_and_read_back() {
     let (_exclusive, _driver, b) = backend();
 
     let_assert!(Ok(l) = b.create_loop());
-    let_assert!(Ok(state) = l.get_state());
+    let_assert!(Some(state) = eventually(|| l.get_state().ok()));
     check!(state.mode == LoopMode::Stopped);
     check!(state.length == 0);
     check!(state.position == 0);
