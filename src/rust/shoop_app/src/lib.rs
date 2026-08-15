@@ -16,8 +16,8 @@ use shoop_app_api::{
     ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest,
     ClickTrackState, CompositeDetailsState, CompositeEventDetailsState, CompositeTrackDetailsState,
     ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
-    ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
-    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
+    ConnectionViewState, DefaultRecordingAction, DirectTrackSpec, GlobalControlAction, HostPortId,
+    HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
     LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
     MidiSequenceChannelState, NotificationLevel, PendingConnectionState, PianoAction, PortDataType,
     PortDirection, PortId, PortRole, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
@@ -3663,6 +3663,7 @@ impl ApplicationModel {
                 self.refresh_selected_media(backend)?;
                 Ok(())
             }
+            LoopAction::DefaultClicked => self.default_loop_action(backend, loop_id),
             LoopAction::PlayClicked => {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Playing)
             }
@@ -4451,10 +4452,55 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn default_loop_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+    ) -> Result<(), String> {
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale or unknown loop {loop_id}"))?;
+        let has_planned_transition = model.state.next_transition_delay.is_some()
+            && !matches!(model.state.next_mode, LoopMode::Unknown | LoopMode::Stopped);
+        let mode = if has_planned_transition {
+            BackendLoopMode::Stopped
+        } else if model.state.mode == LoopMode::Recording {
+            BackendLoopMode::Playing
+        } else if model.length == 0 && model.state.mode == LoopMode::Stopped {
+            if self.global.default_recording_action == DefaultRecordingAction::Grab {
+                return self.grab_single_target(backend, loop_id);
+            }
+            BackendLoopMode::Recording
+        } else if model.length > 0 && model.state.mode == LoopMode::Stopped {
+            BackendLoopMode::Playing
+        } else {
+            BackendLoopMode::Stopped
+        };
+        self.transition_single_target(backend, loop_id, mode)
+    }
+
     fn grab_targets(
         &mut self,
         backend: &mut dyn Backend,
         initiating_loop: LoopId,
+    ) -> Result<(), String> {
+        self.grab_targets_inner(backend, initiating_loop, true)
+    }
+
+    fn grab_single_target(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+    ) -> Result<(), String> {
+        self.grab_targets_inner(backend, initiating_loop, false)
+    }
+
+    fn grab_targets_inner(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+        include_selection: bool,
     ) -> Result<(), String> {
         let sync_length = self.sync_length();
         if sync_length == 0 {
@@ -4470,7 +4516,7 @@ impl ApplicationModel {
                 (cycles, current)
             });
         let n_cycles = self.global.apply_n_cycles.max(1);
-        let ids = if self.global.sync {
+        let ids = if self.global.sync && include_selection {
             self.action_target_ids(initiating_loop)
         } else {
             vec![initiating_loop]
@@ -4586,10 +4632,30 @@ impl ApplicationModel {
         initiating_loop: LoopId,
         mode: BackendLoopMode,
     ) -> Result<(), String> {
-        let initiating_selected = self
-            .loops
-            .get(&initiating_loop)
-            .is_some_and(|model| model.state.selected);
+        self.transition_targets_inner(backend, initiating_loop, mode, true)
+    }
+
+    fn transition_single_target(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+        mode: BackendLoopMode,
+    ) -> Result<(), String> {
+        self.transition_targets_inner(backend, initiating_loop, mode, false)
+    }
+
+    fn transition_targets_inner(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+        mode: BackendLoopMode,
+        include_selection: bool,
+    ) -> Result<(), String> {
+        let initiating_selected = include_selection
+            && self
+                .loops
+                .get(&initiating_loop)
+                .is_some_and(|model| model.state.selected);
         let targets: Vec<_> = self
             .loops
             .values()
@@ -12405,6 +12471,62 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             &cleared.midi_channels[0].events,
             &original_events
         ));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn default_click_targets_only_the_touched_loop_without_changing_selection() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        let touched = model.tracks[1].loops[0];
+        let other = model.tracks[1].loops[1];
+        for id in [touched, other] {
+            let loop_model = model.loops.get_mut(&id).unwrap();
+            loop_model.state.selected = true;
+            loop_model.state.mode = LoopMode::Stopped;
+            loop_model.length = 0;
+        }
+        let operation_start = backend.operations().len();
+
+        model
+            .handle_loop_action(&mut backend, track_id, touched, LoopAction::DefaultClicked)
+            .unwrap();
+
+        assert!(model.loops[&touched].state.selected);
+        assert!(model.loops[&other].state.selected);
+        let transitions = backend.operations()[operation_start..]
+            .iter()
+            .filter_map(|operation| match operation {
+                shoop_backend::FakeOperation::Transition(id, mode, delay) => {
+                    Some((*id, *mode, *delay))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            transitions,
+            [(
+                model.loops[&touched].backend_id,
+                BackendLoopMode::Recording,
+                Some(0),
+            )]
+        );
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

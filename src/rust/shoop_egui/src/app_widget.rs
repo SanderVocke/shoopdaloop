@@ -51,6 +51,13 @@ pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.mi
 pub fn register_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
+    register_settings_with_ui_scale_default(builder, 1.0)
+}
+
+pub fn register_settings_with_ui_scale_default(
+    builder: &mut SettingsRegistryBuilder,
+    ui_scale_default: f64,
+) -> Result<(), SettingsRegistryError> {
     builder.register(
         SettingDefinition::new(
             DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
@@ -78,7 +85,7 @@ pub fn register_settings(
     builder.register(
         SettingDefinition::new(
             UI_SCALE_FACTOR,
-            1.0,
+            ui_scale_default,
             "Appearance",
             "Pixels-per-point scale",
             "Multiplier for egui's native pixels-per-point value, scaling the entire UI.",

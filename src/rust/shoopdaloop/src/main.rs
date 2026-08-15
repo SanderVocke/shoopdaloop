@@ -34,11 +34,13 @@ use shoop_egui::register_bundled_script_settings;
 use shoop_egui::register_carla_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::register_script_settings;
+#[cfg(test)]
+use shoop_egui::register_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::{register_audio_settings, AudioDriverConfig};
 use shoop_egui::{
-    register_settings, AppIntent, AppSnapshot, AppWidget, ScriptKind, SettingsAction,
-    SettingsRegistryBuilder, UI_SCALE_FACTOR,
+    register_settings_with_ui_scale_default, AppIntent, AppSnapshot, AppWidget, ScriptKind,
+    SettingsAction, SettingsRegistryBuilder, UI_SCALE_FACTOR,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::{TracingStatus, TracingStopped};
@@ -281,12 +283,12 @@ fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsMana
 }
 
 impl UnifiedApp {
-    fn new() -> anyhow::Result<Self> {
+    fn new(ui_scale_default: f64) -> anyhow::Result<Self> {
         let _span = tracing::info_span!("frontend.egui.initialize").entered();
         #[cfg(not(target_arch = "wasm32"))]
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
         let mut settings_builder = SettingsRegistryBuilder::default();
-        register_settings(&mut settings_builder)?;
+        register_settings_with_ui_scale_default(&mut settings_builder, ui_scale_default)?;
         #[cfg(not(target_arch = "wasm32"))]
         register_audio_settings(&mut settings_builder)?;
         #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
@@ -1519,12 +1521,41 @@ impl Runtime {
     }
 }
 
+const SMALL_SCREEN_MAX_SHORT_SIDE: f32 = 800.0;
+const SMALL_SCREEN_UI_SCALE: f64 = 1.25;
+
+fn default_ui_scale_for_screen(screen_size: Option<egui::Vec2>) -> f64 {
+    if screen_size.is_some_and(|size| {
+        size.x > 0.0 && size.y > 0.0 && size.x.min(size.y) <= SMALL_SCREEN_MAX_SHORT_SIDE
+    }) {
+        SMALL_SCREEN_UI_SCALE
+    } else {
+        1.0
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn detected_screen_size(context: &eframe::CreationContext<'_>) -> Option<egui::Vec2> {
+    context
+        .egui_ctx
+        .input(|input| input.viewport().monitor_size)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn detected_screen_size(_context: &eframe::CreationContext<'_>) -> Option<egui::Vec2> {
+    let screen = web_sys::window()?.screen().ok()?;
+    let width = screen.width().ok()? as f32;
+    let height = screen.height().ok()? as f32;
+    Some(egui::vec2(width, height))
+}
+
 fn create_app(
     context: &eframe::CreationContext<'_>,
     #[cfg(not(target_arch = "wasm32"))] tracing: Option<SharedNativeTracing>,
 ) -> Result<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>> {
     shoop_egui::initialize(&context.egui_ctx);
-    let app = UnifiedApp::new()?;
+    let ui_scale_default = default_ui_scale_for_screen(detected_screen_size(context));
+    let app = UnifiedApp::new(ui_scale_default)?;
     #[cfg(not(target_arch = "wasm32"))]
     let mut app = app;
     #[cfg(not(target_arch = "wasm32"))]
@@ -4135,8 +4166,42 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
+    fn small_screens_use_a_larger_missing_setting_default() {
+        assert_eq!(
+            default_ui_scale_for_screen(Some(egui::vec2(1280.0, 800.0))),
+            1.25
+        );
+        assert_eq!(
+            default_ui_scale_for_screen(Some(egui::vec2(1280.0, 801.0))),
+            1.0
+        );
+        assert_eq!(default_ui_scale_for_screen(None), 1.0);
+
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings_with_ui_scale_default(&mut builder, 1.25).unwrap();
+        let registry = builder.finish();
+        assert_eq!(registry.defaults(1).get(UI_SCALE_FACTOR).unwrap(), 1.25);
+
+        let stored = shoop_settings::SettingsDocument {
+            writer_version: "test".to_owned(),
+            values: std::collections::BTreeMap::from([(
+                UI_SCALE_FACTOR.id().to_owned(),
+                serde_json::json!(1.0),
+            )]),
+        };
+        assert_eq!(
+            registry
+                .resolve(&stored, 1)
+                .snapshot
+                .get(UI_SCALE_FACTOR)
+                .unwrap(),
+            1.0
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn confirmed_driver_switch_is_saved_once_and_completed_after_persistence() {
-        let mut app = UnifiedApp::new().unwrap();
+        let mut app = UnifiedApp::new(1.0).unwrap();
         app.runtime.tick(Duration::ZERO);
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
         draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
@@ -4216,7 +4281,7 @@ mod tests {
         let manager = SettingsManager::load_from_path(builder.finish(), "test", path);
         std::fs::write(&blocker, b"not a directory").unwrap();
 
-        let mut app = UnifiedApp::new().unwrap();
+        let mut app = UnifiedApp::new(1.0).unwrap();
         app.settings = manager;
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
         draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
@@ -4690,7 +4755,7 @@ mod tests {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();
             shoop_egui::initialize(&context);
-            let mut app = UnifiedApp::new().unwrap();
+            let mut app = UnifiedApp::new(1.0).unwrap();
             let snapshot = app.runtime.snapshot();
             assert_eq!(snapshot.tracks.len(), 1);
             assert!(snapshot.tracks[0].is_sync);
@@ -4710,7 +4775,7 @@ mod tests {
     fn unified_native_app_runs_paints_invokes_and_removes_lua_dialogs() {
         let context = egui::Context::default();
         shoop_egui::initialize(&context);
-        let mut app = UnifiedApp::new().unwrap();
+        let mut app = UnifiedApp::new(1.0).unwrap();
         for (name, source) in [
             (
                 "lua-api-higher-minor.lua",
@@ -4847,7 +4912,7 @@ mod tests {
 
     #[tracy_nextest_capture::tracy_capture_test]
     fn native_dummy_workflow_creates_records_and_controls_tracks_and_loops() {
-        let mut app = UnifiedApp::new().unwrap();
+        let mut app = UnifiedApp::new(1.0).unwrap();
         let track_specs = [
             ("Native stereo + MIDI", 2, true),
             ("Native mono", 1, false),

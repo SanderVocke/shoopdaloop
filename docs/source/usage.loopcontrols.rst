@@ -19,7 +19,10 @@ Playback controls
 
 Each loop has playback gain and, for stereo content, balance. The status area
 shows current mode, pending transitions, selection, targeting, and loop
-progress. A double click on the status area targets a loop.
+progress. A double click on the status area targets a loop. On a touch screen,
+a short touch performs the loop's default action without changing selection and
+a stationary long touch opens its context menu. Touches do not expose the mouse
+hover controls.
 
 Grabbing
 ~~~~~~~~
