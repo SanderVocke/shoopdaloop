@@ -60,13 +60,12 @@ struct PhysicalAudioDriverState {
 }
 
 /// Owns browser audio resources and the restricted remote transport control.
-struct BrowserPhysicalAudioDriver {
+struct BrowserAudioDriver {
     state: Rc<RefCell<PhysicalAudioDriverState>>,
 }
 
-/// Presentation adapter for permission actions, status text, and diagnostic hooks.
-pub struct BrowserAudioController {
-    driver: BrowserPhysicalAudioDriver,
+/// Owns only DOM presentation callbacks and narrow packaged diagnostics.
+struct BrowserAudioPresentation {
     microphone_enable_handler: Closure<dyn FnMut(WebEvent)>,
     output_enable_handler: Closure<dyn FnMut(WebEvent)>,
     suspend_handler: Closure<dyn FnMut(WebEvent)>,
@@ -74,6 +73,12 @@ pub struct BrowserAudioController {
     fail_handler: Closure<dyn FnMut(WebEvent)>,
     track_end_handler: Closure<dyn FnMut(WebEvent)>,
     shutdown_handler: Closure<dyn FnMut(WebEvent)>,
+}
+
+/// Composes the independently owned physical driver and presentation adapter.
+pub struct BrowserAudioController {
+    driver: BrowserAudioDriver,
+    presentation: BrowserAudioPresentation,
 }
 
 impl BrowserAudioController {
@@ -175,14 +180,16 @@ impl BrowserAudioController {
         )
         .map_err(|error| anyhow!("could not publish physical audio diagnostics: {error:?}"))?;
         Ok(Self {
-            driver: BrowserPhysicalAudioDriver { state: inner },
-            microphone_enable_handler,
-            output_enable_handler,
-            suspend_handler,
-            resume_handler,
-            fail_handler,
-            track_end_handler,
-            shutdown_handler,
+            driver: BrowserAudioDriver { state: inner },
+            presentation: BrowserAudioPresentation {
+                microphone_enable_handler,
+                output_enable_handler,
+                suspend_handler,
+                resume_handler,
+                fail_handler,
+                track_end_handler,
+                shutdown_handler,
+            },
         })
     }
 
@@ -307,13 +314,13 @@ impl BrowserAudioController {
 impl Drop for BrowserAudioController {
     fn drop(&mut self) {
         let _ = (
-            &self.microphone_enable_handler,
-            &self.output_enable_handler,
-            &self.suspend_handler,
-            &self.resume_handler,
-            &self.fail_handler,
-            &self.track_end_handler,
-            &self.shutdown_handler,
+            &self.presentation.microphone_enable_handler,
+            &self.presentation.output_enable_handler,
+            &self.presentation.suspend_handler,
+            &self.presentation.resume_handler,
+            &self.presentation.fail_handler,
+            &self.presentation.track_end_handler,
+            &self.presentation.shutdown_handler,
         );
         if let Ok(button) = microphone_enable_button() {
             button.set_onclick(None);

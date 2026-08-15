@@ -2748,6 +2748,78 @@ mod tests {
         backend.poll().unwrap();
         assert!(backend.session_capture.is_none());
         assert!(backend.capture_session_async().is_err());
+
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 3, 0, 2)
+            .unwrap();
+        deliver(&control, 3, 1, Event::Ack);
+        let session = BackendSessionData {
+            sample_rate: 48_000,
+            tracks: Vec::new(),
+            global_ports: Vec::new(),
+            use_legacy_browser_default_routes: false,
+        };
+        assert!(matches!(
+            backend.replace_session_async(&session).unwrap(),
+            BackendAsyncResult::Pending(_)
+        ));
+        assert!(!backend.session_replace.as_ref().unwrap().bytes.is_empty());
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 4, 0, 2)
+            .unwrap();
+        backend.poll().unwrap();
+        assert!(backend.session_replace.is_none());
+        assert!(backend.replace_session_async(&session).is_err());
+
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 5, 0, 2)
+            .unwrap();
+        deliver(&control, 5, 1, Event::Ack);
+        let creation = backend
+            .create_track(TrackRequest {
+                port_name_base: "restart-transfer".to_owned(),
+                topology: BackendTrackTopology::Direct {
+                    audio_channels: 0,
+                    midi: false,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        deliver(&control, 5, 2, Event::Ack);
+        let loop_update = BackendLoopContentUpdate {
+            audio: vec![shoop_backend::BackendAudioChannelUpdate {
+                channel: 0,
+                samples: vec![0.25; 128],
+                start_offset: None,
+                preplay: None,
+            }],
+            length: Some(128),
+            ..Default::default()
+        };
+        assert!(matches!(
+            backend
+                .replace_loop_content_async(creation.loops[0], &loop_update)
+                .unwrap(),
+            BackendAsyncResult::Pending(_)
+        ));
+        assert!(!backend
+            .loop_content_replace
+            .as_ref()
+            .unwrap()
+            .bytes
+            .is_empty());
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 6, 0, 2)
+            .unwrap();
+        backend.poll().unwrap();
+        assert!(backend.loop_content_replace.is_none());
+        assert!(backend
+            .replace_loop_content_async(creation.loops[0], &loop_update)
+            .is_err());
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

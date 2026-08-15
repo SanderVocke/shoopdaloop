@@ -35,4 +35,13 @@ try {
   shutdownRejected = true;
 }
 if (!shutdownRejected) throw new Error('destroyed raw host accepted processing');
+const trapped = new globalThis.ShoopRawWasmHost(module, 48000, 128, 262144);
+trapped.host = 0xfffffff0;
+let trapObserved = false;
+try {
+  trapped.process([], [], 128);
+} catch (error) {
+  trapObserved = error instanceof WebAssembly.RuntimeError;
+}
+if (!trapObserved) throw new Error('Wasm ABI trap was not observable through the raw host');
 console.log('raw Wasm host artifact contract: ok');
