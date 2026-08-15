@@ -222,7 +222,7 @@ jobs:
         id: pinned-chrome
         uses: browser-actions/setup-chrome@v2
         with:
-          chrome-version: 147.0.7727.137
+          chrome-version: 147.0.7727.117
           install-chromedriver: true
 
       - name: Select pinned Chrome
@@ -231,8 +231,8 @@ jobs:
         run: |
           chrome='${{ steps.pinned-chrome.outputs.chrome-path }}'
           driver='${{ steps.pinned-chrome.outputs.chromedriver-path }}'
-          "$chrome" --version | grep '147.0.7727.137'
-          "$driver" --version | grep '147.0.7727.137'
+          "$chrome" --version | grep '147.0.7727.117'
+          "$driver" --version | grep '147.0.7727.117'
           echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
           dirname "$driver" >> "$GITHUB_PATH"
 
