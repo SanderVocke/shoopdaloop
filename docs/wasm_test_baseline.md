@@ -118,6 +118,10 @@ After the package waves, `--require-closed` reports:
 | native-driver | 119 |
 | **Native total** | **1,425** |
 
-Node and Chromium each execute the identical 1,170 shared IDs plus four `wasm-runtime` production Worker contracts, for **1,174 actual Wasm tests per runtime**. No classification remains pending. The resulting shared overlap is about 82% of the native inventory; the 255 exclusions are dominated by native app-backend/JACK/CPAL/midir/Carla features, global allocation and lock gates, OS threads/deadlines/filesystems, and native Tracy. Every exclusion has a checked-in pattern and reason.
+The final source scanner records 1,428 declarations: the 1,424 native/cross-target declarations from Stage 1 plus four Wasm-runtime-only production Worker declarations. Node and Chromium each execute the identical 1,170 shared IDs plus four `wasm-runtime` production Worker contracts, for **1,174 actual Wasm tests per runtime**. No classification remains pending. The resulting shared overlap is about 82% of the native inventory; the 255 exclusions are dominated by native app-backend/JACK/CPAL/midir/Carla features, global allocation and lock gates, OS threads/deadlines/filesystems, and native Tracy. Every exclusion has a checked-in pattern and reason.
 
 On the local warm debug-profile reference environment, the canonical package commands took about 156 seconds in Node and 192 seconds in headless Chromium, excluding the one-time staged worklet build. These values are diagnostic rather than acceptance thresholds and are recorded in each generated summary.
+
+## Post-migration CI measurement
+
+PR #751 run `31905533513` executed all 1,174 tests in each debug runtime with warnings denied and identical inventory hashes. Summed per-package runner times were about 359 seconds in Node and 361 seconds in Chromium; the owning CI steps, including orchestration and staging, each took about 6 minutes 13 seconds. The retained packaged smokes took 3.3 seconds for hosted Chromium, 13.4 seconds for self-contained Chromium, and 44.9 seconds for Firefox. Their combined runner time was about 62 seconds, well below the five-minute boundary and down from 32 packaged-browser invocations to three. Artifact build and Firefox installation remain outside that smoke measurement as required.

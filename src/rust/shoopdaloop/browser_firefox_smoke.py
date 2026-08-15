@@ -47,6 +47,8 @@ def main() -> None:
                 "revision": int(
                     status.get_attribute("data-engine-revision") or 0
                 ),
+                "status": status.text,
+                "body": driver.find_element(By.TAG_NAME, "body").text[:300],
             }
             if initial_state["driver"] == "AwaitingGesture" and initial_state["revision"] > 0:
                 break

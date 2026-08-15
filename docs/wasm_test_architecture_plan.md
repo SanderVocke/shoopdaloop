@@ -406,36 +406,40 @@ Evidence: 1,170 logical tests now share one source body under native Tracy-captu
 
 ### Stage 5 — Minimize packaged-application smoke coverage
 
-- [ ] Build `docs/wasm_smoke_migration.md` mapping every current Chrome/Firefox invocation and assertion to a target test layer.
-- [ ] Move each reducible assertion and record passing replacement IDs before removing it from smoke automation.
-- [ ] Collapse hosted Chrome coverage to one production-bootstrap/user-gesture/real-AudioWorklet round trip.
-- [ ] Collapse self-contained coverage to one embedded-asset/real-callback check.
-- [ ] Retain one minimal secondary-browser production AudioWorklet check where supported.
-- [ ] Remove redundant mode combinations, stress loops, mocked-policy/model checks, and multi-Worker checks only after replacements pass.
-- [ ] Measure invocation count and repeated uncontended runtime.
+- [x] Build `docs/wasm_smoke_migration.md` mapping every current Chrome/Firefox invocation and assertion to a target test layer.
+- [x] Move each reducible assertion and record passing replacement IDs before removing it from smoke automation.
+- [x] Collapse hosted Chrome coverage to one production-bootstrap/user-gesture/real-AudioWorklet round trip.
+- [x] Collapse self-contained coverage to one embedded-asset/real-callback check.
+- [x] Retain one minimal secondary-browser production AudioWorklet check where supported.
+- [x] Remove redundant mode combinations, stress loops, mocked-policy/model checks, and multi-Worker checks only after replacements pass.
+- [x] Measure invocation count and repeated uncontended runtime.
 
 Verification:
 
-- [ ] Every removed assertion has a passing replacement test reference in the migration record.
-- [ ] The retained smoke suite covers only the documented irreducible production boundary.
-- [ ] It uses at most three primary invocations and completes within five minutes excluding build and browser installation.
+- [x] Every removed assertion has a passing replacement test reference in the migration record.
+- [x] The retained smoke suite covers only the documented irreducible production boundary.
+- [x] It uses at most three primary invocations and completes within five minutes excluding build and browser installation.
+
+Evidence: `docs/wasm_smoke_migration.md` maps the 31 former Chromium launches and one Firefox launch by assertion group to named shared/Worker tests. `check_wasm_smoke_budget.py` enforces exactly hosted Chromium output-only, self-contained Chromium output-only, and hosted Firefox output-only invocations. PR #751 run `31905533513` passed all three against packaged artifacts in approximately 3.3, 13.4, and 44.9 seconds respectively; their combined 62-second runner time is below the five-minute boundary. The retained checks assert only production packaging, user gesture, application/worklet startup and routing, real 128-frame callback progress, second-browser compatibility, and process teardown.
 
 ### Stage 6 — Integrate CI and documentation
 
-- [ ] Replace the current host-native five-package web nextest step only after equivalent native and Wasm inventory evidence exists.
-- [ ] Run the full portable Node.js suite in the fast web path.
-- [ ] Run the same shared inventory under Chromium in one authoritative web path, with browser-only additions reported separately.
-- [ ] Retain debug/release Wasm package builds, actual-artifact contracts, artifact verification, and dependency-isolation checks.
-- [ ] Upload raw Wasm logs, JUnit XML, aggregate summaries, classification, overlap inventory, and timing reports on success and failure.
-- [ ] Keep the complete native nextest gate and Tracy failure capture unchanged except for shared test-attribute plumbing.
-- [ ] Run the minimized three-invocation packaged smoke boundary independently from regular Wasm suites.
-- [ ] Document prerequisites, exact tool pins, runtime selection, filtering, package selection, asset diagnostics, fixture diagnostics, timeouts, and failure reproduction.
+- [x] Replace the current host-native five-package web nextest step only after equivalent native and Wasm inventory evidence exists.
+- [x] Run the full portable Node.js suite in the fast web path.
+- [x] Run the same shared inventory under Chromium in one authoritative web path, with browser-only additions reported separately.
+- [x] Retain debug/release Wasm package builds, actual-artifact contracts, artifact verification, and dependency-isolation checks.
+- [x] Upload raw Wasm logs, JUnit XML, aggregate summaries, classification, overlap inventory, and timing reports on success and failure.
+- [x] Keep the complete native nextest gate and Tracy failure capture unchanged except for shared test-attribute plumbing.
+- [x] Run the minimized three-invocation packaged smoke boundary independently from regular Wasm suites.
+- [x] Document prerequisites, exact tool pins, runtime selection, filtering, package selection, asset diagnostics, fixture diagnostics, timeouts, and failure reproduction.
 
 Verification:
 
-- [ ] CI demonstrates native, Node.js Wasm, Chromium Wasm, and packaged-smoke gates independently.
-- [ ] A failure in any Wasm testcase, Worker, browser runner, result parser, inventory comparison, asset server, or cleanup check fails the owning job and appears in JUnit.
-- [ ] Local copyable commands reproduce every CI gate from a clean checkout.
+- [x] CI demonstrates native, Node.js Wasm, Chromium Wasm, and packaged-smoke gates independently.
+- [x] A failure in any Wasm testcase, Worker, browser runner, result parser, inventory comparison, asset server, or cleanup check fails the owning job and appears in JUnit.
+- [x] Local copyable commands reproduce every CI gate from a clean checkout.
+
+Evidence: the web debug cell installs Node 22.x and wasm-pack 0.15.0, runs the required 1,174-test Node suite, policy-triggered identical Chromium suite, source/runtime hash gate, parser fixtures, smoke budget, and all 15 dependency trees. Scheduled/manual release cells run optimized Node and Chromium. Existing debug/release application/worklet builds, package contracts, import checks, raw-host checks, and artifact verification remain. `if: always()` uploads per-package raw logs/JUnit, aggregate summaries, inventory-policy timing/category reports, and checked-in classification. Run `31905533513` passed both web cells and every independent Wasm/smoke step; parser fixtures cover testcase, panic, malformed/truncated/count/zero, timeout, browser-crash, and synthetic runner failures. `src/rust/shoopdaloop/README.md` and `docs/wasm_test_baseline.md` provide pinned copyable full/package/filter/policy/smoke commands and diagnostics.
 
 ### Stage 7 — Final end-to-end validation
 
