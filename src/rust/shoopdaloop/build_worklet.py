@@ -11,6 +11,12 @@ GENERATED = PACKAGE / "generated"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--profile", choices=("debug", "release"))
+parser.add_argument(
+    "--output-dir",
+    type=pathlib.Path,
+    default=GENERATED,
+    help="artifact destination (defaults to the Trunk generated directory)",
+)
 args = parser.parse_args()
 profile = args.profile or os.environ.get("TRUNK_PROFILE", "release")
 if profile not in ("debug", "release"):
@@ -43,6 +49,8 @@ command = [
 if profile == "release":
     command.append("--release")
 subprocess.run(command, cwd=ROOT, env=environment, check=True)
-GENERATED.mkdir(exist_ok=True)
-shutil.copy2(target, GENERATED / target.name)
-print(f"copied {profile} worklet: {target} -> {GENERATED / target.name}")
+output_dir = args.output_dir.resolve()
+output_dir.mkdir(parents=True, exist_ok=True)
+destination = output_dir / target.name
+shutil.copy2(target, destination)
+print(f"copied {profile} worklet: {target} -> {destination}")

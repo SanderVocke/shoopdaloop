@@ -1,5 +1,5 @@
 [package]
-name = "shoop_wasm_test_support"
+name = "shoop_wasm_runtime_tests"
 version.workspace = true
 edition = "2021"
 publish = false
@@ -13,14 +13,11 @@ default = []
 wasm-test-browser = []
 
 [dependencies]
-shoop_test_macros = { path = "../shoop_test_macros" }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-futures = { version = "0.3", features = ["executor"] }
-tracy-nextest-capture.workspace = true
+shoop_audio_protocol = { path = "../shoop_audio_protocol" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "=0.2.127"
+wasm-bindgen-futures = "=0.4.77"
 wasm-bindgen-test = "=0.3.77"
 
 [lints]

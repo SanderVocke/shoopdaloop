@@ -306,20 +306,22 @@ Dependencies are sequential unless a stage explicitly says otherwise.
 
 ### Stage 0 — Confirm prerequisites and freeze the baseline
 
-- [ ] Verify every prerequisite assumption against code containing PR #749.
-- [ ] Prove a Node 22 module Worker can structured-clone `WebAssembly.Module` and transfer Node MessagePorts through the bootstrap shim while importing the exact production `audio_worker.js` and `raw_wasm_host.js`.
-- [ ] Prove a minimal wasm-bindgen Chromium test can fetch staged assets, create/revoke module Blob URLs, transfer the compiled module, and shut down one production Worker.
-- [ ] Stop and record a blocker for any missing transport, driver, lifecycle, asset-loading, reset, or library seam.
-- [ ] Add `docs/wasm_test_baseline.md` with exact native nextest IDs and current web-selected host-native IDs.
-- [ ] Record current CI duration by build, host-native tests, artifact/package contracts, each browser-smoke mode, and total job.
-- [ ] Provisionally classify every current test target and identify tests relying on threads, files, subprocesses, environment variables, global allocators, physical drivers, browser policy, or Tracy.
-- [ ] Record the current dependency trees, worklet artifact hash/imports, protocol version, and Worker teardown/multi-instance characterization results.
+- [x] Verify every prerequisite assumption against code containing PR #749.
+- [x] Prove a Node 22 module Worker can structured-clone `WebAssembly.Module` and transfer Node MessagePorts through the bootstrap shim while importing the exact production `audio_worker.js` and `raw_wasm_host.js`.
+- [x] Prove a minimal wasm-bindgen Chromium test can fetch staged assets, create/revoke module Blob URLs, transfer the compiled module, and shut down one production Worker.
+- [x] Stop and record a blocker for any missing transport, driver, lifecycle, asset-loading, reset, or library seam.
+- [x] Add `docs/wasm_test_baseline.md` with exact native nextest IDs and current web-selected host-native IDs.
+- [x] Record current CI duration by build, host-native tests, artifact/package contracts, each browser-smoke mode, and total job.
+- [x] Provisionally classify every current test target and identify tests relying on threads, files, subprocesses, environment variables, global allocators, physical drivers, browser policy, or Tracy.
+- [x] Record the current dependency trees, worklet artifact hash/imports, protocol version, and Worker teardown/multi-instance characterization results.
 
 Verification:
 
-- [ ] The reproducible baseline accounts for every discovered native test and every source-level test not discovered under the native configuration.
-- [ ] The Node and Chromium feasibility probes use production Worker/host sources and leave no Worker, port, timer, host, listener, or Blob URL alive.
-- [ ] No implementation stage begins while a prerequisite remains unresolved.
+- [x] The reproducible baseline accounts for every discovered native test and every source-level test not discovered under the native configuration.
+- [x] The Node and Chromium feasibility probes use production Worker/host sources and leave no Worker, port, timer, host, listener, or Blob URL alive.
+- [x] No implementation stage begins while a prerequisite remains unresolved.
+
+Evidence: `docs/wasm_test_baseline.md` records the 1,420-test production native baseline, all 232 previously selected host-native web tests, source/native count differences, package waves, protocol constants, dependency boundaries, artifact hashes/imports, and measured CI steps. The canonical inventory now reproduces all native and source declarations. Checked-in Node and wasm-bindgen runtime probes load the exact staged production Worker, raw host, and import-free engine artifact, run two isolated explicit engines through real ports, and complete acknowledged teardown. The Chromium adapter fetches the staged assets through the bounded CORS server, uses revocable module Blob URLs, and passes under headless Chrome. No production prerequisite is missing.
 
 ### Stage 1 — Establish the cross-target test harness
 
@@ -343,22 +345,24 @@ Evidence: `shoop_test_macros::shoop_test` expands synchronous and asynchronous b
 
 ### Stage 2 — Build orchestration, asset staging, inventory, and reporting
 
-- [ ] Add `scripts/run_wasm_tests.py` with pinned tool validation and explicit node/chrome runtime selection.
-- [ ] Add Cargo-metadata-driven package discovery and stable ordering.
-- [ ] Build/cache the worklet artifact once per profile outside the source tree.
-- [ ] Stage and hash exact production Worker/host assets plus the Node bootstrap.
-- [ ] Implement bounded CORS asset-server ownership and browser Blob-module loading/cleanup.
-- [ ] Add raw-log capture, fail-closed result accounting, JUnit generation, and aggregate summaries.
-- [ ] Add parser tests for successful, failed, panicking, ignored, malformed, truncated, timeout, zero-test, and runner/browser-crash output.
-- [ ] Add the canonical inventory tool and classification manifest with explicit exclusion reasons.
-- [ ] Make filters, package subsets, runtime-only additions, and profile visible in all output metadata.
+- [x] Add `scripts/run_wasm_tests.py` with pinned tool validation and explicit node/chrome runtime selection.
+- [x] Add Cargo-metadata-driven package discovery and stable ordering.
+- [x] Build/cache the worklet artifact once per profile outside the source tree.
+- [x] Stage and hash exact production Worker/host assets plus the Node bootstrap.
+- [x] Implement bounded CORS asset-server ownership and browser Blob-module loading/cleanup.
+- [x] Add raw-log capture, fail-closed result accounting, JUnit generation, and aggregate summaries.
+- [x] Add parser tests for successful, failed, panicking, ignored, malformed, truncated, timeout, zero-test, and runner/browser-crash output.
+- [x] Add the canonical inventory tool and classification manifest with explicit exclusion reasons.
+- [x] Make filters, package subsets, runtime-only additions, and profile visible in all output metadata.
 
 Verification:
 
-- [ ] Canonical Node.js and Chromium commands run the pilot package independently through actual Wasm binaries.
-- [ ] Every fixture failure mode produces the correct nonzero status, raw log, partial/final JUnit, and synthetic runner testcase where needed.
-- [ ] Repeated package runs reuse one staged worklet/Worker asset set and never rebuild Wasm or production JavaScript per testcase; required per-fixture Blob URLs are revoked.
-- [ ] Asset server, subprocesses, temporary files, and browser sessions are cleaned on success, failure, timeout, and interruption.
+- [x] Canonical Node.js and Chromium commands run the pilot package independently through actual Wasm binaries.
+- [x] Every fixture failure mode produces the correct nonzero status, raw log, partial/final JUnit, and synthetic runner testcase where needed.
+- [x] Repeated package runs reuse one staged worklet/Worker asset set and never rebuild Wasm or production JavaScript per testcase; required per-fixture Blob URLs are revoked.
+- [x] Asset server, subprocesses, temporary files, and browser sessions are cleaned on success, failure, timeout, and interruption.
+
+Evidence: `run_wasm_tests.py` validates pinned tools, discovers package metadata, stages one profile-specific hashed asset set outside the source tree, owns a CORS loopback server, applies package/runtime filters, enforces deadlines, and emits raw logs, per-package JUnit, and aggregate JSON. `wasm_test_report.py` has fail-closed fixtures for pass, failure, panic, ignore, malformed/truncated/count-mismatched/zero output, timeout, and browser crash; an actual ignored canary produces nonzero JUnit failure. `wasm_test_inventory.py` combines native, source, Node, and Chromium IDs with explicit non-overlapping classification rules. Canonical Node and Chromium pilot commands pass, and the production Worker browser probe proves Blob URL cleanup.
 
 ### Stage 3 — Implement the multi-Worker remote-engine fixture
 

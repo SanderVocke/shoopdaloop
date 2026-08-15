@@ -1,0 +1,86 @@
+schema = 1
+
+[[rules]]
+pattern = "shoop_audio_protocol::*"
+category = "shared"
+reason = "Stage 1 pilot runs from the same source in native, Node, and Chromium."
+
+[[rules]]
+pattern = "shoop_wasm_test_support::*"
+category = "shared"
+reason = "Cross-target harness unit and integration contracts run in all three runtimes."
+
+[[rules]]
+pattern = "shoop_wasm_runtime_tests::*"
+category = "wasm-runtime"
+reason = "Production Worker, MessagePort, and staged raw-engine contracts require a Wasm JavaScript runtime."
+
+[[rules]]
+pattern = "shoop_app_api::*"
+category = "pending"
+reason = "Stage 4 protocol/value migration wave."
+
+[[rules]]
+pattern = "shoop_plugin_protocol::*"
+category = "pending"
+reason = "Stage 4 protocol/value migration wave."
+
+[[rules]]
+pattern = "shoop_settings::*"
+category = "pending"
+reason = "Stage 4 protocol/value migration wave."
+
+[[rules]]
+pattern = "shoop_session::*"
+category = "pending"
+reason = "Stage 4 protocol/value migration wave."
+
+[[rules]]
+pattern = "shoop_scripting::*"
+category = "pending"
+reason = "Stage 4 portable-runtime migration wave."
+
+[[rules]]
+pattern = "shoop_engine::*"
+category = "pending"
+reason = "Stage 4 portable-runtime migration and native-driver classification wave."
+
+[[rules]]
+pattern = "shoop_backend::*"
+category = "pending"
+reason = "Stage 4 portable-runtime migration and native-driver classification wave."
+
+[[rules]]
+pattern = "shoop_worklet_client::*"
+category = "pending"
+reason = "Stage 4 portable-runtime migration wave."
+
+[[rules]]
+pattern = "shoop_app::*"
+category = "pending"
+reason = "Stage 4 portable-runtime migration wave."
+
+[[rules]]
+pattern = "shoop_egui::*"
+category = "pending"
+reason = "Stage 4 UI/model migration wave."
+
+[[rules]]
+pattern = "shoop_audio_worklet::*"
+category = "pending"
+reason = "Stage 4 worklet-runtime migration wave."
+
+[[rules]]
+pattern = "shoopdaloop::*"
+category = "pending"
+reason = "Stage 4 browser-composition classification wave."
+
+[[rules]]
+pattern = "shoop_common::*"
+category = "pending"
+reason = "Stage 4 portable-versus-native-platform classification wave."
+
+[[rules]]
+pattern = "shoop_tracing::*"
+category = "pending"
+reason = "Stage 4 native Tracy/platform classification wave."

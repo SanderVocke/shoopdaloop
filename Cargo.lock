@@ -3994,6 +3994,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_wasm_runtime_tests"
+version = "0.3.0"
+dependencies = [
+ "shoop_audio_protocol",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_wasm_test_support"
 version = "0.3.0"
 dependencies = [
