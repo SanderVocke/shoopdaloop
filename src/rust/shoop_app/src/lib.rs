@@ -8330,6 +8330,122 @@ mod tests {
         }
     }
 
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn desired_control_helpers_cover_every_control_shape() {
+        let mut backend_track = BackendTrackState::default();
+        let mut controls = TrackControlState::default();
+        for control in [
+            BackendTrackControl::OutputGainDb(-3.0),
+            BackendTrackControl::OutputBalance(0.25),
+            BackendTrackControl::OutputMute(true),
+            BackendTrackControl::InputGainDb(-6.0),
+            BackendTrackControl::InputBalance(-0.5),
+            BackendTrackControl::InputMonitoring(true),
+        ] {
+            let _ = track_control_key(control);
+            assert!(!track_control_matches(&backend_track, control));
+            apply_track_control(&mut controls, control);
+            match control {
+                BackendTrackControl::OutputGainDb(value) => backend_track.output_gain_db = value,
+                BackendTrackControl::OutputBalance(value) => backend_track.output_balance = value,
+                BackendTrackControl::OutputMute(value) => backend_track.output_muted = value,
+                BackendTrackControl::InputGainDb(value) => backend_track.input_gain_db = value,
+                BackendTrackControl::InputBalance(value) => backend_track.input_balance = value,
+                BackendTrackControl::InputMonitoring(value) => {
+                    backend_track.input_monitoring = value
+                }
+            }
+            assert!(track_control_matches(&backend_track, control));
+        }
+
+        let assignment = shoop_app_api::TinySynthFxMidiCcAssignment {
+            parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+            channel: 2,
+            controller: 74,
+        };
+        let controls = [
+            BackendTrackFxControl::SetActive(true),
+            BackendTrackFxControl::SetVisible(true),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SelectPreset(
+                "pad".to_owned(),
+            )),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetMasterGainDb(
+                -9.0,
+            )),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetReverbEnabled(true),
+            ),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetReverbAmount(
+                0.3,
+            )),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetDistortionEnabled(true),
+            ),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetDistortionDrive(3.0),
+            ),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetCompressorEnabled(true),
+            ),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetCompressorAmount(0.4),
+            ),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqEnabled(
+                true,
+            )),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqLowDb(1.0)),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqMidDb(-2.0)),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqHighDb(2.5)),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::AssignMidiCc(
+                assignment,
+            )),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::RemoveMidiCc(
+                assignment.parameter,
+            )),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::ClearMidiCcAssignments,
+            ),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::Panic),
+            BackendTrackFxControl::ToggleOrRecover,
+            BackendTrackFxControl::RestoreState("state".to_owned()),
+            BackendTrackFxControl::ClearLogs,
+        ];
+        let mut fx = shoop_backend::default_tiny_synth_fx_state();
+        assert!(!fx_control_matches(
+            None,
+            &BackendTrackFxControl::SetActive(true)
+        ));
+        for control in &controls {
+            let _ = fx_control_key(control);
+            apply_fx_control(&mut fx, control);
+        }
+        let mut without_editor = fx.clone();
+        without_editor.editor = None;
+        apply_fx_control(
+            &mut without_editor,
+            &BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqEnabled(
+                true,
+            )),
+        );
+        assert!(fx_control_matches(
+            Some(&fx),
+            &BackendTrackFxControl::SetActive(fx.active),
+        ));
+
+        let progress = |completed, total| BackendOperationProgress {
+            key: 1,
+            kind: shoop_backend::BackendOperationKind::SessionCapture,
+            completed,
+            total,
+        };
+        assert_eq!(backend_progress_fraction(progress(1, None)), 0.0);
+        assert_eq!(backend_progress_fraction(progress(1, Some(0))), 0.0);
+        assert_eq!(backend_progress_fraction(progress(1, Some(2))), 0.5);
+        assert_eq!(backend_progress_fraction(progress(3, Some(2))), 1.0);
+        let error = BackendIoStepError::from("typed failure".to_owned());
+        assert!(matches!(error, BackendIoStepError::Failed(message) if message == "typed failure"));
+    }
+
     fn engine_model_with_regular_composite() -> (
         LocalDummyBackend,
         ApplicationModel,
@@ -15872,6 +15988,94 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(model.tracks.last().unwrap().loops.iter().all(|loop_id| {
             model.loops[loop_id].state.structural_state == StructuralState::Confirmed
         }));
+
+        let stale_index = model
+            .tracks
+            .iter()
+            .position(|track| track.id == track_id)
+            .unwrap();
+        model.remove_track_model(stale_index);
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Loop rejection".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let loop_track_id = model.tracks.last().unwrap().id;
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let previous_loop_count = model.tracks.last().unwrap().loops.len();
+        model
+            .add_aligned_loop_row(&mut backend, loop_track_id)
+            .unwrap();
+        let added_loop_id = *model.tracks.last().unwrap().loops.last().unwrap();
+        let added_backend_loop = model.loops[&added_loop_id].backend_id;
+        let mut loop_rejected = backend.poll().unwrap();
+        loop_rejected.loops.remove(&added_backend_loop);
+        loop_rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 3,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackStructure,
+                entity: Some(backend_id.raw()),
+                detail: Some(BackendMutationDetail::LoopCreation {
+                    loop_id: added_backend_loop,
+                }),
+                message: "loop creation rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(loop_rejected);
+        assert_eq!(
+            model.tracks.last().unwrap().loops.len(),
+            previous_loop_count
+        );
+        assert!(!model.loops.contains_key(&added_loop_id));
+
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Rejected creation".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let rejected_track_id = model.tracks.last().unwrap().id;
+        let rejected_backend_track = model.tracks.last().unwrap().backend_id;
+        let rejected_backend_loops = model
+            .tracks
+            .last()
+            .unwrap()
+            .loops
+            .iter()
+            .map(|loop_id| model.loops[loop_id].backend_id)
+            .collect::<Vec<_>>();
+        let mut creation_rejected = backend.poll().unwrap();
+        creation_rejected.tracks.remove(&rejected_backend_track);
+        for loop_id in rejected_backend_loops {
+            creation_rejected.loops.remove(&loop_id);
+        }
+        creation_rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 4,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackStructure,
+                entity: Some(rejected_backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackCreation),
+                message: "track creation rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(creation_rejected);
+        assert!(model
+            .tracks
+            .iter()
+            .all(|track| track.id != rejected_track_id));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
@@ -15938,6 +16142,66 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!model
             .desired_track_controls
             .contains_key(&(backend_track, TrackControlKey::OutputGain)));
+
+        let fx_rejected = BackendTrackFxControl::SetVisible(true);
+        model
+            .desired_loop_controls
+            .insert((backend_loop, LoopControlKey::Gain), 0.5);
+        model
+            .desired_loop_controls
+            .insert((backend_loop, LoopControlKey::Balance), -0.25);
+        model
+            .desired_fx_controls
+            .insert((backend_track, FxControlKey::Visible), fx_rejected.clone());
+        let mut control_rejections = backend.poll().unwrap();
+        control_rejections.mutation_failures.extend([
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 11,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::LoopControl,
+                entity: Some(backend_loop.raw()),
+                detail: Some(BackendMutationDetail::LoopGain(0.5)),
+                message: "loop gain rejected".to_owned(),
+            },
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 12,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::LoopControl,
+                entity: Some(backend_loop.raw()),
+                detail: Some(BackendMutationDetail::LoopBalance(-0.25)),
+                message: "loop balance rejected".to_owned(),
+            },
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 13,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackFxControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackFxControl(fx_rejected)),
+                message: "FX visibility rejected".to_owned(),
+            },
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 14,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::SessionTransfer,
+                entity: None,
+                detail: None,
+                message: "uncorrelated operation rejected".to_owned(),
+            },
+        ]);
+        model.apply_backend_snapshot(control_rejections);
+        assert!(!model
+            .desired_loop_controls
+            .contains_key(&(backend_loop, LoopControlKey::Gain)));
+        assert!(!model
+            .desired_loop_controls
+            .contains_key(&(backend_loop, LoopControlKey::Balance)));
+        assert!(!model
+            .desired_fx_controls
+            .contains_key(&(backend_track, FxControlKey::Visible)));
 
         model.desired_track_controls.insert(
             (backend_track, TrackControlKey::OutputGain),

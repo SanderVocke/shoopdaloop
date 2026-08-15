@@ -502,6 +502,14 @@ mod tests {
         }
     }
 
+    struct FailingEndpoint;
+
+    impl MessageEndpoint for FailingEndpoint {
+        fn post_message(&self, _message: &str) -> Result<()> {
+            Err(anyhow!("injected endpoint failure"))
+        }
+    }
+
     fn response(sequence: u64, event: Event) -> String {
         serde_json::to_string(&EventEnvelope {
             version: PROTOCOL_VERSION,
@@ -642,6 +650,76 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.to_string(), "remote engine failure: worker trapped");
         assert_eq!(terminal.readiness().engine, RemoteEngineState::Failed);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn bounded_failure_shutdown_and_journal_edges_are_observable() {
+        let (journal, _) = transport_pair();
+        for loop_id in 0..COMMAND_CAPACITY as u64 {
+            journal
+                .borrow_mut()
+                .journal(Command::SetLoopGain { loop_id, gain: 0.5 })
+                .unwrap();
+        }
+        assert!(journal
+            .borrow_mut()
+            .journal(Command::SetLoopGain {
+                loop_id: u64::MAX,
+                gain: 0.25,
+            })
+            .is_err());
+        let rejected = Command::SetLoopGain {
+            loop_id: 0,
+            gain: 0.5,
+        };
+        journal.borrow_mut().reject_journaled(&rejected);
+        assert_eq!(journal.borrow().journal.len(), COMMAND_CAPACITY - 1);
+
+        let (_, failed_post) = transport_pair();
+        assert!(failed_post
+            .attach(Box::new(FailingEndpoint), 1, 0, 0)
+            .is_err());
+
+        let (_, uncorrelated) = transport_pair();
+        uncorrelated
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 0)
+            .unwrap();
+        assert!(uncorrelated.receive(1, &response(0, Event::Ack)).is_err());
+
+        let (_, stopped) = transport_pair();
+        stopped
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 0)
+            .unwrap();
+        stopped.receive(1, &response(1, Event::Stopped)).unwrap();
+        assert_eq!(stopped.readiness().engine, RemoteEngineState::Stopped);
+
+        let (_, shutdown) = transport_pair();
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        shutdown.attach(Box::new(endpoint), 1, 0, 0).unwrap();
+        shutdown.detach(true);
+        let command = serde_json::from_str::<CommandEnvelope>(sent.borrow().last().unwrap())
+            .unwrap()
+            .command;
+        assert!(matches!(command, Command::Shutdown));
+
+        let (queue, overflow) = transport_pair();
+        overflow
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 0)
+            .unwrap();
+        for _ in 1..COMMAND_CAPACITY {
+            queue.borrow_mut().ephemeral(Command::Poll).unwrap();
+        }
+        for sequence in 1..=COMMAND_CAPACITY as u64 {
+            overflow
+                .receive(1, &response(sequence, Event::Ack))
+                .unwrap();
+        }
+        queue.borrow_mut().ephemeral(Command::Poll).unwrap();
+        assert!(overflow
+            .receive(1, &response(COMMAND_CAPACITY as u64 + 1, Event::Ack),)
+            .is_err());
+        assert_eq!(overflow.readiness().connection, ConnectionState::Failed);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

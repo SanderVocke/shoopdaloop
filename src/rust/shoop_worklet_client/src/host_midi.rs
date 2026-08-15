@@ -119,8 +119,14 @@ mod tests {
 
     #[tracy_nextest_capture::tracy_capture_test]
     fn in_memory_bridge_preserves_endpoint_identity_direction_and_bounded_drains() {
+        let mut null = NullHostMidiBridge;
+        assert_eq!(null.revision(), 0);
+        assert!(null.endpoints().is_empty());
+        assert!(null.drain_track_messages(1).is_empty());
+        assert!(null.send("missing", &[0x90]).is_err());
+
         let mut bridge = InMemoryHostMidiBridge::default();
-        bridge.replace_endpoints(vec![
+        let endpoints = vec![
             HostMidiEndpoint {
                 id: "source:a".to_owned(),
                 name: "A".to_owned(),
@@ -131,14 +137,38 @@ mod tests {
                 name: "B".to_owned(),
                 direction: HostMidiDirection::Input,
             },
-        ]);
+        ];
+        bridge.replace_endpoints(endpoints.clone());
+        assert_eq!(bridge.revision(), 1);
+        let published = bridge.endpoints();
+        assert_eq!(published.len(), endpoints.len());
+        assert!(endpoints
+            .iter()
+            .all(|endpoint| published.contains(endpoint)));
+        bridge.replace_endpoints(published);
+        assert_eq!(bridge.revision(), 1);
+        assert!(bridge
+            .push_input(HostMidiInput {
+                endpoint_id: "missing".to_owned(),
+                data: vec![0x90],
+            })
+            .is_err());
+        assert!(bridge
+            .push_input(HostMidiInput {
+                endpoint_id: "sink:b".to_owned(),
+                data: vec![0x90],
+            })
+            .is_err());
         bridge
             .push_input(HostMidiInput {
                 endpoint_id: "source:a".to_owned(),
                 data: vec![0x90, 60, 100],
             })
             .unwrap();
+        assert!(bridge.drain_track_messages(0).is_empty());
         assert_eq!(bridge.drain_track_messages(1).len(), 1);
+        assert!(bridge.send("missing", &[0x80]).is_err());
+        assert!(bridge.send("source:a", &[0x80]).is_err());
         bridge.send("sink:b", &[0x80, 60, 0]).unwrap();
         assert_eq!(bridge.sent(), &[("sink:b".to_owned(), vec![0x80, 60, 0])]);
     }
