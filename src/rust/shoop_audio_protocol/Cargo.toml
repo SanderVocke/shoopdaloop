@@ -3,12 +3,22 @@ name = "shoop_audio_protocol"
 version.workspace = true
 edition = "2021"
 
+[features]
+default = []
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
-tracy-nextest-capture = { workspace = true }
 serde_json = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tracy-nextest-capture.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"
 
 [lints]
 workspace = true

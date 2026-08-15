@@ -704,7 +704,10 @@ pub struct MidiDataChunk {
 mod tests {
     use super::*;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+    shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+    #[shoop_wasm_test_support::shoop_test]
     fn composite_configuration_round_trips_without_losing_targets_or_modes() {
         let command = CommandEnvelope::new(
             41,
@@ -730,7 +733,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn journal_coalesces_only_superseded_controls_for_the_same_entity() {
         let first = Command::SetTrackControl {
             track_id: 2,
@@ -821,7 +824,7 @@ mod tests {
         }));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn global_application_port_owner_round_trips_explicitly() {
         let port = WireApplicationPort {
             id: 99,
@@ -838,7 +841,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_detail_chunks_round_trip_with_request_identity_and_metadata() {
         let request = CommandEnvelope::new(
             4,
@@ -885,7 +888,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_envelopes_have_stable_json_bytes() {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
@@ -905,7 +908,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn protocol_round_trip_preserves_sequence_and_stable_ids() {
         let command = CommandEnvelope::new(
             42,

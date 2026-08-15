@@ -323,21 +323,23 @@ Verification:
 
 ### Stage 1 — Establish the cross-target test harness
 
-- [ ] Add `shoop_test_macros` and `shoop_wasm_test_support` with target-specific dependency gating.
-- [ ] Pin `wasm-bindgen-test 0.3.77` and matching Wasm tools without changing the locked production binding version.
-- [ ] Implement the shared test attribute while preserving native Tracy capture.
-- [ ] Implement explicit synchronous, async, ignored, expected-panic, and opt-in failure-canary forms.
-- [ ] Implement once-per-test-binary Node/browser configuration and reject conflicting features.
-- [ ] Move Tracy test dependencies behind non-Wasm target conditions.
-- [ ] Port `shoop_audio_protocol` plus test-support self-tests as the pilot; do not begin broad package migration yet.
-- [ ] Add Wasm dependency-tree checks that reject native backend, audio/MIDI driver, Carla, and Tracy dependencies.
+- [x] Add `shoop_test_macros` and `shoop_wasm_test_support` with target-specific dependency gating.
+- [x] Pin `wasm-bindgen-test 0.3.77` and matching Wasm tools without changing the locked production binding version.
+- [x] Implement the shared test attribute while preserving native Tracy capture.
+- [x] Implement explicit synchronous, async, ignored, expected-panic, and opt-in failure-canary forms.
+- [x] Implement once-per-test-binary Node/browser configuration and reject conflicting features.
+- [x] Move Tracy test dependencies behind non-Wasm target conditions.
+- [x] Port `shoop_audio_protocol` plus test-support self-tests as the pilot; do not begin broad package migration yet.
+- [x] Add Wasm dependency-tree checks that reject native backend, audio/MIDI driver, Carla, and Tracy dependencies.
 
 Verification:
 
-- [ ] Pilot test bodies run under native nextest, Node.js Wasm, and Chromium Wasm from the same source.
-- [ ] Unit and integration test binaries select the intended runtime exactly once.
-- [ ] Intentional failures, expected panics, ignored tests, and async completion are reported correctly in all three environments.
-- [ ] Wasm dependency isolation checks pass.
+- [x] Pilot test bodies run under native nextest, Node.js Wasm, and Chromium Wasm from the same source.
+- [x] Unit and integration test binaries select the intended runtime exactly once.
+- [x] Intentional failures, expected panics, ignored tests, and async completion are reported correctly in all three environments.
+- [x] Wasm dependency isolation checks pass.
+
+Evidence: `shoop_test_macros::shoop_test` expands synchronous and asynchronous bodies to Tracy-captured native tests and `wasm_bindgen_test` Wasm tests, including native panic checking compatible with Tracy's harness. `shoop_wasm_test_support` contains unit and integration pilots for synchronous, asynchronous, ignored, expected-panic, and opt-in failure forms. The six production-envelope protocol tests now use the shared body. Warning-denying native, Node Wasm, and headless Chromium runs pass; opt-in native, Node, and Chromium canaries fail observably; `check_wasm_test_dependencies.py` rejects native driver and Tracy dependencies from both pilot Wasm trees.
 
 ### Stage 2 — Build orchestration, asset staging, inventory, and reporting
 
