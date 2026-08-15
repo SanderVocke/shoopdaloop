@@ -50,6 +50,8 @@ pub struct LoopWidget {
     #[cfg(test)]
     test_balance_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_duplicate_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_convert_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_drag_preview_rect: Option<egui::Rect>,
@@ -302,6 +304,18 @@ impl LoopWidget {
             }
         }
         ui.separator();
+        if !state.sync {
+            let duplicate = ui.button("Duplicate");
+            #[cfg(test)]
+            {
+                self.test_duplicate_rect = Some(duplicate.rect);
+            }
+            if duplicate.clicked() {
+                result.actions.push(LoopWidgetAction::Duplicate);
+                ui.close();
+            }
+            ui.separator();
+        }
         if can_convert_to_composite(state) {
             let convert = ui.button("Convert to composite");
             #[cfg(test)]
@@ -404,6 +418,7 @@ impl LoopWidget {
         #[cfg(test)]
         {
             self.test_name_rect = None;
+            self.test_duplicate_rect = None;
             self.test_convert_rect = None;
             self.test_drag_preview_rect = None;
         }
@@ -1417,6 +1432,55 @@ mod tests {
             widget.test_name_rect.is_none(),
             "context menu stayed open after accepting the name"
         );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn context_menu_requests_duplication_for_non_sync_loops() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = LoopWidget::default();
+        let state = state();
+        let _ = context_menu_frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let duplicate = widget.test_duplicate_rect.expect("duplicate menu item");
+        let _ = context_menu_frame(
+            &context,
+            &mut widget,
+            &state,
+            1.1,
+            vec![
+                pointer(duplicate.center()),
+                egui::Event::PointerButton {
+                    pos: duplicate.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = context_menu_frame(
+            &context,
+            &mut widget,
+            &state,
+            1.2,
+            vec![
+                pointer(duplicate.center()),
+                egui::Event::PointerButton {
+                    pos: duplicate.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert_eq!(response.actions, [LoopWidgetAction::Duplicate]);
+
+        widget.test_duplicate_rect = None;
+        let sync = LoopState {
+            sync: true,
+            ..state
+        };
+        let _ = context_menu_frame(&context, &mut widget, &sync, 2.0, Vec::new());
+        assert!(widget.test_duplicate_rect.is_none());
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
