@@ -1734,6 +1734,41 @@ impl SharedSession {
         cached
     }
 
+    fn connections_state_now(
+        &self,
+        name: &str,
+        direction: PortDirection,
+        data_type: PortDataType,
+        session_index: Option<usize>,
+    ) -> HashMap<String, bool> {
+        let key = (name.to_string(), direction as u32, data_type as u32);
+        let request = ConnectionCacheRequest {
+            name: name.to_string(),
+            direction,
+            data_type,
+            session_index,
+        };
+        let state = if let Some(jack) = self.jack() {
+            let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
+            jack_connections_state_locked(&jack, name, direction, data_type)
+        } else if let Some(external) = self.external() {
+            let external = external.lock().unwrap_or_else(|e| e.into_inner());
+            dummy_connections_state_locked(&external, &request)
+        } else {
+            HashMap::new()
+        };
+        let mut cache = self
+            .connection_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        cache.requests.insert(key.clone(), request);
+        cache.states.insert(key, state.clone());
+        cache.last_refresh = Instant::now();
+        cache.refresh_in_flight = false;
+        cache.generation = cache.generation.wrapping_add(1);
+        state
+    }
+
     fn invalidate_connection_cache(&self) {
         let mut cache = self
             .connection_cache
@@ -1829,6 +1864,30 @@ fn jack_connections_state_locked(
         .collect()
 }
 
+fn dummy_connections_state_locked(
+    external: &engine::DummyExternalConnections,
+    request: &ConnectionCacheRequest,
+) -> HashMap<String, bool> {
+    let connected = request
+        .session_index
+        .map(|idx| external.connection_status_of(compat_port_id(idx)))
+        .unwrap_or_default();
+    let mut state = HashMap::new();
+    if let Ok(ports) = external.find_external_ports(
+        None,
+        opposite_direction(request.direction).into(),
+        request.data_type.into(),
+    ) {
+        for port in ports {
+            state.insert(
+                port.name.clone(),
+                *connected.get(&port.name).unwrap_or(&false),
+            );
+        }
+    }
+    state
+}
+
 fn refresh_connection_cache(
     cache: Arc<Mutex<ConnectionCache>>,
     jack: Option<Arc<Mutex<JackBackend>>>,
@@ -1865,24 +1924,10 @@ fn refresh_connection_cache(
     } else if let Some(external) = external {
         let external = external.lock().unwrap_or_else(|e| e.into_inner());
         for (key, request) in &requests {
-            let connected = request
-                .session_index
-                .map(|idx| external.connection_status_of(compat_port_id(idx)))
-                .unwrap_or_default();
-            let mut state = HashMap::new();
-            if let Ok(ports) = external.find_external_ports(
-                None,
-                opposite_direction(request.direction).into(),
-                request.data_type.into(),
-            ) {
-                for port in ports {
-                    state.insert(
-                        port.name.clone(),
-                        *connected.get(&port.name).unwrap_or(&false),
-                    );
-                }
-            }
-            states.insert(key.clone(), state);
+            states.insert(
+                key.clone(),
+                dummy_connections_state_locked(&external, request),
+            );
         }
     }
     let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
@@ -5433,6 +5478,14 @@ impl AudioPort {
             self.control.ready_id().map(ObjectIdentity::index),
         )
     }
+    pub fn get_connections_state_now(&self) -> HashMap<String, bool> {
+        self.shared.connections_state_now(
+            &self.name,
+            self.direction,
+            PortDataType::Audio,
+            self.control.ready_id().map(ObjectIdentity::index),
+        )
+    }
     pub fn connect_external_port(&self, name: &str) {
         self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
@@ -5756,6 +5809,14 @@ impl MidiPort {
     }
     pub fn get_connections_state(&self) -> HashMap<String, bool> {
         self.shared.connections_state(
+            &self.name,
+            self.direction,
+            PortDataType::Midi,
+            self.control.ready_id().map(ObjectIdentity::index),
+        )
+    }
+    pub fn get_connections_state_now(&self) -> HashMap<String, bool> {
+        self.shared.connections_state_now(
             &self.name,
             self.direction,
             PortDataType::Midi,
@@ -7290,6 +7351,56 @@ mod tests {
             commands_before
         );
         sess.shared.return_engine(engine);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn authoritative_connection_state_bypasses_and_replaces_stale_cache() {
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        driver
+            .start(&AudioDriverSettings::Dummy(DummyAudioDriverSettings {
+                client_name: "authoritative-connections".to_string(),
+                sample_rate: 48_000,
+                buffer_size: 128,
+            }))
+            .expect("start driver");
+        driver.dummy_add_external_mock_port(
+            "system:playback",
+            PortDirection::Input as u32,
+            PortDataType::Audio as u32,
+        );
+        let sess = BackendSession::new().expect("session");
+        sess.set_audio_driver(&driver).expect("attach driver");
+        let port = AudioPort::new_driver_port(
+            &sess,
+            &driver,
+            "authoritative-output",
+            &PortDirection::Output,
+            0,
+        )
+        .expect("port");
+        sess.wait_for_command(port.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("port creation");
+        port.connect_external_port("system:playback");
+        port.shared.set_cached_connection(
+            &port.name,
+            port.direction,
+            PortDataType::Audio,
+            "system:playback",
+            false,
+        );
+
+        assert_eq!(
+            port.get_connections_state().get("system:playback"),
+            Some(&false)
+        );
+        assert_eq!(
+            port.get_connections_state_now().get("system:playback"),
+            Some(&true)
+        );
+        assert_eq!(
+            port.get_connections_state().get("system:playback"),
+            Some(&true)
+        );
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

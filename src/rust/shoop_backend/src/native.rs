@@ -189,6 +189,38 @@ impl NativePortHandle {
         }
     }
 
+    fn connections_now(&self) -> std::collections::HashMap<String, bool> {
+        match self {
+            Self::Audio(port) => port.get_connections_state_now(),
+            Self::Midi(port) => port.get_connections_state_now(),
+        }
+    }
+
+    fn wait_ready(&self, session: &BackendSession) -> Result<()> {
+        let sequence = match self {
+            Self::Audio(port) => port.creation_sequence(),
+            Self::Midi(port) => port.creation_sequence(),
+        };
+        session.wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        let (lifecycle, error, kind) = match self {
+            Self::Audio(port) => (port.lifecycle(), port.creation_error(), "audio"),
+            Self::Midi(port) => (port.lifecycle(), port.creation_error(), "MIDI"),
+        };
+        match lifecycle {
+            shoop_engine::app_backend::ObjectLifecycle::Ready => Ok(()),
+            shoop_engine::app_backend::ObjectLifecycle::Failed => Err(anyhow!(
+                "{kind} port creation failed: {}",
+                error.unwrap_or_else(|| "unknown error".to_owned())
+            )),
+            shoop_engine::app_backend::ObjectLifecycle::Pending => {
+                Err(anyhow!("{kind} port is still pending creation"))
+            }
+            shoop_engine::app_backend::ObjectLifecycle::Closed => {
+                Err(anyhow!("{kind} port is closed"))
+            }
+        }
+    }
+
     fn connect(&self, endpoint: &str) {
         match self {
             Self::Audio(port) => port.connect_external_port(endpoint),
@@ -629,6 +661,14 @@ impl NativeRuntime {
     }
 
     fn connection_snapshot(&self) -> BackendConnectionSnapshot {
+        self.connection_snapshot_with(false)
+    }
+
+    fn connection_snapshot_now(&self) -> BackendConnectionSnapshot {
+        self.connection_snapshot_with(true)
+    }
+
+    fn connection_snapshot_with(&self, authoritative: bool) -> BackendConnectionSnapshot {
         let mut host_ports = self
             .driver
             .find_external_ports(
@@ -661,7 +701,12 @@ impl NativeRuntime {
             .collect::<BTreeMap<_, _>>();
         let mut confirmed_links = BTreeSet::new();
         for (id, port) in &self.ports {
-            for (endpoint, connected) in port.handle.connections() {
+            let connections = if authoritative {
+                port.handle.connections_now()
+            } else {
+                port.handle.connections()
+            };
+            for (endpoint, connected) in connections {
                 host_ports
                     .entry(endpoint.clone())
                     .or_insert_with(|| BackendHostPortDescriptor {
@@ -700,7 +745,7 @@ impl NativeRuntime {
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         self.wait();
-        let connections = self.connection_snapshot();
+        let connections = self.connection_snapshot_now();
         let mut tracks = Vec::with_capacity(self.tracks.len());
         for (track_id, track) in &mut self.tracks {
             let mut loops = Vec::with_capacity(track.loops.len());
@@ -1757,23 +1802,28 @@ impl NativeRuntime {
         if !self.connection_snapshot().host_ports.contains_key(endpoint) {
             return Err(anyhow!("external port disappeared: {endpoint}"));
         }
-        // Session restoration can request the global link immediately after its
-        // driver port was queued for creation. Make the port identity visible
-        // before asking the adapter to mutate its external connections; otherwise
-        // the deferred mutation may run before creation and be silently dropped.
-        self.wait();
         let port = self
             .ports
             .get(&port_id)
             .ok_or_else(|| anyhow!("unknown native port {port_id:?}"))?;
+        port.handle.wait_ready(&self.session)?;
         if connected {
             port.handle.connect(endpoint);
         } else {
             port.handle.disconnect(endpoint);
         }
-        // JACK applies links synchronously, while dummy/CPAL adapters may queue the
-        // mutation until the next driver turn. Do not publish or capture stale truth.
         self.wait();
+        let observed = port
+            .handle
+            .connections_now()
+            .get(endpoint)
+            .copied()
+            .unwrap_or(false);
+        if observed != connected {
+            return Err(anyhow!(
+                "external port {endpoint} did not reach requested connection state {connected}"
+            ));
+        }
         self.connection_revision = self.connection_revision.wrapping_add(1);
         Ok(())
     }
