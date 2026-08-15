@@ -742,6 +742,7 @@ pub trait Backend {
         }
     }
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation>;
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()>;
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId>;
     fn set_track_control(
         &mut self,
@@ -3445,6 +3446,49 @@ impl Backend for EngineBackend {
         })
     }
 
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        let Some(track) = self.tracks.remove(&track_id) else {
+            return Ok(());
+        };
+        for loop_id in &track.loops {
+            if let Some(engine_loop) = self.loops.remove(loop_id) {
+                self.session.remove_loop(engine_loop)?;
+            }
+            self.loop_channels.remove(loop_id);
+        }
+        for port in track
+            .audio_inputs
+            .iter()
+            .chain(&track.audio_outputs)
+            .chain(&track.audio_sends)
+            .chain(&track.audio_returns)
+            .copied()
+            .chain(track.midi_input)
+            .chain(track.midi_output)
+        {
+            self.session.remove_port(port)?;
+        }
+        self.session.remove_processor(&track.port_name_base);
+        for port_id in &track.ports {
+            self.desired_web_midi_connections
+                .retain(|(candidate, _)| candidate != port_id);
+            if let Some(port) = self.connection_ports.remove(port_id) {
+                for endpoint in self
+                    .external_connections
+                    .connection_status_of(port.registry_id)
+                    .keys()
+                {
+                    let _ = self
+                        .external_connections
+                        .disconnect(port.registry_id, endpoint);
+                }
+            }
+        }
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        self.apply_graph_changes()?;
+        Ok(())
+    }
+
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
         let loop_id = self.create_track_loop(track_id)?;
         self.apply_graph_changes()?;
@@ -4698,6 +4742,7 @@ pub enum FakeOperation {
     ),
     RemoveComposite(BackendCompositeId),
     CreateTrack(BackendTrackId),
+    RemoveTrack(BackendTrackId),
     AddTrackLoop(BackendTrackId, BackendLoopId),
     SetTrackControl(BackendTrackId, BackendTrackControl),
     SetLoopGain(BackendLoopId, f32),
@@ -5498,6 +5543,38 @@ impl Backend for FakeBackend {
             loops,
             ports,
         })
+    }
+
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        let Some(track) = self.tracks.remove(&track_id) else {
+            return Ok(());
+        };
+        for loop_id in track.loops {
+            self.loops.remove(&loop_id);
+            self.loop_content.remove(&loop_id);
+            self.sync_sources.remove(&loop_id);
+            for source in self.sync_sources.values_mut() {
+                if *source == Some(loop_id) {
+                    *source = None;
+                }
+            }
+        }
+        self.failed_midi_input_tracks.remove(&track_id);
+        self.connections.with_state(|state| {
+            for port_id in track.ports {
+                state.ports.remove(&port_id);
+                state
+                    .connected
+                    .retain(|(candidate, _)| *candidate != port_id);
+                state
+                    .pending
+                    .retain(|(candidate, _, _)| *candidate != port_id);
+                state.failures.retain(|failure| failure.port_id != port_id);
+            }
+            state.revision = state.revision.wrapping_add(1);
+        });
+        self.operations.push(FakeOperation::RemoveTrack(track_id));
+        Ok(())
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {

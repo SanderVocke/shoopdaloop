@@ -1625,6 +1625,11 @@ impl Session {
         }
     }
 
+    pub fn remove_processor(&mut self, title: &str) {
+        self.processors.retain(|route| route.title != title);
+        self.note_graph_change();
+    }
+
     pub fn tiny_synth_fx_processor_mut(
         &mut self,
         title: &str,

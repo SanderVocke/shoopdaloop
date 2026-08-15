@@ -353,6 +353,42 @@ impl NativeRuntime {
         self.driver.wait_process();
     }
 
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        let Some(track) = self.tracks.remove(&track_id) else {
+            return Ok(());
+        };
+        for loop_id in &track.loops {
+            if let Some(loop_) = self.loops.remove(loop_id) {
+                self.session.remove_loop(&loop_.handle)?;
+            }
+        }
+        if let Some(fx) = &track.fx {
+            self.session.remove_fx_chain(&fx.chain)?;
+        } else {
+            self.session.remove_processor(&track.port_name_base)?;
+        }
+        for port_id in &track.ports {
+            let Some(port) = self.ports.remove(port_id) else {
+                continue;
+            };
+            match port.handle {
+                NativePortHandle::Audio(port) => {
+                    self.driver.unregister_audio_port(&port)?;
+                    self.session.remove_audio_port(&port)?;
+                }
+                NativePortHandle::Midi(port) => {
+                    self.driver.unregister_midi_port(&port)?;
+                    self.session.remove_midi_port(&port)?;
+                }
+            }
+        }
+        self.connection_failures
+            .retain(|failure| !track.ports.contains(&failure.port_id));
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        self.wait();
+        Ok(())
+    }
+
     fn composite_target_identity(
         &self,
         target: BackendCompositeTarget,
@@ -2063,6 +2099,10 @@ impl Backend for NativeBackend {
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
         self.runtime_mut()?.create_direct_track(request)
+    }
+
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        self.runtime_mut()?.remove_track(track_id)
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
@@ -3996,6 +4036,52 @@ mod tests {
         assert!(restored.capture_session().unwrap().tracks[0]
             .tiny_synth_midi_cc_assignments
             .is_empty());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn native_track_removal_releases_ports_for_same_name_recreation() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        let request = DirectTrackRequest {
+            port_name_base: "reusable_native".to_owned(),
+            audio_channels: 2,
+            midi: true,
+            initial_loops: 2,
+        };
+        let first = backend.create_direct_track(request.clone()).unwrap();
+        let first_names = first
+            .ports
+            .iter()
+            .map(|port| port.name.clone())
+            .collect::<Vec<_>>();
+        backend.remove_track(first.track_id).unwrap();
+        let removed = backend.poll().unwrap();
+        assert!(!removed.tracks.contains_key(&first.track_id));
+        assert!(first
+            .loops
+            .iter()
+            .all(|loop_id| !removed.loops.contains_key(loop_id)));
+        assert!(first
+            .ports
+            .iter()
+            .all(|port| !removed.connections.application_ports.contains_key(&port.id)));
+
+        let recreated = backend.create_direct_track(request).unwrap();
+        assert_eq!(
+            recreated
+                .ports
+                .iter()
+                .map(|port| port.name.clone())
+                .collect::<Vec<_>>(),
+            first_names
+        );
+        assert!(recreated
+            .ports
+            .iter()
+            .all(|port| first.ports.iter().all(|old| old.id != port.id)));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

@@ -270,6 +270,12 @@ impl WorkletHost {
                 }
                 Ok(Event::Ack)
             }
+            Command::RemoveTrack { track_id } => {
+                self.backend
+                    .remove_track(BackendTrackId::from_raw(track_id))
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::AddLoop {
                 track_id,
                 expected_loop_id,
@@ -1203,6 +1209,77 @@ mod tests {
     fn command(host: &mut WorkletHost, sequence: u64, command: Command) -> EventEnvelope {
         let json = serde_json::to_vec(&CommandEnvelope::new(sequence, command)).unwrap();
         serde_json::from_str(host.handle_json(&json)).unwrap()
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn worklet_removes_and_recreates_same_named_track_ports() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let create = |expected_track_id, expected_loop_id| Command::CreateTrack {
+            expected_track_id,
+            expected_loop_ids: vec![expected_loop_id],
+            port_name_base: "reusable".to_owned(),
+            topology: WireTrackTopology::Direct {
+                audio_channels: 1,
+                midi: true,
+            },
+        };
+        assert!(matches!(
+            command(&mut host, 1, create(1, 1)).event,
+            Event::Ack
+        ));
+        let Event::Snapshot(first) = command(&mut host, 2, Command::Poll).event else {
+            panic!("expected first snapshot");
+        };
+        let first_ports = first
+            .application_ports
+            .iter()
+            .filter(|port| matches!(port.owner, WireApplicationPortOwner::Track))
+            .map(|port| (port.id, port.name.clone()))
+            .collect::<Vec<_>>();
+
+        assert!(matches!(
+            command(&mut host, 3, Command::RemoveTrack { track_id: 1 }).event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 4, create(2, 2)).event,
+            Event::Ack
+        ));
+        let Event::Snapshot(recreated) = command(&mut host, 5, Command::Poll).event else {
+            panic!("expected recreated snapshot");
+        };
+        assert_eq!(
+            recreated
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            [2]
+        );
+        assert_eq!(
+            recreated
+                .loops
+                .iter()
+                .map(|loop_| loop_.id)
+                .collect::<Vec<_>>(),
+            [2]
+        );
+        let recreated_ports = recreated
+            .application_ports
+            .iter()
+            .filter(|port| matches!(port.owner, WireApplicationPortOwner::Track))
+            .map(|port| (port.id, port.name.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            recreated_ports
+                .iter()
+                .map(|(_, name)| name)
+                .collect::<Vec<_>>(),
+            first_ports.iter().map(|(_, name)| name).collect::<Vec<_>>()
+        );
+        assert!(recreated_ports
+            .iter()
+            .all(|(id, _)| first_ports.iter().all(|(old_id, _)| old_id != id)));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

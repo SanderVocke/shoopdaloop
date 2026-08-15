@@ -54,6 +54,8 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_connections_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_delete_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_fx_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_drop_duplicate_rect: Option<egui::Rect>,
@@ -88,6 +90,8 @@ impl Default for TrackWidget {
             test_options_rect: None,
             #[cfg(test)]
             test_connections_rect: None,
+            #[cfg(test)]
+            test_delete_rect: None,
             #[cfg(test)]
             test_fx_rect: None,
             #[cfg(test)]
@@ -552,7 +556,15 @@ impl TrackWidget {
                         ui.close();
                     }
                     if !state.is_sync {
-                        ui.add_enabled(false, egui::Button::new("Delete Track"));
+                        let delete = ui.button("Delete Track");
+                        #[cfg(test)]
+                        {
+                            self.test_delete_rect = Some(delete.rect);
+                        }
+                        if delete.clicked() {
+                            result.actions.push(TrackWidgetAction::Remove);
+                            ui.close();
+                        }
                     }
                 });
                 #[cfg(test)]
@@ -905,6 +917,42 @@ mod tests {
         let mut direct_widget = TrackWidget::default();
         let _ = frame(&context, &mut direct_widget, &direct, Vec::new());
         assert!(direct_widget.test_fx_rect.is_none());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn track_options_menu_requests_deletion_for_main_tracks_only() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackState {
+            id: TrackId::from_raw(2),
+            name: "Track".to_owned(),
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let options = widget.test_options_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, options)
+            .actions
+            .is_empty());
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let delete = widget.test_delete_rect.unwrap().center();
+        assert_eq!(
+            click(&context, &mut widget, &state, delete).actions,
+            [TrackWidgetAction::Remove]
+        );
+
+        let sync = TrackState {
+            id: TrackId::from_raw(1),
+            name: "Sync".to_owned(),
+            is_sync: true,
+            ..Default::default()
+        };
+        let mut sync_widget = TrackWidget::default();
+        let _ = frame(&context, &mut sync_widget, &sync, Vec::new());
+        let options = sync_widget.test_options_rect.unwrap().center();
+        let _ = click(&context, &mut sync_widget, &sync, options);
+        let _ = frame(&context, &mut sync_widget, &sync, Vec::new());
+        assert!(sync_widget.test_delete_rect.is_none());
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
