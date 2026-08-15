@@ -7,6 +7,10 @@ fn emit_shoop_marker(marker: &str) {
     shoop_tracing::set_tracing_enabled(true);
     let span = shoop_tracing::realtime_span!("shoop.nextest_capture.smoke.zone");
     assert!(span.entered_tracy());
+    let tracing_span = tracing::info_span!("shoop.nextest_capture.smoke.tracing_span");
+    let _entered = tracing_span.enter();
+    tracing::info!(message = "shoop.nextest_capture.smoke.tracing_event");
+    log::info!("shoop.nextest_capture.smoke.log_event");
     client.message(marker, 0);
     drop(span);
     shoop_tracing::set_tracing_enabled(false);
