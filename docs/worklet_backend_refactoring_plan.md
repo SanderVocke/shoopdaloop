@@ -235,19 +235,21 @@ Stages are sequential unless explicitly noted. Each stage must preserve a builda
 
 ### Stage 0 — Baseline behavior and contracts
 
-- [ ] Record current browser physical-audio and browser offline ownership diagrams.
-- [ ] Inventory remote backend commands, events, durable journal rules, ephemeral commands, transfer state, optimistic mutations, and error paths.
-- [ ] Inventory all direct sharing between browser driver code and transport internals.
-- [ ] Record current startup, restart, shutdown, permission, offline pacing, session transfer, track MIDI, and presentation behavior.
-- [ ] Add or strengthen characterization tests for protocol ordering, journal replay, stable IDs, chunk transfers, rapid controls, driver restart, stale generations, and offline processing.
-- [ ] Record current native, web build, package, and smoke gates and representative timing.
-- [ ] Decide and document the initial public types that move into the new crate without changing behavior.
+- [x] Record current browser physical-audio and browser offline ownership diagrams.
+- [x] Inventory remote backend commands, events, durable journal rules, ephemeral commands, transfer state, optimistic mutations, and error paths.
+- [x] Inventory all direct sharing between browser driver code and transport internals.
+- [x] Record current startup, restart, shutdown, permission, offline pacing, session transfer, track MIDI, and presentation behavior.
+- [x] Add or strengthen characterization tests for protocol ordering, journal replay, stable IDs, chunk transfers, rapid controls, driver restart, stale generations, and offline processing.
+- [x] Record current native, web build, package, and smoke gates and representative timing.
+- [x] Decide and document the initial public types that move into the new crate without changing behavior.
 
 Verification:
 
-- [ ] Characterization tests pass before extraction begins.
-- [ ] Every current browser transport responsibility has a destination component in the target architecture.
-- [ ] No known behavior is left dependent on an undocumented shared mutable field.
+- [x] Characterization tests pass before extraction begins.
+- [x] Every current browser transport responsibility has a destination component in the target architecture.
+- [x] No known behavior is left dependent on an undocumented shared mutable field.
+
+Evidence: [`worklet_backend_baseline.md`](worklet_backend_baseline.md) records the diagrams, complete responsibility/protocol/state/lifecycle inventory, destination map, gates, timings, and extraction surface. The protocol, backend, and worklet characterization suites pass, including an exact production-envelope byte contract added before extraction.
 
 ### Stage 1 — Create the platform-neutral remote client crate
 
