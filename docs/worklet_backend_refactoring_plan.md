@@ -509,18 +509,20 @@ Evidence: source searches find no old browser backend alias, browser direct-dumm
 
 ### Stage 14 — Final end-to-end validation
 
-- [ ] Run formatting checks.
-- [ ] Run warning-denying native workspace builds.
-- [ ] Build application and worklet packages for `wasm32-unknown-unknown` in debug and release.
-- [ ] Run the complete native Rust suite with required features and backend policy.
-- [ ] Run remote client, transport, mutation, desired-state, engine, raw host bridge, physical driver, Worker driver, offline, restart, and multi-instance suites.
-- [ ] Run native driver switching and Carla verification.
-- [ ] Verify hosted and self-contained physical Web Audio artifacts.
-- [ ] Verify hosted and self-contained Worker offline artifacts.
-- [ ] Verify microphone, output-only, permission denial/retry, actual AudioWorklet callbacks, offline realtime pacing, explicit dummy processing, cooperative free-running processing, Web MIDI, session replacement, and clean shutdown.
-- [ ] Inspect application, remote client, physical driver, Worker, and worklet dependency trees.
-- [ ] Run tracing inventory checks and realtime allocation/lock gates.
-- [ ] Re-run restart and multi-instance stress from a clean checkout.
-- [ ] Compare application-visible behavior and runtime diagnostics with the Stage 0 baseline and document deliberate differences.
+- [x] Run formatting checks.
+- [x] Run warning-denying native workspace builds.
+- [x] Build application and worklet packages for `wasm32-unknown-unknown` in debug and release.
+- [x] Run the complete native Rust suite with required features and backend policy.
+- [x] Run remote client, transport, mutation, desired-state, engine, raw host bridge, physical driver, Worker driver, offline, restart, and multi-instance suites.
+- [x] Run native driver switching and Carla verification.
+- [x] Verify hosted and self-contained physical Web Audio artifacts.
+- [x] Verify hosted and self-contained Worker offline artifacts.
+- [x] Verify microphone, output-only, permission denial/retry, actual AudioWorklet callbacks, offline realtime pacing, explicit dummy processing, cooperative free-running processing, Web MIDI, session replacement, and clean shutdown.
+- [x] Inspect application, remote client, physical driver, Worker, and worklet dependency trees.
+- [x] Run tracing inventory checks and realtime allocation/lock gates.
+- [x] Re-run restart and multi-instance stress from a clean checkout.
+- [x] Compare application-visible behavior and runtime diagnostics with the Stage 0 baseline and document deliberate differences.
+
+Final evidence: formatting and warning-denying target checks pass. Native validation runs the complete nextest workspace suite plus all 13 `shoop_audio_worklet` library tests; driver switching, JACK/Carla, no-allocation, and lock gates are included. Warning-denying Trunk debug and release builds pass for the application and import-free worklet. The actual-artifact raw-host contract and package verifier pass. Local Chrome passes hosted microphone, output-only, denial/retry, lifecycle, Web MIDI/restart, Worker all-mode/multi-instance contracts, and hosted/self-contained physical and Worker artifacts. Dependency isolation and the 125-module tracing inventory pass. Clean GitHub Linux, macOS, Windows, WebAssembly, coverage, docs, browser, Firefox, and CodeQL jobs provide the authoritative platform matrix. Deliberate baseline differences are documented in `worklet_backend_baseline.md`.
 
 Final evidence must demonstrate every immutable acceptance criterion, account for any deliberate compatibility change, and show that no transitional implementation remains.
