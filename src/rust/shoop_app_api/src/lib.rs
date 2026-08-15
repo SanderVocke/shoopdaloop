@@ -1443,6 +1443,7 @@ pub enum LoopAction {
     Duplicate,
     DuplicateTo(LoopId),
     SwapWith(LoopId),
+    MoveBefore(Option<LoopId>),
 }
 
 pub type LoopWidgetAction = LoopAction;
@@ -1470,6 +1471,7 @@ pub enum TinySynthFxControl {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackAction {
     Remove,
+    MoveBefore(Option<TrackId>),
     NameChanged(String),
     OutputGainChanged(f32),
     OutputBalanceChanged(f32),
@@ -1696,6 +1698,7 @@ impl LoopAction {
             Self::Duplicate => "loop.duplicate",
             Self::DuplicateTo(_) => "loop.duplicate_to",
             Self::SwapWith(_) => "loop.swap_with",
+            Self::MoveBefore(_) => "loop.move_before",
         }
     }
 }
@@ -1727,6 +1730,7 @@ impl TrackAction {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::Remove => "track.remove",
+            Self::MoveBefore(_) => "track.move_before",
             Self::NameChanged(_) => "track.name",
             Self::OutputGainChanged(_) => "track.output_gain",
             Self::OutputBalanceChanged(_) => "track.output_balance",
