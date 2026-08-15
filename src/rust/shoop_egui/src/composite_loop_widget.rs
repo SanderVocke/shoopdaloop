@@ -1,5 +1,6 @@
 use crate::{
-    colors, AppIntent, CompositeDetailsState, CompositeEventDetailsState, LoopId, LoopMode, TrackId,
+    colors, AppIntent, CompositeDetailsState, CompositeEventDetailsState, CompositeEventId, LoopId,
+    LoopMode, TrackId,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -27,6 +28,16 @@ struct CompositeEventKey {
 
 impl From<&CompositeEventDetailsState> for CompositeEventKey {
     fn from(event: &CompositeEventDetailsState) -> Self {
+        Self {
+            playlist_index: event.playlist_index,
+            section_index: event.section_index,
+            parallel_index: event.parallel_index,
+        }
+    }
+}
+
+impl From<CompositeEventKey> for CompositeEventId {
+    fn from(event: CompositeEventKey) -> Self {
         Self {
             playlist_index: event.playlist_index,
             section_index: event.section_index,
@@ -146,6 +157,8 @@ pub struct CompositeLoopWidget {
     timeline_left: Option<f32>,
     #[cfg(test)]
     box_selection_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    delete_menu_rect: Option<egui::Rect>,
 }
 
 impl Default for CompositeLoopWidget {
@@ -175,6 +188,8 @@ impl Default for CompositeLoopWidget {
             timeline_left: None,
             #[cfg(test)]
             box_selection_rect: None,
+            #[cfg(test)]
+            delete_menu_rect: None,
         }
     }
 }
@@ -211,6 +226,7 @@ impl CompositeLoopWidget {
             self.timeline_rect = None;
             self.timeline_left = None;
             self.box_selection_rect = None;
+            self.delete_menu_rect = None;
         }
 
         let fit_width = (ui.available_width() - TRACK_LABEL_WIDTH).max(1.0);
@@ -245,31 +261,37 @@ impl CompositeLoopWidget {
             }
         });
 
+        let mut intents = Vec::new();
         let mut drop_iteration = None;
         let (_drop_zone, dropped) = ui.dnd_drop_zone::<LoopDragPayload, _>(
             egui::Frame::new().inner_margin(egui::Margin::same(3)),
             |ui| {
-                drop_iteration = self.show_timeline(ui, details);
+                drop_iteration = self.show_timeline(ui, details, &mut intents);
             },
         );
         #[cfg(test)]
         {
             self.drop_rect = Some(_drop_zone.response.rect);
         }
-        dropped
+        if let Some((payload, start_iteration)) = dropped
             .filter(|payload| payload.loop_id != loop_id)
             .zip(drop_iteration)
-            .map(|(payload, start_iteration)| {
-                vec![AppIntent::ComposeLoopAt {
-                    target_loop_id: loop_id,
-                    source_loop_id: payload.loop_id,
-                    start_iteration,
-                }]
-            })
-            .unwrap_or_default()
+        {
+            intents.push(AppIntent::ComposeLoopAt {
+                target_loop_id: loop_id,
+                source_loop_id: payload.loop_id,
+                start_iteration,
+            });
+        }
+        intents
     }
 
-    fn show_timeline(&mut self, ui: &mut egui::Ui, details: &CompositeDetailsState) -> Option<u64> {
+    fn show_timeline(
+        &mut self,
+        ui: &mut egui::Ui,
+        details: &CompositeDetailsState,
+        intents: &mut Vec<AppIntent>,
+    ) -> Option<u64> {
         let packed = pack_swimlanes(details);
         let timeline_cycles = timeline_cycles(details);
         let visible_timeline_width = (ui.available_width() - TRACK_LABEL_WIDTH).max(1.0);
@@ -339,6 +361,8 @@ impl CompositeLoopWidget {
 
                 let mut event_rects = Vec::with_capacity(details.events.len());
                 let mut clicked_event = None;
+                let mut context_event = None;
+                let mut delete_requested = false;
                 let mut row_top = rect.top() + HEADER_HEIGHT + TRACK_GAP;
                 for (track_state, track_layout) in details.tracks.iter().zip(&packed) {
                     let height = track_height(track_layout.lane_count);
@@ -386,21 +410,34 @@ impl CompositeLoopWidget {
                                 ),
                                 egui::StrokeKind::Inside,
                             );
-                            if event_rect.intersects(timeline_clip_rect)
-                                && ui
-                                    .interact(
-                                        event_rect.intersect(timeline_clip_rect),
-                                        ui.id().with((
-                                            "composite_event",
-                                            event_key.playlist_index,
-                                            event_key.section_index,
-                                            event_key.parallel_index,
-                                        )),
-                                        egui::Sense::click(),
-                                    )
-                                    .clicked()
-                            {
-                                clicked_event = Some(event_key);
+                            if event_rect.intersects(timeline_clip_rect) {
+                                let response = ui.interact(
+                                    event_rect.intersect(timeline_clip_rect),
+                                    ui.id().with((
+                                        "composite_event",
+                                        event_key.playlist_index,
+                                        event_key.section_index,
+                                        event_key.parallel_index,
+                                    )),
+                                    egui::Sense::click(),
+                                );
+                                if response.clicked() {
+                                    clicked_event = Some(event_key);
+                                }
+                                if response.secondary_clicked() {
+                                    context_event = Some(event_key);
+                                }
+                                response.context_menu(|ui| {
+                                    let delete = ui.button("Delete");
+                                    #[cfg(test)]
+                                    {
+                                        self.delete_menu_rect = Some(delete.rect);
+                                    }
+                                    if delete.clicked() {
+                                        delete_requested = true;
+                                        ui.close();
+                                    }
+                                });
                             }
                             #[cfg(test)]
                             if selected {
@@ -453,6 +490,28 @@ impl CompositeLoopWidget {
                         self.selected_events.clear();
                         self.selected_events.insert(event);
                     }
+                    ui.ctx().request_repaint();
+                }
+                if let Some(event) = context_event {
+                    if !self.selected_events.contains(&event) {
+                        self.selected_events.clear();
+                        self.selected_events.insert(event);
+                    }
+                    ui.ctx().request_repaint();
+                }
+                if !self.selected_events.is_empty()
+                    && (delete_requested || ui.input(|input| input.key_pressed(egui::Key::Delete)))
+                {
+                    intents.push(AppIntent::DeleteCompositeEvents {
+                        target_loop_id: self.loop_id,
+                        events: self
+                            .selected_events
+                            .iter()
+                            .copied()
+                            .map(CompositeEventId::from)
+                            .collect(),
+                    });
+                    self.selected_events.clear();
                     ui.ctx().request_repaint();
                 }
 
@@ -1000,6 +1059,158 @@ mod tests {
             &state,
             partial,
             egui::Modifiers::NONE,
+        );
+        assert!(widget.selected_events.is_empty());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn delete_key_emits_selected_event_ids_and_clears_the_editor_selection() {
+        let context = egui::Context::default();
+        let loop_id = LoopId::from_raw(8);
+        let state = details(vec![
+            keyed_event(0, 1, 1, 20, 50),
+            keyed_event(1, 2, 1, 60, 90),
+        ]);
+        let mut widget = CompositeLoopWidget::default();
+        let _ = widget_frame(&context, &mut widget, loop_id, &state, Vec::new());
+        let event_rects = widget
+            .rendered_events
+            .iter()
+            .map(|event| event.1)
+            .collect::<Vec<_>>();
+        click(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            event_rects[0].center(),
+            egui::Modifiers::NONE,
+        );
+        click(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            event_rects[1].center(),
+            egui::Modifiers::CTRL,
+        );
+
+        let intents = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            vec![egui::Event::Key {
+                key: egui::Key::Delete,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            intents,
+            [AppIntent::DeleteCompositeEvents {
+                target_loop_id: loop_id,
+                events: vec![
+                    CompositeEventId {
+                        playlist_index: 0,
+                        section_index: 0,
+                        parallel_index: 0,
+                    },
+                    CompositeEventId {
+                        playlist_index: 1,
+                        section_index: 0,
+                        parallel_index: 0,
+                    },
+                ],
+            }]
+        );
+        assert!(widget.selected_events.is_empty());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn event_context_menu_selects_the_block_and_emits_delete() {
+        let context = egui::Context::default();
+        let loop_id = LoopId::from_raw(8);
+        let state = details(vec![keyed_event(3, 1, 1, 20, 50)]);
+        let mut widget = CompositeLoopWidget::default();
+        let _ = widget_frame(&context, &mut widget, loop_id, &state, Vec::new());
+        let event_center = widget.rendered_events[0].1.center();
+
+        let _ = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            vec![
+                egui::Event::PointerMoved(event_center),
+                egui::Event::PointerButton {
+                    pos: event_center,
+                    button: egui::PointerButton::Secondary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let _ = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: event_center,
+                button: egui::PointerButton::Secondary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(widget.selected_events.len(), 1);
+        let _ = widget_frame(&context, &mut widget, loop_id, &state, Vec::new());
+        let delete_center = widget.delete_menu_rect.unwrap().center();
+        let _ = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            vec![
+                egui::Event::PointerMoved(delete_center),
+                egui::Event::PointerButton {
+                    pos: delete_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(widget
+            .delete_menu_rect
+            .is_some_and(|rect| rect.contains(delete_center)));
+        let intents = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            vec![
+                egui::Event::PointerMoved(delete_center),
+                egui::Event::PointerButton {
+                    pos: delete_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert_eq!(
+            intents,
+            [AppIntent::DeleteCompositeEvents {
+                target_loop_id: loop_id,
+                events: vec![CompositeEventId {
+                    playlist_index: 3,
+                    section_index: 0,
+                    parallel_index: 0,
+                }],
+            }]
         );
         assert!(widget.selected_events.is_empty());
     }
