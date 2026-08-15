@@ -127,7 +127,9 @@ python3 package_artifacts.py web \
   --profile debug --dist dist --output-dir ../../../artifacts
 ```
 
-Native CI outputs are unsigned application archives rather than installers. They include the normalized, manifest-verified Carla runtime component; `scripts/carla_runtime.py` creates and verifies that component from the pinned upstream payload. The hosted web archive supports physical browser audio and contains the complete UI and AudioWorklet assets. The separately generated profile-named HTML embeds those assets and attempts physical output or microphone audio when directly opened from `file:`. Open it with `?offline=1` to explicitly select the elapsed-time dummy engine instead.
+Native CI outputs are unsigned application archives rather than installers. They include the normalized, manifest-verified Carla runtime component; `scripts/carla_runtime.py` creates and verifies that component from the pinned upstream payload. The hosted web archive supports physical browser audio and contains the complete UI, shared raw Wasm host bridge, AudioWorklet, and Worker assets. The separately generated profile-named HTML embeds the same assets and attempts physical output or microphone audio when directly opened from `file:`. Open it with `?offline=1` (or `?worker=1`) to select the remote Worker dummy instead. It runs the same import-free Wasm engine and production protocol/client as the AudioWorklet, uses 48 kHz/128-frame realtime-paced quanta, and requests no physical audio permission.
+
+`raw_wasm_host.js` is the single owner of module instantiation, ABI buffers, command/response bytes, process calls, memory-view recovery, and destruction. The AudioWorklet adapter supplies physical callbacks. The Worker adapter has isolated engine/timer/port ownership and supports realtime-paced production operation plus explicit and cooperative modes only through an explicitly transferred fixture-control port. Fixture batches and realtime catch-up are bounded and yield to command/shutdown delivery.
 
 Generated `dist`, worklet, staging, and artifact files are not committed.
 
@@ -160,11 +162,12 @@ WEB_MIDI=1 WEB_MIDI_DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
 BROWSER_SIZE=360,200 node --experimental-websocket browser_smoke.mjs
 DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
 LIFECYCLE=1 node --experimental-websocket browser_smoke.mjs
-SATURATE=1 node --experimental-websocket browser_smoke.mjs
 STRESS=1 node --experimental-websocket browser_smoke.mjs
 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
+WORKER_ENGINE=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
+SELF_CONTAINED=1 WORKER_ENGINE=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 DIRECT_FILE_MIC=1 node --experimental-websocket browser_smoke.mjs
 SETTINGS_ONLY=1 node --experimental-websocket browser_smoke.mjs
 SETTINGS_ONLY=1 SETTINGS_UNAVAILABLE=1 node --experimental-websocket browser_smoke.mjs
@@ -173,7 +176,7 @@ xvfb-run -a python3 browser_firefox_smoke.py
 STRESS=1 xvfb-run -a python3 browser_firefox_smoke.py
 ```
 
-The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The ordinary hosted tests open and paint the Dry + Wet form with the cross-target Tiny Synth/FX processor catalog, open the global connection surface, prove real audio route mutation, record/playback, session replacement, transactional External/Carla rejection with retained media/callback progress, source-bearing Lua, and keyboard control. `WEB_MIDI=1` installs a deterministic browser API before startup while retaining the production adapter: it proves explicit SysEx permission, canonical endpoint publication, user-managed track and owner-managed APC links, exact input recording/control fanout, playback/control output, refusal and saturation counters, hotplug reconnect, worklet restart, and continuing callbacks. Its denial mode proves retry. Stress and lifecycle modes retain the audio/storage gates. Settings modes still cover APC's healthy zero-host state before MIDI permission, Scripts UI, persistence failures, and version rejection. Hosted and self-contained workflows execute the same production assets without a query-selected fake backend.
+The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The ordinary hosted tests open and paint the Dry + Wet form with the cross-target Tiny Synth/FX processor catalog, open the global connection surface, prove real audio route mutation, record/playback, session replacement, transactional External/Carla rejection with retained media/callback progress, source-bearing Lua, and keyboard control. `WEB_MIDI=1` installs a deterministic browser API before startup while retaining the production adapter: it proves explicit SysEx permission, canonical endpoint publication, user-managed track and owner-managed APC links, exact input recording/control fanout, playback/control output, refusal and saturation counters, hotplug reconnect, worklet restart, and continuing callbacks. Its denial mode proves retry. Stress and lifecycle modes retain the audio/storage gates. Settings modes still cover APC's healthy zero-host state before MIDI permission, Scripts UI, persistence failures, and version rejection. Hosted and self-contained workflows execute the same production assets. Offline tests prove the Worker-backed remote path; the hosted Worker fixture additionally verifies explicit, cooperative, realtime-paced, pause/resume/shutdown, bounded audio capture, repeated lifecycle, and multi-instance isolation contracts.
 
 Compiler-only checks from the repository root:
 

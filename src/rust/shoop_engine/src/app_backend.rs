@@ -1596,24 +1596,24 @@ impl SharedSession {
     /// ~90 times a second kept the command queue permanently busy with questions whose answer
     /// was almost always "nothing to do" -- which starved every other control operation.
     ///
-    /// A published `true` is trusted at once. A published `false` is only trusted when the
-    /// queue is empty as well: a mutation that is queued but not yet applied has not dirtied
-    /// the graph *yet*, and taking `false` at face value there would drop the rebuild on the
-    /// floor with nothing left to arm another window. So a non-empty queue re-arms and looks
-    /// again, which is bounded by the queue draining.
+    /// A published `true` is trusted at once. A published `false` is only trusted when no
+    /// command is queued or being applied: a mutation does not publish graph staleness until
+    /// its complete command batch has finished. Pending work re-arms another bounded window.
     fn graph_may_need_rebuild(&self) -> bool {
         let handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
-        if handle.stats().graph_stale.load(Ordering::Relaxed) {
-            return true;
-        }
-        if handle.n_pending() > 0 {
+        let pending = handle.n_pending() > 0;
+        let command_batch_in_flight = handle
+            .stats()
+            .command_batch_in_flight
+            .load(Ordering::Acquire);
+        if pending || command_batch_in_flight {
             drop(handle);
             if let Some(s) = self.scheduler.get() {
                 s.arm();
             }
             return false;
         }
-        false
+        handle.stats().graph_stale.load(Ordering::Relaxed)
     }
 
     /// Hands the engine to a driver that is about to start cycling it.
@@ -6741,6 +6741,29 @@ mod tests {
             .expect("engine answered")
     }
 
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn a_command_batch_removed_from_the_queue_keeps_the_graph_scheduler_armed() {
+        let sess = BackendSession::new().expect("session");
+        let scheduler = sess.shared.scheduler.get().expect("scheduler");
+        let before = scheduler.n_arms();
+        {
+            let handle = sess.shared.handle.lock().unwrap_or_else(|e| e.into_inner());
+            handle
+                .stats()
+                .command_batch_in_flight
+                .store(true, Ordering::Release);
+        }
+
+        assert!(!sess.shared.graph_may_need_rebuild());
+        assert!(scheduler.n_arms() > before);
+
+        let handle = sess.shared.handle.lock().unwrap_or_else(|e| e.into_inner());
+        handle
+            .stats()
+            .command_batch_in_flight
+            .store(false, Ordering::Release);
+    }
+
     /// The invariant `ControlGuard` exists to enforce.
     ///
     /// Connecting a channel to a port used to leave the graph dirty with nothing scheduled
@@ -7231,8 +7254,17 @@ mod tests {
             )
             .unwrap();
 
-        std::thread::sleep(Duration::from_millis(10));
-        let actual = midi.get_all_midi_data();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let actual = loop {
+            if let Ok(snapshot) = midi.try_get_current_data_snapshot() {
+                break snapshot.contiguous();
+            }
+            assert!(
+                Instant::now() < deadline,
+                "MIDI snapshot publication timed out"
+            );
+            std::thread::yield_now();
+        };
         assert_eq!(actual.len(), 2);
         assert_eq!(actual[0], MidiEvent::new(0, vec![0x90, 64, 100]));
         assert_eq!(actual[1], MidiEvent::new(3, vec![0x80, 64, 0]));

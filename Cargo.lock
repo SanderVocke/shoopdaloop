@@ -3925,6 +3925,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_worklet_client"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "shoop_app_api",
+ "shoop_audio_protocol",
+ "shoop_backend",
+ "tracy-nextest-capture",
+]
+
+[[package]]
 name = "shoopdaloop"
 version = "0.3.0"
 dependencies = [
@@ -3946,6 +3958,7 @@ dependencies = [
  "shoop_scripting",
  "shoop_session",
  "shoop_settings",
+ "shoop_worklet_client",
  "tempfile",
  "tracing",
  "tracy-nextest-capture",
@@ -4552,9 +4565,13 @@ dependencies = [
 [[package]]
 name = "tracy-nextest-capture"
 version = "0.6.0"
-source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.6.0#09837d0c25380afd3d5a4fc87f32ed7aa247e1e2"
+source = "git+https://github.com/SanderVocke/tracy-extensions?rev=8589c41352c41ff3fe5e9c44075f61bd1e63a72d#8589c41352c41ff3fe5e9c44075f61bd1e63a72d"
 dependencies = [
  "sha2 0.10.9",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+ "tracing-tracy",
  "tracy-client",
  "tracy-client-sys",
  "tracy-nextest-capture-macros",
@@ -4563,7 +4580,7 @@ dependencies = [
 [[package]]
 name = "tracy-nextest-capture-macros"
 version = "0.6.0"
-source = "git+https://github.com/SanderVocke/tracy-extensions?tag=v0.6.0#09837d0c25380afd3d5a4fc87f32ed7aa247e1e2"
+source = "git+https://github.com/SanderVocke/tracy-extensions?rev=8589c41352c41ff3fe5e9c44075f61bd1e63a72d#8589c41352c41ff3fe5e9c44075f61bd1e63a72d"
 dependencies = [
  "proc-macro2",
  "quote",

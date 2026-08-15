@@ -38,7 +38,10 @@ ROBOTO_FILES = (
 WEB_REQUIRED_FILES = (
     "index.html",
     "icon.png",
+    "raw_wasm_host.js",
     "audio_worklet.js",
+    "audio_worker.js",
+    "worker_fixture_contract.js",
     "generated/shoop_audio_worklet.wasm",
     *(f"roboto/{name}" for name in ROBOTO_FILES),
 )
