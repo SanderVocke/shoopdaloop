@@ -53,6 +53,8 @@ mod browser_audio;
 mod browser_midi;
 #[cfg(target_arch = "wasm32")]
 mod browser_preview;
+#[cfg(target_arch = "wasm32")]
+mod browser_worker;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_preview;
 mod settings;
@@ -1355,7 +1357,7 @@ fn browser_startup_scripts(
 #[cfg(target_arch = "wasm32")]
 enum BrowserRuntimeMode {
     WebAudio(browser_audio::BrowserAudioController),
-    OfflineDummy,
+    Worker(browser_worker::BrowserWorkerDriver),
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1370,36 +1372,27 @@ struct Runtime {
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
-        let offline = web_sys::window()
+        let location_search = web_sys::window()
             .and_then(|window| window.location().search().ok())
-            .is_some_and(|search| search.contains("offline=1"));
+            .unwrap_or_default();
+        let offline = location_search.contains("offline=1");
+        let worker = location_search.contains("worker=1");
         let startup_scripts = browser_startup_scripts(settings)?;
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
-        if offline {
-            let mut backend = shoop_backend::EngineBackend::new_dummy(48_000, 256)?;
-            backend.remove_all_external_mock_ports();
-            set_offline_audio_permission_presentation();
-            return Ok(Self {
-                runtime: CooperativeApplicationRuntime::start_with_scripts_and_midi(
-                    Box::new(backend),
-                    startup_scripts,
-                    midi_service,
-                )?,
-                mode: BrowserRuntimeMode::OfflineDummy,
-                midi,
-                preview_player: browser_preview::BrowserPreviewPlayer::default(),
-                applied_settings_revision: settings.revision(),
-            });
-        }
         let (backend, transport) = browser_audio::WebAudioBackend::new(midi.hub());
-        let controller = browser_audio::BrowserAudioController::new(transport)?;
+        let mode = if worker || offline {
+            set_offline_audio_permission_presentation();
+            BrowserRuntimeMode::Worker(browser_worker::BrowserWorkerDriver::new(transport)?)
+        } else {
+            BrowserRuntimeMode::WebAudio(browser_audio::BrowserAudioController::new(transport)?)
+        };
         Ok(Self {
             runtime: CooperativeApplicationRuntime::start_with_scripts_and_midi(
                 Box::new(backend),
                 startup_scripts,
                 midi_service,
             )?,
-            mode: BrowserRuntimeMode::WebAudio(controller),
+            mode,
             midi,
             preview_player: browser_preview::BrowserPreviewPlayer::default(),
             applied_settings_revision: settings.revision(),
@@ -1415,7 +1408,10 @@ impl Runtime {
                 controller.update_presentation();
                 format!("Browser audio: {:?}", controller.state())
             }
-            BrowserRuntimeMode::OfflineDummy => "Explicit offline dummy engine".to_owned(),
+            BrowserRuntimeMode::Worker(driver) => {
+                driver.update_presentation();
+                format!("Browser offline Worker engine: {:?}", driver.state())
+            }
         };
         if let Some(notification) = snapshot.notifications.first() {
             message.push_str(": ");
@@ -1499,7 +1495,7 @@ impl Runtime {
             let request_id = preview.request_id;
             let context = match &self.mode {
                 BrowserRuntimeMode::WebAudio(controller) => controller.audio_context(),
-                BrowserRuntimeMode::OfflineDummy => None,
+                BrowserRuntimeMode::Worker(_) => None,
             };
             if let Err(message) = self.preview_player.play(context, preview) {
                 let _ = self.runtime.dispatch(AppIntent::CompleteClickTrackPreview {
@@ -1516,7 +1512,13 @@ impl Runtime {
             BrowserRuntimeMode::WebAudio(controller) => {
                 controller.state() == shoop_backend::BackendDriverState::Running
             }
-            BrowserRuntimeMode::OfflineDummy => true,
+            BrowserRuntimeMode::Worker(driver) => {
+                matches!(
+                    driver.state(),
+                    shoop_backend::BackendDriverState::Running
+                        | shoop_backend::BackendDriverState::Dummy
+                )
+            }
         }
     }
 }

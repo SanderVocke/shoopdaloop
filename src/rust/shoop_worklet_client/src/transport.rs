@@ -60,8 +60,10 @@ pub struct RemoteReadiness {
 
 impl RemoteReadiness {
     pub fn is_ready(self) -> bool {
-        self.driver_state == BackendDriverState::Running
-            && self.connection == ConnectionState::Attached
+        matches!(
+            self.driver_state,
+            BackendDriverState::Running | BackendDriverState::Dummy
+        ) && self.connection == ConnectionState::Attached
             && self.protocol == ProtocolState::Negotiated
             && self.replay == ReplayState::Complete
             && self.engine == RemoteEngineState::Observed
@@ -347,7 +349,10 @@ impl TransportCore {
     }
 
     pub(crate) fn driver_state(&self) -> BackendDriverState {
-        if self.readiness.driver_state == BackendDriverState::Running && !self.readiness.is_ready()
+        if matches!(
+            self.readiness.driver_state,
+            BackendDriverState::Running | BackendDriverState::Dummy
+        ) && !self.readiness.is_ready()
         {
             BackendDriverState::Starting
         } else {

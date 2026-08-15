@@ -812,6 +812,7 @@ jobs:
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/worklet-tree.txt; then exit 1; fi
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
+          node src/rust/shoopdaloop/raw_wasm_host_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm
 
       - name: Run core hosted Web Audio workflows
         if: matrix.target == 'web' && env.ACT != 'true'
@@ -821,6 +822,7 @@ jobs:
           BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           WEB_MIDI=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          WORKER_ENGINE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           SETTINGS_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           SETTINGS_ONLY=1 SETTINGS_UNAVAILABLE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
@@ -833,6 +835,7 @@ jobs:
           SELF_CONTAINED=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           SELF_CONTAINED=1 WEB_MIDI=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           SELF_CONTAINED=1 OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          SELF_CONTAINED=1 WORKER_ENGINE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           SELF_CONTAINED=1 DIRECT_FILE_MIC=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           SELF_CONTAINED=1 SETTINGS_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 

@@ -44,7 +44,7 @@ impl shoop_worklet_client::MessageEndpoint for BrowserMessageEndpoint {
     }
 }
 
-struct BrowserControllerInner {
+struct PhysicalAudioDriverState {
     generation: u64,
     startup_started: Option<Instant>,
     transport: shoop_worklet_client::RemoteBackendControl,
@@ -59,8 +59,14 @@ struct BrowserControllerInner {
     input_mode: Option<AudioInputMode>,
 }
 
+/// Owns browser audio resources and the restricted remote transport control.
+struct BrowserPhysicalAudioDriver {
+    state: Rc<RefCell<PhysicalAudioDriverState>>,
+}
+
+/// Presentation adapter for permission actions, status text, and diagnostic hooks.
 pub struct BrowserAudioController {
-    inner: Rc<RefCell<BrowserControllerInner>>,
+    driver: BrowserPhysicalAudioDriver,
     microphone_enable_handler: Closure<dyn FnMut(WebEvent)>,
     output_enable_handler: Closure<dyn FnMut(WebEvent)>,
     suspend_handler: Closure<dyn FnMut(WebEvent)>,
@@ -73,7 +79,7 @@ pub struct BrowserAudioController {
 impl BrowserAudioController {
     pub fn new(transport: shoop_worklet_client::RemoteBackendControl) -> Result<Self> {
         let window = web_sys::window().ok_or_else(|| anyhow!("browser window is unavailable"))?;
-        let inner = Rc::new(RefCell::new(BrowserControllerInner {
+        let inner = Rc::new(RefCell::new(PhysicalAudioDriverState {
             generation: 0,
             startup_started: None,
             transport,
@@ -150,19 +156,26 @@ impl BrowserAudioController {
                 shutdown_inner(&mut inner.borrow_mut());
             }
         }) as Box<dyn FnMut(_)>);
+        let diagnostics = Object::new();
         for (name, handler) in [
-            ("shoop-test-audio-suspend", &suspend_handler),
-            ("shoop-test-audio-resume", &resume_handler),
-            ("shoop-test-audio-fail", &fail_handler),
-            ("shoop-test-audio-track-end", &track_end_handler),
-            ("shoop-test-audio-shutdown", &shutdown_handler),
+            ("suspend", &suspend_handler),
+            ("resume", &resume_handler),
+            ("fail", &fail_handler),
+            ("endTrack", &track_end_handler),
+            ("shutdown", &shutdown_handler),
         ] {
-            window
-                .add_event_listener_with_callback(name, handler.as_ref().unchecked_ref())
-                .map_err(|error| anyhow!("could not install {name} listener: {error:?}"))?;
+            Reflect::set(&diagnostics, &name.into(), handler.as_ref()).map_err(|error| {
+                anyhow!("could not install physical audio diagnostic {name}: {error:?}")
+            })?;
         }
+        Reflect::set(
+            window.as_ref(),
+            &"shoopAudioDiagnostics".into(),
+            &diagnostics,
+        )
+        .map_err(|error| anyhow!("could not publish physical audio diagnostics: {error:?}"))?;
         Ok(Self {
-            inner,
+            driver: BrowserPhysicalAudioDriver { state: inner },
             microphone_enable_handler,
             output_enable_handler,
             suspend_handler,
@@ -174,16 +187,16 @@ impl BrowserAudioController {
     }
 
     pub fn state(&self) -> BackendDriverState {
-        self.inner.borrow().transport.driver_state()
+        self.driver.state.borrow().transport.driver_state()
     }
 
     pub fn audio_context(&self) -> Option<AudioContext> {
-        self.inner.borrow().context.clone()
+        self.driver.state.borrow().context.clone()
     }
 
     pub fn update_presentation(&self) {
         let (state, generation, owned_media_tracks, input_mode) = {
-            let mut inner = self.inner.borrow_mut();
+            let mut inner = self.driver.state.borrow_mut();
             let mut state = inner.transport.driver_state();
             if matches!(
                 state,
@@ -287,13 +300,21 @@ impl BrowserAudioController {
     }
 
     pub fn shutdown(&self) {
-        shutdown_inner(&mut self.inner.borrow_mut());
+        shutdown_inner(&mut self.driver.state.borrow_mut());
     }
 }
 
 impl Drop for BrowserAudioController {
     fn drop(&mut self) {
-        let _ = (&self.microphone_enable_handler, &self.output_enable_handler);
+        let _ = (
+            &self.microphone_enable_handler,
+            &self.output_enable_handler,
+            &self.suspend_handler,
+            &self.resume_handler,
+            &self.fail_handler,
+            &self.track_end_handler,
+            &self.shutdown_handler,
+        );
         if let Ok(button) = microphone_enable_button() {
             button.set_onclick(None);
         }
@@ -301,16 +322,7 @@ impl Drop for BrowserAudioController {
             button.set_onclick(None);
         }
         if let Some(window) = web_sys::window() {
-            for (name, handler) in [
-                ("shoop-test-audio-suspend", &self.suspend_handler),
-                ("shoop-test-audio-resume", &self.resume_handler),
-                ("shoop-test-audio-fail", &self.fail_handler),
-                ("shoop-test-audio-track-end", &self.track_end_handler),
-                ("shoop-test-audio-shutdown", &self.shutdown_handler),
-            ] {
-                let _ = window
-                    .remove_event_listener_with_callback(name, handler.as_ref().unchecked_ref());
-            }
+            let _ = Reflect::delete_property(window.as_ref(), &"shoopAudioDiagnostics".into());
         }
         self.shutdown();
     }
@@ -342,7 +354,7 @@ fn set_permission_status(id: &str, status: &str) {
     }
 }
 
-fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>, input_mode: AudioInputMode) {
+fn begin_enable(inner: Rc<RefCell<PhysicalAudioDriverState>>, input_mode: AudioInputMode) {
     let (state, current_mode) = {
         let inner = inner.borrow();
         let state = inner.transport.driver_state();
@@ -455,7 +467,7 @@ fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>, input_mode: AudioInp
 }
 
 async fn start_audio_graph(
-    inner: Rc<RefCell<BrowserControllerInner>>,
+    inner: Rc<RefCell<PhysicalAudioDriverState>>,
     generation: u64,
     context: AudioContext,
     resume: js_sys::Promise,
@@ -745,7 +757,7 @@ fn stop_stream(stream: &MediaStream) {
     }
 }
 
-fn shutdown_graph(inner: &mut BrowserControllerInner) {
+fn shutdown_graph(inner: &mut PhysicalAudioDriverState) {
     inner.startup_started = None;
     if let Some(stream) = inner.stream.take() {
         for value in stream.get_tracks().iter() {
@@ -776,7 +788,7 @@ fn shutdown_graph(inner: &mut BrowserControllerInner) {
     inner.track_ended_handlers.clear();
 }
 
-fn shutdown_inner(inner: &mut BrowserControllerInner) {
+fn shutdown_inner(inner: &mut PhysicalAudioDriverState) {
     shutdown_graph(inner);
     inner.transport.detach(false);
     if !matches!(

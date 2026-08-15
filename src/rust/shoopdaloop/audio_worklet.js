@@ -1,124 +1,41 @@
-const MAX_CHANNELS = 2;
-
-function encodeUtf8(value) {
-  const bytes = [];
-  for (const character of value) {
-    const code = character.codePointAt(0);
-    if (code < 0x80) bytes.push(code);
-    else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
-    else if (code < 0x10000) {
-      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-    } else {
-      bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-    }
-  }
-  return new Uint8Array(bytes);
-}
-
-function decodeUtf8(bytes) {
-  let output = '';
-  for (let index = 0; index < bytes.length;) {
-    const first = bytes[index++];
-    let code;
-    if (first < 0x80) code = first;
-    else if (first < 0xe0) code = ((first & 0x1f) << 6) | (bytes[index++] & 0x3f);
-    else if (first < 0xf0) code = ((first & 0x0f) << 12) | ((bytes[index++] & 0x3f) << 6) | (bytes[index++] & 0x3f);
-    else {
-      code = ((first & 7) << 18) | ((bytes[index++] & 0x3f) << 12) | ((bytes[index++] & 0x3f) << 6) | (bytes[index++] & 0x3f);
-    }
-    output += String.fromCodePoint(code);
-  }
-  return output;
-}
+import './raw_wasm_host.js';
 
 class ShoopAudioProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.renderDiscontinuities = 0;
     this.callbackBudgetOverruns = 0;
-    this.memoryGrowths = 0;
-    this.renderMemoryGrowths = 0;
     this.expectedFrame = null;
     try {
       const { wasmModule, maxQuantum, protocolVersion, commandMaxBytes } = options.processorOptions;
-      this.maxQuantum = maxQuantum;
       this.protocolVersion = protocolVersion;
-      this.commandMaxBytes = commandMaxBytes;
-      this.instance = new WebAssembly.Instance(wasmModule, {});
-      this.exports = this.instance.exports;
-      this.host = this.exports.shoop_worklet_create(sampleRate, maxQuantum);
-      if (!this.host) throw new Error('could not create the Shoop worklet host');
-      this.memoryBuffer = null;
-      this.refreshViews();
+      this.host = new globalThis.ShoopRawWasmHost(
+        wasmModule,
+        sampleRate,
+        maxQuantum,
+        commandMaxBytes,
+      );
       this.port.onmessage = event => this.handleCommand(event.data);
     } catch (error) {
       this.initializationError = `AudioWorklet initialization failed: ${error?.stack || error}`;
     }
   }
 
-  refreshViews() {
-    const memory = this.exports.memory.buffer;
-    if (this.memoryBuffer && this.memoryBuffer !== memory) this.memoryGrowths += 1;
-    this.memoryBuffer = memory;
-    const inputPointer = this.exports.shoop_worklet_input_ptr(this.host) >>> 0;
-    const outputPointer = this.exports.shoop_worklet_output_ptr(this.host) >>> 0;
-    this.input = new Float32Array(memory, inputPointer, MAX_CHANNELS * this.maxQuantum);
-    this.output = new Float32Array(memory, outputPointer, MAX_CHANNELS * this.maxQuantum);
-    this.commandPointer = this.exports.shoop_worklet_command_ptr(this.host) >>> 0;
-  }
-
   handleCommand(message) {
     try {
-      this.handleCommandInner(message);
+      let response = this.host.command(message);
+      const event = JSON.parse(response);
+      if (event.event?.kind === 'snapshot') {
+        const diagnostics = this.host.diagnostics();
+        event.event.render_discontinuities = this.renderDiscontinuities;
+        event.event.callback_budget_overruns = this.callbackBudgetOverruns;
+        event.event.memory_growths = diagnostics.memoryGrowths;
+        event.event.render_memory_growths = diagnostics.renderMemoryGrowths;
+        response = JSON.stringify(event);
+      }
+      this.port.postMessage(response);
     } catch (error) {
       this.fail(`AudioWorklet control command failed: ${error?.stack || error}`);
-    }
-  }
-
-  handleCommandInner(message) {
-    if (typeof message !== 'string') {
-      this.port.postMessage(JSON.stringify({
-        version: this.protocolVersion,
-        sequence: 0,
-        event: { kind: 'error', message: 'worklet commands must be JSON strings' },
-      }));
-      return;
-    }
-    const encoded = encodeUtf8(message);
-    if (encoded.length > this.commandMaxBytes) {
-      this.port.postMessage(JSON.stringify({
-        version: this.protocolVersion,
-        sequence: 0,
-        event: { kind: 'error', message: 'worklet command exceeds capacity' },
-      }));
-      return;
-    }
-    if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
-    new Uint8Array(this.exports.memory.buffer, this.commandPointer, encoded.length).set(encoded);
-    if (!this.exports.shoop_worklet_command(this.host, encoded.length)) {
-      throw new Error('worklet command transport failed');
-    }
-    if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
-    const pointer = this.exports.shoop_worklet_response_ptr(this.host) >>> 0;
-    const length = this.exports.shoop_worklet_response_len(this.host) >>> 0;
-    let response = decodeUtf8(new Uint8Array(this.exports.memory.buffer, pointer, length));
-    const event = JSON.parse(response);
-    if (event.event?.kind === 'snapshot') {
-      event.event.render_discontinuities = this.renderDiscontinuities;
-      event.event.callback_budget_overruns = this.callbackBudgetOverruns;
-      event.event.memory_growths = this.memoryGrowths;
-      event.event.render_memory_growths = this.renderMemoryGrowths;
-      response = JSON.stringify(event);
-    }
-    // A response lookup can cause Rust allocator bookkeeping to acquire another
-    // Wasm page after the command itself. Refresh eagerly here so render-time
-    // rebinding remains an exceptional recovery path.
-    if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
-    this.port.postMessage(response);
-    if (typeof queueMicrotask === 'function') {
-      queueMicrotask(() => {
-        if (this.exports.memory.buffer !== this.memoryBuffer) this.refreshViews();
-      });
     }
   }
 
@@ -126,65 +43,32 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     if (!this.failureMessage) {
       this.failureMessage = message;
       this.port.postMessage(JSON.stringify({
-        version: this.protocolVersion,
+        version: this.protocolVersion || 0,
         sequence: 0,
         event: { kind: 'error', message },
       }));
+      this.host?.destroy();
     }
     return false;
   }
 
   process(inputs, outputs) {
     if (this.initializationError) return this.fail(this.initializationError);
-    const inputChannels = inputs[0] || [];
-    const outputChannels = outputs[0] || [];
+    if (this.failureMessage) return false;
+    const inputChannels = (inputs[0] || []).slice(0, 2);
+    const outputChannels = (outputs[0] || []).slice(0, 2);
     const frames = outputChannels[0]?.length || inputChannels[0]?.length || 0;
     if (!frames) return this.fail('AudioWorklet supplied an empty render quantum');
     if (this.expectedFrame !== null && currentFrame !== this.expectedFrame) {
       this.renderDiscontinuities += 1;
     }
     this.expectedFrame = currentFrame + frames;
-    if (frames > this.maxQuantum) return this.fail(`render quantum ${frames} exceeds ${this.maxQuantum}`);
-    // Control-path topology/state preparation may grow linear memory between
-    // callbacks. Rebind the two bounded host views before entering Rust; growth
-    // after this point is a realtime violation that requires recovery.
-    if (this.exports.memory.buffer !== this.memoryBuffer) {
-      try {
-        this.refreshViews();
-      } catch (error) {
-        return this.fail(`worklet view refresh failed: ${error?.stack || error}`);
-      }
-    }
     const timer = globalThis.performance;
     const startedAt = timer ? timer.now() : 0;
-    const nInputs = Math.min(inputChannels.length, MAX_CHANNELS);
-    const nOutputs = Math.min(outputChannels.length, MAX_CHANNELS);
-    for (let channel = 0; channel < nInputs; channel += 1) {
-      const source = inputChannels[channel];
-      const offset = channel * this.maxQuantum;
-      for (let frame = 0; frame < frames; frame += 1) this.input[offset + frame] = source[frame];
-    }
-    let processed;
     try {
-      processed = this.exports.shoop_worklet_process(this.host, nInputs, nOutputs, frames);
+      this.host.process(inputChannels, outputChannels, frames);
     } catch (error) {
-      return this.fail(`Rust worklet process trapped: ${error?.stack || error}`);
-    }
-    if (!processed) {
-      return this.fail(`Rust worklet host rejected ${nInputs}x${nOutputs}x${frames} quantum`);
-    }
-    if (this.exports.memory.buffer !== this.memoryBuffer) {
-      this.renderMemoryGrowths += 1;
-      try {
-        this.refreshViews();
-      } catch (error) {
-        return this.fail(`worklet view recovery failed: ${error?.stack || error}`);
-      }
-    }
-    for (let channel = 0; channel < nOutputs; channel += 1) {
-      const destination = outputChannels[channel];
-      const offset = channel * this.maxQuantum;
-      for (let frame = 0; frame < frames; frame += 1) destination[frame] = this.output[offset + frame];
+      return this.fail(`AudioWorklet process failed: ${error?.stack || error}`);
     }
     if (timer && timer.now() - startedAt > frames * 1000 / sampleRate) {
       this.callbackBudgetOverruns += 1;

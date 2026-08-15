@@ -1,0 +1,38 @@
+import { readFile } from 'node:fs/promises';
+import './raw_wasm_host.js';
+
+const wasmPath = process.argv[2] || './dist/generated/shoop_audio_worklet.wasm';
+const bytes = await readFile(wasmPath);
+const module = await WebAssembly.compile(bytes);
+if (WebAssembly.Module.imports(module).length !== 0) {
+  throw new Error('raw host contract requires an import-free Wasm artifact');
+}
+const host = new globalThis.ShoopRawWasmHost(module, 48000, 2048, 262144);
+const poll = JSON.stringify({ version: 12, sequence: 1, command: { kind: 'poll' } });
+const first = JSON.parse(host.command(poll));
+if (first.version !== 12 || first.sequence !== 1 || first.event?.kind !== 'snapshot') {
+  throw new Error(`unexpected raw host response: ${JSON.stringify(first)}`);
+}
+const malformed = JSON.parse(host.command('{'));
+if (malformed.event?.kind !== 'error') throw new Error('malformed protocol bytes were accepted');
+let capacityRejected = false;
+try {
+  host.command('x'.repeat(262145));
+} catch (error) {
+  capacityRejected = error instanceof RangeError;
+}
+if (!capacityRejected) throw new Error('oversized raw host command was not rejected');
+host.process([], [], 128);
+host.exports.memory.grow(1);
+host.command(JSON.stringify({ version: 12, sequence: 2, command: { kind: 'poll' } }));
+if (host.diagnostics().memoryGrowths < 1) throw new Error('memory growth was not diagnosed');
+host.destroy();
+host.destroy();
+let shutdownRejected = false;
+try {
+  host.process([], [], 128);
+} catch (_error) {
+  shutdownRejected = true;
+}
+if (!shutdownRejected) throw new Error('destroyed raw host accepted processing');
+console.log('raw Wasm host artifact contract: ok');

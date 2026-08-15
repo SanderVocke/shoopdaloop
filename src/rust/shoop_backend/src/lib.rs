@@ -1167,13 +1167,45 @@ enum EngineBackendMode {
     Physical,
 }
 
+/// Determines who supplies engine time. I/O topology remains an independent
+/// concern because both physical audio and Worker hosts use external quanta.
+#[derive(Clone, Copy)]
+enum EngineScheduler {
+    Logical { frame_numerator: u128 },
+    ExternalQuantum,
+}
+
+impl EngineScheduler {
+    fn logical_frames_due(
+        &mut self,
+        elapsed: Duration,
+        sample_rate: u32,
+        buffer_size: u32,
+    ) -> (u32, bool) {
+        let Self::Logical { frame_numerator } = self else {
+            return (0, false);
+        };
+        *frame_numerator =
+            frame_numerator.saturating_add(elapsed.as_nanos().saturating_mul(sample_rate as u128));
+        let due = *frame_numerator / NANOSECONDS_PER_SECOND;
+        let max_frames = buffer_size.saturating_mul(MAX_CYCLES_PER_ADVANCE) as u128;
+        let processed = due.min(max_frames) as u32;
+        *frame_numerator -= processed as u128 * NANOSECONDS_PER_SECOND;
+        let overrun = due > max_frames;
+        if overrun {
+            *frame_numerator = 0;
+        }
+        (processed, overrun)
+    }
+}
+
 pub struct EngineBackend {
     session: Session,
     global_fx_midi: usize,
     global_fx_port: BackendPortId,
     sample_rate: u32,
     buffer_size: u32,
-    elapsed_frame_numerator: u128,
+    scheduler: EngineScheduler,
     processed_frames: u64,
     xruns: u32,
     loops: BTreeMap<BackendLoopId, usize>,
@@ -1285,7 +1317,7 @@ impl EngineBackend {
             global_fx_port,
             sample_rate,
             buffer_size,
-            elapsed_frame_numerator: 0,
+            scheduler: EngineScheduler::Logical { frame_numerator: 0 },
             processed_frames: 0,
             xruns: 0,
             loops: BTreeMap::new(),
@@ -1331,6 +1363,7 @@ impl EngineBackend {
         }
         let mut backend = Self::new_dummy(sample_rate, max_quantum)?;
         backend.mode = EngineBackendMode::Physical;
+        backend.scheduler = EngineScheduler::ExternalQuantum;
         backend.external_connections.remove_all_mock_ports();
         let global = ExternalMidiPort::new("global_fx_control_midi_in", PortDirection::Input);
         backend.session.remove_port(backend.global_fx_midi)?;
@@ -1811,8 +1844,8 @@ impl EngineBackend {
         output_channels: usize,
         n_frames: usize,
     ) -> Result<()> {
-        if self.mode != EngineBackendMode::Physical {
-            return Err(anyhow!("audio quantum supplied to a non-physical backend"));
+        if !matches!(self.scheduler, EngineScheduler::ExternalQuantum) {
+            return Err(anyhow!("audio quantum supplied to a logical-time backend"));
         }
         if n_frames == 0
             || n_frames > self.buffer_size as usize
@@ -3148,7 +3181,7 @@ impl Backend for EngineBackend {
         let mut target = EngineBackend::new_dummy(resolved.sample_rate, resolved.buffer_size)?;
         target.external_connections = self.external_connections.clone();
         let (mut replacement, mapping) = target.build_replacement(session)?;
-        replacement.elapsed_frame_numerator = self.elapsed_frame_numerator;
+        replacement.scheduler = self.scheduler;
         replacement.processed_frames = self.processed_frames;
         replacement.xruns = self.xruns;
         *self = replacement;
@@ -4209,7 +4242,7 @@ impl Backend for EngineBackend {
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let (mut replacement, mapping) = self.build_replacement(session)?;
-        replacement.elapsed_frame_numerator = self.elapsed_frame_numerator;
+        replacement.scheduler = self.scheduler;
         replacement.processed_frames = self.processed_frames;
         replacement.xruns = self.xruns;
         replacement.callback_count = self.callback_count;
@@ -4287,18 +4320,10 @@ impl Backend for EngineBackend {
     }
 
     fn advance(&mut self, elapsed: Duration) {
-        if self.mode == EngineBackendMode::Physical {
-            return;
-        }
-        self.elapsed_frame_numerator = self
-            .elapsed_frame_numerator
-            .saturating_add(elapsed.as_nanos().saturating_mul(self.sample_rate as u128));
-        let due = self.elapsed_frame_numerator / NANOSECONDS_PER_SECOND;
-        let max_frames = self.buffer_size.saturating_mul(MAX_CYCLES_PER_ADVANCE) as u128;
-        let processed = due.min(max_frames) as u32;
-        self.elapsed_frame_numerator -= processed as u128 * NANOSECONDS_PER_SECOND;
-        if due > max_frames {
-            self.elapsed_frame_numerator = 0;
+        let (processed, overrun) =
+            self.scheduler
+                .logical_frames_due(elapsed, self.sample_rate, self.buffer_size);
+        if overrun {
             self.xruns = self.xruns.saturating_add(1);
         }
         self.advance_frames(processed);

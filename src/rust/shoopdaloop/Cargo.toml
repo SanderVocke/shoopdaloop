@@ -70,12 +70,14 @@ web-sys = { version = "0.3", features = [
     "MidiPort",
     "MidiPortConnectionState",
     "MidiPortDeviceState",
+    "MessageChannel",
     "MessageEvent",
     "MessagePort",
     "Navigator",
     "Response",
     "Screen",
     "Storage",
+    "Worker",
     "Window",
 ] }
 
