@@ -21,21 +21,22 @@ use shoop_app_api::{
     LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, MidiEventState,
     MidiSequenceChannelState, NotificationLevel, PendingConnectionState, PianoAction, PortDataType,
     PortDirection, PortId, PortRole, SampleRateWarning, ScriptDialogButtonId, ScriptDialogId,
-    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
-    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
+    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
+    TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
     TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
-    Backend, BackendAudioChannelUpdate, BackendAudioContent, BackendChannelMode,
-    BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId, BackendCompositeKind,
-    BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate,
-    BackendMidiContent, BackendMidiData, BackendMidiEvent, BackendPortDataType,
-    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendSessionData, BackendSessionPort, BackendSessionReplacement, BackendSessionTrack,
-    BackendSnapshot, BackendTinySynthFxMidiCcAssignment, BackendTinySynthFxParameter,
-    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    Backend, BackendAsyncResult, BackendAudioChannelUpdate, BackendAudioContent,
+    BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
+    BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest,
+    BackendLoopContent, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData, BackendMidiEvent,
+    BackendMutationDetail, BackendOperationProgress, BackendPortDataType, BackendPortDescriptor,
+    BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
+    BackendSessionPort, BackendSessionReplacement, BackendSessionTrack, BackendSnapshot,
+    BackendTinySynthFxMidiCcAssignment, BackendTinySynthFxParameter, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -561,6 +562,9 @@ struct ApplicationModel {
     host_ports: BTreeMap<String, HostPortState>,
     confirmed_connections: BTreeSet<(PortId, String)>,
     pending_connections: BTreeMap<(PortId, String), PendingConnection>,
+    desired_track_controls: BTreeMap<(BackendTrackId, TrackControlKey), BackendTrackControl>,
+    desired_fx_controls: BTreeMap<(BackendTrackId, FxControlKey), BackendTrackFxControl>,
+    desired_loop_controls: BTreeMap<(BackendLoopId, LoopControlKey), f32>,
     connection_errors: Vec<ConnectionErrorState>,
     connection_revision: u64,
     connection_backend_available: bool,
@@ -595,6 +599,7 @@ struct TrackModel {
     id: TrackId,
     backend_id: BackendTrackId,
     name: String,
+    structural_state: StructuralState,
     port_name_base: String,
     is_sync: bool,
     audio_channels: u32,
@@ -603,6 +608,203 @@ struct TrackModel {
     loops: Vec<LoopId>,
     port_ids: Arc<[PortId]>,
     controls: TrackControlState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum TrackControlKey {
+    OutputGain,
+    OutputBalance,
+    OutputMute,
+    InputGain,
+    InputBalance,
+    InputMonitoring,
+}
+
+fn track_control_key(control: BackendTrackControl) -> TrackControlKey {
+    match control {
+        BackendTrackControl::OutputGainDb(_) => TrackControlKey::OutputGain,
+        BackendTrackControl::OutputBalance(_) => TrackControlKey::OutputBalance,
+        BackendTrackControl::OutputMute(_) => TrackControlKey::OutputMute,
+        BackendTrackControl::InputGainDb(_) => TrackControlKey::InputGain,
+        BackendTrackControl::InputBalance(_) => TrackControlKey::InputBalance,
+        BackendTrackControl::InputMonitoring(_) => TrackControlKey::InputMonitoring,
+    }
+}
+
+fn track_control_matches(state: &BackendTrackState, control: BackendTrackControl) -> bool {
+    match control {
+        BackendTrackControl::OutputGainDb(value) => {
+            (state.output_gain_db - value).abs() <= f32::EPSILON
+        }
+        BackendTrackControl::OutputBalance(value) => {
+            (state.output_balance - value).abs() <= f32::EPSILON
+        }
+        BackendTrackControl::OutputMute(value) => state.output_muted == value,
+        BackendTrackControl::InputGainDb(value) => {
+            (state.input_gain_db - value).abs() <= f32::EPSILON
+        }
+        BackendTrackControl::InputBalance(value) => {
+            (state.input_balance - value).abs() <= f32::EPSILON
+        }
+        BackendTrackControl::InputMonitoring(value) => state.input_monitoring == value,
+    }
+}
+
+fn apply_track_control(state: &mut TrackControlState, control: BackendTrackControl) {
+    match control {
+        BackendTrackControl::OutputGainDb(value) => state.output_gain_db = value,
+        BackendTrackControl::OutputBalance(value) => state.output_balance = value,
+        BackendTrackControl::OutputMute(value) => state.output_muted = value,
+        BackendTrackControl::InputGainDb(value) => state.input_gain_db = value,
+        BackendTrackControl::InputBalance(value) => state.input_balance = value,
+        BackendTrackControl::InputMonitoring(value) => state.input_monitoring = value,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum FxControlKey {
+    Active,
+    Visible,
+    TinyPreset,
+    TinyMasterGain,
+    TinyReverbEnabled,
+    TinyReverbAmount,
+    TinyDistortionEnabled,
+    TinyDistortionDrive,
+    TinyCompressorEnabled,
+    TinyCompressorAmount,
+    TinyEqEnabled,
+    TinyEqLow,
+    TinyEqMid,
+    TinyEqHigh,
+    TinyMidiAssignments,
+}
+
+fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
+    match control {
+        BackendTrackFxControl::SetActive(value) => fx.active = *value,
+        BackendTrackFxControl::SetVisible(value) => fx.visible = *value,
+        BackendTrackFxControl::TinySynthFx(control) => {
+            let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(editor)) =
+                fx.editor.as_mut()
+            else {
+                return;
+            };
+            match control {
+                shoop_backend::TinySynthFxControl::SelectPreset(value) => {
+                    editor.selected_preset_id = Some(value.clone())
+                }
+                shoop_backend::TinySynthFxControl::SetMasterGainDb(value) => {
+                    editor.master_gain_db = *value
+                }
+                shoop_backend::TinySynthFxControl::SetReverbEnabled(value) => {
+                    editor.reverb_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetReverbAmount(value) => {
+                    editor.reverb_amount = *value
+                }
+                shoop_backend::TinySynthFxControl::SetDistortionEnabled(value) => {
+                    editor.distortion_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetDistortionDrive(value) => {
+                    editor.distortion_drive = *value
+                }
+                shoop_backend::TinySynthFxControl::SetCompressorEnabled(value) => {
+                    editor.compressor_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetCompressorAmount(value) => {
+                    editor.compressor_amount = *value
+                }
+                shoop_backend::TinySynthFxControl::SetEqEnabled(value) => {
+                    editor.eq_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetEqLowDb(value) => editor.eq_low_db = *value,
+                shoop_backend::TinySynthFxControl::SetEqMidDb(value) => editor.eq_mid_db = *value,
+                shoop_backend::TinySynthFxControl::SetEqHighDb(value) => editor.eq_high_db = *value,
+                shoop_backend::TinySynthFxControl::AssignMidiCc(assignment) => {
+                    let mut assignments = editor.midi_cc_assignments.to_vec();
+                    assignments.retain(|current| {
+                        current.parameter != assignment.parameter
+                            && (current.channel, current.controller)
+                                != (assignment.channel, assignment.controller)
+                    });
+                    assignments.push(*assignment);
+                    assignments.sort_by_key(|assignment| assignment.parameter);
+                    editor.midi_cc_assignments = assignments.into();
+                }
+                shoop_backend::TinySynthFxControl::RemoveMidiCc(parameter) => {
+                    let mut assignments = editor.midi_cc_assignments.to_vec();
+                    assignments.retain(|assignment| assignment.parameter != *parameter);
+                    editor.midi_cc_assignments = assignments.into();
+                }
+                shoop_backend::TinySynthFxControl::ClearMidiCcAssignments => {
+                    editor.midi_cc_assignments = Arc::from([]);
+                }
+                shoop_backend::TinySynthFxControl::Panic => {}
+            }
+        }
+        BackendTrackFxControl::ToggleOrRecover
+        | BackendTrackFxControl::RestoreState(_)
+        | BackendTrackFxControl::ClearLogs => {}
+    }
+}
+
+fn fx_control_matches(
+    fx: Option<&shoop_app_api::TrackFxState>,
+    control: &BackendTrackFxControl,
+) -> bool {
+    let Some(fx) = fx else {
+        return false;
+    };
+    let mut effective = fx.clone();
+    apply_fx_control(&mut effective, control);
+    effective == *fx
+}
+
+fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
+    Some(match control {
+        BackendTrackFxControl::SetActive(_) => FxControlKey::Active,
+        BackendTrackFxControl::SetVisible(_) => FxControlKey::Visible,
+        BackendTrackFxControl::TinySynthFx(control) => match control {
+            shoop_backend::TinySynthFxControl::SelectPreset(_) => FxControlKey::TinyPreset,
+            shoop_backend::TinySynthFxControl::SetMasterGainDb(_) => FxControlKey::TinyMasterGain,
+            shoop_backend::TinySynthFxControl::SetReverbEnabled(_) => {
+                FxControlKey::TinyReverbEnabled
+            }
+            shoop_backend::TinySynthFxControl::SetReverbAmount(_) => FxControlKey::TinyReverbAmount,
+            shoop_backend::TinySynthFxControl::SetDistortionEnabled(_) => {
+                FxControlKey::TinyDistortionEnabled
+            }
+            shoop_backend::TinySynthFxControl::SetDistortionDrive(_) => {
+                FxControlKey::TinyDistortionDrive
+            }
+            shoop_backend::TinySynthFxControl::SetCompressorEnabled(_) => {
+                FxControlKey::TinyCompressorEnabled
+            }
+            shoop_backend::TinySynthFxControl::SetCompressorAmount(_) => {
+                FxControlKey::TinyCompressorAmount
+            }
+            shoop_backend::TinySynthFxControl::SetEqEnabled(_) => FxControlKey::TinyEqEnabled,
+            shoop_backend::TinySynthFxControl::SetEqLowDb(_) => FxControlKey::TinyEqLow,
+            shoop_backend::TinySynthFxControl::SetEqMidDb(_) => FxControlKey::TinyEqMid,
+            shoop_backend::TinySynthFxControl::SetEqHighDb(_) => FxControlKey::TinyEqHigh,
+            shoop_backend::TinySynthFxControl::AssignMidiCc(_)
+            | shoop_backend::TinySynthFxControl::RemoveMidiCc(_)
+            | shoop_backend::TinySynthFxControl::ClearMidiCcAssignments => {
+                FxControlKey::TinyMidiAssignments
+            }
+            shoop_backend::TinySynthFxControl::Panic => return None,
+        },
+        BackendTrackFxControl::ToggleOrRecover
+        | BackendTrackFxControl::RestoreState(_)
+        | BackendTrackFxControl::ClearLogs => return None,
+    })
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum LoopControlKey {
+    Gain,
+    Balance,
 }
 
 struct ConnectionPortModel {
@@ -745,6 +947,26 @@ struct PendingAudioSwitch {
     target: shoop_app_api::ResolvedAudioDriverConfig,
 }
 
+enum BackendIoStepError {
+    Pending(BackendOperationProgress),
+    Failed(String),
+}
+
+impl From<String> for BackendIoStepError {
+    fn from(value: String) -> Self {
+        Self::Failed(value)
+    }
+}
+
+fn backend_progress_fraction(progress: BackendOperationProgress) -> f32 {
+    progress
+        .total
+        .filter(|total| *total > 0)
+        .map(|total| progress.completed as f32 / total as f32)
+        .unwrap_or(0.0)
+        .clamp(0.0, 1.0)
+}
+
 enum PendingIo {
     SaveSession,
     #[cfg(not(target_arch = "wasm32"))]
@@ -880,6 +1102,7 @@ impl ApplicationModel {
             state: LoopState {
                 id: loop_id,
                 name: "sync loop".to_owned(),
+                structural_state: StructuralState::Creating,
                 sync: true,
                 show_gain: true,
                 has_audio: true,
@@ -909,6 +1132,7 @@ impl ApplicationModel {
                 id: track_id,
                 backend_id: created.track_id,
                 name: "Sync".to_owned(),
+                structural_state: StructuralState::Creating,
                 port_name_base: "sync_loop".to_owned(),
                 is_sync: true,
                 audio_channels: 1,
@@ -923,6 +1147,9 @@ impl ApplicationModel {
             host_ports: BTreeMap::new(),
             confirmed_connections: BTreeSet::new(),
             pending_connections: BTreeMap::new(),
+            desired_track_controls: BTreeMap::new(),
+            desired_fx_controls: BTreeMap::new(),
+            desired_loop_controls: BTreeMap::new(),
             connection_errors: Vec::new(),
             connection_revision: 1,
             connection_backend_available: false,
@@ -1903,31 +2130,31 @@ impl ApplicationModel {
                 return Err(format!("stale or unknown track {target}"));
             }
         }
+        let mut updates = Vec::new();
         if enabled && respect_auto_mute && self.global.auto_mute_other_track_inputs {
-            for track in self
-                .tracks
-                .iter()
-                .filter(|track| !targets.contains(&track.id))
-            {
-                backend
-                    .set_track_control(
-                        track.backend_id,
-                        BackendTrackControl::InputMonitoring(false),
-                    )
-                    .map_err(|error| format!("could not update track {}: {error}", track.id))?;
-            }
+            updates.extend(
+                self.tracks
+                    .iter()
+                    .filter(|track| !targets.contains(&track.id))
+                    .map(|track| (track.id, track.backend_id, false)),
+            );
         }
-        for track in self
-            .tracks
-            .iter()
-            .filter(|track| targets.contains(&track.id))
-        {
+        updates.extend(
+            self.tracks
+                .iter()
+                .filter(|track| targets.contains(&track.id))
+                .map(|track| (track.id, track.backend_id, enabled)),
+        );
+        for (track_id, backend_id, value) in updates {
+            let control = BackendTrackControl::InputMonitoring(value);
             backend
-                .set_track_control(
-                    track.backend_id,
-                    BackendTrackControl::InputMonitoring(enabled),
-                )
-                .map_err(|error| format!("could not update track {}: {error}", track.id))?;
+                .set_track_control(backend_id, control)
+                .map_err(|error| format!("could not update track {track_id}: {error}"))?;
+            self.desired_track_controls
+                .insert((backend_id, TrackControlKey::InputMonitoring), control);
+            if let Some(track) = self.tracks.iter_mut().find(|track| track.id == track_id) {
+                apply_track_control(&mut track.controls, control);
+            }
         }
         Ok(())
     }
@@ -3039,13 +3266,19 @@ impl ApplicationModel {
             return;
         };
         match pending {
-            PendingIo::SaveSession => match backend.capture_session() {
-                Ok(capture) => match self.session_bundle_from_backend(&capture) {
-                    Ok(bundle) => self.start_session_encoding(bundle),
-                    Err(error) => self.fail_io(error),
-                },
-                Err(error) if io_pending_error(&error.to_string()) => {
+            PendingIo::SaveSession => match backend.capture_session_async() {
+                Ok(BackendAsyncResult::Ready(capture)) => {
+                    match self.session_bundle_from_backend(&capture) {
+                        Ok(bundle) => self.start_session_encoding(bundle),
+                        Err(error) => self.fail_io(error),
+                    }
+                }
+                Ok(BackendAsyncResult::Pending(progress)) => {
                     self.pending_io = Some(PendingIo::SaveSession);
+                    self.set_io_progress(
+                        backend_progress_fraction(progress) * 0.5,
+                        "Capturing session",
+                    );
                 }
                 Err(error) => self.fail_io(format!("could not capture session: {error}")),
             },
@@ -3074,8 +3307,8 @@ impl ApplicationModel {
                 name,
                 bundle,
                 backend_data,
-            } => match backend.replace_session(&backend_data) {
-                Ok(replacement) => {
+            } => match backend.replace_session_async(&backend_data) {
+                Ok(BackendAsyncResult::Ready(replacement)) => {
                     match self.apply_loaded_session(backend, &bundle, &replacement) {
                         Ok(()) => {
                             self.finish_io(
@@ -3086,12 +3319,16 @@ impl ApplicationModel {
                         Err(error) => self.fail_io(error),
                     }
                 }
-                Err(error) if io_pending_error(&error.to_string()) => {
+                Ok(BackendAsyncResult::Pending(progress)) => {
                     self.pending_io = Some(PendingIo::CommitSessionLoad {
                         name,
                         bundle,
                         backend_data,
                     });
+                    self.set_io_progress(
+                        0.75 + backend_progress_fraction(progress) * 0.2,
+                        "Replacing backend session",
+                    );
                 }
                 Err(error) => self.fail_io(format!("could not replace session: {error}")),
             },
@@ -3106,23 +3343,33 @@ impl ApplicationModel {
             } => {
                 if let Err(error) = self.export_loop_audio_now(backend, loop_id, format, &channels)
                 {
-                    if io_pending_error(&error) {
-                        self.pending_io = Some(PendingIo::ExportLoopAudio {
-                            loop_id,
-                            format,
-                            channels,
-                        });
-                    } else {
-                        self.fail_io(error);
+                    match error {
+                        BackendIoStepError::Pending(progress) => {
+                            self.pending_io = Some(PendingIo::ExportLoopAudio {
+                                loop_id,
+                                format,
+                                channels,
+                            });
+                            self.set_io_progress(
+                                backend_progress_fraction(progress) * 0.75,
+                                "Capturing loop audio",
+                            );
+                        }
+                        BackendIoStepError::Failed(error) => self.fail_io(error),
                     }
                 }
             }
             PendingIo::ExportLoopMidi { loop_id, standard } => {
                 if let Err(error) = self.export_loop_midi_now(backend, loop_id, standard) {
-                    if io_pending_error(&error) {
-                        self.pending_io = Some(PendingIo::ExportLoopMidi { loop_id, standard });
-                    } else {
-                        self.fail_io(error);
+                    match error {
+                        BackendIoStepError::Pending(progress) => {
+                            self.pending_io = Some(PendingIo::ExportLoopMidi { loop_id, standard });
+                            self.set_io_progress(
+                                backend_progress_fraction(progress) * 0.75,
+                                "Capturing loop MIDI",
+                            );
+                        }
+                        BackendIoStepError::Failed(error) => self.fail_io(error),
                     }
                 }
             }
@@ -3221,11 +3468,13 @@ impl ApplicationModel {
                 message,
             } => {
                 let backend_loop = self.loops.get(&loop_id).map(|model| model.backend_id);
-                match backend_loop
+                let result = backend_loop
                     .ok_or_else(|| anyhow!("stale loop {loop_id}"))
-                    .and_then(|backend_loop| backend.replace_loop_content(backend_loop, &update))
-                {
-                    Ok(()) => {
+                    .and_then(|backend_loop| {
+                        backend.replace_loop_content_async(backend_loop, &update)
+                    });
+                match result {
+                    Ok(BackendAsyncResult::Ready(())) => {
                         if let Some(model) = self.loops.get_mut(&loop_id) {
                             if let Some(length) = update.length {
                                 model.length = length;
@@ -3239,12 +3488,16 @@ impl ApplicationModel {
                         }
                         self.finish_io(IoTaskStatus::Completed, &message);
                     }
-                    Err(error) if io_pending_error(&error.to_string()) => {
+                    Ok(BackendAsyncResult::Pending(progress)) => {
                         self.pending_io = Some(PendingIo::CommitLoopImport {
                             loop_id,
                             update,
                             message,
                         });
+                        self.set_io_progress(
+                            0.75 + backend_progress_fraction(progress) * 0.2,
+                            "Replacing loop content",
+                        );
                     }
                     Err(error) => self.fail_io(format!("could not commit loop import: {error}")),
                 }
@@ -3352,6 +3605,7 @@ impl ApplicationModel {
             id: track_id,
             backend_id: created.track_id,
             name: spec.name,
+            structural_state: StructuralState::Creating,
             port_name_base,
             is_sync: false,
             audio_channels: loop_audio_channels,
@@ -3420,6 +3674,28 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn remove_track_model(&mut self, index: usize) {
+        let track = self.tracks.remove(index);
+        let backend_loop_ids = track
+            .loops
+            .iter()
+            .filter_map(|loop_id| self.loops.get(loop_id).map(|model| model.backend_id))
+            .collect::<BTreeSet<_>>();
+        for loop_id in &track.loops {
+            self.script_composition_playback.remove(loop_id);
+            self.loops.remove(loop_id);
+        }
+        for port_id in track.port_ids.iter() {
+            self.connection_ports.remove(port_id);
+        }
+        self.desired_track_controls
+            .retain(|(backend_id, _), _| *backend_id != track.backend_id);
+        self.desired_fx_controls
+            .retain(|(backend_id, _), _| *backend_id != track.backend_id);
+        self.desired_loop_controls
+            .retain(|(backend_id, _), _| !backend_loop_ids.contains(backend_id));
+    }
+
     fn remove_track(&mut self, backend: &mut dyn Backend, track_id: TrackId) -> Result<(), String> {
         let index = self
             .tracks
@@ -3454,19 +3730,17 @@ impl ApplicationModel {
                     .map_err(|error| format!("could not remove track composite: {error}"))?;
             }
         }
-        let track = &self.tracks[index];
+        let backend_track_id = self.tracks[index].backend_id;
         backend
-            .remove_track(track.backend_id)
+            .remove_track(backend_track_id)
             .map_err(|error| format!("could not remove track {track_id}: {error}"))?;
-        for loop_id in &loop_ids {
-            self.script_composition_playback.remove(loop_id);
-            self.loops.remove(loop_id);
+        self.tracks[index].structural_state = StructuralState::Removing;
+        for loop_id in loop_ids {
+            if let Some(model) = self.loops.get_mut(&loop_id) {
+                model.state.structural_state = StructuralState::Removing;
+            }
         }
-        for port_id in track.port_ids.iter() {
-            self.connection_ports.remove(port_id);
-        }
-        self.tracks.remove(index);
-        self.refresh_selected_media(backend)
+        Ok(())
     }
 
     fn move_track_before(
@@ -3544,17 +3818,28 @@ impl ApplicationModel {
             TrackAction::InputBalanceChanged(value) => BackendTrackControl::InputBalance(value),
             TrackAction::InputMonitoringChanged { .. } => unreachable!(),
             TrackAction::FxActiveChanged(value) => {
-                return backend
-                    .set_track_fx_control(track.backend_id, BackendTrackFxControl::SetActive(value))
-                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+                let control = BackendTrackFxControl::SetActive(value);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"))?;
+                self.desired_fx_controls
+                    .insert((track.backend_id, FxControlKey::Active), control.clone());
+                if let Some(fx) = track.fx.as_mut() {
+                    apply_fx_control(fx, &control);
+                }
+                return Ok(());
             }
             TrackAction::FxVisibilityChanged(value) => {
-                return backend
-                    .set_track_fx_control(
-                        track.backend_id,
-                        BackendTrackFxControl::SetVisible(value),
-                    )
-                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+                let control = BackendTrackFxControl::SetVisible(value);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"))?;
+                self.desired_fx_controls
+                    .insert((track.backend_id, FxControlKey::Visible), control.clone());
+                if let Some(fx) = track.fx.as_mut() {
+                    apply_fx_control(fx, &control);
+                }
+                return Ok(());
             }
             TrackAction::FxToggleOrRecover => {
                 return backend
@@ -3574,20 +3859,33 @@ impl ApplicationModel {
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
             }
-            TrackAction::TinySynthFx(control) => {
-                return backend
-                    .set_track_fx_control(
-                        track.backend_id,
-                        BackendTrackFxControl::TinySynthFx(control),
-                    )
+            TrackAction::TinySynthFx(tiny) => {
+                let control = BackendTrackFxControl::TinySynthFx(tiny);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
                     .map_err(|error| {
                         format!("could not update Tiny Synth/FX track {track_id}: {error}")
-                    });
+                    })?;
+                if let Some(key) = fx_control_key(&control) {
+                    self.desired_fx_controls
+                        .insert((track.backend_id, key), control.clone());
+                    if let Some(fx) = track.fx.as_mut() {
+                        apply_fx_control(fx, &control);
+                    }
+                }
+                return Ok(());
             }
         };
         backend
             .set_track_control(track.backend_id, backend_action)
-            .map_err(|error| format!("could not update track {track_id}: {error}"))
+            .map_err(|error| format!("could not update track {track_id}: {error}"))?;
+        self.desired_track_controls.insert(
+            (track.backend_id, track_control_key(backend_action)),
+            backend_action,
+        );
+        apply_track_control(&mut track.controls, backend_action);
+        track.controls.clamp();
+        Ok(())
     }
 
     fn insert_loop(
@@ -3609,6 +3907,7 @@ impl ApplicationModel {
                 state: LoopState {
                     id,
                     name,
+                    structural_state: StructuralState::Creating,
                     show_gain: audio_channels > 0,
                     has_audio: audio_channels > 0,
                     stereo: audio_channels == 2,
@@ -3749,6 +4048,8 @@ impl ApplicationModel {
                 backend
                     .set_loop_gain(loop_model.backend_id, value)
                     .map_err(|error| format!("could not set loop gain: {error}"))?;
+                self.desired_loop_controls
+                    .insert((loop_model.backend_id, LoopControlKey::Gain), value);
                 if let Some(model) = self.loops.get_mut(&loop_id) {
                     model.state.gain = value;
                 }
@@ -3765,6 +4066,8 @@ impl ApplicationModel {
                 backend
                     .set_loop_balance(loop_model.backend_id, value)
                     .map_err(|error| format!("could not set loop balance: {error}"))?;
+                self.desired_loop_controls
+                    .insert((loop_model.backend_id, LoopControlKey::Balance), value);
                 if let Some(model) = self.loops.get_mut(&loop_id) {
                     model.state.balance = value;
                 }
@@ -5099,6 +5402,121 @@ impl ApplicationModel {
             loop_count = snapshot.loops.len()
         )
         .entered();
+        let mut rejected_track_creations = BTreeSet::new();
+        for failure in &snapshot.mutation_failures {
+            match failure.detail.as_ref() {
+                Some(BackendMutationDetail::TrackCreation) => {
+                    if let Some(entity) = failure.entity {
+                        rejected_track_creations.insert(BackendTrackId::from_raw(entity));
+                    }
+                }
+                Some(BackendMutationDetail::TrackRemoval) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendTrackId::from_raw(entity);
+                        if let Some(track) = self
+                            .tracks
+                            .iter_mut()
+                            .find(|track| track.backend_id == backend_id)
+                        {
+                            track.structural_state = StructuralState::Confirmed;
+                            for loop_id in &track.loops {
+                                if let Some(model) = self.loops.get_mut(loop_id) {
+                                    model.state.structural_state = StructuralState::Confirmed;
+                                }
+                            }
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::LoopCreation { loop_id }) => {
+                    if let Some((id, track_id)) = self.loops.iter().find_map(|(id, model)| {
+                        (model.backend_id == *loop_id).then_some((*id, model.track_id))
+                    }) {
+                        self.loops.remove(&id);
+                        if let Some(track) =
+                            self.tracks.iter_mut().find(|track| track.id == track_id)
+                        {
+                            track.loops.retain(|candidate| *candidate != id);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            match failure.detail.as_ref() {
+                Some(
+                    BackendMutationDetail::TrackCreation
+                    | BackendMutationDetail::TrackRemoval
+                    | BackendMutationDetail::LoopCreation { .. },
+                ) => {}
+                Some(BackendMutationDetail::TrackControl(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let key = (
+                            BackendTrackId::from_raw(entity),
+                            track_control_key(*rejected),
+                        );
+                        if self.desired_track_controls.get(&key) == Some(rejected) {
+                            self.desired_track_controls.remove(&key);
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::LoopGain(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let key = (BackendLoopId::from_raw(entity), LoopControlKey::Gain);
+                        if self.desired_loop_controls.get(&key) == Some(rejected) {
+                            self.desired_loop_controls.remove(&key);
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::LoopBalance(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let key = (BackendLoopId::from_raw(entity), LoopControlKey::Balance);
+                        if self.desired_loop_controls.get(&key) == Some(rejected) {
+                            self.desired_loop_controls.remove(&key);
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::TrackFxControl(rejected)) => {
+                    if let (Some(entity), Some(control_key)) =
+                        (failure.entity, fx_control_key(rejected))
+                    {
+                        let key = (BackendTrackId::from_raw(entity), control_key);
+                        if self.desired_fx_controls.get(&key) == Some(rejected) {
+                            self.desired_fx_controls.remove(&key);
+                        }
+                    }
+                }
+                None => {}
+            }
+            self.notify_error(format!(
+                "Backend rejected {:?} mutation (driver generation {}, sequence {}): {}",
+                failure.kind, failure.driver_generation, failure.sequence, failure.message
+            ));
+        }
+        let rejected_indices = self
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, track)| {
+                rejected_track_creations
+                    .contains(&track.backend_id)
+                    .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        for index in rejected_indices.into_iter().rev() {
+            self.remove_track_model(index);
+        }
+        let confirmed_removal_indices = self
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, track)| {
+                (track.structural_state == StructuralState::Removing
+                    && !snapshot.tracks.contains_key(&track.backend_id))
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        for index in confirmed_removal_indices.into_iter().rev() {
+            self.remove_track_model(index);
+        }
         let switch = self.audio_drivers.switch.clone();
         self.audio_drivers = snapshot.audio_drivers.clone();
         if switch.status != AudioDriverSwitchStatus::Idle {
@@ -5165,10 +5583,36 @@ impl ApplicationModel {
         self.status.command_overflows = snapshot.status.command_overflows;
         self.status.storage_low_channels = snapshot.status.storage_low_channels;
         self.status.storage_exhaustions = snapshot.status.storage_exhaustions;
+        self.desired_track_controls
+            .retain(|(backend_id, _), desired| {
+                !snapshot
+                    .tracks
+                    .get(backend_id)
+                    .is_some_and(|state| track_control_matches(state, *desired))
+            });
+        self.desired_fx_controls.retain(|(backend_id, _), desired| {
+            !snapshot
+                .tracks
+                .get(backend_id)
+                .is_some_and(|state| fx_control_matches(state.fx.as_ref(), desired))
+        });
+        self.desired_loop_controls
+            .retain(|(backend_id, key), desired| {
+                !snapshot
+                    .loops
+                    .get(backend_id)
+                    .is_some_and(|state| match key {
+                        LoopControlKey::Gain => (state.gain - *desired).abs() <= f32::EPSILON,
+                        LoopControlKey::Balance => (state.balance - *desired).abs() <= f32::EPSILON,
+                    })
+            });
         for track in &mut self.tracks {
             let Some(backend_state) = snapshot.tracks.get(&track.backend_id) else {
                 continue;
             };
+            if track.structural_state == StructuralState::Creating {
+                track.structural_state = StructuralState::Confirmed;
+            }
             let (input_audio_channels, output_audio_channels, input_midi, output_midi) =
                 match &backend_state.topology {
                     BackendTrackTopology::Direct {
@@ -5188,6 +5632,13 @@ impl ApplicationModel {
                     } => (*dry_audio_channels, *wet_audio_channels, *dry_midi, false),
                 };
             track.fx.clone_from(&backend_state.fx);
+            if let Some(fx) = track.fx.as_mut() {
+                for ((backend_id, _), desired) in &self.desired_fx_controls {
+                    if *backend_id == track.backend_id {
+                        apply_fx_control(fx, desired);
+                    }
+                }
+            }
             let controls = &mut track.controls;
             controls.has_output = output_audio_channels > 0 || output_midi;
             controls.has_output_audio = output_audio_channels > 0;
@@ -5214,6 +5665,11 @@ impl ApplicationModel {
                         len: message.len,
                     }
                 });
+            for ((backend_id, _), desired) in &self.desired_track_controls {
+                if *backend_id == track.backend_id {
+                    apply_track_control(controls, *desired);
+                }
+            }
             controls.clamp();
         }
         let track_capabilities = self
@@ -5232,6 +5688,9 @@ impl ApplicationModel {
             let Some(backend_state) = snapshot.loops.get(&model.backend_id) else {
                 continue;
             };
+            if model.state.structural_state == StructuralState::Creating {
+                model.state.structural_state = StructuralState::Confirmed;
+            }
             if model.script_composition.is_empty() {
                 model.length = backend_state.length;
                 model.position = backend_state.position;
@@ -5266,8 +5725,16 @@ impl ApplicationModel {
                 model.state.has_midi = *has_midi;
                 model.state.show_gain = *has_audio;
             }
-            model.state.gain = backend_state.gain;
-            model.state.balance = backend_state.balance;
+            model.state.gain = self
+                .desired_loop_controls
+                .get(&(model.backend_id, LoopControlKey::Gain))
+                .copied()
+                .unwrap_or(backend_state.gain);
+            model.state.balance = self
+                .desired_loop_controls
+                .get(&(model.backend_id, LoopControlKey::Balance))
+                .copied()
+                .unwrap_or(backend_state.balance);
             (model.state.peak_left_db, model.state.peak_right_db) =
                 display_peaks(&backend_state.audio_peaks, model.state.stereo);
             model.state.midi_activity = backend_state.midi_activity;
@@ -6270,6 +6737,7 @@ impl ApplicationModel {
                 id: TrackId::from_raw(track_document.id),
                 backend_id: created.track_id,
                 name: track_document.name.clone(),
+                structural_state: StructuralState::Confirmed,
                 port_name_base: track_document.port_name_base.clone(),
                 is_sync: track_document.is_sync,
                 audio_channels,
@@ -6354,6 +6822,9 @@ impl ApplicationModel {
         self.active_piano_notes.clear();
         self.connection_ports = connection_ports;
         self.pending_connections.clear();
+        self.desired_track_controls.clear();
+        self.desired_fx_controls.clear();
+        self.desired_loop_controls.clear();
         self.connection_errors.clear();
         self.connection_revision = self.connection_revision.wrapping_add(1);
         self.connection_view = Arc::new(ConnectionViewState::default());
@@ -6384,6 +6855,7 @@ impl ApplicationModel {
                 .map(|track| TrackState {
                     id: track.id,
                     name: track.name.clone(),
+                    structural_state: track.structural_state,
                     is_sync: track.is_sync,
                     topology: track.topology.clone(),
                     fx: track.fx.clone(),
@@ -6887,7 +7359,7 @@ impl ApplicationModel {
         loop_id: LoopId,
         format: LoopAudioExportFormat,
         selected_channels: &[u32],
-    ) -> Result<(), String> {
+    ) -> Result<(), BackendIoStepError> {
         let task_id = self
             .io_task
             .as_ref()
@@ -6897,9 +7369,14 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture loop: {error}"))?;
+        let capture = match backend.capture_session_async().map_err(|error| {
+            BackendIoStepError::Failed(format!("could not capture loop: {error}"))
+        })? {
+            BackendAsyncResult::Ready(capture) => capture,
+            BackendAsyncResult::Pending(progress) => {
+                return Err(BackendIoStepError::Pending(progress));
+            }
+        };
         let labels = self
             .tracks
             .iter()
@@ -6967,7 +7444,7 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         loop_id: LoopId,
         standard: bool,
-    ) -> Result<(), String> {
+    ) -> Result<(), BackendIoStepError> {
         let task_id = self
             .io_task
             .as_ref()
@@ -6977,9 +7454,14 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture loop: {error}"))?;
+        let capture = match backend.capture_session_async().map_err(|error| {
+            BackendIoStepError::Failed(format!("could not capture loop: {error}"))
+        })? {
+            BackendAsyncResult::Ready(capture) => capture,
+            BackendAsyncResult::Pending(progress) => {
+                return Err(BackendIoStepError::Pending(progress));
+            }
+        };
         let content = capture
             .tracks
             .iter()
@@ -7090,12 +7572,6 @@ fn safe_file_stem(name: &str) -> String {
     } else {
         stem
     }
-}
-
-fn io_pending_error(message: &str) -> bool {
-    message.contains("session capture pending")
-        || message.contains("session replacement pending")
-        || message.contains("loop content replacement pending")
 }
 
 fn document_midi_cc_assignment(
@@ -7965,6 +8441,15 @@ mod tests {
         assert!(old_port_ids
             .iter()
             .all(|port_id| !removed.connections.application_ports.contains_key(port_id)));
+        assert_eq!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == track_id)
+                .map(|track| track.structural_state),
+            Some(StructuralState::Removing)
+        );
+        model.apply_backend_snapshot(removed);
         assert!(!model.tracks.iter().any(|track| track.id == track_id));
 
         model.add_track(&mut backend, spec).unwrap();
@@ -15323,6 +15808,147 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .begin_generate_click_track(loop_id, ClickTrackRequest::default())
             .unwrap_err()
             .contains("another I/O task"));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn structural_creation_and_removal_are_provisional_and_rejection_recovers() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Provisional".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks.last().unwrap().id;
+        let backend_id = model.tracks.last().unwrap().backend_id;
+        assert_eq!(
+            model.tracks.last().unwrap().structural_state,
+            StructuralState::Creating
+        );
+        let confirmed = backend.poll().unwrap();
+        model.apply_backend_snapshot(confirmed.clone());
+        assert_eq!(
+            model.tracks.last().unwrap().structural_state,
+            StructuralState::Confirmed
+        );
+
+        model
+            .handle_track_action(&mut backend, track_id, TrackAction::Remove)
+            .unwrap();
+        assert_eq!(
+            model.tracks.last().unwrap().structural_state,
+            StructuralState::Removing
+        );
+        assert!(model.tracks.last().unwrap().loops.iter().all(|loop_id| {
+            model.loops[loop_id].state.structural_state == StructuralState::Removing
+        }));
+        let mut rejected = confirmed;
+        rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 2,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackStructure,
+                entity: Some(backend_id.raw()),
+                detail: Some(BackendMutationDetail::TrackRemoval),
+                message: "removal rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(rejected);
+        assert_eq!(
+            model.tracks.last().unwrap().structural_state,
+            StructuralState::Confirmed
+        );
+        assert!(model.tracks.last().unwrap().loops.iter().all(|loop_id| {
+            model.loops[loop_id].state.structural_state == StructuralState::Confirmed
+        }));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn desired_controls_survive_stale_snapshots_ignore_stale_rejection_and_converge() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let track_id = model.tracks[0].id;
+        let backend_track = model.tracks[0].backend_id;
+        let loop_id = model.tracks[0].loops[0];
+        let backend_loop = model.loops[&loop_id].backend_id;
+
+        model.desired_track_controls.insert(
+            (backend_track, TrackControlKey::OutputGain),
+            BackendTrackControl::OutputGainDb(-6.0),
+        );
+        model
+            .desired_loop_controls
+            .insert((backend_loop, LoopControlKey::Gain), 0.7);
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(model.tracks[0].controls.output_gain_db, -6.0);
+        assert_eq!(model.loops[&loop_id].state.gain, 0.7);
+
+        model.desired_track_controls.insert(
+            (backend_track, TrackControlKey::OutputGain),
+            BackendTrackControl::OutputGainDb(-12.0),
+        );
+        let mut stale_rejection = backend.poll().unwrap();
+        stale_rejection
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 9,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackControl(
+                    BackendTrackControl::OutputGainDb(-6.0),
+                )),
+                message: "older gain rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(stale_rejection);
+        assert_eq!(model.tracks[0].controls.output_gain_db, -12.0);
+
+        let mut latest_rejection = backend.poll().unwrap();
+        latest_rejection
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 10,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackControl(
+                    BackendTrackControl::OutputGainDb(-12.0),
+                )),
+                message: "latest gain rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(latest_rejection);
+        assert_eq!(model.tracks[0].id, track_id);
+        assert_eq!(model.tracks[0].controls.output_gain_db, 0.0);
+        assert!(!model
+            .desired_track_controls
+            .contains_key(&(backend_track, TrackControlKey::OutputGain)));
+
+        model.desired_track_controls.insert(
+            (backend_track, TrackControlKey::OutputGain),
+            BackendTrackControl::OutputGainDb(-3.0),
+        );
+        backend
+            .set_track_control(backend_track, BackendTrackControl::OutputGainDb(-3.0))
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(model.tracks[0].controls.output_gain_db, -3.0);
+        assert!(!model
+            .desired_track_controls
+            .contains_key(&(backend_track, TrackControlKey::OutputGain)));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

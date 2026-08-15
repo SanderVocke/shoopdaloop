@@ -650,6 +650,63 @@ pub struct BackendAudioDataChunk {
     pub samples: Vec<f32>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BackendOperationKind {
+    SessionCapture,
+    SessionReplacement,
+    LoopContentReplacement,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackendOperationProgress {
+    pub key: u64,
+    pub kind: BackendOperationKind,
+    pub completed: usize,
+    pub total: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BackendAsyncResult<T> {
+    Pending(BackendOperationProgress),
+    Ready(T),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BackendMutationKind {
+    DriverConfiguration,
+    TrackStructure,
+    CompositeStructure,
+    TrackControl,
+    TrackFxControl,
+    MidiInput,
+    LoopControl,
+    LoopContent,
+    SessionTransfer,
+    Connection,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BackendMutationDetail {
+    TrackCreation,
+    TrackRemoval,
+    LoopCreation { loop_id: BackendLoopId },
+    TrackControl(BackendTrackControl),
+    TrackFxControl(BackendTrackFxControl),
+    LoopGain(f32),
+    LoopBalance(f32),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackendMutationFailure {
+    pub driver_generation: u64,
+    pub sequence: u64,
+    pub operation_key: Option<u64>,
+    pub kind: BackendMutationKind,
+    pub entity: Option<u64>,
+    pub detail: Option<BackendMutationDetail>,
+    pub message: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
     pub status: BackendStatus,
@@ -658,6 +715,7 @@ pub struct BackendSnapshot {
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
     pub composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
     pub connections: BackendConnectionSnapshot,
+    pub mutation_failures: Vec<BackendMutationFailure>,
 }
 
 pub trait Backend {
@@ -834,12 +892,29 @@ pub trait Backend {
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         Err(anyhow!("session capture is unavailable"))
     }
+    fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+        self.capture_session().map(BackendAsyncResult::Ready)
+    }
     fn replace_session(
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let _ = session;
         Err(anyhow!("session replacement is unavailable"))
+    }
+    fn replace_session_async(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        self.replace_session(session).map(BackendAsyncResult::Ready)
+    }
+    fn replace_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.replace_loop_content(loop_id, update)
+            .map(BackendAsyncResult::Ready)
     }
     fn set_port_connected(
         &mut self,
@@ -4425,6 +4500,7 @@ impl Backend for EngineBackend {
             loops,
             composites,
             connections: self.connection_snapshot(),
+            mutation_failures: Vec::new(),
         })
     }
 
@@ -6308,6 +6384,7 @@ impl Backend for FakeBackend {
             loops: self.loops.clone(),
             composites: self.composites.clone(),
             connections: self.connection_snapshot(),
+            mutation_failures: Vec::new(),
         })
     }
 

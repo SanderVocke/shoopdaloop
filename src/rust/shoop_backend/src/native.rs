@@ -2710,6 +2710,7 @@ impl Backend for NativeBackend {
             loops,
             composites,
             connections: runtime.take_connection_snapshot(),
+            mutation_failures: Vec::new(),
         })
     }
 

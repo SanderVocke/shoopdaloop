@@ -28,7 +28,6 @@ if (directFileMicrophone && !selfContained) {
 }
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
-const saturate = process.env.SATURATE === '1';
 const settingsOnly = process.env.SETTINGS_ONLY === '1';
 const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
 const webMidi = process.env.WEB_MIDI === '1';
@@ -846,17 +845,6 @@ try {
     state = await evaluate(statusExpression);
     if (!(state.callbacks > firstCallbacks) || state.generation !== firstGeneration) {
       throw new Error(`repeated start changed the active generation or stopped callbacks: ${JSON.stringify(state)}`);
-    }
-    if (saturate) {
-      const callbacksBeforeSaturation = state.callbacks;
-      await evaluate("dispatchEvent(new Event('shoop-test-audio-saturate'))");
-      state = await waitFor(
-        candidate => candidate.overflows > 0 && candidate.callbacks > callbacksBeforeSaturation,
-        'bounded command saturation was not observable or stopped callbacks',
-      );
-      if (state.driver !== 'Running') {
-        throw new Error(`driver did not remain running after bounded saturation: ${JSON.stringify(state)}`);
-      }
     }
     if (lifecycle) {
       await evaluate("dispatchEvent(new Event('shoop-test-audio-suspend'))");

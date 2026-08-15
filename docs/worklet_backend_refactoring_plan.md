@@ -272,93 +272,103 @@ Evidence: `shoop_worklet_client` owns the remote backend, conversion, resource, 
 
 ### Stage 2 — Extract transport core and restricted control handle
 
-- [ ] Split pure transport state from concrete `web_sys::MessagePort` ownership.
-- [ ] Introduce the runtime-independent message endpoint interface.
-- [ ] Introduce `RemoteBackendControl` with attach, detach, receive, driver-state, and failure operations only.
-- [ ] Remove external access to journal, sequence, inbound queue, error slot, and in-flight counters.
-- [ ] Track individual in-flight sequence IDs rather than only a count.
-- [ ] Validate response version, sequence, generation, duplication, and ordering.
-- [ ] Define and implement durable replay completion.
-- [ ] Separate transport failure from command rejection and remote engine failure.
-- [ ] Add an in-memory endpoint adapter for native contract tests.
+- [x] Split pure transport state from concrete `web_sys::MessagePort` ownership.
+- [x] Introduce the runtime-independent message endpoint interface.
+- [x] Introduce `RemoteBackendControl` with attach, detach, receive, driver-state, and failure operations only.
+- [x] Remove external access to journal, sequence, inbound queue, error slot, and in-flight counters.
+- [x] Track individual in-flight sequence IDs rather than only a count.
+- [x] Validate response version, sequence, generation, duplication, and ordering.
+- [x] Define and implement durable replay completion.
+- [x] Separate transport failure from command rejection and remote engine failure.
+- [x] Add an in-memory endpoint adapter for native contract tests.
 
 Verification:
 
-- [ ] Browser physical audio still attaches and communicates through a temporary MessagePort adapter.
-- [ ] Duplicate, unknown, stale-generation, malformed, and out-of-order response tests fail observably.
-- [ ] Replay tests prove exact durable order and exclusion of ephemeral commands.
-- [ ] No browser driver or presentation code can mutate transport internals directly.
+- [x] Browser physical audio still attaches and communicates through a temporary MessagePort adapter.
+- [x] Duplicate, unknown, stale-generation, malformed, and out-of-order response tests fail observably.
+- [x] Replay tests prove exact durable order and exclusion of ephemeral commands.
+- [x] No browser driver or presentation code can mutate transport internals directly.
+
+Evidence: `shoop_worklet_client::transport` owns private sequence-indexed pending state and exposes only `MessageEndpoint` and `RemoteBackendControl`. Native contract tests cover every invalid response class, capacity, replay order/completion, restart generations, and ephemeral exclusion. The warning-denying browser build uses the MessagePort endpoint adapter.
 
 ### Stage 3 — Formalize readiness, quiescence, and logical polling
 
-- [ ] Add distinct driver, connection, protocol, replay, and remote-engine state models.
-- [ ] Implement the ordered readiness milestones.
-- [ ] Delay application-facing ready state until initialization, negotiation, and replay complete.
-- [ ] Replace remote wall-clock poll scheduling with elapsed time supplied through `Backend::advance`.
-- [ ] Define remote quiescence in terms of pending commands, replay, transfer work, inbound messages, and driver activity.
-- [ ] Implement meaningful remote idle/quiescence observation instead of a no-op.
-- [ ] Retain bounded wall-clock startup and external wait timeouts outside deterministic backend progression.
+- [x] Add distinct driver, connection, protocol, replay, and remote-engine state models.
+- [x] Implement the ordered readiness milestones.
+- [x] Delay application-facing ready state until initialization, negotiation, and replay complete.
+- [x] Replace remote wall-clock poll scheduling with elapsed time supplied through `Backend::advance`.
+- [x] Define remote quiescence in terms of pending commands, replay, transfer work, inbound messages, and driver activity.
+- [x] Implement meaningful remote idle/quiescence observation instead of a no-op.
+- [x] Retain bounded wall-clock startup and external wait timeouts outside deterministic backend progression.
 
 Verification:
 
-- [ ] Readiness cannot be observed early under delayed acknowledgement tests.
-- [ ] Logical-time tests produce identical polling behavior independent of host speed.
-- [ ] Idle waits complete only after all specified work is settled and fail on bounded timeout.
-- [ ] Driver restart resets only the intended milestones and generations.
+- [x] Readiness cannot be observed early under delayed acknowledgement tests.
+- [x] Logical-time tests produce identical polling behavior independent of host speed.
+- [x] Idle waits complete only after all specified work is settled and fail on bounded timeout.
+- [x] Driver restart resets only the intended milestones and generations.
+
+Evidence: typed readiness state and effective driver state are tested under delayed acknowledgement, snapshot observation, replay, and restart. Polling consumes only `Backend::advance` duration. Backend and control quiescence include transport, inbound, replay, waveform, MIDI, and transfer state; bounded external waits test both timeout and settlement.
 
 ### Stage 4 — Introduce typed asynchronous progress and mutation outcomes
 
-- [ ] Define typed pending/ready progress for session capture, session replacement, and loop-content replacement.
-- [ ] Remove application string matching for pending backend operations.
-- [ ] Define typed delayed mutation failures with stable operation keys and messages.
-- [ ] Deliver ordinary command rejection through backend snapshots or a dedicated typed outcome surface rather than failing the entire backend poll.
-- [ ] Define immediate submission failure separately from delayed remote rejection.
-- [ ] Add explicit completion and cancellation behavior for transfers interrupted by detach, restart, replacement, or shutdown.
-- [ ] Preserve native synchronous behavior through immediate ready/applied results.
+- [x] Define typed pending/ready progress for session capture, session replacement, and loop-content replacement.
+- [x] Remove application string matching for pending backend operations.
+- [x] Define typed delayed mutation failures with stable operation keys and messages.
+- [x] Deliver ordinary command rejection through backend snapshots or a dedicated typed outcome surface rather than failing the entire backend poll.
+- [x] Define immediate submission failure separately from delayed remote rejection.
+- [x] Add explicit completion and cancellation behavior for transfers interrupted by detach, restart, replacement, or shutdown.
+- [x] Preserve native synchronous behavior through immediate ready/applied results.
 
 Verification:
 
-- [ ] No application control flow recognizes pending work through error text.
-- [ ] Native and remote backends satisfy the same typed operation contracts.
-- [ ] Transfer cancellation and rejection leave no retained bytes, stale generations, or false completion.
-- [ ] A rejected command does not mark the entire connection backend unavailable.
+- [x] No application control flow recognizes pending work through error text.
+- [x] Native and remote backends satisfy the same typed operation contracts.
+- [x] Transfer cancellation and rejection leave no retained bytes, stale generations, or false completion.
+- [x] A rejected command does not mark the entire connection backend unavailable.
+
+Evidence: `BackendAsyncResult`, operation progress, and correlated mutation failures are domain types used by application I/O. Native backends use immediate-ready defaults; remote tests cover pending progress, delayed rejection without poll failure, one-shot typed outcomes, retained-byte release, and generation-change cancellation.
 
 ### Stage 5 — Move optimism into explicit application desired state
 
-- [ ] Inventory all optimistic control and structural mutations in UI, application model, remote backend, and native backend paths.
-- [ ] Add application desired-state records keyed by logical control or operation.
-- [ ] Publish effective control values by overlaying desired state on authoritative backend state.
-- [ ] Retain widget-level interaction optimism for direct manipulation and stale application publication.
-- [ ] Remove remote-backend mutation of authoritative snapshots for continuous controls.
-- [ ] Implement last-write-wins behavior for rapid gain, balance, mute, monitoring, loop-control, and Tiny Synth/FX changes.
-- [ ] Clear desired values only when authoritative state confirms the latest desired value.
-- [ ] Roll back and notify on typed rejection without allowing stale outcomes to affect newer desired values.
-- [ ] Represent structural creation, removal, connection, driver switch, processor creation, and session replacement as explicit provisional/pending state where applicable.
-- [ ] Keep meters, positions, driver state, route confirmation, recording completion, and realtime diagnostics authoritative.
+- [x] Inventory all optimistic control and structural mutations in UI, application model, remote backend, and native backend paths.
+- [x] Add application desired-state records keyed by logical control or operation.
+- [x] Publish effective control values by overlaying desired state on authoritative backend state.
+- [x] Retain widget-level interaction optimism for direct manipulation and stale application publication.
+- [x] Remove remote-backend mutation of authoritative snapshots for continuous controls.
+- [x] Implement last-write-wins behavior for rapid gain, balance, mute, monitoring, loop-control, and Tiny Synth/FX changes.
+- [x] Clear desired values only when authoritative state confirms the latest desired value.
+- [x] Roll back and notify on typed rejection without allowing stale outcomes to affect newer desired values.
+- [x] Represent structural creation, removal, connection, driver switch, processor creation, and session replacement as explicit provisional/pending state where applicable.
+- [x] Keep meters, positions, driver state, route confirmation, recording completion, and realtime diagnostics authoritative.
 
 Verification:
 
-- [ ] Dial and continuous-control tests remain visually immediate under delayed backend snapshots.
-- [ ] Rapid changes converge to the newest value under reordered delays and stale snapshots.
-- [ ] Rejection rolls back exactly the affected desired value and retains newer values.
-- [ ] Native and remote backends produce the same application-visible optimistic behavior.
-- [ ] Authoritative backend snapshots never contain values merely because submission succeeded.
+- [x] Dial and continuous-control tests remain visually immediate under delayed backend snapshots.
+- [x] Rapid changes converge to the newest value under reordered delays and stale snapshots.
+- [x] Rejection rolls back exactly the affected desired value and retains newer values.
+- [x] Native and remote backends produce the same application-visible optimistic behavior.
+- [x] Authoritative backend snapshots never contain values merely because submission succeeded.
+
+Evidence: the application owns keyed desired track, loop, and Tiny Synth/FX controls and overlays them after every authoritative snapshot. Correlated rejection details protect newer values from stale failures. `StructuralState` exposes creating/removing resources and recovery. Tests cover stale snapshots, last-write-wins rejection, confirmation convergence, structural pending/recovery, and remote snapshot authority.
 
 ### Stage 6 — Extract host MIDI from the remote backend
 
-- [ ] Define the platform-neutral host-MIDI bridge interface.
-- [ ] Move browser endpoint discovery, track-input draining, and output sending behind the interface.
-- [ ] Add null and deterministic in-memory implementations.
-- [ ] Inject the bridge when constructing `RemoteWorkletBackend`.
-- [ ] Keep scripting MIDI service ownership separate unless concrete evidence supports unification.
-- [ ] Preserve canonical endpoint identity, direction, limits, drops, refusal counters, and hotplug semantics.
+- [x] Define the platform-neutral host-MIDI bridge interface.
+- [x] Move browser endpoint discovery, track-input draining, and output sending behind the interface.
+- [x] Add null and deterministic in-memory implementations.
+- [x] Inject the bridge when constructing `RemoteWorkletBackend`.
+- [x] Keep scripting MIDI service ownership separate unless concrete evidence supports unification.
+- [x] Preserve canonical endpoint identity, direction, limits, drops, refusal counters, and hotplug semantics.
 
 Verification:
 
-- [ ] The remote client crate has no concrete browser MIDI dependency.
-- [ ] Browser MIDI behavior and diagnostics remain unchanged.
-- [ ] Null and deterministic bridges permit remote backend construction outside a browser.
-- [ ] Track and scripting MIDI continue to share physical endpoint truth without duplicated identities.
+- [x] The remote client crate has no concrete browser MIDI dependency.
+- [x] Browser MIDI behavior and diagnostics remain unchanged.
+- [x] Null and deterministic bridges permit remote backend construction outside a browser.
+- [x] Track and scripting MIDI continue to share physical endpoint truth without duplicated identities.
+
+Evidence: `HostMidiBridge` has null and deterministic native implementations; `BrowserMidiHub` implements it while continuing to back the separately owned scripting service. Existing browser MIDI lifecycle, hotplug, direction, fanout, capacity, and identity tests pass, and dependency isolation excludes browser APIs from the client crate.
 
 ### Stage 7 — Split physical browser driver from presentation
 

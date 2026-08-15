@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 use shoop_audio_protocol::{
@@ -79,7 +80,14 @@ pub struct TransportDiagnostics {
 }
 
 struct PendingCommand {
+    command: Command,
     replay: bool,
+}
+
+pub(crate) struct ReceivedEvent {
+    pub envelope: EventEnvelope,
+    pub command: Command,
+    pub generation: u64,
 }
 
 pub(crate) struct TransportCore {
@@ -88,7 +96,7 @@ pub(crate) struct TransportCore {
     error: Option<String>,
     endpoint: Option<Box<dyn MessageEndpoint>>,
     journal: Vec<Command>,
-    inbound: VecDeque<EventEnvelope>,
+    inbound: VecDeque<ReceivedEvent>,
     next_sequence: u64,
     next_response_sequence: u64,
     pending: BTreeMap<u64, PendingCommand>,
@@ -142,6 +150,10 @@ impl TransportCore {
         Ok(())
     }
 
+    pub(crate) fn reject_journaled(&mut self, command: &Command) {
+        self.journal.retain(|candidate| candidate != command);
+    }
+
     pub(crate) fn ephemeral(&mut self, command: Command) -> Result<()> {
         if self.endpoint.is_none() {
             return Err(anyhow!("remote worklet is not connected"));
@@ -155,7 +167,7 @@ impl TransportCore {
             return Err(anyhow!("remote worklet command queue is full"));
         }
         let sequence = self.next_sequence;
-        let envelope = CommandEnvelope::new(sequence, command);
+        let envelope = CommandEnvelope::new(sequence, command.clone());
         let json = serde_json::to_string(&envelope)?;
         self.endpoint
             .as_ref()
@@ -163,7 +175,8 @@ impl TransportCore {
             .post_message(&json)
             .map_err(|error| anyhow!("could not post remote worklet command: {error}"))?;
         self.next_sequence = self.next_sequence.saturating_add(1);
-        self.pending.insert(sequence, PendingCommand { replay });
+        self.pending
+            .insert(sequence, PendingCommand { command, replay });
         if replay {
             self.replay_sequences.insert(sequence);
         }
@@ -285,7 +298,11 @@ impl TransportCore {
             self.fail(message.clone());
             return Err(anyhow!(message));
         }
-        self.inbound.push_back(event);
+        self.inbound.push_back(ReceivedEvent {
+            envelope: event,
+            command: pending.command,
+            generation,
+        });
         Ok(())
     }
 
@@ -325,8 +342,24 @@ impl TransportCore {
         self.pending.len()
     }
 
+    pub(crate) fn readiness(&self) -> RemoteReadiness {
+        self.readiness
+    }
+
     pub(crate) fn driver_state(&self) -> BackendDriverState {
-        self.readiness.driver_state
+        if self.readiness.driver_state == BackendDriverState::Running && !self.readiness.is_ready()
+        {
+            BackendDriverState::Starting
+        } else {
+            self.readiness.driver_state
+        }
+    }
+
+    pub(crate) fn is_quiescent(&self) -> bool {
+        self.pending.is_empty()
+            && self.inbound.is_empty()
+            && self.replay_sequences.is_empty()
+            && self.readiness.replay != ReplayState::Replaying
     }
 
     pub(crate) fn overflows(&self) -> u32 {
@@ -337,7 +370,7 @@ impl TransportCore {
         self.overflows = self.overflows.saturating_add(count);
     }
 
-    pub(crate) fn drain_events(&mut self) -> Vec<EventEnvelope> {
+    pub(crate) fn drain_events(&mut self) -> Vec<ReceivedEvent> {
         self.inbound.drain(..).collect()
     }
 
@@ -404,11 +437,22 @@ impl RemoteBackendControl {
         self.inner.borrow().diagnostics()
     }
 
-    #[doc(hidden)]
-    pub fn saturate_for_diagnostics(&self) {
-        let mut inner = self.inner.borrow_mut();
-        for _ in 0..=COMMAND_CAPACITY {
-            let _ = inner.ephemeral(Command::Poll);
+    pub fn is_quiescent(&self) -> bool {
+        self.inner.borrow().is_quiescent()
+    }
+
+    pub fn wait_for_quiescence(&self, timeout: Duration, mut progress: impl FnMut()) -> Result<()> {
+        let started = Instant::now();
+        loop {
+            if self.is_quiescent() {
+                return Ok(());
+            }
+            if started.elapsed() >= timeout {
+                return Err(anyhow!(
+                    "remote transport did not become quiescent within {timeout:?}"
+                ));
+            }
+            progress();
         }
     }
 }
@@ -567,6 +611,42 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
+    fn bounded_quiescence_wait_completes_only_after_pending_work_settles() {
+        let (_, control) = transport_pair();
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        assert!(control.wait_for_quiescence(Duration::ZERO, || {}).is_err());
+        let mut delivered = false;
+        control
+            .wait_for_quiescence(Duration::from_secs(1), || {
+                if !delivered {
+                    control.receive(1, &response(1, Event::Ack)).unwrap();
+                    control.inner.borrow_mut().drain_events();
+                    delivered = true;
+                }
+            })
+            .unwrap();
+        assert!(control.is_quiescent());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn bounded_command_saturation_is_observable_without_failing_the_driver() {
+        let (transport, control) = transport_pair();
+        control.set_driver_state(BackendDriverState::Running);
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        for _ in 0..=COMMAND_CAPACITY {
+            let _ = transport.borrow_mut().ephemeral(Command::Poll);
+        }
+        let diagnostics = control.diagnostics();
+        assert_eq!(diagnostics.pending_commands, COMMAND_CAPACITY);
+        assert!(diagnostics.overflows > 0);
+        assert_eq!(control.driver_state(), BackendDriverState::Running);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn readiness_requires_driver_protocol_replay_and_engine_observation() {
         let (_, control) = transport_pair();
         control.set_driver_state(BackendDriverState::Running);
@@ -584,5 +664,18 @@ mod tests {
             .receive(3, &response(2, Event::Snapshot(Default::default())))
             .unwrap();
         assert!(control.readiness().is_ready());
+
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 4, 0, 2)
+            .unwrap();
+        let restarted = control.readiness();
+        assert_eq!(restarted.driver_state, BackendDriverState::Running);
+        assert_eq!(restarted.connection, ConnectionState::Attached);
+        assert_eq!(restarted.protocol, ProtocolState::Initializing);
+        assert_eq!(restarted.replay, ReplayState::Replaying);
+        assert_eq!(restarted.engine, RemoteEngineState::Unknown);
+        assert!(!restarted.is_ready());
+        assert!(control.receive(3, &response(3, Event::Ack)).is_err());
+        assert_eq!(control.diagnostics().stale_messages, 1);
     }
 }

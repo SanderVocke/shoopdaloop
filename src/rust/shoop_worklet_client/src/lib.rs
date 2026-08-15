@@ -32,17 +32,19 @@ use shoop_audio_protocol::{
     SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    default_tiny_synth_fx_state, encode_tiny_synth_fx_state, tiny_synth_fx_descriptor, Backend,
-    BackendActiveCompositeChild, BackendChannelMode, BackendCompositeConfig, BackendCompositeId,
+    encode_tiny_synth_fx_state, tiny_synth_fx_descriptor, Backend, BackendActiveCompositeChild,
+    BackendAsyncResult, BackendChannelMode, BackendCompositeConfig, BackendCompositeId,
     BackendCompositeKind, BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink,
     BackendConnectionFailure, BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor,
     BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
-    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendPortDataType,
-    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
-    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
-    BackendTrackState, BackendTrackTopology, DirectTrackRequest, TinySynthFxControl,
-    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
+    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMutationDetail,
+    BackendMutationFailure, BackendMutationKind, BackendOperationKind, BackendOperationProgress,
+    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
+    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionReplacement,
+    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
+    TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -96,21 +98,21 @@ struct LoopContentReplaceAssembly {
 
 #[derive(Default)]
 struct BrowserTrackResources {
+    topology: BackendTrackTopology,
     loops: Vec<BackendLoopId>,
-    ports: Vec<BackendPortId>,
 }
 
 pub struct RemoteWorkletBackend {
     transport: Rc<RefCell<TransportCore>>,
     snapshot: BackendSnapshot,
     track_resources: BTreeMap<BackendTrackId, BrowserTrackResources>,
-    removed_tracks: BTreeSet<BackendTrackId>,
-    removed_loops: BTreeSet<BackendLoopId>,
-    removed_ports: BTreeSet<BackendPortId>,
+    pending_removed_tracks: BTreeMap<BackendTrackId, BrowserTrackResources>,
+    reserved_composites: BTreeSet<BackendCompositeId>,
     next_track_id: u64,
     next_loop_id: u64,
     next_composite_id: u64,
     next_port_id: u64,
+    transport_generation: u64,
     poll_elapsed: Duration,
     last_wire_xruns: u32,
     waveform_revisions: BTreeMap<BackendLoopId, u64>,
@@ -121,6 +123,9 @@ pub struct RemoteWorkletBackend {
     session_capture: Option<SessionCaptureAssembly>,
     session_replace: Option<SessionReplaceAssembly>,
     loop_content_replace: Option<LoopContentReplaceAssembly>,
+    session_capture_error: Option<String>,
+    session_replace_error: Option<String>,
+    loop_content_replace_error: Option<String>,
     midi: Box<dyn HostMidiBridge>,
     midi_revision: u64,
 }
@@ -155,13 +160,13 @@ impl RemoteWorkletBackend {
                     ..Default::default()
                 },
                 track_resources: BTreeMap::new(),
-                removed_tracks: BTreeSet::new(),
-                removed_loops: BTreeSet::new(),
-                removed_ports: BTreeSet::new(),
+                pending_removed_tracks: BTreeMap::new(),
+                reserved_composites: BTreeSet::new(),
                 next_track_id: 1,
                 next_loop_id: 1,
                 next_composite_id: 1,
                 next_port_id: 1,
+                transport_generation: 0,
                 poll_elapsed: Duration::ZERO,
                 last_wire_xruns: 0,
                 waveform_revisions: BTreeMap::new(),
@@ -172,6 +177,9 @@ impl RemoteWorkletBackend {
                 session_capture: None,
                 session_replace: None,
                 loop_content_replace: None,
+                session_capture_error: None,
+                session_replace_error: None,
+                loop_content_replace_error: None,
                 midi: Box::new(midi),
                 midi_revision: u64::MAX,
             },
@@ -179,8 +187,54 @@ impl RemoteWorkletBackend {
         )
     }
 
+    pub fn is_quiescent(&self) -> bool {
+        self.transport.borrow().is_quiescent()
+            && self
+                .waveforms
+                .values()
+                .all(|assembly| assembly.complete && !assembly.in_flight)
+            && self
+                .midi_data
+                .values()
+                .all(|assembly| assembly.complete && !assembly.in_flight)
+            && self.session_capture.is_none()
+            && self.session_replace.is_none()
+            && self.loop_content_replace.is_none()
+    }
+
+    fn has_loop(&self, loop_id: BackendLoopId) -> bool {
+        self.track_resources
+            .values()
+            .any(|resources| resources.loops.contains(&loop_id))
+    }
+
+    fn cancel_transfers(&mut self, reason: &str) {
+        if let Some(capture) = self.session_capture.take() {
+            self.session_capture_error = Some(format!(
+                "session capture operation {} was cancelled: {reason}",
+                capture.generation
+            ));
+        }
+        if let Some(replace) = self.session_replace.take() {
+            self.session_replace_error = Some(format!(
+                "session replacement operation {} was cancelled: {reason}",
+                replace.generation
+            ));
+        }
+        if let Some(replace) = self.loop_content_replace.take() {
+            self.loop_content_replace_error = Some(format!(
+                "loop content replacement operation {} was cancelled: {reason}",
+                replace.generation
+            ));
+        }
+    }
+
     fn submit(&mut self, command: Command) -> Result<()> {
         self.transport.borrow_mut().journal(command)
+    }
+
+    fn submit_ephemeral(&mut self, command: Command) -> Result<()> {
+        self.transport.borrow_mut().ephemeral(command)
     }
 
     fn sync_midi_endpoints(&mut self) -> Result<()> {
@@ -565,9 +619,8 @@ impl RemoteWorkletBackend {
         self.snapshot.connections.application_ports.clear();
         self.snapshot.connections.confirmed_links.clear();
         self.track_resources.clear();
-        self.removed_tracks.clear();
-        self.removed_loops.clear();
-        self.removed_ports.clear();
+        self.pending_removed_tracks.clear();
+        self.reserved_composites.clear();
         self.waveforms.clear();
         self.midi_data.clear();
         for source_track in &session.tracks {
@@ -580,8 +633,8 @@ impl RemoteWorkletBackend {
             self.track_resources.insert(
                 created.track_id,
                 BrowserTrackResources {
+                    topology: source_track.topology.clone(),
                     loops: created.loops.clone(),
-                    ports: created.ports.iter().map(|port| port.id).collect(),
                 },
             );
             for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
@@ -669,11 +722,6 @@ impl RemoteWorkletBackend {
         self.snapshot.connections.application_ports = wire
             .application_ports
             .into_iter()
-            .filter(|port| {
-                !self
-                    .removed_ports
-                    .contains(&BackendPortId::from_raw(port.id))
-            })
             .map(|port| {
                 let id = BackendPortId::from_raw(port.id);
                 (
@@ -712,136 +760,125 @@ impl RemoteWorkletBackend {
         self.snapshot.connections.confirmed_links = wire
             .confirmed_links
             .into_iter()
-            .filter(|link| {
-                !self
-                    .removed_ports
-                    .contains(&BackendPortId::from_raw(link.application_port_id))
-            })
             .map(|link| BackendConfirmedLink {
                 application_port_id: BackendPortId::from_raw(link.application_port_id),
                 host_port_id: link.host_port_id,
             })
             .collect();
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
-        self.snapshot.tracks.extend(
-            wire.tracks
-                .into_iter()
-                .filter(|track| {
-                    !self
-                        .removed_tracks
-                        .contains(&BackendTrackId::from_raw(track.id))
-                })
-                .map(|track| {
-                    (
-                        BackendTrackId::from_raw(track.id),
-                        BackendTrackState {
-                            topology: match track.topology {
-                                WireTrackTopology::Direct {
-                                    audio_channels,
-                                    midi,
-                                } => BackendTrackTopology::Direct {
-                                    audio_channels,
-                                    midi,
-                                },
-                                WireTrackTopology::TinySynthFx { audio_channels } => {
-                                    BackendTrackTopology::DryWetProcessor {
-                                        processor_type: TrackProcessorTypeId::TINY_SYNTH_FX
-                                            .to_owned(),
-                                        dry_audio_channels: audio_channels,
-                                        wet_audio_channels: audio_channels,
-                                        dry_midi: true,
-                                    }
-                                }
+        let observed_track_ids = wire
+            .tracks
+            .iter()
+            .map(|track| BackendTrackId::from_raw(track.id))
+            .collect::<BTreeSet<_>>();
+        self.pending_removed_tracks
+            .retain(|track_id, _| observed_track_ids.contains(track_id));
+        self.snapshot.tracks = wire
+            .tracks
+            .into_iter()
+            .map(|track| {
+                (
+                    BackendTrackId::from_raw(track.id),
+                    BackendTrackState {
+                        topology: match track.topology {
+                            WireTrackTopology::Direct {
+                                audio_channels,
+                                midi,
+                            } => BackendTrackTopology::Direct {
+                                audio_channels,
+                                midi,
                             },
-                            fx: track.fx.map(|fx| TrackFxState {
-                                processor_type: TrackProcessorTypeId::new(
-                                    TrackProcessorTypeId::TINY_SYNTH_FX,
-                                ),
-                                active: fx.active,
-                                visible: fx.visible,
-                                lifecycle: FxLifecycle::Running,
-                                generation: 0,
-                                crash_summary: None,
-                                logs: Arc::from([]),
-                                editor: Some(TrackProcessorEditorState::TinySynthFx(
-                                    TinySynthFxState {
-                                        selected_preset_id: fx.tiny.selected_preset_id,
-                                        master_gain_db: fx.tiny.master_gain_db,
-                                        reverb_enabled: fx.tiny.reverb_enabled,
-                                        reverb_amount: fx.tiny.reverb_amount,
-                                        distortion_enabled: fx.tiny.distortion_enabled,
-                                        distortion_drive: fx.tiny.distortion_drive,
-                                        compressor_enabled: fx.tiny.compressor_enabled,
-                                        compressor_amount: fx.tiny.compressor_amount,
-                                        eq_enabled: fx.tiny.eq_enabled,
-                                        eq_low_db: fx.tiny.eq_low_db,
-                                        eq_mid_db: fx.tiny.eq_mid_db,
-                                        eq_high_db: fx.tiny.eq_high_db,
-                                        midi_cc_assignments: fx
-                                            .tiny
-                                            .midi_cc_assignments
-                                            .into_iter()
-                                            .map(|assignment| TinySynthFxMidiCcAssignment {
-                                                parameter: from_wire_tiny_parameter(
-                                                    assignment.parameter,
-                                                ),
-                                                channel: assignment.channel,
-                                                controller: assignment.controller,
-                                            })
-                                            .collect::<Vec<_>>()
-                                            .into(),
-                                    },
-                                )),
-                            }),
-                            audio_channels: track.audio_channels,
-                            midi: track.midi,
-                            output_gain_db: track.output_gain_db,
-                            output_balance: track.output_balance,
-                            output_muted: track.output_muted,
-                            input_gain_db: track.input_gain_db,
-                            input_balance: track.input_balance,
-                            input_monitoring: track.input_monitoring,
-                            input_peaks: track.input_peaks,
-                            output_peaks: track.output_peaks,
-                            latest_input_midi_message: track.latest_input_midi_message.map(
-                                |message| shoop_backend::BackendLatestMidiMessage {
-                                    bytes: message.bytes,
-                                    len: message.len,
-                                },
+                            WireTrackTopology::TinySynthFx { audio_channels } => {
+                                BackendTrackTopology::DryWetProcessor {
+                                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                                    dry_audio_channels: audio_channels,
+                                    wet_audio_channels: audio_channels,
+                                    dry_midi: true,
+                                }
+                            }
+                        },
+                        fx: track.fx.map(|fx| TrackFxState {
+                            processor_type: TrackProcessorTypeId::new(
+                                TrackProcessorTypeId::TINY_SYNTH_FX,
                             ),
-                            ..Default::default()
-                        },
-                    )
-                })
-                .collect::<BTreeMap<_, _>>(),
-        );
-        self.snapshot.loops.extend(
-            wire.loops
-                .into_iter()
-                .filter(|loop_| {
-                    !self
-                        .removed_loops
-                        .contains(&BackendLoopId::from_raw(loop_.id))
-                })
-                .map(|loop_| {
-                    (
-                        BackendLoopId::from_raw(loop_.id),
-                        BackendLoopState {
-                            mode: from_wire_loop_mode(loop_.mode),
-                            length: loop_.length,
-                            position: loop_.position,
-                            next_mode: loop_.next_mode.map(from_wire_loop_mode),
-                            next_transition_delay: loop_.next_transition_delay,
-                            stereo: loop_.stereo,
-                            gain: loop_.gain,
-                            balance: loop_.balance,
-                            audio_peaks: loop_.audio_peaks,
-                            midi_activity: loop_.midi_activity,
-                        },
-                    )
-                })
-                .collect::<BTreeMap<_, _>>(),
-        );
+                            active: fx.active,
+                            visible: fx.visible,
+                            lifecycle: FxLifecycle::Running,
+                            generation: 0,
+                            crash_summary: None,
+                            logs: Arc::from([]),
+                            editor: Some(TrackProcessorEditorState::TinySynthFx(
+                                TinySynthFxState {
+                                    selected_preset_id: fx.tiny.selected_preset_id,
+                                    master_gain_db: fx.tiny.master_gain_db,
+                                    reverb_enabled: fx.tiny.reverb_enabled,
+                                    reverb_amount: fx.tiny.reverb_amount,
+                                    distortion_enabled: fx.tiny.distortion_enabled,
+                                    distortion_drive: fx.tiny.distortion_drive,
+                                    compressor_enabled: fx.tiny.compressor_enabled,
+                                    compressor_amount: fx.tiny.compressor_amount,
+                                    eq_enabled: fx.tiny.eq_enabled,
+                                    eq_low_db: fx.tiny.eq_low_db,
+                                    eq_mid_db: fx.tiny.eq_mid_db,
+                                    eq_high_db: fx.tiny.eq_high_db,
+                                    midi_cc_assignments: fx
+                                        .tiny
+                                        .midi_cc_assignments
+                                        .into_iter()
+                                        .map(|assignment| TinySynthFxMidiCcAssignment {
+                                            parameter: from_wire_tiny_parameter(
+                                                assignment.parameter,
+                                            ),
+                                            channel: assignment.channel,
+                                            controller: assignment.controller,
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .into(),
+                                },
+                            )),
+                        }),
+                        audio_channels: track.audio_channels,
+                        midi: track.midi,
+                        output_gain_db: track.output_gain_db,
+                        output_balance: track.output_balance,
+                        output_muted: track.output_muted,
+                        input_gain_db: track.input_gain_db,
+                        input_balance: track.input_balance,
+                        input_monitoring: track.input_monitoring,
+                        input_peaks: track.input_peaks,
+                        output_peaks: track.output_peaks,
+                        latest_input_midi_message: track.latest_input_midi_message.map(|message| {
+                            shoop_backend::BackendLatestMidiMessage {
+                                bytes: message.bytes,
+                                len: message.len,
+                            }
+                        }),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        self.snapshot.loops = wire
+            .loops
+            .into_iter()
+            .map(|loop_| {
+                (
+                    BackendLoopId::from_raw(loop_.id),
+                    BackendLoopState {
+                        mode: from_wire_loop_mode(loop_.mode),
+                        length: loop_.length,
+                        position: loop_.position,
+                        next_mode: loop_.next_mode.map(from_wire_loop_mode),
+                        next_transition_delay: loop_.next_transition_delay,
+                        stereo: loop_.stereo,
+                        gain: loop_.gain,
+                        balance: loop_.balance,
+                        audio_peaks: loop_.audio_peaks,
+                        midi_activity: loop_.midi_activity,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
         self.snapshot.composites = wire
             .composites
             .into_iter()
@@ -1029,6 +1066,203 @@ fn browser_tiny_port_descriptors(
     ports
 }
 
+fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, Option<u64>)> {
+    Some(match command {
+        Command::ConfigureDeviceChannels { .. } | Command::ConfigureMidiEndpoints { .. } => {
+            (BackendMutationKind::DriverConfiguration, None)
+        }
+        Command::CreateTrack {
+            expected_track_id, ..
+        }
+        | Command::RemoveTrack {
+            track_id: expected_track_id,
+        }
+        | Command::AddLoop {
+            track_id: expected_track_id,
+            ..
+        } => (
+            BackendMutationKind::TrackStructure,
+            Some(*expected_track_id),
+        ),
+        Command::CreateComposite {
+            expected_composite_id,
+        }
+        | Command::ConfigureComposite {
+            composite_id: expected_composite_id,
+            ..
+        }
+        | Command::TransitionComposite {
+            composite_id: expected_composite_id,
+            ..
+        }
+        | Command::SetCompositePlayAfterRecord {
+            composite_id: expected_composite_id,
+            ..
+        }
+        | Command::RemoveComposite {
+            composite_id: expected_composite_id,
+        } => (
+            BackendMutationKind::CompositeStructure,
+            Some(*expected_composite_id),
+        ),
+        Command::SetTrackControl { track_id, .. } => {
+            (BackendMutationKind::TrackControl, Some(*track_id))
+        }
+        Command::SetTrackFxControl { track_id, .. } => {
+            (BackendMutationKind::TrackFxControl, Some(*track_id))
+        }
+        Command::PushMidiInput { .. } => (BackendMutationKind::MidiInput, None),
+        Command::InjectTrackMidiInput { track_id, .. } => {
+            (BackendMutationKind::MidiInput, Some(*track_id))
+        }
+        Command::SetLoopGain { loop_id, .. }
+        | Command::SetLoopBalance { loop_id, .. }
+        | Command::SetLoopSyncSource { loop_id, .. }
+        | Command::TransitionLoop { loop_id, .. }
+        | Command::ClearLoop { loop_id }
+        | Command::SetLoopLength { loop_id, .. } => {
+            (BackendMutationKind::LoopControl, Some(*loop_id))
+        }
+        Command::GrabLoops { requests } => (
+            BackendMutationKind::LoopControl,
+            requests.first().map(|request| request.loop_id),
+        ),
+        Command::BeginLoopContentReplace { loop_id, .. }
+        | Command::CommitLoopContentReplace {
+            generation: loop_id,
+        } => (BackendMutationKind::LoopContent, Some(*loop_id)),
+        Command::WriteLoopContentReplace { generation, .. } => {
+            (BackendMutationKind::LoopContent, Some(*generation))
+        }
+        Command::SetPortConnected {
+            application_port_id,
+            ..
+        } => (BackendMutationKind::Connection, Some(*application_port_id)),
+        Command::BeginSessionCapture { .. }
+        | Command::ReadSessionCapture { .. }
+        | Command::BeginSessionReplace { .. }
+        | Command::WriteSessionReplace { .. }
+        | Command::CommitSessionReplace { .. }
+        | Command::AbortSessionTransfer { .. } => (BackendMutationKind::SessionTransfer, None),
+        Command::DrainMidiOutput { .. }
+        | Command::RequestWaveform { .. }
+        | Command::RequestMidiData { .. }
+        | Command::Poll
+        | Command::Shutdown => return None,
+    })
+}
+
+fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxControl {
+    BackendTrackFxControl::TinySynthFx(match control {
+        WireTrackFxControl::SetActive(value) => return BackendTrackFxControl::SetActive(*value),
+        WireTrackFxControl::SetVisible(value) => return BackendTrackFxControl::SetVisible(*value),
+        WireTrackFxControl::ToggleOrRecover => return BackendTrackFxControl::ToggleOrRecover,
+        WireTrackFxControl::RestoreState(value) => {
+            return BackendTrackFxControl::RestoreState(value.clone());
+        }
+        WireTrackFxControl::ClearLogs => return BackendTrackFxControl::ClearLogs,
+        WireTrackFxControl::TinySelectPreset(value) => {
+            TinySynthFxControl::SelectPreset(value.clone())
+        }
+        WireTrackFxControl::TinySetMasterGainDb(value) => {
+            TinySynthFxControl::SetMasterGainDb(*value)
+        }
+        WireTrackFxControl::TinySetReverbEnabled(value) => {
+            TinySynthFxControl::SetReverbEnabled(*value)
+        }
+        WireTrackFxControl::TinySetReverbAmount(value) => {
+            TinySynthFxControl::SetReverbAmount(*value)
+        }
+        WireTrackFxControl::TinySetDistortionEnabled(value) => {
+            TinySynthFxControl::SetDistortionEnabled(*value)
+        }
+        WireTrackFxControl::TinySetDistortionDrive(value) => {
+            TinySynthFxControl::SetDistortionDrive(*value)
+        }
+        WireTrackFxControl::TinySetCompressorEnabled(value) => {
+            TinySynthFxControl::SetCompressorEnabled(*value)
+        }
+        WireTrackFxControl::TinySetCompressorAmount(value) => {
+            TinySynthFxControl::SetCompressorAmount(*value)
+        }
+        WireTrackFxControl::TinySetEqEnabled(value) => TinySynthFxControl::SetEqEnabled(*value),
+        WireTrackFxControl::TinySetEqLowDb(value) => TinySynthFxControl::SetEqLowDb(*value),
+        WireTrackFxControl::TinySetEqMidDb(value) => TinySynthFxControl::SetEqMidDb(*value),
+        WireTrackFxControl::TinySetEqHighDb(value) => TinySynthFxControl::SetEqHighDb(*value),
+        WireTrackFxControl::TinyAssignMidiCc(assignment) => {
+            TinySynthFxControl::AssignMidiCc(TinySynthFxMidiCcAssignment {
+                parameter: from_wire_tiny_parameter(assignment.parameter),
+                channel: assignment.channel,
+                controller: assignment.controller,
+            })
+        }
+        WireTrackFxControl::TinyRemoveMidiCc(parameter) => {
+            TinySynthFxControl::RemoveMidiCc(from_wire_tiny_parameter(*parameter))
+        }
+        WireTrackFxControl::TinyClearMidiCcAssignments => {
+            TinySynthFxControl::ClearMidiCcAssignments
+        }
+        WireTrackFxControl::TinyPanic => TinySynthFxControl::Panic,
+    })
+}
+
+fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
+    match command {
+        Command::CreateTrack { .. } => Some(BackendMutationDetail::TrackCreation),
+        Command::RemoveTrack { .. } => Some(BackendMutationDetail::TrackRemoval),
+        Command::AddLoop {
+            expected_loop_id, ..
+        } => Some(BackendMutationDetail::LoopCreation {
+            loop_id: BackendLoopId::from_raw(*expected_loop_id),
+        }),
+        Command::SetTrackControl { control, .. } => {
+            Some(BackendMutationDetail::TrackControl(match control {
+                WireTrackControl::OutputGainDb(value) => BackendTrackControl::OutputGainDb(*value),
+                WireTrackControl::OutputBalance(value) => {
+                    BackendTrackControl::OutputBalance(*value)
+                }
+                WireTrackControl::OutputMute(value) => BackendTrackControl::OutputMute(*value),
+                WireTrackControl::InputGainDb(value) => BackendTrackControl::InputGainDb(*value),
+                WireTrackControl::InputBalance(value) => BackendTrackControl::InputBalance(*value),
+                WireTrackControl::InputMonitoring(value) => {
+                    BackendTrackControl::InputMonitoring(*value)
+                }
+            }))
+        }
+        Command::SetTrackFxControl { control, .. } => Some(BackendMutationDetail::TrackFxControl(
+            from_wire_track_fx_control(control),
+        )),
+        Command::SetLoopGain { gain, .. } => Some(BackendMutationDetail::LoopGain(*gain)),
+        Command::SetLoopBalance { balance, .. } => {
+            Some(BackendMutationDetail::LoopBalance(*balance))
+        }
+        _ => None,
+    }
+}
+
+fn transfer_identity(command: &Command) -> Option<(BackendOperationKind, u64)> {
+    match command {
+        Command::BeginSessionCapture { generation }
+        | Command::ReadSessionCapture { generation, .. } => {
+            Some((BackendOperationKind::SessionCapture, *generation))
+        }
+        Command::BeginSessionReplace { generation, .. }
+        | Command::WriteSessionReplace { generation, .. }
+        | Command::CommitSessionReplace { generation } => {
+            Some((BackendOperationKind::SessionReplacement, *generation))
+        }
+        Command::BeginLoopContentReplace { generation, .. }
+        | Command::WriteLoopContentReplace { generation, .. }
+        | Command::CommitLoopContentReplace { generation } => {
+            Some((BackendOperationKind::LoopContentReplacement, *generation))
+        }
+        Command::AbortSessionTransfer { generation } => {
+            Some((BackendOperationKind::SessionReplacement, *generation))
+        }
+        _ => None,
+    }
+}
+
 impl Backend for RemoteWorkletBackend {
     fn supports_composite_loops(&self) -> bool {
         true
@@ -1077,49 +1311,13 @@ impl Backend for RemoteWorkletBackend {
                 })?;
                 self.next_track_id = self.next_track_id.saturating_add(1);
                 self.next_loop_id = self.next_loop_id.saturating_add(loops.len() as u64);
-                self.snapshot.tracks.insert(
-                    track_id,
-                    BackendTrackState {
-                        topology: request.topology.clone(),
-                        fx: Some(default_tiny_synth_fx_state()),
-                        audio_channels: *wet_audio_channels,
-                        midi: true,
-                        input_peaks: vec![-200.0; *dry_audio_channels as usize],
-                        output_peaks: vec![-200.0; *wet_audio_channels as usize],
-                        ..Default::default()
-                    },
-                );
-                for port in &ports {
-                    self.snapshot
-                        .connections
-                        .application_ports
-                        .insert(port.id, port.clone());
-                }
-                self.snapshot.connections.revision =
-                    self.snapshot.connections.revision.wrapping_add(1);
                 self.track_resources.insert(
                     track_id,
                     BrowserTrackResources {
+                        topology: request.topology.clone(),
                         loops: loops.clone(),
-                        ports: ports.iter().map(|port| port.id).collect(),
                     },
                 );
-                for loop_id in &loops {
-                    self.snapshot.loops.insert(
-                        *loop_id,
-                        BackendLoopState {
-                            mode: BackendLoopMode::Stopped,
-                            stereo: *wet_audio_channels == 2,
-                            gain: 1.0,
-                            audio_peaks: vec![
-                                -200.0;
-                                dry_audio_channels.saturating_add(*wet_audio_channels)
-                                    as usize
-                            ],
-                            ..Default::default()
-                        },
-                    );
-                }
                 Ok(BackendTrackCreation {
                     track_id,
                     loops,
@@ -1140,9 +1338,7 @@ impl Backend for RemoteWorkletBackend {
             expected_composite_id: id.raw(),
         })?;
         self.next_composite_id = self.next_composite_id.saturating_add(1);
-        self.snapshot
-            .composites
-            .insert(id, BackendCompositeState::default());
+        self.reserved_composites.insert(id);
         Ok(id)
     }
 
@@ -1198,7 +1394,7 @@ impl Backend for RemoteWorkletBackend {
         cycles_delay: Option<u32>,
         align_to_iteration: Option<i64>,
     ) -> Result<()> {
-        self.submit(Command::TransitionComposite {
+        self.submit_ephemeral(Command::TransitionComposite {
             composite_id: composite_id.raw(),
             mode: to_wire_loop_mode(mode),
             cycles_delay,
@@ -1221,7 +1417,7 @@ impl Backend for RemoteWorkletBackend {
         self.submit(Command::RemoveComposite {
             composite_id: composite_id.raw(),
         })?;
-        self.snapshot.composites.remove(&composite_id);
+        self.reserved_composites.remove(&composite_id);
         Ok(())
     }
 
@@ -1247,42 +1443,16 @@ impl Backend for RemoteWorkletBackend {
         })?;
         self.next_track_id = self.next_track_id.saturating_add(1);
         self.next_loop_id = self.next_loop_id.saturating_add(loops.len() as u64);
-        self.snapshot.tracks.insert(
-            track_id,
-            BackendTrackState {
-                audio_channels: request.audio_channels,
-                midi: request.midi,
-                input_peaks: vec![-200.0; request.audio_channels as usize],
-                output_peaks: vec![-200.0; request.audio_channels as usize],
-                ..Default::default()
-            },
-        );
-        for port in &ports {
-            self.snapshot
-                .connections
-                .application_ports
-                .insert(port.id, port.clone());
-        }
-        self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
         self.track_resources.insert(
             track_id,
             BrowserTrackResources {
+                topology: BackendTrackTopology::Direct {
+                    audio_channels: request.audio_channels,
+                    midi: request.midi,
+                },
                 loops: loops.clone(),
-                ports: ports.iter().map(|port| port.id).collect(),
             },
         );
-        for loop_id in &loops {
-            self.snapshot.loops.insert(
-                *loop_id,
-                BackendLoopState {
-                    mode: BackendLoopMode::Stopped,
-                    stereo: request.audio_channels == 2,
-                    gain: 1.0,
-                    audio_peaks: vec![-200.0; request.audio_channels as usize],
-                    ..Default::default()
-                },
-            );
-        }
         Ok(BackendTrackCreation {
             track_id,
             loops,
@@ -1291,39 +1461,27 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
-        if !self.snapshot.tracks.contains_key(&track_id) {
+        if !self.track_resources.contains_key(&track_id) {
             return Ok(());
         }
         self.submit(Command::RemoveTrack {
             track_id: track_id.raw(),
         })?;
-        self.snapshot.tracks.remove(&track_id);
-        self.removed_tracks.insert(track_id);
         if let Some(resources) = self.track_resources.remove(&track_id) {
-            for loop_id in resources.loops {
-                self.removed_loops.insert(loop_id);
-                self.snapshot.loops.remove(&loop_id);
-                self.waveform_revisions.remove(&loop_id);
-                self.waveforms.remove(&loop_id);
-                self.midi_data_generations.remove(&loop_id);
-                self.midi_data.remove(&loop_id);
+            for loop_id in &resources.loops {
+                self.waveform_revisions.remove(loop_id);
+                self.waveforms.remove(loop_id);
+                self.midi_data_generations.remove(loop_id);
+                self.midi_data.remove(loop_id);
             }
-            for port_id in resources.ports {
-                self.removed_ports.insert(port_id);
-                self.snapshot.connections.application_ports.remove(&port_id);
-                self.snapshot
-                    .connections
-                    .confirmed_links
-                    .retain(|link| link.application_port_id != port_id);
-            }
-            self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
+            self.pending_removed_tracks.insert(track_id, resources);
         }
         Ok(())
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
-        if !self.snapshot.tracks.contains_key(&track_id) {
-            return Err(anyhow!("unknown browser backend track {track_id:?}"));
+        if !self.track_resources.contains_key(&track_id) {
+            return Err(anyhow!("unknown remote backend track {track_id:?}"));
         }
         let loop_id = BackendLoopId::from_raw(self.next_loop_id);
         self.submit(Command::AddLoop {
@@ -1336,17 +1494,6 @@ impl Backend for RemoteWorkletBackend {
             .ok_or_else(|| anyhow!("browser track resources are missing"))?
             .loops
             .push(loop_id);
-        let track = &self.snapshot.tracks[&track_id];
-        self.snapshot.loops.insert(
-            loop_id,
-            BackendLoopState {
-                mode: BackendLoopMode::Stopped,
-                stereo: track.audio_channels == 2,
-                gain: 1.0,
-                audio_peaks: vec![-200.0; track.audio_channels as usize],
-                ..Default::default()
-            },
-        );
         Ok(loop_id)
     }
 
@@ -1355,27 +1502,13 @@ impl Backend for RemoteWorkletBackend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()> {
-        if !self.snapshot.tracks.contains_key(&track_id) {
-            return Err(anyhow!("unknown browser backend track {track_id:?}"));
+        if !self.track_resources.contains_key(&track_id) {
+            return Err(anyhow!("unknown remote backend track {track_id:?}"));
         }
         self.submit(Command::SetTrackControl {
             track_id: track_id.raw(),
             control: to_wire_track_control(control),
-        })?;
-        let track = self
-            .snapshot
-            .tracks
-            .get_mut(&track_id)
-            .expect("track checked");
-        match control {
-            BackendTrackControl::OutputGainDb(value) => track.output_gain_db = value,
-            BackendTrackControl::OutputBalance(value) => track.output_balance = value,
-            BackendTrackControl::OutputMute(value) => track.output_muted = value,
-            BackendTrackControl::InputGainDb(value) => track.input_gain_db = value,
-            BackendTrackControl::InputBalance(value) => track.input_balance = value,
-            BackendTrackControl::InputMonitoring(value) => track.input_monitoring = value,
-        }
-        Ok(())
+        })
     }
 
     fn set_track_fx_control(
@@ -1450,76 +1583,20 @@ impl Backend for RemoteWorkletBackend {
                 _ => {}
             }
         }
-        self.submit(Command::SetTrackFxControl {
+        let command = Command::SetTrackFxControl {
             track_id: track_id.raw(),
             control: to_wire_track_fx_control(control.clone()),
-        })?;
-
-        let fx = self
-            .snapshot
-            .tracks
-            .get_mut(&track_id)
-            .expect("track checked")
-            .fx
-            .as_mut()
-            .expect("processor checked");
-        match control {
-            BackendTrackFxControl::SetActive(value) => fx.active = value,
-            BackendTrackFxControl::SetVisible(value) => fx.visible = value,
-            BackendTrackFxControl::ToggleOrRecover => fx.visible = !fx.visible,
-            BackendTrackFxControl::RestoreState(_) | BackendTrackFxControl::ClearLogs => {}
-            BackendTrackFxControl::TinySynthFx(tiny) => {
-                let Some(TrackProcessorEditorState::TinySynthFx(editor)) = fx.editor.as_mut()
-                else {
-                    unreachable!("Tiny Synth/FX editor was checked before submission");
-                };
-                match tiny {
-                    TinySynthFxControl::SelectPreset(value) => {
-                        editor.selected_preset_id = Some(value)
-                    }
-                    TinySynthFxControl::SetMasterGainDb(value) => editor.master_gain_db = value,
-                    TinySynthFxControl::SetReverbEnabled(value) => editor.reverb_enabled = value,
-                    TinySynthFxControl::SetReverbAmount(value) => editor.reverb_amount = value,
-                    TinySynthFxControl::SetDistortionEnabled(value) => {
-                        editor.distortion_enabled = value
-                    }
-                    TinySynthFxControl::SetDistortionDrive(value) => {
-                        editor.distortion_drive = value
-                    }
-                    TinySynthFxControl::SetCompressorEnabled(value) => {
-                        editor.compressor_enabled = value
-                    }
-                    TinySynthFxControl::SetCompressorAmount(value) => {
-                        editor.compressor_amount = value
-                    }
-                    TinySynthFxControl::SetEqEnabled(value) => editor.eq_enabled = value,
-                    TinySynthFxControl::SetEqLowDb(value) => editor.eq_low_db = value,
-                    TinySynthFxControl::SetEqMidDb(value) => editor.eq_mid_db = value,
-                    TinySynthFxControl::SetEqHighDb(value) => editor.eq_high_db = value,
-                    TinySynthFxControl::AssignMidiCc(assignment) => {
-                        let mut assignments = editor.midi_cc_assignments.to_vec();
-                        assignments.retain(|current| {
-                            current.parameter != assignment.parameter
-                                && (current.channel, current.controller)
-                                    != (assignment.channel, assignment.controller)
-                        });
-                        assignments.push(assignment);
-                        assignments.sort_by_key(|assignment| assignment.parameter);
-                        editor.midi_cc_assignments = assignments.into();
-                    }
-                    TinySynthFxControl::RemoveMidiCc(parameter) => {
-                        let mut assignments = editor.midi_cc_assignments.to_vec();
-                        assignments.retain(|assignment| assignment.parameter != parameter);
-                        editor.midi_cc_assignments = assignments.into();
-                    }
-                    TinySynthFxControl::ClearMidiCcAssignments => {
-                        editor.midi_cc_assignments = Arc::from([]);
-                    }
-                    TinySynthFxControl::Panic => {}
-                }
-            }
+        };
+        if matches!(
+            &control,
+            BackendTrackFxControl::ToggleOrRecover
+                | BackendTrackFxControl::ClearLogs
+                | BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
+        ) {
+            self.submit_ephemeral(command)
+        } else {
+            self.submit(command)
         }
-        Ok(())
     }
 
     fn track_fx_state_string(&mut self, track_id: BackendTrackId) -> Result<Option<String>> {
@@ -1544,13 +1621,12 @@ impl Backend for RemoteWorkletBackend {
         events: &[BackendMidiEvent],
     ) -> Result<()> {
         let track = self
-            .snapshot
-            .tracks
+            .track_resources
             .get(&track_id)
-            .ok_or_else(|| anyhow!("unknown browser backend track {track_id:?}"))?;
+            .ok_or_else(|| anyhow!("unknown remote backend track {track_id:?}"))?;
         if !track.topology.has_midi() {
             return Err(anyhow!(
-                "browser backend track has no MIDI input {track_id:?}"
+                "remote backend track has no MIDI input {track_id:?}"
             ));
         }
         if events.len() > MIDI_BATCH_CAPACITY
@@ -1560,7 +1636,7 @@ impl Backend for RemoteWorkletBackend {
         {
             return Err(anyhow!("invalid browser MIDI input injection batch"));
         }
-        self.submit(Command::InjectTrackMidiInput {
+        self.submit_ephemeral(Command::InjectTrackMidiInput {
             track_id: track_id.raw(),
             events: events
                 .iter()
@@ -1573,47 +1649,35 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
-        if !self.snapshot.loops.contains_key(&loop_id) {
+        if !self.has_loop(loop_id) {
             return Err(anyhow!("unknown browser backend loop {loop_id:?}"));
         }
         self.submit(Command::SetLoopGain {
             loop_id: loop_id.raw(),
             gain,
-        })?;
-        self.snapshot
-            .loops
-            .get_mut(&loop_id)
-            .expect("loop checked")
-            .gain = gain;
-        Ok(())
+        })
     }
 
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()> {
-        if !self.snapshot.loops.contains_key(&loop_id) {
+        if !self.has_loop(loop_id) {
             return Err(anyhow!("unknown browser backend loop {loop_id:?}"));
         }
         self.submit(Command::SetLoopBalance {
             loop_id: loop_id.raw(),
             balance,
-        })?;
-        self.snapshot
-            .loops
-            .get_mut(&loop_id)
-            .expect("loop checked")
-            .balance = balance.clamp(-1.0, 1.0);
-        Ok(())
+        })
     }
 
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
         for request in requests {
-            if !self.snapshot.loops.contains_key(&request.loop_id) {
+            if !self.has_loop(request.loop_id) {
                 return Err(anyhow!(
                     "unknown browser backend loop {:?}",
                     request.loop_id
                 ));
             }
         }
-        self.submit(Command::GrabLoops {
+        self.submit_ephemeral(Command::GrabLoops {
             requests: requests
                 .iter()
                 .map(|request| WireGrabRequest {
@@ -1633,7 +1697,7 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
-        if !self.snapshot.loops.contains_key(&loop_id) {
+        if !self.has_loop(loop_id) {
             return Err(anyhow!("unknown browser backend loop {loop_id:?}"));
         }
         if let Some(assembly) = self.waveforms.get(&loop_id) {
@@ -1669,7 +1733,7 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
-        if !self.snapshot.loops.contains_key(&loop_id) {
+        if !self.has_loop(loop_id) {
             return Err(anyhow!("unknown browser backend loop {loop_id:?}"));
         }
         if let Some(assembly) = self.midi_data.get(&loop_id) {
@@ -1698,7 +1762,7 @@ impl Backend for RemoteWorkletBackend {
         mode: BackendLoopMode,
         cycles_delay: Option<u32>,
     ) -> Result<()> {
-        self.submit(Command::TransitionLoop {
+        self.submit_ephemeral(Command::TransitionLoop {
             loop_id: loop_id.raw(),
             mode: to_wire_loop_mode(mode),
             cycles_delay,
@@ -1709,7 +1773,7 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()> {
-        self.submit(Command::ClearLoop {
+        self.submit_ephemeral(Command::ClearLoop {
             loop_id: loop_id.raw(),
         })?;
         self.waveforms.remove(&loop_id);
@@ -1722,6 +1786,22 @@ impl Backend for RemoteWorkletBackend {
         loop_id: BackendLoopId,
         update: &BackendLoopContentUpdate,
     ) -> Result<()> {
+        match self.replace_loop_content_async(loop_id, update)? {
+            BackendAsyncResult::Ready(()) => Ok(()),
+            BackendAsyncResult::Pending(_) => Err(anyhow!(
+                "asynchronous loop content replacement is not complete"
+            )),
+        }
+    }
+
+    fn replace_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        if let Some(error) = self.loop_content_replace_error.take() {
+            return Err(anyhow!(error));
+        }
         if update.audio.is_empty() && update.midi.is_empty() {
             return Err(anyhow!("loop content update is empty"));
         }
@@ -1733,10 +1813,16 @@ impl Backend for RemoteWorkletBackend {
                 self.loop_content_replace = None;
                 self.waveforms.remove(&loop_id);
                 self.midi_data.remove(&loop_id);
-                return Ok(());
+                return Ok(BackendAsyncResult::Ready(()));
             }
+            let progress = BackendOperationProgress {
+                key: replace.generation,
+                kind: BackendOperationKind::LoopContentReplacement,
+                completed: replace.next_offset,
+                total: Some(replace.bytes.len()),
+            };
             self.pump_loop_content_replace()?;
-            return Err(anyhow!("loop content replacement pending"));
+            return Ok(BackendAsyncResult::Pending(progress));
         }
         let bytes = serde_json::to_vec(update)?;
         if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
@@ -1746,6 +1832,7 @@ impl Backend for RemoteWorkletBackend {
         }
         let generation = self.next_session_generation;
         self.next_session_generation = self.next_session_generation.saturating_add(1);
+        self.transport_generation = self.transport.borrow().diagnostics().generation;
         self.transport
             .borrow_mut()
             .ephemeral(Command::BeginLoopContentReplace {
@@ -1753,6 +1840,7 @@ impl Backend for RemoteWorkletBackend {
                 loop_id: loop_id.raw(),
                 total_bytes: bytes.len(),
             })?;
+        let total = bytes.len();
         self.loop_content_replace = Some(LoopContentReplaceAssembly {
             generation,
             loop_id,
@@ -1763,7 +1851,12 @@ impl Backend for RemoteWorkletBackend {
             complete: false,
         });
         self.pump_loop_content_replace()?;
-        Err(anyhow!("loop content replacement pending"))
+        Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+            key: generation,
+            kind: BackendOperationKind::LoopContentReplacement,
+            completed: 0,
+            total: Some(total),
+        }))
     }
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
@@ -1774,6 +1867,18 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
+        match self.capture_session_async()? {
+            BackendAsyncResult::Ready(session) => Ok(session),
+            BackendAsyncResult::Pending(_) => {
+                Err(anyhow!("asynchronous session capture is not complete"))
+            }
+        }
+    }
+
+    fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+        if let Some(error) = self.session_capture_error.take() {
+            return Err(anyhow!(error));
+        }
         if let Some(capture) = &self.session_capture {
             if capture.total_bytes == Some(capture.bytes.len()) && capture.in_flight == 0 {
                 let session: BackendSessionData = serde_json::from_slice(&capture.bytes)
@@ -1785,12 +1890,18 @@ impl Backend for RemoteWorkletBackend {
                         .insert(global.descriptor.id, global.descriptor.clone());
                 }
                 self.session_capture = None;
-                return Ok(session);
+                return Ok(BackendAsyncResult::Ready(session));
             }
-            return Err(anyhow!("session capture pending"));
+            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+                key: capture.generation,
+                kind: BackendOperationKind::SessionCapture,
+                completed: capture.bytes.len(),
+                total: capture.total_bytes,
+            }));
         }
         let generation = self.next_session_generation;
         self.next_session_generation = self.next_session_generation.saturating_add(1);
+        self.transport_generation = self.transport.borrow().diagnostics().generation;
         self.transport
             .borrow_mut()
             .ephemeral(Command::BeginSessionCapture { generation })?;
@@ -1801,13 +1912,33 @@ impl Backend for RemoteWorkletBackend {
             next_offset: 0,
             in_flight: 0,
         });
-        Err(anyhow!("session capture pending"))
+        Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+            key: generation,
+            kind: BackendOperationKind::SessionCapture,
+            completed: 0,
+            total: None,
+        }))
     }
 
     fn replace_session(
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
+        match self.replace_session_async(session)? {
+            BackendAsyncResult::Ready(replacement) => Ok(replacement),
+            BackendAsyncResult::Pending(_) => {
+                Err(anyhow!("asynchronous session replacement is not complete"))
+            }
+        }
+    }
+
+    fn replace_session_async(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        if let Some(error) = self.session_replace_error.take() {
+            return Err(anyhow!(error));
+        }
         if let Some(replace) = &self.session_replace {
             if &replace.session != session {
                 return Err(anyhow!("another session replacement is active"));
@@ -1816,10 +1947,16 @@ impl Backend for RemoteWorkletBackend {
                 let replacement = browser_replacement_mapping(session);
                 self.apply_replaced_session(session, &replacement);
                 self.session_replace = None;
-                return Ok(replacement);
+                return Ok(BackendAsyncResult::Ready(replacement));
             }
+            let progress = BackendOperationProgress {
+                key: replace.generation,
+                kind: BackendOperationKind::SessionReplacement,
+                completed: replace.next_offset,
+                total: Some(replace.bytes.len()),
+            };
             self.pump_session_replace()?;
-            return Err(anyhow!("session replacement pending"));
+            return Ok(BackendAsyncResult::Pending(progress));
         }
         let bytes = serde_json::to_vec(session)?;
         if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
@@ -1827,12 +1964,14 @@ impl Backend for RemoteWorkletBackend {
         }
         let generation = self.next_session_generation;
         self.next_session_generation = self.next_session_generation.saturating_add(1);
+        self.transport_generation = self.transport.borrow().diagnostics().generation;
         self.transport
             .borrow_mut()
             .ephemeral(Command::BeginSessionReplace {
                 generation,
                 total_bytes: bytes.len(),
             })?;
+        let total = bytes.len();
         self.session_replace = Some(SessionReplaceAssembly {
             generation,
             session: session.clone(),
@@ -1842,7 +1981,12 @@ impl Backend for RemoteWorkletBackend {
             complete: false,
         });
         self.pump_session_replace()?;
-        Err(anyhow!("session replacement pending"))
+        Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+            key: generation,
+            kind: BackendOperationKind::SessionReplacement,
+            completed: 0,
+            total: Some(total),
+        }))
     }
 
     fn set_port_connected(
@@ -1880,6 +2024,18 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
+        let transport = self.transport.borrow().diagnostics();
+        let connection = self.transport.borrow().readiness().connection;
+        if self.transport_generation != 0 && transport.generation != self.transport_generation {
+            self.cancel_transfers("driver generation changed");
+        } else if connection == ConnectionState::Detached
+            && (self.session_capture.is_some()
+                || self.session_replace.is_some()
+                || self.loop_content_replace.is_some())
+        {
+            self.cancel_transfers("transport detached");
+        }
+        self.transport_generation = transport.generation;
         self.sync_midi_endpoints()?;
         let state = self.transport.borrow().driver_state();
         let running = matches!(state, BackendDriverState::Running);
@@ -1901,12 +2057,107 @@ impl Backend for RemoteWorkletBackend {
             self.poll_elapsed = Duration::ZERO;
         }
         let events = self.transport.borrow_mut().drain_events();
-        for envelope in events {
-            match envelope.event {
+        for received in events {
+            let sequence = received.envelope.sequence;
+            let generation = received.generation;
+            match received.envelope.event {
                 Event::Ack | Event::Stopped => {}
                 Event::Error { message } => {
-                    self.loop_content_replace = None;
-                    return Err(anyhow!(message));
+                    self.transport
+                        .borrow_mut()
+                        .reject_journaled(&received.command);
+                    match &received.command {
+                        Command::CreateTrack {
+                            expected_track_id, ..
+                        } => {
+                            self.track_resources
+                                .remove(&BackendTrackId::from_raw(*expected_track_id));
+                        }
+                        Command::RemoveTrack { track_id } => {
+                            let track_id = BackendTrackId::from_raw(*track_id);
+                            if let Some(resources) = self.pending_removed_tracks.remove(&track_id) {
+                                self.track_resources.insert(track_id, resources);
+                            }
+                        }
+                        Command::AddLoop {
+                            track_id,
+                            expected_loop_id,
+                        } => {
+                            if let Some(resources) = self
+                                .track_resources
+                                .get_mut(&BackendTrackId::from_raw(*track_id))
+                            {
+                                resources
+                                    .loops
+                                    .retain(|loop_id| loop_id.raw() != *expected_loop_id);
+                            }
+                        }
+                        Command::CreateComposite {
+                            expected_composite_id,
+                        } => {
+                            self.reserved_composites
+                                .remove(&BackendCompositeId::from_raw(*expected_composite_id));
+                        }
+                        Command::RemoveComposite { composite_id } => {
+                            self.reserved_composites
+                                .insert(BackendCompositeId::from_raw(*composite_id));
+                        }
+                        _ => {}
+                    }
+                    if let Some((operation, operation_generation)) =
+                        transfer_identity(&received.command)
+                    {
+                        match operation {
+                            BackendOperationKind::SessionCapture => {
+                                self.session_capture = None;
+                                self.session_capture_error = Some(message.clone());
+                            }
+                            BackendOperationKind::SessionReplacement => {
+                                self.session_replace = None;
+                                self.session_replace_error = Some(message.clone());
+                            }
+                            BackendOperationKind::LoopContentReplacement => {
+                                self.loop_content_replace = None;
+                                self.loop_content_replace_error = Some(message.clone());
+                            }
+                        }
+                        self.snapshot
+                            .mutation_failures
+                            .push(BackendMutationFailure {
+                                driver_generation: generation,
+                                sequence,
+                                operation_key: Some(operation_generation),
+                                kind: match operation {
+                                    BackendOperationKind::LoopContentReplacement => {
+                                        BackendMutationKind::LoopContent
+                                    }
+                                    BackendOperationKind::SessionCapture
+                                    | BackendOperationKind::SessionReplacement => {
+                                        BackendMutationKind::SessionTransfer
+                                    }
+                                },
+                                entity: command_mutation_identity(&received.command)
+                                    .and_then(|(_, entity)| entity),
+                                detail: mutation_detail(&received.command),
+                                message,
+                            });
+                    } else if let Some((kind, entity)) =
+                        command_mutation_identity(&received.command)
+                    {
+                        self.snapshot
+                            .mutation_failures
+                            .push(BackendMutationFailure {
+                                driver_generation: generation,
+                                sequence,
+                                operation_key: None,
+                                kind,
+                                entity,
+                                detail: mutation_detail(&received.command),
+                                message,
+                            });
+                    } else {
+                        return Err(anyhow!(message));
+                    }
                 }
                 Event::ConnectionMutationFailed {
                     application_port_id,
@@ -1986,6 +2237,9 @@ impl Backend for RemoteWorkletBackend {
                         .is_some_and(|capture| capture.generation == generation)
                     {
                         self.session_capture = None;
+                        self.session_capture_error = Some(format!(
+                            "session capture operation {generation} was cancelled"
+                        ));
                     }
                     if self
                         .session_replace
@@ -1993,6 +2247,9 @@ impl Backend for RemoteWorkletBackend {
                         .is_some_and(|replace| replace.generation == generation)
                     {
                         self.session_replace = None;
+                        self.session_replace_error = Some(format!(
+                            "session replacement operation {generation} was cancelled"
+                        ));
                     }
                     if self
                         .loop_content_replace
@@ -2000,6 +2257,9 @@ impl Backend for RemoteWorkletBackend {
                         .is_some_and(|replace| replace.generation == generation)
                     {
                         self.loop_content_replace = None;
+                        self.loop_content_replace_error = Some(format!(
+                            "loop content replacement operation {generation} was cancelled"
+                        ));
                     }
                 }
             }
@@ -2011,6 +2271,7 @@ impl Backend for RemoteWorkletBackend {
         }
         let snapshot = self.snapshot.clone();
         self.snapshot.status.xruns = 0;
+        self.snapshot.mutation_failures.clear();
         Ok(snapshot)
     }
 
@@ -2205,10 +2466,15 @@ mod tests {
             vec![BackendLoopId::from_raw(1), BackendLoopId::from_raw(2)]
         );
 
+        backend.midi_revision = 0;
         let endpoint = MemoryEndpoint::default();
         let sent = endpoint.sent.clone();
         control.set_driver_state(BackendDriverState::Running);
         control.attach(Box::new(endpoint), 9, 1, 2).unwrap();
+        assert_eq!(
+            backend.poll().unwrap().status.driver_state,
+            BackendDriverState::Starting
+        );
         let commands = sent
             .borrow()
             .iter()
@@ -2256,5 +2522,291 @@ mod tests {
         assert_eq!(snapshot.status.processed_frames, 1_536);
         assert_eq!(snapshot.status.driver_state, BackendDriverState::Running);
         assert!(control.readiness().is_ready());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn ephemeral_input_and_runtime_actions_are_not_replayed() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        let creation = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "track".to_owned(),
+                audio_channels: 0,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let first = MemoryEndpoint::default();
+        control.attach(Box::new(first), 1, 0, 2).unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        deliver(&control, 1, 2, Event::Ack);
+        backend
+            .inject_midi_input(
+                creation.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, 60, 100],
+                }],
+            )
+            .unwrap();
+        backend
+            .transition_loop(creation.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .grab_loops(&[BackendGrabRequest {
+                loop_id: creation.loops[0],
+                reverse_start_cycle: None,
+                cycles_length: None,
+                go_to_cycle: None,
+                go_to_mode: BackendLoopMode::Playing,
+            }])
+            .unwrap();
+
+        control.detach(false);
+        let restarted = MemoryEndpoint::default();
+        let replayed = restarted.sent.clone();
+        control.attach(Box::new(restarted), 2, 0, 2).unwrap();
+        let commands = replayed
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(commands.len(), 2);
+        assert!(matches!(
+            commands[0],
+            Command::ConfigureDeviceChannels { .. }
+        ));
+        assert!(matches!(commands[1], Command::CreateTrack { .. }));
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn rejected_structural_reservation_is_removed_from_resources_and_replay() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let creation = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "rejected".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        deliver(
+            &control,
+            1,
+            2,
+            Event::Error {
+                message: "track rejected".to_owned(),
+            },
+        );
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.mutation_failures[0].detail,
+            Some(BackendMutationDetail::TrackCreation)
+        );
+        assert!(!backend.track_resources.contains_key(&creation.track_id));
+
+        control.detach(false);
+        let restarted = MemoryEndpoint::default();
+        let replayed = restarted.sent.clone();
+        control.attach(Box::new(restarted), 2, 0, 2).unwrap();
+        let commands = replayed
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands,
+            vec![Command::ConfigureDeviceChannels {
+                input_channels: 0,
+                output_channels: 2,
+            }]
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn delayed_command_rejection_is_typed_correlated_and_does_not_fail_polling() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let creation = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "track".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        control.set_driver_state(BackendDriverState::Running);
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 11, 0, 2)
+            .unwrap();
+        deliver(&control, 11, 1, Event::Ack);
+        deliver(&control, 11, 2, Event::Ack);
+        backend
+            .transport
+            .borrow_mut()
+            .ephemeral(Command::Poll)
+            .unwrap();
+        deliver(
+            &control,
+            11,
+            3,
+            Event::Snapshot(WireSnapshot {
+                loops: vec![shoop_audio_protocol::WireLoopState {
+                    id: creation.loops[0].raw(),
+                    gain: 1.0,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+        );
+        assert_eq!(backend.poll().unwrap().loops[&creation.loops[0]].gain, 1.0);
+        backend.set_loop_gain(creation.loops[0], 0.25).unwrap();
+        assert_eq!(backend.poll().unwrap().loops[&creation.loops[0]].gain, 1.0);
+        deliver(
+            &control,
+            11,
+            4,
+            Event::Error {
+                message: "gain rejected".to_owned(),
+            },
+        );
+
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.mutation_failures.len(), 1);
+        let failure = &snapshot.mutation_failures[0];
+        assert_eq!(failure.driver_generation, 11);
+        assert_eq!(failure.sequence, 4);
+        assert_eq!(failure.operation_key, None);
+        assert_eq!(failure.kind, BackendMutationKind::LoopControl);
+        assert_eq!(failure.entity, Some(creation.loops[0].raw()));
+        assert_eq!(failure.message, "gain rejected");
+        assert!(backend.poll().unwrap().mutation_failures.is_empty());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn transfer_progress_and_rejection_are_typed_and_release_retained_state() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 5, 0, 2)
+            .unwrap();
+        deliver(&control, 5, 1, Event::Ack);
+        let BackendAsyncResult::Pending(progress) = backend.capture_session_async().unwrap() else {
+            panic!("session capture completed before a remote response");
+        };
+        assert_eq!(progress.key, 1);
+        assert_eq!(progress.kind, BackendOperationKind::SessionCapture);
+        assert_eq!(progress.completed, 0);
+        assert_eq!(progress.total, None);
+        deliver(
+            &control,
+            5,
+            2,
+            Event::Error {
+                message: "capture rejected".to_owned(),
+            },
+        );
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.mutation_failures[0].operation_key, Some(1));
+        assert_eq!(
+            snapshot.mutation_failures[0].kind,
+            BackendMutationKind::SessionTransfer
+        );
+        assert!(backend.capture_session_async().is_err());
+        assert!(backend.is_quiescent());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn driver_restart_cancels_active_transfer_and_releases_staged_bytes() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 1, 0, 2)
+            .unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        assert!(matches!(
+            backend.capture_session_async().unwrap(),
+            BackendAsyncResult::Pending(_)
+        ));
+        assert!(backend.session_capture.is_some());
+
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 2, 0, 2)
+            .unwrap();
+        backend.poll().unwrap();
+        assert!(backend.session_capture.is_none());
+        assert!(backend.capture_session_async().is_err());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn logical_elapsed_time_drives_polling_and_quiescence() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.set_driver_state(BackendDriverState::Running);
+        control.attach(Box::new(endpoint), 2, 0, 2).unwrap();
+        deliver(&control, 2, 1, Event::Ack);
+        backend
+            .transport
+            .borrow_mut()
+            .ephemeral(Command::Poll)
+            .unwrap();
+        deliver(&control, 2, 2, Event::Snapshot(WireSnapshot::default()));
+        backend.poll().unwrap();
+        sent.borrow_mut().clear();
+
+        backend.advance(Duration::from_millis(49));
+        backend.poll().unwrap();
+        assert!(sent.borrow().is_empty());
+        assert!(backend.is_quiescent());
+
+        backend.advance(Duration::from_millis(1));
+        backend.poll().unwrap();
+        let commands = sent
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands,
+            vec![
+                Command::Poll,
+                Command::DrainMidiOutput {
+                    max_events: MIDI_BATCH_CAPACITY,
+                },
+            ]
+        );
+        assert!(!backend.is_quiescent());
+
+        deliver(&control, 2, 3, Event::Snapshot(WireSnapshot::default()));
+        deliver(
+            &control,
+            2,
+            4,
+            Event::MidiOutput {
+                events: Vec::new(),
+                dropped: 0,
+                refused_input: 0,
+            },
+        );
+        backend.poll().unwrap();
+        assert!(backend.is_quiescent());
     }
 }

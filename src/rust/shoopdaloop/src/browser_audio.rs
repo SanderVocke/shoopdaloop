@@ -67,7 +67,6 @@ pub struct BrowserAudioController {
     resume_handler: Closure<dyn FnMut(WebEvent)>,
     fail_handler: Closure<dyn FnMut(WebEvent)>,
     track_end_handler: Closure<dyn FnMut(WebEvent)>,
-    saturate_handler: Closure<dyn FnMut(WebEvent)>,
     shutdown_handler: Closure<dyn FnMut(WebEvent)>,
 }
 
@@ -146,12 +145,6 @@ impl BrowserAudioController {
             }
         }) as Box<dyn FnMut(_)>);
         let weak = Rc::downgrade(&inner);
-        let saturate_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
-            if let Some(inner) = weak.upgrade() {
-                inner.borrow().transport.saturate_for_diagnostics();
-            }
-        }) as Box<dyn FnMut(_)>);
-        let weak = Rc::downgrade(&inner);
         let shutdown_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
             if let Some(inner) = weak.upgrade() {
                 shutdown_inner(&mut inner.borrow_mut());
@@ -162,7 +155,6 @@ impl BrowserAudioController {
             ("shoop-test-audio-resume", &resume_handler),
             ("shoop-test-audio-fail", &fail_handler),
             ("shoop-test-audio-track-end", &track_end_handler),
-            ("shoop-test-audio-saturate", &saturate_handler),
             ("shoop-test-audio-shutdown", &shutdown_handler),
         ] {
             window
@@ -177,7 +169,6 @@ impl BrowserAudioController {
             resume_handler,
             fail_handler,
             track_end_handler,
-            saturate_handler,
             shutdown_handler,
         })
     }
@@ -315,7 +306,6 @@ impl Drop for BrowserAudioController {
                 ("shoop-test-audio-resume", &self.resume_handler),
                 ("shoop-test-audio-fail", &self.fail_handler),
                 ("shoop-test-audio-track-end", &self.track_end_handler),
-                ("shoop-test-audio-saturate", &self.saturate_handler),
                 ("shoop-test-audio-shutdown", &self.shutdown_handler),
             ] {
                 let _ = window

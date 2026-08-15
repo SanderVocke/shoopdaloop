@@ -160,7 +160,6 @@ WEB_MIDI=1 WEB_MIDI_DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
 BROWSER_SIZE=360,200 node --experimental-websocket browser_smoke.mjs
 DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
 LIFECYCLE=1 node --experimental-websocket browser_smoke.mjs
-SATURATE=1 node --experimental-websocket browser_smoke.mjs
 STRESS=1 node --experimental-websocket browser_smoke.mjs
 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 node --experimental-websocket browser_smoke.mjs
