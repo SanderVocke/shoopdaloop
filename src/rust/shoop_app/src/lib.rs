@@ -9077,7 +9077,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 2); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 3); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -9095,7 +9095,7 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.2, host supports 1.1"));
+        assert!(error.contains("script requests 1.3, host supports 1.2"));
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

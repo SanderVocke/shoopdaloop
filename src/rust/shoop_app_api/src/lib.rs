@@ -1026,7 +1026,7 @@ impl LuaApiVersion {
     }
 }
 
-pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 1 };
+pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 2 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
@@ -1143,10 +1143,20 @@ pub struct ScriptDialogRichTextStyle {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptDialogMarkdownLink {
+    pub destination: String,
+    pub callback_id: ScriptDialogButtonId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ScriptDialogElement {
     RichText {
         text: String,
         style: ScriptDialogRichTextStyle,
+    },
+    Markdown {
+        text: String,
+        links: Arc<[ScriptDialogMarkdownLink]>,
     },
     Button {
         id: Option<ScriptDialogButtonId>,
@@ -2145,7 +2155,7 @@ mod tests {
         assert!(!host.accepts(LuaApiVersion { major: 2, minor: 5 }));
         assert!(!host.accepts(LuaApiVersion { major: 1, minor: 4 }));
         assert!(!host.accepts(LuaApiVersion { major: 3, minor: 0 }));
-        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 1 });
+        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 2 });
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
@@ -2167,6 +2177,13 @@ mod tests {
                             ..Default::default()
                         },
                     },
+                    ScriptDialogElement::Markdown {
+                        text: "[More](more)".to_owned(),
+                        links: Arc::from([ScriptDialogMarkdownLink {
+                            destination: "more".to_owned(),
+                            callback_id: button_id,
+                        }]),
+                    },
                     ScriptDialogElement::Button {
                         id: Some(button_id),
                         label: "Run".to_owned(),
@@ -2178,7 +2195,7 @@ mod tests {
         let ScriptDialogKind::Simple(content) = &state.kind else {
             panic!("expected simple dialog");
         };
-        assert_eq!(content.elements.len(), 2);
+        assert_eq!(content.elements.len(), 3);
         assert_eq!(state.owner_script_id, script_id);
         assert_eq!(state.open_request, 3);
         assert_eq!(

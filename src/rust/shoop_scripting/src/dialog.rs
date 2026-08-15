@@ -7,7 +7,8 @@ use anyhow::anyhow;
 use omnilua::{Function, Lua, Table, Value};
 use shoop_app_api::{
     ScriptDialogButtonId, ScriptDialogContent, ScriptDialogElement, ScriptDialogId,
-    ScriptDialogKind, ScriptDialogRichTextStyle, ScriptDialogState, ScriptId,
+    ScriptDialogKind, ScriptDialogMarkdownLink, ScriptDialogRichTextStyle, ScriptDialogState,
+    ScriptId,
 };
 
 use crate::api_version::ApiVersionState;
@@ -114,6 +115,19 @@ pub fn install_dialog_api(
                 element.set("monospace", style.monospace)?;
                 element.set("underline", style.underline)?;
                 element.set("strikethrough", style.strikethrough)?;
+                Ok(element)
+            })?,
+        )?;
+
+        let versions_ = Rc::clone(&versions);
+        module.set(
+            "markdown",
+            lua.create_function(move |lua, (text, links): (String, Option<Table>)| {
+                versions_.require_announced()?;
+                let element = lua.create_table()?;
+                element.set(ELEMENT_KIND, "markdown")?;
+                element.set("text", text)?;
+                element.set("links", links)?;
                 Ok(element)
             })?,
         )?;
@@ -278,6 +292,46 @@ fn parse_content(
                     strikethrough: element.get("strikethrough")?,
                 },
             }),
+            "markdown" => {
+                let text = element.get("text")?;
+                let definitions: Option<Table> = element.get("links")?;
+                let mut definitions_by_destination = BTreeMap::new();
+                if let Some(definitions) = definitions {
+                    for pair in definitions.pairs()? {
+                        let (destination, callback) = pair?;
+                        let Value::String(destination) = destination else {
+                            return Err(runtime_error(
+                                "dialog markdown link destinations must be strings",
+                            ));
+                        };
+                        let destination = destination.to_str()?;
+                        if destination.trim().is_empty() {
+                            return Err(runtime_error(
+                                "dialog markdown link destination must not be empty",
+                            ));
+                        }
+                        let Value::Function(callback) = callback else {
+                            return Err(runtime_error(format!(
+                                "dialog markdown link {destination:?} callback must be a function"
+                            )));
+                        };
+                        definitions_by_destination.insert(destination, callback);
+                    }
+                }
+                let mut links = Vec::with_capacity(definitions_by_destination.len());
+                for (destination, callback) in definitions_by_destination {
+                    let callback_id = ids.button();
+                    callbacks.insert(callback_id, callback);
+                    links.push(ScriptDialogMarkdownLink {
+                        destination,
+                        callback_id,
+                    });
+                }
+                parsed.push(ScriptDialogElement::Markdown {
+                    text,
+                    links: Arc::from(links),
+                });
+            }
             "button" => {
                 let callback: Option<Function> = element.get("callback")?;
                 let id = callback.as_ref().map(|_| ids.button());
