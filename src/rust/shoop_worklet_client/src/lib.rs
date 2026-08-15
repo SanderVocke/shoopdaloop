@@ -2533,6 +2533,227 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
+    fn rich_wire_snapshot_converts_every_remote_domain_shape() {
+        use shoop_audio_protocol::{
+            WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
+            WireCompositeState, WireConfirmedLink, WireHostPort, WireLatestMidiMessage,
+            WireLoopState, WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter,
+            WireTinySynthFxState, WireTrackFxState, WireTrackState,
+        };
+
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        control.set_driver_state(BackendDriverState::Running);
+        control
+            .attach(Box::new(MemoryEndpoint::default()), 3, 2, 2)
+            .unwrap();
+        deliver(&control, 3, 1, Event::Ack);
+        backend
+            .transport
+            .borrow_mut()
+            .ephemeral(Command::Poll)
+            .unwrap();
+
+        let tiny = WireTinySynthFxState {
+            selected_preset_id: Some("pad".to_owned()),
+            master_gain_db: -6.0,
+            reverb_enabled: true,
+            reverb_amount: 0.2,
+            distortion_enabled: true,
+            distortion_drive: 2.0,
+            compressor_enabled: true,
+            compressor_amount: 0.3,
+            eq_enabled: true,
+            eq_low_db: 1.0,
+            eq_mid_db: -1.0,
+            eq_high_db: 2.0,
+            midi_cc_assignments: vec![WireTinySynthFxMidiCcAssignment {
+                parameter: WireTinySynthFxParameter::EqHigh,
+                channel: 3,
+                controller: 74,
+            }],
+        };
+        let track = |id, topology, fx| WireTrackState {
+            id,
+            topology,
+            fx,
+            audio_channels: 2,
+            midi: true,
+            output_gain_db: -3.0,
+            output_balance: 0.25,
+            output_muted: true,
+            input_gain_db: -4.0,
+            input_balance: -0.25,
+            input_monitoring: true,
+            input_peaks: vec![0.1, 0.2],
+            output_peaks: vec![0.3, 0.4],
+            latest_input_midi_message: Some(WireLatestMidiMessage {
+                bytes: [0x90, 60, 100, 0],
+                len: 3,
+            }),
+        };
+        let modes = [
+            WireLoopMode::Unknown,
+            WireLoopMode::Stopped,
+            WireLoopMode::Playing,
+            WireLoopMode::Recording,
+            WireLoopMode::Replacing,
+            WireLoopMode::PlayingDryThroughWet,
+            WireLoopMode::RecordingDryIntoWet,
+        ];
+        let roles = [
+            WirePortRole::AudioInput,
+            WirePortRole::AudioOutput,
+            WirePortRole::AudioSend,
+            WirePortRole::AudioReturn,
+            WirePortRole::MidiInput,
+            WirePortRole::MidiOutput,
+            WirePortRole::MidiSend,
+        ];
+        deliver(
+            &control,
+            3,
+            2,
+            Event::Snapshot(WireSnapshot {
+                sample_rate: 48_000,
+                quantum: 128,
+                callback_count: 4,
+                processed_frames: 512,
+                input_peak: 0.2,
+                output_peak: 0.4,
+                xruns: 1,
+                callback_budget_overruns: 2,
+                render_discontinuities: 3,
+                memory_growths: 4,
+                render_memory_growths: 5,
+                command_overflows: 6,
+                storage_low_channels: 7,
+                storage_exhaustions: 8,
+                tracks: vec![
+                    track(
+                        1,
+                        WireTrackTopology::Direct {
+                            audio_channels: 2,
+                            midi: true,
+                        },
+                        None,
+                    ),
+                    track(
+                        2,
+                        WireTrackTopology::TinySynthFx { audio_channels: 2 },
+                        Some(WireTrackFxState {
+                            active: true,
+                            visible: true,
+                            tiny,
+                        }),
+                    ),
+                ],
+                loops: modes
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, mode)| WireLoopState {
+                        id: index as u64 + 1,
+                        mode,
+                        length: 256,
+                        position: 64,
+                        next_mode: Some(WireLoopMode::Playing),
+                        next_transition_delay: Some(2),
+                        stereo: true,
+                        gain: 0.75,
+                        balance: -0.1,
+                        audio_peaks: vec![0.2, 0.3],
+                        midi_activity: true,
+                    })
+                    .collect(),
+                composites: vec![WireCompositeState {
+                    id: 1,
+                    mode: WireLoopMode::Playing,
+                    next_mode: Some(WireLoopMode::Stopped),
+                    next_transition_delay: Some(1),
+                    iteration: 2,
+                    cycle_count: 3,
+                    length: 4,
+                    position: 1,
+                    active_plan_version: 5,
+                    pending_plan_version: Some(6),
+                    active_children: vec![
+                        WireActiveCompositeChild {
+                            target: WireCompositeTarget::Loop(1),
+                            mode: WireLoopMode::Playing,
+                            cycle_offset: 0,
+                        },
+                        WireActiveCompositeChild {
+                            target: WireCompositeTarget::Composite(2),
+                            mode: WireLoopMode::Recording,
+                            cycle_offset: 1,
+                        },
+                    ],
+                }],
+                application_ports: roles
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, role)| WireApplicationPort {
+                        id: index as u64 + 1,
+                        owner: if index == 0 {
+                            WireApplicationPortOwner::GlobalFxControl
+                        } else {
+                            WireApplicationPortOwner::Track
+                        },
+                        name: format!("port-{index}"),
+                        data_type: if matches!(
+                            role,
+                            WirePortRole::MidiInput
+                                | WirePortRole::MidiOutput
+                                | WirePortRole::MidiSend
+                        ) {
+                            WirePortDataType::Midi
+                        } else {
+                            WirePortDataType::Audio
+                        },
+                        direction: if matches!(
+                            role,
+                            WirePortRole::AudioOutput
+                                | WirePortRole::AudioReturn
+                                | WirePortRole::MidiOutput
+                        ) {
+                            WirePortDirection::Output
+                        } else {
+                            WirePortDirection::Input
+                        },
+                        role,
+                    })
+                    .collect(),
+                host_ports: vec![
+                    WireHostPort {
+                        id: "audio-in".to_owned(),
+                        name: "Audio In".to_owned(),
+                        data_type: WirePortDataType::Audio,
+                        direction: WirePortDirection::Input,
+                    },
+                    WireHostPort {
+                        id: "midi-out".to_owned(),
+                        name: "MIDI Out".to_owned(),
+                        data_type: WirePortDataType::Midi,
+                        direction: WirePortDirection::Output,
+                    },
+                ],
+                confirmed_links: vec![WireConfirmedLink {
+                    application_port_id: 1,
+                    host_port_id: "audio-in".to_owned(),
+                }],
+            }),
+        );
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.tracks.len(), 2);
+        assert_eq!(snapshot.loops.len(), modes.len());
+        assert_eq!(snapshot.composites.len(), 1);
+        assert_eq!(snapshot.connections.application_ports.len(), roles.len());
+        assert_eq!(snapshot.connections.host_ports.len(), 2);
+        assert_eq!(snapshot.connections.confirmed_links.len(), 1);
+        assert_eq!(snapshot.status.storage_exhaustions, 8);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
     fn ephemeral_input_and_runtime_actions_are_not_replayed() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         let creation = backend
