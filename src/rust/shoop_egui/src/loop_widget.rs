@@ -397,7 +397,7 @@ impl LoopWidget {
         }
         ui.separator();
         if !state.sync {
-            let duplicate = ui.button("Duplicate");
+            let duplicate = ui.button("Clone");
             #[cfg(test)]
             {
                 self.test_duplicate_rect = Some(duplicate.rect);
@@ -1658,13 +1658,34 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
-    fn context_menu_requests_duplication_for_non_sync_loops() {
+    fn context_menu_labels_clone_and_requests_duplication_for_non_sync_loops() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut widget = LoopWidget::default();
         let state = state();
-        let _ = context_menu_frame(&context, &mut widget, &state, 1.0, Vec::new());
-        let duplicate = widget.test_duplicate_rect.expect("duplicate menu item");
+        let mut initial_response = LoopWidgetResponse::default();
+        let output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 300.0),
+                )),
+                time: Some(1.0),
+                ..Default::default()
+            },
+            |ui| widget.show_context_menu(ui, &state, &mut initial_response),
+        );
+        let painted_text = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text.galley.text()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(painted_text.contains(&"Clone"));
+        assert!(!painted_text.contains(&"Duplicate"));
+        let duplicate = widget.test_duplicate_rect.expect("clone menu item");
         let _ = context_menu_frame(
             &context,
             &mut widget,

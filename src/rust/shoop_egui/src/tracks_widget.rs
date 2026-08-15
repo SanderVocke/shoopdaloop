@@ -1,9 +1,13 @@
 use std::collections::BTreeMap;
 
 use crate::{
+    track_widget::{move_before_changes_order, TrackDragPayload},
     AppIntent, GlobalControlState, TrackId, TrackProcessorDescriptor, TrackState, TrackWidget,
+    TrackWidgetAction,
 };
 use egui_material_icons::icons::ICON_ADD;
+
+const TRACK_INSERT_ZONE_WIDTH: f32 = 7.0;
 
 #[derive(Debug, Default)]
 pub struct TracksWidgetResponse {
@@ -15,10 +19,14 @@ pub struct TracksWidgetResponse {
 
 #[derive(Debug, Default)]
 pub struct TracksWidget {
-    track_widgets: Vec<TrackWidget>,
+    track_widgets: BTreeMap<TrackId, TrackWidget>,
     track_centers: BTreeMap<TrackId, f32>,
     #[cfg(test)]
     test_empty_prompt_shown: bool,
+    #[cfg(test)]
+    test_track_insert_rects: Vec<(Option<TrackId>, egui::Rect)>,
+    #[cfg(test)]
+    test_highlighted_track_insert: Option<Option<TrackId>>,
 }
 
 impl TracksWidget {
@@ -45,12 +53,18 @@ impl TracksWidget {
         )
         .entered();
         self.track_widgets
-            .resize_with(tracks.len(), TrackWidget::default);
+            .retain(|id, _| tracks.iter().any(|track| track.id == *id));
+        for track in tracks {
+            self.track_widgets.entry(track.id).or_default();
+        }
+        let track_ids = tracks.iter().map(|track| track.id).collect::<Vec<_>>();
         let mut track_centers = BTreeMap::new();
         let mut result = TracksWidgetResponse::default();
         #[cfg(test)]
         {
             self.test_empty_prompt_shown = tracks.is_empty();
+            self.test_track_insert_rects.clear();
+            self.test_highlighted_track_insert = None;
         }
         let control_height = 82.0;
         egui::ScrollArea::horizontal()
@@ -67,14 +81,25 @@ impl TracksWidget {
                         .auto_shrink([true, false])
                         .show(ui, |ui| {
                             ui.horizontal_top(|ui| {
-                                ui.spacing_mut().item_spacing.x = 3.0;
-                                for (track, widget) in tracks.iter().zip(&mut self.track_widgets) {
+                                ui.spacing_mut().item_spacing.x = 0.0;
+                                for track in tracks {
+                                    self.show_track_insert_zone(
+                                        ui,
+                                        &track_ids,
+                                        Some(track.id),
+                                        loop_height,
+                                        &mut result,
+                                    );
+                                    let processor = track.fx.as_ref().and_then(|fx| {
+                                        processors
+                                            .iter()
+                                            .find(|candidate| candidate.id == fx.processor_type)
+                                    });
+                                    let widget = self
+                                        .track_widgets
+                                        .get_mut(&track.id)
+                                        .expect("track widget was initialized");
                                     let track_response = ui.push_id(track.id, |ui| {
-                                        let processor = track.fx.as_ref().and_then(|fx| {
-                                            processors
-                                                .iter()
-                                                .find(|candidate| candidate.id == fx.processor_type)
-                                        });
                                         let response = widget
                                             .show_content_with_processor_min_height_and_global_controls(
                                                 ui,
@@ -98,6 +123,14 @@ impl TracksWidget {
                                             "No tracks yet — use + to add your first track",
                                         ),
                                     );
+                                } else {
+                                    self.show_track_insert_zone(
+                                        ui,
+                                        &track_ids,
+                                        None,
+                                        loop_height,
+                                        &mut result,
+                                    );
                                 }
                                 let add = ui
                                     .add_sized(
@@ -109,8 +142,13 @@ impl TracksWidget {
                             });
                         });
                     ui.horizontal_top(|ui| {
-                        ui.spacing_mut().item_spacing.x = 3.0;
-                        for (track, widget) in tracks.iter().zip(&mut self.track_widgets) {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        for track in tracks {
+                            ui.add_space(TRACK_INSERT_ZONE_WIDTH);
+                            let widget = self
+                                .track_widgets
+                                .get_mut(&track.id)
+                                .expect("track widget was initialized");
                             ui.push_id((track.id, "controls"), |ui| {
                                 result.intents.extend(
                                     widget
@@ -127,6 +165,9 @@ impl TracksWidget {
                                 );
                             });
                         }
+                        if !tracks.is_empty() {
+                            ui.add_space(TRACK_INSERT_ZONE_WIDTH);
+                        }
                     });
                 });
             });
@@ -140,6 +181,46 @@ impl TracksWidget {
             );
         }
         result
+    }
+
+    fn show_track_insert_zone(
+        &mut self,
+        ui: &mut egui::Ui,
+        track_ids: &[TrackId],
+        target: Option<TrackId>,
+        height: f32,
+        result: &mut TracksWidgetResponse,
+    ) {
+        let payload = egui::DragAndDrop::payload::<TrackDragPayload>(ui.ctx());
+        let valid_payload = payload
+            .as_ref()
+            .is_some_and(|payload| move_before_changes_order(track_ids, payload.track_id, target));
+        let (_, response) = ui.allocate_exact_size(
+            egui::vec2(TRACK_INSERT_ZONE_WIDTH, height),
+            egui::Sense::hover(),
+        );
+        #[cfg(test)]
+        self.test_track_insert_rects.push((target, response.rect));
+        if valid_payload && response.contains_pointer() {
+            ui.painter().vline(
+                response.rect.center().x,
+                response.rect.y_range(),
+                egui::Stroke::new(2.0, egui::Color32::WHITE),
+            );
+            #[cfg(test)]
+            {
+                self.test_highlighted_track_insert = Some(target);
+            }
+        }
+        if let Some(payload) = response
+            .dnd_release_payload::<TrackDragPayload>()
+            .filter(|payload| move_before_changes_order(track_ids, payload.track_id, target))
+        {
+            result.intents.push(AppIntent::Track {
+                track_id: payload.track_id,
+                action: TrackWidgetAction::MoveBefore(target),
+            });
+        }
     }
 
     pub fn track_centers(&self, track_ids: &[TrackId]) -> Vec<f32> {
@@ -191,6 +272,27 @@ fn collect_response(
 mod tests {
     use super::*;
     use crate::{LoopId, LoopState, LoopWidgetAction, SelectionModifiers, TrackId};
+
+    fn frame(
+        context: &egui::Context,
+        widget: &mut TracksWidget,
+        tracks: &[TrackState],
+        events: Vec<egui::Event>,
+    ) -> TracksWidgetResponse {
+        let mut response = TracksWidgetResponse::default();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 400.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| response = widget.show(ui, tracks, &[]),
+        );
+        response
+    }
 
     #[tracy_nextest_capture::tracy_capture_test]
     fn empty_main_tracks_show_first_track_instruction_only() {
@@ -263,7 +365,7 @@ mod tests {
             },
         );
 
-        for track_widget in &widget.track_widgets {
+        for track_widget in widget.track_widgets.values() {
             let (content, controls) = track_widget.test_layout_rects();
             assert_eq!(content.x_range(), controls.x_range());
             assert_eq!(content.bottom(), controls.top());
@@ -276,6 +378,77 @@ mod tests {
         ]);
         assert_eq!(centers.len(), 2);
         assert!(centers[0] < centers[1]);
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn track_insert_drop_zone_highlights_and_emits_a_stable_move() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let source = TrackId::from_raw(1);
+        let target = TrackId::from_raw(3);
+        let tracks = (1..=3)
+            .map(|id| TrackState {
+                id: TrackId::from_raw(id),
+                name: format!("Track {id}"),
+                loops: vec![LoopState {
+                    id: LoopId::from_raw(id),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        let mut widget = TracksWidget::default();
+        let _ = frame(&context, &mut widget, &tracks, Vec::new());
+        let source_widget = &widget.track_widgets[&source] as *const TrackWidget;
+        let insert = widget
+            .test_track_insert_rects
+            .iter()
+            .find(|(candidate, _)| *candidate == Some(target))
+            .unwrap()
+            .1
+            .center();
+        egui::DragAndDrop::set_payload(&context, TrackDragPayload { track_id: source });
+        let _ = frame(
+            &context,
+            &mut widget,
+            &tracks,
+            vec![
+                egui::Event::PointerMoved(insert),
+                egui::Event::PointerButton {
+                    pos: insert,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert_eq!(widget.test_highlighted_track_insert, Some(Some(target)));
+        let response = frame(
+            &context,
+            &mut widget,
+            &tracks,
+            vec![egui::Event::PointerButton {
+                pos: insert,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            response.intents,
+            [AppIntent::Track {
+                track_id: source,
+                action: TrackWidgetAction::MoveBefore(Some(target)),
+            }]
+        );
+
+        let mut reordered = tracks.clone();
+        reordered.swap(0, 1);
+        let _ = frame(&context, &mut widget, &reordered, Vec::new());
+        assert_eq!(
+            source_widget,
+            &widget.track_widgets[&source] as *const TrackWidget
+        );
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

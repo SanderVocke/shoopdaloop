@@ -3438,6 +3438,35 @@ impl ApplicationModel {
         self.refresh_selected_media(backend)
     }
 
+    fn move_track_before(
+        &mut self,
+        source: TrackId,
+        target: Option<TrackId>,
+    ) -> Result<(), String> {
+        let source_index = self
+            .tracks
+            .iter()
+            .position(|track| track.id == source && !track.is_sync)
+            .ok_or_else(|| format!("stale, unknown, or sync track {source}"))?;
+        let target_index = target
+            .map(|target| {
+                self.tracks
+                    .iter()
+                    .position(|track| track.id == target && !track.is_sync)
+                    .ok_or_else(|| format!("stale, unknown, or sync track {target}"))
+            })
+            .transpose()?;
+        if target == Some(source) {
+            return Ok(());
+        }
+        let track = self.tracks.remove(source_index);
+        let target_index = target_index
+            .map(|index| index - usize::from(source_index < index))
+            .unwrap_or(self.tracks.len());
+        self.tracks.insert(target_index, track);
+        Ok(())
+    }
+
     fn handle_track_action(
         &mut self,
         backend: &mut dyn Backend,
@@ -3446,6 +3475,9 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         if action == TrackAction::Remove {
             return self.remove_track(backend, track_id);
+        }
+        if let TrackAction::MoveBefore(target) = &action {
+            return self.move_track_before(track_id, *target);
         }
         if let TrackAction::InputMonitoringChanged {
             enabled,
@@ -3469,7 +3501,7 @@ impl ApplicationModel {
             return Ok(());
         }
         let backend_action = match action {
-            TrackAction::Remove => unreachable!(),
+            TrackAction::Remove | TrackAction::MoveBefore(_) => unreachable!(),
             TrackAction::NameChanged(name) => {
                 track.name = name;
                 return Ok(());
@@ -3772,6 +3804,7 @@ impl ApplicationModel {
                 self.duplicate_loop_into(backend, track_id, loop_id, target)
             }
             LoopAction::SwapWith(target) => self.swap_loops(track_id, loop_id, target),
+            LoopAction::MoveBefore(target) => self.move_loop_before(track_id, loop_id, target),
         }
     }
 
@@ -3951,6 +3984,42 @@ impl ApplicationModel {
         model.backend_composite_signature = signature;
         model.repeat_sync = source_repeat_sync;
         model.recorded_fx_state = source_recorded_fx_state;
+        Ok(())
+    }
+
+    fn move_loop_before(
+        &mut self,
+        track_id: TrackId,
+        source: LoopId,
+        target: Option<LoopId>,
+    ) -> Result<(), String> {
+        let track = self
+            .tracks
+            .iter_mut()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        let source_index = track
+            .loops
+            .iter()
+            .position(|id| *id == source)
+            .ok_or_else(|| format!("loop {source} does not belong to track {track_id}"))?;
+        let target_index = target
+            .map(|target| {
+                track
+                    .loops
+                    .iter()
+                    .position(|id| *id == target)
+                    .ok_or_else(|| format!("loop {target} does not belong to track {track_id}"))
+            })
+            .transpose()?;
+        if target == Some(source) {
+            return Ok(());
+        }
+        track.loops.remove(source_index);
+        let target_index = target_index
+            .map(|index| index - usize::from(source_index < index))
+            .unwrap_or(track.loops.len());
+        track.loops.insert(target_index, source);
         Ok(())
     }
 
@@ -7903,6 +7972,91 @@ mod tests {
             snapshot.tracks[0].loops[0].name == "Count-in"
         });
         assert_eq!(snapshot.tracks[0].loops[0].name, "Count-in");
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn loop_and_track_move_actions_reorder_by_stable_insertion_target() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        for index in 1..=3 {
+            model
+                .add_track(
+                    &mut backend,
+                    DirectTrackSpec {
+                        name: format!("Track {index}"),
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                )
+                .unwrap();
+        }
+
+        let sync = model.tracks[0].id;
+        let first_track = model.tracks[1].id;
+        let second_track = model.tracks[2].id;
+        let third_track = model.tracks[3].id;
+        model
+            .handle_track_action(
+                &mut backend,
+                first_track,
+                TrackAction::MoveBefore(Some(third_track)),
+            )
+            .unwrap();
+        assert_eq!(
+            model
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            [sync, second_track, first_track, third_track]
+        );
+        model
+            .handle_track_action(&mut backend, first_track, TrackAction::MoveBefore(None))
+            .unwrap();
+        assert_eq!(
+            model
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            [sync, second_track, third_track, first_track]
+        );
+
+        let track_index = model
+            .tracks
+            .iter()
+            .position(|track| track.id == second_track)
+            .unwrap();
+        let original = model.tracks[track_index].loops.clone();
+        model
+            .handle_loop_action(
+                &mut backend,
+                second_track,
+                original[0],
+                LoopAction::MoveBefore(Some(original[2])),
+            )
+            .unwrap();
+        let mut expected = original.clone();
+        let moved = expected.remove(0);
+        expected.insert(1, moved);
+        assert_eq!(model.tracks[track_index].loops, expected);
+        model
+            .handle_loop_action(
+                &mut backend,
+                second_track,
+                original[0],
+                LoopAction::MoveBefore(None),
+            )
+            .unwrap();
+        let mut expected = original[1..].to_vec();
+        expected.push(original[0]);
+        assert_eq!(model.tracks[track_index].loops, expected);
     }
 
     #[tracy_nextest_capture::tracy_capture_test]

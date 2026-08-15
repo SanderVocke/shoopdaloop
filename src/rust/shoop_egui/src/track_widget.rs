@@ -5,7 +5,7 @@ use crate::{
     LoopId, LoopWidget, LoopWidgetAction, TrackControls, TrackProcessorDescriptor, TrackState,
     TrackWidgetAction,
 };
-use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
+use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
 use crate::tiny_synth_fx_editor::TinySynthFxEditor;
 
@@ -16,6 +16,12 @@ const TRACK_CONTROLS_HEIGHT: f32 = 48.0;
 const TRACK_CONTENT_MARGIN: egui::Margin = egui::Margin::same(4);
 const TRACK_CONTROLS_MARGIN: egui::Margin = egui::Margin::same(4);
 const RESIZE_HANDLE_RADIUS: f32 = 3.0;
+const LOOP_INSERT_ZONE_HEIGHT: f32 = 6.0;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TrackDragPayload {
+    pub track_id: crate::TrackId,
+}
 
 #[derive(Debug, Default)]
 pub struct TrackWidgetResponse {
@@ -34,6 +40,7 @@ pub struct TrackWidget {
     loop_widgets: BTreeMap<LoopId, LoopWidget>,
     hovered_loop: Option<LoopId>,
     pending_loop_drop: Option<(LoopId, LoopId)>,
+    pending_clone_confirmation: Option<(LoopId, LoopId)>,
     controls: TrackControls,
     fx_logs_open: bool,
     tiny_synth_fx_editor: TinySynthFxEditor,
@@ -58,9 +65,19 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_fx_rect: Option<egui::Rect>,
     #[cfg(test)]
-    test_drop_duplicate_rect: Option<egui::Rect>,
+    test_track_drag_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_drop_clone_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_drop_swap_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_loop_insert_rects: Vec<(Option<LoopId>, egui::Rect)>,
+    #[cfg(test)]
+    test_highlighted_loop_insert: Option<Option<LoopId>>,
+    #[cfg(test)]
+    test_clone_confirm_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_clone_cancel_rect: Option<egui::Rect>,
 }
 
 impl Default for TrackWidget {
@@ -71,6 +88,7 @@ impl Default for TrackWidget {
             loop_widgets: BTreeMap::new(),
             hovered_loop: None,
             pending_loop_drop: None,
+            pending_clone_confirmation: None,
             controls: TrackControls::default(),
             fx_logs_open: false,
             tiny_synth_fx_editor: TinySynthFxEditor::default(),
@@ -95,11 +113,43 @@ impl Default for TrackWidget {
             #[cfg(test)]
             test_fx_rect: None,
             #[cfg(test)]
-            test_drop_duplicate_rect: None,
+            test_track_drag_rect: None,
+            #[cfg(test)]
+            test_drop_clone_rect: None,
             #[cfg(test)]
             test_drop_swap_rect: None,
+            #[cfg(test)]
+            test_loop_insert_rects: Vec::new(),
+            #[cfg(test)]
+            test_highlighted_loop_insert: None,
+            #[cfg(test)]
+            test_clone_confirm_rect: None,
+            #[cfg(test)]
+            test_clone_cancel_rect: None,
         }
     }
+}
+
+pub(crate) fn move_before_changes_order<T: Copy + PartialEq>(
+    items: &[T],
+    source: T,
+    target: Option<T>,
+) -> bool {
+    let Some(source_index) = items.iter().position(|item| *item == source) else {
+        return false;
+    };
+    let target_index = match target {
+        Some(target) if target == source => return false,
+        Some(target) => {
+            let Some(index) = items.iter().position(|item| *item == target) else {
+                return false;
+            };
+            index
+        }
+        None => items.len(),
+    };
+    let target_index = target_index - usize::from(source_index < target_index);
+    source_index != target_index
 }
 
 fn track_background(state: &crate::TrackControlState) -> egui::Color32 {
@@ -234,19 +284,33 @@ impl TrackWidget {
         {
             self.hovered_loop = None;
         }
-        if self.pending_loop_drop.is_some_and(|(source, target)| {
+        let stale_pair = |(source, target)| {
             !state.loops.iter().any(|loop_state| loop_state.id == source)
                 || !state.loops.iter().any(|loop_state| loop_state.id == target)
-        }) {
+        };
+        if self.pending_loop_drop.is_some_and(stale_pair) {
             self.pending_loop_drop = None;
+        }
+        if self.pending_clone_confirmation.is_some_and(stale_pair) {
+            self.pending_clone_confirmation = None;
         }
         let mut result = TrackWidgetResponse::default();
         #[cfg(test)]
         {
             self.test_loop_rects.clear();
-            self.test_drop_duplicate_rect = None;
+            self.test_track_drag_rect = None;
+            self.test_drop_clone_rect = None;
             self.test_drop_swap_rect = None;
+            self.test_loop_insert_rects.clear();
+            self.test_highlighted_loop_insert = None;
+            self.test_clone_confirm_rect = None;
+            self.test_clone_cancel_rect = None;
         }
+        let loop_ids = state
+            .loops
+            .iter()
+            .map(|loop_state| loop_state.id)
+            .collect::<Vec<_>>();
         let rendered_width = self.width;
         let frame = egui::Frame::new()
             .fill(track_background(&state.controls))
@@ -258,6 +322,7 @@ impl TrackWidget {
                     self.show_header(ui, state, processor, &mut result);
                     ui.add_space(2.0);
                     for loop_state in &state.loops {
+                        self.show_loop_insert_zone(ui, &loop_ids, Some(loop_state.id), &mut result);
                         let hover_allowed = self
                             .hovered_loop
                             .is_none_or(|hovered| hovered == loop_state.id);
@@ -287,7 +352,7 @@ impl TrackWidget {
                             self.show_loop_drop_menu(
                                 ui,
                                 &drop_zone.response,
-                                loop_state.id,
+                                loop_state,
                                 dropped.is_some(),
                                 &mut result,
                             );
@@ -311,8 +376,8 @@ impl TrackWidget {
                         }
                         #[cfg(test)]
                         self.test_loop_rects.push(loop_response.response.rect);
-                        ui.add_space(2.0);
                     }
+                    self.show_loop_insert_zone(ui, &loop_ids, None, &mut result);
                     if show_add_loop {
                         let response = ui
                             .add_sized(
@@ -332,6 +397,7 @@ impl TrackWidget {
         if self.width_resizable {
             self.show_width_resize_handle(ui, frame.response.rect, "content_width_resize");
         }
+        self.show_clone_confirmation(ui.ctx(), state, &mut result);
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
         result
             .actions
@@ -354,47 +420,140 @@ impl TrackWidget {
         result
     }
 
+    fn show_loop_insert_zone(
+        &mut self,
+        ui: &mut egui::Ui,
+        loop_ids: &[LoopId],
+        target: Option<LoopId>,
+        result: &mut TrackWidgetResponse,
+    ) {
+        let payload = egui::DragAndDrop::payload::<LoopDragPayload>(ui.ctx());
+        let valid_payload = payload
+            .as_ref()
+            .is_some_and(|payload| move_before_changes_order(loop_ids, payload.loop_id, target));
+        let (_, response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), LOOP_INSERT_ZONE_HEIGHT),
+            egui::Sense::hover(),
+        );
+        #[cfg(test)]
+        self.test_loop_insert_rects.push((target, response.rect));
+        if valid_payload && response.contains_pointer() {
+            ui.painter().hline(
+                response.rect.x_range(),
+                response.rect.center().y,
+                egui::Stroke::new(2.0, egui::Color32::WHITE),
+            );
+            #[cfg(test)]
+            {
+                self.test_highlighted_loop_insert = Some(target);
+            }
+        }
+        if let Some(payload) = response
+            .dnd_release_payload::<LoopDragPayload>()
+            .filter(|payload| move_before_changes_order(loop_ids, payload.loop_id, target))
+        {
+            result
+                .loop_actions
+                .push((payload.loop_id, LoopWidgetAction::MoveBefore(target)));
+        }
+    }
+
     fn show_loop_drop_menu(
         &mut self,
         ui: &mut egui::Ui,
         response: &egui::Response,
-        anchor_loop: LoopId,
+        target_state: &crate::LoopState,
         open: bool,
         result: &mut TrackWidgetResponse,
     ) {
         let Some((source, target)) = self.pending_loop_drop else {
             return;
         };
-        if target != anchor_loop {
+        if target != target_state.id {
             return;
         }
         let popup_id = ui.id().with(("loop_drop_menu", target));
         let mut action = None;
+        let mut confirm_clone = false;
         egui::Popup::menu(response)
             .id(popup_id)
             .open_memory(open.then_some(egui::SetOpenCommand::Bool(true)))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
-                let duplicate = ui.button("Duplicate");
+                let clone = ui.button("Clone into");
                 let swap = ui.button("Swap");
                 #[cfg(test)]
                 {
-                    self.test_drop_duplicate_rect = Some(duplicate.rect);
+                    self.test_drop_clone_rect = Some(clone.rect);
                     self.test_drop_swap_rect = Some(swap.rect);
                 }
-                if duplicate.clicked() {
-                    action = Some(LoopWidgetAction::DuplicateTo(target));
+                if clone.clicked() {
+                    if target_state.empty {
+                        action = Some(LoopWidgetAction::DuplicateTo(target));
+                    } else {
+                        confirm_clone = true;
+                    }
                     ui.close();
                 } else if swap.clicked() {
                     action = Some(LoopWidgetAction::SwapWith(target));
                     ui.close();
                 }
             });
-        if let Some(action) = action {
+        if confirm_clone {
+            self.pending_clone_confirmation = Some((source, target));
+            self.pending_loop_drop = None;
+        } else if let Some(action) = action {
             result.loop_actions.push((source, action));
             self.pending_loop_drop = None;
         } else if !egui::Popup::is_id_open(ui.ctx(), popup_id) {
             self.pending_loop_drop = None;
+        }
+    }
+
+    fn show_clone_confirmation(
+        &mut self,
+        context: &egui::Context,
+        state: &TrackState,
+        result: &mut TrackWidgetResponse,
+    ) {
+        let Some((source, target)) = self.pending_clone_confirmation else {
+            return;
+        };
+        let target_name = state
+            .loops
+            .iter()
+            .find(|loop_state| loop_state.id == target)
+            .map(|loop_state| loop_state.name.as_str())
+            .unwrap_or("target loop");
+        let mut confirmed = false;
+        let mut cancelled = false;
+        let modal = egui::Modal::new(egui::Id::new(("clone_loop_confirmation", state.id))).show(
+            context,
+            |ui| {
+                ui.heading("Replace loop data?");
+                ui.label(format!(
+                    "“{target_name}” already contains data. Cloning into it will replace its contents."
+                ));
+                ui.horizontal(|ui| {
+                    let confirm = ui.button("Clone into");
+                    let cancel = ui.button("Cancel");
+                    #[cfg(test)]
+                    {
+                        self.test_clone_confirm_rect = Some(confirm.rect);
+                        self.test_clone_cancel_rect = Some(cancel.rect);
+                    }
+                    confirmed = confirm.clicked();
+                    cancelled = cancel.clicked();
+                });
+            },
+        );
+        if confirmed {
+            result
+                .loop_actions
+                .push((source, LoopWidgetAction::DuplicateTo(target)));
+            self.pending_clone_confirmation = None;
+        } else if cancelled || modal.should_close() {
+            self.pending_clone_confirmation = None;
         }
     }
 
@@ -614,6 +773,24 @@ impl TrackWidget {
                             ui.close();
                         }
                     });
+                }
+
+                if !state.is_sync {
+                    let (rect, drag) =
+                        ui.allocate_exact_size(egui::vec2(18.0, 24.0), egui::Sense::drag());
+                    drag.dnd_set_drag_payload(TrackDragPayload { track_id: state.id });
+                    #[cfg(test)]
+                    {
+                        self.test_track_drag_rect = Some(rect);
+                    }
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        ICON_DRAG_INDICATOR.codepoint,
+                        egui::FontId::new(17.0, ICON_DRAG_INDICATOR.font_family()),
+                        colors::MUTED_FOREGROUND,
+                    );
+                    drag.on_hover_text("Drag to reorder track");
                 }
 
                 let available = ui.available_width();
@@ -977,7 +1154,7 @@ mod tests {
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
-    fn dropping_a_loop_on_a_peer_offers_duplicate_and_swap_actions() {
+    fn dropping_a_loop_on_a_peer_offers_clone_into_and_swap_actions() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let source = LoopId::from_raw(1);
@@ -1032,10 +1209,8 @@ mod tests {
         let response = drop_on_target(&context, &mut widget);
         assert!(response.loop_actions.is_empty());
         let _ = frame(&context, &mut widget, &state, Vec::new());
-        let duplicate = widget
-            .test_drop_duplicate_rect
-            .expect("duplicate drop action");
-        let response = click(&context, &mut widget, &state, duplicate.center());
+        let clone = widget.test_drop_clone_rect.expect("clone into drop action");
+        let response = click(&context, &mut widget, &state, clone.center());
         assert_eq!(
             response.loop_actions,
             [(source, LoopWidgetAction::DuplicateTo(target))]
@@ -1048,6 +1223,182 @@ mod tests {
         assert_eq!(
             response.loop_actions,
             [(source, LoopWidgetAction::SwapWith(target))]
+        );
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn cloning_into_a_loop_with_data_requires_confirmation() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let source = LoopId::from_raw(1);
+        let target = LoopId::from_raw(2);
+        let state = TrackState {
+            id: TrackId::from_raw(1),
+            loops: vec![
+                LoopState {
+                    id: source,
+                    ..Default::default()
+                },
+                LoopState {
+                    id: target,
+                    name: "Occupied".to_owned(),
+                    empty: false,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let target_center = widget.test_loop_rects[1].center();
+        egui::DragAndDrop::set_payload(&context, LoopDragPayload { loop_id: source });
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(target_center),
+                egui::Event::PointerButton {
+                    pos: target_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: target_center,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(response.loop_actions.is_empty());
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let clone = widget.test_drop_clone_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, clone)
+            .loop_actions
+            .is_empty());
+        assert_eq!(widget.pending_clone_confirmation, Some((source, target)));
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let confirm = widget.test_clone_confirm_rect.unwrap().center();
+        assert_eq!(
+            click(&context, &mut widget, &state, confirm).loop_actions,
+            [(source, LoopWidgetAction::DuplicateTo(target))]
+        );
+        assert!(widget.pending_clone_confirmation.is_none());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn track_drag_handle_sets_and_releases_its_stable_payload() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackState {
+            id: TrackId::from_raw(7),
+            name: "Draggable".to_owned(),
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let start = widget.test_track_drag_rect.unwrap().center();
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let end = start + egui::vec2(30.0, 0.0);
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerMoved(end)],
+        );
+        assert_eq!(
+            egui::DragAndDrop::payload::<TrackDragPayload>(&context).as_deref(),
+            Some(&TrackDragPayload { track_id: state.id })
+        );
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: end,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(egui::DragAndDrop::payload::<TrackDragPayload>(&context).is_none());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn loop_insert_drop_zone_highlights_and_emits_a_stable_move() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let source = LoopId::from_raw(1);
+        let target = LoopId::from_raw(3);
+        let state = TrackState {
+            id: TrackId::from_raw(1),
+            loops: (1..=3)
+                .map(|id| LoopState {
+                    id: LoopId::from_raw(id),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let insert = widget
+            .test_loop_insert_rects
+            .iter()
+            .find(|(candidate, _)| *candidate == Some(target))
+            .unwrap()
+            .1
+            .center();
+        egui::DragAndDrop::set_payload(&context, LoopDragPayload { loop_id: source });
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(insert),
+                egui::Event::PointerButton {
+                    pos: insert,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert_eq!(widget.test_highlighted_loop_insert, Some(Some(target)));
+        let response = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: insert,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            response.loop_actions,
+            [(source, LoopWidgetAction::MoveBefore(Some(target)))]
         );
     }
 
