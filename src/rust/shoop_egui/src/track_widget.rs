@@ -58,6 +58,8 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_fx_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_click_track_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_drop_duplicate_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_drop_swap_rect: Option<egui::Rect>,
@@ -94,6 +96,8 @@ impl Default for TrackWidget {
             test_delete_rect: None,
             #[cfg(test)]
             test_fx_rect: None,
+            #[cfg(test)]
+            test_click_track_rect: None,
             #[cfg(test)]
             test_drop_duplicate_rect: None,
             #[cfg(test)]
@@ -573,7 +577,18 @@ impl TrackWidget {
                 }
                 menu.response.on_hover_text("Track options");
 
-                if let Some(fx) = &state.fx {
+                if state.is_sync {
+                    let click_track = ui
+                        .add(egui::Button::new(egui::RichText::new("C")))
+                        .on_hover_text("Generate a click track");
+                    #[cfg(test)]
+                    {
+                        self.test_click_track_rect = Some(click_track.rect);
+                    }
+                    if click_track.clicked() {
+                        result.click_track_requested = state.loops.first().map(|loop_| loop_.id);
+                    }
+                } else if let Some(fx) = &state.fx {
                     let features = processor.map(|value| value.features).unwrap_or_default();
                     let color = match fx.lifecycle {
                         FxLifecycle::Running if fx.active => egui::Color32::LIGHT_GREEN,
@@ -917,6 +932,32 @@ mod tests {
         let mut direct_widget = TrackWidget::default();
         let _ = frame(&context, &mut direct_widget, &direct, Vec::new());
         assert!(direct_widget.test_fx_rect.is_none());
+    }
+
+    #[tracy_nextest_capture::tracy_capture_test]
+    fn sync_header_click_track_shortcut_targets_the_sync_loop() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let loop_id = LoopId::from_raw(1);
+        let sync = TrackState {
+            id: TrackId::from_raw(1),
+            name: "Sync".to_owned(),
+            is_sync: true,
+            loops: vec![LoopState {
+                id: loop_id,
+                has_audio: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &sync, Vec::new());
+        let shortcut = widget.test_click_track_rect.unwrap().center();
+        assert_eq!(
+            click(&context, &mut widget, &sync, shortcut).click_track_requested,
+            Some(loop_id)
+        );
+        assert!(widget.test_fx_rect.is_none());
     }
 
     #[tracy_nextest_capture::tracy_capture_test]
