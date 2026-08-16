@@ -6,7 +6,10 @@ use assert_no_alloc::AllocDisabler;
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn disabled_helper_does_not_allocate() {
     shoop_tracing::set_tracing_enabled(false);
     shoop_tracing::set_tracing_output_enabled(true);
@@ -22,7 +25,10 @@ fn disabled_helper_does_not_allocate() {
     });
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn enabled_helper_scopes_its_allocation_exception() {
     let _client = tracy_client::Client::start();
     shoop_tracing::set_tracing_enabled(true);

@@ -3950,6 +3950,7 @@ dependencies = [
  "libc",
  "log",
  "shoop_tracing",
+ "shoop_wasm_test_support",
  "tempfile",
  "thiserror 2.0.20",
  "toml",
@@ -3959,7 +3960,6 @@ dependencies = [
  "tracing-tracy",
  "tracy-client",
  "tracy-client-sys",
- "tracy-nextest-capture",
 ]
 
 [[package]]
@@ -4076,7 +4076,6 @@ dependencies = [
 name = "shoop_test_macros"
 version = "0.3.0"
 dependencies = [
- "proc-macro2",
  "quote",
  "syn 2.0.119",
 ]
@@ -4087,9 +4086,9 @@ version = "0.3.0"
 dependencies = [
  "assert_no_alloc",
  "ctor",
+ "shoop_wasm_test_support",
  "tracy-client",
  "tracy-client-sys",
- "tracy-nextest-capture",
 ]
 
 [[package]]
@@ -4097,9 +4096,9 @@ name = "shoop_wasm_runtime_tests"
 version = "0.3.0"
 dependencies = [
  "shoop_audio_protocol",
+ "shoop_wasm_test_support",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-bindgen-test",
 ]
 
 [[package]]

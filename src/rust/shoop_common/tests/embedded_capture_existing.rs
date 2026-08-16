@@ -1,4 +1,7 @@
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires the native embedded Tracy runtime and filesystem",
+    no_tracy = "manages the embedded capture lifecycle directly"
+)]
 fn embedded_capture_rejects_an_existing_output() {
     let temporary_dir = tempfile::tempdir().expect("create capture output directory");
     let output = temporary_dir.path().join("existing.tracy");

@@ -59,4 +59,19 @@ mod tests {
     fn shared_failure_canary_is_ignored_by_default() {
         panic!("intentional shared test failure canary");
     }
+
+    #[shoop_test(no_wasm = "exercises the native-only expansion")]
+    fn native_only_modifier_runs() {
+        assert!(cfg!(not(target_arch = "wasm32")));
+    }
+
+    #[shoop_test(no_tracy = "exercises the uninstrumented native expansion")]
+    fn no_tracy_modifier_runs() {
+        assert_eq!(6 * 7, 42);
+    }
+
+    #[shoop_test(wasm_only = "exercises the Wasm-only expansion")]
+    fn wasm_only_modifier_runs() {
+        assert!(cfg!(target_arch = "wasm32"));
+    }
 }

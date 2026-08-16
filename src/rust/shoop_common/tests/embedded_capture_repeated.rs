@@ -4,7 +4,10 @@ use shoop_common::tracing_capture::{
     shutdown_reusable_profiler, CaptureDisposition, CaptureStatus, ReusableCaptureSession,
 };
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires the native embedded Tracy runtime and filesystem",
+    no_tracy = "manages the embedded capture lifecycle directly"
+)]
 fn embedded_capture_supports_save_then_discard() {
     let temporary_dir = std::env::var_os("SHOOP_TRACY_TEST_OUTPUT_DIR")
         .map(PathBuf::from)

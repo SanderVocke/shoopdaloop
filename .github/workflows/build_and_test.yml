@@ -251,10 +251,8 @@ jobs:
             browser:
               - '.github/workflows/build_and_test.yml'
               - 'scripts/run_wasm_tests.py'
-              - 'scripts/wasm_test_inventory.py'
               - 'scripts/wasm_test_report.py'
-              - 'scripts/check_wasm_test_inventory_policy.py'
-              - 'tests/wasm_test_classification.toml'
+              - 'scripts/check_shoop_test_usage.py'
               - 'src/rust/shoop_test_macros/**'
               - 'src/rust/shoop_wasm_test_support/**'
               - 'src/rust/shoop_wasm_runtime_tests/**'
@@ -830,11 +828,12 @@ jobs:
           "$RUNNER_TEMP/tracy-query" query --kind message \
             --filter 'message.text=shoop\.nextest_capture\.smoke\.log_event' "${traces[0]}"
 
-      - name: Check formatting and tracing inventory
+      - name: Check formatting, tracing, and test attributes
         if: matrix.target == 'linux' && matrix.profile == 'debug'
         run: |
           cargo fmt --all -- --check
           python3 scripts/check_tracing_coverage.py --require-closed
+          python3 scripts/check_shoop_test_usage.py
 
       - name: Verify web application artifacts
         if: matrix.target == 'web'
@@ -868,7 +867,6 @@ jobs:
         run: |
           python3 -m unittest scripts.tests.test_wasm_test_report
           python3 scripts/check_wasm_smoke_budget.py
-          python3 scripts/check_wasm_test_inventory_policy.py
           python3 scripts/check_wasm_test_dependencies.py \
             --package shoop_app --package shoop_app_api \
             --package shoop_audio_protocol --package shoop_audio_worklet \
@@ -882,11 +880,7 @@ jobs:
         if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         env:
           RUSTFLAGS: -D warnings
-        run: |
-          python3 scripts/run_wasm_tests.py --profile dev --runtime node
-          python3 scripts/check_wasm_test_inventory_policy.py \
-            --summary target/wasm-tests/dev/reports/node/summary.json \
-            --output target/wasm-tests/dev/inventory-policy.json
+        run: python3 scripts/run_wasm_tests.py --profile dev --runtime node
 
       - name: Run policy-triggered Chromium Wasm suite
         if: >-
@@ -895,12 +889,7 @@ jobs:
           steps.wasm-browser-policy.outputs.browser == 'true')
         env:
           RUSTFLAGS: -D warnings
-        run: |
-          python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
-          python3 scripts/check_wasm_test_inventory_policy.py \
-            --summary target/wasm-tests/dev/reports/node/summary.json \
-            --summary target/wasm-tests/dev/reports/chrome/summary.json \
-            --output target/wasm-tests/dev/inventory-policy.json
+        run: python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
 
       - name: Run optimized nightly/manual Wasm suites
         if: >-
@@ -910,24 +899,14 @@ jobs:
           RUSTFLAGS: -D warnings
         run: |
           python3 scripts/run_wasm_tests.py --profile ci --runtime node
-          python3 scripts/check_wasm_test_inventory_policy.py \
-            --summary target/wasm-tests/ci/reports/node/summary.json \
-            --output target/wasm-tests/ci/inventory-policy.json
           python3 scripts/run_wasm_tests.py --profile ci --runtime chrome
-          python3 scripts/check_wasm_test_inventory_policy.py \
-            --summary target/wasm-tests/ci/reports/node/summary.json \
-            --summary target/wasm-tests/ci/reports/chrome/summary.json \
-            --output target/wasm-tests/ci/inventory-policy.json
 
       - name: Upload Wasm test reports
         if: always() && matrix.target == 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: wasm-test-reports-${{ matrix.profile }}-${{ github.run_id }}
-          path: |
-            target/wasm-tests/*/reports
-            target/wasm-tests/*/inventory-policy.json
-            tests/wasm_test_classification.toml
+          path: target/wasm-tests/*/reports
           if-no-files-found: ignore
           retention-days: 14
 

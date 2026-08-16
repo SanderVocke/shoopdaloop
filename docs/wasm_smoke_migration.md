@@ -36,15 +36,14 @@ Web MIDI, permission, restart, or stress assertions.
 
 The replacement tests are emitted by `#[shoop_test]` and therefore retain the
 same native test identity while also running in the Node and Chromium Wasm
-suites. Their complete machine-readable membership is in
-`target/wasm-tests/<profile>/inventory.json`; classification policy is in
-`tests/wasm_test_classification.toml`.
+suites. Per-package results are written below
+`target/wasm-tests/<profile>/reports/<runtime>`.
 
 ## Timing and ownership
 
-The pre-migration baseline in `docs/wasm_test_baseline.md` records approximately
-6-7 minutes for the repeated Chrome work in each web job and 4 seconds for the
-old Firefox workflow itself (excluding browser setup). The post-migration
+The pre-migration measurements were approximately 6-7 minutes for the repeated
+Chrome work in each web job and 4 seconds for the old Firefox workflow itself
+(excluding browser setup). The post-migration
 workflow source has two `browser_smoke.mjs` invocations and one
 `browser_firefox_smoke.py` invocation. In PR #751 run `31910810734`, hosted
 Chromium took about 2.4 seconds, self-contained Chromium 14.4 seconds, and Firefox

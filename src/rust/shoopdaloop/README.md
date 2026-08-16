@@ -164,11 +164,9 @@ python3 scripts/run_wasm_tests.py --runtime chrome --profile dev
 python3 scripts/run_wasm_tests.py --runtime node --profile dev \
   --package shoop_worklet_client --filter restart
 
-# Policy, parser, smoke-budget, and dependency gates.
+# Attribute policy, parser, smoke-budget, and dependency gates.
+python3 scripts/check_shoop_test_usage.py
 python3 -m unittest scripts.tests.test_wasm_test_report
-python3 scripts/check_wasm_test_inventory_policy.py \
-  --summary target/wasm-tests/dev/reports/node/summary.json \
-  --summary target/wasm-tests/dev/reports/chrome/summary.json
 python3 scripts/check_wasm_smoke_budget.py
 
 # Explicit failure reproduction; this command must exit nonzero and retain JUnit.
@@ -178,7 +176,7 @@ python3 scripts/run_wasm_tests.py --runtime node --profile ci \
   --filter shared_failure_canary_is_ignored_by_default
 ```
 
-Use `#[shoop_test]` from `shoop_wasm_test_support` for a deterministic test body that must retain its native nextest identity and also run under wasm-bindgen. Keep unsupported native imports behind narrow target gates. A genuinely native-driver or native-platform test remains `#[test]` and needs an explicit, narrow rule and reason in `tests/wasm_test_classification.toml`. Never hide an unclassified test with a broad package exclusion. Updating test membership intentionally also requires updating the reviewed count/hash policy in that file after reproducing the complete native, Node, and Chromium inventory from `docs/wasm_test_baseline.md`.
+Every Rust testcase must use `#[shoop_test]` from `shoop_wasm_test_support`. It runs under native nextest with Tracy capture and under wasm-bindgen by default. Native-only tests use `no_wasm = "reason"`, tests that cannot tolerate an outer Tracy capture use `no_tracy = "reason"`, and Wasm-only tests use `wasm_only = "reason"`. Each modifier requires a non-empty reason. Keep unsupported imports behind narrow target gates.
 
 The orchestrator discovers package opt-in metadata, builds one profile-specific production worklet artifact, stages hashed assets outside the source tree, and runs each package with `--package-timeout` (600 seconds by default) inside a `--global-timeout` execution budget (3,600 seconds by default). Reports live under `target/wasm-tests/<profile>/reports/<runtime>`. A compile error, missing tool, malformed/truncated output, runner/browser/Worker failure, timeout, zero discovery, count mismatch, test failure, or teardown failure exits nonzero and retains JUnit where a runner log exists.
 

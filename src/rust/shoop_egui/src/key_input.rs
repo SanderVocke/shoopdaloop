@@ -222,7 +222,9 @@ mod tests {
         assert!(pressed.is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test(
+        no_wasm = "requires native modifier transition semantics"
+    )]
     fn control_modifier_transitions_emit_standalone_key_events() {
         let mut pressed = BTreeMap::new();
         let mut control_pressed = false;
