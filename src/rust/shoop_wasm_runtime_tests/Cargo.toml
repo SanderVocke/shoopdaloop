@@ -13,10 +13,16 @@ default = []
 wasm-test-browser = []
 
 [dependencies]
+anyhow = { workspace = true }
+shoop_app = { path = "../shoop_app" }
+shoop_app_api = { path = "../shoop_app_api" }
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
+shoop_backend = { path = "../shoop_backend" }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+shoop_worklet_client = { path = "../shoop_worklet_client" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
 wasm-bindgen = "=0.2.127"
 wasm-bindgen-futures = "=0.4.77"
 wasm-bindgen-test = "=0.3.77"

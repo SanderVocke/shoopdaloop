@@ -55,6 +55,7 @@ struct PhysicalAudioDriverState {
     context_state_handler: Option<Closure<dyn FnMut(WebEvent)>>,
     track_ended_handlers: Vec<Closure<dyn FnMut(WebEvent)>>,
     input_mode: Option<AudioInputMode>,
+    repaint_context: Option<eframe::egui::Context>,
 }
 
 /// Owns browser audio resources and the restricted remote transport control.
@@ -95,6 +96,7 @@ impl BrowserAudioController {
             context_state_handler: None,
             track_ended_handlers: Vec::new(),
             input_mode: None,
+            repaint_context: None,
         }));
         let weak = Rc::downgrade(&inner);
         let microphone_enable_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
@@ -197,6 +199,10 @@ impl BrowserAudioController {
 
     pub fn audio_context(&self) -> Option<AudioContext> {
         self.driver.state.borrow().context.clone()
+    }
+
+    pub fn set_repaint_context(&self, context: eframe::egui::Context) {
+        self.driver.state.borrow_mut().repaint_context = Some(context);
     }
 
     pub fn update_presentation(&self) {
@@ -537,12 +543,18 @@ async fn start_audio_graph(
     node.connect_with_audio_node(&context.destination())?;
 
     let port = node.port()?;
-    let control = inner.borrow().transport.clone();
+    let weak = Rc::downgrade(&inner);
     let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
-        if let Some(json) = event.data().as_string() {
-            let _ = control.receive(generation, &json);
-        } else {
-            control.fail("worklet emitted a non-string event");
+        if let Some(inner) = weak.upgrade() {
+            let inner = inner.borrow();
+            if let Some(json) = event.data().as_string() {
+                let _ = inner.transport.receive(generation, &json);
+            } else {
+                inner.transport.fail("worklet emitted a non-string event");
+            }
+            if let Some(context) = &inner.repaint_context {
+                context.request_repaint();
+            }
         }
     }) as Box<dyn FnMut(_)>);
     port.set_onmessage(Some(message_handler.as_ref().unchecked_ref()));

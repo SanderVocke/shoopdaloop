@@ -4357,9 +4357,13 @@ impl Backend for EngineBackend {
                 .iter()
                 .map(|port| {
                     self.session
-                        .port(*port)
-                        .and_then(Port::audio)
-                        .map(|port| amplitude_db(port.input_peak()))
+                        .port_mut(*port)
+                        .and_then(Port::audio_mut)
+                        .map(|port| {
+                            let peak = amplitude_db(port.input_peak());
+                            port.reset_input_peak();
+                            peak
+                        })
                         .unwrap_or(-200.0)
                 })
                 .collect();
@@ -4368,9 +4372,13 @@ impl Backend for EngineBackend {
                 .iter()
                 .map(|port| {
                     self.session
-                        .port(*port)
-                        .and_then(Port::audio)
-                        .map(|port| amplitude_db(port.output_peak()))
+                        .port_mut(*port)
+                        .and_then(Port::audio_mut)
+                        .map(|port| {
+                            let peak = amplitude_db(port.output_peak());
+                            port.reset_output_peak();
+                            peak
+                        })
                         .unwrap_or(-200.0)
                 })
                 .collect();
@@ -4414,14 +4422,31 @@ impl Backend for EngineBackend {
         }
         let mut loops = BTreeMap::new();
         for (id, engine_loop) in &self.loops {
-            let Some(state) = self.session.loop_(*engine_loop) else {
+            let Some((mode, length, position, next_mode, next_transition_delay)) =
+                self.session.loop_(*engine_loop).map(|state| {
+                    (
+                        from_engine_mode(state.mode()),
+                        state.length(),
+                        state.position(),
+                        state
+                            .first_planned_transition()
+                            .map(|(mode, _)| from_engine_mode(mode)),
+                        state.first_planned_transition().map(|(_, delay)| delay),
+                    )
+                })
+            else {
                 continue;
             };
             let channels = self.loop_channels.get(id);
-            let audio: Vec<_> = channels
+            let audio_peaks = channels
                 .into_iter()
                 .flat_map(|channels| &channels.audio)
-                .filter_map(|channel| self.session.audio_channel(*channel))
+                .filter_map(|channel| {
+                    let channel = self.session.audio_channel_mut(*channel)?;
+                    let peak = amplitude_db(channel.output_peak());
+                    channel.reset_output_peak();
+                    Some(peak)
+                })
                 .collect();
             let midi_activity = channels
                 .into_iter()
@@ -4431,13 +4456,11 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
-                    mode: from_engine_mode(state.mode()),
-                    length: state.length(),
-                    position: state.position(),
-                    next_mode: state
-                        .first_planned_transition()
-                        .map(|(mode, _)| from_engine_mode(mode)),
-                    next_transition_delay: state.first_planned_transition().map(|(_, delay)| delay),
+                    mode,
+                    length,
+                    position,
+                    next_mode,
+                    next_transition_delay,
                     stereo: channels.is_some_and(|channels| {
                         channels
                             .audio_modes
@@ -4450,10 +4473,7 @@ impl Backend for EngineBackend {
                     }),
                     gain: channels.map(|channels| channels.gain).unwrap_or(1.0),
                     balance: channels.map(|channels| channels.balance).unwrap_or(0.0),
-                    audio_peaks: audio
-                        .iter()
-                        .map(|channel| amplitude_db(channel.output_peak()))
-                        .collect(),
+                    audio_peaks,
                     midi_activity,
                 },
             );
@@ -5059,6 +5079,8 @@ pub struct FakeBackend {
     fail_track_creation_after: Option<usize>,
     fail_next_session_replace: Option<String>,
     fail_next_loop_content_replace: Option<String>,
+    pending_session_captures: usize,
+    pending_loop_content_replacements: usize,
     failed_midi_input_tracks: BTreeSet<BackendTrackId>,
     processor_catalog: Arc<[TrackProcessorDescriptor]>,
     default_fx_state_string: String,
@@ -5148,6 +5170,8 @@ impl Default for FakeBackend {
             fail_track_creation_after: None,
             fail_next_session_replace: None,
             fail_next_loop_content_replace: None,
+            pending_session_captures: 0,
+            pending_loop_content_replacements: 0,
             failed_midi_input_tracks: BTreeSet::new(),
             processor_catalog: Arc::from([]),
             default_fx_state_string: "{}".to_owned(),
@@ -5222,6 +5246,11 @@ impl FakeBackend {
 
     pub fn fail_next_loop_content_replace(&mut self, message: impl Into<String>) {
         self.fail_next_loop_content_replace = Some(message.into());
+    }
+
+    pub fn delay_next_async_loop_copy(&mut self) {
+        self.pending_session_captures = 1;
+        self.pending_loop_content_replacements = 1;
     }
 
     pub fn set_preflight_sample_rate_override(&mut self, sample_rate: Option<u32>) {
@@ -6337,6 +6366,24 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
+    fn replace_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        if self.pending_loop_content_replacements > 0 {
+            self.pending_loop_content_replacements -= 1;
+            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+                key: 1,
+                kind: BackendOperationKind::LoopContentReplacement,
+                completed: 0,
+                total: Some(1),
+            }));
+        }
+        self.replace_loop_content(loop_id, update)
+            .map(BackendAsyncResult::Ready)
+    }
+
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
         let state = self
             .loops
@@ -6439,6 +6486,19 @@ impl Backend for FakeBackend {
             global_ports,
             use_legacy_browser_default_routes: false,
         })
+    }
+
+    fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+        if self.pending_session_captures > 0 {
+            self.pending_session_captures -= 1;
+            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+                key: 1,
+                kind: BackendOperationKind::SessionCapture,
+                completed: 0,
+                total: Some(1),
+            }));
+        }
+        self.capture_session().map(BackendAsyncResult::Ready)
     }
 
     fn replace_session(
@@ -8872,6 +8932,46 @@ mod tests {
         assert_eq!(status.processed_frames, 256);
         assert!(status.input_peak == 0.0);
         assert!(status.output_peak > 0.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_peak_publication_resets_measurement_window() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(1, 1).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "peak_window".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        let mut output = vec![0.0; 128];
+        backend
+            .process_audio_quantum(&vec![0.5; 128], 1, &mut output, 1, 128)
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let _ = backend.poll().unwrap();
+
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        output.fill(0.0);
+        backend
+            .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 1, 128)
+            .unwrap();
+        let loud = backend.poll().unwrap();
+        assert!(loud.tracks[&track.track_id].output_peaks[0] > -100.0);
+        assert!(loud.loops[&track.loops[0]].audio_peaks[0] > -100.0);
+
+        let silent = backend.poll().unwrap();
+        assert!(silent.tracks[&track.track_id].output_peaks[0] <= -100.0);
+        assert!(silent.loops[&track.loops[0]].audio_peaks[0] <= -100.0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

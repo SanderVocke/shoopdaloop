@@ -833,6 +833,7 @@ struct RecordedFxState {
     state: String,
 }
 
+#[derive(Clone)]
 struct LoopModel {
     id: LoopId,
     backend_id: BackendLoopId,
@@ -1034,6 +1035,17 @@ enum PendingIo {
         loop_id: LoopId,
         update: BackendLoopContentUpdate,
         message: String,
+    },
+    CaptureLoopDuplicate {
+        source: LoopModel,
+        target: LoopId,
+    },
+    CommitLoopDuplicate {
+        source: LoopModel,
+        target: LoopId,
+        update: BackendLoopContentUpdate,
+        gain: f32,
+        balance: f32,
     },
 }
 
@@ -3510,6 +3522,125 @@ impl ApplicationModel {
                     Err(error) => self.fail_io(format!("could not commit loop import: {error}")),
                 }
             }
+            PendingIo::CaptureLoopDuplicate { source, target } => {
+                match backend.capture_session_async() {
+                    Ok(BackendAsyncResult::Ready(capture)) => {
+                        let content = capture
+                            .tracks
+                            .into_iter()
+                            .flat_map(|track| track.loops)
+                            .find(|content| content.source_id == source.backend_id.raw());
+                        match content {
+                            Some(content) => {
+                                let gain = content.gain;
+                                let balance = content.balance;
+                                let update = BackendLoopContentUpdate {
+                                    audio: content
+                                        .audio
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(channel, content)| BackendAudioChannelUpdate {
+                                            channel,
+                                            samples: content.samples,
+                                            start_offset: Some(content.start_offset),
+                                            preplay: Some(content.preplay),
+                                        })
+                                        .collect(),
+                                    midi: content
+                                        .midi
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(channel, content)| BackendMidiChannelUpdate {
+                                            channel,
+                                            length: content.length,
+                                            start_state: content.start_state,
+                                            events: content.events,
+                                            start_offset: Some(content.start_offset),
+                                            preplay: Some(content.preplay),
+                                        })
+                                        .collect(),
+                                    length: Some(content.length),
+                                };
+                                if update.audio.is_empty() && update.midi.is_empty() {
+                                    let result = self
+                                        .loops
+                                        .get(&target)
+                                        .ok_or_else(|| format!("stale loop {target}"))
+                                        .and_then(|model| {
+                                            backend.clear_loop(model.backend_id).map_err(|error| {
+                                                format!(
+                                                    "could not clear duplicate target {target}: {error}"
+                                                )
+                                            })
+                                        })
+                                        .and_then(|()| {
+                                            self.finish_primitive_loop_duplicate(
+                                                backend, source, target, gain, balance,
+                                            )
+                                        });
+                                    if let Err(error) = result {
+                                        self.notify_error(error);
+                                    }
+                                } else {
+                                    self.pending_io = Some(PendingIo::CommitLoopDuplicate {
+                                        source,
+                                        target,
+                                        update,
+                                        gain,
+                                        balance,
+                                    });
+                                }
+                            }
+                            None => self.notify_error(format!(
+                                "backend content for loop {} is unavailable",
+                                source.id
+                            )),
+                        }
+                    }
+                    Ok(BackendAsyncResult::Pending(_)) => {
+                        self.pending_io = Some(PendingIo::CaptureLoopDuplicate { source, target });
+                    }
+                    Err(error) => {
+                        self.notify_error(format!("could not capture loop {}: {error}", source.id))
+                    }
+                }
+            }
+            PendingIo::CommitLoopDuplicate {
+                source,
+                target,
+                update,
+                gain,
+                balance,
+            } => {
+                let target_backend = self.loops.get(&target).map(|model| model.backend_id);
+                let result = target_backend
+                    .ok_or_else(|| anyhow!("stale loop {target}"))
+                    .and_then(|target_backend| {
+                        backend.replace_loop_content_async(target_backend, &update)
+                    });
+                match result {
+                    Ok(BackendAsyncResult::Ready(())) => {
+                        match self
+                            .finish_primitive_loop_duplicate(backend, source, target, gain, balance)
+                        {
+                            Ok(()) => {}
+                            Err(error) => self.notify_error(error),
+                        }
+                    }
+                    Ok(BackendAsyncResult::Pending(_)) => {
+                        self.pending_io = Some(PendingIo::CommitLoopDuplicate {
+                            source,
+                            target,
+                            update,
+                            gain,
+                            balance,
+                        });
+                    }
+                    Err(error) => {
+                        self.notify_error(format!("could not duplicate loop content: {error}"))
+                    }
+                }
+            }
         }
     }
 
@@ -4221,7 +4352,7 @@ impl ApplicationModel {
             ));
         }
 
-        let source_backend = self.loops[&source].backend_id;
+        let source_model = self.loops[&source].clone();
         let target_backend = self.loops[&target].backend_id;
         let source_name = self.loops[&source].name.clone();
         let source_state = self.loops[&source].state.clone();
@@ -4246,59 +4377,16 @@ impl ApplicationModel {
             }
             created
         } else {
-            let content = backend
-                .capture_session()
-                .map_err(|error| format!("could not capture loop {source}: {error}"))?
-                .tracks
-                .into_iter()
-                .flat_map(|track| track.loops)
-                .find(|content| content.source_id == source_backend.raw())
-                .ok_or_else(|| format!("backend content for loop {source} is unavailable"))?;
-            let gain = content.gain;
-            let balance = content.balance;
-            let update = BackendLoopContentUpdate {
-                audio: content
-                    .audio
-                    .into_iter()
-                    .enumerate()
-                    .map(|(channel, content)| BackendAudioChannelUpdate {
-                        channel,
-                        samples: content.samples,
-                        start_offset: Some(content.start_offset),
-                        preplay: Some(content.preplay),
-                    })
-                    .collect(),
-                midi: content
-                    .midi
-                    .into_iter()
-                    .enumerate()
-                    .map(|(channel, content)| BackendMidiChannelUpdate {
-                        channel,
-                        length: content.length,
-                        start_state: content.start_state,
-                        events: content.events,
-                        start_offset: Some(content.start_offset),
-                        preplay: Some(content.preplay),
-                    })
-                    .collect(),
-                length: Some(content.length),
-            };
-            if update.audio.is_empty() && update.midi.is_empty() {
-                backend.clear_loop(target_backend).map_err(|error| {
-                    format!("could not clear duplicate target {target}: {error}")
-                })?;
-            } else {
-                backend
-                    .replace_loop_content(target_backend, &update)
-                    .map_err(|error| format!("could not duplicate loop content: {error}"))?;
-            }
-            backend
-                .set_loop_gain(target_backend, gain)
-                .map_err(|error| format!("could not duplicate loop gain: {error}"))?;
-            backend
-                .set_loop_balance(target_backend, balance)
-                .map_err(|error| format!("could not duplicate loop balance: {error}"))?;
-            None
+            self.ensure_io_idle()?;
+            self.pending_io = Some(PendingIo::CaptureLoopDuplicate {
+                source: source_model,
+                target,
+            });
+            // Preserve immediate completion for in-process backends while remote
+            // backends retain the operation and continue it on later ticks.
+            self.advance_io(backend);
+            self.advance_io(backend);
+            return Ok(());
         };
         if let Some(id) = previous_backend_composite {
             backend
@@ -4332,6 +4420,57 @@ impl ApplicationModel {
         model.backend_composite_signature = signature;
         model.repeat_sync = source_repeat_sync;
         model.recorded_fx_state = source_recorded_fx_state;
+        Ok(())
+    }
+
+    fn finish_primitive_loop_duplicate(
+        &mut self,
+        backend: &mut dyn Backend,
+        source: LoopModel,
+        target: LoopId,
+        gain: f32,
+        balance: f32,
+    ) -> Result<(), String> {
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale loop {target}"))?;
+        let target_backend = target_model.backend_id;
+        let previous_backend_composite = target_model.backend_composite;
+        backend
+            .set_loop_gain(target_backend, gain)
+            .map_err(|error| format!("could not duplicate loop gain: {error}"))?;
+        backend
+            .set_loop_balance(target_backend, balance)
+            .map_err(|error| format!("could not duplicate loop balance: {error}"))?;
+        if let Some(id) = previous_backend_composite {
+            backend
+                .remove_composite_loop(id)
+                .map_err(|error| format!("could not replace duplicate target: {error}"))?;
+        }
+
+        self.script_composition_playback.remove(&target);
+        let model = self.loops.get_mut(&target).expect("target was checked");
+        model.name = source.name.clone();
+        model.state = source.state;
+        model.state.id = target;
+        model.state.name = source.name;
+        model.state.mode = LoopMode::Stopped;
+        model.state.position = 0.0;
+        model.state.next_mode = LoopMode::Unknown;
+        model.state.next_transition_delay = None;
+        model.state.selected = false;
+        model.state.targeted = false;
+        model.length = source.length;
+        model.position = 0;
+        model.audio_data = source.audio_data;
+        model.midi_data = source.midi_data;
+        model.script_composition = source.script_composition;
+        model.composite = None;
+        model.backend_composite = None;
+        model.backend_composite_signature.clear();
+        model.repeat_sync = source.repeat_sync;
+        model.recorded_fx_state = source.recorded_fx_state;
         Ok(())
     }
 
@@ -8994,9 +9133,12 @@ mod tests {
             )
             .unwrap();
 
+        backend.delay_next_async_loop_copy();
         model
             .handle_loop_action(&mut backend, track_id, source, LoopAction::Duplicate)
             .unwrap();
+        model.advance_io(&mut backend);
+        model.advance_io(&mut backend);
         assert!(model.loops[&model.tracks[1].loops[0]].state.empty);
         assert_eq!(model.loops[&occupied].length, 2);
         assert_eq!(model.loops[&duplicate_target].name, "Source");

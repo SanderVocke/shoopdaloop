@@ -237,6 +237,70 @@ async function productionStop(api, instance, protocolVersion, sequence) {
   }
 }
 
+function subscribeMessages(target, callback) {
+  if (typeof target.addEventListener === 'function') {
+    const handler = event => callback(event.data);
+    target.addEventListener('message', handler);
+    target.start?.();
+    return () => target.removeEventListener('message', handler);
+  }
+  const handler = value => callback(value);
+  target.on('message', handler);
+  return () => target.off('message', handler);
+}
+
+export async function spawnRemoteApplicationFixture(
+  runtime,
+  assetLocation,
+  protocolVersion,
+  commandMaxBytes,
+  onMessage,
+) {
+  const api = await runtimeApi(runtime, assetLocation);
+  try {
+    const instance = await boot(api, protocolVersion, commandMaxBytes, 'explicit');
+    return {
+      api,
+      instance,
+      unsubscribe: subscribeMessages(instance.application, onMessage),
+      closed: false,
+    };
+  } catch (error) {
+    api.cleanup();
+    throw error;
+  }
+}
+
+export function remoteApplicationPostMessage(fixture, message) {
+  if (fixture.closed) throw new Error('remote application fixture is closed');
+  fixture.instance.application.postMessage(message);
+}
+
+export async function remoteApplicationProcessQuantum(fixture, inputs, outputChannels) {
+  if (fixture.closed) throw new Error('remote application fixture is closed');
+  return fixtureCommand(fixture.instance, {
+    kind: 'process',
+    frames: 128,
+    inputs,
+    outputChannels,
+  });
+}
+
+export async function remoteApplicationTurn() {
+  await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+export async function shutdownRemoteApplicationFixture(fixture) {
+  if (fixture.closed) return;
+  fixture.closed = true;
+  fixture.unsubscribe();
+  try {
+    await stop(fixture.api, fixture.instance);
+  } finally {
+    fixture.api.cleanup();
+  }
+}
+
 export class MultiWorkerFixture {
   static async spawn(runtime, assetLocation, protocolVersion, commandMaxBytes, modes) {
     const api = await runtimeApi(runtime, assetLocation);
