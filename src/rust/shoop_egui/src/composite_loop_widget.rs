@@ -765,7 +765,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn overlap_containment_equal_starts_and_touching_edges_pack_deterministically() {
         let state = details(vec![
             event(4, 1, 20, 40),
@@ -787,7 +787,7 @@ mod tests {
         assert_eq!(lanes, [(2, 0), (1, 1), (4, 2), (3, 0)]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn independent_duplicate_spans_get_separate_lanes_and_empty_tracks_keep_one() {
         let state = details(vec![event(1, 1, 0, 10), event(1, 1, 0, 10)]);
         let packed = pack_swimlanes(&state);
@@ -923,7 +923,7 @@ mod tests {
         assert!(widget.box_selection.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn clicks_replace_or_toggle_block_selection_and_selected_blocks_are_highlighted() {
         let context = egui::Context::default();
         let loop_id = LoopId::from_raw(8);
@@ -996,7 +996,7 @@ mod tests {
         assert_eq!(widget.rendered_selected_event_count, 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn box_selection_replaces_adds_removes_and_requires_full_containment() {
         let context = egui::Context::default();
         let loop_id = LoopId::from_raw(8);
@@ -1063,7 +1063,7 @@ mod tests {
         assert!(widget.selected_events.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn delete_key_emits_selected_event_ids_and_clears_the_editor_selection() {
         let context = egui::Context::default();
         let loop_id = LoopId::from_raw(8);
@@ -1129,7 +1129,7 @@ mod tests {
         assert!(widget.selected_events.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn event_context_menu_selects_the_block_and_emits_delete() {
         let context = egui::Context::default();
         let loop_id = LoopId::from_raw(8);
@@ -1215,7 +1215,7 @@ mod tests {
         assert!(widget.selected_events.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn timeline_accepts_typed_loop_drops_and_ignores_self_or_outside_drops() {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
@@ -1306,7 +1306,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_composite_paints_an_explicit_schedule_message() {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
@@ -1320,7 +1320,7 @@ mod tests {
         assert!(widget.rendered_events.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn widget_paints_named_events_grows_rows_and_has_bounded_zoomed_overflow() {
         let context = egui::Context::default();
         let state = details(vec![event(1, 1, 0, 300), event(2, 1, 100, 200)]);
@@ -1361,7 +1361,7 @@ mod tests {
         assert!(widget.cycle_width <= MAX_CYCLE_WIDTH);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn narrow_and_wide_panes_report_horizontal_and_vertical_overflow() {
         let tracks = (1..=8)
             .map(|id| CompositeTrackDetailsState {

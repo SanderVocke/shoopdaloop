@@ -3,6 +3,14 @@ name = "shoop_egui"
 version.workspace = true
 edition = "2021"
 
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
+[features]
+default = []
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
 [dependencies]
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_settings = { path = "../shoop_settings" }
@@ -13,8 +21,14 @@ image = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tracy-nextest-capture = { workspace = true }
 serde_json = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tracy-nextest-capture.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"
 
 [lints]
 workspace = true

@@ -220,7 +220,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pairs_notes_by_channel_and_treats_zero_velocity_as_off() {
         let events = [
             event(1, &[0x90, 60, 100]),
@@ -249,7 +249,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn overlapping_and_unmatched_messages_are_deterministic() {
         let events = [
             event(1, &[0x90, 64, 10]),
@@ -280,7 +280,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn widget_paints_empty_and_populated_sequences() {
         let context = egui::Context::default();
         let mut widget = MidiSequenceWidget::default();

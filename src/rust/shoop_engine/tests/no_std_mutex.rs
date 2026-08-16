@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,7 +15,7 @@ fn rust_sources(directory: &Path, output: &mut Vec<PathBuf>) {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn production_engine_mutexes_use_the_checked_abstraction() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let checked_mutex = source_root.join("realtime_lock_guard.rs");
@@ -48,7 +50,7 @@ fn production_engine_mutexes_use_the_checked_abstraction() {
     );
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn processor_callback_owns_lock_free_endpoints() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let session = fs::read_to_string(source_root.join("session.rs")).expect("read session source");
@@ -75,7 +77,7 @@ fn processor_callback_owns_lock_free_endpoints() {
     assert!(!realtime.contains("Command::"));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn engine_and_driver_realtime_boundaries_are_marked() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let engine = fs::read_to_string(source_root.join("engine.rs")).expect("read engine source");
@@ -97,3 +99,5 @@ fn engine_and_driver_realtime_boundaries_are_marked() {
         );
     }
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

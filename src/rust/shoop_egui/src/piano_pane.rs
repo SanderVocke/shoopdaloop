@@ -314,7 +314,7 @@ fn white_key_count() -> usize {
 mod tests {
     use super::*;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn geometry_covers_the_complete_midi_range() {
         let layout = PianoLayout::default();
         assert_eq!(layout.key_rect(0).unwrap().min, Pos2::ZERO);
@@ -323,7 +323,7 @@ mod tests {
         assert_eq!(layout.size().x, 75.0 * WHITE_KEY_WIDTH);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn every_c_uses_scientific_pitch_notation() {
         let labels: Vec<_> = (0..MIDI_NOTE_COUNT).filter_map(c_label).collect();
         assert_eq!(labels.first().map(String::as_str), Some("C-1"));
@@ -334,7 +334,7 @@ mod tests {
         assert_eq!(c_label(128), None);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn black_keys_take_hit_test_precedence() {
         let layout = PianoLayout::default();
         let c_sharp = layout.key_rect(1).unwrap();
@@ -345,7 +345,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn hit_testing_finds_endpoint_keys_and_rejects_outside() {
         let layout = PianoLayout::new(pos2(5.0, 7.0));
         assert_eq!(
@@ -359,7 +359,7 @@ mod tests {
         assert_eq!(layout.note_at(pos2(4.0, 7.0)), None);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn middle_c_centering_is_clamped_and_deterministic() {
         let layout = PianoLayout::default();
         let offset = layout.centered_offset(MIDDLE_C, 900.0);
@@ -386,7 +386,7 @@ mod tests {
         actions
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pointer_press_release_and_focus_loss_have_paired_lifecycle() {
         let context = egui::Context::default();
         let mut pane = PianoPane::default();
@@ -424,7 +424,7 @@ mod tests {
         assert!(frame(&context, &mut pane, vec![egui::Event::PointerGone]).is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn piano_paints_with_horizontal_overflow_at_supported_sizes() {
         for size in [vec2(360.0, 200.0), vec2(900.0, 600.0)] {
             let context = egui::Context::default();
@@ -443,7 +443,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disabled_keyboard_ignores_input_and_active_destinations_draw_indicators() {
         let context = egui::Context::default();
         let mut pane = PianoPane::default();
@@ -501,7 +501,7 @@ mod tests {
         assert_eq!(pane.indicator_centers(), &[120.0, 360.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pointer_release_outside_still_releases_the_held_note() {
         let context = egui::Context::default();
         let mut pane = PianoPane::default();

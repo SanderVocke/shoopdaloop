@@ -2999,7 +2999,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_exposes_engine_owned_composite_state_and_advancement() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 1_000,
@@ -3075,7 +3075,7 @@ mod tests {
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_satisfies_topology_capture_and_same_driver_switch() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -3177,7 +3177,7 @@ mod tests {
         assert!(backend.poll().unwrap().connections.failures.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_track_midi_injection_uses_the_driver_independent_input_port() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -3195,7 +3195,7 @@ mod tests {
         assert_injected_note_reaches_output(&mut backend, &created, 60);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn targeted_content_update_preserves_native_session_callbacks_sync_and_graph() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -3400,7 +3400,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_external_track_preserves_roles_media_and_routing() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -3510,7 +3510,7 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn worker_entry_ignores_gui_arguments_and_validates_hidden_identity() {
         assert!(!run_carla_worker_if_requested(["app", "--fullscreen"]).unwrap());
         let error =
@@ -3520,7 +3520,7 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_fx_catalog_advertises_carla_facets_and_constraints() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -3548,7 +3548,7 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn missing_carla_runtime_disables_only_carla_catalog_entries() {
         let original_library = std::env::var_os("SHOOP_CARLA_NATIVE_LIBRARY");
         let original_resources = std::env::var_os("SHOOP_CARLA_RESOURCE_DIR");
@@ -3587,7 +3587,7 @@ mod tests {
         result.unwrap();
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_processed_track_wires_fake_fx_without_public_internal_ports() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -3698,7 +3698,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_grab_captures_processed_dry_wet_audio_and_midi() {
         const FRAMES: u32 = 128;
         const NOTE_FRAME: usize = 16;
@@ -3847,7 +3847,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_tiny_synth_fx_processes_midi_and_round_trips_state() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -4089,7 +4089,7 @@ mod tests {
             .is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_track_removal_releases_ports_for_same_name_recreation() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -4135,7 +4135,7 @@ mod tests {
             .all(|port| first.ports.iter().all(|old| old.id != port.id)));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_jack_test_adapter_publishes_driver_ports() {
         let configured = AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
             client_name: "ShoopDaLoop-test".to_owned(),
@@ -4173,7 +4173,7 @@ mod tests {
             .any(|name| name.starts_with("test_client_1:")));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_cpal_test_adapter_satisfies_topology_and_status_contract() {
         let configured = AudioDriverConfig::Cpal(CpalAudioDriverConfig {
             sample_rate: 48_000,
@@ -4216,7 +4216,7 @@ mod tests {
         assert!(snapshot.tracks[&created.track_id].midi);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn repeated_same_driver_switches_release_each_previous_runtime() {
         let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
         backend
@@ -4240,7 +4240,7 @@ mod tests {
         assert_eq!(backend.capture_session().unwrap().tracks.len(), 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_rejects_changed_rate_without_converted_session() {
         let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
         let captured = backend.capture_session().unwrap();
@@ -4254,7 +4254,7 @@ mod tests {
         assert_eq!(backend.capture_session().unwrap().sample_rate, 48_000);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn optional_real_cpal_smoke_reports_environment_skip() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipped real CPAL smoke: set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -4279,7 +4279,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn optional_real_cross_driver_switch_reports_each_environment_skip() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipped real cross-driver switch: set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -4339,7 +4339,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn optional_real_jack_smoke_reports_environment_skip() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipped real JACK smoke: set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -4359,7 +4359,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn invalid_preferred_driver_falls_back_without_changing_the_preference_value() {
         let preferred = AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
             client_name: String::new(),
@@ -4379,7 +4379,7 @@ mod tests {
         assert_eq!(preferred.kind(), AudioDriverKind::Jack);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_catalog_never_exposes_test_drivers() {
         let backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
         assert_eq!(backend.catalog.len(), 3);

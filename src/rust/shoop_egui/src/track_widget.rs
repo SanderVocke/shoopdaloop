@@ -1010,7 +1010,7 @@ mod tests {
         response
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn monitored_input_accents_the_whole_track() {
         assert_eq!(
             track_background(&crate::TrackControlState {
@@ -1025,7 +1025,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn processor_facets_render_status_controls_and_logs_without_affecting_direct_tracks() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1111,7 +1111,7 @@ mod tests {
         assert!(direct_widget.test_fx_rect.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn sync_header_click_track_shortcut_targets_the_sync_loop() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1137,7 +1137,7 @@ mod tests {
         assert!(widget.test_fx_rect.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_options_menu_requests_deletion_for_main_tracks_only() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1173,7 +1173,7 @@ mod tests {
         assert!(sync_widget.test_delete_rect.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_and_sync_options_menus_request_connection_scope() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1194,7 +1194,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dropping_a_loop_on_a_peer_offers_clone_into_and_swap_actions() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1267,7 +1267,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cloning_into_a_loop_with_data_requires_confirmation() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1334,7 +1334,7 @@ mod tests {
         assert!(widget.pending_clone_confirmation.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_drag_handle_sets_and_releases_its_stable_payload() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1385,7 +1385,7 @@ mod tests {
         assert!(egui::DragAndDrop::payload::<TrackDragPayload>(&context).is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_insert_drop_zone_highlights_and_emits_a_stable_move() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1443,7 +1443,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_widget_presentation_state_follows_stable_ids_across_reordering() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1474,7 +1474,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn popup_hover_keeps_the_source_loop_as_the_only_hover_owner() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1522,7 +1522,7 @@ mod tests {
         assert_eq!(widget.hovered_loop, Some(first));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fixed_width_track_ignores_resize_drags() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1562,7 +1562,7 @@ mod tests {
         assert!(widget.width_drag_start.is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn content_and_controls_share_a_bounded_drag_resizable_width() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1712,7 +1712,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loops_stack_vertically_inside_a_horizontal_track_row() {
         let context = egui::Context::default();
         crate::initialize(&context);

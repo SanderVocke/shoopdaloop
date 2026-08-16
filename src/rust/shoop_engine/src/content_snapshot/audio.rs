@@ -546,7 +546,7 @@ mod tests {
     use super::*;
     use crate::content_snapshot::{CurrentDataError, SnapshotCurrentness, StaleReason};
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_publishes_only_complete_process_updates() {
         let (mut writer, _control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 4);
@@ -575,7 +575,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exact_read_waits_for_final_publication_after_recording() {
         let (mut writer, _control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 4);
@@ -598,7 +598,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn hidden_working_generation_replaces_the_visible_snapshot_at_commit() {
         let (mut writer, _control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 4);
@@ -626,7 +626,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn install_closes_the_cross_transport_preparation_race() {
         let (mut writer, control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
@@ -642,7 +642,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cancelled_private_work_is_reset_from_the_committed_generation() {
         let (mut writer, _control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 6);
@@ -668,7 +668,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn prepared_generation_installs_without_process_side_content_copying() {
         let (mut writer, control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
@@ -691,7 +691,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn clear_keeps_retained_readers_and_publishes_a_newer_complete_revision() {
         let (mut writer, _control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 6);
@@ -717,7 +717,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn rapid_load_clear_replace_and_slow_readers_converge() {
         use std::collections::VecDeque;
 
@@ -761,7 +761,7 @@ mod tests {
         assert_eq!(retained.len(), 64);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn saturation_keeps_the_last_complete_snapshot() {
         let (mut writer, control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 1);

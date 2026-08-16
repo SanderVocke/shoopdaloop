@@ -1,0 +1,500 @@
+schema = 1
+
+[inventory]
+source_declaration_count = 1433
+source_declarations_sha256 = "f671ad0c4951dbf8e1f4bf5c7d461b4d3ebbfbc0037abd1df1b5ece0d7d4da63"
+wasm_test_count = 1179
+wasm_test_ids_sha256 = "93a3926f8aa6353600dbe559e7fa2024f1f2558073e65800709d48f243fc31c6"
+
+[[rules]]
+pattern = "shoop_audio_protocol::*"
+category = "shared"
+reason = "Stage 1 pilot runs from the same source in native, Node, and Chromium."
+
+[[rules]]
+pattern = "shoop_wasm_test_support::*"
+category = "shared"
+reason = "Cross-target harness unit and integration contracts run in all three runtimes."
+
+[[rules]]
+pattern = "shoop_wasm_runtime_tests::*"
+category = "wasm-runtime"
+reason = "Production Worker, MessagePort, and staged raw-engine contracts require a Wasm JavaScript runtime."
+
+[[rules]]
+pattern = "shoop_app_api::*"
+category = "shared"
+reason = "Application domain value and validation tests are runtime-independent and pass in native, Node, and Chromium."
+
+[[rules]]
+pattern = "shoop_plugin_protocol::*"
+category = "shared"
+reason = "Plugin protocol serialization and capacity tests are portable data contracts."
+
+[[rules]]
+pattern = "shoop_settings::*"
+exclude = [
+  "*::missing_file_is_first_run_and_save_creates_parents",
+  "*::save_replaces_complete_prior_bytes",
+  "*::failed_commit_retains_prior_bytes_and_cleans_temporary_file",
+  "*::invalid_parent_is_reported_without_replacing_it",
+  "*::default_path_uses_compatibility_identity",
+]
+category = "shared"
+reason = "Settings schema, defaults, validation, and serialization tests are portable."
+
+[[rules]]
+pattern = "shoop_settings::*::missing_file_is_first_run_and_save_creates_parents"
+category = "native-platform"
+reason = "Exercises native atomic filesystem storage and parent creation."
+
+[[rules]]
+pattern = "shoop_settings::*::save_replaces_complete_prior_bytes"
+category = "native-platform"
+reason = "Exercises native atomic filesystem replacement guarantees."
+
+[[rules]]
+pattern = "shoop_settings::*::failed_commit_retains_prior_bytes_and_cleans_temporary_file"
+category = "native-platform"
+reason = "Exercises native temporary-file cleanup and atomic failure behavior."
+
+[[rules]]
+pattern = "shoop_settings::*::invalid_parent_is_reported_without_replacing_it"
+category = "native-platform"
+reason = "Exercises native filesystem type and replacement errors."
+
+[[rules]]
+pattern = "shoop_settings::*::default_path_uses_compatibility_identity"
+category = "native-platform"
+reason = "Exercises OS-native configuration-directory resolution."
+
+[[rules]]
+pattern = "shoop_session::*"
+category = "shared"
+reason = "Session, archive, media, resampling, and click-track tests operate on in-memory bytes and deterministic values."
+
+[[rules]]
+pattern = "shoop_scripting::*"
+exclude = [
+  "*::runtime_is_constructed_and_used_on_its_actor_thread",
+  "*::native_virtual_midi_round_trip_when_host_facilities_are_available",
+]
+category = "shared"
+reason = "Lua runtime, API, callback, timer, dialog, and deterministic MIDI-service tests run portably."
+
+[[rules]]
+pattern = "shoop_scripting::*::runtime_is_constructed_and_used_on_its_actor_thread"
+category = "native-platform"
+reason = "Deliberately constructs and joins a native OS thread; Wasm runtime behavior is covered by shared owner-thread tests."
+
+[[rules]]
+pattern = "shoop_scripting::*::native_virtual_midi_round_trip_when_host_facilities_are_available"
+category = "native-driver"
+reason = "Requires Linux midir virtual ports and host MIDI facilities."
+
+[[rules]]
+pattern = "shoop_engine::*"
+exclude = [
+  "shoop_engine::shoop_engine::app_backend::*",
+  "shoop_engine::shoop_engine::carla_native::*",
+  "shoop_engine::shoop_engine::carla_processor::tests::bridge_*",
+  "shoop_engine::shoop_engine::carla_processor::tests::fake_processor_exposes_failures_and_delay",
+  "shoop_engine::shoop_engine::carla_shared_memory::*",
+  "shoop_engine::shoop_engine::carla_subprocess::*",
+  "shoop_engine::shoop_engine::content_snapshot::runtime::*",
+  "shoop_engine::shoop_engine::dummy_driver::tests::connecting_to_a_missing_external_port_fails",
+  "shoop_engine::shoop_engine::dummy_driver::tests::mock_external_ports_are_exposed_and_filterable",
+  "shoop_engine::shoop_engine::engine::tests::command_fences_observe_applied_sequence",
+  "shoop_engine::shoop_engine::engine::tests::send_and_wait_*",
+  "shoop_engine::shoop_engine::graph_scheduler::*",
+  "shoop_engine::shoop_engine::profiling::*",
+  "shoop_engine::shoop_engine::realtime_lock_guard::*",
+  "shoop_engine::shoop_engine::session::tests::*carla*",
+  "shoop_engine::shoop_engine::composite_app_backend::*",
+  "shoop_engine::shoop_engine::composite_control::callback_drain_has_a_fixed_cutoff",
+  "shoop_engine::shoop_engine::control::*",
+  "shoop_engine::shoop_engine::jack_app_backend::*",
+  "shoop_engine::shoop_engine::midir_driver::*",
+  "shoop_engine::shoop_engine::no_alloc::*",
+  "shoop_engine::shoop_engine::no_std_mutex::*",
+  "shoop_engine::shoop_engine::realtime_lock_app::*",
+  "shoop_engine::shoop_engine::tracing_no_alloc::*",
+]
+category = "shared"
+reason = "Deterministic engine graph, loop, channel, MIDI, storage, dummy-port, and explicit-process tests run from the same source in all three runtimes."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::app_backend::*"
+category = "native-driver"
+reason = "The retained app_backend feature includes native JACK/CPAL/midir driver construction; portable backend behavior is covered by shoop_backend and Worker suites."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::carla_native::*"
+category = "native-driver"
+reason = "Requires native Carla ABI, UI, or installed plugin-runtime facilities."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::carla_processor::tests::bridge_*"
+category = "native-driver"
+reason = "Requires the native Carla subprocess bridge, shared memory, deadlines, and worker threads."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::carla_processor::tests::fake_processor_exposes_failures_and_delay"
+category = "native-platform"
+reason = "Uses std::time::Instant to exercise native processor delay behavior."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::carla_shared_memory::*"
+category = "native-driver"
+reason = "Requires native Carla shared-memory mappings and synchronization."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::carla_subprocess::*"
+category = "native-driver"
+reason = "Requires native Carla subprocess pipes, nonces, and bounded log drains."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::session::tests::*carla*"
+category = "native-driver"
+reason = "Exercises Carla processor nodes and native bridge/session behavior."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::composite_app_backend::*"
+category = "native-driver"
+reason = "Requires the native app_backend feature and its direct driver composition."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::jack_app_backend::*"
+category = "native-driver"
+reason = "Requires a real JACK server and ports."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::midir_driver::*"
+category = "native-driver"
+reason = "Requires native midir virtual ports and host MIDI facilities."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::content_snapshot::runtime::*"
+category = "native-platform"
+reason = "Exercises the native background publisher thread and concurrent readers."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::dummy_driver::tests::connecting_to_a_missing_external_port_fails"
+category = "native-platform"
+reason = "Uses the native threaded dummy driver and checked realtime mutex boundary."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::dummy_driver::tests::mock_external_ports_are_exposed_and_filterable"
+category = "native-platform"
+reason = "Uses the native threaded dummy driver and checked realtime mutex boundary."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::engine::tests::command_fences_observe_applied_sequence"
+category = "native-platform"
+reason = "Coordinates command fences across native threads."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::engine::tests::send_and_wait_*"
+category = "native-platform"
+reason = "Uses native blocking waits, deadlines, and engine-driving threads."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::graph_scheduler::*"
+category = "native-platform"
+reason = "Exercises the native graph-scheduler worker thread, condvars, and deadlines."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::profiling::*"
+category = "native-platform"
+reason = "The native profiler uses std::time::Instant, unavailable on wasm32-unknown-unknown."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::realtime_lock_guard::*"
+category = "native-platform"
+reason = "Exercises native mutex poisoning, condvars, and thread-local realtime guards."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::composite_control::callback_drain_has_a_fixed_cutoff"
+category = "native-platform"
+reason = "Uses a second OS thread to hold and release a callback at an exact drain boundary."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::control::*"
+category = "native-platform"
+reason = "Drives the engine control API against a native processing thread."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::no_alloc::*"
+category = "native-platform"
+reason = "Uses the native global allocation guard to prove realtime no-allocation behavior."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::no_std_mutex::*"
+category = "native-platform"
+reason = "Scans native source/filesystem artifacts and lock symbols."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::realtime_lock_app::*"
+category = "native-platform"
+reason = "Exercises native app-backend realtime lock boundaries."
+
+[[rules]]
+pattern = "shoop_engine::shoop_engine::tracing_no_alloc::*"
+category = "native-platform"
+reason = "Requires native Tracy and the global no-allocation guard."
+
+[[rules]]
+pattern = "shoop_backend::*"
+exclude = ["shoop_backend::shoop_backend::native::*"]
+category = "shared"
+reason = "Portable engine backend, explicit scheduler, fake backend, session, routing, MIDI, and processor tests run in all three runtimes."
+
+[[rules]]
+pattern = "shoop_backend::shoop_backend::native::*"
+category = "native-driver"
+reason = "Requires native JACK/CPAL/midir selection, switching, or Carla driver composition."
+
+[[rules]]
+pattern = "shoop_worklet_client::*"
+exclude = ["*::bounded_quiescence_wait_completes_only_after_pending_work_settles"]
+category = "shared"
+reason = "Platform-neutral client, transport, replay, readiness, transfer, and isolation tests run identically in native, Node, and Chromium."
+
+[[rules]]
+pattern = "shoop_worklet_client::*::bounded_quiescence_wait_completes_only_after_pending_work_settles"
+category = "native-platform"
+reason = "This bounded external wait deliberately uses std::time::Instant, which wasm32-unknown-unknown does not provide; logical quiescence behavior remains shared."
+
+[[rules]]
+pattern = "shoop_app::*"
+exclude = [
+  "*::tests::actor_*",
+  "*::tests::application_adds_external_dry_wet_tracks_from_processor_capabilities",
+  "*::tests::application_publishes_backend_processor_capabilities",
+  "*::tests::controls_selection_details_solo_and_fixed_recording_are_functional",
+  "*::tests::direct_track_creation_and_aligned_rows_are_published",
+  "*::tests::failed_track_creation_is_observable_and_not_partially_published",
+  "*::tests::loop_name_change_is_published",
+  "*::tests::lua_control_batches_use_authoritative_application_and_backend_paths",
+  "*::tests::script_keyboard_events_timers_and_committed_loop_events_are_dispatched",
+  "*::tests::snapshot_reads_are_independent_of_actor_progress",
+  "*::tests::startup_script_ids_preserve_source_order_across_rejection_and_duplicate_names",
+  "*::tests::threaded_actor_routes_script_dialog_callbacks_and_teardown",
+  "*::tests::unchanged_apc_script_uses_native_virtual_midi_when_available",
+]
+category = "shared"
+reason = "Cooperative application model, desired state, sessions, scripting, UI snapshot, and backend orchestration tests run without a packaged executable."
+
+[[rules]]
+pattern = "shoop_app::*::tests::actor_*"
+category = "native-platform"
+reason = "Exercises the native application actor thread and blocking snapshot publication."
+
+[[rules]]
+pattern = "shoop_app::*::tests::application_publishes_backend_processor_capabilities"
+category = "native-platform"
+reason = "Uses the native threaded application actor around processor capability publication."
+
+[[rules]]
+pattern = "shoop_app::*::tests::application_adds_external_dry_wet_tracks_from_processor_capabilities"
+category = "native-platform"
+reason = "Uses the native threaded application actor for structural track publication."
+
+[[rules]]
+pattern = "shoop_app::*::tests::controls_selection_details_solo_and_fixed_recording_are_functional"
+category = "native-platform"
+reason = "Uses the native application actor thread and bounded wait helper."
+
+[[rules]]
+pattern = "shoop_app::*::tests::direct_track_creation_and_aligned_rows_are_published"
+category = "native-platform"
+reason = "Uses the native application actor thread and bounded wait helper."
+
+[[rules]]
+pattern = "shoop_app::*::tests::failed_track_creation_is_observable_and_not_partially_published"
+category = "native-platform"
+reason = "Uses the native application actor thread and bounded wait helper."
+
+[[rules]]
+pattern = "shoop_app::*::tests::loop_name_change_is_published"
+category = "native-platform"
+reason = "Uses the native application actor thread and bounded wait helper."
+
+[[rules]]
+pattern = "shoop_app::*::tests::lua_control_batches_use_authoritative_application_and_backend_paths"
+category = "native-platform"
+reason = "Uses the native application actor thread and bounded wait helper."
+
+[[rules]]
+pattern = "shoop_app::*::tests::script_keyboard_events_timers_and_committed_loop_events_are_dispatched"
+category = "native-platform"
+reason = "Uses the native application actor thread and bounded wait helper."
+
+[[rules]]
+pattern = "shoop_app::*::tests::snapshot_reads_are_independent_of_actor_progress"
+category = "native-platform"
+reason = "Deliberately blocks and observes a native actor thread."
+
+[[rules]]
+pattern = "shoop_app::*::tests::startup_script_ids_preserve_source_order_across_rejection_and_duplicate_names"
+category = "native-platform"
+reason = "Uses the native application actor thread and bounded wait helper."
+
+[[rules]]
+pattern = "shoop_app::*::tests::threaded_actor_routes_script_dialog_callbacks_and_teardown"
+category = "native-platform"
+reason = "Explicitly verifies native actor thread callback and teardown behavior."
+
+[[rules]]
+pattern = "shoop_app::*::tests::unchanged_apc_script_uses_native_virtual_midi_when_available"
+category = "native-driver"
+reason = "Requires native midir virtual devices and host MIDI facilities."
+
+[[rules]]
+pattern = "shoop_egui::*"
+exclude = [
+  "*::key_input::tests::control_modifier_transitions_emit_standalone_key_events",
+  "*::settings_dialog::tests::audio_category_and_exact_rate_warning_paint_at_supported_sizes",
+  "*::settings_dialog::tests::dialog_paints_category_tabs_at_minimum_and_common_sizes",
+  "*::waveform_widget::tests::asynchronously_prepares_and_caches_samples",
+]
+category = "shared"
+reason = "Pure egui model, layout, interaction, connection, waveform, MIDI, and settings-value tests run in native, Node, and Chromium."
+
+[[rules]]
+pattern = "shoop_egui::*::key_input::tests::control_modifier_transitions_emit_standalone_key_events"
+category = "native-platform"
+reason = "Depends on native modifier transition semantics excluded from the browser target."
+
+[[rules]]
+pattern = "shoop_egui::*::settings_dialog::tests::audio_category_and_exact_rate_warning_paint_at_supported_sizes"
+category = "native-platform"
+reason = "Exercises native-only Audio and Carla settings categories."
+
+[[rules]]
+pattern = "shoop_egui::*::settings_dialog::tests::dialog_paints_category_tabs_at_minimum_and_common_sizes"
+category = "native-platform"
+reason = "Exercises native-only settings category composition."
+
+[[rules]]
+pattern = "shoop_egui::*::waveform_widget::tests::asynchronously_prepares_and_caches_samples"
+category = "native-platform"
+reason = "Uses a native background waveform-preparation thread."
+
+[[rules]]
+pattern = "shoop_audio_worklet::*"
+category = "shared"
+reason = "All command, audio, MIDI, capacity, transfer, session, and lifecycle host tests execute identically in native and both Wasm runtimes."
+
+[[rules]]
+pattern = "shoopdaloop::*"
+exclude = [
+  "shoopdaloop::shoopdaloop::carla_worker_entry::*",
+  "*::native_preview::*",
+  "*::settings::*",
+  "*::tests::application_icon_is_embedded",
+  "*::tests::*carla*",
+  "*::tests::*driver*",
+  "*::tests::committed_settings_reconcile_scripts_and_failed_save_leaves_runtime_unchanged",
+  "*::tests::ephemeral_script_files_require_lua_utf8_and_valid_syntax",
+  "*::tests::startup_script_adapter_resolves_typed_bundles_files_and_missing_paths",
+  "*::tests::native_atomic_*",
+  "*::tests::native_cli_*",
+  "*::tests::native_dummy_*",
+  "*::tests::startup_path_association_preserves_rejected_slots_and_duplicate_names",
+  "*::tests::persisted_dummy_configuration_is_used_on_restart",
+  "*::tests::unavailable_saved_preference_falls_back_without_overwriting_settings",
+  "*::tests::unified_*",
+]
+category = "shared"
+reason = "Browser MIDI adapter models plus portable web-shell and UI-scale composition tests run in native, Node, and Chromium."
+
+[[rules]]
+pattern = "shoopdaloop::shoopdaloop::carla_worker_entry::*"
+category = "native-driver"
+reason = "Requires the native Carla worker process, supervisor, shared memory, or installed runtime."
+
+[[rules]]
+pattern = "shoopdaloop::*::native_preview::*"
+category = "native-driver"
+reason = "Requires native audio preview device discovery."
+
+[[rules]]
+pattern = "shoopdaloop::*::settings::*"
+category = "native-platform"
+reason = "Exercises native settings paths, atomic files, and recovery behavior."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::application_icon_is_embedded"
+category = "native-platform"
+reason = "Validates the native executable icon asset path."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::*carla*"
+category = "native-driver"
+reason = "Exercises native Carla settings or runtime startup."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::*driver*"
+category = "native-driver"
+reason = "Exercises native driver switching and persistence."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::committed_settings_reconcile_scripts_and_failed_save_leaves_runtime_unchanged"
+category = "native-platform"
+reason = "Exercises native script settings persistence and runtime reconciliation."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::ephemeral_script_files_require_lua_utf8_and_valid_syntax"
+category = "native-platform"
+reason = "Exercises native script file loading, UTF-8, and syntax validation."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::startup_script_adapter_resolves_typed_bundles_files_and_missing_paths"
+category = "native-platform"
+reason = "Exercises native startup script paths and missing-file behavior."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::native_atomic_*"
+category = "native-platform"
+reason = "Exercises native atomic filesystem replacement."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::native_cli_*"
+category = "native-platform"
+reason = "Exercises native CLI parsing and tracing options."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::native_dummy_*"
+category = "native-platform"
+reason = "Exercises the native dummy executable/application workflow."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::startup_path_association_preserves_rejected_slots_and_duplicate_names"
+category = "native-platform"
+reason = "Exercises native startup path association and filesystem-backed script slots."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::persisted_dummy_configuration_is_used_on_restart"
+category = "native-platform"
+reason = "Exercises native settings persistence and application restart composition."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::unavailable_saved_preference_falls_back_without_overwriting_settings"
+category = "native-driver"
+reason = "Exercises native driver discovery and saved-driver fallback."
+
+[[rules]]
+pattern = "shoopdaloop::*::tests::unified_*"
+category = "native-platform"
+reason = "Exercises native application/runtime composition and painting."
+
+[[rules]]
+pattern = "shoop_common::*"
+category = "native-platform"
+reason = "All tests require native Tracy embedded capture, filesystem outputs, environment control, or intentional nextest capture behavior."
+
+[[rules]]
+pattern = "shoop_tracing::*"
+category = "native-platform"
+reason = "All tests require native Tracy helpers or native global no-allocation instrumentation."

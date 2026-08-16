@@ -1471,7 +1471,8 @@ mod tests {
         )
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn dialog_paints_category_tabs_at_minimum_and_common_sizes() {
         let (registry, state) = fixture();
         let context = egui::Context::default();
@@ -1502,7 +1503,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn developer_category_starts_tracing_with_engine_detail() {
         let (registry, _) = fixture();
         let context = egui::Context::default();
@@ -1563,7 +1564,7 @@ mod tests {
         )));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn settings_window_width_stabilizes_across_frames() {
         let (registry, state) = fixture();
         let context = egui::Context::default();
@@ -1610,7 +1611,8 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_category_and_exact_rate_warning_paint_at_supported_sizes() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_audio_settings(&mut builder).unwrap();
@@ -1691,7 +1693,7 @@ mod tests {
         assert_eq!(dialog.audio_target, Some(AudioDriverKind::Dummy));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn setting_cards_fill_the_available_width() {
         let (registry, state) = fixture();
         let mut dialog = SettingsDialog::new(registry);
@@ -1705,7 +1707,7 @@ mod tests {
         assert!(dialog.setting_card_rects[0].width() >= 479.0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn save_preserves_stable_typed_draft_and_reset_restores_defaults() {
         let (registry, state) = fixture();
         let mut dialog = SettingsDialog::new(registry.clone());
@@ -1726,7 +1728,7 @@ mod tests {
         assert!(!draft.get(FLAG).unwrap());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn appearance_scale_changes_only_when_explicitly_applied() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_settings(&mut builder).unwrap();
@@ -1751,7 +1753,7 @@ mod tests {
         assert!((context.zoom_factor() - 1.5).abs() < f32::EPSILON);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn user_script_paths_are_typed_deduplicated_draft_values() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_settings(&mut builder).unwrap();
@@ -1787,7 +1789,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_kinds_have_stable_table_groups() {
         assert_eq!(
             [
@@ -1808,7 +1810,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn example_script_group_is_collapsed_by_default_and_can_expand() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_settings(&mut builder).unwrap();
@@ -1894,7 +1896,7 @@ mod tests {
         assert!(dialog.restart_rect(script_id).is_some());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_documentation_window_renders_markdown() {
         let (registry, _) = fixture();
         let mut dialog = SettingsDialog::new(registry);
@@ -1933,7 +1935,7 @@ mod tests {
         assert!(output.shapes.len() > 5);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn runtime_script_controls_emit_typed_actions_inside_the_settings_content() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_settings(&mut builder).unwrap();
@@ -2099,7 +2101,7 @@ mod tests {
         assert!(second_row.top() > first_row.bottom());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recovery_and_diagnostics_paint_without_editing_rejected_values() {
         let (registry, mut state) = fixture();
         state.recovery_required = true;

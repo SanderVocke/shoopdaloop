@@ -294,7 +294,7 @@ mod tests {
         response
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_main_tracks_show_first_track_instruction_only() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -326,7 +326,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_content_and_control_rows_have_matching_horizontal_bounds() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -380,7 +380,7 @@ mod tests {
         assert!(centers[0] < centers[1]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_insert_drop_zone_highlights_and_emits_a_stable_move() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -451,7 +451,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn response_routes_loop_and_add_actions_by_stable_id() {
         let track = TrackState {
             id: TrackId::from_raw(7),

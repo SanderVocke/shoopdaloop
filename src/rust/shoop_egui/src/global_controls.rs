@@ -544,13 +544,13 @@ mod tests {
         )
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn zero_cycles_are_displayed_as_infinity() {
         assert_eq!(cycles_text(0.0, 0..=0), "∞");
         assert_eq!(cycles_text(3.0, 0..=0), "3");
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn mode_controls_share_one_hover_target_size() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -579,7 +579,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn buttons_generate_typed_global_actions_and_main_menu_has_no_business_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -668,7 +668,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn clear_menu_generates_a_clear_action() {
         let context = egui::Context::default();
         crate::initialize(&context);

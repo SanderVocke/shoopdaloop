@@ -3,9 +3,14 @@ name = "shoop_settings"
 version.workspace = true
 edition = "2021"
 
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
 [features]
 default = []
 native-store = ["dep:anyhow", "dep:directories", "dep:tempfile"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
@@ -15,7 +20,13 @@ directories = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
-tracy-nextest-capture = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tracy-nextest-capture.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"
 
 [lints]
 workspace = true

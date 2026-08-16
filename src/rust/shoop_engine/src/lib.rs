@@ -4,6 +4,9 @@
 //!
 //! Pure logic plus the application-facing backend driver interface used by the frontend.
 
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
 pub mod app_backend;
 pub mod audio_channel;

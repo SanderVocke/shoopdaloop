@@ -131,7 +131,7 @@ fn named_family(name: &str) -> egui::FontFamily {
 mod tests {
     use super::*;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn material_icon_family_has_a_text_fallback() {
         let context = egui::Context::default();
         initialize(&context);
@@ -154,7 +154,7 @@ mod tests {
         });
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bundled_roboto_faces_are_registered() {
         let definitions = shoop_font_definitions();
         for name in [

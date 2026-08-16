@@ -6741,7 +6741,7 @@ mod tests {
             .expect("engine answered")
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_command_batch_removed_from_the_queue_keeps_the_graph_scheduler_armed() {
         let sess = BackendSession::new().expect("session");
         let scheduler = sess.shared.scheduler.get().expect("scheduler");
@@ -6770,7 +6770,7 @@ mod tests {
     /// to rebuild it, because only three of the mutation sites remembered to call
     /// `apply_graph_changes`. Now the guard cannot be dropped without at least arming the
     /// rebuild, so no mutation site has to remember.
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_connection_leaves_the_graph_scheduled_for_rebuild() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6825,7 +6825,7 @@ mod tests {
     }
 
     /// Many mutations in a burst must not each pay for a rebuild.
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_burst_of_changes_coalesces_into_one_rebuild() {
         let sess = BackendSession::new().expect("session");
         let before = sess.shared.scheduler.get().expect("scheduler").n_applies();
@@ -6847,7 +6847,7 @@ mod tests {
         assert!(graph_up_to_date(&sess));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn scalar_control_commands_do_not_arm_graph_rebuilds() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6863,7 +6863,7 @@ mod tests {
         assert_eq!(scheduler.n_arms(), before);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_content_commits_atomically_without_rebuilding_the_graph() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6988,7 +6988,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn prepared_content_commit_allocates_and_locks_only_off_realtime() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7063,7 +7063,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn length_only_update_preserves_content_and_playback_with_modulo_position() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7098,7 +7098,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_full_parked_queue_is_drained_and_retried_without_loss() {
         let sess = BackendSession::create_with_capacity(1).expect("session");
         {
@@ -7135,7 +7135,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_creation_and_followup_commands_do_not_wait_for_a_cycle() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7160,7 +7160,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_channels_resolve_after_their_parent_and_apply_followups() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7197,7 +7197,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_replacement_snapshot_matches_engine_storage() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7271,7 +7271,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_creation_cancels_on_drop_and_fails_with_its_parent() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7301,7 +7301,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_channel_commands_survive_a_saturated_queue() {
         let sess = BackendSession::create_with_capacity(1).expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7317,7 +7317,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_ports_accept_configuration_and_connections_before_readiness() {
         let sess = BackendSession::new().expect("session");
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
@@ -7341,7 +7341,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn port_state_reads_and_dummy_dequeues_do_not_queue_queries() {
         let sess = BackendSession::new().expect("session");
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
@@ -7366,7 +7366,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connection_polling_uses_the_cache_without_engine_commands() {
         let sess = BackendSession::new().expect("session");
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
@@ -7392,7 +7392,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn authoritative_connection_state_bypasses_and_replaces_stale_cache() {
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
         driver
@@ -7442,7 +7442,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn many_pending_objects_and_repeated_handle_clones_resolve_without_aliasing() {
         let sess = BackendSession::new().expect("session");
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
@@ -7489,7 +7489,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn concurrent_producers_and_shutdown_with_pending_work_are_safe() {
         let sess = BackendSession::create_with_capacity(8).expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7532,7 +7532,7 @@ mod tests {
             .contains("engine is gone"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exact_and_stale_channel_snapshots_report_pending_and_recording_states() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7678,7 +7678,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_data_dirty_is_acknowledged_on_the_frontend() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7708,7 +7708,7 @@ mod tests {
         assert!(audio.get_state().expect("dirty again").data_dirty);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_state_reads_do_not_queue_engine_queries() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7729,7 +7729,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_reads_return_the_immediate_desired_mirror_without_queueing_a_query() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7752,7 +7752,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_loop_relationships_resolve_in_fifo_order() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7772,7 +7772,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn primitive_topology_survives_dropped_ready_controls() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7795,7 +7795,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_relationships_reject_cross_session_handles() {
         let first = BackendSession::new().expect("first session");
         let second = BackendSession::new().expect("second session");
@@ -7809,7 +7809,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dropping_a_pending_loop_cancels_creation() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7822,7 +7822,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_composite_retains_desired_play_after_record() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7842,7 +7842,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dropping_a_pending_composite_releases_its_control() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7857,7 +7857,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_and_closed_loop_controls_ignore_commands() {
         let sess = BackendSession::new().expect("session");
         let failed_control = Arc::new(ObjectControl::<LoopId, engine::LoopStateMirror>::pending(
@@ -7901,7 +7901,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn object_controls_publish_failed_and_closed_without_aliasing_an_index() {
         let failed = ObjectControl::<LoopId, engine::LoopStateMirror>::pending(1);
         failed.mark_failed("creation failed");
@@ -7917,7 +7917,7 @@ mod tests {
         assert!(ready.ready_id().is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn real_jack_is_not_advanced_by_state_polling() {
         assert!(!driver_uses_dummy_processing(AudioDriverType::Jack));
         assert!(driver_uses_dummy_processing(AudioDriverType::JackTest));
@@ -7925,7 +7925,7 @@ mod tests {
         assert!(!driver_uses_dummy_processing(AudioDriverType::Cpal));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_virtual_audio_input_routes_capture_channel_into_session_port() {
         let mut s = engine::Session::default();
         let input = s.add_port(engine::session::Port::External(
@@ -7961,7 +7961,7 @@ mod tests {
         assert_eq!(&data[..4], &[20.0, 21.0, 22.0, 23.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_virtual_audio_output_routes_session_port_to_playback_channel() {
         let mut s = engine::Session::default();
         let output = s.add_port(engine::session::Port::External(
@@ -7997,7 +7997,7 @@ mod tests {
         assert_eq!(interleaved, [0.0, 1.0, 0.0, 2.0, 0.0, 3.0, 0.0, 4.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_virtual_midi_input_fans_out_to_session_and_decoupled_ports() {
         let mut s = engine::Session::default();
         let input = s.add_port(engine::session::Port::ExternalMidi(
@@ -8035,7 +8035,7 @@ mod tests {
         assert_eq!(queue[1].data, vec![0x80, 60, 0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_virtual_midi_output_drains_decoupled_queue_for_connected_output() {
         let output_name = "midir:test:input".to_string();
         let decoupled_id = engine::PortId(100_456);
@@ -8058,7 +8058,7 @@ mod tests {
         assert!(queue.lock().unwrap_or_else(|e| e.into_inner()).is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_test_backend_publishes_mock_virtual_audio_ports() {
         let driver = AudioDriver::new(AudioDriverType::CpalTest, None).expect("driver");
         let settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
@@ -8092,7 +8092,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_backend_exposes_virtual_audio_ports_through_app_api_when_device_available() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipping optional real CPAL smoke; set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -8169,7 +8169,7 @@ mod tests {
         assert!(state.sample_rate > 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fx_port_getters_return_stable_pending_handles_without_duplicate_topology() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -8199,7 +8199,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fx_output_capture_uses_bounded_chunks() {
         const CAPTURE_SAMPLES: u32 = 480_000;
 
@@ -8234,7 +8234,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn test_fx_chain_runs_as_a_scheduled_processor_node() {
         let sess = BackendSession::new().expect("session");
         let chain = sess
@@ -8309,7 +8309,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn internal_fx_midi_capture_observes_routed_host_input() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -8403,7 +8403,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn current_fx_chain_handle_controls_visibility_activity_and_ports() {
         let sess = BackendSession::new().expect("session");
         let chain = sess
@@ -8447,7 +8447,7 @@ mod tests {
     }
 
     #[cfg(feature = "carla")]
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn carla_fx_chain_handle_instantiates_when_plugin_is_available() {
         let _exclusive = engine::carla_native::lock_carla_test();
         let sess = BackendSession::new().expect("session");
@@ -8479,7 +8479,7 @@ mod tests {
         chain.restore_state(&state);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_port_peak_state_is_per_poll_cycle() {
         const BUFFER: u32 = 4;
 
@@ -8542,7 +8542,7 @@ mod tests {
         assert_eq!(third.output_peak, 0.1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn current_audio_driver_handle_reports_dummy_lifecycle_state() {
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
         driver
@@ -8570,7 +8570,7 @@ mod tests {
     /// deliberately not a multiple of the buffer, so the final short cycle is exercised:
     /// 160 frames at a buffer of 64 is 64 + 64 + 32, and a driver that dropped the
     /// remainder or rounded up to a whole buffer would land on a different position.
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_controlled_request_advances_the_session_by_exactly_that_many_frames() {
         const BUFFER: u32 = 64;
         const REQUEST: u32 = 160;
@@ -8612,7 +8612,7 @@ mod tests {
         assert_eq!(loop_.get_state().expect("state").position, REQUEST);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dummy_iteration_uses_only_explicit_realtime_lock_permissions() {
         struct DisableGuard;
         impl Drop for DisableGuard {
@@ -8655,7 +8655,7 @@ mod tests {
         assert_eq!(state.last_processed, 64);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn get_state_does_not_advance_dummy_time() {
         // Built by hand, with no dummy thread, so nothing but `get_state` can advance it.
         let mut dummy = engine::DummyDriver::default();

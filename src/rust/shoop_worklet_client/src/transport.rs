@@ -519,7 +519,7 @@ mod tests {
         .unwrap()
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replay_is_ordered_and_excludes_ephemeral_commands() {
         let (transport, control) = transport_pair();
         transport
@@ -572,7 +572,7 @@ mod tests {
         assert_eq!(replayed, expected);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn response_validation_rejects_stale_unknown_duplicate_and_out_of_order_events() {
         let (_, stale) = transport_pair();
         stale
@@ -611,7 +611,7 @@ mod tests {
         assert_eq!(out_of_order.diagnostics().out_of_order_responses, 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn response_validation_rejects_malformed_and_wrong_version_events() {
         let (_, malformed) = transport_pair();
         malformed
@@ -652,7 +652,7 @@ mod tests {
         assert_eq!(terminal.readiness().engine, RemoteEngineState::Failed);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bounded_failure_shutdown_and_journal_edges_are_observable() {
         let (journal, _) = transport_pair();
         for loop_id in 0..COMMAND_CAPACITY as u64 {
@@ -722,7 +722,8 @@ mod tests {
         assert_eq!(overflow.readiness().connection, ConnectionState::Failed);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn bounded_quiescence_wait_completes_only_after_pending_work_settles() {
         let (_, control) = transport_pair();
         control
@@ -742,7 +743,7 @@ mod tests {
         assert!(control.is_quiescent());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bounded_command_saturation_is_observable_without_failing_the_driver() {
         let (transport, control) = transport_pair();
         control.set_driver_state(BackendDriverState::Running);
@@ -758,7 +759,7 @@ mod tests {
         assert_eq!(control.driver_state(), BackendDriverState::Running);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn readiness_requires_driver_protocol_replay_and_engine_observation() {
         let (_, control) = transport_pair();
         control.set_driver_state(BackendDriverState::Running);

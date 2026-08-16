@@ -1010,7 +1010,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn lifecycle_and_hotplug_publish_revisioned_stable_endpoints() {
         let mut core = BrowserMidiCore::new(true);
         assert_eq!(core.state(), BrowserMidiState::AwaitingGesture);
@@ -1045,7 +1045,7 @@ mod tests {
         assert_eq!(core.error(), Some("permission denied"));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn input_fans_out_to_control_subscribers_and_track_queue() {
         let mut core = BrowserMidiCore::new(true);
         core.set_state(BrowserMidiState::Running, None, false);
@@ -1074,7 +1074,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_and_control_limits_refuse_without_truncation() {
         let mut core = BrowserMidiCore::new(true);
         core.set_state(BrowserMidiState::Running, None, true);
@@ -1096,7 +1096,7 @@ mod tests {
         assert_eq!(core.refused_track_messages(), 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bounded_queues_count_drops() {
         let mut core = BrowserMidiCore::new(true);
         core.set_state(BrowserMidiState::Running, None, false);
@@ -1121,7 +1121,7 @@ mod tests {
         assert_eq!(core.dropped_track_messages(), 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn subscription_capacity_is_bounded() {
         let mut core = BrowserMidiCore::new(true);
         core.set_state(BrowserMidiState::Running, None, false);
@@ -1134,7 +1134,7 @@ mod tests {
         assert!(core.subscribe_input(&endpoint_id).is_err());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn direction_validation_rejects_output_as_input_source() {
         let mut core = BrowserMidiCore::new(true);
         core.set_state(BrowserMidiState::Running, None, false);

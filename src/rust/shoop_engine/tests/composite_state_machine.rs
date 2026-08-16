@@ -88,7 +88,7 @@ fn set_mode(mode: LoopMode, cycle_offset: u32, retrigger: bool) -> CompositeTarg
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn compiler_flattens_sequential_parallel_delayed_and_repeated_entries() {
     let source = composite(100);
     let a = basic(3);
@@ -117,7 +117,7 @@ fn compiler_flattens_sequential_parallel_delayed_and_repeated_entries() {
     assert_eq!(plan.actions_at(4).len(), 1);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn compiler_derives_or_overrides_durations_and_reserves_empty_children() {
     let source = composite(100);
     let derived = basic(1);
@@ -141,7 +141,7 @@ fn compiler_derives_or_overrides_durations_and_reserves_empty_children() {
     assert_eq!(plan.sync_length(), 100);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn compiler_rejects_invalid_modes_lengths_and_schedule_arithmetic() {
     let source = composite(100);
     let child = basic(1);
@@ -202,7 +202,7 @@ fn compiler_rejects_invalid_modes_lengths_and_schedule_arithmetic() {
     );
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn compiler_resolves_stable_identities_and_rejects_stale_generations() {
     let source = composite(100);
     let current = basic(1);
@@ -239,7 +239,7 @@ fn compiler_resolves_stable_identities_and_rejects_stale_generations() {
     );
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn compiler_enforces_every_plan_capacity_before_activation() {
     let source = composite(100);
     let a = basic(1);
@@ -299,7 +299,7 @@ fn compiler_enforces_every_plan_capacity_before_activation() {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn compiler_rejects_self_transitive_and_candidate_topology_cycles() {
     let a = composite(10);
     let b = composite(20);
@@ -337,7 +337,7 @@ fn compiler_rejects_self_transitive_and_candidate_topology_cycles() {
     );
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn dependency_order_and_all_graph_capacities_are_stable_and_bounded() {
     let a = composite(10);
     let b = composite(20);
@@ -397,7 +397,7 @@ fn dependency_order_and_all_graph_capacities_are_stable_and_bounded() {
     );
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn compiled_actions_and_parallel_conflicts_have_canonical_order() {
     let source = composite(100);
     let child = basic(1);
@@ -440,7 +440,7 @@ fn compiled_actions_and_parallel_conflicts_have_canonical_order() {
     ));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn an_empty_plan_start_is_a_successful_stopped_no_op() {
     let source = composite(100);
     let desc = descriptor(source, 0, vec![]);
@@ -455,7 +455,7 @@ fn an_empty_plan_start_is_a_successful_stopped_no_op() {
     assert_eq!(runtime.cycle_count(), 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn regular_runtime_inherits_modes_and_empty_playback_is_duration_only() {
     let source = composite(100);
     let full = basic(1);
@@ -496,7 +496,7 @@ fn regular_runtime_inherits_modes_and_empty_playback_is_duration_only() {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn script_empty_playback_is_reserved_but_empty_recording_is_applied() {
     let source = composite(100);
     let playing = basic(1);
@@ -522,7 +522,7 @@ fn script_empty_playback_is_reserved_but_empty_recording_is_applied() {
     );
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn script_uses_explicit_modes_and_stops_after_one_pass() {
     let source = composite(100);
     let child = basic(1);
@@ -555,7 +555,7 @@ fn script_uses_explicit_modes_and_stops_after_one_pass() {
     assert_eq!(runtime.iteration(), 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn regular_playback_cycles_without_retriggering_contiguous_repeats() {
     let source = composite(100);
     let child = basic(1);
@@ -589,7 +589,7 @@ fn regular_playback_cycles_without_retriggering_contiguous_repeats() {
     assert_eq!(runtime.cycle_count(), 1);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn stop_and_clear_cancel_pending_state_and_clean_children_in_stable_order() {
     let source = composite(100);
     let high = basic(9);
@@ -627,7 +627,7 @@ fn stop_and_clear_cancel_pending_state_and_clean_children_in_stable_order() {
     assert_eq!(runtime.cycle_count(), 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn countdown_skips_exactly_the_requested_boundaries_while_current_pass_advances() {
     let source = composite(100);
     let child = basic(1);
@@ -674,7 +674,7 @@ fn countdown_skips_exactly_the_requested_boundaries_while_current_pass_advances(
     assert_eq!(runtime.iteration(), 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn overlapping_references_do_not_hide_the_first_recording_occurrence() {
     let source = composite(100);
     let child = basic(1);
@@ -699,7 +699,7 @@ fn overlapping_references_do_not_hide_the_first_recording_occurrence() {
     assert_eq!(first_end.as_slice()[0].action, CompositeTargetAction::Stop);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn recording_only_uses_first_occurrence_and_honors_both_pass_end_options() {
     let source = composite(100);
     let child = basic(1);
@@ -740,7 +740,7 @@ fn recording_only_uses_first_occurrence_and_honors_both_pass_end_options() {
     );
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn immediate_seek_uses_precomputed_state_offsets_without_replay() {
     let source = composite(100);
     let a = basic(1);
@@ -795,7 +795,7 @@ fn immediate_seek_uses_precomputed_state_offsets_without_replay() {
     assert_eq!(runtime.counters().invalid_seeks, 2);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn stale_actions_are_skipped_and_reported_without_retargeting() {
     let source = composite(100);
     let child = basic(1);
@@ -819,7 +819,7 @@ fn stale_actions_are_skipped_and_reported_without_retargeting() {
     assert_eq!(runtime.counters().stale_targets, 1);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn state_reporting_has_deterministic_children_length_position_and_cycles() {
     let source = composite(100);
     let high = basic(8);
@@ -853,7 +853,7 @@ fn state_reporting_has_deterministic_children_length_position_and_cycles() {
     assert_eq!(runtime.cycle_count(), 1);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn stopped_and_pending_plan_replacements_activate_but_running_replacements_defer() {
     let source = composite(100);
     let a = basic(1);
@@ -905,7 +905,7 @@ fn stopped_and_pending_plan_replacements_activate_but_running_replacements_defer
     assert_eq!(stopped.active_children().next().unwrap().identity, b);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn deferred_replacement_preserves_continuations_and_script_completion_stays_stopped() {
     let source = composite(100);
     let a = basic(1);
@@ -977,7 +977,7 @@ fn deferred_replacement_preserves_continuations_and_script_completion_stays_stop
     assert_eq!(script_runtime.active_children().count(), 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn activation_rechecks_candidate_generations_and_rejects_stale_targets_atomically() {
     let source = composite(100);
     let a = basic(1);
@@ -1010,7 +1010,7 @@ fn activation_rechecks_candidate_generations_and_rejects_stale_targets_atomicall
     assert_eq!(runtime.active_children().next().unwrap().identity, a);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn all_regular_and_script_nesting_combinations_compile_to_composite_targets() {
     let parent = composite(10);
     let child = composite(20);
@@ -1076,7 +1076,7 @@ fn all_regular_and_script_nesting_combinations_compile_to_composite_targets() {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn long_running_cycle_counts_and_integer_boundaries_remain_defined() {
     let source = composite(100);
     let child = basic(1);
@@ -1121,3 +1121,5 @@ fn long_running_cycle_counts_and_integer_boundaries_remain_defined() {
         Err(CompositeCompileError::ArithmeticOverflow)
     );
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
