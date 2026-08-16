@@ -356,11 +356,13 @@ async fn remote_peak_publication_resets_after_silence() {
         harness.process_quantum(&[], 2).await;
     }
     harness
-        .drive_until("published loud loop peak", |snapshot| {
+        .drive_until("published loud loop and track peaks", |snapshot| {
             snapshot.tracks[1].loops[0].peak_left_db > -100.0
+                && snapshot.tracks[1].controls.output_peak_left_db > -100.0
         })
         .await;
     let loud_peak = harness.snapshot().tracks[1].loops[0].peak_left_db;
+    let loud_track_peak = harness.snapshot().tracks[1].controls.output_peak_left_db;
     harness.dispatch(AppIntent::Loop {
         track_id: track.id,
         loop_id: source,
@@ -377,15 +379,21 @@ async fn remote_peak_publication_resets_after_silence() {
         harness.process_quantum(&[], 2).await;
     }
     harness
-        .drive_until("published silent loop peak", |snapshot| {
+        .drive_until("published silent loop and track peaks", |snapshot| {
             snapshot.tracks[1].loops[0].peak_left_db <= -100.0
+                && snapshot.tracks[1].controls.output_peak_left_db <= -100.0
         })
         .await;
     let silent_peak = harness.snapshot().tracks[1].loops[0].peak_left_db;
+    let silent_track_peak = harness.snapshot().tracks[1].controls.output_peak_left_db;
     assert!(loud_peak > -100.0, "expected a loud peak, got {loud_peak}");
     assert!(
         silent_peak <= -100.0,
-        "peak did not reset after silence: loud={loud_peak}, silent={silent_peak}"
+        "loop peak did not reset after silence: loud={loud_peak}, silent={silent_peak}"
+    );
+    assert!(
+        loud_track_peak > -100.0 && silent_track_peak <= -100.0,
+        "track peak did not reset after silence: loud={loud_track_peak}, silent={silent_track_peak}"
     );
     harness.shutdown().await;
 }
