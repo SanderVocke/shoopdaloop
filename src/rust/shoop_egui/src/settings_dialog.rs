@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use egui_commonmark::CommonMarkCache;
 use egui_material_icons::{
     icons::{
         ICON_DELETE, ICON_DESCRIPTION, ICON_INFO, ICON_PLAY_ARROW, ICON_QUESTION_MARK,
@@ -370,7 +370,7 @@ impl SettingsDialog {
             self.open = open;
         }
         self.show_audio_confirmation(context, audio_drivers, &mut response);
-        self.show_script_windows(context, scripting);
+        self.show_script_windows(context, scripting, script_paths);
         response
     }
 
@@ -1173,7 +1173,12 @@ impl SettingsDialog {
         }
     }
 
-    fn show_script_windows(&mut self, context: &egui::Context, scripting: &ScriptingState) {
+    fn show_script_windows(
+        &mut self,
+        context: &egui::Context,
+        scripting: &ScriptingState,
+        script_paths: Option<&BTreeMap<ScriptId, String>>,
+    ) {
         for script_id in self.script_log_windows.iter().copied().collect::<Vec<_>>() {
             let Some(script) = scripting
                 .scripts
@@ -1215,7 +1220,11 @@ impl SettingsDialog {
                 .default_size([640.0, 500.0])
                 .show(context, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        CommonMarkViewer::new().show(
+                        let script_path = script_paths
+                            .and_then(|paths| paths.get(&script.id))
+                            .map(String::as_str)
+                            .unwrap_or(&script.name);
+                        crate::script_markdown_viewer(script_path).show(
                             ui,
                             &mut self.markdown_cache,
                             script
@@ -1930,7 +1939,7 @@ mod tests {
                 )),
                 ..Default::default()
             },
-            |ui| dialog.show_script_windows(ui.ctx(), &scripting),
+            |ui| dialog.show_script_windows(ui.ctx(), &scripting, None),
         );
         assert!(output.shapes.len() > 5);
     }

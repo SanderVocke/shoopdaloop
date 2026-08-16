@@ -884,10 +884,11 @@ impl AppWidget {
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
-        actions.extend(
-            self.script_dialogs
-                .show_windows(ui.ctx(), &state.scripting.dialogs),
-        );
+        actions.extend(self.script_dialogs.show_windows(
+            ui.ctx(),
+            &state.scripting.dialogs,
+            script_paths,
+        ));
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,
