@@ -9,7 +9,7 @@ use js_sys::{Array, Function, Promise};
 use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
     AppIntent, AppSnapshot, ClickTrackRequest, DirectTrackSpec, GlobalControlAction, IoTaskStatus,
-    LoopAction, LoopMode,
+    LoopAction, LoopMode, NotificationLevel,
 };
 use shoop_backend::BackendDriverState;
 use shoop_worklet_client::{MessageEndpoint, NullHostMidiBridge, RemoteBackendControl};
@@ -226,13 +226,6 @@ impl RemoteAppHarness {
     }
 }
 
-fn has_notification(snapshot: &AppSnapshot, needle: &str) -> bool {
-    snapshot
-        .notifications
-        .iter()
-        .any(|notification| notification.message.contains(needle))
-}
-
 async fn add_audio_track(harness: &mut RemoteAppHarness) -> shoop_app_api::TrackState {
     harness.dispatch(AppIntent::AddTrack(DirectTrackSpec {
         name: "Remote fixture".to_owned(),
@@ -289,7 +282,7 @@ async fn remote_application_stack_processes_intents_and_engine_quanta() {
 #[shoop_wasm_test_support::shoop_test(
     wasm_only = "requires the production WebAssembly Worker runtime"
 )]
-async fn remote_loop_duplication_reproduces_async_capture_error() {
+async fn remote_loop_duplication_copies_content_and_controls() {
     let mut harness = RemoteAppHarness::start().await;
     let track = add_audio_track(&mut harness).await;
     let source = track.loops[0].id;
@@ -298,21 +291,54 @@ async fn remote_loop_duplication_reproduces_async_capture_error() {
     harness.dispatch(AppIntent::Loop {
         track_id: track.id,
         loop_id: source,
+        action: LoopAction::GainChanged(0.42),
+    });
+    harness.dispatch(AppIntent::Loop {
+        track_id: track.id,
+        loop_id: source,
+        action: LoopAction::BalanceChanged(-0.25),
+    });
+    harness.drive_steps(2).await;
+    harness
+        .drive_until("published source loop controls", |snapshot| {
+            let source = &snapshot.tracks[1].loops[0];
+            (source.gain - 0.42).abs() < f32::EPSILON
+                && (source.balance + 0.25).abs() < f32::EPSILON
+        })
+        .await;
+    harness.dispatch(AppIntent::Loop {
+        track_id: track.id,
+        loop_id: source,
         action: LoopAction::DuplicateTo(target),
     });
     harness
-        .drive_until("reported asynchronous duplication failure", |snapshot| {
-            has_notification(snapshot, "asynchronous session capture is not complete")
+        .drive_until("completed asynchronous loop duplication", |snapshot| {
+            !snapshot.tracks[1].loops[1].empty
         })
         .await;
-    assert!(harness.snapshot().tracks[1].loops[1].empty);
+    let snapshot = harness.snapshot();
+    let source_state = &snapshot.tracks[1].loops[0];
+    let target_state = &snapshot.tracks[1].loops[1];
+    assert_eq!(source_state.id, source);
+    assert_eq!(target_state.id, target);
+    assert_eq!(target_state.length, source_state.length);
+    assert_eq!(target_state.gain, source_state.gain);
+    assert_eq!(target_state.balance, source_state.balance);
+    assert!(
+        !snapshot
+            .notifications
+            .iter()
+            .any(|notification| notification.level == NotificationLevel::Error),
+        "unexpected duplication errors: {:?}",
+        snapshot.notifications
+    );
     harness.shutdown().await;
 }
 
 #[shoop_wasm_test_support::shoop_test(
     wasm_only = "requires the production WebAssembly Worker runtime"
 )]
-async fn remote_peak_publication_reproduces_accumulated_maximum() {
+async fn remote_peak_publication_resets_after_silence() {
     let mut harness = RemoteAppHarness::start().await;
     let track = add_audio_track(&mut harness).await;
     let source = track.loops[0].id;
@@ -347,11 +373,16 @@ async fn remote_peak_publication_reproduces_accumulated_maximum() {
     for _ in 0..3 {
         harness.process_quantum(&[], 2).await;
     }
-    let retained_peak = harness.snapshot().tracks[1].loops[0].peak_left_db;
+    harness
+        .drive_until("published silent loop peak", |snapshot| {
+            snapshot.tracks[1].loops[0].peak_left_db <= -100.0
+        })
+        .await;
+    let silent_peak = harness.snapshot().tracks[1].loops[0].peak_left_db;
     assert!(loud_peak > -100.0, "expected a loud peak, got {loud_peak}");
     assert!(
-        (retained_peak - loud_peak).abs() < f32::EPSILON,
-        "peak unexpectedly reset: loud={loud_peak}, retained={retained_peak}"
+        silent_peak <= -100.0,
+        "peak did not reset after silence: loud={loud_peak}, silent={silent_peak}"
     );
     harness.shutdown().await;
 }

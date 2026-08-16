@@ -4357,9 +4357,13 @@ impl Backend for EngineBackend {
                 .iter()
                 .map(|port| {
                     self.session
-                        .port(*port)
-                        .and_then(Port::audio)
-                        .map(|port| amplitude_db(port.input_peak()))
+                        .port_mut(*port)
+                        .and_then(Port::audio_mut)
+                        .map(|port| {
+                            let peak = amplitude_db(port.input_peak());
+                            port.reset_input_peak();
+                            peak
+                        })
                         .unwrap_or(-200.0)
                 })
                 .collect();
@@ -4368,9 +4372,13 @@ impl Backend for EngineBackend {
                 .iter()
                 .map(|port| {
                     self.session
-                        .port(*port)
-                        .and_then(Port::audio)
-                        .map(|port| amplitude_db(port.output_peak()))
+                        .port_mut(*port)
+                        .and_then(Port::audio_mut)
+                        .map(|port| {
+                            let peak = amplitude_db(port.output_peak());
+                            port.reset_output_peak();
+                            peak
+                        })
                         .unwrap_or(-200.0)
                 })
                 .collect();
@@ -4414,14 +4422,31 @@ impl Backend for EngineBackend {
         }
         let mut loops = BTreeMap::new();
         for (id, engine_loop) in &self.loops {
-            let Some(state) = self.session.loop_(*engine_loop) else {
+            let Some((mode, length, position, next_mode, next_transition_delay)) =
+                self.session.loop_(*engine_loop).map(|state| {
+                    (
+                        from_engine_mode(state.mode()),
+                        state.length(),
+                        state.position(),
+                        state
+                            .first_planned_transition()
+                            .map(|(mode, _)| from_engine_mode(mode)),
+                        state.first_planned_transition().map(|(_, delay)| delay),
+                    )
+                })
+            else {
                 continue;
             };
             let channels = self.loop_channels.get(id);
-            let audio: Vec<_> = channels
+            let audio_peaks = channels
                 .into_iter()
                 .flat_map(|channels| &channels.audio)
-                .filter_map(|channel| self.session.audio_channel(*channel))
+                .filter_map(|channel| self.session.audio_channel_mut(*channel))
+                .map(|channel| {
+                    let peak = amplitude_db(channel.output_peak());
+                    channel.reset_output_peak();
+                    peak
+                })
                 .collect();
             let midi_activity = channels
                 .into_iter()
@@ -4431,13 +4456,11 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
-                    mode: from_engine_mode(state.mode()),
-                    length: state.length(),
-                    position: state.position(),
-                    next_mode: state
-                        .first_planned_transition()
-                        .map(|(mode, _)| from_engine_mode(mode)),
-                    next_transition_delay: state.first_planned_transition().map(|(_, delay)| delay),
+                    mode,
+                    length,
+                    position,
+                    next_mode,
+                    next_transition_delay,
                     stereo: channels.is_some_and(|channels| {
                         channels
                             .audio_modes
@@ -4450,10 +4473,7 @@ impl Backend for EngineBackend {
                     }),
                     gain: channels.map(|channels| channels.gain).unwrap_or(1.0),
                     balance: channels.map(|channels| channels.balance).unwrap_or(0.0),
-                    audio_peaks: audio
-                        .iter()
-                        .map(|channel| amplitude_db(channel.output_peak()))
-                        .collect(),
+                    audio_peaks,
                     midi_activity,
                 },
             );
@@ -8872,6 +8892,53 @@ mod tests {
         assert_eq!(status.processed_frames, 256);
         assert!(status.input_peak == 0.0);
         assert!(status.output_peak > 0.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_peak_publication_resets_measurement_window() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(1, 1).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "peak_window".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        let mut output = vec![0.0; 128];
+        backend
+            .process_audio_quantum(&vec![0.5; 128], 1, &mut output, 1, 128)
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let _ = backend.poll().unwrap();
+
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        output.fill(0.0);
+        backend
+            .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 1, 128)
+            .unwrap();
+        let loud = backend.poll().unwrap();
+        assert!(loud.tracks[&track.track_id].output_peaks[0] > -100.0);
+        assert!(loud.loops[&track.loops[0]].audio_peaks[0] > -100.0);
+
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        output.fill(0.0);
+        backend
+            .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 1, 128)
+            .unwrap();
+        let silent = backend.poll().unwrap();
+        assert!(silent.tracks[&track.track_id].output_peaks[0] <= -100.0);
+        assert!(silent.loops[&track.loops[0]].audio_peaks[0] <= -100.0);
     }
 
     #[shoop_wasm_test_support::shoop_test]
