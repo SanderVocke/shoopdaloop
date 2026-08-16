@@ -6,6 +6,7 @@
 # Before committing
 
 - If rust changes were made: `cargo fmt --all`, and build with `RUSTFLAGS="-D warnings"`
+- If Rust test membership changed, update the reviewed source and runtime count/hash policy in `tests/wasm_test_classification.toml`. Reproduce the complete native, Node, and Chromium inventories; do not merely increment counts.
 
 # Before pushing
 
