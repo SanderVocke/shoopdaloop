@@ -846,7 +846,7 @@ mod tests {
         CompositeSection, CompositeTimeline, LoopTargetCatalog, LoopTargetMetadata,
     };
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cycle_counter_saturates_and_reports_integer_overflow() {
         let source = LoopIdentity {
             slot: 1,

@@ -3,9 +3,15 @@ name = "shoopdaloop"
 version.workspace = true
 edition = "2021"
 
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+no-default-features = true
+
 [features]
 default = ["native-fx"]
 native-fx = ["shoop_backend/native-fx"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -84,14 +90,18 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [dev-dependencies]
-tracy-nextest-capture = { workspace = true }
 serde_json = { workspace = true }
 shoop_session = { path = "../shoop_session" }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 tempfile = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
+tracy-nextest-capture.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"
 
 [lints]
 workspace = true

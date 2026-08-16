@@ -2431,6 +2431,9 @@ mod tests {
 
     use super::*;
 
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+    shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
     #[derive(Default)]
     struct MemoryEndpoint {
         sent: Rc<RefCell<Vec<String>>>,
@@ -2457,7 +2460,7 @@ mod tests {
             .unwrap();
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn remote_backend_reserves_stable_ids_replays_and_assembles_observed_snapshots() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         let creation = backend
@@ -2532,7 +2535,7 @@ mod tests {
         assert!(control.readiness().is_ready());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn rich_wire_snapshot_converts_every_remote_domain_shape() {
         use shoop_audio_protocol::{
             WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
@@ -2753,7 +2756,7 @@ mod tests {
         assert_eq!(snapshot.status.storage_exhaustions, 8);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn ephemeral_input_and_runtime_actions_are_not_replayed() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         let creation = backend
@@ -2811,7 +2814,7 @@ mod tests {
         assert!(matches!(commands[1], Command::CreateTrack { .. }));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn rejected_structural_reservation_is_removed_from_resources_and_replay() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
@@ -2864,7 +2867,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn delayed_command_rejection_is_typed_correlated_and_does_not_fail_polling() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
@@ -2924,7 +2927,7 @@ mod tests {
         assert!(backend.poll().unwrap().mutation_failures.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn remote_clients_keep_sequences_resources_and_failures_isolated() {
         let (mut first, first_control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         let (mut second, second_control) = RemoteWorkletBackend::new(NullHostMidiBridge);
@@ -2982,7 +2985,7 @@ mod tests {
         assert_eq!(second.track_resources.len(), 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn transfer_progress_and_rejection_are_typed_and_release_retained_state() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
@@ -3015,7 +3018,7 @@ mod tests {
         assert!(backend.is_quiescent());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn driver_restart_cancels_active_transfer_and_releases_staged_bytes() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
@@ -3109,7 +3112,7 @@ mod tests {
             .is_err());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn negotiated_transport_polls_to_observe_the_engine_before_ready() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;
@@ -3142,7 +3145,7 @@ mod tests {
         ));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn logical_elapsed_time_drives_polling_and_quiescence() {
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         backend.midi_revision = 0;

@@ -207,7 +207,7 @@ mod tests {
     // The three cases below are the expected schedules asserted in
     // describing the same topology rather than hand-stating edges.
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn two_ports() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
@@ -226,7 +226,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn direct_loop() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
@@ -254,7 +254,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn two_direct_loops_co_processed() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
@@ -326,7 +326,7 @@ mod tests {
         n
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_port_declares_its_own_prepare_as_a_dependency() {
         let desc = GraphDesc {
             ports: vec![port("solo", &[])],
@@ -336,7 +336,7 @@ mod tests {
         check!(incoming_names(&specs, map.port_process[0]) == vec!["solo::prepare".to_string()]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_passthrough_source_waits_for_its_targets_buffers() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
@@ -356,7 +356,7 @@ mod tests {
         check!(incoming_names(&specs, map.port_process[1]) == vec!["p2::prepare".to_string()]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_channel_declares_its_full_edge_set() {
         let desc = GraphDesc {
             ports: vec![port("in", &[]), port("out", &[])],
@@ -393,7 +393,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_processor_orders_dry_playback_before_wet_recording() {
         let desc = GraphDesc {
             ports: vec![port("dry-send", &[]), port("wet-return", &[])],
@@ -426,7 +426,7 @@ mod tests {
         check!(pos(map.port_process[1]) < pos(map.channel_process[1]));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_processor_waits_for_all_inputs_and_prepares_all_outputs() {
         let desc = GraphDesc {
             ports: vec![
@@ -457,7 +457,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_loop_declares_no_edges_of_its_own() {
         let desc = GraphDesc {
             ports: vec![],
@@ -473,14 +473,14 @@ mod tests {
 
     // --- structural properties ---
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_empty_description_yields_no_nodes() {
         let (specs, map) = GraphDesc::default().build();
         check!(specs.is_empty());
         check!(map.port_prepare.is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn node_map_covers_every_entity() {
         let desc = GraphDesc {
             ports: vec![port("a", &[]), port("b", &[])],
@@ -502,7 +502,7 @@ mod tests {
         check!(specs.len() == 2 * 2 + 1 + 2);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_port_always_prepares_before_it_processes() {
         let desc = GraphDesc {
             ports: vec![port("solo", &[])],
@@ -514,7 +514,7 @@ mod tests {
         check!(pos(map.port_prepare[0]) < pos(map.port_process[0]));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_channel_without_ports_still_orders_around_its_loop() {
         let desc = GraphDesc {
             ports: vec![],
@@ -533,7 +533,7 @@ mod tests {
         check!(pos(map.loop_process[0]) < pos(map.channel_process[0]));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_chain_of_internal_connections_is_ordered() {
         // a -> b -> c passthrough chain.
         let desc = GraphDesc {
@@ -547,7 +547,7 @@ mod tests {
         check!(pos(map.port_process[1]) < pos(map.port_process[2]));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_passthrough_cycle_is_rejected() {
         // a -> b -> a cannot be ordered.
         let desc = GraphDesc {
@@ -558,7 +558,7 @@ mod tests {
         check!(processing_order(&specs).is_err());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_recording_channel_follows_its_input_ports_processing() {
         let desc = GraphDesc {
             ports: vec![port("in", &[])],
@@ -577,7 +577,7 @@ mod tests {
         check!(pos(map.port_process[0]) < pos(map.channel_process[0]));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_playing_channel_precedes_its_output_ports_processing() {
         let desc = GraphDesc {
             ports: vec![port("out", &[])],
@@ -595,7 +595,7 @@ mod tests {
         check!(pos(map.channel_process[0]) < pos(map.port_process[0]));
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn co_processed_loops_share_one_step() {
         let desc = GraphDesc {
             ports: vec![],
@@ -618,7 +618,7 @@ mod tests {
         check!(step_of(map.loop_process[2]).len() == 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn several_channels_on_one_loop_all_gate_it() {
         let desc = GraphDesc {
             ports: vec![],

@@ -725,7 +725,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn shared_slots_round_trip_audio_midi_and_identity() {
         let nonce = [9; 32];
         let generation = ProcessGeneration(4);
@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(output_midi, worker_midi);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn timeout_abandons_without_unsafe_parent_reuse() {
         let nonce = [3; 32];
         let generation = ProcessGeneration(2);
@@ -790,7 +790,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn slots_support_out_of_order_completion_reject_duplicates_and_recover_after_timeouts() {
         let nonce = [6; 32];
         let generation = ProcessGeneration(9);
@@ -859,7 +859,7 @@ mod tests {
             .unwrap();
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn paths_with_spaces_and_non_ascii_are_supported() {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("Shoop IPC ü space");
@@ -872,7 +872,7 @@ mod tests {
         assert_eq!(worker.generation, generation);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn wrong_nonce_or_generation_is_rejected() {
         let nonce = [4; 32];
         let parent = SharedBlockTransport::create(ProcessGeneration(1), &nonce).unwrap();

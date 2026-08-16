@@ -181,12 +181,12 @@ impl Profiler {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use assert2::check;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disabled_costs_nothing_and_reports_nothing() {
         let p = Profiler::default();
         check!(!p.enabled());
@@ -200,7 +200,7 @@ mod tests {
         check!(p.report(Stage::LoopProcess) == StageReport::default());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_timed_stage_is_reported_after_the_cycle_ends() {
         let p = Profiler::default();
         p.set_enabled(true);
@@ -218,7 +218,7 @@ mod tests {
         check!(r.last_ns > 1_000_000, "measured {}ns", r.last_ns);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn calls_within_a_cycle_accumulate() {
         let p = Profiler::default();
         p.set_enabled(true);
@@ -230,7 +230,7 @@ mod tests {
         check!(p.report(Stage::ChannelProcess).calls == 3);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_new_cycle_replaces_the_last_reading() {
         let p = Profiler::default();
         p.set_enabled(true);
@@ -246,7 +246,7 @@ mod tests {
         check!(p.report(Stage::LoopProcess).last_ns < busy);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_worst_cycle_is_remembered_when_the_latest_is_not() {
         let p = Profiler::default();
         p.set_enabled(true);
@@ -264,7 +264,7 @@ mod tests {
         check!(p.report(Stage::LoopProcess).last_ns < worst);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn stages_are_measured_separately() {
         let p = Profiler::default();
         p.set_enabled(true);
@@ -279,7 +279,7 @@ mod tests {
         check!(p.report(Stage::ChannelPrepare).calls == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_total_spans_every_stage() {
         let p = Profiler::default();
         p.set_enabled(true);
@@ -297,7 +297,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn enabling_clears_a_previous_run() {
         let p = Profiler::default();
         p.set_enabled(true);
@@ -313,7 +313,7 @@ mod tests {
         check!(p.report(Stage::LoopProcess).worst_ns == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn every_stage_has_a_name() {
         for s in Stage::ALL {
             check!(!s.name().is_empty());

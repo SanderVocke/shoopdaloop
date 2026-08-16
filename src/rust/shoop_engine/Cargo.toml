@@ -3,6 +3,10 @@ name = "shoop_engine"
 version.workspace = true
 edition = "2021"
 
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
 [lib]
 
 [[example]]
@@ -60,9 +64,16 @@ midir = ["dep:midir"]
 carla = ["dep:serde_json", "dep:libloading", "dep:libc", "dep:rfd"]
 native_audio_backend = ["jack", "cpal", "midir"]
 app_backend = ["native_audio_backend"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dev-dependencies]
-tracy-nextest-capture = { workspace = true }
 assert2 = { workspace = true }
 rtrb = { workspace = true }
-tracy-client = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tracy-client.workspace = true
+tracy-nextest-capture.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"

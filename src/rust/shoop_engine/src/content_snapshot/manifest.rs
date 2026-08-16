@@ -155,7 +155,7 @@ mod tests {
         )
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_snapshot_loaded_before_publication_is_not_reported_current() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(reader.try_current().unwrap().contiguous(), vec![1.0]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_snapshot_loaded_before_publication_is_not_reported_current() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let event = MidiEvent {
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(reader.try_current().unwrap().contiguous(), vec![event]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn latest_retains_a_complete_older_manifest_during_mutation() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));
@@ -219,7 +219,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn acknowledging_a_delivered_revision_does_not_hide_a_newer_one() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));
@@ -232,7 +232,7 @@ mod tests {
         assert!(reader.is_dirty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exact_read_requires_the_settled_revision_to_be_published() {
         let status = Arc::new(ContentStatus::new(Arc::new(SessionContentEpoch::default())));
         let (publisher, reader) = manifest_pair(audio(0, &[]), Arc::clone(&status));

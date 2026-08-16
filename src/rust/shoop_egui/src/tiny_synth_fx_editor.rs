@@ -691,7 +691,7 @@ mod tests {
         editor
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn stable_track_ids_isolate_multiple_embedded_editors() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -764,7 +764,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_learn_emits_assignment_removal_and_clear_actions() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -828,7 +828,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn embedded_editor_emits_typed_intents_for_every_control_and_close() {
         let context = egui::Context::default();
         crate::initialize(&context);

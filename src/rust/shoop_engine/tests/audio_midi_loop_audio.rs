@@ -60,7 +60,7 @@ fn channel_data(l: &AudioMidiLoop, idx: usize) -> Vec<f32> {
     l.audio_channel(idx).expect("channel").data()
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_stop() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(256, ChannelMode::Direct);
@@ -79,7 +79,7 @@ fn audio_stop() {
     check!(l.position() == 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_record() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -117,7 +117,7 @@ fn audio_record() {
 }
 
 /// scheduler contract violation, not a runtime condition a caller can handle, so
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 #[should_panic(expected = "beyond its next POI")]
 fn audio_record_beyond_external_buffer() {
     let mut l = AudioMidiLoop::default();
@@ -135,7 +135,7 @@ fn audio_record_beyond_external_buffer() {
     advance(&mut l, 20);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_record_multiple_target() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -162,7 +162,7 @@ fn audio_record_multiple_target() {
     check!(channel_data(&l, 0)[..512] == source[..]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_record_multiple_source() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -199,7 +199,7 @@ fn audio_record_multiple_source() {
     check!(channel_data(&l, 0)[..512] == ramp(512, 0)[..]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_record_onto_smaller() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -237,7 +237,7 @@ fn audio_record_onto_smaller() {
     check!(data[128..148] == ramp(20, 0)[..]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_record_onto_larger() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -273,7 +273,7 @@ fn audio_record_onto_larger() {
     check!(data[64..128] == ramp(64, 0)[..]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_playback() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -320,7 +320,7 @@ fn audio_playback() {
     check!(play[2][..20] == data[..20]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_playback_multiple_target() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -353,7 +353,7 @@ fn audio_playback_multiple_target() {
     check!(play == data);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_playback_shorter_data() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -388,7 +388,7 @@ fn audio_playback_shorter_data() {
     check!(play[32..62].iter().all(|&v| v == 0.0));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_playback_wrap() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -435,7 +435,7 @@ fn audio_playback_wrap() {
     check!(play[16..] == data[..48]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_playback_wrap_longer_data() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -481,7 +481,7 @@ fn audio_playback_wrap_longer_data() {
     check!(play[16..] == data[..48]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_replace() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -525,7 +525,7 @@ fn audio_replace() {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_replace_onto_smaller() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -565,7 +565,7 @@ fn audio_replace_onto_smaller() {
     check!(got[48..64] == input[..16]);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_play_dry_through_wet() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -669,7 +669,7 @@ fn follower_with_three_channels(source: &AudioMidiLoop, chunk: usize) -> AudioMi
     l
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_record_dry_into_wet() {
     let mut l = AudioMidiLoop::default();
     l.add_audio_channel(64, ChannelMode::Direct);
@@ -725,7 +725,7 @@ fn audio_record_dry_into_wet() {
     check!(out[1] == ramp(32, 16));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_prerecord() {
     let mut sync_source = playing_sync_source(100);
     check!(sync_source.predicted_next_trigger_eta().unwrap_or(999) == 100);
@@ -786,7 +786,7 @@ fn audio_prerecord() {
     check!(l.predicted_next_trigger_eta().unwrap_or(999) == 40);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_preplay() {
     let mut sync_source = playing_sync_source(100);
     check!(sync_source.predicted_next_trigger_eta().unwrap_or(999) == 100);
@@ -844,7 +844,7 @@ fn audio_preplay() {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_playback_and_set_to_sync() {
     let mut sync_source = playing_sync_source(30);
     check!(sync_source.predicted_next_trigger_eta().unwrap_or(999) == 30);
@@ -898,7 +898,7 @@ fn audio_playback_and_set_to_sync() {
     }
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_record_and_set_to_sync() {
     let mut sync_source = playing_sync_source(30);
     check!(sync_source.predicted_next_trigger_eta().unwrap_or(999) == 30);
@@ -943,3 +943,5 @@ fn audio_record_and_set_to_sync() {
         check!(got[40..44] == ramp(4, 40)[..], "channel {idx}");
     }
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

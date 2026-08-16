@@ -417,7 +417,7 @@ mod tests {
         }
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn first_run_save_and_restart_publish_only_after_commit() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -436,7 +436,7 @@ mod tests {
         assert_eq!(restarted.active().get(VALUE).unwrap(), 7);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn stale_draft_is_rejected_without_writing() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -457,7 +457,7 @@ mod tests {
         assert!(path.exists());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn rejected_source_requires_explicit_recovery_and_is_not_overwritten() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -483,7 +483,7 @@ mod tests {
         assert!(decode_settings(&std::fs::read_to_string(path).unwrap()).is_ok());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_save_keeps_active_revision_and_prior_bytes() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
@@ -509,7 +509,7 @@ mod tests {
         assert_eq!(std::fs::read(path).unwrap(), prior);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unknown_values_survive_manager_save() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");

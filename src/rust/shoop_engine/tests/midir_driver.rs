@@ -24,7 +24,7 @@ fn virtual_name(suffix: &str) -> String {
     format!("shoop-test-{suffix}")
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn a_message_sent_over_a_virtual_port_is_captured() {
     let name = virtual_name("capture");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-test-in", &name) else {
@@ -70,7 +70,7 @@ fn a_message_sent_over_a_virtual_port_is_captured() {
     check!(capture.n_dropped() == 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn captured_midi_is_recorded_by_a_loop() {
     let name = virtual_name("record");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-rec-in", &name) else {
@@ -127,7 +127,7 @@ fn captured_midi_is_recorded_by_a_loop() {
     check!(contents[1].data() == midi::note_off(0, 62, 64).as_slice());
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn an_oversized_message_is_refused_rather_than_truncated() {
     let name = virtual_name("sysex");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-sx-in", &name) else {
@@ -166,3 +166,5 @@ fn an_oversized_message_is_refused_rather_than_truncated() {
         "the oversized message was not refused"
     );
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

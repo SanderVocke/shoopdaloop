@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: build-and-test-${{ github.workflow }}-${{ github.ref }}
@@ -209,6 +210,64 @@ jobs:
         with:
           targets: ${{ matrix.rust_targets }}
           components: rustfmt
+
+      - name: Install pinned Node.js for Wasm tests
+        if: matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.22.2
+
+      - name: Install pinned Chrome and matching ChromeDriver
+        if: matrix.target == 'web' && env.ACT != 'true'
+        id: pinned-chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: 147.0.7727.117
+          install-chromedriver: true
+
+      - name: Select pinned Chrome
+        if: matrix.target == 'web' && env.ACT != 'true'
+        shell: bash
+        run: |
+          chrome='${{ steps.pinned-chrome.outputs.chrome-path }}'
+          driver='${{ steps.pinned-chrome.outputs.chromedriver-path }}'
+          "$chrome" --version | grep '147.0.7727.117'
+          "$driver" --version | grep '147.0.7727.117'
+          echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
+          dirname "$driver" >> "$GITHUB_PATH"
+
+      - name: Install pinned wasm-pack
+        if: matrix.target == 'web' && env.ACT != 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.15.0
+
+      - name: Detect browser-runtime changes
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        id: wasm-browser-policy
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            browser:
+              - '.github/workflows/build_and_test.yml'
+              - 'scripts/run_wasm_tests.py'
+              - 'scripts/wasm_test_inventory.py'
+              - 'scripts/wasm_test_report.py'
+              - 'scripts/check_wasm_test_inventory_policy.py'
+              - 'tests/wasm_test_classification.toml'
+              - 'src/rust/shoop_test_macros/**'
+              - 'src/rust/shoop_wasm_test_support/**'
+              - 'src/rust/shoop_wasm_runtime_tests/**'
+              - 'src/rust/shoop_audio_worklet/**'
+              - 'src/rust/shoop_worklet_client/**'
+              - 'src/rust/shoopdaloop/Cargo.toml'
+              - 'src/rust/shoopdaloop/audio_worker.js'
+              - 'src/rust/shoopdaloop/audio_worklet.js'
+              - 'src/rust/shoopdaloop/raw_wasm_host.js'
+              - 'src/rust/shoopdaloop/build_worklet.py'
+              - 'src/rust/shoopdaloop/src/browser_*.rs'
+              - 'src/rust/shoopdaloop/worker_fixture_contract.js'
+              - 'tests/wasm/**'
 
       - name: Cache Rust builds
         if: env.ACT != 'true'
@@ -785,22 +844,6 @@ jobs:
           --artifact artifacts/${{ matrix.artifact }}
           --html artifacts/${{ matrix.html_artifact }}
 
-      - name: Test browser-independent web components
-        if: matrix.target == 'web'
-        env:
-          RUSTFLAGS: -D warnings
-          TRACY_NEXTEST_CAPTURE: failure
-          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
-        shell: bash
-        run: |
-          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
-          cargo nextest run --locked ${{ matrix.cargo_args }} --profile ci \
-            -p shoop_audio_protocol \
-            -p shoop_audio_worklet \
-            -p shoop_worklet_client \
-            -p shoop_egui \
-            -p shoopdaloop
-
       - name: Check WebAssembly packages
         if: matrix.target == 'web'
         env:
@@ -820,40 +863,85 @@ jobs:
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
           node src/rust/shoopdaloop/raw_wasm_host_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm
 
-      - name: Run core hosted Web Audio workflows
-        if: matrix.target == 'web' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop
+      - name: Audit Wasm harness policy and dependencies
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         run: |
-          BROWSER_SIZE=360,200 node --experimental-websocket browser_smoke.mjs
-          BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          WEB_MIDI=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          WORKER_ENGINE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          SETTINGS_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          SETTINGS_ONLY=1 SETTINGS_UNAVAILABLE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          python3 -m unittest scripts.tests.test_wasm_test_report
+          python3 scripts/check_wasm_smoke_budget.py
+          python3 scripts/check_wasm_test_inventory_policy.py
+          python3 scripts/check_wasm_test_dependencies.py \
+            --package shoop_app --package shoop_app_api \
+            --package shoop_audio_protocol --package shoop_audio_worklet \
+            --package shoop_backend --package shoop_egui --package shoop_engine \
+            --package shoop_plugin_protocol --package shoop_scripting \
+            --package shoop_session --package shoop_settings \
+            --package shoop_wasm_runtime_tests --package shoop_wasm_test_support \
+            --package shoop_worklet_client --package shoopdaloop
 
-      - name: Run self-contained web workflows
-        if: matrix.target == 'web' && env.ACT != 'true'
+      - name: Run required Node Wasm suite
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          python3 scripts/run_wasm_tests.py --profile dev --runtime node
+          python3 scripts/check_wasm_test_inventory_policy.py \
+            --summary target/wasm-tests/dev/reports/node/summary.json \
+            --output target/wasm-tests/dev/inventory-policy.json
+
+      - name: Run policy-triggered Chromium Wasm suite
+        if: >-
+          matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+          steps.wasm-browser-policy.outputs.browser == 'true')
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
+          python3 scripts/check_wasm_test_inventory_policy.py \
+            --summary target/wasm-tests/dev/reports/node/summary.json \
+            --summary target/wasm-tests/dev/reports/chrome/summary.json \
+            --output target/wasm-tests/dev/inventory-policy.json
+
+      - name: Run optimized nightly/manual Wasm suites
+        if: >-
+          matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true' &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          python3 scripts/run_wasm_tests.py --profile ci --runtime node
+          python3 scripts/check_wasm_test_inventory_policy.py \
+            --summary target/wasm-tests/ci/reports/node/summary.json \
+            --output target/wasm-tests/ci/inventory-policy.json
+          python3 scripts/run_wasm_tests.py --profile ci --runtime chrome
+          python3 scripts/check_wasm_test_inventory_policy.py \
+            --summary target/wasm-tests/ci/reports/node/summary.json \
+            --summary target/wasm-tests/ci/reports/chrome/summary.json \
+            --output target/wasm-tests/ci/inventory-policy.json
+
+      - name: Upload Wasm test reports
+        if: always() && matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-test-reports-${{ matrix.profile }}-${{ github.run_id }}
+          path: |
+            target/wasm-tests/*/reports
+            target/wasm-tests/*/inventory-policy.json
+            tests/wasm_test_classification.toml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Run retained hosted Chrome AudioWorklet smoke
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        working-directory: src/rust/shoopdaloop
+        run: OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+
+      - name: Run retained self-contained Chrome AudioWorklet smoke
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         env:
           SELF_CONTAINED_PATH: ../../../artifacts/${{ matrix.html_artifact }}
-        run: |
-          SELF_CONTAINED=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          SELF_CONTAINED=1 WEB_MIDI=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          SELF_CONTAINED=1 OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          SELF_CONTAINED=1 WORKER_ENGINE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          SELF_CONTAINED=1 DIRECT_FILE_MIC=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          SELF_CONTAINED=1 SETTINGS_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-
-      - name: Run extended Chrome Web Audio workflows
-        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
-        working-directory: src/rust/shoopdaloop
-        run: |
-          DENY_FIRST=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          WEB_MIDI=1 WEB_MIDI_DENY_FIRST=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          WEB_MIDI=1 WEB_MIDI_OPEN_FAIL=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          LIFECYCLE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          STRESS=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+        run: SELF_CONTAINED=1 OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
       - name: Start virtual Firefox audio output
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'

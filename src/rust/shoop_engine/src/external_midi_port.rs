@@ -311,7 +311,7 @@ mod tests {
         msgs.iter().map(|m| m.time).collect()
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn access_follows_direction() {
         let i = in_port();
         check!(i.has_internal_read_access());
@@ -326,7 +326,7 @@ mod tests {
         check!(o.has_implicit_output_sink());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_cycles_arrivals_are_visible_then_gone() {
         let mut p = in_port();
 
@@ -345,7 +345,7 @@ mod tests {
         check!(p.visible_events().is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_oversized_payload_is_refused() {
         let mut p = in_port();
         check!(!p.push_incoming(0, &[]));
@@ -354,7 +354,7 @@ mod tests {
         check!(p.visible_events().is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_muted_input_port_yields_nothing() {
         let mut p = in_port();
         p.midi_mut().set_muted(true);
@@ -368,7 +368,7 @@ mod tests {
         check!(p.midi().n_input_events() == 1);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn output_is_ordered_for_the_driver() {
         let mut p = out_port();
 
@@ -380,7 +380,7 @@ mod tests {
         check!(times(p.outgoing()) == vec![1, 9]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_muted_output_port_emits_nothing() {
         let mut p = out_port();
         p.midi_mut().set_muted(true);
@@ -392,7 +392,7 @@ mod tests {
         check!(p.outgoing().is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn jack_midi_input_message_counters_reset_and_muting_equivalent() {
         let mut p = in_port();
         p.push_incoming(0, &[0, 1, 2]);
@@ -418,7 +418,7 @@ mod tests {
         check!(p.visible_events().is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn jack_midi_input_ringbuffer_snapshot_equivalent() {
         let mut p = in_port();
         p.midi_mut().set_ringbuffer_n_samples(100);
@@ -445,7 +445,7 @@ mod tests {
         );
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn jack_midi_output_message_counters_reset_and_muting_equivalent() {
         let mut p = out_port();
         p.prepare(100);
@@ -471,7 +471,7 @@ mod tests {
         check!(p.outgoing().is_empty());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_output_ports_traffic_is_tracked() {
         let mut p = out_port();
 

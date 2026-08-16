@@ -47,7 +47,7 @@ fn cycle(p: &mut MidiPort, n_frames: u32, input: &[MidiStorageElem]) -> Vec<Midi
     out.events().expect("sorted").to_vec()
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_port_receive() {
     let mut p = port();
 
@@ -61,7 +61,7 @@ fn midi_port_receive() {
     check!(pairs(&got) == pairs(&input));
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_port_mute_stops_output() {
     let mut p = port();
     p.set_muted(true);
@@ -75,7 +75,7 @@ fn midi_port_mute_stops_output() {
     check!(p.n_output_events() == 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_port_message_counters() {
     let mut p = port();
 
@@ -93,7 +93,7 @@ fn midi_port_message_counters() {
     check!(p.n_output_events() == 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_port_note_tracker() {
     let mut p = port();
     check!(p.n_notes_active() == 0);
@@ -119,7 +119,7 @@ fn midi_port_note_tracker() {
     check!(p.n_notes_active() == 0);
 }
 
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_port_receives_a_run_of_messages_in_order() {
     let mut p = port();
     let input = [
@@ -135,7 +135,7 @@ fn midi_port_receives_a_run_of_messages_in_order() {
 }
 
 /// within a cycle, so what they write has to come out ordered by time.
-#[tracy_nextest_capture::tracy_capture_test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_port_output_is_sorted_by_time() {
     let mut out = MidiSortingBuffer::default();
     out.write(1, &[0, 1, 2]);
@@ -146,3 +146,5 @@ fn midi_port_output_is_sorted_by_time() {
     let events = out.events().expect("sorted");
     check!(events.iter().map(|m| m.time).collect::<Vec<_>>() == vec![0, 1, 10]);
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

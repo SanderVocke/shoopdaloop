@@ -757,7 +757,7 @@ mod tests {
     use super::*;
     use assert2::check;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn composite_state_is_coherently_published_and_uninstalled() {
         let identity = LoopIdentity {
             slot: 12,
@@ -824,7 +824,7 @@ mod tests {
         check!(state.active_children().next().is_none());
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_accumulators_are_consumed_without_commands() {
         let audio = AudioChannelStateMirror::default();
         audio.publish_output_peak(0.25);
@@ -839,7 +839,7 @@ mod tests {
         check!(midi.read(0).n_events_triggered == 0);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_data_sequences_support_local_acknowledgement() {
         let audio = AudioChannelStateMirror::default();
         audio.publish(ChannelMode::Direct, 1.0, 4, 0, None, 0, 3);
@@ -852,7 +852,7 @@ mod tests {
         check!(!midi.read(7).data_dirty);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn port_accumulators_are_consumed_without_reset_commands() {
         let audio = AudioPortStateMirror::default();
         audio.publish_peaks(0.25, 0.5);
@@ -875,7 +875,7 @@ mod tests {
         check!(second.latest_input_message.unwrap().data() == [0xb3, 17, 99]);
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_state_fields_are_independently_published() {
         let mirror = LoopStateMirror::default();
         check!(mirror.read().mode == LoopMode::Stopped);
