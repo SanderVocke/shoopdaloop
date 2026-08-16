@@ -276,7 +276,7 @@ async fn remote_application_stack_processes_intents_and_engine_quanta() {
         .await;
     assert_eq!(track.loops.len(), 8);
     assert_eq!(
-        harness.snapshot().status.driver_state,
+        harness.snapshot().status.audio_driver,
         shoop_app_api::AudioDriverState::Dummy
     );
     harness.shutdown().await;
