@@ -4097,8 +4097,14 @@ dependencies = [
 name = "shoop_wasm_runtime_tests"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "js-sys",
+ "shoop_app",
+ "shoop_app_api",
  "shoop_audio_protocol",
+ "shoop_backend",
  "shoop_wasm_test_support",
+ "shoop_worklet_client",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
