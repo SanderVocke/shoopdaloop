@@ -313,7 +313,10 @@ async fn remote_loop_duplication_copies_content_and_controls() {
     });
     harness
         .drive_until("completed asynchronous loop duplication", |snapshot| {
-            !snapshot.tracks[1].loops[1].empty
+            let target = &snapshot.tracks[1].loops[1];
+            !target.empty
+                && (target.gain - 0.42).abs() < f32::EPSILON
+                && (target.balance + 0.25).abs() < f32::EPSILON
         })
         .await;
     let snapshot = harness.snapshot();
