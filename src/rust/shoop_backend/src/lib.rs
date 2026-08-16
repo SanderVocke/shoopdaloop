@@ -5079,6 +5079,8 @@ pub struct FakeBackend {
     fail_track_creation_after: Option<usize>,
     fail_next_session_replace: Option<String>,
     fail_next_loop_content_replace: Option<String>,
+    pending_session_captures: usize,
+    pending_loop_content_replacements: usize,
     failed_midi_input_tracks: BTreeSet<BackendTrackId>,
     processor_catalog: Arc<[TrackProcessorDescriptor]>,
     default_fx_state_string: String,
@@ -5168,6 +5170,8 @@ impl Default for FakeBackend {
             fail_track_creation_after: None,
             fail_next_session_replace: None,
             fail_next_loop_content_replace: None,
+            pending_session_captures: 0,
+            pending_loop_content_replacements: 0,
             failed_midi_input_tracks: BTreeSet::new(),
             processor_catalog: Arc::from([]),
             default_fx_state_string: "{}".to_owned(),
@@ -5242,6 +5246,11 @@ impl FakeBackend {
 
     pub fn fail_next_loop_content_replace(&mut self, message: impl Into<String>) {
         self.fail_next_loop_content_replace = Some(message.into());
+    }
+
+    pub fn delay_next_async_loop_copy(&mut self) {
+        self.pending_session_captures = 1;
+        self.pending_loop_content_replacements = 1;
     }
 
     pub fn set_preflight_sample_rate_override(&mut self, sample_rate: Option<u32>) {
@@ -6357,6 +6366,24 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
+    fn replace_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        if self.pending_loop_content_replacements > 0 {
+            self.pending_loop_content_replacements -= 1;
+            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+                key: 1,
+                kind: BackendOperationKind::LoopContentReplacement,
+                completed: 0,
+                total: Some(1),
+            }));
+        }
+        self.replace_loop_content(loop_id, update)
+            .map(BackendAsyncResult::Ready)
+    }
+
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
         let state = self
             .loops
@@ -6459,6 +6486,19 @@ impl Backend for FakeBackend {
             global_ports,
             use_legacy_browser_default_routes: false,
         })
+    }
+
+    fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+        if self.pending_session_captures > 0 {
+            self.pending_session_captures -= 1;
+            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+                key: 1,
+                kind: BackendOperationKind::SessionCapture,
+                completed: 0,
+                total: Some(1),
+            }));
+        }
+        self.capture_session().map(BackendAsyncResult::Ready)
     }
 
     fn replace_session(

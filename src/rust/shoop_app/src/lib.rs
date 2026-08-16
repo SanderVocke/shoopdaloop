@@ -9133,9 +9133,12 @@ mod tests {
             )
             .unwrap();
 
+        backend.delay_next_async_loop_copy();
         model
             .handle_loop_action(&mut backend, track_id, source, LoopAction::Duplicate)
             .unwrap();
+        model.advance_io(&mut backend);
+        model.advance_io(&mut backend);
         assert!(model.loops[&model.tracks[1].loops[0]].state.empty);
         assert_eq!(model.loops[&occupied].length, 2);
         assert_eq!(model.loops[&duplicate_target].name, "Source");
