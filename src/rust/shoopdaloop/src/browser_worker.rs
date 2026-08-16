@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{COMMAND_MAX_BYTES, PROTOCOL_VERSION};
@@ -37,6 +40,7 @@ pub struct BrowserWorkerDriver {
     application_port: MessagePort,
     message_handler: Closure<dyn FnMut(MessageEvent)>,
     error_handler: Closure<dyn FnMut(WebEvent)>,
+    repaint_context: Rc<RefCell<Option<egui::Context>>>,
 }
 
 impl BrowserWorkerDriver {
@@ -62,11 +66,16 @@ impl BrowserWorkerDriver {
         let application_port = channel.port1();
         let worker_port = channel.port2();
         let receive_control = transport.clone();
+        let repaint_context = Rc::new(RefCell::new(None::<egui::Context>));
+        let receive_repaint_context = Rc::clone(&repaint_context);
         let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
             if let Some(json) = event.data().as_string() {
                 let _ = receive_control.receive(GENERATION, &json);
             } else {
                 receive_control.fail("worker engine emitted a non-string event");
+            }
+            if let Some(context) = receive_repaint_context.borrow().as_ref() {
+                context.request_repaint();
             }
         }) as Box<dyn FnMut(_)>);
         application_port.set_onmessage(Some(message_handler.as_ref().unchecked_ref()));
@@ -159,7 +168,12 @@ impl BrowserWorkerDriver {
             application_port,
             message_handler,
             error_handler,
+            repaint_context,
         })
+    }
+
+    pub fn set_repaint_context(&self, context: egui::Context) {
+        *self.repaint_context.borrow_mut() = Some(context);
     }
 
     pub fn state(&self) -> BackendDriverState {

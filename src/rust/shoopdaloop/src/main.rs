@@ -710,6 +710,8 @@ impl UnifiedApp {
         let now = Instant::now();
         let elapsed = now.saturating_duration_since(self.last_update);
         self.last_update = now;
+        #[cfg(target_arch = "wasm32")]
+        self.runtime.set_repaint_context(ui.ctx().clone());
         self.runtime.tick(elapsed);
         self.runtime.process_audio_previews();
 
@@ -1400,6 +1402,15 @@ impl Runtime {
             preview_player: browser_preview::BrowserPreviewPlayer::default(),
             applied_settings_revision: settings.revision(),
         })
+    }
+
+    fn set_repaint_context(&self, context: egui::Context) {
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => {
+                controller.set_repaint_context(context);
+            }
+            BrowserRuntimeMode::Worker(driver) => driver.set_repaint_context(context),
+        }
     }
 
     fn tick(&mut self, elapsed: Duration) {
