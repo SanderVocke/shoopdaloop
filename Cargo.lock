@@ -3960,6 +3960,7 @@ dependencies = [
  "tracing-tracy",
  "tracy-client",
  "tracy-client-sys",
+ "tracy-nextest-capture",
 ]
 
 [[package]]
@@ -4089,6 +4090,7 @@ dependencies = [
  "shoop_wasm_test_support",
  "tracy-client",
  "tracy-client-sys",
+ "tracy-nextest-capture",
 ]
 
 [[package]]
@@ -4099,6 +4101,7 @@ dependencies = [
  "shoop_wasm_test_support",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

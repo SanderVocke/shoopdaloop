@@ -13,6 +13,7 @@ tracy-client-sys = { workspace = true, optional = true }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+tracy-nextest-capture = { workspace = true }
 
 [lints]
 workspace = true
