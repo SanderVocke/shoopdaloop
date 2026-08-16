@@ -55,7 +55,7 @@ struct PhysicalAudioDriverState {
     context_state_handler: Option<Closure<dyn FnMut(WebEvent)>>,
     track_ended_handlers: Vec<Closure<dyn FnMut(WebEvent)>>,
     input_mode: Option<AudioInputMode>,
-    repaint_context: Option<egui::Context>,
+    repaint_context: Option<eframe::egui::Context>,
 }
 
 /// Owns browser audio resources and the restricted remote transport control.
@@ -201,7 +201,7 @@ impl BrowserAudioController {
         self.driver.state.borrow().context.clone()
     }
 
-    pub fn set_repaint_context(&self, context: egui::Context) {
+    pub fn set_repaint_context(&self, context: eframe::egui::Context) {
         self.driver.state.borrow_mut().repaint_context = Some(context);
     }
 

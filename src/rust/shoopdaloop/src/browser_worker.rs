@@ -40,7 +40,7 @@ pub struct BrowserWorkerDriver {
     application_port: MessagePort,
     message_handler: Closure<dyn FnMut(MessageEvent)>,
     error_handler: Closure<dyn FnMut(WebEvent)>,
-    repaint_context: Rc<RefCell<Option<egui::Context>>>,
+    repaint_context: Rc<RefCell<Option<eframe::egui::Context>>>,
 }
 
 impl BrowserWorkerDriver {
@@ -66,7 +66,7 @@ impl BrowserWorkerDriver {
         let application_port = channel.port1();
         let worker_port = channel.port2();
         let receive_control = transport.clone();
-        let repaint_context = Rc::new(RefCell::new(None::<egui::Context>));
+        let repaint_context = Rc::new(RefCell::new(None::<eframe::egui::Context>));
         let receive_repaint_context = Rc::clone(&repaint_context);
         let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
             if let Some(json) = event.data().as_string() {
@@ -172,7 +172,7 @@ impl BrowserWorkerDriver {
         })
     }
 
-    pub fn set_repaint_context(&self, context: egui::Context) {
+    pub fn set_repaint_context(&self, context: eframe::egui::Context) {
         *self.repaint_context.borrow_mut() = Some(context);
     }
 
