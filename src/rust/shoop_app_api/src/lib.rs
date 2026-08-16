@@ -1463,6 +1463,8 @@ pub enum LoopAction {
     ConvertToComposite,
     Duplicate,
     DuplicateTo(LoopId),
+    ComposeIntoEnd(LoopId),
+    ComposeIntoParallel(LoopId),
     SwapWith(LoopId),
     MoveBefore(Option<LoopId>),
 }
@@ -1722,6 +1724,8 @@ impl LoopAction {
             Self::ConvertToComposite => "loop.convert_to_composite",
             Self::Duplicate => "loop.duplicate",
             Self::DuplicateTo(_) => "loop.duplicate_to",
+            Self::ComposeIntoEnd(_) => "loop.compose_into_end",
+            Self::ComposeIntoParallel(_) => "loop.compose_into_parallel",
             Self::SwapWith(_) => "loop.swap_with",
             Self::MoveBefore(_) => "loop.move_before",
         }

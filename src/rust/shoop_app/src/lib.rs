@@ -4145,6 +4145,12 @@ impl ApplicationModel {
             LoopAction::DuplicateTo(target) => {
                 self.duplicate_loop_into(backend, track_id, loop_id, target)
             }
+            LoopAction::ComposeIntoEnd(target) => {
+                self.compose_loop_into(backend, track_id, loop_id, target, false)
+            }
+            LoopAction::ComposeIntoParallel(target) => {
+                self.compose_loop_into(backend, track_id, loop_id, target, true)
+            }
             LoopAction::SwapWith(target) => self.swap_loops(track_id, loop_id, target),
             LoopAction::MoveBefore(target) => self.move_loop_before(track_id, loop_id, target),
         }
@@ -4582,6 +4588,42 @@ impl ApplicationModel {
             pending.remove(&id);
         }
         Ok(())
+    }
+
+    fn compose_loop_into(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+        source: LoopId,
+        target: LoopId,
+        parallel: bool,
+    ) -> Result<(), String> {
+        let track = self
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        if !track.loops.contains(&source) || !track.loops.contains(&target) {
+            return Err(format!(
+                "loops {source} and {target} must belong to track {track_id}"
+            ));
+        }
+        if source == target || self.composite_references(source, target, &mut BTreeSet::new()) {
+            return Err(format!(
+                "adding loop {source} to composite {target} would create a cycle"
+            ));
+        }
+        if self.loops[&target].composite.is_none() {
+            self.handle_loop_action(backend, track_id, target, LoopAction::ConvertToComposite)?;
+        }
+        self.apply_script_operation(
+            backend,
+            ControlOperation::ComposeAddToEnd {
+                target,
+                add: vec![source],
+                parallel,
+            },
+        )
     }
 
     fn compose_loop_serial(
@@ -11109,6 +11151,100 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let empty = model.details_snapshot().unwrap().composite.unwrap();
         assert_eq!(empty.kind, shoop_app_api::CompositeKind::Regular);
         assert!(empty.events.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compose_into_actions_convert_the_target_and_schedule_serial_or_parallel() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track = model.tracks[1].id;
+        let target = model.tracks[1].loops[0];
+        let source = model.tracks[1].loops[1];
+        let parallel_source = model.tracks[1].loops[2];
+        let end_source = model.tracks[1].loops[3];
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                track,
+                source,
+                LoopAction::ComposeIntoEnd(target),
+            )
+            .unwrap();
+        let target_model = &model.loops[&target];
+        assert_eq!(
+            target_model.state.composite_kind,
+            shoop_app_api::CompositeKind::Regular
+        );
+        assert_eq!(target_model.script_composition, [vec![source]]);
+        assert_eq!(
+            target_model.composite.as_ref().unwrap().playlists[0][0][0].loop_id,
+            source.raw()
+        );
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                track,
+                parallel_source,
+                LoopAction::ComposeIntoParallel(target),
+            )
+            .unwrap();
+        let target_model = &model.loops[&target];
+        assert_eq!(
+            target_model.script_composition,
+            [vec![source, parallel_source]]
+        );
+        assert_eq!(
+            target_model.composite.as_ref().unwrap().playlists[0][0]
+                .iter()
+                .map(|event| event.loop_id)
+                .collect::<Vec<_>>(),
+            [source.raw(), parallel_source.raw()]
+        );
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                track,
+                end_source,
+                LoopAction::ComposeIntoEnd(target),
+            )
+            .unwrap();
+        let target_model = &model.loops[&target];
+        assert_eq!(
+            target_model.script_composition,
+            [vec![source, parallel_source], vec![end_source]]
+        );
+        assert_eq!(
+            target_model.composite.as_ref().unwrap().playlists[0]
+                .iter()
+                .map(|section| section
+                    .iter()
+                    .map(|event| event.loop_id)
+                    .collect::<Vec<_>>())
+                .collect::<Vec<_>>(),
+            [
+                vec![source.raw(), parallel_source.raw()],
+                vec![end_source.raw()]
+            ]
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
