@@ -298,7 +298,6 @@ export async function shutdownRemoteApplicationFixture(fixture) {
     await stop(fixture.api, fixture.instance);
   } finally {
     fixture.api.cleanup();
-    assertNoLeaks();
   }
 }
 

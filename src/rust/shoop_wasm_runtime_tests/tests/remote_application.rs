@@ -131,7 +131,11 @@ impl RemoteAppHarness {
             callback_errors,
             _on_message: on_message,
         };
-        harness.drive_steps(4).await;
+        harness
+            .drive_until("published engine sample rate", |snapshot| {
+                snapshot.status.sample_rate == 48_000
+            })
+            .await;
         harness
     }
 
