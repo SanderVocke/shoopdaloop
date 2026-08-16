@@ -8936,6 +8936,11 @@ mod tests {
         backend
             .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 1, 128)
             .unwrap();
+        let _ = backend.poll().unwrap();
+        output.fill(0.0);
+        backend
+            .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 1, 128)
+            .unwrap();
         let silent = backend.poll().unwrap();
         assert!(silent.tracks[&track.track_id].output_peaks[0] <= -100.0);
         assert!(silent.loops[&track.loops[0]].audio_peaks[0] <= -100.0);

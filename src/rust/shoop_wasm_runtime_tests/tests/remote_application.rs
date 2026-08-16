@@ -321,7 +321,7 @@ async fn remote_loop_duplication_copies_content_and_controls() {
     let target_state = &snapshot.tracks[1].loops[1];
     assert_eq!(source_state.id, source);
     assert_eq!(target_state.id, target);
-    assert_eq!(target_state.length, source_state.length);
+    assert_eq!(target_state.length_frames, source_state.length_frames);
     assert_eq!(target_state.gain, source_state.gain);
     assert_eq!(target_state.balance, source_state.balance);
     assert!(
