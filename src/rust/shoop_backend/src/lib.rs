@@ -4441,11 +4441,11 @@ impl Backend for EngineBackend {
             let audio_peaks = channels
                 .into_iter()
                 .flat_map(|channels| &channels.audio)
-                .filter_map(|channel| self.session.audio_channel_mut(*channel))
-                .map(|channel| {
+                .filter_map(|channel| {
+                    let channel = self.session.audio_channel_mut(*channel)?;
                     let peak = amplitude_db(channel.output_peak());
                     channel.reset_output_peak();
-                    peak
+                    Some(peak)
                 })
                 .collect();
             let midi_activity = channels
