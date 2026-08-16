@@ -1,8 +1,8 @@
 schema = 1
 
 [inventory]
-source_declaration_count = 1434
-source_declarations_sha256 = "e56cc0214de8704d61525e66f244028899e8c14088eb30ba020bbbf0a949c93e"
+source_declaration_count = 1435
+source_declarations_sha256 = "2597ab9a5a6ae20e4eb95d2993b9e71b10367c3aed54134fcb8d5c7c4a3aa1ac"
 wasm_test_count = 1180
 wasm_test_ids_sha256 = "f3ab451ee411f1cc5e33ec77aeb91ad9262b9a8b50b1a77df702269e5dcbcf52"
 
