@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires the native embedded Tracy runtime and filesystem",
+    no_tracy = "manages the embedded capture lifecycle directly"
+)]
 fn embedded_capture_publishes_a_trace() {
     let temporary_dir = std::env::var_os("SHOOP_TRACY_TEST_OUTPUT_DIR")
         .map(PathBuf::from)

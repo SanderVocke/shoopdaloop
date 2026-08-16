@@ -1,10 +1,9 @@
 #![cfg(target_arch = "wasm32")]
 
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_test::wasm_bindgen_test;
 
 #[cfg(feature = "wasm-test-browser")]
-wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen(module = "/js/worker_fixture.js")]
 extern "C" {
@@ -63,7 +62,9 @@ async fn checked(
     assert_eq!(result.as_string().as_deref(), Some(expected));
 }
 
-#[wasm_bindgen_test]
+#[shoop_wasm_test_support::shoop_test(
+    wasm_only = "requires a WebAssembly JavaScript Worker runtime"
+)]
 async fn exact_production_worker_modules_process_and_isolate_instances() {
     let (runtime, assets) = runtime_and_assets();
     checked(
@@ -78,7 +79,9 @@ async fn exact_production_worker_modules_process_and_isolate_instances() {
     .await;
 }
 
-#[wasm_bindgen_test]
+#[shoop_wasm_test_support::shoop_test(
+    wasm_only = "requires a WebAssembly JavaScript Worker runtime"
+)]
 async fn explicit_cooperative_and_realtime_modes_restart_cleanly() {
     let (runtime, assets) = runtime_and_assets();
     checked(
@@ -93,7 +96,9 @@ async fn explicit_cooperative_and_realtime_modes_restart_cleanly() {
     .await;
 }
 
-#[wasm_bindgen_test]
+#[shoop_wasm_test_support::shoop_test(
+    wasm_only = "requires a WebAssembly JavaScript Worker runtime"
+)]
 async fn protocol_ordering_midi_observation_and_production_shutdown_work() {
     let (runtime, assets) = runtime_and_assets();
     checked(
@@ -108,7 +113,9 @@ async fn protocol_ordering_midi_observation_and_production_shutdown_work() {
     .await;
 }
 
-#[wasm_bindgen_test]
+#[shoop_wasm_test_support::shoop_test(
+    wasm_only = "requires a WebAssembly JavaScript Worker runtime"
+)]
 async fn one_terminal_worker_failure_does_not_stop_its_peer() {
     let (runtime, assets) = runtime_and_assets();
     checked(

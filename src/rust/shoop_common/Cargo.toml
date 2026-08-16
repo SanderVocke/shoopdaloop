@@ -26,6 +26,7 @@ libc = { workspace = true }
 workspace = true
 
 [dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 tempfile = { workspace = true }
 tracy-nextest-capture = { workspace = true }
 

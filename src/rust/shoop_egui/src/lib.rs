@@ -94,7 +94,7 @@ fn control_safe_scroll_source() -> egui::scroll_area::ScrollSource {
 
 #[cfg(test)]
 mod tests {
-    #[test]
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "requires native filesystem path semantics")]
     fn markdown_base_uri_uses_script_directory() {
         let separator = std::path::MAIN_SEPARATOR;
         assert_eq!(

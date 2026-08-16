@@ -19,7 +19,10 @@ fn audio_port(id: u64, name: &str, direction: PortDirection) -> Port {
     Port::Dummy(DummyAudioPort::new(PortId(id), name, direction, 64))
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn coarse_and_detailed_tracy_keep_the_engine_guarded() {
     let mut session = Session::default();
     session.set_buffer_size(64);

@@ -317,7 +317,7 @@ fn sanitize_label(label: &str) -> String {
 mod tests {
     use super::*;
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "requires the native Tracy capture runtime")]
     fn sanitizes_capture_labels() {
         assert_eq!(sanitize_label("application"), "application");
         assert_eq!(sanitize_label("../../unsafe name"), ".._.._unsafe_name");
@@ -326,7 +326,7 @@ mod tests {
         assert_eq!(sanitize_label(""), "capture");
     }
 
-    #[tracy_nextest_capture::tracy_capture_test]
+    #[shoop_wasm_test_support::shoop_test(no_wasm = "requires the native Tracy capture runtime")]
     fn capture_paths_are_unique_and_confined_to_output_directory() {
         let temporary_dir = tempfile::tempdir().expect("create temporary directory");
         let first = next_capture_path(temporary_dir.path(), "../unsafe name");
