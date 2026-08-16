@@ -1,10 +1,10 @@
 schema = 1
 
 [inventory]
-source_declaration_count = 1433
-source_declarations_sha256 = "f671ad0c4951dbf8e1f4bf5c7d461b4d3ebbfbc0037abd1df1b5ece0d7d4da63"
-wasm_test_count = 1179
-wasm_test_ids_sha256 = "93a3926f8aa6353600dbe559e7fa2024f1f2558073e65800709d48f243fc31c6"
+source_declaration_count = 1434
+source_declarations_sha256 = "e56cc0214de8704d61525e66f244028899e8c14088eb30ba020bbbf0a949c93e"
+wasm_test_count = 1180
+wasm_test_ids_sha256 = "f3ab451ee411f1cc5e33ec77aeb91ad9262b9a8b50b1a77df702269e5dcbcf52"
 
 [[rules]]
 pattern = "shoop_audio_protocol::*"

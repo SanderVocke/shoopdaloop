@@ -71,6 +71,10 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_drop_clone_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_drop_compose_end_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_drop_compose_parallel_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_drop_swap_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_loop_insert_rects: Vec<(Option<LoopId>, egui::Rect)>,
@@ -120,6 +124,10 @@ impl Default for TrackWidget {
             test_track_drag_rect: None,
             #[cfg(test)]
             test_drop_clone_rect: None,
+            #[cfg(test)]
+            test_drop_compose_end_rect: None,
+            #[cfg(test)]
+            test_drop_compose_parallel_rect: None,
             #[cfg(test)]
             test_drop_swap_rect: None,
             #[cfg(test)]
@@ -304,6 +312,8 @@ impl TrackWidget {
             self.test_loop_rects.clear();
             self.test_track_drag_rect = None;
             self.test_drop_clone_rect = None;
+            self.test_drop_compose_end_rect = None;
+            self.test_drop_compose_parallel_rect = None;
             self.test_drop_swap_rect = None;
             self.test_loop_insert_rects.clear();
             self.test_highlighted_loop_insert = None;
@@ -485,10 +495,14 @@ impl TrackWidget {
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
                 let clone = ui.button("Clone into");
+                let compose_end = ui.button("Compose (end)");
+                let compose_parallel = ui.button("Compose (parallel)");
                 let swap = ui.button("Swap");
                 #[cfg(test)]
                 {
                     self.test_drop_clone_rect = Some(clone.rect);
+                    self.test_drop_compose_end_rect = Some(compose_end.rect);
+                    self.test_drop_compose_parallel_rect = Some(compose_parallel.rect);
                     self.test_drop_swap_rect = Some(swap.rect);
                 }
                 if clone.clicked() {
@@ -497,6 +511,12 @@ impl TrackWidget {
                     } else {
                         confirm_clone = true;
                     }
+                    ui.close();
+                } else if compose_end.clicked() {
+                    action = Some(LoopWidgetAction::ComposeIntoEnd(target));
+                    ui.close();
+                } else if compose_parallel.clicked() {
+                    action = Some(LoopWidgetAction::ComposeIntoParallel(target));
                     ui.close();
                 } else if swap.clicked() {
                     action = Some(LoopWidgetAction::SwapWith(target));
@@ -1195,7 +1215,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn dropping_a_loop_on_a_peer_offers_clone_into_and_swap_actions() {
+    fn dropping_a_loop_on_a_peer_offers_clone_compose_and_swap_actions() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let source = LoopId::from_raw(1);
@@ -1255,6 +1275,28 @@ mod tests {
         assert_eq!(
             response.loop_actions,
             [(source, LoopWidgetAction::DuplicateTo(target))]
+        );
+
+        let _ = drop_on_target(&context, &mut widget);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let compose_end = widget
+            .test_drop_compose_end_rect
+            .expect("compose at end drop action");
+        let response = click(&context, &mut widget, &state, compose_end.center());
+        assert_eq!(
+            response.loop_actions,
+            [(source, LoopWidgetAction::ComposeIntoEnd(target))]
+        );
+
+        let _ = drop_on_target(&context, &mut widget);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let compose_parallel = widget
+            .test_drop_compose_parallel_rect
+            .expect("compose in parallel drop action");
+        let response = click(&context, &mut widget, &state, compose_parallel.center());
+        assert_eq!(
+            response.loop_actions,
+            [(source, LoopWidgetAction::ComposeIntoParallel(target))]
         );
 
         let _ = drop_on_target(&context, &mut widget);
