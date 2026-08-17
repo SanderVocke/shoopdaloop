@@ -1585,6 +1585,11 @@ pub enum AppIntent {
         target_loop_id: LoopId,
         events: Vec<CompositeEventId>,
     },
+    SetCompositeEventCycles {
+        target_loop_id: LoopId,
+        event: CompositeEventId,
+        n_cycles: Option<u32>,
+    },
     KeyEvent(KeyEvent),
     AddScriptSource {
         name: String,
@@ -1818,6 +1823,7 @@ impl AppIntent {
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",
             Self::DeleteCompositeEvents { .. } => "loop.composite.delete_events",
+            Self::SetCompositeEventCycles { .. } => "loop.composite.set_event_cycles",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
@@ -2134,6 +2140,16 @@ mod tests {
                 }],
             }
         );
+        let force_length = AppIntent::SetCompositeEventCycles {
+            target_loop_id: loop_id,
+            event: CompositeEventId {
+                playlist_index: 1,
+                section_index: 2,
+                parallel_index: 3,
+            },
+            n_cycles: Some(4),
+        };
+        assert_eq!(force_length.kind(), "loop.composite.set_event_cycles");
         assert_eq!(
             LoopAction::NameChanged("Verse".to_owned()).kind(),
             "loop.name"

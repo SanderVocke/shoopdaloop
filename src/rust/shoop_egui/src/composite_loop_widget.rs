@@ -2,6 +2,7 @@ use crate::{
     colors, AppIntent, CompositeDetailsState, CompositeEventDetailsState, CompositeEventId, LoopId,
     LoopMode, TrackId,
 };
+use egui_material_icons::icons::ICON_LOCK_CLOCK;
 use std::collections::{BTreeMap, BTreeSet};
 
 const MIN_CYCLE_WIDTH: f32 = 20.0;
@@ -137,6 +138,7 @@ pub struct CompositeLoopWidget {
     cycle_width: f32,
     selected_events: BTreeSet<CompositeEventKey>,
     box_selection: Option<BoxSelection>,
+    force_length_cycles: u32,
     #[cfg(test)]
     rendered_events: Vec<(String, egui::Rect, usize)>,
     #[cfg(test)]
@@ -159,6 +161,10 @@ pub struct CompositeLoopWidget {
     box_selection_rect: Option<egui::Rect>,
     #[cfg(test)]
     delete_menu_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    force_length_menu_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    natural_length_menu_rect: Option<egui::Rect>,
 }
 
 impl Default for CompositeLoopWidget {
@@ -168,6 +174,7 @@ impl Default for CompositeLoopWidget {
             cycle_width: DEFAULT_CYCLE_WIDTH,
             selected_events: BTreeSet::new(),
             box_selection: None,
+            force_length_cycles: 1,
             #[cfg(test)]
             rendered_events: Vec::new(),
             #[cfg(test)]
@@ -190,6 +197,10 @@ impl Default for CompositeLoopWidget {
             box_selection_rect: None,
             #[cfg(test)]
             delete_menu_rect: None,
+            #[cfg(test)]
+            force_length_menu_rect: None,
+            #[cfg(test)]
+            natural_length_menu_rect: None,
         }
     }
 }
@@ -227,6 +238,8 @@ impl CompositeLoopWidget {
             self.timeline_left = None;
             self.box_selection_rect = None;
             self.delete_menu_rect = None;
+            self.force_length_menu_rect = None;
+            self.natural_length_menu_rect = None;
         }
 
         let fit_width = (ui.available_width() - TRACK_LABEL_WIDTH).max(1.0);
@@ -363,6 +376,7 @@ impl CompositeLoopWidget {
                 let mut clicked_event = None;
                 let mut context_event = None;
                 let mut delete_requested = false;
+                let mut length_request = None;
                 let mut row_top = rect.top() + HEADER_HEIGHT + TRACK_GAP;
                 for (track_state, track_layout) in details.tracks.iter().zip(&packed) {
                     let height = track_height(track_layout.lane_count);
@@ -426,8 +440,51 @@ impl CompositeLoopWidget {
                                 }
                                 if response.secondary_clicked() {
                                     context_event = Some(event_key);
+                                    self.force_length_cycles =
+                                        event.forced_n_cycles.unwrap_or_else(|| {
+                                            let cycle_length = details.cycle_length_frames.max(1);
+                                            event
+                                                .end_frame
+                                                .saturating_sub(event.start_frame)
+                                                .div_ceil(cycle_length)
+                                                .max(1)
+                                                .try_into()
+                                                .unwrap_or(u32::MAX)
+                                        });
                                 }
                                 response.context_menu(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label("Length");
+                                        ui.add(
+                                            egui::DragValue::new(&mut self.force_length_cycles)
+                                                .range(1..=u32::MAX)
+                                                .suffix(" cycles"),
+                                        );
+                                    });
+                                    let force = ui.button("Force length");
+                                    #[cfg(test)]
+                                    {
+                                        self.force_length_menu_rect = Some(force.rect);
+                                    }
+                                    if force.clicked() {
+                                        length_request = Some((
+                                            event_key,
+                                            Some(self.force_length_cycles.max(1)),
+                                        ));
+                                        ui.close();
+                                    }
+                                    if event.forced_n_cycles.is_some() {
+                                        let natural = ui.button("Use natural length");
+                                        #[cfg(test)]
+                                        {
+                                            self.natural_length_menu_rect = Some(natural.rect);
+                                        }
+                                        if natural.clicked() {
+                                            length_request = Some((event_key, None));
+                                            ui.close();
+                                        }
+                                    }
+                                    ui.separator();
                                     let delete = ui.button("Delete");
                                     #[cfg(test)]
                                     {
@@ -444,8 +501,33 @@ impl CompositeLoopWidget {
                                 self.rendered_selected_event_count += 1;
                             }
                             if event_rect.width() >= 10.0 {
+                                let label_left = if event.forced_n_cycles.is_some() {
+                                    let icon_rect = egui::Rect::from_min_size(
+                                        event_rect.left_center() + egui::vec2(4.0, -7.0),
+                                        egui::vec2(14.0, 14.0),
+                                    );
+                                    painter.text(
+                                        icon_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        ICON_LOCK_CLOCK.codepoint,
+                                        egui::FontId::new(
+                                            13.0,
+                                            egui::FontFamily::Name(
+                                                egui_material_icons::FONT_FAMILY.into(),
+                                            ),
+                                        ),
+                                        colors::FOREGROUND,
+                                    );
+                                    icon_rect.right() + 2.0
+                                } else {
+                                    event_rect.left()
+                                };
+                                let label_rect = egui::Rect::from_min_max(
+                                    egui::pos2(label_left, event_rect.top()),
+                                    event_rect.right_bottom(),
+                                );
                                 painter.with_clip_rect(event_rect.shrink(3.0)).text(
-                                    event_rect.center(),
+                                    label_rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     &event.loop_name,
                                     egui::FontId::proportional(12.0),
@@ -498,6 +580,13 @@ impl CompositeLoopWidget {
                         self.selected_events.insert(event);
                     }
                     ui.ctx().request_repaint();
+                }
+                if let Some((event, n_cycles)) = length_request {
+                    intents.push(AppIntent::SetCompositeEventCycles {
+                        target_loop_id: self.loop_id,
+                        event: event.into(),
+                        n_cycles,
+                    });
                 }
                 if !self.selected_events.is_empty()
                     && (delete_requested || ui.input(|input| input.key_pressed(egui::Key::Delete)))
@@ -1216,6 +1305,78 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn event_context_menu_forces_and_restores_natural_length() {
+        let context = egui::Context::default();
+        crate::fonts::initialize(&context);
+        let loop_id = LoopId::from_raw(8);
+        let mut forced = keyed_event(3, 1, 1, 20, 220);
+        forced.forced_n_cycles = Some(2);
+        let state = details(vec![forced]);
+        let mut widget = CompositeLoopWidget::default();
+        let _ = widget_frame(&context, &mut widget, loop_id, &state, Vec::new());
+        let event_center = widget.rendered_events[0].1.center();
+
+        for pressed in [true, false] {
+            let _ = widget_frame(
+                &context,
+                &mut widget,
+                loop_id,
+                &state,
+                vec![
+                    egui::Event::PointerMoved(event_center),
+                    egui::Event::PointerButton {
+                        pos: event_center,
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        let _ = widget_frame(&context, &mut widget, loop_id, &state, Vec::new());
+        let natural_center = widget.natural_length_menu_rect.unwrap().center();
+        let _ = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            vec![
+                egui::Event::PointerMoved(natural_center),
+                egui::Event::PointerButton {
+                    pos: natural_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let intents = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: natural_center,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            intents,
+            [AppIntent::SetCompositeEventCycles {
+                target_loop_id: loop_id,
+                event: CompositeEventId {
+                    playlist_index: 3,
+                    section_index: 0,
+                    parallel_index: 0,
+                },
+                n_cycles: None,
+            }]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn timeline_accepts_typed_loop_drops_and_ignores_self_or_outside_drops() {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
@@ -1318,6 +1479,25 @@ mod tests {
             _ => false,
         }));
         assert!(widget.rendered_events.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn forced_length_events_paint_a_lock_clock_icon() {
+        let context = egui::Context::default();
+        crate::fonts::initialize(&context);
+        let mut forced = event(1, 1, 0, 100);
+        forced.forced_n_cycles = Some(1);
+        let output = context.run_ui(Default::default(), |ui| {
+            CompositeLoopWidget::default().show(
+                ui,
+                LoopId::from_raw(8),
+                &details(vec![forced.clone()]),
+            );
+        });
+        assert!(output.shapes.iter().any(|shape| match &shape.shape {
+            egui::Shape::Text(text) => text.galley.job.text == ICON_LOCK_CLOCK.codepoint,
+            _ => false,
+        }));
     }
 
     #[shoop_wasm_test_support::shoop_test]

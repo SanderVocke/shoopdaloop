@@ -1270,6 +1270,11 @@ impl ApplicationModel {
                 target_loop_id,
                 events,
             } => self.delete_composite_events(backend, target_loop_id, &events),
+            AppIntent::SetCompositeEventCycles {
+                target_loop_id,
+                event,
+                n_cycles,
+            } => self.set_composite_event_cycles(backend, target_loop_id, event, n_cycles),
             AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
             AppIntent::AddScriptSource {
                 name,
@@ -4929,6 +4934,58 @@ impl ApplicationModel {
         target_model.length = length;
         target_model.state.empty = empty;
         target_model.state.composite_kind = composite_kind;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = backend_composite;
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn set_composite_event_cycles(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        event: CompositeEventId,
+        n_cycles: Option<u32>,
+    ) -> Result<(), String> {
+        if n_cycles == Some(0) {
+            return Err("forced composite length must be at least one cycle".to_owned());
+        }
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        let mut composite = target_model
+            .composite
+            .clone()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        let selected = composite
+            .playlists
+            .get_mut(event.playlist_index as usize)
+            .and_then(|playlist| playlist.get_mut(event.section_index as usize))
+            .and_then(|section| section.get_mut(event.parallel_index as usize))
+            .ok_or_else(|| "composite length edit references a stale event".to_owned())?;
+        selected.n_cycles = n_cycles;
+
+        let backend_composite = match target_model.backend_composite {
+            Some(id) => {
+                let config = self
+                    .backend_composite_config(&composite)?
+                    .ok_or_else(|| "composite is not backend-configurable".to_owned())?;
+                backend
+                    .configure_composite_loop(id, &config)
+                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                Some(id)
+            }
+            None => self.create_and_configure_backend_composite(backend, &composite)?,
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.length = length;
         target_model.composite = Some(composite);
         target_model.backend_composite = backend_composite;
         target_model.backend_composite_signature = signature;
@@ -11244,6 +11301,32 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(details.timeline_length_frames, 350);
         assert_eq!(details.events[1].forced_n_cycles, Some(2));
         assert_eq!(details.events[1].mode.as_deref(), Some("recording"));
+
+        let first_event = CompositeEventId {
+            playlist_index: 0,
+            section_index: 0,
+            parallel_index: 0,
+        };
+        model
+            .set_composite_event_cycles(&mut backend, target, first_event, Some(4))
+            .unwrap();
+        assert_eq!(
+            model.loops[&target].composite.as_ref().unwrap().playlists[0][0][0].n_cycles,
+            Some(4)
+        );
+        assert_eq!(model.loops[&target].length, 400);
+        model
+            .set_composite_event_cycles(&mut backend, target, first_event, None)
+            .unwrap();
+        assert_eq!(
+            model.loops[&target].composite.as_ref().unwrap().playlists[0][0][0].n_cycles,
+            None
+        );
+        assert_eq!(model.loops[&target].length, 350);
+        assert!(model
+            .set_composite_event_cycles(&mut backend, target, first_event, Some(0))
+            .unwrap_err()
+            .contains("at least one cycle"));
 
         let capture = backend.capture_session().unwrap();
         let saved = model.session_bundle_from_backend(&capture).unwrap();
