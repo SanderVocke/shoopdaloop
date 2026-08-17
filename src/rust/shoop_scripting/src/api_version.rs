@@ -14,12 +14,14 @@ enum AnnouncementStatus {
     #[default]
     Missing,
     Accepted(LuaApiVersion),
+    Incompatible(LuaApiVersion),
     Rejected,
 }
 
 #[derive(Default)]
 pub struct ApiVersionState {
     status: Cell<AnnouncementStatus>,
+    stop_after_announcement: Cell<bool>,
 }
 
 impl ApiVersionState {
@@ -30,9 +32,9 @@ impl ApiVersionState {
                 "{ANNOUNCE_API_VERSION_FUNCTION}({}, {}) must be the first Shoop API call",
                 LUA_API_VERSION.major, LUA_API_VERSION.minor
             ))),
-            AnnouncementStatus::Rejected => Err(runtime_error(
-                "Shoop Lua API version announcement was rejected",
-            )),
+            AnnouncementStatus::Incompatible(_) | AnnouncementStatus::Rejected => Err(
+                runtime_error("Shoop Lua API version announcement was rejected"),
+            ),
         }
     }
 
@@ -45,7 +47,7 @@ impl ApiVersionState {
                     previous.major, previous.minor
                 )));
             }
-            AnnouncementStatus::Rejected => {
+            AnnouncementStatus::Incompatible(_) | AnnouncementStatus::Rejected => {
                 return Err(runtime_error(
                     "Shoop Lua API version announcement was already rejected",
                 ));
@@ -53,14 +55,29 @@ impl ApiVersionState {
             AnnouncementStatus::Missing => {}
         }
         if !LUA_API_VERSION.accepts(requested) {
-            self.status.set(AnnouncementStatus::Rejected);
+            self.status.set(AnnouncementStatus::Incompatible(requested));
             return Err(runtime_error(format!(
                 "incompatible Shoop Lua API: script requests {}.{}, host supports {}.{}",
                 requested.major, requested.minor, LUA_API_VERSION.major, LUA_API_VERSION.minor
             )));
         }
         self.status.set(AnnouncementStatus::Accepted(requested));
-        Ok(())
+        if self.stop_after_announcement.get() {
+            Err(runtime_error("Lua API compatibility probe complete"))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn incompatible_version(&self) -> Option<LuaApiVersion> {
+        match self.status.get() {
+            AnnouncementStatus::Incompatible(version) => Some(version),
+            _ => None,
+        }
+    }
+
+    pub fn stop_after_announcement(&self) {
+        self.stop_after_announcement.set(true);
     }
 
     fn reject(&self, message: String) -> omnilua::Error {

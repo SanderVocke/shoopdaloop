@@ -6,6 +6,9 @@ to enable the bundled APC Mini script or manage other scripts. Scripts are
 grouped by kind in a table; its icon controls open separate help, log, and status
 windows showing callbacks, timers, logical MIDI rules, matched and connected
 endpoints, queue drops, and failures.
+The table also exports every script's source and manages session ownership.
+Incompatible scripts remain visible with their error status so they can be
+exported and updated, but their start control is disabled.
 
 Native builds discover MIDI through the selected JACK or midir service. Browser
 builds discover physical endpoints after the independent **Enable Web MIDI +

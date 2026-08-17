@@ -1146,6 +1146,14 @@ fn associate_startup_script_paths(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn script_kind_has_file_identity(kind: ScriptKind) -> bool {
+    matches!(
+        kind,
+        ScriptKind::Bundled | ScriptKind::Example | ScriptKind::User
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 struct Runtime {
     _runtime: ApplicationRuntime,
     handle: ApplicationHandle,
@@ -1214,6 +1222,13 @@ impl Runtime {
 
     fn tick(&mut self, _elapsed: Duration) {
         let snapshot = self.handle.snapshot();
+        self.script_paths.retain(|script_id, _| {
+            snapshot
+                .scripting
+                .scripts
+                .iter()
+                .any(|script| script.id == *script_id && script_kind_has_file_identity(script.kind))
+        });
         let mut mapped = self
             .script_paths
             .keys()
@@ -2103,6 +2118,16 @@ enum BrowserSelfTest {
     WaitForLuaDialogsStopped,
     Complete,
     Failed,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn lua_version_rejection_is_expected(script: &shoop_egui::ScriptState) -> bool {
+    let lifecycle = if script.name == "lua-api-unannounced.lua" {
+        shoop_egui::ScriptLifecycle::Error
+    } else {
+        shoop_egui::ScriptLifecycle::Incompatible
+    };
+    script.lifecycle == lifecycle && script.latest_error.is_some()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -3719,10 +3744,9 @@ impl BrowserSelfTest {
                     .filter(|script| script.name.starts_with("lua-api-"))
                     .collect::<Vec<_>>();
                 if rejected.len() != 4
-                    || rejected.iter().any(|script| {
-                        script.lifecycle != shoop_egui::ScriptLifecycle::Error
-                            || script.latest_error.is_none()
-                    })
+                    || rejected
+                        .iter()
+                        .any(|script| !lua_version_rejection_is_expected(script))
                     || snapshot.global_controls.solo
                     || !snapshot.scripting.dialogs.is_empty()
                 {
@@ -4767,6 +4791,16 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
+    fn file_identity_kinds_exclude_session_and_ephemeral_scripts() {
+        assert!(script_kind_has_file_identity(ScriptKind::Bundled));
+        assert!(script_kind_has_file_identity(ScriptKind::Example));
+        assert!(script_kind_has_file_identity(ScriptKind::User));
+        assert!(!script_kind_has_file_identity(ScriptKind::Session));
+        assert!(!script_kind_has_file_identity(ScriptKind::Ephemeral));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_atomic_replace_overwrites_and_cleans_up_failed_temporary_files() {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("session.shoop");
@@ -4850,10 +4884,9 @@ mod tests {
                 .filter(|script| script.name.starts_with("lua-api-"))
                 .collect::<Vec<_>>();
             if rejected.len() == 4
-                && rejected.iter().all(|script| {
-                    script.lifecycle == shoop_egui::ScriptLifecycle::Error
-                        && script.latest_error.is_some()
-                })
+                && rejected
+                    .iter()
+                    .all(|script| lua_version_rejection_is_expected(script))
             {
                 assert!(!snapshot.global_controls.solo);
                 assert!(snapshot.scripting.dialogs.is_empty());
