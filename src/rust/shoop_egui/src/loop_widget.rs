@@ -274,6 +274,20 @@ fn can_generate_click_track(state: &LoopState) -> bool {
     state.composite_kind == CompositeKind::None && (state.has_audio || state.has_midi)
 }
 
+fn loop_border_color(state: &LoopState) -> egui::Color32 {
+    if state.targeted {
+        colors::LOOP_TARGET_EDGE
+    } else if state.selected {
+        colors::LOOP_SELECTED_EDGE
+    } else if state.selected_composite_kind != CompositeKind::None {
+        colors::LOOP_COMPOSITE_REFERENCE_EDGE
+    } else if state.empty {
+        colors::MUTED_FOREGROUND
+    } else {
+        colors::LOOP_CONTENT_EDGE
+    }
+}
+
 fn can_convert_to_composite(state: &LoopState) -> bool {
     state.composite_kind == CompositeKind::None
 }
@@ -639,19 +653,7 @@ impl LoopWidget {
             );
         }
 
-        let border_color = if state.targeted {
-            colors::LOOP_TARGET_EDGE
-        } else if state.selected {
-            colors::LOOP_SELECTED_EDGE
-        } else if state.selected_composite_kind == CompositeKind::Regular {
-            colors::LOOP_REGULAR_COMPOSITE
-        } else if state.selected_composite_kind == CompositeKind::Script {
-            colors::LOOP_SCRIPT_COMPOSITE
-        } else if state.empty {
-            colors::MUTED_FOREGROUND
-        } else {
-            colors::LOOP_CONTENT_EDGE
-        };
+        let border_color = loop_border_color(state);
         ui.painter().rect_stroke(
             rect,
             rounding,
@@ -1926,6 +1928,33 @@ mod tests {
             composite_kind: CompositeKind::Regular,
             ..Default::default()
         }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn composite_reference_border_yields_to_selection_and_targeting() {
+        let referenced = LoopState {
+            selected_composite_kind: CompositeKind::Regular,
+            ..Default::default()
+        };
+        assert_eq!(
+            loop_border_color(&referenced),
+            colors::LOOP_COMPOSITE_REFERENCE_EDGE
+        );
+        assert_eq!(
+            loop_border_color(&LoopState {
+                selected: true,
+                ..referenced.clone()
+            }),
+            colors::LOOP_SELECTED_EDGE
+        );
+        assert_eq!(
+            loop_border_color(&LoopState {
+                targeted: true,
+                selected: true,
+                ..referenced
+            }),
+            colors::LOOP_TARGET_EDGE
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
