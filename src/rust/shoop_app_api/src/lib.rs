@@ -952,6 +952,7 @@ pub struct CompositeDetailsState {
     pub kind: CompositeKind,
     pub cycle_length_frames: u64,
     pub timeline_length_frames: u64,
+    pub played_frame: Option<u64>,
     pub tracks: Vec<CompositeTrackDetailsState>,
     pub events: Vec<CompositeEventDetailsState>,
 }

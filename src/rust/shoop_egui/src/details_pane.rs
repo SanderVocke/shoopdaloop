@@ -91,6 +91,7 @@ mod tests {
                 kind: CompositeKind::Script,
                 cycle_length_frames: 100,
                 timeline_length_frames: 200,
+                played_frame: None,
                 tracks: vec![CompositeTrackDetailsState {
                     id: TrackId::from_raw(2),
                     name: "Rhythm".to_owned(),
