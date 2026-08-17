@@ -21,6 +21,7 @@ enum AnnouncementStatus {
 #[derive(Default)]
 pub struct ApiVersionState {
     status: Cell<AnnouncementStatus>,
+    stop_after_announcement: Cell<bool>,
 }
 
 impl ApiVersionState {
@@ -61,7 +62,11 @@ impl ApiVersionState {
             )));
         }
         self.status.set(AnnouncementStatus::Accepted(requested));
-        Ok(())
+        if self.stop_after_announcement.get() {
+            Err(runtime_error("Lua API compatibility probe complete"))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn incompatible_version(&self) -> Option<LuaApiVersion> {
@@ -69,6 +74,10 @@ impl ApiVersionState {
             AnnouncementStatus::Incompatible(version) => Some(version),
             _ => None,
         }
+    }
+
+    pub fn stop_after_announcement(&self) {
+        self.stop_after_announcement.set(true);
     }
 
     fn reject(&self, message: String) -> omnilua::Error {
