@@ -461,26 +461,27 @@ impl CompositeLoopWidget {
                                                 .suffix(" cycles"),
                                         );
                                     });
-                                    let force = ui.button("Force length");
+                                    let force = ui.button("Force length for all instances");
                                     #[cfg(test)]
                                     {
                                         self.force_length_menu_rect = Some(force.rect);
                                     }
                                     if force.clicked() {
                                         length_request = Some((
-                                            event_key,
+                                            event.loop_id,
                                             Some(self.force_length_cycles.max(1)),
                                         ));
                                         ui.close();
                                     }
                                     if event.forced_n_cycles.is_some() {
-                                        let natural = ui.button("Use natural length");
+                                        let natural =
+                                            ui.button("Use natural length for all instances");
                                         #[cfg(test)]
                                         {
                                             self.natural_length_menu_rect = Some(natural.rect);
                                         }
                                         if natural.clicked() {
-                                            length_request = Some((event_key, None));
+                                            length_request = Some((event.loop_id, None));
                                             ui.close();
                                         }
                                     }
@@ -581,10 +582,10 @@ impl CompositeLoopWidget {
                     }
                     ui.ctx().request_repaint();
                 }
-                if let Some((event, n_cycles)) = length_request {
-                    intents.push(AppIntent::SetCompositeEventCycles {
+                if let Some((source_loop_id, n_cycles)) = length_request {
+                    intents.push(AppIntent::SetCompositeLoopCycles {
                         target_loop_id: self.loop_id,
-                        event: event.into(),
+                        source_loop_id,
                         n_cycles,
                     });
                 }
@@ -1364,13 +1365,9 @@ mod tests {
         );
         assert_eq!(
             intents,
-            [AppIntent::SetCompositeEventCycles {
+            [AppIntent::SetCompositeLoopCycles {
                 target_loop_id: loop_id,
-                event: CompositeEventId {
-                    playlist_index: 3,
-                    section_index: 0,
-                    parallel_index: 0,
-                },
+                source_loop_id: LoopId::from_raw(1),
                 n_cycles: None,
             }]
         );
