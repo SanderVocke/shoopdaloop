@@ -7198,6 +7198,25 @@ impl ApplicationModel {
     }
 
     fn snapshot(&self) -> AppSnapshot {
+        let selected_composite_references = self
+            .loops
+            .values()
+            .filter(|model| model.state.selected)
+            .filter_map(|model| {
+                model.composite.as_ref().map(|composite| {
+                    (
+                        model.state.composite_kind,
+                        composite
+                            .playlists
+                            .iter()
+                            .flatten()
+                            .flatten()
+                            .map(|event| LoopId::from_raw(event.loop_id)),
+                    )
+                })
+            })
+            .flat_map(|(kind, references)| references.map(move |loop_id| (loop_id, kind)))
+            .collect::<BTreeMap<_, _>>();
         AppSnapshot {
             revision: self.revision,
             tracks: self
@@ -7218,6 +7237,10 @@ impl ApplicationModel {
                             let mut state = model.state.clone();
                             state.name.clone_from(&model.name);
                             state.length_frames = u64::from(model.length);
+                            state.selected_composite_kind = selected_composite_references
+                                .get(&model.id)
+                                .copied()
+                                .unwrap_or_default();
                             state
                         })
                         .collect(),
@@ -11219,6 +11242,31 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(details.midi_channels.is_empty());
         let details = details.composite.unwrap();
         assert_eq!(details.kind, shoop_app_api::CompositeKind::Script);
+        let snapshot = model.snapshot();
+        let loop_state = |id| {
+            snapshot
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .find(|loop_| loop_.id == id)
+                .unwrap()
+        };
+        assert_eq!(
+            loop_state(rhythm_a).selected_composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+        assert_eq!(
+            loop_state(rhythm_b).selected_composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+        assert_eq!(
+            loop_state(melody).selected_composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+        assert_eq!(
+            loop_state(target).selected_composite_kind,
+            shoop_app_api::CompositeKind::None
+        );
         assert_eq!(details.cycle_length_frames, 50);
         assert_eq!(
             details
