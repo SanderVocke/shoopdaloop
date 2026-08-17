@@ -8,8 +8,9 @@ use std::time::Duration;
 use js_sys::{Array, Function, Promise};
 use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
-    AppIntent, AppSnapshot, ClickTrackRequest, DirectTrackSpec, GlobalControlAction, IoTaskStatus,
-    LoopAction, LoopMode, NotificationLevel,
+    AppIntent, AppSnapshot, ClickTrackRequest, DirectTrackSpec, GlobalControlAction, IoTaskKind,
+    IoTaskStatus, LoopAction, LoopMode, NotificationLevel, TinySynthFxControl, TrackAction,
+    TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
 };
 use shoop_backend::BackendDriverState;
 use shoop_worklet_client::{MessageEndpoint, NullHostMidiBridge, RemoteBackendControl};
@@ -257,6 +258,41 @@ async fn generate_click(harness: &mut RemoteAppHarness, loop_id: shoop_app_api::
         .await;
 }
 
+async fn save_session(harness: &mut RemoteAppHarness) -> shoop_app::ApplicationFileOutput {
+    let previous_task = harness.snapshot().io_task.as_ref().map(|task| task.id);
+    harness.dispatch(AppIntent::RequestSaveSession);
+    harness
+        .drive_until("completed session save", |snapshot| {
+            snapshot.io_task.as_ref().is_some_and(|task| {
+                task.kind == IoTaskKind::SaveSession
+                    && task.status == IoTaskStatus::Completed
+                    && Some(task.id) != previous_task
+            })
+        })
+        .await;
+    harness
+        .runtime()
+        .take_file_output()
+        .expect("saved session output")
+}
+
+async fn load_session(harness: &mut RemoteAppHarness, output: shoop_app::ApplicationFileOutput) {
+    let previous_task = harness.snapshot().io_task.as_ref().map(|task| task.id);
+    harness.dispatch(AppIntent::LoadSessionBytes {
+        name: output.suggested_name,
+        bytes: output.bytes,
+    });
+    harness
+        .drive_until("completed session load", |snapshot| {
+            snapshot.io_task.as_ref().is_some_and(|task| {
+                task.kind == IoTaskKind::LoadSession
+                    && task.status == IoTaskStatus::Completed
+                    && Some(task.id) != previous_task
+            })
+        })
+        .await;
+}
+
 #[shoop_wasm_test_support::shoop_test(
     wasm_only = "requires the production WebAssembly Worker runtime"
 )]
@@ -353,16 +389,24 @@ async fn remote_peak_publication_resets_after_silence() {
         action: LoopAction::PlayClicked,
     });
     for _ in 0..4 {
-        harness.process_quantum(&[], 2).await;
+        harness
+            .process_quantum(&[vec![0.25; QUANTUM], vec![0.5; QUANTUM]], 2)
+            .await;
     }
     harness
-        .drive_until("published loud loop and track peaks", |snapshot| {
-            snapshot.tracks[1].loops[0].peak_left_db > -100.0
-                && snapshot.tracks[1].controls.output_peak_left_db > -100.0
-        })
+        .drive_until(
+            "published loud loop and track peaks on both channels",
+            |snapshot| {
+                snapshot.tracks[1].loops[0].peak_left_db > -100.0
+                    && snapshot.tracks[1].loops[0].peak_right_db > -100.0
+                    && snapshot.tracks[1].controls.output_peak_left_db > -100.0
+                    && snapshot.tracks[1].controls.output_peak_right_db > -100.0
+                    && snapshot.tracks[1].controls.input_peak_left_db > -100.0
+                    && snapshot.tracks[1].controls.input_peak_right_db > -100.0
+            },
+        )
         .await;
-    let loud_peak = harness.snapshot().tracks[1].loops[0].peak_left_db;
-    let loud_track_peak = harness.snapshot().tracks[1].controls.output_peak_left_db;
+    let loud = harness.snapshot();
     harness.dispatch(AppIntent::Loop {
         track_id: track.id,
         loop_id: source,
@@ -384,16 +428,200 @@ async fn remote_peak_publication_resets_after_silence() {
                 && snapshot.tracks[1].controls.output_peak_left_db <= -100.0
         })
         .await;
-    let silent_peak = harness.snapshot().tracks[1].loops[0].peak_left_db;
-    let silent_track_peak = harness.snapshot().tracks[1].controls.output_peak_left_db;
-    assert!(loud_peak > -100.0, "expected a loud peak, got {loud_peak}");
-    assert!(
-        silent_peak <= -100.0,
-        "loop peak did not reset after silence: loud={loud_peak}, silent={silent_peak}"
-    );
-    assert!(
-        loud_track_peak > -100.0 && silent_track_peak <= -100.0,
-        "track peak did not reset after silence: loud={loud_track_peak}, silent={silent_track_peak}"
-    );
+    let silent = harness.snapshot();
+    let loud_loop = &loud.tracks[1].loops[0];
+    let loud_track = &loud.tracks[1].controls;
+    let silent_loop = &silent.tracks[1].loops[0];
+    let silent_track = &silent.tracks[1].controls;
+    for (name, loud_peak, silent_peak) in [
+        (
+            "loop left",
+            loud_loop.peak_left_db,
+            silent_loop.peak_left_db,
+        ),
+        (
+            "loop right",
+            loud_loop.peak_right_db,
+            silent_loop.peak_right_db,
+        ),
+        (
+            "track output left",
+            loud_track.output_peak_left_db,
+            silent_track.output_peak_left_db,
+        ),
+        (
+            "track output right",
+            loud_track.output_peak_right_db,
+            silent_track.output_peak_right_db,
+        ),
+        (
+            "track input left",
+            loud_track.input_peak_left_db,
+            silent_track.input_peak_left_db,
+        ),
+        (
+            "track input right",
+            loud_track.input_peak_right_db,
+            silent_track.input_peak_right_db,
+        ),
+    ] {
+        assert!(
+            loud_peak > -100.0,
+            "expected loud {name} peak, got {loud_peak}"
+        );
+        assert!(
+            silent_peak <= -100.0,
+            "{name} peak did not reset after silence: loud={loud_peak}, silent={silent_peak}"
+        );
+    }
+    harness.shutdown().await;
+}
+
+#[shoop_wasm_test_support::shoop_test(
+    wasm_only = "requires the production WebAssembly Worker runtime"
+)]
+async fn remote_session_round_trips_track_controls() {
+    let mut harness = RemoteAppHarness::start().await;
+    let track = add_audio_track(&mut harness).await;
+    harness.dispatch(AppIntent::Track {
+        track_id: track.id,
+        action: TrackAction::NameChanged("Saved remote track".to_owned()),
+    });
+    harness.dispatch(AppIntent::Track {
+        track_id: track.id,
+        action: TrackAction::OutputGainChanged(-7.0),
+    });
+    harness
+        .drive_until("published session controls", |snapshot| {
+            snapshot.tracks[1].name == "Saved remote track"
+                && (snapshot.tracks[1].controls.output_gain_db + 7.0).abs() < f32::EPSILON
+        })
+        .await;
+    let saved = save_session(&mut harness).await;
+    harness.dispatch(AppIntent::Track {
+        track_id: track.id,
+        action: TrackAction::NameChanged("Mutated track".to_owned()),
+    });
+    harness.dispatch(AppIntent::Track {
+        track_id: track.id,
+        action: TrackAction::OutputGainChanged(3.0),
+    });
+    load_session(&mut harness, saved).await;
+    let loaded = harness.snapshot();
+    assert_eq!(loaded.tracks[1].name, "Saved remote track");
+    assert!((loaded.tracks[1].controls.output_gain_db + 7.0).abs() < f32::EPSILON);
+    harness.shutdown().await;
+}
+
+#[shoop_wasm_test_support::shoop_test(
+    wasm_only = "requires the production WebAssembly Worker runtime"
+)]
+async fn remote_loop_content_get_and_set_round_trips_through_session() {
+    let mut harness = RemoteAppHarness::start().await;
+    let track = add_audio_track(&mut harness).await;
+    let loop_id = track.loops[0].id;
+    generate_click(&mut harness, loop_id).await;
+    let before = harness.snapshot().tracks[1].loops[0].clone();
+    assert!(!before.empty);
+    assert!(before.length_frames > 0);
+    let saved = save_session(&mut harness).await;
+    harness.dispatch(AppIntent::Global(GlobalControlAction::ClearRecordings {
+        include_sync: false,
+    }));
+    harness
+        .drive_until("cleared generated loop content", |snapshot| {
+            snapshot.tracks[1].loops[0].empty
+        })
+        .await;
+    load_session(&mut harness, saved).await;
+    let loaded = &harness.snapshot().tracks[1].loops[0];
+    assert!(!loaded.empty);
+    assert_eq!(loaded.length_frames, before.length_frames);
+    harness.shutdown().await;
+}
+
+#[shoop_wasm_test_support::shoop_test(
+    wasm_only = "requires the production WebAssembly Worker runtime"
+)]
+async fn remote_tiny_synth_fx_state_round_trips_through_session() {
+    let mut harness = RemoteAppHarness::start().await;
+    harness.dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+        name: "Remote Tiny Synth/FX".to_owned(),
+        topology: TrackSpecTopology::DryWet {
+            dry_audio_channels: 2,
+            wet_audio_channels: 2,
+            dry_midi: true,
+            processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::TINY_SYNTH_FX),
+        },
+    }));
+    harness
+        .drive_until("created Tiny Synth/FX track", |snapshot| {
+            snapshot.tracks.len() == 2 && snapshot.tracks[1].fx.is_some()
+        })
+        .await;
+    let track_id = harness.snapshot().tracks[1].id;
+    for control in [
+        TinySynthFxControl::SetMasterGainDb(-12.0),
+        TinySynthFxControl::SetReverbEnabled(true),
+        TinySynthFxControl::SetReverbAmount(0.4),
+        TinySynthFxControl::SetEqEnabled(true),
+        TinySynthFxControl::SetEqHighDb(2.5),
+    ] {
+        harness.dispatch(AppIntent::Track {
+            track_id,
+            action: TrackAction::TinySynthFx(control),
+        });
+    }
+    harness.dispatch(AppIntent::Track {
+        track_id,
+        action: TrackAction::FxVisibilityChanged(true),
+    });
+    harness
+        .drive_until("published Tiny Synth/FX state", |snapshot| {
+            snapshot.tracks[1].fx.as_ref().is_some_and(|fx| {
+                fx.visible
+                    && matches!(
+                        fx.editor.as_ref(),
+                        Some(TrackProcessorEditorState::TinySynthFx(editor))
+                            if (editor.master_gain_db + 12.0).abs() < f32::EPSILON
+                                && editor.reverb_enabled
+                                && (editor.reverb_amount - 0.4).abs() < f32::EPSILON
+                                && editor.eq_enabled
+                                && (editor.eq_high_db - 2.5).abs() < f32::EPSILON
+                    )
+            })
+        })
+        .await;
+    let saved = save_session(&mut harness).await;
+    load_session(&mut harness, saved).await;
+    harness
+        .drive_until("published loaded Tiny Synth/FX state", |snapshot| {
+            snapshot.tracks.get(1).is_some_and(|track| {
+                track.fx.as_ref().is_some_and(|fx| {
+                    matches!(
+                        fx.editor.as_ref(),
+                        Some(TrackProcessorEditorState::TinySynthFx(editor))
+                            if (editor.master_gain_db + 12.0).abs() < f32::EPSILON
+                                && editor.reverb_enabled
+                                && (editor.reverb_amount - 0.4).abs() < f32::EPSILON
+                                && editor.eq_enabled
+                                && (editor.eq_high_db - 2.5).abs() < f32::EPSILON
+                    )
+                })
+            })
+        })
+        .await;
+    let fx = harness.snapshot().tracks[1]
+        .fx
+        .clone()
+        .expect("loaded FX state");
+    let Some(TrackProcessorEditorState::TinySynthFx(editor)) = fx.editor else {
+        panic!("missing loaded Tiny Synth/FX editor state");
+    };
+    assert!((editor.master_gain_db + 12.0).abs() < f32::EPSILON);
+    assert!(editor.reverb_enabled);
+    assert!((editor.reverb_amount - 0.4).abs() < f32::EPSILON);
+    assert!(editor.eq_enabled);
+    assert!((editor.eq_high_db - 2.5).abs() < f32::EPSILON);
     harness.shutdown().await;
 }

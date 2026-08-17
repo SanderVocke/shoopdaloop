@@ -158,6 +158,8 @@ pub struct CompositeLoopWidget {
     #[cfg(test)]
     timeline_left: Option<f32>,
     #[cfg(test)]
+    playhead_x: Option<f32>,
+    #[cfg(test)]
     box_selection_rect: Option<egui::Rect>,
     #[cfg(test)]
     delete_menu_rect: Option<egui::Rect>,
@@ -193,6 +195,8 @@ impl Default for CompositeLoopWidget {
             timeline_rect: None,
             #[cfg(test)]
             timeline_left: None,
+            #[cfg(test)]
+            playhead_x: None,
             #[cfg(test)]
             box_selection_rect: None,
             #[cfg(test)]
@@ -236,6 +240,7 @@ impl CompositeLoopWidget {
             self.highlighted_rect = None;
             self.timeline_rect = None;
             self.timeline_left = None;
+            self.playhead_x = None;
             self.box_selection_rect = None;
             self.delete_menu_rect = None;
             self.force_length_menu_rect = None;
@@ -350,10 +355,10 @@ impl CompositeLoopWidget {
                     self.timeline_rect = Some(rect);
                     self.timeline_left = Some(timeline_left);
                 }
+                let cycle_width = self.cycle_width;
                 let frame_to_x = |frame: u64| {
                     let cycle_length = details.cycle_length_frames.max(1) as f64;
-                    timeline_left
-                        + (frame as f64 / cycle_length * f64::from(self.cycle_width)) as f32
+                    timeline_left + (frame as f64 / cycle_length * f64::from(cycle_width)) as f32
                 };
 
                 painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
@@ -615,6 +620,20 @@ impl CompositeLoopWidget {
                     &event_rects,
                     payload.is_some(),
                 );
+                if let Some(played_frame) = details.played_frame {
+                    let x = frame_to_x(played_frame);
+                    if timeline_clip_rect.x_range().contains(x) {
+                        painter.vline(
+                            x,
+                            rect.y_range(),
+                            egui::Stroke::new(2.0, colors::WAVEFORM_PLAYHEAD),
+                        );
+                        #[cfg(test)]
+                        {
+                            self.playhead_x = Some(x);
+                        }
+                    }
+                }
                 let pointer = ui.ctx().pointer_hover_pos();
                 let hovered_iteration = payload
                     .filter(|payload| payload.loop_id != self.loop_id)
@@ -841,6 +860,7 @@ mod tests {
                 .map(|event| event.end_frame)
                 .max()
                 .unwrap_or(0),
+            played_frame: None,
             tracks: vec![
                 CompositeTrackDetailsState {
                     id: TrackId::from_raw(1),
@@ -1498,6 +1518,27 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn current_position_is_painted_at_its_timeline_frame() {
+        let context = egui::Context::default();
+        let mut widget = CompositeLoopWidget::default();
+        let mut state = details(vec![event(1, 1, 0, 300)]);
+        state.played_frame = Some(150);
+
+        widget_frame(
+            &context,
+            &mut widget,
+            LoopId::from_raw(8),
+            &state,
+            Vec::new(),
+        );
+
+        assert_eq!(
+            widget.playhead_x,
+            Some(widget.timeline_left.unwrap() + DEFAULT_CYCLE_WIDTH * 1.5)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn widget_paints_named_events_grows_rows_and_has_bounded_zoomed_overflow() {
         let context = egui::Context::default();
         let state = details(vec![event(1, 1, 0, 300), event(2, 1, 100, 200)]);
@@ -1558,6 +1599,7 @@ mod tests {
             kind: CompositeKind::Regular,
             cycle_length_frames: 100,
             timeline_length_frames: 1_000,
+            played_frame: None,
             tracks,
             events,
         };

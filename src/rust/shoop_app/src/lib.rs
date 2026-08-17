@@ -7353,10 +7353,15 @@ impl ApplicationModel {
                     .collect()
             })
             .unwrap_or_default();
-        let composite = model
-            .composite
-            .as_ref()
-            .map(|composite| self.composite_details_snapshot(composite));
+        let composite = model.composite.as_ref().map(|composite| {
+            let mut details = self.composite_details_snapshot(composite);
+            details.played_frame = matches!(
+                model.state.mode,
+                LoopMode::Playing | LoopMode::PlayingDryThroughWet
+            )
+            .then_some(u64::from(model.position));
+            details
+        });
         Some(LoopDetailsState {
             generation: self.revision,
             loop_id: model.id,
@@ -7440,6 +7445,7 @@ impl ApplicationModel {
             },
             cycle_length_frames,
             timeline_length_frames,
+            played_frame: None,
             tracks,
             events,
         }
