@@ -12,12 +12,15 @@ restarting a script removes its callbacks, timers, logical MIDI ports,
 connections, queued output, and script-owned dialogs.
 
 Every script must make ``shoop_announce_api_version(major, minor)`` its first
-Shoop API call. The current version is ``1.1``. A script runs only when its major
+Shoop API call. The current version is ``1.2``. A script runs only when its major
 equals the host major and its minor is no newer than the host minor. Missing,
 malformed, repeated, or incompatible announcements cancel initial execution
 before versioned side effects. The global two-integer signature is independent
 of modules and reserved to remain stable across future API versions. See
 ``docs/lua_dialog_api.md`` for the compatibility and migration contract.
+Lua API compatibility is independent of the ``.shoop`` session format version.
+An incompatible source remains inspectable and exportable, but cannot be
+started.
 
 The sandbox exposes selected standard-library functions and ShoopDaLoop modules.
 It prevents ordinary module/file access but should still be treated as a
@@ -35,6 +38,10 @@ the run-once picker or by OS drag and drop after confirmation. Run-once sources
 remain restartable in memory, are independent of session replacement and
 serialization, and disappear when the app closes. Loading a same-named version
 stops the active version and retains both entries under unique display names.
+Every listed script can be exported as its exact ``.lua`` source. A built-in,
+example, user, or run-once script can be included in the session; this transfers
+the current source to session ownership. A session script can instead be
+converted to run once or removed from the session.
 
 ``keyboard.lua`` is enabled on first run. The APC Mini script is available but
 disabled by default. Persistent changes apply after **Save**; runtime Stop,

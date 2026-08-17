@@ -221,6 +221,10 @@ impl LuaRuntime {
         Ok(())
     }
 
+    fn incompatible_api_version(&self) -> Option<shoop_app_api::LuaApiVersion> {
+        self.api_version.incompatible_version()
+    }
+
     pub fn mark_listening(&self) {
         self.listening.set(true);
     }
@@ -523,6 +527,16 @@ impl ScriptManager {
         let name = name.into();
         let source = source.into();
         LuaRuntime::new()?.check_syntax(&name, &source)?;
+        let incompatibility = if enabled {
+            None
+        } else {
+            let runtime = LuaRuntime::new()?;
+            runtime.execute(&name, &source).err().and_then(|error| {
+                runtime
+                    .incompatible_api_version()
+                    .map(|_| error.to_string())
+            })
+        };
         let id = ScriptId::from_raw(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
         self.scripts.insert(
@@ -534,8 +548,12 @@ impl ScriptManager {
                 source,
                 kind,
                 enabled,
-                lifecycle: ScriptLifecycle::Inactive,
-                latest_error: None,
+                lifecycle: if incompatibility.is_some() {
+                    ScriptLifecycle::Incompatible
+                } else {
+                    ScriptLifecycle::Inactive
+                },
+                latest_error: incompatibility,
                 session_document_id: None,
                 archived_logs: Vec::new(),
                 runtime: None,
@@ -655,6 +673,8 @@ impl ScriptManager {
         let record = self.scripts.get_mut(&id).unwrap();
         record.documentation = extract_documentation(&source);
         record.source = source;
+        record.lifecycle = ScriptLifecycle::Inactive;
+        record.latest_error = None;
         if enabled {
             self.start(id)
         } else {
@@ -685,6 +705,15 @@ impl ScriptManager {
 
     pub fn start(&mut self, id: ScriptId) -> anyhow::Result<()> {
         let record = self.scripts.get_mut(&id).ok_or_else(|| stale_script(id))?;
+        if record.lifecycle == ScriptLifecycle::Incompatible {
+            bail!(
+                "{}",
+                record
+                    .latest_error
+                    .as_deref()
+                    .unwrap_or("script uses an incompatible Shoop Lua API")
+            )
+        }
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
         }
@@ -706,7 +735,11 @@ impl ScriptManager {
             }
             Err(error) => {
                 let message = error.to_string();
-                record.lifecycle = ScriptLifecycle::Error;
+                record.lifecycle = if runtime.incompatible_api_version().is_some() {
+                    ScriptLifecycle::Incompatible
+                } else {
+                    ScriptLifecycle::Error
+                };
                 record.latest_error = Some(message.clone());
                 Err(anyhow!(message))
             }
@@ -719,8 +752,10 @@ impl ScriptManager {
             runtime.disconnect_midi(self.midi.as_mut());
             record.archived_logs = runtime.logs();
         }
-        record.lifecycle = ScriptLifecycle::Inactive;
-        record.latest_error = None;
+        if record.lifecycle != ScriptLifecycle::Incompatible {
+            record.lifecycle = ScriptLifecycle::Inactive;
+            record.latest_error = None;
+        }
         Ok(())
     }
 
@@ -732,6 +767,46 @@ impl ScriptManager {
         self.stop(id)?;
         self.scripts.remove(&id);
         Ok(())
+    }
+
+    pub fn convert_kind(&mut self, id: ScriptId, kind: ScriptKind) -> anyhow::Result<()> {
+        let current = self.require(id)?.kind;
+        let allowed = matches!(kind, ScriptKind::Session) && current != ScriptKind::Session
+            || current == ScriptKind::Session && kind == ScriptKind::Ephemeral;
+        if !allowed {
+            bail!("script kind can only be converted into session or from session to run-once")
+        }
+        self.stop(id)?;
+        let session_document_id = if kind == ScriptKind::Session {
+            let next = self
+                .scripts
+                .values()
+                .filter_map(|record| record.session_document_id)
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
+            Some(next)
+        } else {
+            None
+        };
+        let record = self.scripts.get_mut(&id).unwrap();
+        record.kind = kind;
+        record.session_document_id = session_document_id;
+        Ok(())
+    }
+
+    pub fn remove_session_script(&mut self, id: ScriptId) -> anyhow::Result<()> {
+        if self.require(id)?.kind != ScriptKind::Session {
+            bail!("only session scripts can be removed from the session")
+        }
+        self.stop(id)?;
+        self.scripts.remove(&id);
+        Ok(())
+    }
+
+    pub fn source(&self, id: ScriptId) -> anyhow::Result<(&str, &str)> {
+        let record = self.require(id)?;
+        Ok((&record.name, &record.source))
     }
 
     pub fn states(&self) -> Vec<ScriptState> {
@@ -1808,6 +1883,78 @@ if not c.get_solo() then error('solo') end
         );
         manager.forget(failed).unwrap();
         assert_eq!(manager.states().len(), 2);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn manager_retains_incompatible_scripts_and_refuses_to_start_them() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add(
+                "future.lua",
+                "shoop_announce_api_version(1, 3)",
+                ScriptKind::Ephemeral,
+                true,
+            )
+            .unwrap();
+
+        let state = &manager.states()[0];
+        assert_eq!(state.id, id);
+        assert_eq!(state.lifecycle, ScriptLifecycle::Incompatible);
+        assert!(state
+            .latest_error
+            .as_deref()
+            .unwrap()
+            .contains("script requests 1.3, host supports 1.2"));
+
+        assert!(manager.start(id).is_err());
+        assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Incompatible);
+
+        let disabled = manager
+            .add(
+                "disabled-future.lua",
+                "shoop_announce_api_version(2, 0)",
+                ScriptKind::Session,
+                false,
+            )
+            .unwrap();
+        let state = manager
+            .states()
+            .into_iter()
+            .find(|state| state.id == disabled)
+            .unwrap();
+        assert_eq!(state.lifecycle, ScriptLifecycle::Incompatible);
+        assert!(manager.start(disabled).is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn manager_converts_session_ownership_and_preserves_source() {
+        let mut manager = ScriptManager::new();
+        let source = "shoop_announce_api_version(1, 0)\nprint('portable')";
+        let id = manager
+            .add("portable.lua", source, ScriptKind::Bundled, true)
+            .unwrap();
+
+        manager.convert_kind(id, ScriptKind::Session).unwrap();
+        assert_eq!(manager.states()[0].kind, ScriptKind::Session);
+        assert_eq!(manager.source(id).unwrap(), ("portable.lua", source));
+        assert_eq!(manager.session_scripts()[0].source, source);
+
+        manager.convert_kind(id, ScriptKind::Ephemeral).unwrap();
+        assert_eq!(manager.states()[0].kind, ScriptKind::Ephemeral);
+        assert!(manager.session_scripts().is_empty());
+        assert_eq!(manager.source(id).unwrap(), ("portable.lua", source));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn manager_removes_only_session_scripts() {
+        let mut manager = ScriptManager::new();
+        let user = manager
+            .add_announced("user.lua", "return", ScriptKind::User, false)
+            .unwrap();
+        assert!(manager.remove_session_script(user).is_err());
+        manager.convert_kind(user, ScriptKind::Session).unwrap();
+        manager.remove_session_script(user).unwrap();
+        assert!(manager.states().is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -14,6 +14,7 @@ enum AnnouncementStatus {
     #[default]
     Missing,
     Accepted(LuaApiVersion),
+    Incompatible(LuaApiVersion),
     Rejected,
 }
 
@@ -30,9 +31,9 @@ impl ApiVersionState {
                 "{ANNOUNCE_API_VERSION_FUNCTION}({}, {}) must be the first Shoop API call",
                 LUA_API_VERSION.major, LUA_API_VERSION.minor
             ))),
-            AnnouncementStatus::Rejected => Err(runtime_error(
-                "Shoop Lua API version announcement was rejected",
-            )),
+            AnnouncementStatus::Incompatible(_) | AnnouncementStatus::Rejected => Err(
+                runtime_error("Shoop Lua API version announcement was rejected"),
+            ),
         }
     }
 
@@ -45,7 +46,7 @@ impl ApiVersionState {
                     previous.major, previous.minor
                 )));
             }
-            AnnouncementStatus::Rejected => {
+            AnnouncementStatus::Incompatible(_) | AnnouncementStatus::Rejected => {
                 return Err(runtime_error(
                     "Shoop Lua API version announcement was already rejected",
                 ));
@@ -53,7 +54,7 @@ impl ApiVersionState {
             AnnouncementStatus::Missing => {}
         }
         if !LUA_API_VERSION.accepts(requested) {
-            self.status.set(AnnouncementStatus::Rejected);
+            self.status.set(AnnouncementStatus::Incompatible(requested));
             return Err(runtime_error(format!(
                 "incompatible Shoop Lua API: script requests {}.{}, host supports {}.{}",
                 requested.major, requested.minor, LUA_API_VERSION.major, LUA_API_VERSION.minor
@@ -61,6 +62,13 @@ impl ApiVersionState {
         }
         self.status.set(AnnouncementStatus::Accepted(requested));
         Ok(())
+    }
+
+    pub fn incompatible_version(&self) -> Option<LuaApiVersion> {
+        match self.status.get() {
+            AnnouncementStatus::Incompatible(version) => Some(version),
+            _ => None,
+        }
     }
 
     fn reject(&self, message: String) -> omnilua::Error {

@@ -1289,6 +1289,11 @@ impl ApplicationModel {
             }
             AppIntent::StopScript { script_id } => self.stop_script(script_id),
             AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
+            AppIntent::ExportScript { script_id } => self.export_script(script_id),
+            AppIntent::ConvertScriptKind { script_id, kind } => {
+                self.convert_script_kind(script_id, kind)
+            }
+            AppIntent::RemoveSessionScript { script_id } => self.remove_session_script(script_id),
             AppIntent::InvokeScriptDialogButton {
                 script_id,
                 dialog_id,
@@ -1540,6 +1545,43 @@ impl ApplicationModel {
             .map(|_| ())
             .map_err(|error| error.to_string())
             .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
+    }
+
+    fn export_script(&mut self, id: ScriptId) -> Result<(), String> {
+        let (name, source) = self
+            .script_manager
+            .source(id)
+            .map_err(|error| error.to_string())?;
+        let task_id = TaskId::from_raw(self.next_task_id);
+        self.next_task_id = self.next_task_id.saturating_add(1);
+        self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push_back(ApplicationFileOutput {
+                task_id,
+                suggested_name: name.to_owned(),
+                mime_type: "text/x-lua".to_owned(),
+                bytes: Arc::from(source.as_bytes()),
+            });
+        Ok(())
+    }
+
+    fn convert_script_kind(&mut self, id: ScriptId, kind: ScriptKind) -> Result<(), String> {
+        let result = self
+            .script_manager
+            .convert_kind(id, kind)
+            .map_err(|error| error.to_string());
+        self.refresh_scripting_view();
+        result
+    }
+
+    fn remove_session_script(&mut self, id: ScriptId) -> Result<(), String> {
+        let result = self
+            .script_manager
+            .remove_session_script(id)
+            .map_err(|error| error.to_string());
         self.refresh_scripting_view();
         result
     }
@@ -10225,7 +10267,7 @@ d.open('Actor dialog')
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn incompatible_script_version_is_published_as_error_without_side_effects() {
+    fn incompatible_script_version_is_published_without_side_effects() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         runtime
@@ -10244,7 +10286,7 @@ d.open('Actor dialog')
         assert!(snapshot.scripting.dialogs.is_empty());
         assert_eq!(
             snapshot.scripting.scripts[0].lifecycle,
-            shoop_app_api::ScriptLifecycle::Error
+            shoop_app_api::ScriptLifecycle::Incompatible
         );
         let error = snapshot.scripting.scripts[0]
             .latest_error
@@ -15139,6 +15181,78 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(scripts[0].name, "machine.lua");
         assert_eq!(scripts[1].name, "run-once.lua");
         assert_eq!(scripts[1].kind, ScriptKind::Ephemeral);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn scripts_export_exact_source_and_convert_session_ownership() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let source = "shoop_announce_api_version(1, 3)\nprint('future')";
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "future.lua".to_owned(),
+                source: Arc::from(source),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let script = &runtime.snapshot().scripting.scripts[0];
+        let script_id = script.id;
+        assert_eq!(
+            script.lifecycle,
+            shoop_app_api::ScriptLifecycle::Incompatible
+        );
+
+        runtime
+            .dispatch(AppIntent::ExportScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let output = runtime.take_file_output().unwrap();
+        assert_eq!(output.suggested_name, "future.lua");
+        assert_eq!(output.mime_type, "text/x-lua");
+        assert_eq!(&*output.bytes, source.as_bytes());
+
+        runtime
+            .dispatch(AppIntent::ConvertScriptKind {
+                script_id,
+                kind: ScriptKind::Session,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().scripting.scripts[0].kind,
+            ScriptKind::Session
+        );
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        let saved = decode_session(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert_eq!(saved.document.scripts.len(), 1);
+        assert_eq!(saved.document.scripts[0].source, source);
+
+        runtime
+            .dispatch(AppIntent::ConvertScriptKind {
+                script_id,
+                kind: ScriptKind::Ephemeral,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().scripting.scripts[0].kind,
+            ScriptKind::Ephemeral
+        );
+        runtime
+            .dispatch(AppIntent::ConvertScriptKind {
+                script_id,
+                kind: ScriptKind::Session,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RemoveSessionScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().scripting.scripts.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

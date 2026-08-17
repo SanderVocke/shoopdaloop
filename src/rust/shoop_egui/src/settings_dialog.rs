@@ -6,8 +6,8 @@ use std::{
 use egui_commonmark::CommonMarkCache;
 use egui_material_icons::{
     icons::{
-        ICON_DELETE, ICON_DESCRIPTION, ICON_INFO, ICON_PLAY_ARROW, ICON_QUESTION_MARK,
-        ICON_REFRESH, ICON_RESTART_ALT, ICON_STOP,
+        ICON_ARCHIVE, ICON_DELETE, ICON_DESCRIPTION, ICON_DOWNLOAD, ICON_INFO, ICON_MOVE,
+        ICON_PLAY_ARROW, ICON_QUESTION_MARK, ICON_REFRESH, ICON_RESTART_ALT, ICON_STOP,
     },
     MaterialIcon,
 };
@@ -118,6 +118,10 @@ pub struct SettingsDialog {
     #[cfg(test)]
     reload_rects: BTreeMap<ScriptId, egui::Rect>,
     #[cfg(test)]
+    export_rects: BTreeMap<ScriptId, egui::Rect>,
+    #[cfg(test)]
+    ownership_rects: BTreeMap<ScriptId, egui::Rect>,
+    #[cfg(test)]
     remove_rects: BTreeMap<ScriptId, egui::Rect>,
 }
 
@@ -156,6 +160,10 @@ impl SettingsDialog {
             status_rects: BTreeMap::new(),
             #[cfg(test)]
             reload_rects: BTreeMap::new(),
+            #[cfg(test)]
+            export_rects: BTreeMap::new(),
+            #[cfg(test)]
+            ownership_rects: BTreeMap::new(),
             #[cfg(test)]
             remove_rects: BTreeMap::new(),
         }
@@ -971,8 +979,14 @@ impl SettingsDialog {
                                     } else {
                                         (ICON_PLAY_ARROW, "Start script")
                                     };
-                                    let restart =
-                                        script_icon_button(ui, start_icon, start_tooltip, true);
+                                    let compatible =
+                                        script.lifecycle != ScriptLifecycle::Incompatible;
+                                    let restart = script_icon_button(
+                                        ui,
+                                        start_icon,
+                                        start_tooltip,
+                                        compatible,
+                                    );
                                     #[cfg(test)]
                                     self.restart_rects.insert(script.id, restart.rect);
                                     if restart.clicked() {
@@ -1038,6 +1052,69 @@ impl SettingsDialog {
                                         self.script_status_windows.insert(script.id);
                                     }
 
+                                    let export = script_icon_button(
+                                        ui,
+                                        ICON_DOWNLOAD,
+                                        "Export script source",
+                                        true,
+                                    );
+                                    #[cfg(test)]
+                                    self.export_rects.insert(script.id, export.rect);
+                                    if export.clicked() {
+                                        response.app_actions.push(AppAction::ExportScript {
+                                            script_id: script.id,
+                                        });
+                                    }
+
+                                    if script.kind == ScriptKind::Session {
+                                        let run_once = script_icon_button(
+                                            ui,
+                                            ICON_MOVE,
+                                            "Convert session script to run once",
+                                            true,
+                                        );
+                                        #[cfg(test)]
+                                        self.ownership_rects.insert(script.id, run_once.rect);
+                                        if run_once.clicked() {
+                                            response.app_actions.push(
+                                                AppAction::ConvertScriptKind {
+                                                    script_id: script.id,
+                                                    kind: ScriptKind::Ephemeral,
+                                                },
+                                            );
+                                        }
+                                        let remove = script_icon_button(
+                                            ui,
+                                            ICON_DELETE,
+                                            "Remove script from session",
+                                            true,
+                                        );
+                                        if remove.clicked() {
+                                            response.app_actions.push(
+                                                AppAction::RemoveSessionScript {
+                                                    script_id: script.id,
+                                                },
+                                            );
+                                        }
+                                    } else {
+                                        let include = script_icon_button(
+                                            ui,
+                                            ICON_ARCHIVE,
+                                            "Include script in session",
+                                            true,
+                                        );
+                                        #[cfg(test)]
+                                        self.ownership_rects.insert(script.id, include.rect);
+                                        if include.clicked() {
+                                            response.app_actions.push(
+                                                AppAction::ConvertScriptKind {
+                                                    script_id: script.id,
+                                                    kind: ScriptKind::Session,
+                                                },
+                                            );
+                                        }
+                                    }
+
                                     if script.kind == ScriptKind::User {
                                         let reload = script_icon_button(
                                             ui,
@@ -1092,6 +1169,7 @@ impl SettingsDialog {
         script_paths: Option<&BTreeMap<ScriptId, String>>,
         response: &mut SettingsDialogResponse,
     ) {
+        let compatible = script.lifecycle != ScriptLifecycle::Incompatible;
         match script.kind {
             ScriptKind::Bundled => {
                 let key = match script.name.as_str() {
@@ -1109,7 +1187,7 @@ impl SettingsDialog {
                     .and_then(|draft| draft.get(key).ok())
                     .unwrap_or(script.enabled);
                 if ui
-                    .checkbox(&mut enabled, "")
+                    .add_enabled(compatible, egui::Checkbox::without_text(&mut enabled))
                     .on_hover_text("Run this built-in script at startup")
                     .changed()
                 {
@@ -1137,7 +1215,7 @@ impl SettingsDialog {
                     .find(|entry| entry.value == *path)
                     .map_or(script.enabled, |entry| entry.enabled);
                 if ui
-                    .checkbox(&mut enabled, "")
+                    .add_enabled(compatible, egui::Checkbox::without_text(&mut enabled))
                     .on_hover_text("Run this user script at startup")
                     .changed()
                 {
@@ -1157,7 +1235,7 @@ impl SettingsDialog {
             ScriptKind::Session => {
                 let mut enabled = script.enabled;
                 if ui
-                    .checkbox(&mut enabled, "")
+                    .add_enabled(compatible, egui::Checkbox::without_text(&mut enabled))
                     .on_hover_text("Enable this session script")
                     .changed()
                 {
@@ -1305,6 +1383,16 @@ impl SettingsDialog {
     pub(crate) fn reload_rect(&self, script_id: ScriptId) -> Option<egui::Rect> {
         self.reload_rects.get(&script_id).copied()
     }
+
+    #[cfg(test)]
+    pub(crate) fn export_rect(&self, script_id: ScriptId) -> Option<egui::Rect> {
+        self.export_rects.get(&script_id).copied()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ownership_rect(&self, script_id: ScriptId) -> Option<egui::Rect> {
+        self.ownership_rects.get(&script_id).copied()
+    }
 }
 
 fn script_kind_heading(kind: ScriptKind) -> &'static str {
@@ -1330,6 +1418,7 @@ fn script_lifecycle_label(lifecycle: ScriptLifecycle) -> &'static str {
         ScriptLifecycle::Running => "Running",
         ScriptLifecycle::Listening => "Listening",
         ScriptLifecycle::Finished => "Finished",
+        ScriptLifecycle::Incompatible => "Incompatible",
         ScriptLifecycle::Error => "Error",
     }
 }
@@ -1337,7 +1426,7 @@ fn script_lifecycle_label(lifecycle: ScriptLifecycle) -> &'static str {
 fn show_script_lifecycle(ui: &mut egui::Ui, script: &ScriptState) {
     let color = match script.lifecycle {
         ScriptLifecycle::Running | ScriptLifecycle::Listening => colors::SUCCESS,
-        ScriptLifecycle::Error => colors::ERROR,
+        ScriptLifecycle::Incompatible | ScriptLifecycle::Error => colors::ERROR,
         ScriptLifecycle::Inactive | ScriptLifecycle::Finished => colors::MUTED_FOREGROUND,
     };
     let status = ui.colored_label(color, script_lifecycle_label(script.lifecycle));
@@ -1945,6 +2034,81 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn incompatible_script_is_labeled_and_cannot_emit_restart() {
+        let (registry, state) = fixture();
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.open(&state);
+        let script_id = ScriptId::from_raw(11);
+        let scripting = ScriptingState {
+            supported: true,
+            scripts: Arc::from([crate::ScriptState {
+                id: script_id,
+                name: "future.lua".to_owned(),
+                kind: ScriptKind::Ephemeral,
+                enabled: true,
+                lifecycle: ScriptLifecycle::Incompatible,
+                documentation: None,
+                latest_error: Some("script requests 2.0, host supports 1.2".to_owned()),
+                activity: Default::default(),
+                midi: Default::default(),
+                logs: Arc::from([]),
+            }]),
+            ..Default::default()
+        };
+        assert_eq!(
+            script_lifecycle_label(ScriptLifecycle::Incompatible),
+            "Incompatible"
+        );
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
+            let mut response = SettingsDialogResponse::default();
+            let _ = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 600.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| dialog.show_script_runtime(ui, &scripting, None, &mut response),
+            );
+            response
+        };
+        frame(&mut dialog, Vec::new());
+        let restart = dialog.restart_rect(script_id).unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(restart),
+                egui::Event::PointerButton {
+                    pos: restart,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(restart),
+                egui::Event::PointerButton {
+                    pos: restart,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(!response
+            .app_actions
+            .contains(&AppAction::RestartScript { script_id }));
+        assert!(dialog.export_rect(script_id).is_some());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn runtime_script_controls_emit_typed_actions_inside_the_settings_content() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_settings(&mut builder).unwrap();
@@ -2101,6 +2265,66 @@ mod tests {
             action,
             SettingsAction::RequestReloadUserScript { script_id: id } if *id == script_id
         )));
+        let export = dialog.export_rect(script_id).unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(export),
+                egui::Event::PointerButton {
+                    pos: export,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(export),
+                egui::Event::PointerButton {
+                    pos: export,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response
+            .app_actions
+            .contains(&AppAction::ExportScript { script_id }));
+
+        let ownership = dialog.ownership_rect(script_id).unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(ownership),
+                egui::Event::PointerButton {
+                    pos: ownership,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(ownership),
+                egui::Event::PointerButton {
+                    pos: ownership,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response
+            .app_actions
+            .contains(&AppAction::ConvertScriptKind {
+                script_id,
+                kind: ScriptKind::Session,
+            }));
         assert!(dialog.log_rect(script_id).is_some());
         assert!(dialog.documentation_rect(script_id).is_some());
         assert!(dialog.status_rect(script_id).is_some());

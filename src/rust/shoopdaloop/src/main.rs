@@ -1214,6 +1214,13 @@ impl Runtime {
 
     fn tick(&mut self, _elapsed: Duration) {
         let snapshot = self.handle.snapshot();
+        self.script_paths.retain(|script_id, _| {
+            snapshot
+                .scripting
+                .scripts
+                .iter()
+                .any(|script| script.id == *script_id && script.kind == ScriptKind::User)
+        });
         let mut mapped = self
             .script_paths
             .keys()

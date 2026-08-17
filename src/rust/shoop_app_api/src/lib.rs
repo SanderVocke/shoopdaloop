@@ -1096,6 +1096,7 @@ pub enum ScriptLifecycle {
     Running,
     Listening,
     Finished,
+    Incompatible,
     Error,
 }
 
@@ -1613,6 +1614,16 @@ pub enum AppIntent {
     ForgetScript {
         script_id: ScriptId,
     },
+    ExportScript {
+        script_id: ScriptId,
+    },
+    ConvertScriptKind {
+        script_id: ScriptId,
+        kind: ScriptKind,
+    },
+    RemoveSessionScript {
+        script_id: ScriptId,
+    },
     InvokeScriptDialogButton {
         script_id: ScriptId,
         dialog_id: ScriptDialogId,
@@ -1826,6 +1837,9 @@ impl AppIntent {
             Self::ReplaceScriptSource { .. } => "scripting.replace_source",
             Self::StopScript { .. } => "scripting.stop",
             Self::ForgetScript { .. } => "scripting.forget",
+            Self::ExportScript { .. } => "scripting.export",
+            Self::ConvertScriptKind { .. } => "scripting.convert_kind",
+            Self::RemoveSessionScript { .. } => "scripting.remove_session",
             Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
             Self::SetPortConnected { .. } => "connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
