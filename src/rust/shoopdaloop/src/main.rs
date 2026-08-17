@@ -2120,6 +2120,7 @@ enum BrowserSelfTest {
     Failed,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn lua_version_rejection_is_expected(script: &shoop_egui::ScriptState) -> bool {
     let lifecycle = if script.name == "lua-api-unannounced.lua" {
         shoop_egui::ScriptLifecycle::Error
