@@ -107,6 +107,7 @@ src/rust/shoop_plugin_protocol/src/lib.rs,non_realtime_support,instrumented_indi
 src/rust/shoop_scripting/src/api_version.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_scripting/src/control.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_scripting/src/dialog.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_scripting/src/file.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_scripting/src/key_constants.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_scripting/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_scripting/src/midi.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
