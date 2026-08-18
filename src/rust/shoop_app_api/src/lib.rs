@@ -1592,6 +1592,15 @@ pub enum AppIntent {
         source_loop_id: LoopId,
         n_cycles: Option<u32>,
     },
+    SetCompositeKind {
+        target_loop_id: LoopId,
+        kind: CompositeKind,
+    },
+    SetCompositeEventMode {
+        target_loop_id: LoopId,
+        event: CompositeEventId,
+        mode: LoopMode,
+    },
     KeyEvent(KeyEvent),
     AddScriptSource {
         name: String,
@@ -1836,6 +1845,8 @@ impl AppIntent {
             Self::ComposeLoopAt { .. } => "loop.compose_at",
             Self::DeleteCompositeEvents { .. } => "loop.composite.delete_events",
             Self::SetCompositeLoopCycles { .. } => "loop.composite.set_loop_cycles",
+            Self::SetCompositeKind { .. } => "loop.composite.set_kind",
+            Self::SetCompositeEventMode { .. } => "loop.composite.set_event_mode",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
@@ -2161,6 +2172,27 @@ mod tests {
             n_cycles: Some(4),
         };
         assert_eq!(force_length.kind(), "loop.composite.set_loop_cycles");
+        assert_eq!(
+            AppIntent::SetCompositeKind {
+                target_loop_id: loop_id,
+                kind: CompositeKind::Script,
+            }
+            .kind(),
+            "loop.composite.set_kind"
+        );
+        assert_eq!(
+            AppIntent::SetCompositeEventMode {
+                target_loop_id: loop_id,
+                event: CompositeEventId {
+                    playlist_index: 1,
+                    section_index: 2,
+                    parallel_index: 3,
+                },
+                mode: LoopMode::Recording,
+            }
+            .kind(),
+            "loop.composite.set_event_mode"
+        );
         assert_eq!(
             LoopAction::NameChanged("Verse".to_owned()).kind(),
             "loop.name"

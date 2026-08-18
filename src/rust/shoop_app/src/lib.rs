@@ -893,14 +893,11 @@ fn composite_with_source_at(
     start_iteration: u64,
 ) -> CompositeDocument {
     let mut composite = existing.clone();
-    composite.kind = CompositeKindDocument::Regular;
-    for event in composite.playlists.iter_mut().flatten().flatten() {
-        event.mode = None;
-    }
+    let mode = (composite.kind == CompositeKindDocument::Script).then(|| "playing".to_owned());
     composite.playlists.push(vec![vec![CompositeEventDocument {
         delay: start_iteration,
         loop_id: source.raw(),
-        mode: None,
+        mode,
         n_cycles: None,
     }]]);
     composite
@@ -1275,6 +1272,15 @@ impl ApplicationModel {
                 source_loop_id,
                 n_cycles,
             } => self.set_composite_loop_cycles(backend, target_loop_id, source_loop_id, n_cycles),
+            AppIntent::SetCompositeKind {
+                target_loop_id,
+                kind,
+            } => self.set_composite_kind(backend, target_loop_id, kind),
+            AppIntent::SetCompositeEventMode {
+                target_loop_id,
+                event,
+                mode,
+            } => self.set_composite_event_mode(backend, target_loop_id, event, mode),
             AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
             AppIntent::AddScriptSource {
                 name,
@@ -4898,7 +4904,10 @@ impl ApplicationModel {
         target_model.script_composition = sections;
         target_model.length = length;
         target_model.state.empty = false;
-        target_model.state.composite_kind = shoop_app_api::CompositeKind::Regular;
+        target_model.state.composite_kind = match composite.kind {
+            CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
+            CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
+        };
         target_model.composite = Some(composite);
         target_model.backend_composite = Some(backend_composite);
         target_model.backend_composite_signature = signature;
@@ -5033,6 +5042,133 @@ impl ApplicationModel {
             .unwrap_or(u32::MAX);
         let target_model = self.loops.get_mut(&target).unwrap();
         target_model.length = length;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = backend_composite;
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn set_composite_kind(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        kind: shoop_app_api::CompositeKind,
+    ) -> Result<(), String> {
+        let document_kind = match kind {
+            shoop_app_api::CompositeKind::Regular => CompositeKindDocument::Regular,
+            shoop_app_api::CompositeKind::Script => CompositeKindDocument::Script,
+            shoop_app_api::CompositeKind::None => {
+                return Err("a composite cannot be changed to a primitive loop".to_owned());
+            }
+        };
+        let mut composite = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?
+            .composite
+            .clone()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        composite.kind = document_kind;
+        for event in composite.playlists.iter_mut().flatten().flatten() {
+            event.mode = match document_kind {
+                CompositeKindDocument::Regular => None,
+                CompositeKindDocument::Script => Some("playing".to_owned()),
+            };
+        }
+        self.commit_composite_editor_change(backend, target, composite)
+    }
+
+    fn set_composite_event_mode(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        event_id: CompositeEventId,
+        mode: LoopMode,
+    ) -> Result<(), String> {
+        let mode = match mode {
+            LoopMode::Stopped => "stopped",
+            LoopMode::Playing => "playing",
+            LoopMode::Recording => "recording",
+            LoopMode::Replacing => "replacing",
+            LoopMode::PlayingDryThroughWet => "playing_dry_through_wet",
+            LoopMode::RecordingDryIntoWet => "recording_dry_into_wet",
+            LoopMode::Unknown => return Err("unknown is not a script event mode".to_owned()),
+        };
+        let mut composite = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?
+            .composite
+            .clone()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        if composite.kind != CompositeKindDocument::Script {
+            return Err("event modes can only be edited in script composites".to_owned());
+        }
+        let event = composite
+            .playlists
+            .get_mut(event_id.playlist_index as usize)
+            .and_then(|playlist| playlist.get_mut(event_id.section_index as usize))
+            .and_then(|section| section.get_mut(event_id.parallel_index as usize))
+            .ok_or_else(|| "stale or unknown composite event".to_owned())?;
+        event.mode = Some(mode.to_owned());
+        self.commit_composite_editor_change(backend, target, composite)
+    }
+
+    fn commit_composite_editor_change(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        composite: CompositeDocument,
+    ) -> Result<(), String> {
+        let target_model = self.loops.get(&target).unwrap();
+        let previous_backend_composite = target_model.backend_composite;
+        let has_events = composite
+            .playlists
+            .iter()
+            .flatten()
+            .any(|section| !section.is_empty());
+        let config = (has_events && backend.supports_composite_loops())
+            .then(|| self.backend_composite_config(&composite))
+            .transpose()?
+            .flatten();
+        let backend_composite = match (previous_backend_composite, config) {
+            (Some(id), Some(config)) => {
+                backend
+                    .configure_composite_loop(id, &config)
+                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                Some(id)
+            }
+            (None, Some(config)) => {
+                let id = backend
+                    .create_composite_loop()
+                    .map_err(|error| format!("could not create composite loop: {error}"))?;
+                if let Err(error) = backend.configure_composite_loop(id, &config) {
+                    let _ = backend.remove_composite_loop(id);
+                    return Err(format!("could not configure composite loop: {error}"));
+                }
+                Some(id)
+            }
+            (Some(id), None) => {
+                backend
+                    .remove_composite_loop(id)
+                    .map_err(|error| format!("could not remove composite loop: {error}"))?;
+                None
+            }
+            (None, None) => None,
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let kind = match composite.kind {
+            CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
+            CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
+        };
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.length = length;
+        target_model.state.composite_kind = kind;
         target_model.composite = Some(composite);
         target_model.backend_composite = backend_composite;
         target_model.backend_composite_signature = signature;

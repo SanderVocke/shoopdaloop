@@ -132,6 +132,39 @@ fn event_color(event: &CompositeEventDetailsState) -> egui::Color32 {
     }
 }
 
+const SCRIPT_EVENT_MODES: [(LoopMode, &str); 6] = [
+    (LoopMode::Playing, "Play"),
+    (LoopMode::Recording, "Record"),
+    (LoopMode::Replacing, "Replace"),
+    (LoopMode::PlayingDryThroughWet, "Play dry through wet"),
+    (LoopMode::RecordingDryIntoWet, "Record dry into wet"),
+    (LoopMode::Stopped, "Stop"),
+];
+
+fn script_mode_label(mode: Option<&str>) -> &str {
+    match mode {
+        Some("playing") => "Play",
+        Some("recording") => "Record",
+        Some("replacing") => "Replace",
+        Some("playing_dry_through_wet") => "Play dry/wet",
+        Some("recording_dry_into_wet") => "Record dry/wet",
+        Some("stopped") => "Stop",
+        _ => "Unknown",
+    }
+}
+
+fn script_mode_key(mode: LoopMode) -> &'static str {
+    match mode {
+        LoopMode::Playing => "playing",
+        LoopMode::Recording => "recording",
+        LoopMode::Replacing => "replacing",
+        LoopMode::PlayingDryThroughWet => "playing_dry_through_wet",
+        LoopMode::RecordingDryIntoWet => "recording_dry_into_wet",
+        LoopMode::Stopped => "stopped",
+        LoopMode::Unknown => "unknown",
+    }
+}
+
 #[derive(Debug)]
 pub struct CompositeLoopWidget {
     loop_id: LoopId,
@@ -167,6 +200,12 @@ pub struct CompositeLoopWidget {
     force_length_menu_rect: Option<egui::Rect>,
     #[cfg(test)]
     natural_length_menu_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    regular_kind_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    script_kind_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    mode_menu_rects: Vec<(LoopMode, egui::Rect)>,
 }
 
 impl Default for CompositeLoopWidget {
@@ -205,6 +244,12 @@ impl Default for CompositeLoopWidget {
             force_length_menu_rect: None,
             #[cfg(test)]
             natural_length_menu_rect: None,
+            #[cfg(test)]
+            regular_kind_rect: None,
+            #[cfg(test)]
+            script_kind_rect: None,
+            #[cfg(test)]
+            mode_menu_rects: Vec::new(),
         }
     }
 }
@@ -245,15 +290,31 @@ impl CompositeLoopWidget {
             self.delete_menu_rect = None;
             self.force_length_menu_rect = None;
             self.natural_length_menu_rect = None;
+            self.regular_kind_rect = None;
+            self.script_kind_rect = None;
+            self.mode_menu_rects.clear();
         }
 
+        let mut intents = Vec::new();
         let fit_width = (ui.available_width() - TRACK_LABEL_WIDTH).max(1.0);
         ui.horizontal(|ui| {
-            ui.label(match details.kind {
-                crate::CompositeKind::Regular => "Regular composition",
-                crate::CompositeKind::Script => "Script composition",
-                crate::CompositeKind::None => "Composition",
-            });
+            ui.label("Type");
+            let mut kind = details.kind;
+            let regular = ui.selectable_value(&mut kind, crate::CompositeKind::Regular, "Regular");
+            let script = ui.selectable_value(&mut kind, crate::CompositeKind::Script, "Script");
+            #[cfg(test)]
+            {
+                self.regular_kind_rect = Some(regular.rect);
+                self.script_kind_rect = Some(script.rect);
+            }
+            #[cfg(not(test))]
+            let _ = (regular, script);
+            if kind != details.kind {
+                intents.push(AppIntent::SetCompositeKind {
+                    target_loop_id: loop_id,
+                    kind,
+                });
+            }
             ui.separator();
             ui.label("Zoom");
             if ui.small_button("−").clicked() {
@@ -279,7 +340,6 @@ impl CompositeLoopWidget {
             }
         });
 
-        let mut intents = Vec::new();
         let mut drop_iteration = None;
         let (_drop_zone, dropped) = ui.dnd_drop_zone::<LoopDragPayload, _>(
             egui::Frame::new().inner_margin(egui::Margin::same(3)),
@@ -382,6 +442,7 @@ impl CompositeLoopWidget {
                 let mut context_event = None;
                 let mut delete_requested = false;
                 let mut length_request = None;
+                let mut mode_request = None;
                 let mut row_top = rect.top() + HEADER_HEIGHT + TRACK_GAP;
                 for (track_state, track_layout) in details.tracks.iter().zip(&packed) {
                     let height = track_height(track_layout.lane_count);
@@ -458,6 +519,21 @@ impl CompositeLoopWidget {
                                         });
                                 }
                                 response.context_menu(|ui| {
+                                    if details.kind == crate::CompositeKind::Script {
+                                        ui.label("Mode");
+                                        for (mode, label) in SCRIPT_EVENT_MODES {
+                                            let selected = event.mode.as_deref()
+                                                == Some(script_mode_key(mode));
+                                            let response = ui.selectable_label(selected, label);
+                                            #[cfg(test)]
+                                            self.mode_menu_rects.push((mode, response.rect));
+                                            if response.clicked() {
+                                                mode_request = Some((event_key, mode));
+                                                ui.close();
+                                            }
+                                        }
+                                        ui.separator();
+                                    }
                                     ui.horizontal(|ui| {
                                         ui.label("Length");
                                         ui.add(
@@ -532,10 +608,19 @@ impl CompositeLoopWidget {
                                     egui::pos2(label_left, event_rect.top()),
                                     event_rect.right_bottom(),
                                 );
+                                let label = if details.kind == crate::CompositeKind::Script {
+                                    format!(
+                                        "{} · {}",
+                                        event.loop_name,
+                                        script_mode_label(event.mode.as_deref())
+                                    )
+                                } else {
+                                    event.loop_name.clone()
+                                };
                                 painter.with_clip_rect(event_rect.shrink(3.0)).text(
                                     label_rect.center(),
                                     egui::Align2::CENTER_CENTER,
-                                    &event.loop_name,
+                                    label,
                                     egui::FontId::proportional(12.0),
                                     colors::FOREGROUND,
                                 );
@@ -592,6 +677,13 @@ impl CompositeLoopWidget {
                         target_loop_id: self.loop_id,
                         source_loop_id,
                         n_cycles,
+                    });
+                }
+                if let Some((event, mode)) = mode_request {
+                    intents.push(AppIntent::SetCompositeEventMode {
+                        target_loop_id: self.loop_id,
+                        event: event.into(),
+                        mode,
                     });
                 }
                 if !self.selected_events.is_empty()
@@ -1620,5 +1712,136 @@ mod tests {
             assert!(widget.content_size.x > size.x);
             assert!(widget.content_size.y > size.y);
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn type_toggle_emits_kind_change_and_script_events_show_their_mode() {
+        let context = egui::Context::default();
+        let loop_id = LoopId::from_raw(8);
+        let mut widget = CompositeLoopWidget::default();
+        let regular = details(vec![event(1, 1, 0, 100)]);
+        let _ = widget_frame(&context, &mut widget, loop_id, &regular, Vec::new());
+        let script_center = widget.script_kind_rect.unwrap().center();
+        let _ = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &regular,
+            vec![
+                egui::Event::PointerMoved(script_center),
+                egui::Event::PointerButton {
+                    pos: script_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let intents = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &regular,
+            vec![egui::Event::PointerButton {
+                pos: script_center,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            intents,
+            [AppIntent::SetCompositeKind {
+                target_loop_id: loop_id,
+                kind: CompositeKind::Script,
+            }]
+        );
+
+        let mut script = regular;
+        script.kind = CompositeKind::Script;
+        script.events[0].mode = Some("recording".to_owned());
+        let output = context.run_ui(Default::default(), |ui| {
+            widget.show(ui, loop_id, &script);
+        });
+        assert!(output.shapes.iter().any(|shape| match &shape.shape {
+            egui::Shape::Text(text) => text.galley.job.text.contains("Loop 1 · Record"),
+            _ => false,
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn script_event_context_menu_emits_mode_change_for_one_instance() {
+        let context = egui::Context::default();
+        let loop_id = LoopId::from_raw(8);
+        let mut script = details(vec![keyed_event(3, 1, 1, 20, 100)]);
+        script.kind = CompositeKind::Script;
+        script.events[0].mode = Some("playing".to_owned());
+        let mut widget = CompositeLoopWidget::default();
+        let _ = widget_frame(&context, &mut widget, loop_id, &script, Vec::new());
+        let event_center = widget.rendered_events[0].1.center();
+        for pressed in [true, false] {
+            let _ = widget_frame(
+                &context,
+                &mut widget,
+                loop_id,
+                &script,
+                vec![
+                    egui::Event::PointerMoved(event_center),
+                    egui::Event::PointerButton {
+                        pos: event_center,
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        let _ = widget_frame(&context, &mut widget, loop_id, &script, Vec::new());
+        let record_center = widget
+            .mode_menu_rects
+            .iter()
+            .find(|(mode, _)| *mode == LoopMode::Recording)
+            .unwrap()
+            .1
+            .center();
+        let _ = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &script,
+            vec![
+                egui::Event::PointerMoved(record_center),
+                egui::Event::PointerButton {
+                    pos: record_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let intents = widget_frame(
+            &context,
+            &mut widget,
+            loop_id,
+            &script,
+            vec![egui::Event::PointerButton {
+                pos: record_center,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert_eq!(
+            intents,
+            [AppIntent::SetCompositeEventMode {
+                target_loop_id: loop_id,
+                event: CompositeEventId {
+                    playlist_index: 3,
+                    section_index: 0,
+                    parallel_index: 0,
+                },
+                mode: LoopMode::Recording,
+            }]
+        );
     }
 }
