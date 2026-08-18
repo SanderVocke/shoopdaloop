@@ -1587,6 +1587,12 @@ pub enum AppIntent {
         target_loop_id: LoopId,
         events: Vec<CompositeEventId>,
     },
+    RelocateCompositeEvents {
+        target_loop_id: LoopId,
+        events: Vec<CompositeEventId>,
+        start_iteration: u64,
+        duplicate: bool,
+    },
     SetCompositeLoopCycles {
         target_loop_id: LoopId,
         source_loop_id: LoopId,
@@ -1845,6 +1851,7 @@ impl AppIntent {
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",
             Self::DeleteCompositeEvents { .. } => "loop.composite.delete_events",
+            Self::RelocateCompositeEvents { .. } => "loop.composite.relocate_events",
             Self::SetCompositeLoopCycles { .. } => "loop.composite.set_loop_cycles",
             Self::SetCompositeKind { .. } => "loop.composite.set_kind",
             Self::SetCompositeEventMode { .. } => "loop.composite.set_event_mode",

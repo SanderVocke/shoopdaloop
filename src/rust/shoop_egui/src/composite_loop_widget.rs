@@ -20,6 +20,12 @@ pub(crate) struct LoopDragPayload {
     pub loop_id: LoopId,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CompositeEventDragPayload {
+    events: Vec<CompositeEventId>,
+    grabbed_offset: u64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct CompositeEventKey {
     playlist_index: u32,
@@ -499,7 +505,7 @@ impl CompositeLoopWidget {
                                         event_key.section_index,
                                         event_key.parallel_index,
                                     )),
-                                    egui::Sense::click(),
+                                    egui::Sense::click_and_drag(),
                                 );
                                 if response.clicked() {
                                     clicked_event = Some(event_key);
@@ -517,6 +523,40 @@ impl CompositeLoopWidget {
                                                 .try_into()
                                                 .unwrap_or(u32::MAX)
                                         });
+                                }
+                                let event_drag_started = response.drag_started()
+                                    && ui.input(|input| {
+                                        input
+                                            .pointer
+                                            .press_origin()
+                                            .is_some_and(|origin| event_rect.contains(origin))
+                                    });
+                                if event_drag_started {
+                                    if !self.selected_events.contains(&event_key) {
+                                        self.selected_events.clear();
+                                        self.selected_events.insert(event_key);
+                                    }
+                                    response.dnd_set_drag_payload(CompositeEventDragPayload {
+                                        events: self
+                                            .selected_events
+                                            .iter()
+                                            .copied()
+                                            .map(CompositeEventId::from)
+                                            .collect(),
+                                        grabbed_offset: event.start_frame.saturating_sub(
+                                            details
+                                                .events
+                                                .iter()
+                                                .filter(|candidate| {
+                                                    self.selected_events.contains(
+                                                        &CompositeEventKey::from(*candidate),
+                                                    )
+                                                })
+                                                .map(|candidate| candidate.start_frame)
+                                                .min()
+                                                .unwrap_or(event.start_frame),
+                                        ) / details.cycle_length_frames.max(1),
+                                    });
                                 }
                                 response.context_menu(|ui| {
                                     if details.kind == crate::CompositeKind::Script {
@@ -702,7 +742,9 @@ impl CompositeLoopWidget {
                     ui.ctx().request_repaint();
                 }
 
-                let payload = egui::DragAndDrop::payload::<LoopDragPayload>(ui.ctx());
+                let loop_payload = egui::DragAndDrop::payload::<LoopDragPayload>(ui.ctx());
+                let event_payload =
+                    egui::DragAndDrop::payload::<CompositeEventDragPayload>(ui.ctx());
                 self.update_box_selection(
                     ui,
                     &painter,
@@ -710,7 +752,7 @@ impl CompositeLoopWidget {
                     rect,
                     visible_timeline_left,
                     &event_rects,
-                    payload.is_some(),
+                    loop_payload.is_some() || event_payload.is_some(),
                 );
                 if let Some(played_frame) = details.played_frame {
                     let x = frame_to_x(played_frame);
@@ -727,17 +769,17 @@ impl CompositeLoopWidget {
                     }
                 }
                 let pointer = ui.ctx().pointer_hover_pos();
-                let hovered_iteration = payload
-                    .filter(|payload| payload.loop_id != self.loop_id)
-                    .zip(pointer)
-                    .filter(|(_, pointer)| {
-                        rect.contains(*pointer)
+                let valid_payload = loop_payload
+                    .is_some_and(|payload| payload.loop_id != self.loop_id)
+                    || event_payload.is_some();
+                let hovered_iteration = pointer
+                    .filter(|pointer| {
+                        valid_payload
+                            && rect.contains(*pointer)
                             && clip_rect.contains(*pointer)
                             && pointer.x >= timeline_left
                     })
-                    .map(|(_, pointer)| {
-                        ((pointer.x - timeline_left) / self.cycle_width).floor() as u64
-                    })
+                    .map(|pointer| ((pointer.x - timeline_left) / self.cycle_width).floor() as u64)
                     .filter(|iteration| *iteration < displayed_cycles);
                 if let Some(iteration) = hovered_iteration {
                     let column_rect = egui::Rect::from_min_size(
@@ -758,6 +800,20 @@ impl CompositeLoopWidget {
                     {
                         self.highlighted_iteration = Some(iteration);
                         self.highlighted_rect = Some(column_rect);
+                    }
+                }
+                if ui.input(|input| input.pointer.any_released()) {
+                    if let Some(payload) = event_payload.zip(hovered_iteration) {
+                        intents.push(AppIntent::RelocateCompositeEvents {
+                            target_loop_id: self.loop_id,
+                            events: payload.0.events.clone(),
+                            start_iteration: payload.1.saturating_sub(payload.0.grabbed_offset),
+                            duplicate: ui.input(|input| input.modifiers.ctrl),
+                        });
+                        if !ui.input(|input| input.modifiers.ctrl) {
+                            self.selected_events.clear();
+                        }
+                        egui::DragAndDrop::clear_payload(ui.ctx());
                     }
                 }
                 hovered_iteration
@@ -1573,6 +1629,93 @@ mod tests {
                 }],
             );
             assert!(intents.is_empty());
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn selected_composite_events_drop_as_a_group_and_ctrl_duplicates() {
+        let context = egui::Context::default();
+        let target = LoopId::from_raw(8);
+        let state = details(vec![
+            keyed_event(0, 1, 1, 0, 100),
+            keyed_event(1, 2, 1, 200, 300),
+        ]);
+        let mut widget = CompositeLoopWidget::default();
+        let _ = widget_frame(&context, &mut widget, target, &state, Vec::new());
+        let events = vec![
+            CompositeEventId {
+                playlist_index: 0,
+                section_index: 0,
+                parallel_index: 0,
+            },
+            CompositeEventId {
+                playlist_index: 1,
+                section_index: 0,
+                parallel_index: 0,
+            },
+        ];
+        let drop_position = egui::pos2(
+            widget.timeline_left.unwrap() + DEFAULT_CYCLE_WIDTH * 2.5,
+            widget.timeline_rect.unwrap().center().y,
+        );
+
+        for (modifiers, duplicate) in [
+            (egui::Modifiers::NONE, false),
+            (egui::Modifiers::CTRL, true),
+        ] {
+            widget.selected_events = events
+                .iter()
+                .map(|event| CompositeEventKey {
+                    playlist_index: event.playlist_index,
+                    section_index: event.section_index,
+                    parallel_index: event.parallel_index,
+                })
+                .collect();
+            egui::DragAndDrop::set_payload(
+                &context,
+                CompositeEventDragPayload {
+                    events: events.clone(),
+                    grabbed_offset: 1,
+                },
+            );
+            let _ = widget_frame(
+                &context,
+                &mut widget,
+                target,
+                &state,
+                vec![
+                    egui::Event::PointerMoved(drop_position),
+                    egui::Event::PointerButton {
+                        pos: drop_position,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers,
+                    },
+                ],
+            );
+            assert_eq!(widget.highlighted_iteration, Some(2));
+            let intents = widget_frame(
+                &context,
+                &mut widget,
+                target,
+                &state,
+                vec![egui::Event::PointerButton {
+                    pos: drop_position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers,
+                }],
+            );
+            assert_eq!(
+                intents,
+                [AppIntent::RelocateCompositeEvents {
+                    target_loop_id: target,
+                    events: events.clone(),
+                    start_iteration: 1,
+                    duplicate,
+                }]
+            );
+            assert_eq!(widget.selected_events.is_empty(), !duplicate);
         }
     }
 
