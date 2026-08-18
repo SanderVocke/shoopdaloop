@@ -225,13 +225,6 @@ impl LuaRuntime {
         self.api_version.incompatible_version()
     }
 
-    fn probe_api_incompatibility(&self, name: &str, source: &str) -> Option<String> {
-        self.api_version.stop_after_announcement();
-        let error = self.execute(name, source).err();
-        self.incompatible_api_version()
-            .and_then(|_| error.map(|error| error.to_string()))
-    }
-
     pub fn mark_listening(&self) {
         self.listening.set(true);
     }
@@ -534,12 +527,6 @@ impl ScriptManager {
         let name = name.into();
         let source = source.into();
         LuaRuntime::new()?.check_syntax(&name, &source)?;
-        let incompatibility = if enabled {
-            None
-        } else {
-            let runtime = LuaRuntime::new()?;
-            runtime.probe_api_incompatibility(&name, &source)
-        };
         let id = ScriptId::from_raw(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
         self.scripts.insert(
@@ -551,12 +538,8 @@ impl ScriptManager {
                 source,
                 kind,
                 enabled,
-                lifecycle: if incompatibility.is_some() {
-                    ScriptLifecycle::Incompatible
-                } else {
-                    ScriptLifecycle::Inactive
-                },
-                latest_error: incompatibility,
+                lifecycle: ScriptLifecycle::Inactive,
+                latest_error: None,
                 session_document_id: None,
                 archived_logs: Vec::new(),
                 runtime: None,
@@ -1113,29 +1096,6 @@ mod tests {
         assert!(error.contains("must be the first Shoop API call"));
         assert!(!bridge.borrow().snapshot.solo);
         assert!(bridge.borrow().operations.is_empty());
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn api_compatibility_probe_stops_at_the_announcement() {
-        let compatible = LuaRuntime::new().unwrap();
-        assert_eq!(
-            compatible.probe_api_incompatibility(
-                "compatible.lua",
-                "shoop_announce_api_version(1, 2); print('must not run')",
-            ),
-            None
-        );
-        assert!(compatible.logs().is_empty());
-
-        let incompatible = LuaRuntime::new().unwrap();
-        let error = incompatible
-            .probe_api_incompatibility(
-                "future.lua",
-                "shoop_announce_api_version(2, 0); print('must not run')",
-            )
-            .unwrap();
-        assert!(error.contains("script requests 2.0, host supports 1.2"));
-        assert!(incompatible.logs().is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1948,8 +1908,15 @@ if not c.get_solo() then error('solo') end
             .into_iter()
             .find(|state| state.id == disabled)
             .unwrap();
-        assert_eq!(state.lifecycle, ScriptLifecycle::Incompatible);
+        assert_eq!(state.lifecycle, ScriptLifecycle::Inactive);
+        assert!(state.latest_error.is_none());
         assert!(manager.start(disabled).is_err());
+        let state = manager
+            .states()
+            .into_iter()
+            .find(|state| state.id == disabled)
+            .unwrap();
+        assert_eq!(state.lifecycle, ScriptLifecycle::Incompatible);
     }
 
     #[shoop_wasm_test_support::shoop_test]
