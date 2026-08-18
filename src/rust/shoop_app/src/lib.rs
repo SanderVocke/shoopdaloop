@@ -1270,6 +1270,18 @@ impl ApplicationModel {
                 target_loop_id,
                 events,
             } => self.delete_composite_events(backend, target_loop_id, &events),
+            AppIntent::RelocateCompositeEvents {
+                target_loop_id,
+                events,
+                start_iteration,
+                duplicate,
+            } => self.relocate_composite_events(
+                backend,
+                target_loop_id,
+                &events,
+                start_iteration,
+                duplicate,
+            ),
             AppIntent::SetCompositeLoopCycles {
                 target_loop_id,
                 source_loop_id,
@@ -4978,6 +4990,92 @@ impl ApplicationModel {
         target_model.state.composite_kind = composite_kind;
         target_model.composite = Some(composite);
         target_model.backend_composite = backend_composite;
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn relocate_composite_events(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        events: &[CompositeEventId],
+        start_iteration: u64,
+        duplicate: bool,
+    ) -> Result<(), String> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        let existing = target_model
+            .composite
+            .as_ref()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        let details = self.composite_details_snapshot(existing);
+        let selected = events.iter().copied().collect::<BTreeSet<_>>();
+        let selected_details = details
+            .events
+            .iter()
+            .filter(|event| {
+                selected.contains(&CompositeEventId {
+                    playlist_index: event.playlist_index,
+                    section_index: event.section_index,
+                    parallel_index: event.parallel_index,
+                })
+            })
+            .collect::<Vec<_>>();
+        if selected_details.len() != selected.len() {
+            return Err("composite relocation references a stale event".to_owned());
+        }
+        let cycle_length = details.cycle_length_frames.max(1);
+        let origin = selected_details
+            .iter()
+            .map(|event| event.start_frame / cycle_length)
+            .min()
+            .unwrap_or(0);
+        let mut composite = if duplicate {
+            existing.clone()
+        } else {
+            self.composite_without_events_preserving_positions(existing, &selected)?
+        };
+        for event in selected_details {
+            let document = &existing.playlists[event.playlist_index as usize]
+                [event.section_index as usize][event.parallel_index as usize];
+            let relative = event.start_frame / cycle_length - origin;
+            let mut document = document.clone();
+            document.delay = start_iteration
+                .checked_add(relative)
+                .ok_or_else(|| "composite relocation position overflow".to_owned())?;
+            composite.playlists.push(vec![vec![document]]);
+        }
+
+        let config = self
+            .backend_composite_config(&composite)?
+            .ok_or_else(|| "relocated composite is not backend-configurable".to_owned())?;
+        let backend_composite = match target_model.backend_composite {
+            Some(id) => {
+                backend
+                    .configure_composite_loop(id, &config)
+                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                id
+            }
+            None => self
+                .create_and_configure_backend_composite(backend, &composite)?
+                .ok_or_else(|| "could not create relocated composite schedule".to_owned())?,
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.length = length;
+        target_model.state.empty = false;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = Some(backend_composite);
         target_model.backend_composite_signature = signature;
         Ok(())
     }
@@ -11905,6 +12003,48 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(model.loops[&target].composite.is_some());
         assert!(model.loops[&target].state.empty);
         assert_eq!(model.loops[&target].length, 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn composite_event_groups_move_or_duplicate_while_preserving_relative_positions() {
+        for duplicate in [false, true] {
+            let (mut backend, mut model, _, target, _) = engine_model_with_regular_composite();
+            let before =
+                model.composite_details_snapshot(model.loops[&target].composite.as_ref().unwrap());
+            let selected = [0_usize, 2]
+                .into_iter()
+                .map(|index| CompositeEventId {
+                    playlist_index: before.events[index].playlist_index,
+                    section_index: before.events[index].section_index,
+                    parallel_index: before.events[index].parallel_index,
+                })
+                .collect::<Vec<_>>();
+            let cycle_length = before.cycle_length_frames;
+            let relative = before.events[2].start_frame - before.events[0].start_frame;
+
+            model
+                .relocate_composite_events(&mut backend, target, &selected, 10, duplicate)
+                .unwrap();
+
+            let after =
+                model.composite_details_snapshot(model.loops[&target].composite.as_ref().unwrap());
+            assert_eq!(after.events.len(), if duplicate { 5 } else { 3 });
+            let moved = &after.events[after.events.len() - 2..];
+            assert_eq!(moved[0].start_frame, 10 * cycle_length);
+            assert_eq!(moved[1].start_frame - moved[0].start_frame, relative);
+            assert!(after.events.iter().any(|event| {
+                event.loop_id == before.events[1].loop_id
+                    && event.start_frame == before.events[1].start_frame
+            }));
+            assert_eq!(
+                after
+                    .events
+                    .iter()
+                    .filter(|event| event.loop_id == before.events[0].loop_id)
+                    .count(),
+                if duplicate { 2 } else { 1 }
+            );
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
