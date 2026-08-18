@@ -19,6 +19,7 @@ use shoop_app_api::{
 mod api_version;
 mod control;
 mod dialog;
+mod file;
 mod key_constants;
 mod midi;
 
@@ -30,6 +31,7 @@ pub use control::{
     SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
 use dialog::{install_dialog_api, DialogIdSource, DialogRegistry};
+use file::{install_file_api, ScriptFileReader};
 use key_constants::{KEY_CONSTANTS, MODIFIER_CONSTANTS};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi::NativeMidiService;
@@ -54,6 +56,10 @@ pub const BUILTIN_LIBRARIES: &[(&str, &str)] = &[
     (
         "shoop_dialog",
         include_str!("../../../lua/lib/shoop_dialog.lua"),
+    ),
+    (
+        "shoop_file",
+        include_str!("../../../lua/lib/shoop_file.lua"),
     ),
     (
         "shoop_coords",
@@ -113,6 +119,7 @@ pub struct LuaRuntime {
     callbacks: ScriptCallbacks,
     api_version: Rc<ApiVersionState>,
     dialogs: Rc<DialogRegistry>,
+    files: Rc<ScriptFileReader>,
 }
 
 impl LuaRuntime {
@@ -166,6 +173,13 @@ impl LuaRuntime {
             Rc::clone(&mark_listening),
             Rc::clone(&api_version),
         )?;
+        let files = Rc::new(ScriptFileReader::default());
+        install_file_api(
+            &lua,
+            &run_sandboxed,
+            Rc::clone(&api_version),
+            Rc::clone(&files),
+        )?;
         let dialogs = Rc::new(DialogRegistry::default());
         install_dialog_api(
             &lua,
@@ -174,6 +188,7 @@ impl LuaRuntime {
             dialog_ids,
             Rc::clone(&dialogs),
             mark_listening,
+            Rc::clone(&files),
         )?;
         install_require(&lua, &run_sandboxed, Rc::clone(&api_version))?;
         Ok(Self {
@@ -184,6 +199,7 @@ impl LuaRuntime {
             callbacks,
             api_version,
             dialogs,
+            files,
         })
     }
 
@@ -192,6 +208,7 @@ impl LuaRuntime {
     }
 
     pub fn execute(&self, name: &str, source: &str) -> anyhow::Result<()> {
+        self.files.set_script_path(name);
         self.run_sandboxed
             .call::<_, ()>(source)
             .map_err(|error| anyhow!("could not execute Lua source {name}: {error}"))?;
@@ -993,6 +1010,50 @@ mod tests {
         assert_eq!(value, 42);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn file_module_and_markdown_file_load_below_the_script() {
+        let root = std::env::temp_dir().join(format!(
+            "shoop-file-api-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("content")).unwrap();
+        std::fs::write(root.join("content/data.bin"), [0, 255, 42]).unwrap();
+        std::fs::write(root.join("content/help.md"), "# Loaded help").unwrap();
+        let script_path = root.join("controller.lua");
+        std::fs::write(&script_path, "").unwrap();
+        let runtime = LuaRuntime::new().unwrap();
+
+        runtime
+            .execute(
+                script_path.to_str().unwrap(),
+                r#"
+shoop_announce_api_version(1, 3)
+local file = require('shoop_file')
+local dialog = require('shoop_dialog')
+local bytes = file.load('content/data.bin')
+if #bytes ~= 3 or string.byte(bytes, 2) ~= 255 then error('bad bytes') end
+dialog.simple('Help', {dialog.markdown_file('content/help.md')})
+"#,
+            )
+            .unwrap();
+
+        let dialogs = runtime.dialog_states(ScriptId::from_raw(1), "controller.lua");
+        let ScriptDialogKind::Simple(elements) = &dialogs[0].kind else {
+            panic!("expected simple dialog");
+        };
+        let ScriptDialogElement::Markdown { text, .. } = &elements.elements[0] else {
+            panic!("expected markdown");
+        };
+        assert_eq!(text, "# Loaded help");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn production_lua_sources_are_embedded_and_syntactically_valid() {
         let runtime = LuaRuntime::new().unwrap();
@@ -1039,15 +1100,15 @@ mod tests {
             ("return", "must be the first Shoop API call"),
             (
                 "shoop_announce_api_version(2, 0)",
-                "script requests 2.0, host supports 1.2",
+                "script requests 2.0, host supports 1.3",
             ),
             (
                 "shoop_announce_api_version(0, 0)",
-                "script requests 0.0, host supports 1.2",
+                "script requests 0.0, host supports 1.3",
             ),
             (
-                "shoop_announce_api_version(1, 3)",
-                "script requests 1.3, host supports 1.2",
+                "shoop_announce_api_version(1, 4)",
+                "script requests 1.4, host supports 1.3",
             ),
             (
                 "shoop_announce_api_version(-1, 0)",
@@ -1877,7 +1938,7 @@ if not c.get_solo() then error('solo') end
         let id = manager
             .add(
                 "future.lua",
-                "shoop_announce_api_version(1, 3)",
+                "shoop_announce_api_version(1, 4)",
                 ScriptKind::Ephemeral,
                 true,
             )
@@ -1890,7 +1951,7 @@ if not c.get_solo() then error('solo') end
             .latest_error
             .as_deref()
             .unwrap()
-            .contains("script requests 1.3, host supports 1.2"));
+            .contains("script requests 1.4, host supports 1.3"));
 
         assert!(manager.start(id).is_err());
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Incompatible);

@@ -100,7 +100,7 @@ The GUI key translator must emit these stable numeric values. Unsupported platfo
 
 ## Built-in modules and globals
 
-The single sources under `src/lua/lib` provide `shoop_control`, `shoop_coords`, `shoop_helpers`, `shoop_format`, and `shoop_midi`. Only these preloaded Shoop modules are required through the compatibility `require`. The runtime provides `print`, `print_trace`, `print_debug`, `print_info`, `print_warning`, and `print_error`.
+The single sources under `src/lua/lib` provide `shoop_control`, `shoop_coords`, `shoop_helpers`, `shoop_format`, `shoop_midi`, `shoop_dialog`, and `shoop_file`. Only these preloaded Shoop modules are required through the compatibility `require`. The runtime provides `print`, `print_trace`, `print_debug`, `print_info`, `print_warning`, and `print_error`.
 
 Each script gets its own Lua 5.4 state. Runtime or callback failure changes only that script's status and does not remove other scripts. The sandbox's exact standard-library profile, rooting/error rules, and reviewed omniLua embedding adaptations are specified in `omnilua_runtime.md`.
 

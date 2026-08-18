@@ -12,6 +12,7 @@ use shoop_app_api::{
 };
 
 use crate::api_version::ApiVersionState;
+use crate::file::ScriptFileReader;
 use crate::{install_compatibility_value, runtime_error};
 
 const ELEMENT_KIND: &str = "__shoop_dialog_element_kind";
@@ -97,6 +98,7 @@ pub fn install_dialog_api(
     ids: Rc<DialogIdSource>,
     registry: Rc<DialogRegistry>,
     mark_listening: Rc<dyn Fn()>,
+    files: Rc<ScriptFileReader>,
 ) -> anyhow::Result<()> {
     let module = (|| -> omnilua::Result<Table> {
         let module = lua.create_table()?;
@@ -124,6 +126,20 @@ pub fn install_dialog_api(
             "markdown",
             lua.create_function(move |lua, (text, links): (String, Option<Table>)| {
                 versions_.require_announced()?;
+                let element = lua.create_table()?;
+                element.set(ELEMENT_KIND, "markdown")?;
+                element.set("text", text)?;
+                element.set("links", links)?;
+                Ok(element)
+            })?,
+        )?;
+
+        let versions_ = Rc::clone(&versions);
+        module.set(
+            "markdown_file",
+            lua.create_function(move |lua, (path, links): (String, Option<Table>)| {
+                versions_.require_announced()?;
+                let text = files.read_utf8(&path)?;
                 let element = lua.create_table()?;
                 element.set(ELEMENT_KIND, "markdown")?;
                 element.set("text", text)?;
