@@ -499,6 +499,7 @@ pub struct AppWidgetResponse {
 struct PendingEphemeralScript {
     name: String,
     source: Arc<str>,
+    source_path: Option<String>,
 }
 
 pub struct AppWidget {
@@ -649,8 +650,21 @@ impl AppWidget {
     }
 
     pub fn queue_ephemeral_script(&mut self, name: String, source: Arc<str>) {
+        self.queue_ephemeral_script_from_path(name, source, None);
+    }
+
+    pub fn queue_ephemeral_script_from_path(
+        &mut self,
+        name: String,
+        source: Arc<str>,
+        source_path: Option<String>,
+    ) {
         self.pending_ephemeral_scripts
-            .push_back(PendingEphemeralScript { name, source });
+            .push_back(PendingEphemeralScript {
+                name,
+                source,
+                source_path,
+            });
     }
 
     pub fn open_connection_scope(&self) -> Option<ConnectionScope> {
@@ -999,6 +1013,7 @@ impl AppWidget {
             .map(|pending| AppAction::AddEphemeralScript {
                 name: pending.name,
                 source: pending.source,
+                source_path: pending.source_path,
             })
     }
 
@@ -2198,6 +2213,7 @@ mod tests {
             [AppAction::AddEphemeralScript {
                 name: "controller.lua".to_owned(),
                 source: Arc::from("shoop_announce_api_version(1, 0); print('loaded')"),
+                source_path: None,
             }]
         );
         assert!(widget.pending_ephemeral_scripts.is_empty());

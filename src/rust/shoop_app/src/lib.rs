@@ -194,6 +194,7 @@ impl From<TrySendError<ApplicationMessage>> for DispatchError {
 pub struct StartupScript {
     pub name: String,
     pub source: String,
+    pub source_path: Option<String>,
     pub kind: ScriptKind,
     pub enabled: bool,
 }
@@ -1216,10 +1217,13 @@ impl ApplicationModel {
     fn install_startup_scripts(&mut self, scripts: Vec<StartupScript>) -> Vec<Option<ScriptId>> {
         let mut ids = Vec::with_capacity(scripts.len());
         for script in scripts {
-            match self
-                .script_manager
-                .add(script.name, script.source, script.kind, script.enabled)
-            {
+            match self.script_manager.add_with_source_path(
+                script.name,
+                script.source,
+                script.kind,
+                script.enabled,
+                script.source_path,
+            ) {
                 Ok(id) => ids.push(Some(id)),
                 Err(error) => {
                     ids.push(None);
@@ -1300,9 +1304,11 @@ impl ApplicationModel {
                 kind,
                 enabled,
             } => self.add_script_source(backend, name, source, kind, enabled),
-            AppIntent::AddEphemeralScript { name, source } => {
-                self.add_ephemeral_script(backend, name, source)
-            }
+            AppIntent::AddEphemeralScript {
+                name,
+                source,
+                source_path,
+            } => self.add_ephemeral_script(backend, name, source, source_path),
             AppIntent::SetScriptEnabled { script_id, enabled } => {
                 self.set_script_enabled(backend, script_id, enabled)
             }
@@ -1560,11 +1566,12 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         name: String,
         source: Arc<str>,
+        source_path: Option<String>,
     ) -> Result<(), String> {
         self.prepare_script_invocation();
         let result = self
             .script_manager
-            .add_ephemeral(name, source.to_string())
+            .add_ephemeral_with_source_path(name, source.to_string(), source_path)
             .map(|_| ())
             .map_err(|error| error.to_string())
             .and_then(|()| self.apply_script_operations(backend));
@@ -10193,6 +10200,7 @@ mod tests {
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
                 source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
             }],
@@ -10216,18 +10224,21 @@ mod tests {
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
                     source: "local =".to_owned(),
+                    source_path: None,
                     kind: ScriptKind::User,
                     enabled: true,
                 },
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
                     source: "print('second')".to_owned(),
+                    source_path: None,
                     kind: ScriptKind::User,
                     enabled: true,
                 },
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
                     source: "print('third')".to_owned(),
+                    source_path: None,
                     kind: ScriptKind::User,
                     enabled: false,
                 },
@@ -10253,6 +10264,7 @@ mod tests {
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
                 source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
             }],
@@ -10555,6 +10567,7 @@ d.simple('Actor dialog',{d.button('Apply',function() c.set_solo(true) end)})
 d.open('Actor dialog')
 "#
                 .to_owned(),
+                source_path: None,
                 kind: ScriptKind::User,
                 enabled: true,
             }],
@@ -10599,7 +10612,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 3); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 4); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -10617,7 +10630,7 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.3, host supports 1.2"));
+        assert!(error.contains("script requests 1.4, host supports 1.3"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -11433,6 +11446,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
                 source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
             }],
@@ -14899,6 +14913,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
                 source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
             }],
@@ -15516,6 +15531,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .dispatch(AppIntent::AddEphemeralScript {
                 name: "run-once.lua".to_owned(),
                 source: Arc::from("shoop_announce_api_version(1, 0); print('run once')"),
+                source_path: None,
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -15624,7 +15640,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn scripts_export_exact_source_and_convert_session_ownership() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
-        let source = "shoop_announce_api_version(1, 3)\nprint('future')";
+        let source = "shoop_announce_api_version(1, 4)\nprint('future')";
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),

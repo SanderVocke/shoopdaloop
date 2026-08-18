@@ -12,7 +12,7 @@ restarting a script removes its callbacks, timers, logical MIDI ports,
 connections, queued output, and script-owned dialogs.
 
 Every script must make ``shoop_announce_api_version(major, minor)`` its first
-Shoop API call. The current version is ``1.2``. A script runs only when its major
+Shoop API call. The current version is ``1.3``. A script runs only when its major
 equals the host major and its minor is no newer than the host minor. Missing,
 malformed, repeated, or incompatible announcements cancel initial execution
 before versioned side effects. The global two-integer signature is independent
@@ -23,8 +23,8 @@ An incompatible source remains inspectable and exportable, but cannot be
 started.
 
 The sandbox exposes selected standard-library functions and ShoopDaLoop modules.
-It prevents ordinary module/file access but should still be treated as a
-compatibility boundary for trusted local scripts, not as a hardened security
+It prevents ordinary module access and restricts file access to paths below each
+script, but should still be treated as a compatibility boundary for trusted local scripts, not as a hardened security
 boundary.
 
 Script management

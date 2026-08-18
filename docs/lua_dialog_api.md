@@ -4,10 +4,10 @@ This contract applies to Lua scripts run by `shoopdaloop` on native and browser 
 
 ## API version announcement
 
-The current Shoop Lua API version is **1.2**. Every script must make this its first Shoop API call:
+The current Shoop Lua API version is **1.3**. Every script must make this its first Shoop API call:
 
 ```lua
-shoop_announce_api_version(1, 2)
+shoop_announce_api_version(1, 3)
 ```
 
 The announcement function is a permanent, unversioned global. Its name and two-integer `(major, minor)` signature do not depend on any module and are reserved to remain stable across future API versions.
@@ -36,6 +36,7 @@ Dialog names must be non-empty and are unique within one script runtime. Differe
 ```lua
 dialog.rich_text(text, style)
 dialog.markdown(text, link_callbacks)
+dialog.markdown_file(relative_path, link_callbacks)
 dialog.button(label, callback)
 ```
 
@@ -63,6 +64,27 @@ Use **Markdown** here. [Enable solo](enable-solo), or
 ```
 
 A destination present in `link_callbacks` invokes its function instead of opening a URL. Matching is against the complete destination and is local to that Markdown element. Destinations without callbacks retain normal Markdown-link behavior. Link destinations must be non-empty strings and callback values must be functions.
+
+`markdown_file` reads UTF-8 Markdown from a path below the directory containing the Lua script. It otherwise behaves exactly like `markdown`, including support for callback links:
+
+```lua
+dialog.markdown_file('help/getting-started.md', {
+    ['enable-solo'] = function()
+        require('shoop_control').set_solo(true)
+    end,
+})
+```
+
+## `shoop_file`
+
+Scripts can load any file below their own directory with the `shoop_file` module:
+
+```lua
+local file = require('shoop_file')
+local contents = file.load('data/preset.bin')
+```
+
+`load` returns the file contents as a Lua string, including non-UTF-8 data. The path must be relative and descend from the script directory. Absolute paths, `.` and `..` components, and symlinks which resolve outside the script directory are rejected. Scripts without a filesystem-backed location, including browser and session-only sources, cannot load files.
 
 ### Simple dialogs
 

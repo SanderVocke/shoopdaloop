@@ -460,8 +460,9 @@ impl UnifiedApp {
                 else {
                     return;
                 };
-                load_ephemeral_script_path(&path).map(|(name, source)| {
-                    self.widget.queue_ephemeral_script(name, source);
+                load_ephemeral_script_path(&path).map(|(name, source, source_path)| {
+                    self.widget
+                        .queue_ephemeral_script_from_path(name, source, Some(source_path));
                 })
             }
             SettingsAction::RequestReloadUserScript { script_id } => {
@@ -645,7 +646,10 @@ impl UnifiedApp {
                 continue;
             }
             match load_ephemeral_script_path(&path) {
-                Ok((name, source)) => self.widget.queue_ephemeral_script(name, source),
+                Ok((name, source, source_path)) => {
+                    self.widget
+                        .queue_ephemeral_script_from_path(name, source, Some(source_path))
+                }
                 Err(error) => {
                     let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
                         task_id: None,
@@ -964,11 +968,14 @@ fn load_ephemeral_script_bytes(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_ephemeral_script_path(path: &Path) -> anyhow::Result<(String, std::sync::Arc<str>)> {
+fn load_ephemeral_script_path(
+    path: &Path,
+) -> anyhow::Result<(String, std::sync::Arc<str>, String)> {
     let name = file_name(path);
     let bytes = std::fs::read(path)
         .map_err(|error| anyhow::anyhow!("could not read {}: {error}", path.display()))?;
-    load_ephemeral_script_bytes(name, &bytes)
+    let (name, source) = load_ephemeral_script_bytes(name, &bytes)?;
+    Ok((name, source, path.to_string_lossy().into_owned()))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1066,18 +1073,21 @@ fn configured_startup_scripts(
         StartupScript {
             name: KEYBOARD_SCRIPT_FILENAME.to_owned(),
             source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+            source_path: None,
             kind: ScriptKind::Bundled,
             enabled: settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
         },
         StartupScript {
             name: APC_MINI_SCRIPT_FILENAME.to_owned(),
             source: shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
+            source_path: None,
             kind: ScriptKind::Bundled,
             enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
         },
         StartupScript {
             name: DIALOG_EXAMPLE_SCRIPT_FILENAME.to_owned(),
             source: shoop_scripting::DIALOG_EXAMPLE_SCRIPT.to_owned(),
+            source_path: None,
             kind: ScriptKind::Example,
             enabled: false,
         },
@@ -1091,10 +1101,11 @@ fn configured_startup_scripts(
     for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
         match read_user_script(&configured.value) {
             Ok((name, source)) => {
-                identities.push(configured.value);
+                identities.push(configured.value.clone());
                 scripts.push(StartupScript {
                     name,
                     source,
+                    source_path: Some(configured.value.clone()),
                     kind: ScriptKind::User,
                     enabled: configured.enabled,
                 });
@@ -1356,18 +1367,21 @@ fn browser_startup_scripts(
         StartupScript {
             name: KEYBOARD_SCRIPT_FILENAME.to_owned(),
             source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+            source_path: None,
             kind: ScriptKind::Bundled,
             enabled: settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
         },
         StartupScript {
             name: APC_MINI_SCRIPT_FILENAME.to_owned(),
             source: shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
+            source_path: None,
             kind: ScriptKind::Bundled,
             enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
         },
         StartupScript {
             name: DIALOG_EXAMPLE_SCRIPT_FILENAME.to_owned(),
             source: shoop_scripting::DIALOG_EXAMPLE_SCRIPT.to_owned(),
+            source_path: None,
             kind: ScriptKind::Example,
             enabled: false,
         },
@@ -3710,7 +3724,7 @@ impl BrowserSelfTest {
                     [
                         (
                             "lua-api-higher-minor.lua",
-                            "shoop_announce_api_version(1, 3); require('shoop_control').set_solo(true)",
+                            "shoop_announce_api_version(1, 4); require('shoop_control').set_solo(true)",
                         ),
                         (
                             "lua-api-lower-major.lua",
@@ -4573,6 +4587,13 @@ mod tests {
         assert!(load_ephemeral_script_bytes("controller.txt".to_owned(), b"return").is_err());
         assert!(load_ephemeral_script_bytes("controller.lua".to_owned(), &[0xff]).is_err());
         assert!(load_ephemeral_script_bytes("controller.lua".to_owned(), b"function(").is_err());
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("controller.lua");
+        std::fs::write(&path, "shoop_announce_api_version(1, 0)").unwrap();
+        let (name, _, source_path) = load_ephemeral_script_path(&path).unwrap();
+        assert_eq!(name, "controller.lua");
+        assert_eq!(source_path, path.to_string_lossy());
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -4624,6 +4645,10 @@ mod tests {
         assert_eq!(scripts[2].source, shoop_scripting::DIALOG_EXAMPLE_SCRIPT);
         assert!(!scripts[2].enabled);
         assert_eq!(scripts[3].kind, ScriptKind::User);
+        assert_eq!(
+            scripts[3].source_path.as_deref(),
+            Some(user_script.to_str().unwrap())
+        );
         assert!(!scripts[3].enabled);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing.lua"));
@@ -4850,7 +4875,7 @@ mod tests {
         for (name, source) in [
             (
                 "lua-api-higher-minor.lua",
-                "shoop_announce_api_version(1, 3); require('shoop_control').set_solo(true)",
+                "shoop_announce_api_version(1, 4); require('shoop_control').set_solo(true)",
             ),
             (
                 "lua-api-lower-major.lua",
