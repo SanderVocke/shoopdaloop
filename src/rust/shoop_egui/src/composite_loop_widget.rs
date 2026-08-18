@@ -23,6 +23,7 @@ pub(crate) struct LoopDragPayload {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CompositeEventDragPayload {
     events: Vec<CompositeEventId>,
+    grabbed_offset: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -462,20 +463,40 @@ impl CompositeLoopWidget {
                                                 .unwrap_or(u32::MAX)
                                         });
                                 }
-                                if response.drag_started() {
+                                let event_drag_started = response.drag_started()
+                                    && ui.input(|input| {
+                                        input
+                                            .pointer
+                                            .press_origin()
+                                            .is_some_and(|origin| event_rect.contains(origin))
+                                    });
+                                if event_drag_started {
                                     if !self.selected_events.contains(&event_key) {
                                         self.selected_events.clear();
                                         self.selected_events.insert(event_key);
                                     }
+                                    response.dnd_set_drag_payload(CompositeEventDragPayload {
+                                        events: self
+                                            .selected_events
+                                            .iter()
+                                            .copied()
+                                            .map(CompositeEventId::from)
+                                            .collect(),
+                                        grabbed_offset: event.start_frame.saturating_sub(
+                                            details
+                                                .events
+                                                .iter()
+                                                .filter(|candidate| {
+                                                    self.selected_events.contains(
+                                                        &CompositeEventKey::from(*candidate),
+                                                    )
+                                                })
+                                                .map(|candidate| candidate.start_frame)
+                                                .min()
+                                                .unwrap_or(event.start_frame),
+                                        ) / details.cycle_length_frames.max(1),
+                                    });
                                 }
-                                response.dnd_set_drag_payload(CompositeEventDragPayload {
-                                    events: self
-                                        .selected_events
-                                        .iter()
-                                        .copied()
-                                        .map(CompositeEventId::from)
-                                        .collect(),
-                                });
                                 response.context_menu(|ui| {
                                     ui.horizontal(|ui| {
                                         ui.label("Length");
@@ -694,9 +715,12 @@ impl CompositeLoopWidget {
                         intents.push(AppIntent::RelocateCompositeEvents {
                             target_loop_id: self.loop_id,
                             events: payload.0.events.clone(),
-                            start_iteration: payload.1,
+                            start_iteration: payload.1.saturating_sub(payload.0.grabbed_offset),
                             duplicate: ui.input(|input| input.modifiers.ctrl),
                         });
+                        if !ui.input(|input| input.modifiers.ctrl) {
+                            self.selected_events.clear();
+                        }
                         egui::DragAndDrop::clear_payload(ui.ctx());
                     }
                 }
@@ -1547,10 +1571,19 @@ mod tests {
             (egui::Modifiers::NONE, false),
             (egui::Modifiers::CTRL, true),
         ] {
+            widget.selected_events = events
+                .iter()
+                .map(|event| CompositeEventKey {
+                    playlist_index: event.playlist_index,
+                    section_index: event.section_index,
+                    parallel_index: event.parallel_index,
+                })
+                .collect();
             egui::DragAndDrop::set_payload(
                 &context,
                 CompositeEventDragPayload {
                     events: events.clone(),
+                    grabbed_offset: 1,
                 },
             );
             let _ = widget_frame(
@@ -1586,10 +1619,11 @@ mod tests {
                 [AppIntent::RelocateCompositeEvents {
                     target_loop_id: target,
                     events: events.clone(),
-                    start_iteration: 2,
+                    start_iteration: 1,
                     duplicate,
                 }]
             );
+            assert_eq!(widget.selected_events.is_empty(), !duplicate);
         }
     }
 
