@@ -18,7 +18,7 @@ colored = "3.1"
 humantime = "2.1"
 lazy_static = "1.5"
 ctor = "1.0"
-toml = "0.8"
+toml = "1.1"
 regex = "1.10"
 serde = "1.0"
 uuid = { version = "1.17", features = ["v4"] }
