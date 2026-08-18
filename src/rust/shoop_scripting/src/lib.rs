@@ -393,6 +393,7 @@ struct ScriptRecord {
     id: ScriptId,
     name: String,
     source: String,
+    source_path: Option<String>,
     kind: ScriptKind,
     enabled: bool,
     lifecycle: ScriptLifecycle,
@@ -541,6 +542,17 @@ impl ScriptManager {
         kind: ScriptKind,
         enabled: bool,
     ) -> anyhow::Result<ScriptId> {
+        self.add_with_source_path(name, source, kind, enabled, None)
+    }
+
+    pub fn add_with_source_path(
+        &mut self,
+        name: impl Into<String>,
+        source: impl Into<String>,
+        kind: ScriptKind,
+        enabled: bool,
+        source_path: Option<String>,
+    ) -> anyhow::Result<ScriptId> {
         let name = name.into();
         let source = source.into();
         LuaRuntime::new()?.check_syntax(&name, &source)?;
@@ -553,6 +565,7 @@ impl ScriptManager {
                 documentation: extract_documentation(&source),
                 name,
                 source,
+                source_path,
                 kind,
                 enabled,
                 lifecycle: ScriptLifecycle::Inactive,
@@ -572,6 +585,15 @@ impl ScriptManager {
         &mut self,
         source_name: impl Into<String>,
         source: impl Into<String>,
+    ) -> anyhow::Result<ScriptId> {
+        self.add_ephemeral_with_source_path(source_name, source, None)
+    }
+
+    pub fn add_ephemeral_with_source_path(
+        &mut self,
+        source_name: impl Into<String>,
+        source: impl Into<String>,
+        source_path: Option<String>,
     ) -> anyhow::Result<ScriptId> {
         let source_name = source_name.into();
         let source = source.into();
@@ -595,7 +617,13 @@ impl ScriptManager {
         for id in active_versions {
             self.stop(id)?;
         }
-        self.add(display_name, source, ScriptKind::Ephemeral, true)
+        self.add_with_source_path(
+            display_name,
+            source,
+            ScriptKind::Ephemeral,
+            true,
+            source_path,
+        )
     }
 
     #[cfg(test)]
@@ -725,7 +753,8 @@ impl ScriptManager {
         record.archived_logs.clear();
         let runtime =
             LuaRuntime::new_with_services(Rc::clone(&self.control), Rc::clone(&self.dialog_ids))?;
-        match runtime.execute(&record.name, &record.source) {
+        let execution_name = record.source_path.as_deref().unwrap_or(&record.name);
+        match runtime.execute(execution_name, &record.source) {
             Ok(()) => {
                 if runtime.is_listening() {
                     record.lifecycle = ScriptLifecycle::Listening;
@@ -1026,11 +1055,10 @@ mod tests {
         std::fs::write(root.join("content/help.md"), "# Loaded help").unwrap();
         let script_path = root.join("controller.lua");
         std::fs::write(&script_path, "").unwrap();
-        let runtime = LuaRuntime::new().unwrap();
-
-        runtime
-            .execute(
-                script_path.to_str().unwrap(),
+        let mut manager = ScriptManager::new();
+        let script_id = manager
+            .add_with_source_path(
+                "controller.lua",
                 r#"
 shoop_announce_api_version(1, 3)
 local file = require('shoop_file')
@@ -1039,10 +1067,15 @@ local bytes = file.load('content/data.bin')
 if #bytes ~= 3 or string.byte(bytes, 2) ~= 255 then error('bad bytes') end
 dialog.simple('Help', {dialog.markdown_file('content/help.md')})
 "#,
+                ScriptKind::User,
+                true,
+                Some(script_path.to_string_lossy().into_owned()),
             )
             .unwrap();
 
-        let dialogs = runtime.dialog_states(ScriptId::from_raw(1), "controller.lua");
+        assert_eq!(manager.states()[0].name, "controller.lua");
+        let dialogs = manager.dialogs();
+        assert_eq!(dialogs[0].owner_script_id, script_id);
         let ScriptDialogKind::Simple(elements) = &dialogs[0].kind else {
             panic!("expected simple dialog");
         };

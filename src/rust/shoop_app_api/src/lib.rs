@@ -1611,6 +1611,7 @@ pub enum AppIntent {
     AddEphemeralScript {
         name: String,
         source: Arc<str>,
+        source_path: Option<String>,
     },
     SetScriptEnabled {
         script_id: ScriptId,
