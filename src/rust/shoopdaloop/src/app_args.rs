@@ -58,6 +58,9 @@ pub struct AppArgs {
     #[cfg(target_arch = "wasm32")]
     #[arg(long, hide = true)]
     pub settings_save_failure: bool,
+    #[cfg(target_arch = "wasm32")]
+    #[arg(long, hide = true)]
+    pub instance: Option<usize>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -126,10 +129,12 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn web_query_parses_flags_and_typed_values() {
-        let args = parse_web_query("?offline=1&settings-test=verify&session-only=true").unwrap();
+        let args = parse_web_query("?offline=1&settings-test=verify&session-only=true&instance=2")
+            .unwrap();
         assert!(args.offline);
         assert_eq!(args.settings_test, Some(SettingsTest::Verify));
         assert!(args.session_only);
+        assert_eq!(args.instance, Some(2));
     }
 
     #[shoop_wasm_test_support::shoop_test]
