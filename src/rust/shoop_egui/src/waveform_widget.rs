@@ -106,24 +106,13 @@ impl Default for WaveformWidget {
 
 impl WaveformWidget {
     pub fn show(&mut self, ui: &mut egui::Ui, channel: &WaveformChannelState) {
-        ui.horizontal(|ui| {
-            ui.label(&channel.label);
-            ui.add(
-                egui::Slider::new(&mut self.zoom, 1.0..=64.0)
-                    .logarithmic(true)
-                    .show_value(false)
-                    .text("zoom"),
-            )
-            .on_hover_text(format!("Waveform zoom: {:.1}×", self.zoom));
-        });
-
         let desired = egui::vec2(ui.available_width(), 72.0);
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::drag());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 2.0, colors::WAVEFORM_BACKGROUND);
+        painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
         painter.rect_stroke(
             rect,
-            2.0,
+            0.0,
             egui::Stroke::new(1.0, colors::MUTED_FOREGROUND),
             egui::StrokeKind::Inside,
         );
@@ -132,7 +121,6 @@ impl WaveformWidget {
             rect.center().y,
             egui::Stroke::new(1.0, colors::WAVEFORM_ZERO_LINE),
         );
-
         if channel.samples.is_empty() {
             painter.text(
                 rect.center(),
@@ -141,6 +129,7 @@ impl WaveformWidget {
                 egui::FontId::proportional(12.0),
                 colors::MUTED_FOREGROUND,
             );
+            Self::show_overlay(ui, rect, &channel.label, &mut self.zoom);
             return;
         }
 
@@ -187,6 +176,7 @@ impl WaveformWidget {
                 egui::FontId::proportional(12.0),
                 colors::MUTED_FOREGROUND,
             );
+            Self::show_overlay(ui, rect, &channel.label, &mut self.zoom);
             return;
         };
         let bins = pyramid.bins(
@@ -219,6 +209,29 @@ impl WaveformWidget {
                 );
             }
         }
+        Self::show_overlay(ui, rect, &channel.label, &mut self.zoom);
+    }
+
+    fn show_overlay(ui: &mut egui::Ui, rect: egui::Rect, label: &str, zoom: &mut f32) {
+        ui.painter().text(
+            rect.left_top() + egui::vec2(6.0, 5.0),
+            egui::Align2::LEFT_TOP,
+            label,
+            egui::FontId::proportional(12.0),
+            ui.visuals().text_color(),
+        );
+        let zoom_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.right() - 116.0, rect.top() + 3.0),
+            egui::vec2(110.0, 18.0),
+        );
+        ui.put(
+            zoom_rect,
+            egui::Slider::new(zoom, 1.0..=64.0)
+                .logarithmic(true)
+                .show_value(false)
+                .text("zoom"),
+        )
+        .on_hover_text(format!("Waveform zoom: {:.1}×", *zoom));
     }
 
     #[cfg(not(target_arch = "wasm32"))]

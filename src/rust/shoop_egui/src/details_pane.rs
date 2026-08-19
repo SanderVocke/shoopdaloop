@@ -54,16 +54,17 @@ impl DetailsPane {
             .id_salt("details_media")
             .scroll_source(crate::control_safe_scroll_source())
             .show(ui, |ui| {
-                for (channel, waveform) in details.channels.iter().zip(&mut self.waveforms) {
-                    waveform.show(ui, channel);
-                    ui.add_space(4.0);
-                }
-                for (channel, sequence) in
-                    details.midi_channels.iter().zip(&mut self.midi_sequences)
-                {
-                    sequence.show(ui, channel);
-                    ui.add_space(4.0);
-                }
+                ui.spacing_mut().item_spacing.y = 0.0;
+                ui.vertical(|ui| {
+                    for (channel, waveform) in details.channels.iter().zip(&mut self.waveforms) {
+                        waveform.show(ui, channel);
+                    }
+                    for (channel, sequence) in
+                        details.midi_channels.iter().zip(&mut self.midi_sequences)
+                    {
+                        sequence.show(ui, channel);
+                    }
+                });
             });
         Vec::new()
     }
