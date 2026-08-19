@@ -620,7 +620,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> Vec<TrackAction> {
         let mut actions = Vec::new();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -631,6 +631,7 @@ mod tests {
             },
             |ui| actions = editor.show(ui.ctx(), state, Some(processor)),
         );
+        ignored_output_0.textures_delta.clear();
         actions
     }
 
@@ -705,7 +706,7 @@ mod tests {
                    first: &mut TinySynthFxEditor,
                    second: &mut TinySynthFxEditor| {
             let mut actions = (Vec::new(), Vec::new());
-            let _ = context.run_ui(
+            let mut ignored_output_1 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -719,6 +720,7 @@ mod tests {
                     actions.1 = second.show(ui.ctx(), &second_state, Some(&processor));
                 },
             );
+            ignored_output_1.textures_delta.clear();
             actions
         };
         assert_eq!(run(Vec::new(), &mut first, &mut second), (vec![], vec![]));

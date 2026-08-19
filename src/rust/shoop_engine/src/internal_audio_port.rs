@@ -121,7 +121,7 @@ impl InternalAudioPort {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn port(n: usize) -> InternalAudioPort {
         InternalAudioPort::new(
@@ -240,7 +240,7 @@ mod tests {
     fn process_grows_the_buffer_if_needed() {
         let mut p = port(2);
         // Process a longer cycle than the port was built for.
-        let_assert!(() = p.process(8));
+        assert2::assert!(let () = p.process(8));
         check!(p.buffer(8).len() == 8);
     }
 

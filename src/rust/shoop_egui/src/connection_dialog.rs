@@ -1877,13 +1877,14 @@ mod tests {
         let mut dialog = ConnectionDialog::default();
         dialog.open(ConnectionScope::AllTracks);
         for size in [egui::vec2(360.0, 220.0), egui::vec2(1100.0, 700.0)] {
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
                 },
                 |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
             );
+            output.textures_delta.clear();
             assert!(output.shapes.len() > 10);
             assert_eq!(dialog.endpoint_rects.len(), 6);
             assert_eq!(dialog.route_points.len(), 1);
@@ -1911,7 +1912,7 @@ mod tests {
         let mut dialog = ConnectionDialog::default();
         dialog.open(ConnectionScope::AllTracks);
         let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1100.0, 700.0));
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(screen_rect),
                 time: Some(0.0),
@@ -1919,7 +1920,8 @@ mod tests {
             },
             |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
         );
-        let output = context.run_ui(
+        ignored_output_0.textures_delta.clear();
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(screen_rect),
                 time: Some(1.0),
@@ -1927,6 +1929,7 @@ mod tests {
             },
             |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
         );
+        output.textures_delta.clear();
         fn collect_text(shape: &egui::Shape, painted: &mut Vec<(String, egui::Color32)>) {
             match shape {
                 egui::Shape::Text(text) => painted.push((
@@ -2002,26 +2005,29 @@ mod tests {
         dialog.open(ConnectionScope::AllTracks);
 
         Arc::make_mut(&mut state.connections).loading = true;
-        let loading = context.run_ui(Default::default(), |ui| {
+        let mut loading = context.run_ui(Default::default(), |ui| {
             assert!(dialog.show(ui.ctx(), &state).is_empty());
         });
+        loading.textures_delta.clear();
         assert!(loading.shapes.len() > 2);
         assert!(dialog.endpoint_rects.is_empty());
 
         let connections = Arc::make_mut(&mut state.connections);
         connections.loading = false;
         connections.backend_available = false;
-        let unavailable = context.run_ui(Default::default(), |ui| {
+        let mut unavailable = context.run_ui(Default::default(), |ui| {
             assert!(dialog.show(ui.ctx(), &state).is_empty());
         });
+        unavailable.textures_delta.clear();
         assert!(unavailable.shapes.len() > 10);
         assert_eq!(dialog.endpoint_rects.len(), 6);
 
         dialog.filters.audio = false;
         dialog.filters.midi = false;
-        let filtered = context.run_ui(Default::default(), |ui| {
+        let mut filtered = context.run_ui(Default::default(), |ui| {
             assert!(dialog.show(ui.ctx(), &state).is_empty());
         });
+        filtered.textures_delta.clear();
         assert!(filtered.shapes.len() > 2);
         assert!(dialog.endpoint_rects.is_empty());
         assert!(dialog.route_points.is_empty());
@@ -2044,7 +2050,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> Vec<AppIntent> {
         let mut intents = Vec::new();
-        let _ = context.run_ui(
+        let mut ignored_output_1 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                 events,
@@ -2052,6 +2058,7 @@ mod tests {
             },
             |ui| intents = dialog.show(ui.ctx(), state),
         );
+        ignored_output_1.textures_delta.clear();
         intents
     }
 
@@ -2525,7 +2532,7 @@ mod tests {
         };
         let mut dialog = ConnectionDialog::default();
         dialog.open(ConnectionScope::AllTracks);
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -2535,6 +2542,7 @@ mod tests {
             },
             |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
         );
+        output.textures_delta.clear();
         assert!(output.shapes.len() > 100);
         assert_eq!(dialog.endpoint_rects.len(), 160);
         assert_eq!(dialog.route_points.len(), 40);
@@ -2547,15 +2555,17 @@ mod tests {
         let state = state();
         let mut dialog = ConnectionDialog::default();
         dialog.open(ConnectionScope::Track(TrackId::from_raw(999)));
-        let stale = context.run_ui(Default::default(), |ui| {
+        let mut stale = context.run_ui(Default::default(), |ui| {
             assert!(dialog.show(ui.ctx(), &state).is_empty());
         });
+        stale.textures_delta.clear();
         assert!(stale.shapes.len() > 2);
         assert!(dialog.endpoint_rects.is_empty());
         dialog.filters.tracks = TrackFilter::All;
-        let recovered = context.run_ui(Default::default(), |ui| {
+        let mut recovered = context.run_ui(Default::default(), |ui| {
             assert!(dialog.show(ui.ctx(), &state).is_empty());
         });
+        recovered.textures_delta.clear();
         assert!(recovered.shapes.len() > 10);
         assert!(!dialog.endpoint_rects.is_empty());
     }
@@ -2569,9 +2579,10 @@ mod tests {
         Arc::make_mut(&mut state.connections).confirmed_links = Arc::from([]);
         let mut dialog = ConnectionDialog::default();
         dialog.open(ConnectionScope::AllTracks);
-        let output = context.run_ui(Default::default(), |ui| {
+        let mut output = context.run_ui(Default::default(), |ui| {
             assert!(dialog.show(ui.ctx(), &state).is_empty());
         });
+        output.textures_delta.clear();
         assert!(output.shapes.len() > 5);
         assert_eq!(dialog.endpoint_rects.len(), 3);
     }

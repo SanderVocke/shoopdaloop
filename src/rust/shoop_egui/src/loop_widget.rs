@@ -1159,7 +1159,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> LoopWidgetResponse {
         let mut response = LoopWidgetResponse::default();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1171,6 +1171,7 @@ mod tests {
             },
             |ui| response = widget.show(ui, state, egui::vec2(180.0, 26.0)),
         );
+        ignored_output_0.textures_delta.clear();
         response
     }
 
@@ -1182,7 +1183,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> LoopWidgetResponse {
         let mut response = LoopWidgetResponse::default();
-        let _ = context.run_ui(
+        let mut ignored_output_1 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1200,6 +1201,7 @@ mod tests {
                 response = widget.show(ui, state, egui::vec2(180.0, 26.0));
             },
         );
+        ignored_output_1.textures_delta.clear();
         response
     }
 
@@ -1324,7 +1326,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> LoopWidgetResponse {
         let mut response = LoopWidgetResponse::default();
-        let _ = context.run_ui(
+        let mut ignored_output_2 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1336,6 +1338,7 @@ mod tests {
             },
             |ui| widget.show_context_menu(ui, state, &mut response),
         );
+        ignored_output_2.textures_delta.clear();
         response
     }
 
@@ -1347,7 +1350,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> [LoopWidgetResponse; 2] {
         let mut responses = std::array::from_fn(|_| LoopWidgetResponse::default());
-        let _ = context.run_ui(
+        let mut ignored_output_3 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1364,6 +1367,7 @@ mod tests {
                 }
             },
         );
+        ignored_output_3.textures_delta.clear();
         responses
     }
 
@@ -1744,7 +1748,7 @@ mod tests {
         let mut widget = LoopWidget::default();
         let state = state();
         let mut initial_response = LoopWidgetResponse::default();
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1755,6 +1759,7 @@ mod tests {
             },
             |ui| widget.show_context_menu(ui, &state, &mut initial_response),
         );
+        output.textures_delta.clear();
         let painted_text = output
             .shapes
             .iter()

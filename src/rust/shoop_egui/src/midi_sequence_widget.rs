@@ -288,7 +288,7 @@ mod tests {
             Arc::from([]),
             Arc::from([event(1, &[0x90, 60, 100]), event(10, &[0x80, 60, 0])]),
         ] {
-            let output = context.run_ui(Default::default(), |ui| {
+            let mut output = context.run_ui(Default::default(), |ui| {
                 widget.show(
                     ui,
                     &MidiSequenceChannelState {
@@ -299,6 +299,7 @@ mod tests {
                     },
                 );
             });
+            output.textures_delta.clear();
             assert!(!output.shapes.is_empty());
         }
     }

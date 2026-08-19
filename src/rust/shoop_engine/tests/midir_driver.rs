@@ -6,7 +6,7 @@
 
 #![cfg(all(feature = "midir", unix))]
 
-use assert2::{check, let_assert};
+use assert2::check;
 use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::external_midi_port::ExternalMidiPort;
 use shoop_engine::loop_mode::LoopMode;
@@ -88,10 +88,10 @@ fn captured_midi_is_recorded_by_a_loop() {
         PortDirection::Input,
     )));
     let l = s.create_loop();
-    let_assert!(Ok(c) = s.add_midi_channel(l, 256, ChannelMode::Direct));
-    let_assert!(Ok(()) = s.connect_channel_input(c, input));
-    let_assert!(Ok(()) = s.apply_graph_changes());
-    let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+    assert2::assert!(let Ok(c) = s.add_midi_channel(l, 256, ChannelMode::Direct));
+    assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+    assert2::assert!(let Ok(()) = s.apply_graph_changes());
+    assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
 
     // Send two messages over the real connection.
     let mut sender = ExternalMidiPort::new("sender", PortDirection::Output);
@@ -120,7 +120,7 @@ fn captured_midi_is_recorded_by_a_loop() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
 
-    let_assert!(Some(ch) = s.loop_(l).and_then(|l| l.midi_channel(0)));
+    assert2::assert!(let Some(ch) = s.loop_(l).and_then(|l| l.midi_channel(0)));
     check!(ch.n_events() == 2, "the loop did not record both messages");
     let contents = ch.contents();
     check!(contents[0].data() == midi::note_on(0, 62, 90).as_slice());

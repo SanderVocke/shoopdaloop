@@ -1072,29 +1072,28 @@ mod tests {
         widget: &mut CompositeLoopWidget,
         loop_id: LoopId,
         state: &CompositeDetailsState,
-        events: Vec<egui::Event>,
+        mut events: Vec<egui::Event>,
     ) -> Vec<AppIntent> {
-        let modifiers = events
-            .iter()
-            .rev()
-            .find_map(|event| match event {
-                egui::Event::PointerButton { modifiers, .. } => Some(*modifiers),
-                _ => None,
-            })
-            .unwrap_or(egui::Modifiers::NONE);
+        let modifiers = events.iter().rev().find_map(|event| match event {
+            egui::Event::PointerButton { modifiers, .. } => Some(*modifiers),
+            _ => None,
+        });
+        if let Some(modifiers) = modifiers {
+            events.insert(0, egui::Event::ModifiersChanged(modifiers));
+        }
         let mut intents = Vec::new();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
                     egui::vec2(500.0, 220.0),
                 )),
-                modifiers,
                 events,
                 ..Default::default()
             },
             |ui| intents = widget.show(ui, loop_id, state),
         );
+        ignored_output_0.textures_delta.clear();
         intents
     }
 
@@ -1723,9 +1722,10 @@ mod tests {
     fn empty_composite_paints_an_explicit_schedule_message() {
         let context = egui::Context::default();
         let mut widget = CompositeLoopWidget::default();
-        let output = context.run_ui(Default::default(), |ui| {
+        let mut output = context.run_ui(Default::default(), |ui| {
             widget.show(ui, LoopId::from_raw(8), &details(Vec::new()));
         });
+        output.textures_delta.clear();
         assert!(output.shapes.iter().any(|shape| match &shape.shape {
             egui::Shape::Text(text) => text.galley.job.text.contains("schedule is empty"),
             _ => false,
@@ -1739,13 +1739,14 @@ mod tests {
         crate::fonts::initialize(&context);
         let mut forced = event(1, 1, 0, 100);
         forced.forced_n_cycles = Some(1);
-        let output = context.run_ui(Default::default(), |ui| {
+        let mut output = context.run_ui(Default::default(), |ui| {
             CompositeLoopWidget::default().show(
                 ui,
                 LoopId::from_raw(8),
                 &details(vec![forced.clone()]),
             );
         });
+        output.textures_delta.clear();
         assert!(output.shapes.iter().any(|shape| match &shape.shape {
             egui::Shape::Text(text) => text.galley.job.text == ICON_LOCK_CLOCK.codepoint,
             _ => false,
@@ -1778,7 +1779,7 @@ mod tests {
         let context = egui::Context::default();
         let state = details(vec![event(1, 1, 0, 300), event(2, 1, 100, 200)]);
         let mut widget = CompositeLoopWidget::default();
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1790,6 +1791,7 @@ mod tests {
                 widget.show(ui, LoopId::from_raw(9), &state);
             },
         );
+        output.textures_delta.clear();
         assert!(!output.shapes.is_empty());
         assert_eq!(
             widget
@@ -1803,14 +1805,16 @@ mod tests {
         assert!(widget.content_size.x > 360.0);
         let initial_width = widget.rendered_events[0].1.width();
         widget.cycle_width = DEFAULT_CYCLE_WIDTH * 2.0;
-        let _ = context.run_ui(Default::default(), |ui| {
+        let mut ignored_output_1 = context.run_ui(Default::default(), |ui| {
             widget.show(ui, LoopId::from_raw(9), &state);
         });
+        ignored_output_1.textures_delta.clear();
         assert!(widget.rendered_events[0].1.width() > initial_width * 1.9);
         widget.cycle_width = MAX_CYCLE_WIDTH + 100.0;
-        let _ = context.run_ui(Default::default(), |ui| {
+        let mut ignored_output_2 = context.run_ui(Default::default(), |ui| {
             widget.show(ui, LoopId::from_raw(9), &state);
         });
+        ignored_output_2.textures_delta.clear();
         assert!(widget.cycle_width <= MAX_CYCLE_WIDTH);
     }
 
@@ -1841,7 +1845,7 @@ mod tests {
         for size in [egui::vec2(360.0, 150.0), egui::vec2(900.0, 300.0)] {
             let context = egui::Context::default();
             let mut widget = CompositeLoopWidget::default();
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -1850,6 +1854,7 @@ mod tests {
                     widget.show(ui, LoopId::from_raw(10), &state);
                 },
             );
+            output.textures_delta.clear();
             assert!(!output.shapes.is_empty());
             assert_eq!(widget.rendered_events.len(), 16);
             assert!(widget.content_size.x > size.x);
@@ -1903,9 +1908,10 @@ mod tests {
         let mut script = regular;
         script.kind = CompositeKind::Script;
         script.events[0].mode = Some("recording".to_owned());
-        let output = context.run_ui(Default::default(), |ui| {
+        let mut output = context.run_ui(Default::default(), |ui| {
             widget.show(ui, loop_id, &script);
         });
+        output.textures_delta.clear();
         assert!(output.shapes.iter().any(|shape| match &shape.shape {
             egui::Shape::Text(text) => text.galley.job.text.contains("Loop 1 · Record"),
             _ => false,

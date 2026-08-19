@@ -236,7 +236,7 @@ impl<T: Copy + Default> ChunkedSamples<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     #[shoop_wasm_test_support::shoop_test]
     fn starts_with_one_chunk() {
@@ -268,7 +268,7 @@ mod tests {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.ensure_available(9);
         for i in 0..12 {
-            let_assert!(Some(v) = s.get_mut(i));
+            assert2::assert!(let Some(v) = s.get_mut(i));
             *v = i as f32;
         }
         for i in 0..12 {
@@ -290,9 +290,9 @@ mod tests {
     fn chunk_slice_stops_at_chunk_boundary() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.ensure_available(7);
-        let_assert!(Some(sl) = s.chunk_slice(2));
+        assert2::assert!(let Some(sl) = s.chunk_slice(2));
         check!(sl.len() == 2);
-        let_assert!(Some(sl) = s.chunk_slice(4));
+        assert2::assert!(let Some(sl) = s.chunk_slice(4));
         check!(sl.len() == 4);
         check!(s.chunk_slice(8) == None);
     }

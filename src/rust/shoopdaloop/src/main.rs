@@ -635,9 +635,7 @@ impl UnifiedApp {
     fn handle_dropped_files(&mut self, context: &egui::Context) {
         let files = context.input(|input| input.raw.dropped_files.clone());
         for file in files {
-            let Some(path) = file.path else {
-                continue;
-            };
+            let path = file.path();
             if !path
                 .file_name()
                 .and_then(|name| name.to_str())
@@ -645,7 +643,7 @@ impl UnifiedApp {
             {
                 continue;
             }
-            match load_ephemeral_script_path(&path) {
+            match load_ephemeral_script_path(path) {
                 Ok((name, source, source_path)) => {
                     self.widget
                         .queue_ephemeral_script_from_path(name, source, Some(source_path))
@@ -664,12 +662,25 @@ impl UnifiedApp {
     fn handle_dropped_files(&mut self, context: &egui::Context) {
         let files = context.input(|input| input.raw.dropped_files.clone());
         for file in files {
-            if !is_lua_file_name(&file.name) {
+            let Some(name) = file
+                .path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_owned)
+            else {
+                continue;
+            };
+            if !is_lua_file_name(&name) {
                 continue;
             }
-            if let Some(bytes) = file.bytes {
-                self.queue_ephemeral_script_bytes(file.name, &bytes);
-            }
+            let pending = Rc::clone(&self.pending_ephemeral_files);
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(bytes) = file.bytes_async().await {
+                    pending
+                        .borrow_mut()
+                        .push_back(BrowserEphemeralFile { name, bytes });
+                }
+            });
         }
     }
 
@@ -4855,7 +4866,7 @@ mod tests {
             assert_eq!(snapshot.tracks.len(), 1);
             assert!(snapshot.tracks[0].is_sync);
             assert_eq!(snapshot.tracks[0].loops.len(), 1);
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -4863,6 +4874,7 @@ mod tests {
                 |ui| app.show(ui),
             );
             assert!(!output.shapes.is_empty());
+            output.textures_delta.clear();
         }
     }
 
@@ -4960,7 +4972,7 @@ mod tests {
         else {
             panic!("expected callback button");
         };
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -4971,6 +4983,7 @@ mod tests {
             |ui| app.show(ui),
         );
         assert!(!output.shapes.is_empty());
+        output.textures_delta.clear();
         app.runtime
             .dispatch(AppIntent::InvokeScriptDialogButton {
                 script_id: owner,

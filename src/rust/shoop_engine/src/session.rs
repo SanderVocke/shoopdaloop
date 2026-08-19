@@ -3159,7 +3159,7 @@ mod tests {
     use crate::dummy_port::PortId;
     use crate::midi;
     use crate::port::{PortConnectability, PortDirection};
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn internal(name: &str, n: usize) -> Port {
         Port::Internal(InternalAudioPort::new(
@@ -3192,7 +3192,7 @@ mod tests {
         s.process(4);
         check!(s.n_stale_cycles() == 1);
 
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         check!(s.graph_up_to_date());
         s.process(4);
         check!(s.n_stale_cycles() == 1);
@@ -3204,16 +3204,16 @@ mod tests {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .audio_channel_mut(0)
             .unwrap()
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         s.process(4);
         check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
@@ -3240,13 +3240,13 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn a_change_arriving_during_a_build_leaves_the_graph_stale() {
         let mut s = Session::default();
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         let topology = s.describe_topology();
         // After the description was taken, so no schedule built from it can contain it.
         let _added = s.add_port(internal("added-mid-build", 4));
 
-        let_assert!(Ok(prepared) = build_schedule(topology));
+        assert2::assert!(let Ok(prepared) = build_schedule(topology));
         let displaced = s.install_schedule(prepared);
         drop(displaced);
 
@@ -3255,7 +3255,7 @@ mod tests {
             "a schedule that predates the change must not mark the graph current"
         );
         // And the follow-up rebuild does bring it current.
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         check!(s.graph_up_to_date());
     }
 
@@ -3265,7 +3265,7 @@ mod tests {
         s.add_port(internal("p", 4));
         check!(!s.graph_up_to_date());
 
-        let_assert!(Ok(prepared) = build_schedule(s.describe_topology()));
+        assert2::assert!(let Ok(prepared) = build_schedule(s.describe_topology()));
         drop(s.install_schedule(prepared));
 
         check!(s.graph_up_to_date());
@@ -3284,23 +3284,23 @@ mod tests {
         let output = s.add_port(internal("out", 4));
         let doomed = s.add_port(internal("doomed", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .audio_channel_mut(0)
             .unwrap()
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         // Describe first, then tear things out behind the build's back.
         let topology = s.describe_topology();
-        let_assert!(Ok(()) = s.remove_port(doomed));
-        let_assert!(Ok(()) = s.remove_loop(l));
+        assert2::assert!(let Ok(()) = s.remove_port(doomed));
+        assert2::assert!(let Ok(()) = s.remove_loop(l));
 
-        let_assert!(Ok(prepared) = build_schedule(topology));
+        assert2::assert!(let Ok(prepared) = build_schedule(topology));
         drop(s.install_schedule(prepared));
 
         // Runs against a schedule describing entities that have since been disabled, and
@@ -3320,18 +3320,18 @@ mod tests {
     fn a_port_added_mid_stream_is_fed_but_not_yet_processed() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .audio_channel_mut(0)
             .unwrap()
             .load_data(&[2.0, 2.0, 2.0, 2.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         let late = s.add_port(internal("late", 4));
-        let_assert!(Ok(()) = s.connect_channel_output(c, late));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, late));
         s.port_mut(late).unwrap().audio_mut().unwrap().set_gain(0.5);
 
         s.process(4);
@@ -3339,7 +3339,7 @@ mod tests {
         check!(s.port_mut(late).unwrap().buffer(4).to_vec() == vec![2.0; 4]);
         check!(s.n_stale_cycles() == 1);
 
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.process(4);
         // Now the port is scheduled: cleared at the top of the cycle, gained at the end.
         check!(s.port_mut(late).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
@@ -3353,17 +3353,17 @@ mod tests {
         let from = s.add_port(internal("from", 4));
         let to = s.add_port(internal("to", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, from));
-        let_assert!(Ok(()) = s.connect_ports_internal(from, to));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, from));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(from, to));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .audio_channel_mut(0)
             .unwrap()
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         s.process(4);
         check!(s.port_mut(to).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
@@ -3383,12 +3383,12 @@ mod tests {
         let mut s = Session::default();
         let p = s.add_port(internal("p", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
         let (ports, loops, channels) = (s.n_ports(), s.n_loops(), s.n_channels());
 
-        let_assert!(Ok(()) = s.remove_channel(c, ChannelKind::Audio));
-        let_assert!(Ok(()) = s.remove_port(p));
-        let_assert!(Ok(()) = s.remove_loop(l));
+        assert2::assert!(let Ok(()) = s.remove_channel(c, ChannelKind::Audio));
+        assert2::assert!(let Ok(()) = s.remove_port(p));
+        assert2::assert!(let Ok(()) = s.remove_loop(l));
 
         check!(s.n_ports() == ports);
         check!(s.n_loops() == loops);
@@ -3399,7 +3399,7 @@ mod tests {
     fn wiring_rejects_unknown_indices() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
         check!(s.connect_channel_input(c, 9) == Err(SessionError::NoSuchPort(9)));
         check!(s.connect_ports_internal(0, 0) == Err(SessionError::NoSuchPort(0)));
         check!(s.add_audio_channel(9, 4, ChannelMode::Direct) == Err(SessionError::NoSuchLoop(9)));
@@ -3413,12 +3413,12 @@ mod tests {
         let mut s = Session::default();
         let p1 = s.add_port(internal("p1", 4));
         let p2 = s.add_port(internal("p2", 4));
-        let_assert!(Ok(()) = s.connect_ports_internal(p1, p2));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(p1, p2));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, p1));
-        let_assert!(Ok(()) = s.connect_channel_output(c, p2));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, p1));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, p2));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         check!(
             s.schedule_names()
@@ -3441,10 +3441,10 @@ mod tests {
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let output = s.add_port(dummy(2, "out", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // Feed four samples and record them.
         s.port_mut(input)
@@ -3452,7 +3452,7 @@ mod tests {
             .as_dummy_mut()
             .unwrap()
             .queue_data(&[1.0, 2.0, 3.0, 4.0]);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().length() == 4);
@@ -3464,7 +3464,7 @@ mod tests {
             .as_dummy_mut()
             .unwrap()
             .request_data(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         s.process(4);
 
         let got = s
@@ -3473,7 +3473,7 @@ mod tests {
             .as_dummy_mut()
             .unwrap()
             .dequeue_data(4);
-        let_assert!(Ok(samples) = got);
+        assert2::assert!(let Ok(samples) = got);
         check!(samples == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
@@ -3785,11 +3785,11 @@ mod tests {
         let mut s = Session::default();
         let output = s.add_port(dummy(1, "out", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![0.0, 0.0, 0.0, 0.0]);
     }
@@ -3799,9 +3799,9 @@ mod tests {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -3809,7 +3809,7 @@ mod tests {
             .unwrap()
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         s.process(4);
 
         // The port started silent (prepare clears it), so playback is what is there.
@@ -3822,11 +3822,11 @@ mod tests {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c1) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(c2) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c1, output));
-        let_assert!(Ok(()) = s.connect_channel_output(c2, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c1) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(c2) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c1, output));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c2, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -3839,7 +3839,7 @@ mod tests {
             .unwrap()
             .load_data(&[10.0, 10.0, 10.0, 10.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         s.process(4);
 
         // Both channels contribute: the second must add onto the first, not
@@ -3854,11 +3854,11 @@ mod tests {
         let out_a = s.add_port(internal("outA", 4));
         let out_b = s.add_port(internal("outB", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c1) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(c2) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c1, out_a));
-        let_assert!(Ok(()) = s.connect_channel_output(c2, out_b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c1) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(c2) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c1, out_a));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c2, out_b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -3871,7 +3871,7 @@ mod tests {
             .unwrap()
             .load_data(&[10.0, 10.0, 10.0, 10.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         s.process(4);
 
         // Each port gets only its own channel. Reusing routing scratch across
@@ -3885,17 +3885,17 @@ mod tests {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(with_input) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(_without) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(with_input, input));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(with_input) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(_without) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(with_input, input));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(input)
             .unwrap()
             .as_dummy_mut()
             .unwrap()
             .queue_data(&[5.0, 6.0, 7.0, 8.0]);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![5.0, 6.0, 7.0, 8.0]);
@@ -3919,18 +3919,18 @@ mod tests {
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let output = s.add_port(dummy(2, "out", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
         s.loop_mut(l)
             .expect("loop")
             .audio_channel_mut(0)
             .expect("channel")
             .load_data(&[1.0; 64]);
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-        let_assert!(Ok(()) = s.remove_audio_channel(c));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.remove_audio_channel(c));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         let ch = s.loop_(l).expect("loop").audio_channel(0).expect("channel");
         check!(ch.mode() == ChannelMode::Disabled);
@@ -3945,10 +3945,10 @@ mod tests {
         let source = s.create_loop();
         let follower = s.create_loop();
         s.loop_mut(source).expect("loop").set_length(64);
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, Some(source)));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, Some(source)));
         check!(s.sync_source_of(follower) == Some(source));
 
-        let_assert!(Ok(()) = s.remove_loop(source));
+        assert2::assert!(let Ok(()) = s.remove_loop(source));
 
         // The trap: a follower left syncing to a removed loop waits for triggers that never come,
         // so its planned transitions never land and it looks simply broken.
@@ -3960,14 +3960,14 @@ mod tests {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
         s.loop_mut(l).expect("loop").set_length(64);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-        let_assert!(Ok(()) = s.remove_loop(l));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.remove_loop(l));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         check!(s.loop_(l).expect("loop").mode() == LoopMode::Stopped);
         check!(s.loop_(l).expect("loop").length() == 0);
@@ -3981,16 +3981,16 @@ mod tests {
         let a = s.add_port(internal("a", 4));
         let b = s.add_port(internal("b", 4));
         let c_port = s.add_port(internal("c", 4));
-        let_assert!(Ok(()) = s.connect_ports_internal(a, b));
-        let_assert!(Ok(()) = s.connect_ports_internal(b, c_port));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(a, b));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(b, c_port));
 
         let l = s.create_loop();
-        let_assert!(Ok(ch) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(ch, b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(ch) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(ch, b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-        let_assert!(Ok(()) = s.remove_port(b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.remove_port(b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // Neither what b fed nor what fed b remains, and the channel no longer reads it.
         s.process(4);
@@ -4009,10 +4009,10 @@ mod tests {
     fn removing_a_midi_channel_as_audio_is_refused() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
         // Asking for the wrong kind should fail rather than silently disabling the wrong thing.
         check!(s.remove_audio_channel(c).is_err());
-        let_assert!(Ok(()) = s.remove_midi_channel(c));
+        assert2::assert!(let Ok(()) = s.remove_midi_channel(c));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -4022,10 +4022,10 @@ mod tests {
         let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
         let output = s.add_port(dummy_midi(2, "mout", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(input)
             .unwrap()
@@ -4037,16 +4037,16 @@ mod tests {
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(2, &midi::note_off(0, 60, 64));
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 2);
 
         // Play it back and capture what leaves the output port.
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         let d = s.port_mut(output).unwrap().as_dummy_midi_mut().unwrap();
-        let_assert!(Ok(()) = d.request_data(4));
+        assert2::assert!(let Ok(()) = d.request_data(4));
         s.process(4);
 
         let got = s
@@ -4066,9 +4066,9 @@ mod tests {
         let mut s = Session::default();
         let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .midi_channel_mut(0)
@@ -4093,7 +4093,7 @@ mod tests {
             .unwrap()
             .queue_msg(3, &midi::note_off(0, 64, 0));
 
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Replacing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Replacing));
         s.process(4);
 
         let contents = s.loop_(l).unwrap().midi_channel(0).unwrap().contents();
@@ -4110,8 +4110,8 @@ mod tests {
         let mut s = Session::default();
         let source = s.add_port(dummy_midi(1, "source", PortDirection::Input));
         let target = s.add_port(dummy_midi(2, "target", PortDirection::Output));
-        let_assert!(Ok(()) = s.connect_ports_internal(source, target));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(source, target));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(source)
             .unwrap()
@@ -4180,9 +4180,9 @@ mod tests {
     fn a_midi_channel_without_ports_still_advances_the_loop() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(_) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.apply_graph_changes());
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(_) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
         check!(s.loop_(l).unwrap().length() == 4);
     }
@@ -4194,11 +4194,11 @@ mod tests {
         let audio_in = s.add_port(dummy(1, "ain", PortDirection::Input));
         let midi_in = s.add_port(dummy_midi(2, "min", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(ac) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(mc) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(ac, audio_in));
-        let_assert!(Ok(()) = s.connect_channel_input(mc, midi_in));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(ac) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(mc) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(ac, audio_in));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(mc, midi_in));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(audio_in)
             .unwrap()
@@ -4211,7 +4211,7 @@ mod tests {
             .unwrap()
             .queue_msg(2, &midi::note_on(0, 64, 1));
 
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![1.0, 2.0, 3.0, 4.0]);
@@ -4225,11 +4225,11 @@ mod tests {
         let in_a = s.add_port(dummy_midi(1, "inA", PortDirection::Input));
         let in_b = s.add_port(dummy_midi(2, "inB", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(ca) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(cb) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(ca, in_a));
-        let_assert!(Ok(()) = s.connect_channel_input(cb, in_b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(ca) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(cb) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(ca, in_a));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(cb, in_b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // Only port A carries a message; channel B must not pick it up.
         s.port_mut(in_a)
@@ -4237,7 +4237,7 @@ mod tests {
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(1, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
@@ -4251,18 +4251,18 @@ mod tests {
         let in_a = s.add_port(dummy_midi(1, "inA", PortDirection::Input));
         let l1 = s.create_loop();
         let l2 = s.create_loop();
-        let_assert!(Ok(c1) = s.add_midi_channel(l1, 64, ChannelMode::Direct));
-        let_assert!(Ok(_c2) = s.add_midi_channel(l2, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c1, in_a));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c1) = s.add_midi_channel(l1, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_c2) = s.add_midi_channel(l2, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c1, in_a));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(in_a)
             .unwrap()
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(1, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = s.set_loop_mode(l1, LoopMode::Recording));
-        let_assert!(Ok(()) = s.set_loop_mode(l2, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l1, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l2, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l1).unwrap().midi_channel(0).unwrap().n_events() == 1);
@@ -4276,16 +4276,16 @@ mod tests {
         let mut s = Session::default();
         let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(input)
             .unwrap()
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(1, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
         // A second cycle with no new arrivals must not re-record the first one.
         s.process(4);
@@ -4299,10 +4299,10 @@ mod tests {
         let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
         let output = s.add_port(dummy_midi(2, "mout", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(input)
             .unwrap()
@@ -4314,14 +4314,14 @@ mod tests {
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(2, &midi::note_off(0, 60, 64));
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         // Play twice over a length of 8, so the message sounds exactly once.
         s.loop_mut(l).unwrap().set_length(8);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         let d = s.port_mut(output).unwrap().as_dummy_midi_mut().unwrap();
-        let_assert!(Ok(()) = d.request_data(8));
+        assert2::assert!(let Ok(()) = d.request_data(8));
         s.process(4);
         s.process(4);
 
@@ -4343,9 +4343,9 @@ mod tests {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 8));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -4355,7 +4355,7 @@ mod tests {
         // Length 6, buffer 4: the first cycle ends 2 frames short of the wrap and
         // the second must split 2 + 2.
         s.loop_mut(l).unwrap().set_length(6);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         s.process(4);
         check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![1.0, 2.0, 3.0, 4.0]);
@@ -4377,9 +4377,9 @@ mod tests {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 8));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -4387,7 +4387,7 @@ mod tests {
             .unwrap()
             .load_data(&[1.0, 2.0]);
         s.loop_mut(l).unwrap().set_length(2);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         // Two-frame loop across a six-frame buffer: three passes in one cycle.
         s.process(6);
@@ -4405,11 +4405,11 @@ mod tests {
         let out_b = s.add_port(internal("outB", 8));
         let l1 = s.create_loop();
         let l2 = s.create_loop();
-        let_assert!(Ok(c1) = s.add_audio_channel(l1, 64, ChannelMode::Direct));
-        let_assert!(Ok(c2) = s.add_audio_channel(l2, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c1, out_a));
-        let_assert!(Ok(()) = s.connect_channel_output(c2, out_b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c1) = s.add_audio_channel(l1, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(c2) = s.add_audio_channel(l2, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c1, out_a));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c2, out_b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // Different lengths, so their wraps fall at different points and the
         // sub-block split has to accommodate both.
@@ -4425,8 +4425,8 @@ mod tests {
             .unwrap()
             .load_data(&[10.0, 20.0]);
         s.loop_mut(l2).unwrap().set_length(2);
-        let_assert!(Ok(()) = s.set_loop_mode(l1, LoopMode::Playing));
-        let_assert!(Ok(()) = s.set_loop_mode(l2, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l1, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l2, LoopMode::Playing));
 
         s.process(6);
         // Each loop repeats on its own length, sample-aligned throughout.
@@ -4443,15 +4443,15 @@ mod tests {
         let mut s = Session::default();
         let l1 = s.create_loop();
         let l2 = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(l1, 4, ChannelMode::Direct));
-        let_assert!(Ok(_) = s.add_audio_channel(l2, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(_) = s.add_audio_channel(l1, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(l2, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         let loop_step = s
             .schedule_names()
             .into_iter()
             .find(|step| step.iter().any(|n| n == "loop::process"));
-        let_assert!(Some(step) = loop_step);
+        assert2::assert!(let Some(step) = loop_step);
         check!(step.len() == 2);
     }
 
@@ -4459,8 +4459,8 @@ mod tests {
     fn a_loop_with_no_sync_source_transitions_immediately() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l).unwrap().set_length(4);
 
         // No sync source: a planned transition takes effect at once.
@@ -4475,10 +4475,10 @@ mod tests {
         let mut s = Session::default();
         let sync = s.create_loop();
         let follower = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(sync, 64, ChannelMode::Direct));
-        let_assert!(Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(_) = s.add_audio_channel(sync, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         check!(s.sync_source_of(follower) == Some(sync));
 
         // A two-frame sync loop playing, so it triggers every two frames.
@@ -4488,7 +4488,7 @@ mod tests {
             .unwrap()
             .load_data(&[1.0, 1.0]);
         s.loop_mut(sync).unwrap().set_length(2);
-        let_assert!(Ok(()) = s.set_loop_mode(sync, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(sync, LoopMode::Playing));
 
         s.loop_mut(follower).unwrap().set_length(8);
         // Having a sync source, the transition is queued rather than immediate.
@@ -4507,10 +4507,10 @@ mod tests {
         let mut s = Session::default();
         let sync = s.create_loop();
         let follower = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(sync, 64, ChannelMode::Direct));
-        let_assert!(Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(_) = s.add_audio_channel(sync, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // The sync loop is stopped, so it never triggers.
         s.loop_mut(sync).unwrap().set_length(100);
@@ -4529,13 +4529,13 @@ mod tests {
         let mut s = Session::default();
         let sync = s.create_loop();
         let follower = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
         check!(s.sync_source_of(follower) == Some(sync));
 
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, None));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, None));
         check!(s.sync_source_of(follower) == None);
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(follower).unwrap().set_length(4);
         s.loop_mut(follower)
@@ -4549,17 +4549,17 @@ mod tests {
         let mut s = Session::default();
         let a = s.create_loop();
         let b = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(a, 64, ChannelMode::Direct));
-        let_assert!(Ok(_) = s.add_audio_channel(b, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(a, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(b, 64, ChannelMode::Direct));
         // Mutual sync. Snapshots make this survivable; querying the source live,
-        let_assert!(Ok(()) = s.set_loop_sync_source(a, Some(b)));
-        let_assert!(Ok(()) = s.set_loop_sync_source(b, Some(a)));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(a, Some(b)));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(b, Some(a)));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(a).unwrap().set_length(4);
         s.loop_mut(b).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(a, LoopMode::Playing));
-        let_assert!(Ok(()) = s.set_loop_mode(b, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(a, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(b, LoopMode::Playing));
         s.process(4);
         check!(s.n_stuck_cycles() == 0);
     }
@@ -4569,15 +4569,15 @@ mod tests {
         let mut s = Session::default();
         for _ in 0..3 {
             let l = s.create_loop();
-            let_assert!(Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+            assert2::assert!(let Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
         }
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         // loop node to every loop's co-process callback.
         let step = s
             .schedule_names()
             .into_iter()
             .find(|st| st.iter().any(|n| n == "loop::process"));
-        let_assert!(Some(step) = step);
+        assert2::assert!(let Some(step) = step);
         check!(step.len() == 3);
     }
 
@@ -4586,8 +4586,8 @@ mod tests {
         let mut s = Session::default();
         let a = s.add_port(internal("a", 4));
         let b = s.add_port(internal("b", 4));
-        let_assert!(Ok(()) = s.connect_ports_internal(a, b));
-        let_assert!(Ok(()) = s.connect_ports_internal(b, a));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(a, b));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(b, a));
         check!(s.apply_graph_changes() == Err(SessionError::Graph(GraphError::Cycle)));
     }
 
@@ -5155,14 +5155,14 @@ mod tests {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         let d = s.port_mut(input).unwrap().as_dummy_mut().unwrap();
         d.queue_data(&[1.0, 2.0]);
         d.queue_data(&[3.0, 4.0]);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(2);
         s.process(2);
 

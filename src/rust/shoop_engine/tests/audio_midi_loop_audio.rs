@@ -14,7 +14,7 @@
 //!   list instead of borrowing them from a shared pool, so only the chunk size
 //!   carries over.
 
-use assert2::{check, let_assert};
+use assert2::check;
 use shoop_engine::audio_midi_loop::AudioMidiLoop;
 use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::loop_mode::LoopMode;
@@ -32,7 +32,7 @@ fn neg_ramp(n: usize) -> Vec<f32> {
 /// `PROC_process`. Overrunning a point of interest is asserted separately, so this
 /// treats a failure as a broken test rather than an expected outcome.
 fn advance(l: &mut AudioMidiLoop, n: u32) {
-    let_assert!(Ok(()) = l.process::<Vec<MidiStorageElem>>(n, &[], &mut []));
+    assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(n, &[], &mut []));
 }
 
 /// `PROC_finalize_process` for one channel, with this cycle's port buffers.

@@ -124,7 +124,7 @@ impl MidiSortingBuffer {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn buf() -> MidiSortingBuffer {
         MidiSortingBuffer::with_capacity(8)
@@ -153,7 +153,7 @@ mod tests {
         b.sort();
         check!(b.is_sorted());
         check!(times(&b) == vec![5]);
-        let_assert!(Some(e) = b.event(0));
+        assert2::assert!(let Some(e) = b.event(0));
         check!(e.time == 5);
     }
 

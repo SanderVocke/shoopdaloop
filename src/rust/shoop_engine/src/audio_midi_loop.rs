@@ -410,7 +410,7 @@ impl AudioMidiLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     use ChannelMode as C;
     use LoopMode as L;
@@ -433,7 +433,7 @@ mod tests {
         let mut src = input.to_vec();
         src.resize(n, 0.0);
         let mut out = vec![0.0; n];
-        let_assert!(Ok(()) = l.process::<Vec<MidiStorageElem>>(n as u32, &[], &mut []));
+        assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(n as u32, &[], &mut []));
         l.finalize_process(&mut [(&src, &mut out)]);
         out
     }
@@ -443,7 +443,7 @@ mod tests {
         let mut l = AudioMidiLoop::default();
         check!(l.mode() == L::Stopped);
         check!(l.next_poi() == None);
-        let_assert!(Ok(()) = l.process::<Vec<MidiStorageElem>>(1000, &[], &mut []));
+        assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(1000, &[], &mut []));
         check!(l.length() == 0);
         check!(l.position() == 0);
     }
@@ -470,7 +470,7 @@ mod tests {
         l.set_mode(L::Recording);
         cycle(&mut l, 4, &[1.0, 2.0, 3.0, 4.0]);
         check!(l.length() == 4);
-        let_assert!(Some(ch) = l.audio_channel(0));
+        assert2::assert!(let Some(ch) = l.audio_channel(0));
         check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
@@ -581,7 +581,7 @@ mod tests {
         check!(l.next_poi() == Some(8));
 
         let r = l.process::<Vec<MidiStorageElem>>(8, &[], &mut []);
-        let_assert!(
+        assert2::assert!(let
             Err(LoopError::Audio(
                 ChannelError::ReplaceInputOutOfBounds { .. }
             )) = r
@@ -602,7 +602,7 @@ mod tests {
             ch.set_playback_buffer_size(2);
         }
         l.resync_poi();
-        let_assert!(Ok(()) = l.process::<Vec<MidiStorageElem>>(2, &[], &mut []));
+        assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(2, &[], &mut []));
         let (a, b) = ([1.0f32, 2.0], [3.0f32, 4.0]);
         let (mut oa, mut ob) = (vec![0.0; 2], vec![0.0; 2]);
         l.finalize_process(&mut [(&a, &mut oa), (&b, &mut ob)]);
@@ -643,7 +643,7 @@ mod tests {
         // assigning them and before processing.
         l.resync_poi();
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = l.process(
                 4,
                 std::slice::from_ref(&input.to_vec()),
@@ -660,7 +660,7 @@ mod tests {
         l.midi_channel_mut(0).unwrap().set_playback_buffer(4);
         l.resync_poi();
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) =
                 l.process::<Vec<MidiStorageElem>>(4, &[Vec::new()], std::slice::from_mut(&mut out))
         );
@@ -715,7 +715,7 @@ mod tests {
 
         let mut out = Vec::new();
         let r = l.process::<Vec<MidiStorageElem>>(2, &[Vec::new()], std::slice::from_mut(&mut out));
-        let_assert!(Ok(()) = r);
+        assert2::assert!(let Ok(()) = r);
         check!(l.length() == 2);
     }
 

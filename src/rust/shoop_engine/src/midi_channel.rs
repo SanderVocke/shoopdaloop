@@ -1013,7 +1013,7 @@ impl MidiChannel {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     use ChannelMode as C;
     use LoopMode as L;
@@ -1039,7 +1039,7 @@ mod tests {
         ch.set_recording_buffer(n);
         ch.set_playback_buffer(n);
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 mode,
                 L::Unknown,
@@ -1085,7 +1085,7 @@ mod tests {
         ];
         let mut out = Vec::new();
         // Two 4-frame halves of one 8-frame cycle.
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Recording,
                 L::Unknown,
@@ -1099,7 +1099,7 @@ mod tests {
                 &mut out
             )
         );
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Recording,
                 L::Unknown,
@@ -1659,7 +1659,7 @@ mod tests {
         let mut ch = channel();
         ch.clear_buffers();
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Recording,
                 L::Unknown,
@@ -1695,7 +1695,7 @@ mod tests {
             &[],
             &mut out,
         );
-        let_assert!(
+        assert2::assert!(let
             Err(MidiChannelError::RecordOutOfBounds {
                 n_samples,
                 available
@@ -1723,7 +1723,7 @@ mod tests {
             &[],
             &mut out,
         );
-        let_assert!(
+        assert2::assert!(let
             Err(MidiChannelError::PlaybackOutOfBounds {
                 n_samples,
                 available
@@ -1765,7 +1765,7 @@ mod tests {
         ch.set_recording_buffer(4);
         ch.set_playback_buffer(4);
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Stopped,
                 L::Recording,
@@ -1786,7 +1786,7 @@ mod tests {
         // the start offset marks where sample 0 really is.
         ch.set_recording_buffer(4);
         ch.set_playback_buffer(4);
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Recording,
                 L::Unknown,
@@ -1815,7 +1815,7 @@ mod tests {
         ch.set_recording_buffer(4);
         ch.set_playback_buffer(4);
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Stopped,
                 L::Recording,

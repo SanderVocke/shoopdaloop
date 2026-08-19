@@ -280,7 +280,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> TracksWidgetResponse {
         let mut response = TracksWidgetResponse::default();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -291,6 +291,7 @@ mod tests {
             },
             |ui| response = widget.show(ui, tracks, &[]),
         );
+        ignored_output_0.textures_delta.clear();
         response
     }
 
@@ -310,7 +311,7 @@ mod tests {
                 false,
             ),
         ] {
-            let _ = context.run_ui(
+            let mut ignored_output_1 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -322,6 +323,7 @@ mod tests {
                     widget.show(ui, &tracks, &[]);
                 },
             );
+            ignored_output_1.textures_delta.clear();
             assert_eq!(widget.test_empty_prompt_shown, expected);
         }
     }
@@ -352,7 +354,7 @@ mod tests {
             .collect::<Vec<_>>();
         let mut widget = TracksWidget::default();
 
-        let _ = context.run_ui(
+        let mut ignored_output_2 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -364,6 +366,7 @@ mod tests {
                 widget.show(ui, &tracks, &[]);
             },
         );
+        ignored_output_2.textures_delta.clear();
 
         for track_widget in widget.track_widgets.values() {
             let (content, controls) = track_widget.test_layout_rects();

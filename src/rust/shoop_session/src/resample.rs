@@ -1,7 +1,8 @@
 use crate::archive::SessionError;
 use crate::document::{ExactMidi, LoopAudio, MediaPayload, SessionBundle};
 use rubato::{
-    Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
+    audioadapter_buffers::direct::SequentialSliceOfVecs, Async, FixedAsync, Resampler,
+    SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 
 const MIN_RATIO: f64 = 1.0 / 16.0;
@@ -188,25 +189,22 @@ fn resample_mono(input: &[f32], target_frames: usize) -> Result<Vec<f32>, Sessio
     let sinc_len = 48;
     let params = SincInterpolationParameters {
         sinc_len,
-        f_cutoff: 0.95,
+        f_cutoff: Some(0.95),
         interpolation: SincInterpolationType::Linear,
         oversampling_factor: 256,
         window: WindowFunction::BlackmanHarris2,
     };
-    let mut resampler = SincFixedIn::<f32>::new(ratio, 1.0, params, input.len(), 1)
-        .map_err(|error| SessionError::Validation(format!("resampler construction: {error}")))?;
+    let mut resampler =
+        Async::<f32>::new_sinc(ratio, 1.0, &params, input.len(), 1, FixedAsync::Input).map_err(
+            |error| SessionError::Validation(format!("resampler construction: {error}")),
+        )?;
     let planes = [input.to_vec()];
+    let input = SequentialSliceOfVecs::new(&planes, 1, input.len())
+        .map_err(|error| SessionError::Validation(format!("resampler input: {error}")))?;
     let mut output = resampler
-        .process(&planes, None)
+        .process_all(&input, planes[0].len(), None)
         .map_err(|error| SessionError::Validation(format!("resampling failed: {error}")))?
-        .into_iter()
-        .next()
-        .unwrap_or_default();
-    if let Ok(tail) = resampler.process_partial::<Vec<f32>>(None, None) {
-        if let Some(tail) = tail.into_iter().next() {
-            output.extend(tail);
-        }
-    }
+        .take_data();
     output.truncate(target_frames);
     let pad = output.last().copied().unwrap_or(0.0);
     output.resize(target_frames, pad);

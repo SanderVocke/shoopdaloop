@@ -107,9 +107,10 @@ mod tests {
             }),
             ..Default::default()
         };
-        let _ = context.run_ui(Default::default(), |ui| {
+        let mut ignored_output_0 = context.run_ui(Default::default(), |ui| {
             pane.show(ui, Some(&details));
         });
+        ignored_output_0.textures_delta.clear();
         assert_eq!(pane.composite.shown_loop_id(), loop_id);
         assert_eq!(pane.composite.rendered_event_count(), 1);
         assert!(pane.waveforms.is_empty());
@@ -141,9 +142,10 @@ mod tests {
             midi_channels: vec![midi.clone()],
             ..Default::default()
         };
-        let _ = context.run_ui(Default::default(), |ui| {
+        let mut ignored_output_1 = context.run_ui(Default::default(), |ui| {
             pane.show(ui, Some(&midi_only));
         });
+        ignored_output_1.textures_delta.clear();
         assert!(pane.waveforms.is_empty());
         assert_eq!(pane.midi_sequences.len(), 1);
 
@@ -157,9 +159,10 @@ mod tests {
             midi_channels: vec![midi],
             ..Default::default()
         };
-        let _ = context.run_ui(Default::default(), |ui| {
+        let mut ignored_output_2 = context.run_ui(Default::default(), |ui| {
             pane.show(ui, Some(&mixed));
         });
+        ignored_output_2.textures_delta.clear();
         assert_eq!(pane.waveforms.len(), 1);
         assert_eq!(pane.midi_sequences.len(), 1);
     }

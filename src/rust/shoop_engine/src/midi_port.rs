@@ -244,7 +244,7 @@ impl MidiPort {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn port() -> MidiPort {
         MidiPort::with_ringbuffer_capacity(TrackWhat::ALL, 64)
@@ -271,7 +271,7 @@ mod tests {
             ev(1, &midi::cc(0, 7, 42)),
         ];
         p.process(4, Some(&input), None);
-        let_assert!(Some(s) = p.midi_state());
+        assert2::assert!(let Some(s) = p.midi_state());
         check!(s.note_velocity(0, 60) == Some(100));
         check!(s.cc_value(0, 7) == Some(42));
         check!(p.n_notes_active() == 1);
