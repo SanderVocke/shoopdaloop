@@ -4866,7 +4866,7 @@ mod tests {
             assert_eq!(snapshot.tracks.len(), 1);
             assert!(snapshot.tracks[0].is_sync);
             assert_eq!(snapshot.tracks[0].loops.len(), 1);
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -4874,6 +4874,7 @@ mod tests {
                 |ui| app.show(ui),
             );
             assert!(!output.shapes.is_empty());
+            output.textures_delta.clear();
         }
     }
 
@@ -4971,7 +4972,7 @@ mod tests {
         else {
             panic!("expected callback button");
         };
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -4982,6 +4983,7 @@ mod tests {
             |ui| app.show(ui),
         );
         assert!(!output.shapes.is_empty());
+        output.textures_delta.clear();
         app.runtime
             .dispatch(AppIntent::InvokeScriptDialogButton {
                 script_id: owner,
