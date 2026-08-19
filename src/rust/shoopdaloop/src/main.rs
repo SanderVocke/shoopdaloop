@@ -50,6 +50,7 @@ use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
 use shoop_app::CooperativeApplicationRuntime;
+mod app_args;
 #[cfg(target_arch = "wasm32")]
 mod browser_audio;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -61,6 +62,7 @@ mod browser_worker;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_preview;
 mod settings;
+use app_args::AppArgs;
 use shoop_app::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_app::{ApplicationHandle, ApplicationRuntime};
@@ -81,33 +83,6 @@ fn application_icon() -> egui::IconData {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug, Parser)]
-#[command(name = "shoopdaloop")]
-#[command(about = "ShoopDaLoop application")]
-struct NativeCli {
-    /// Capture Tracy profiling data to ./traces.
-    #[arg(long)]
-    tracing: bool,
-
-    /// Add detailed per-node engine zones. Requires tracing.
-    #[arg(long, requires = "tracing")]
-    tracing_engine_detail: bool,
-
-    #[arg(long, hide = true, requires = "tracing")]
-    tracing_smoke_test: bool,
-
-    /// Validate the bundled Carla runtime and exit without opening the GUI.
-    #[cfg(feature = "native-fx")]
-    #[arg(long)]
-    probe_carla_native: bool,
-
-    /// Open, idle, hide, and reopen every bundled Carla external UI, then exit.
-    #[cfg(feature = "native-fx")]
-    #[arg(long)]
-    probe_carla_native_ui: bool,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 struct NativeTracing {
     capture: Option<shoop_common::tracing_capture::ReusableCaptureSession>,
     start_on_app_init: Option<bool>,
@@ -115,7 +90,7 @@ struct NativeTracing {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl NativeTracing {
-    fn initialize(cli: &NativeCli) -> anyhow::Result<Self> {
+    fn initialize(cli: &AppArgs) -> anyhow::Result<Self> {
         use shoop_common::tracing_capture::{CaptureDisposition, ReusableCaptureSession};
 
         shoop_common::tracing_helpers::set_engine_detail_enabled(false);
@@ -255,6 +230,8 @@ struct UnifiedApp {
     #[cfg(target_arch = "wasm32")]
     browser_settings_test: BrowserSettingsSelfTest,
     #[cfg(target_arch = "wasm32")]
+    args: AppArgs,
+    #[cfg(target_arch = "wasm32")]
     pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
     #[cfg(target_arch = "wasm32")]
     pending_ephemeral_files: Rc<RefCell<VecDeque<BrowserEphemeralFile>>>,
@@ -265,12 +242,18 @@ struct UnifiedApp {
 }
 
 #[cfg(all(not(target_arch = "wasm32"), not(test)))]
-fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
+fn load_settings_manager(
+    registry: shoop_egui::SettingsRegistry,
+    _args: &AppArgs,
+) -> SettingsManager {
     SettingsManager::load(registry, env!("CARGO_PKG_VERSION"))
 }
 
 #[cfg(all(not(target_arch = "wasm32"), test))]
-fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
+fn load_settings_manager(
+    registry: shoop_egui::SettingsRegistry,
+    _args: &AppArgs,
+) -> SettingsManager {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT_TEST_SETTINGS: AtomicU64 = AtomicU64::new(1);
     let id = NEXT_TEST_SETTINGS.fetch_add(1, Ordering::Relaxed);
@@ -283,12 +266,19 @@ fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsMana
 }
 
 #[cfg(target_arch = "wasm32")]
-fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
-    SettingsManager::load(registry, env!("CARGO_PKG_VERSION"))
+fn load_settings_manager(
+    registry: shoop_egui::SettingsRegistry,
+    args: &AppArgs,
+) -> SettingsManager {
+    SettingsManager::load(
+        registry,
+        env!("CARGO_PKG_VERSION"),
+        args.settings_save_failure,
+    )
 }
 
 impl UnifiedApp {
-    fn new(ui_scale_default: f64) -> anyhow::Result<Self> {
+    fn new(ui_scale_default: f64, args: &AppArgs) -> anyhow::Result<Self> {
         let _span = tracing::info_span!("frontend.egui.initialize").entered();
         #[cfg(not(target_arch = "wasm32"))]
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
@@ -303,12 +293,12 @@ impl UnifiedApp {
         #[cfg(target_arch = "wasm32")]
         register_bundled_script_settings(&mut settings_builder)?;
         let settings_registry = settings_builder.finish();
-        let settings = load_settings_manager(settings_registry.clone());
+        let settings = load_settings_manager(settings_registry.clone(), args);
         let mut widget = AppWidget::new(std::sync::Arc::new(settings_registry));
         #[cfg(not(target_arch = "wasm32"))]
         let runtime = Runtime::new(&settings.active())?;
         #[cfg(target_arch = "wasm32")]
-        let runtime = Runtime::new(&settings.active())?;
+        let runtime = Runtime::new(&settings.active(), args)?;
         widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {
             runtime,
@@ -322,9 +312,11 @@ impl UnifiedApp {
             pending_tracing_action: None,
             last_update: Instant::now(),
             #[cfg(target_arch = "wasm32")]
-            browser_self_test: BrowserSelfTest::from_location(),
+            browser_self_test: BrowserSelfTest::from_args(args),
             #[cfg(target_arch = "wasm32")]
-            browser_settings_test: BrowserSettingsSelfTest::from_location(),
+            browser_settings_test: BrowserSettingsSelfTest::from_args(args),
+            #[cfg(target_arch = "wasm32")]
+            args: args.clone(),
             #[cfg(target_arch = "wasm32")]
             pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
             #[cfg(target_arch = "wasm32")]
@@ -745,7 +737,7 @@ impl UnifiedApp {
         self.reconcile_audio_settings(&snapshot);
         #[cfg(target_arch = "wasm32")]
         self.browser_self_test
-            .update(&mut self.runtime, &snapshot, &mut self.widget);
+            .update(&mut self.runtime, &snapshot, &mut self.widget, &self.args);
         #[cfg(target_arch = "wasm32")]
         self.browser_settings_test
             .update(&mut self.settings, &mut self.widget, &self.runtime);
@@ -1405,12 +1397,9 @@ struct Runtime {
 
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
-    fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
-        let location_search = web_sys::window()
-            .and_then(|window| window.location().search().ok())
-            .unwrap_or_default();
-        let offline = location_search.contains("offline=1");
-        let worker = location_search.contains("worker=1");
+    fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
+        let offline = args.offline;
+        let worker = args.worker;
         let startup_scripts = browser_startup_scripts(settings)?;
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
         let (backend, transport) = shoop_worklet_client::RemoteWorkletBackend::new(midi.hub());
@@ -1596,11 +1585,12 @@ fn detected_screen_size(_context: &eframe::CreationContext<'_>) -> Option<egui::
 
 fn create_app(
     context: &eframe::CreationContext<'_>,
+    args: &AppArgs,
     #[cfg(not(target_arch = "wasm32"))] tracing: Option<SharedNativeTracing>,
 ) -> Result<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>> {
     shoop_egui::initialize(&context.egui_ctx);
     let ui_scale_default = default_ui_scale_for_screen(detected_screen_size(context));
-    let app = UnifiedApp::new(ui_scale_default)?;
+    let app = UnifiedApp::new(ui_scale_default, args)?;
     #[cfg(not(target_arch = "wasm32"))]
     let mut app = app;
     #[cfg(not(target_arch = "wasm32"))]
@@ -1629,7 +1619,7 @@ fn main() {
         }
     }
 
-    let cli = NativeCli::parse();
+    let cli = AppArgs::parse();
     #[cfg(feature = "native-fx")]
     if cli.probe_carla_native || cli.probe_carla_native_ui {
         let result = if cli.probe_carla_native_ui {
@@ -1685,7 +1675,7 @@ fn main() {
     let result = eframe::run_native(
         "ShoopDaLoop",
         options,
-        Box::new(move |context| create_app(context, Some(Arc::clone(&app_tracing)))),
+        Box::new(move |context| create_app(context, &cli, Some(Arc::clone(&app_tracing)))),
     );
     let shutdown = tracing_runtime
         .lock()
@@ -1717,24 +1707,15 @@ enum BrowserSettingsSelfTest {
 
 #[cfg(target_arch = "wasm32")]
 impl BrowserSettingsSelfTest {
-    fn from_location() -> Self {
-        let search = web_sys::window()
-            .and_then(|window| window.location().search().ok())
-            .unwrap_or_default();
-        if search.contains("settings-test=write") {
-            Self::Write
-        } else if search.contains("settings-test=verify") {
-            Self::Verify
-        } else if search.contains("settings-test=rejected") {
-            Self::Rejected
-        } else if search.contains("settings-test=invalid") {
-            Self::Invalid
-        } else if search.contains("settings-test=save-failure") {
-            Self::SaveFailure
-        } else if search.contains("settings-test=unavailable") {
-            Self::Unavailable
-        } else {
-            Self::Disabled
+    fn from_args(args: &AppArgs) -> Self {
+        match args.settings_test {
+            Some(app_args::SettingsTest::Write) => Self::Write,
+            Some(app_args::SettingsTest::Verify) => Self::Verify,
+            Some(app_args::SettingsTest::Rejected) => Self::Rejected,
+            Some(app_args::SettingsTest::Invalid) => Self::Invalid,
+            Some(app_args::SettingsTest::SaveFailure) => Self::SaveFailure,
+            Some(app_args::SettingsTest::Unavailable) => Self::Unavailable,
+            None => Self::Disabled,
         }
     }
 
@@ -2146,15 +2127,12 @@ fn lua_version_rejection_is_expected(script: &shoop_egui::ScriptState) -> bool {
 
 #[cfg(target_arch = "wasm32")]
 impl BrowserSelfTest {
-    fn from_location() -> Self {
-        let search = web_sys::window()
-            .and_then(|window| window.location().search().ok())
-            .unwrap_or_default();
-        if search.contains("web-midi-test=1") {
+    fn from_args(args: &AppArgs) -> Self {
+        if args.web_midi_test {
             set_browser_self_test_status("web-midi");
             set_browser_web_midi_test_status("awaiting-permission");
             Self::WaitForWebMidi
-        } else if search.contains("self-test=1") {
+        } else if args.self_test {
             set_browser_self_test_status("awaiting-audio");
             Self::WaitForAudio
         } else {
@@ -2162,7 +2140,13 @@ impl BrowserSelfTest {
         }
     }
 
-    fn update(&mut self, runtime: &mut Runtime, snapshot: &AppSnapshot, widget: &mut AppWidget) {
+    fn update(
+        &mut self,
+        runtime: &mut Runtime,
+        snapshot: &AppSnapshot,
+        widget: &mut AppWidget,
+        args: &AppArgs,
+    ) {
         let result = match *self {
             Self::Disabled | Self::Complete | Self::Failed => return,
             Self::WaitForAudio => {
@@ -2872,7 +2856,7 @@ impl BrowserSelfTest {
                 };
                 if loop_state.mode != shoop_egui::LoopMode::Recording
                     || loop_state.empty
-                    || browser_stress_enabled() && snapshot.status.callback_count < 1_500
+                    || args.stress && snapshot.status.callback_count < 1_500
                 {
                     return;
                 }
@@ -3249,7 +3233,7 @@ impl BrowserSelfTest {
                 {
                     return self.fail("audio callbacks did not advance through session reload");
                 }
-                if browser_stress_enabled() {
+                if args.stress {
                     // Ordinary hosted/direct-file workflows verify exact script resave.
                     // Avoid a duplicate capture here so the stress case remains focused on
                     // sustained render/capture and reload.
@@ -3315,7 +3299,7 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
-                if browser_stress_enabled() || browser_session_only_enabled() {
+                if args.stress || args.session_only {
                     Ok(Self::RejectProcessedSession)
                 } else {
                     let Some((track, loop_state)) = first_main_loop(snapshot) else {
@@ -3898,23 +3882,6 @@ impl BrowserSelfTest {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn browser_stress_enabled() -> bool {
-    browser_location_has("stress=1")
-}
-
-#[cfg(target_arch = "wasm32")]
-fn browser_session_only_enabled() -> bool {
-    browser_location_has("session-only=1")
-}
-
-#[cfg(target_arch = "wasm32")]
-fn browser_location_has(query: &str) -> bool {
-    web_sys::window()
-        .and_then(|window| window.location().search().ok())
-        .is_some_and(|search| search.contains(query))
-}
-
-#[cfg(target_arch = "wasm32")]
 fn first_main_loop(
     snapshot: &AppSnapshot,
 ) -> Option<(&shoop_egui::TrackState, &shoop_egui::LoopState)> {
@@ -4143,8 +4110,22 @@ fn main() {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("#shoop_canvas is not a canvas");
 
+        let query = window.location().search().unwrap_or_default();
+        let args = match app_args::parse_web_query(&query) {
+            Ok(args) => args,
+            Err(error) => {
+                let message = format!("Invalid application arguments: {error}");
+                set_browser_status(&message, None);
+                log::error!("{message}");
+                return;
+            }
+        };
         match eframe::WebRunner::new()
-            .start(canvas, eframe::WebOptions::default(), Box::new(create_app))
+            .start(
+                canvas,
+                eframe::WebOptions::default(),
+                Box::new(move |context| create_app(context, &args)),
+            )
             .await
         {
             Ok(()) => set_browser_status("Awaiting browser audio enable action", None),
@@ -4184,13 +4165,13 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_cli_parses_tracing_mode() {
-        let tracing = NativeCli::try_parse_from(["shoopdaloop", "--tracing"]).unwrap();
+        let tracing = AppArgs::try_parse_from(["shoopdaloop", "--tracing"]).unwrap();
         assert!(tracing.tracing);
         assert!(!tracing.tracing_engine_detail);
         assert!(!tracing.tracing_smoke_test);
 
         let detailed =
-            NativeCli::try_parse_from(["shoopdaloop", "--tracing", "--tracing-engine-detail"])
+            AppArgs::try_parse_from(["shoopdaloop", "--tracing", "--tracing-engine-detail"])
                 .unwrap();
         assert!(detailed.tracing);
         assert!(detailed.tracing_engine_detail);
@@ -4200,14 +4181,14 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_cli_rejects_removed_capture_option() {
-        assert!(NativeCli::try_parse_from(["shoopdaloop", "--tracing-capture"]).is_err());
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--tracing-capture"]).is_err());
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_cli_rejects_engine_detail_without_tracing_mode() {
-        assert!(NativeCli::try_parse_from(["shoopdaloop", "--tracing-engine-detail"]).is_err());
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--tracing-engine-detail"]).is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -4261,7 +4242,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn confirmed_driver_switch_is_saved_once_and_completed_after_persistence() {
-        let mut app = UnifiedApp::new(1.0).unwrap();
+        let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
         app.runtime.tick(Duration::ZERO);
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
         draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
@@ -4342,7 +4323,7 @@ mod tests {
         let manager = SettingsManager::load_from_path(builder.finish(), "test", path);
         std::fs::write(&blocker, b"not a directory").unwrap();
 
-        let mut app = UnifiedApp::new(1.0).unwrap();
+        let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
         app.settings = manager;
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
         draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
@@ -4850,7 +4831,7 @@ mod tests {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();
             shoop_egui::initialize(&context);
-            let mut app = UnifiedApp::new(1.0).unwrap();
+            let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
             let snapshot = app.runtime.snapshot();
             assert_eq!(snapshot.tracks.len(), 1);
             assert!(snapshot.tracks[0].is_sync);
@@ -4871,7 +4852,7 @@ mod tests {
     fn unified_native_app_runs_paints_invokes_and_removes_lua_dialogs() {
         let context = egui::Context::default();
         shoop_egui::initialize(&context);
-        let mut app = UnifiedApp::new(1.0).unwrap();
+        let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
         for (name, source) in [
             (
                 "lua-api-higher-minor.lua",
@@ -5008,7 +4989,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_workflow_creates_records_and_controls_tracks_and_loops() {
-        let mut app = UnifiedApp::new(1.0).unwrap();
+        let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
         let track_specs = [
             ("Native stereo + MIDI", 2, true),
             ("Native mono", 1, false),
