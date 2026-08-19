@@ -86,28 +86,16 @@ impl Default for MidiSequenceWidget {
 impl MidiSequenceWidget {
     pub fn show(&mut self, ui: &mut egui::Ui, channel: &MidiSequenceChannelState) {
         self.update_notes(channel);
-        ui.horizontal(|ui| {
-            ui.label(&channel.label);
-            ui.add(
-                egui::Slider::new(&mut self.zoom, 1.0..=64.0)
-                    .logarithmic(true)
-                    .show_value(false)
-                    .text("zoom"),
-            )
-            .on_hover_text(format!("MIDI zoom: {:.1}×", self.zoom));
-        });
-
         let desired = egui::vec2(ui.available_width(), 96.0);
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::drag());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 2.0, colors::WAVEFORM_BACKGROUND);
+        painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
         painter.rect_stroke(
             rect,
-            2.0,
+            0.0,
             egui::Stroke::new(1.0, colors::MUTED_FOREGROUND),
             egui::StrokeKind::Inside,
         );
-
         let event_end = self.notes.iter().map(|note| note.end).max().unwrap_or(0);
         let timeline_start = channel.start_offset.min(0) as f64;
         let timeline_end = channel
@@ -188,6 +176,23 @@ impl MidiSequenceWidget {
                 );
             }
         }
+        let label_rect = egui::Rect::from_min_max(
+            rect.left_top() + egui::vec2(6.0, 3.0),
+            egui::pos2(rect.right() - 122.0, rect.top() + 22.0),
+        );
+        ui.put(label_rect, egui::Label::new(&channel.label).truncate());
+        let zoom_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.right() - 116.0, rect.top() + 3.0),
+            egui::vec2(110.0, 18.0),
+        );
+        ui.put(
+            zoom_rect,
+            egui::Slider::new(&mut self.zoom, 1.0..=64.0)
+                .logarithmic(true)
+                .show_value(false)
+                .text("zoom"),
+        )
+        .on_hover_text(format!("MIDI zoom: {:.1}×", self.zoom));
     }
 
     fn update_notes(&mut self, channel: &MidiSequenceChannelState) {
