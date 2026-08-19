@@ -266,7 +266,7 @@ impl DummyMidiPort {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     use PortDirection as D;
 
@@ -372,7 +372,7 @@ mod tests {
     fn clear_queues_resets_everything() {
         let mut p = output_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = p.request_data(4));
+        assert2::assert!(let Ok(()) = p.request_data(4));
         p.clear_queues();
         check!(p.queue_empty());
         check!(p.n_requested_frames() == 0);
@@ -382,14 +382,14 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn a_second_request_is_refused_while_one_is_outstanding() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(8));
+        assert2::assert!(let Ok(()) = p.request_data(8));
         check!(p.request_data(4) == Err(RequestPending));
     }
 
     #[shoop_wasm_test_support::shoop_test]
     fn written_output_is_captured_during_a_request() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(4));
+        assert2::assert!(let Ok(()) = p.request_data(4));
         p.prepare(4);
         p.write_event(ev(1, &midi::note_on(0, 60, 100)));
         p.write_event(ev(3, &midi::note_off(0, 60, 0)));
@@ -404,7 +404,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn captured_times_are_relative_to_the_request() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(8));
+        assert2::assert!(let Ok(()) = p.request_data(8));
         // First half of the request.
         p.prepare(4);
         p.write_event(ev(2, &midi::note_on(0, 60, 1)));
@@ -420,7 +420,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn output_beyond_the_request_is_not_captured() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(2));
+        assert2::assert!(let Ok(()) = p.request_data(2));
         p.prepare(4);
         p.write_event(ev(1, &midi::note_on(0, 60, 1)));
         p.write_event(ev(3, &midi::note_on(0, 61, 1)));
@@ -442,7 +442,7 @@ mod tests {
     fn a_muted_port_captures_nothing() {
         let mut p = output_port();
         p.midi_mut().set_muted(true);
-        let_assert!(Ok(()) = p.request_data(4));
+        assert2::assert!(let Ok(()) = p.request_data(4));
         p.prepare(4);
         p.write_event(ev(1, &midi::note_on(0, 60, 1)));
         p.process(4);
@@ -452,7 +452,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn an_input_port_does_not_capture_written_output() {
         let mut p = input_port();
-        let_assert!(Ok(()) = p.request_data(4));
+        assert2::assert!(let Ok(()) = p.request_data(4));
         p.prepare(4);
         p.write_event(ev(1, &midi::note_on(0, 60, 1)));
         p.process(4);
@@ -463,7 +463,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn written_output_is_sorted_before_capture() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(8));
+        assert2::assert!(let Ok(()) = p.request_data(8));
         p.prepare(8);
         p.write_event(ev(5, &midi::note_on(0, 60, 1)));
         p.write_event(ev(2, &midi::note_on(0, 61, 1)));
@@ -487,7 +487,7 @@ mod tests {
         p.queue_msg(1, &midi::note_on(0, 60, 100));
         p.prepare(4);
         p.process(4);
-        let_assert!(Some(s) = p.midi().midi_state());
+        assert2::assert!(let Some(s) = p.midi().midi_state());
         check!(s.note_velocity(0, 60) == Some(100));
         check!(p.midi().n_input_events() == 1);
     }
@@ -496,7 +496,7 @@ mod tests {
     fn a_request_holds_the_input_queue_in_place() {
         let mut p = output_port();
         p.queue_msg(6, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = p.request_data(8));
+        assert2::assert!(let Ok(()) = p.request_data(8));
         p.prepare(4);
         p.process(4);
         // Four frames were processed but all of them were inside the request, so

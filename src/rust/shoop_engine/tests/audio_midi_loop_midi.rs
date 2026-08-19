@@ -4,7 +4,7 @@
 //! was self-consistent but wrong.
 //!
 
-use assert2::{check, let_assert};
+use assert2::check;
 use shoop_engine::audio_midi_loop::AudioMidiLoop;
 use shoop_engine::basic_loop::SyncSourceState;
 use shoop_engine::channel_mode::ChannelMode;
@@ -40,7 +40,7 @@ fn with_time(m: &MidiStorageElem, time: u32) -> (u32, Vec<u8>) {
 fn process(l: &mut AudioMidiLoop, n: u32, input: &[MidiStorageElem]) -> Vec<MidiStorageElem> {
     let midi_in = vec![input.to_vec()];
     let mut midi_out = vec![Vec::new()];
-    let_assert!(Ok(()) = l.process(n, &midi_in, &mut midi_out));
+    assert2::assert!(let Ok(()) = l.process(n, &midi_in, &mut midi_out));
     midi_out.remove(0)
 }
 
@@ -415,7 +415,7 @@ fn midi_prerecord() {
     // Advancing the sync source shortens the follower's predicted trigger. The
     // sync source has no channels, so nothing bounds it but its own length.
     sync_source.resync_poi();
-    let_assert!(Ok(()) = sync_source.process::<Vec<MidiStorageElem>>(60, &[], &mut []));
+    assert2::assert!(let Ok(()) = sync_source.process::<Vec<MidiStorageElem>>(60, &[], &mut []));
     refresh_sync(&mut l, &sync_source);
     l.resync_poi();
     check!(l.predicted_next_trigger_eta().unwrap_or(999) == 40);
@@ -667,8 +667,8 @@ fn process_synced(
 
         let midi_in = vec![input.to_vec()];
         let mut midi_out = vec![Vec::new()];
-        let_assert!(Ok(()) = l.process(until, &midi_in, &mut midi_out));
-        let_assert!(Ok(()) = sync_source.process::<Vec<MidiStorageElem>>(until, &[], &mut []));
+        assert2::assert!(let Ok(()) = l.process(until, &midi_in, &mut midi_out));
+        assert2::assert!(let Ok(()) = sync_source.process::<Vec<MidiStorageElem>>(until, &[], &mut []));
         out.append(&mut midi_out[0]);
 
         l.handle_poi();

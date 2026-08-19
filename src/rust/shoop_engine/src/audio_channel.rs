@@ -881,7 +881,7 @@ fn copy_in(buffers: &mut ChunkedSamples<f32>, at: usize, src: &[f32]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     use ChannelMode as C;
     use LoopMode as L;
@@ -904,7 +904,7 @@ mod tests {
         let mut out = vec![0.0; n];
         let mut src = input.to_vec();
         src.resize(input.len().max(n), 0.0);
-        let_assert!(Ok(()) = ch.process(mode, L::Unknown, None, None, n, pos, length));
+        assert2::assert!(let Ok(()) = ch.process(mode, L::Unknown, None, None, n, pos, length));
         ch.finalize_process(&src, &mut out);
         out
     }
@@ -959,7 +959,7 @@ mod tests {
         ch.set_recording_buffer_size(2);
         ch.set_playback_buffer_size(2);
         let mut out = vec![10.0, 20.0];
-        let_assert!(Ok(()) = ch.process(L::Playing, L::Unknown, None, None, 2, 0, 2));
+        assert2::assert!(let Ok(()) = ch.process(L::Playing, L::Unknown, None, None, 2, 0, 2));
         ch.finalize_process(&[0.0, 0.0], &mut out);
         check!(out == vec![11.0, 21.0]);
     }
@@ -1052,7 +1052,7 @@ mod tests {
         ch.set_recording_buffer_size(4);
         ch.set_playback_buffer_size(4);
         let r = ch.process(L::Replacing, L::Unknown, None, None, 4, 0, 2);
-        let_assert!(Err(ChannelError::ReplaceOutOfBounds { position, length }) = r);
+        assert2::assert!(let Err(ChannelError::ReplaceOutOfBounds { position, length }) = r);
         check!(position == 2);
         check!(length == 2);
     }
@@ -1074,7 +1074,7 @@ mod tests {
         ch.set_recording_buffer_size(2);
         ch.set_playback_buffer_size(8);
         let r = ch.process(L::Recording, L::Unknown, None, None, 8, 0, 0);
-        let_assert!(
+        assert2::assert!(let
             Err(ChannelError::RecordOutOfBounds {
                 n_samples,
                 available
@@ -1091,7 +1091,7 @@ mod tests {
         ch.set_recording_buffer_size(8);
         ch.set_playback_buffer_size(2);
         let r = ch.process(L::Playing, L::Unknown, None, None, 8, 0, 2);
-        let_assert!(
+        assert2::assert!(let
             Err(ChannelError::PlaybackOutOfBounds {
                 n_samples,
                 available
@@ -1106,7 +1106,7 @@ mod tests {
         let mut ch = channel();
         ch.clear_buffers();
         // No port buffers assigned: record/replace/playback are all masked off.
-        let_assert!(Ok(()) = ch.process(L::Recording, L::Unknown, None, None, 4, 0, 0));
+        assert2::assert!(let Ok(()) = ch.process(L::Recording, L::Unknown, None, None, 4, 0, 0));
         check!(ch.length() == 0);
     }
 
@@ -1123,7 +1123,7 @@ mod tests {
         // Recording is one trigger away, so this cycle pre-records.
         ch.set_recording_buffer_size(2);
         ch.set_playback_buffer_size(2);
-        let_assert!(Ok(()) = ch.process(L::Stopped, L::Recording, Some(0), Some(2), 2, 0, 0));
+        assert2::assert!(let Ok(()) = ch.process(L::Stopped, L::Recording, Some(0), Some(2), 2, 0, 0));
         ch.finalize_process(&[5.0, 6.0], &mut [0.0, 0.0]);
         check!(ch.length() == 0); // main storage untouched so far
 
@@ -1131,7 +1131,7 @@ mod tests {
         // and the start offset marks where "sample 0" really is.
         ch.set_recording_buffer_size(2);
         ch.set_playback_buffer_size(2);
-        let_assert!(Ok(()) = ch.process(L::Recording, L::Unknown, None, None, 2, 0, 0));
+        assert2::assert!(let Ok(()) = ch.process(L::Recording, L::Unknown, None, None, 2, 0, 0));
         ch.finalize_process(&[7.0, 8.0], &mut [0.0, 0.0]);
         check!(ch.start_offset() == 2);
         check!(ch.data() == vec![5.0, 6.0, 7.0, 8.0]);
@@ -1142,13 +1142,13 @@ mod tests {
         let mut ch = channel();
         ch.set_recording_buffer_size(2);
         ch.set_playback_buffer_size(2);
-        let_assert!(Ok(()) = ch.process(L::Stopped, L::Recording, Some(0), Some(2), 2, 0, 0));
+        assert2::assert!(let Ok(()) = ch.process(L::Stopped, L::Recording, Some(0), Some(2), 2, 0, 0));
         ch.finalize_process(&[5.0, 6.0], &mut [0.0, 0.0]);
 
         // Pre-record ends without entering Recording: buffers are dropped.
         ch.set_recording_buffer_size(2);
         ch.set_playback_buffer_size(2);
-        let_assert!(Ok(()) = ch.process(L::Stopped, L::Unknown, None, None, 2, 0, 0));
+        assert2::assert!(let Ok(()) = ch.process(L::Stopped, L::Unknown, None, None, 2, 0, 0));
         ch.finalize_process(&[7.0, 8.0], &mut [0.0, 0.0]);
         check!(ch.length() == 0);
         check!(ch.start_offset() == 0);

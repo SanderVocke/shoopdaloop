@@ -857,7 +857,7 @@ mod tests {
     use crate::loop_mode::LoopMode;
     use crate::port::PortDirection;
     use crate::session::Port;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn engine() -> (Engine, EngineHandle) {
         split(Session::default(), 16)
@@ -896,7 +896,7 @@ mod tests {
         stop.store(true, Ordering::Relaxed);
         let _engine = driver.join().expect("driver thread");
 
-        let_assert!(Ok(Some(42)) = got);
+        assert2::assert!(let Ok(Some(42)) = got);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -940,7 +940,7 @@ mod tests {
             .expect("mode");
         e.session_mut().apply_graph_changes().expect("schedule");
 
-        let_assert!(
+        assert2::assert!(let
             Ok(_) = h.send(Box::new(|s: &mut Session| {
                 let _ = s.set_loop_mode(0, LoopMode::Stopped);
             }))
@@ -980,7 +980,7 @@ mod tests {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
 
-        let_assert!(
+        assert2::assert!(let
             Ok(_) = h.send(Box::new(|s: &mut Session| {
                 s.create_loop();
             }))
@@ -1001,7 +1001,7 @@ mod tests {
         e.session_mut().apply_graph_changes().expect("schedule");
 
         for _ in 0..3 {
-            let_assert!(
+            assert2::assert!(let
                 Ok(_) = h.send(Box::new(|s: &mut Session| {
                     s.create_loop();
                 }))
@@ -1083,7 +1083,7 @@ mod tests {
         e.session_mut().apply_graph_changes().expect("schedule");
 
         for _ in 0..3 {
-            let_assert!(Ok(_) = h.send(Box::new(|_: &mut Session| {})));
+            assert2::assert!(let Ok(_) = h.send(Box::new(|_: &mut Session| {})));
         }
         e.process(4);
 
@@ -1113,7 +1113,7 @@ mod tests {
         // Adding a port leaves the schedule out of date. The cycle runs anyway, against
         // the last-applied schedule, so existing audio keeps flowing while the next
         // schedule is built; the staleness is counted rather than costing the cycle.
-        let_assert!(
+        assert2::assert!(let
             Ok(_) = h.send(Box::new(|s: &mut Session| {
                 s.add_port(Port::Dummy(DummyAudioPort::new(
                     PortId(1),
@@ -1136,7 +1136,7 @@ mod tests {
 
         // Structural work and the reschedule it needs go in one command, so the
         // graph is never left stale at a cycle boundary.
-        let_assert!(
+        assert2::assert!(let
             Ok(_) = h.send(Box::new(|s: &mut Session| {
                 let p = s.add_port(Port::Dummy(DummyAudioPort::new(
                     PortId(1),

@@ -555,7 +555,7 @@ impl Cursor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn storage(cap: usize) -> MidiStorage {
         MidiStorage::with_capacity_elems(cap)
@@ -585,7 +585,7 @@ mod tests {
         check!(s.append(5, &note(2), false, None));
         check!(s.n_events() == 2);
         check!(times(&s) == vec![0, 5]);
-        let_assert!(Some(first) = s.iter().next());
+        assert2::assert!(let Some(first) = s.iter().next());
         check!(first.data() == &note(1));
     }
 
@@ -778,7 +778,7 @@ mod tests {
         let mut c = s.create_cursor();
         check!(c.get_prev(&s) == None);
         c.next(&s);
-        let_assert!(Some(prev) = c.get_prev(&s));
+        assert2::assert!(let Some(prev) = c.get_prev(&s));
         check!(prev.time == 0);
         check!(!c.wrapped(&s));
     }
@@ -793,7 +793,7 @@ mod tests {
         let r = c.find_time_forward(&s, 20, None);
         check!(r.found_valid_elem);
         check!(r.n_processed == 2);
-        let_assert!(Some(e) = c.get(&s));
+        assert2::assert!(let Some(e) = c.get(&s));
         check!(e.time == 20);
     }
 
@@ -842,7 +842,7 @@ mod tests {
         let mut c = s.create_cursor();
         let r = c.find_fn_forward(&s, |e| e.data()[0] == 0x80, None);
         check!(r.found_valid_elem);
-        let_assert!(Some(e) = c.get(&s));
+        assert2::assert!(let Some(e) = c.get(&s));
         check!(e.time == 1);
     }
 

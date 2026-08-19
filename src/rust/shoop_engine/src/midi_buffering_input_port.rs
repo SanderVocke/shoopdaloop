@@ -86,7 +86,7 @@ impl MidiBufferingInputPort {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn ev(time: u32, data: &[u8]) -> MidiStorageElem {
         MidiStorageElem::new(time, data).unwrap()
@@ -156,7 +156,7 @@ mod tests {
         let mut p = MidiBufferingInputPort::with_reserve(8);
         p.prepare(4);
         p.process(4, &[ev(0, &midi::note_on(0, 60, 100))]);
-        let_assert!(Some(s) = p.midi().midi_state());
+        assert2::assert!(let Some(s) = p.midi().midi_state());
         check!(s.note_velocity(0, 60) == Some(100));
         check!(p.midi().n_input_events() == 1);
     }

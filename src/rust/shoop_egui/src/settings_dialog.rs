@@ -1577,7 +1577,7 @@ mod tests {
         let mut dialog = SettingsDialog::new(registry);
         dialog.open(&state);
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -1592,6 +1592,7 @@ mod tests {
                     );
                 },
             );
+            output.textures_delta.clear();
             assert!(!output.shapes.is_empty());
             assert!(dialog.is_open());
         }
@@ -1614,7 +1615,7 @@ mod tests {
         dialog.tracing_engine_detail = true;
         let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
             let mut response = SettingsDialogResponse::default();
-            let _ = context.run_ui(
+            let mut ignored_output_0 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -1625,6 +1626,7 @@ mod tests {
                 },
                 |ui| dialog.show_developer(ui, &mut response),
             );
+            ignored_output_0.textures_delta.clear();
             response
         };
 
@@ -1672,7 +1674,7 @@ mod tests {
         let window_id = egui::Id::new("settings_dialog");
         let mut widths = Vec::new();
         for _ in 0..12 {
-            let _ = context.run_ui(
+            let mut ignored_output_1 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -1690,6 +1692,7 @@ mod tests {
                     );
                 },
             );
+            ignored_output_1.textures_delta.clear();
             widths.push(
                 context
                     .memory(|memory| memory.area_rect(window_id))
@@ -1777,7 +1780,7 @@ mod tests {
         dialog.open(&state);
         dialog.select_category("Audio");
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -1786,6 +1789,7 @@ mod tests {
                     dialog.show(ui.ctx(), &state, &ScriptingState::default(), &audio, None);
                 },
             );
+            output.textures_delta.clear();
             assert!(!output.shapes.is_empty());
         }
         assert_eq!(dialog.audio_target, Some(AudioDriverKind::Dummy));
@@ -1797,10 +1801,11 @@ mod tests {
         let mut dialog = SettingsDialog::new(registry);
         dialog.open(&state);
         let context = egui::Context::default();
-        let _ = context.run_ui(Default::default(), |ui| {
+        let mut ignored_output_2 = context.run_ui(Default::default(), |ui| {
             ui.set_width(480.0);
             dialog.show_definitions(ui, "Track defaults");
         });
+        ignored_output_2.textures_delta.clear();
         assert_eq!(dialog.setting_card_rects.len(), 1);
         assert!(dialog.setting_card_rects[0].width() >= 479.0);
     }
@@ -1843,11 +1848,14 @@ mod tests {
         dialog.draft_mut().unwrap().set(UI_SCALE_FACTOR, 1.5);
         let context = egui::Context::default();
 
-        let _ = context.run_ui(Default::default(), |ui| dialog.show_appearance(ui));
+        let mut ignored_output_3 =
+            context.run_ui(Default::default(), |ui| dialog.show_appearance(ui));
+        ignored_output_3.textures_delta.clear();
         assert!((context.zoom_factor() - 1.0).abs() < f32::EPSILON);
 
         dialog.apply_appearance(&context);
-        let _ = context.run_ui(Default::default(), |_| {});
+        let mut ignored_output_4 = context.run_ui(Default::default(), |_| {});
+        ignored_output_4.textures_delta.clear();
         assert!((context.zoom_factor() - 1.5).abs() < f32::EPSILON);
     }
 
@@ -1943,7 +1951,7 @@ mod tests {
         let context = egui::Context::default();
         crate::initialize(&context);
         let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
-            let _ = context.run_ui(
+            let mut ignored_output_5 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -1961,6 +1969,7 @@ mod tests {
                     )
                 },
             );
+            ignored_output_5.textures_delta.clear();
         };
 
         frame(&mut dialog, Vec::new());
@@ -2020,7 +2029,7 @@ mod tests {
         dialog.script_documentation_windows.insert(script_id);
         let context = egui::Context::default();
         crate::initialize(&context);
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -2030,6 +2039,7 @@ mod tests {
             },
             |ui| dialog.show_script_windows(ui.ctx(), &scripting, None),
         );
+        output.textures_delta.clear();
         assert!(output.shapes.len() > 5);
     }
 
@@ -2063,7 +2073,7 @@ mod tests {
         crate::initialize(&context);
         let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
             let mut response = SettingsDialogResponse::default();
-            let _ = context.run_ui(
+            let mut ignored_output_6 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -2074,6 +2084,7 @@ mod tests {
                 },
                 |ui| dialog.show_script_runtime(ui, &scripting, None, &mut response),
             );
+            ignored_output_6.textures_delta.clear();
             response
         };
         frame(&mut dialog, Vec::new());
@@ -2163,7 +2174,7 @@ mod tests {
         crate::initialize(&context);
         let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
             let mut response = SettingsDialogResponse::default();
-            let _ = context.run_ui(
+            let mut ignored_output_7 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -2174,6 +2185,7 @@ mod tests {
                 },
                 |ui| dialog.show_script_runtime(ui, &scripting, Some(&paths), &mut response),
             );
+            ignored_output_7.textures_delta.clear();
             response
         };
         frame(&mut dialog, Vec::new());
@@ -2346,7 +2358,7 @@ mod tests {
         let context = egui::Context::default();
         let mut dialog = SettingsDialog::new(registry);
         dialog.open(&state);
-        let output = context.run_ui(Default::default(), |ui| {
+        let mut output = context.run_ui(Default::default(), |ui| {
             dialog.show(
                 ui.ctx(),
                 &state,
@@ -2355,6 +2367,7 @@ mod tests {
                 None,
             );
         });
+        output.textures_delta.clear();
         assert!(!output.shapes.is_empty());
     }
 }

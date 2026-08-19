@@ -375,7 +375,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> Vec<PianoAction> {
         let mut actions = Vec::new();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 200.0))),
                 events,
@@ -383,6 +383,7 @@ mod tests {
             },
             |ui| actions = pane.show(ui, true, &[]),
         );
+        ignored_output_0.textures_delta.clear();
         actions
     }
 
@@ -429,7 +430,7 @@ mod tests {
         for size in [vec2(360.0, 200.0), vec2(900.0, 600.0)] {
             let context = egui::Context::default();
             let mut pane = PianoPane::default();
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
                     ..Default::default()
@@ -438,6 +439,7 @@ mod tests {
                     pane.show(ui, false, &[]);
                 },
             );
+            output.textures_delta.clear();
             assert!(output.shapes.len() > usize::from(MIDI_NOTE_COUNT));
             assert!(pane.keyboard_rect().unwrap().width() > size.x);
         }
@@ -453,7 +455,7 @@ mod tests {
                       centers: &[f32],
                       events: Vec<egui::Event>,
                       actions: &mut Vec<PianoAction>| {
-            let _ = context.run_ui(
+            let mut ignored_output_1 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 200.0))),
                     events,
@@ -461,6 +463,7 @@ mod tests {
                 },
                 |ui| *actions = pane.show(ui, enabled, centers),
             );
+            ignored_output_1.textures_delta.clear();
         };
 
         render(&mut pane, false, &[], Vec::new(), &mut actions);

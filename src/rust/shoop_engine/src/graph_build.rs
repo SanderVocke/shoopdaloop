@@ -176,7 +176,7 @@ impl GraphDesc {
 mod tests {
     use super::*;
     use crate::graph::processing_order;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn port(name: &str, connections: &[usize]) -> PortDesc {
         PortDesc {
@@ -214,7 +214,7 @@ mod tests {
             ..Default::default()
         };
         let (specs, _) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         check!(
             names(&specs, &schedule)
                 == vec![
@@ -239,7 +239,7 @@ mod tests {
             }],
         };
         let (specs, _) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         check!(
             names(&specs, &schedule)
                 == vec![
@@ -281,7 +281,7 @@ mod tests {
             ],
         };
         let (specs, _) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         check!(
             names(&specs, &schedule)
                 == vec![
@@ -413,7 +413,7 @@ mod tests {
             ],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |node: NodeIdx| {
             schedule
                 .iter()
@@ -509,7 +509,7 @@ mod tests {
             ..Default::default()
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         check!(pos(map.port_prepare[0]) < pos(map.port_process[0]));
     }
@@ -527,7 +527,7 @@ mod tests {
             }],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         check!(pos(map.channel_prepare[0]) < pos(map.loop_process[0]));
         check!(pos(map.loop_process[0]) < pos(map.channel_process[0]));
@@ -541,7 +541,7 @@ mod tests {
             ..Default::default()
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         check!(pos(map.port_process[0]) < pos(map.port_process[1]));
         check!(pos(map.port_process[1]) < pos(map.port_process[2]));
@@ -571,7 +571,7 @@ mod tests {
             }],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         // The channel can only capture the input once the port has applied gain.
         check!(pos(map.port_process[0]) < pos(map.channel_process[0]));
@@ -590,7 +590,7 @@ mod tests {
             }],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         check!(pos(map.channel_process[0]) < pos(map.port_process[0]));
     }
@@ -610,7 +610,7 @@ mod tests {
             channels: vec![],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         // Loops 0 and 1 together, loop 2 alone.
         check!(schedule.len() == 2);
         let step_of = |n: NodeIdx| schedule.iter().find(|s| s.contains(&n)).unwrap();
@@ -638,7 +638,7 @@ mod tests {
             ],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         // Both channels prepare before the loop runs, and settle after it.
         for i in 0..2 {

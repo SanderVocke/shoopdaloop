@@ -548,7 +548,7 @@ mod tests {
             let state = state();
             let mut dialog = ClickTrackDialog::default();
             dialog.open(&state.tracks[0].loops[0], &state.click_track);
-            let _ = context.run_ui(
+            let mut ignored_output_0 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -558,6 +558,7 @@ mod tests {
                     assert!(intents.is_empty());
                 },
             );
+            ignored_output_0.textures_delta.clear();
             assert!(dialog.generate_rect.is_some());
             assert!(dialog.preview_rect.is_some());
             let stale = AppState {
@@ -578,9 +579,10 @@ mod tests {
         let mut dialog = ClickTrackDialog::default();
         dialog.set_preview_available(false);
         dialog.open(&state.tracks[0].loops[0], &state.click_track);
-        let _ = context.run_ui(Default::default(), |_ui| {
+        let mut ignored_output_1 = context.run_ui(Default::default(), |_ui| {
             assert!(dialog.show(&context, &state).is_empty());
         });
+        ignored_output_1.textures_delta.clear();
         assert!(!dialog.preview_enabled);
     }
 }

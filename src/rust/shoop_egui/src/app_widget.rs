@@ -1955,7 +1955,7 @@ mod tests {
         let state = AppState::default();
         let frame = |widget: &mut AppWidget, events: Vec<egui::Event>| {
             let mut settings_actions = Vec::new();
-            let _ = context.run_ui(
+            let mut ignored_output_0 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -1966,6 +1966,7 @@ mod tests {
                 },
                 |ui| widget.show_bottom_status(ui, &state, &mut Vec::new(), &mut settings_actions),
             );
+            ignored_output_0.textures_delta.clear();
             settings_actions
         };
 
@@ -2099,7 +2100,7 @@ mod tests {
     ) -> Vec<AppAction> {
         let mut actions = Vec::new();
         let settings = settings_state();
-        let _ = context.run_ui(
+        let mut ignored_output_1 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -2110,6 +2111,7 @@ mod tests {
             },
             |ui| actions = widget.show(ui, state, &settings, None).app_actions,
         );
+        ignored_output_1.textures_delta.clear();
         actions
     }
 
@@ -2433,7 +2435,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> AppWidgetResponse {
         let mut response = None;
-        let _ = context.run_ui(
+        let mut ignored_output_2 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -2444,6 +2446,7 @@ mod tests {
             },
             |ui| response = Some(widget.show(ui, state, settings, Some(paths))),
         );
+        ignored_output_2.textures_delta.clear();
         response.unwrap()
     }
 
@@ -2638,7 +2641,7 @@ mod tests {
         };
         let mut widget = AppWidget::default();
         let settings = settings_state();
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -2650,6 +2653,7 @@ mod tests {
                 widget.show(ui, &state, &settings, None);
             },
         );
+        output.textures_delta.clear();
         assert!(!output.shapes.is_empty());
         assert_eq!(
             audio_channel_selection_action(task_id, &[1, 0]),
@@ -2778,7 +2782,7 @@ mod tests {
         let settings = settings_state();
         let mut uploaded_logo = false;
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -2787,9 +2791,9 @@ mod tests {
                     widget.show(ui, &state, &settings, None);
                 },
             );
-
             assert!(output.shapes.len() > 10);
             uploaded_logo |= !output.textures_delta.set.is_empty();
+            output.textures_delta.clear();
         }
         assert!(uploaded_logo);
     }

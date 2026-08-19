@@ -937,7 +937,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> TrackWidgetResponse {
         let mut response = TrackWidgetResponse::default();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -948,6 +948,7 @@ mod tests {
             },
             |ui| response = widget.show_content(ui, state, false),
         );
+        ignored_output_0.textures_delta.clear();
         response
     }
 
@@ -958,7 +959,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> TrackWidgetResponse {
         let mut response = TrackWidgetResponse::default();
-        let _ = context.run_ui(
+        let mut ignored_output_1 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -969,6 +970,7 @@ mod tests {
             },
             |ui| response = widget.show(ui, state),
         );
+        ignored_output_1.textures_delta.clear();
         response
     }
 
@@ -1016,7 +1018,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> TrackWidgetResponse {
         let mut response = TrackWidgetResponse::default();
-        let _ = context.run_ui(
+        let mut ignored_output_2 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1027,6 +1029,7 @@ mod tests {
             },
             |ui| response = widget.show_content_with_processor(ui, state, Some(processor), false),
         );
+        ignored_output_2.textures_delta.clear();
         response
     }
 
@@ -1771,7 +1774,7 @@ mod tests {
         };
         let mut widget = TrackWidget::default();
 
-        let _ = context.run_ui(
+        let mut ignored_output_3 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1783,6 +1786,7 @@ mod tests {
                 ui.horizontal_top(|ui| widget.show_content(ui, &state, true));
             },
         );
+        ignored_output_3.textures_delta.clear();
 
         assert_eq!(widget.test_loop_rects.len(), state.loops.len());
         for pair in widget.test_loop_rects.windows(2) {

@@ -120,7 +120,7 @@ impl DecoupledMidiPort {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     use PortDirection as D;
 
@@ -150,11 +150,11 @@ mod tests {
         p.process_incoming(&[ev(0, &midi::note_on(0, 60, 1)), ev(1, &midi::cc(0, 7, 9))]);
         check!(p.n_queued() == 2);
 
-        let_assert!(Ok(Some(first)) = p.pop_incoming());
+        assert2::assert!(let Ok(Some(first)) = p.pop_incoming());
         check!(midi::is_note_on(first.data()));
-        let_assert!(Ok(Some(second)) = p.pop_incoming());
+        assert2::assert!(let Ok(Some(second)) = p.pop_incoming());
         check!(midi::is_cc(second.data()));
-        let_assert!(Ok(None) = p.pop_incoming());
+        assert2::assert!(let Ok(None) = p.pop_incoming());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -220,7 +220,7 @@ mod tests {
         check!(p.n_queued() == 2);
         check!(p.n_dropped() == 1);
         // The oldest are kept: this is a queue, not a ring.
-        let_assert!(Ok(Some(m)) = p.pop_incoming());
+        assert2::assert!(let Ok(Some(m)) = p.pop_incoming());
         check!(midi::note(m.data()) == 60);
     }
 

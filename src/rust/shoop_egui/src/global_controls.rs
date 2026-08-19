@@ -492,7 +492,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> Vec<GlobalControlAction> {
         let mut actions = Vec::new();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -503,6 +503,7 @@ mod tests {
             },
             |ui| actions = controls.show(ui, state),
         );
+        ignored_output_0.textures_delta.clear();
         actions
     }
 

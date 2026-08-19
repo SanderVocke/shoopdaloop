@@ -135,7 +135,7 @@ mod tests {
     fn material_icon_family_has_a_text_fallback() {
         let context = egui::Context::default();
         initialize(&context);
-        let _ = context.run_ui(egui::RawInput::default(), |ui| {
+        let mut ignored_output_0 = context.run_ui(egui::RawInput::default(), |ui| {
             let font_id = egui::FontId::new(
                 18.0,
                 egui::FontFamily::Name(egui_material_icons::FONT_FAMILY.into()),
@@ -152,6 +152,7 @@ mod tests {
                 ));
             });
         });
+        ignored_output_0.textures_delta.clear();
     }
 
     #[shoop_wasm_test_support::shoop_test]

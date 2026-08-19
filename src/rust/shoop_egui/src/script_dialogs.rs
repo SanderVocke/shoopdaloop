@@ -433,7 +433,7 @@ mod tests {
         size: egui::Vec2,
     ) -> Vec<AppAction> {
         let mut actions = Vec::new();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                 events,
@@ -444,6 +444,7 @@ mod tests {
                 actions.extend(component.show_windows(ui.ctx(), dialogs, None));
             },
         );
+        ignored_output_0.textures_delta.clear();
         actions
     }
 
@@ -455,7 +456,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> Vec<AppAction> {
         let mut actions = Vec::new();
-        let _ = context.run_ui(
+        let mut ignored_output_1 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -477,6 +478,7 @@ mod tests {
                 )
             },
         );
+        ignored_output_1.textures_delta.clear();
         actions
     }
 
@@ -487,7 +489,7 @@ mod tests {
         page: &mut usize,
         events: Vec<egui::Event>,
     ) {
-        let _ = context.run_ui(
+        let mut ignored_output_2 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -498,6 +500,7 @@ mod tests {
             },
             |ui| show_page_control(ui, dialog_id, page, 2, component),
         );
+        ignored_output_2.textures_delta.clear();
     }
 
     fn click(
@@ -544,18 +547,20 @@ mod tests {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut component = ScriptDialogs::default();
-        let empty = context.run_ui(Default::default(), |ui| {
+        let mut empty = context.run_ui(Default::default(), |ui| {
             component.show_control(ui, &[]);
         });
+        empty.textures_delta.clear();
         assert!(component.control_rect.is_none());
         assert!(empty.shapes.is_empty());
 
         let dialogs = (1..=10)
             .map(|id| simple(id, id, &format!("Dialog {id}"), 0))
             .collect::<Vec<_>>();
-        let output = context.run_ui(Default::default(), |ui| {
+        let mut output = context.run_ui(Default::default(), |ui| {
             component.show_control(ui, &dialogs);
         });
+        output.textures_delta.clear();
         assert!(component.control_rect.is_some());
 
         fn collect_text(shape: &egui::Shape, text: &mut Vec<String>) {
@@ -590,7 +595,7 @@ mod tests {
             Vec::new(),
             egui::vec2(900.0, 600.0),
         );
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -602,6 +607,7 @@ mod tests {
                 component.show_windows(ui.ctx(), &dialogs, None);
             },
         );
+        output.textures_delta.clear();
 
         fn collect_text(shape: &egui::Shape, text: &mut Vec<String>) {
             match shape {
@@ -907,7 +913,7 @@ mod tests {
             crate::initialize(&context);
             let dialogs = [simple(20, 1, "Long simple dialog title", 1), paged(21, 1)];
             let mut component = ScriptDialogs::default();
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -917,6 +923,7 @@ mod tests {
                     component.show_windows(ui.ctx(), &dialogs, None);
                 },
             );
+            output.textures_delta.clear();
             assert!(!output.shapes.is_empty());
             assert_eq!(component.states.len(), 2);
         }
