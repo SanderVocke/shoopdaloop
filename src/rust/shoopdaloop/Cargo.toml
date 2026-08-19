@@ -15,6 +15,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
 anyhow = { workspace = true }
+clap = { workspace = true }
 eframe = { workspace = true }
 shoop_app = { path = "../shoop_app" }
 shoop_backend = { path = "../shoop_backend" }
@@ -23,7 +24,6 @@ shoop_scripting = { path = "../shoop_scripting" }
 tracing = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-clap = { workspace = true }
 shoop_common = { path = "../shoop_common" }
 shoop_backend = { path = "../shoop_backend", features = ["native-drivers"] }
 shoop_settings = { path = "../shoop_settings", features = ["native-store"] }

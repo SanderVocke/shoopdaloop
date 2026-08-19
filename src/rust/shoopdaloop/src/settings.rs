@@ -59,6 +59,8 @@ pub struct SettingsManager {
     path: PathBuf,
     #[cfg(not(target_arch = "wasm32"))]
     pending: Option<PendingNativeSave>,
+    #[cfg(target_arch = "wasm32")]
+    inject_save_failure: bool,
 }
 
 impl SettingsManager {
@@ -94,14 +96,20 @@ impl SettingsManager {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub fn load(registry: SettingsRegistry, writer_version: impl Into<String>) -> Self {
+    pub fn load(
+        registry: SettingsRegistry,
+        writer_version: impl Into<String>,
+        inject_save_failure: bool,
+    ) -> Self {
         let loaded = browser_load();
-        Self::from_loaded(
+        let mut manager = Self::from_loaded(
             registry,
             writer_version.into(),
             format!("localStorage key {}", shoop_settings::SETTINGS_STORAGE_KEY),
             loaded,
-        )
+        );
+        manager.inject_save_failure = inject_save_failure;
+        manager
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -146,6 +154,7 @@ impl SettingsManager {
             storage_location,
             recovery_required,
             persistence: SettingsPersistenceState::Idle,
+            inject_save_failure: false,
         }
     }
 
@@ -233,7 +242,7 @@ impl SettingsManager {
 
         #[cfg(target_arch = "wasm32")]
         {
-            match browser_save(&encoded) {
+            match browser_save(&encoded, self.inject_save_failure) {
                 Ok(()) => {
                     self.apply_saved(document);
                     Ok(())
@@ -367,10 +376,7 @@ fn browser_load() -> Result<Option<String>, String> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn browser_save(contents: &str) -> Result<(), String> {
-    let inject_failure = web_sys::window()
-        .and_then(|window| window.location().search().ok())
-        .is_some_and(|search| search.contains("settings-save-failure=1"));
+fn browser_save(contents: &str, inject_failure: bool) -> Result<(), String> {
     if inject_failure {
         return Err("injected browser settings save failure".to_owned());
     }
