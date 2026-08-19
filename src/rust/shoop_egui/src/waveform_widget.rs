@@ -213,13 +213,11 @@ impl WaveformWidget {
     }
 
     fn show_overlay(ui: &mut egui::Ui, rect: egui::Rect, label: &str, zoom: &mut f32) {
-        ui.painter().text(
-            rect.left_top() + egui::vec2(6.0, 5.0),
-            egui::Align2::LEFT_TOP,
-            label,
-            egui::FontId::proportional(12.0),
-            ui.visuals().text_color(),
+        let label_rect = egui::Rect::from_min_max(
+            rect.left_top() + egui::vec2(6.0, 3.0),
+            egui::pos2(rect.right() - 122.0, rect.top() + 22.0),
         );
+        ui.put(label_rect, egui::Label::new(label).truncate());
         let zoom_rect = egui::Rect::from_min_size(
             egui::pos2(rect.right() - 116.0, rect.top() + 3.0),
             egui::vec2(110.0, 18.0),
