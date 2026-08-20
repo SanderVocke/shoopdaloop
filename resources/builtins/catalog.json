@@ -1,16 +1,16 @@
 {
   "files": [
     {
-      "bytes": 21594,
+      "bytes": 21546,
       "kind": "lua",
       "path": "akai_apc_mini_mk1.lua",
-      "sha256": "88def0faaf1255313ef684ce6c286b58f075cdbf581e05d4582dd104022ea6a8"
+      "sha256": "250300110ce9f9ba05d5e154eb192e5d5da9bc89d45c7d3ed75b7beaf5fae112"
     },
     {
-      "bytes": 19982,
+      "bytes": 19976,
       "kind": "lua",
-      "path": "akai_apc_mini_mk2_v3.lua",
-      "sha256": "00ab7e10eb2a15c23afc1ac29cf70d4e90ee373c89249eb860dff53485eb2ce1"
+      "path": "akai_apc_mini_mk2.lua",
+      "sha256": "097902b0d83ad957471d5a45806be85b0e56c4bc42b9c5541fbf1eafc5f2205d"
     },
     {
       "bytes": 1656,

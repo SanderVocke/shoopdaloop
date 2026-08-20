@@ -97,6 +97,8 @@ For general workflow status and log investigation before trace analysis, read `.
 
 ## Build and run the native application
 
+Use the execution environment selected by the project build guidance. In a Nix or NixOS environment, enter the repository's development shell first.
+
 Build the native application:
 
 ```sh

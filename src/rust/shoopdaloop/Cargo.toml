@@ -25,6 +25,7 @@ shoop_script_resources = { path = "../shoop_script_resources" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+ehttp = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_common = { path = "../shoop_common" }

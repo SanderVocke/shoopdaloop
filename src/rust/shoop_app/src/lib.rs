@@ -1414,6 +1414,7 @@ impl ApplicationModel {
             AppIntent::RequestNewSession => self.begin_new_session(),
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
+            | AppIntent::RequestLoadSessionUrl
             | AppIntent::RequestLoopAudioImportPicker { .. }
             | AppIntent::RequestLoopMidiImportPicker { .. } => Ok(()),
             AppIntent::LoadSessionBytes { name, bytes } => self.begin_load_session(name, &bytes),
@@ -1963,6 +1964,7 @@ impl ApplicationModel {
                 output_balance: track.controls.output_balance,
                 output_muted: track.controls.output_muted,
                 input_gain_db: track.controls.input_gain_db,
+                input_balance: track.controls.input_balance,
                 input_muted: !track.controls.input_monitoring,
             });
             for (row, id) in track.loops.iter().enumerate() {
@@ -2328,6 +2330,12 @@ impl ApplicationModel {
             ),
             ControlOperation::SetTrackInputGain { tracks, gain_db } => self
                 .apply_script_track_action(backend, tracks, TrackAction::InputGainChanged(gain_db)),
+            ControlOperation::SetTrackInputBalance { tracks, balance } => self
+                .apply_script_track_action(
+                    backend,
+                    tracks,
+                    TrackAction::InputBalanceChanged(balance),
+                ),
             ControlOperation::SetTrackInputMuted {
                 tracks,
                 muted,
@@ -10934,7 +10942,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 4); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 5); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -10952,7 +10960,7 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.4, host supports 1.3"));
+        assert!(error.contains("script requests 1.5, host supports 1.4"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -13515,7 +13523,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         send_note(&mut runtime, &midi_control, 71, false);
         assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 1);
         send_note(&mut runtime, &midi_control, 71, true);
-        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 7, true);
         send_note(&mut runtime, &midi_control, 71, false);
         assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 0);
 
@@ -13541,14 +13549,14 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         send_note(&mut runtime, &midi_control, 68, true);
         midi_control.push_input("apc-source", vec![0xb0, 56, 127]);
         runtime.tick(Duration::from_millis(2));
-        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 7, true);
         send_note(&mut runtime, &midi_control, 68, false);
         assert_eq!(runtime.snapshot().tracks[0].controls.output_gain_db, 20.0);
         assert!(runtime.snapshot().tracks[0].controls.output_muted);
         send_note(&mut runtime, &midi_control, 69, true);
         midi_control.push_input("apc-source", vec![0xb0, 56, 0]);
         runtime.tick(Duration::from_millis(2));
-        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 7, true);
         send_note(&mut runtime, &midi_control, 69, false);
         assert!(!runtime.snapshot().tracks[0].controls.output_stereo);
         assert_eq!(runtime.snapshot().tracks[0].controls.output_balance, 0.0);
@@ -13633,31 +13641,34 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
 
         send_note(&mut runtime, &midi_control, 87, true);
-        assert!(runtime.snapshot().global_controls.sync);
-        send_note(&mut runtime, &midi_control, 87, false);
         assert!(!runtime.snapshot().global_controls.sync);
+        send_note(&mut runtime, &midi_control, 87, false);
+        assert!(runtime.snapshot().global_controls.sync);
         send_note(&mut runtime, &midi_control, 98, true);
         send_note(&mut runtime, &midi_control, 87, true);
         send_note(&mut runtime, &midi_control, 87, false);
         send_note(&mut runtime, &midi_control, 98, false);
+        assert!(!runtime.snapshot().global_controls.sync);
+        send_note(&mut runtime, &midi_control, 87, true);
+        runtime.tick(Duration::from_millis(250));
         assert!(runtime.snapshot().global_controls.sync);
-        runtime
-            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
-            .unwrap();
-        runtime.tick(Duration::ZERO);
+        send_note(&mut runtime, &midi_control, 87, false);
+        assert!(!runtime.snapshot().global_controls.sync);
 
         send_note(&mut runtime, &midi_control, 83, true);
-        assert!(runtime.snapshot().global_controls.solo);
-        send_note(&mut runtime, &midi_control, 83, false);
         assert!(!runtime.snapshot().global_controls.solo);
+        send_note(&mut runtime, &midi_control, 83, false);
+        assert!(runtime.snapshot().global_controls.solo);
         send_note(&mut runtime, &midi_control, 98, true);
         send_note(&mut runtime, &midi_control, 83, true);
         send_note(&mut runtime, &midi_control, 83, false);
         send_note(&mut runtime, &midi_control, 98, false);
+        assert!(!runtime.snapshot().global_controls.solo);
+        send_note(&mut runtime, &midi_control, 83, true);
+        runtime.tick(Duration::from_millis(250));
         assert!(runtime.snapshot().global_controls.solo);
-        runtime
-            .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(false)))
-            .unwrap();
+        send_note(&mut runtime, &midi_control, 83, false);
+        assert!(!runtime.snapshot().global_controls.solo);
         runtime
             .dispatch(AppIntent::Global(
                 GlobalControlAction::SetDefaultRecordingAction(
@@ -13666,7 +13677,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             ))
             .unwrap();
         runtime.tick(Duration::ZERO);
-        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 7, true);
         assert_eq!(
             runtime.snapshot().tracks[0].loops[0].mode,
             LoopMode::Recording
@@ -13742,8 +13753,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         send_note(&mut runtime, &midi_control, 60, false);
         send_note(&mut runtime, &midi_control, 61, true);
         send_note(&mut runtime, &midi_control, 61, false);
-        send_note(&mut runtime, &midi_control, 88, true);
-        send_note(&mut runtime, &midi_control, 88, false);
+        send_note(&mut runtime, &midi_control, 7, true);
+        send_note(&mut runtime, &midi_control, 7, false);
         send_note(&mut runtime, &midi_control, 70, false);
         send_note(&mut runtime, &midi_control, 98, false);
         let serial_target = runtime.snapshot().tracks[4].loops[0].id;
@@ -14015,13 +14026,19 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         for _ in 0..20 {
             std::thread::sleep(Duration::from_millis(5));
             runtime.tick(Duration::from_millis(5));
+        }
+        assert!(!runtime.snapshot().global_controls.solo);
+        source.send(&[0x80, 83, 0]).unwrap();
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(5));
+            runtime.tick(Duration::from_millis(5));
             if runtime.snapshot().global_controls.solo {
                 break;
             }
         }
         assert!(runtime.snapshot().global_controls.solo);
-        source.send(&[0x80, 83, 0]).unwrap();
-        for _ in 0..20 {
+        source.send(&[0x90, 83, 0x7f]).unwrap();
+        for _ in 0..60 {
             std::thread::sleep(Duration::from_millis(5));
             runtime.tick(Duration::from_millis(5));
             if !runtime.snapshot().global_controls.solo {
@@ -14029,6 +14046,15 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             }
         }
         assert!(!runtime.snapshot().global_controls.solo);
+        source.send(&[0x80, 83, 0]).unwrap();
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(5));
+            runtime.tick(Duration::from_millis(5));
+            if runtime.snapshot().global_controls.solo {
+                break;
+            }
+        }
+        assert!(runtime.snapshot().global_controls.solo);
         runtime.tick(Duration::from_millis(1_000));
         assert!(receiver.recv_timeout(Duration::from_secs(1)).is_ok());
         drop(sink);
@@ -16101,7 +16127,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn scripts_export_exact_source_and_convert_session_ownership() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
-        let source = "shoop_announce_api_version(1, 4)\nprint('future')";
+        let source = "shoop_announce_api_version(1, 5)\nprint('future')";
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),

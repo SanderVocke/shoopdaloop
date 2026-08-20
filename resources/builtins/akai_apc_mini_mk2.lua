@@ -78,7 +78,7 @@ if shoop_announce_api_version then
     shoop_announce_api_version(1, 4)
 end
 
-print_debug("Init akai_apc_mini_mk2_v3.lua")
+print_debug("Init akai_apc_mini_mk2.lua")
 
 local shoop_control = require('shoop_control')
 local shoop_helpers = require('shoop_helpers')
@@ -588,4 +588,4 @@ shoop_control.auto_open_device_specific_midi_control_input(DEVICE_REGEX, on_midi
 shoop_control.register_loop_event_cb(handle_loop_event)
 shoop_control.register_global_event_cb(recheck_global_controls)
 
-print_debug("akai_apc_mini_mk2_v3.lua: ready")
+print_debug("akai_apc_mini_mk2.lua: ready")

@@ -1,3 +1,5 @@
+Run these commands in the environment selected by the build guidance. In particular, enter the repository's development shell first on Nix/NixOS.
+
 - Complete Rust suite: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci` (requires cargo-nextest 0.9.116).
 - Formatting: `cargo fmt --all -- --check`.
 - Warning-denying build: `RUSTFLAGS="-D warnings" cargo build --workspace`.

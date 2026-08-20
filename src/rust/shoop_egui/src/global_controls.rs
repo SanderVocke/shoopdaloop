@@ -16,6 +16,7 @@ pub struct GlobalControls {
     new_session_requested: bool,
     save_session_requested: bool,
     load_session_requested: bool,
+    load_session_url_requested: bool,
     settings_requested: bool,
     apply_n_cycles: OptimisticValue<u32>,
     apply_n_cycles_dragging: bool,
@@ -30,6 +31,7 @@ enum TestGlobalControl {
     NewSession,
     SaveSession,
     LoadSession,
+    LoadSessionUrl,
     Settings,
     StopAll,
     MidiPanic,
@@ -52,6 +54,7 @@ struct TestGlobalControlRects {
     new_session: Option<egui::Rect>,
     save_session: Option<egui::Rect>,
     load_session: Option<egui::Rect>,
+    load_session_url: Option<egui::Rect>,
     settings: Option<egui::Rect>,
     stop_all: Option<egui::Rect>,
     midi_panic: Option<egui::Rect>,
@@ -76,6 +79,7 @@ impl GlobalControls {
         self.new_session_requested = false;
         self.save_session_requested = false;
         self.load_session_requested = false;
+        self.load_session_url_requested = false;
         self.settings_requested = false;
         let mut actions = Vec::new();
         ui.horizontal(|ui| {
@@ -104,6 +108,12 @@ impl GlobalControls {
                     self.record_rect(TestGlobalControl::LoadSession, &load_session);
                     if load_session.clicked() {
                         self.load_session_requested = true;
+                        ui.close();
+                    }
+                    let load_session_url = ui.button("Load session from URL…");
+                    self.record_rect(TestGlobalControl::LoadSessionUrl, &load_session_url);
+                    if load_session_url.clicked() {
+                        self.load_session_url_requested = true;
                         ui.close();
                     }
                     let settings = ui.button("Settings");
@@ -344,6 +354,10 @@ impl GlobalControls {
         actions
     }
 
+    pub fn take_load_session_url_requested(&mut self) -> bool {
+        std::mem::take(&mut self.load_session_url_requested)
+    }
+
     pub fn take_connections_requested(&mut self) -> bool {
         std::mem::take(&mut self.connections_requested)
     }
@@ -372,6 +386,7 @@ impl GlobalControls {
             TestGlobalControl::NewSession => &mut self.test_rects.new_session,
             TestGlobalControl::SaveSession => &mut self.test_rects.save_session,
             TestGlobalControl::LoadSession => &mut self.test_rects.load_session,
+            TestGlobalControl::LoadSessionUrl => &mut self.test_rects.load_session_url,
             TestGlobalControl::Settings => &mut self.test_rects.settings,
             TestGlobalControl::StopAll => &mut self.test_rects.stop_all,
             TestGlobalControl::MidiPanic => &mut self.test_rects.midi_panic,
@@ -403,6 +418,7 @@ impl GlobalControls {
             TestGlobalControl::NewSession => self.test_rects.new_session,
             TestGlobalControl::SaveSession => self.test_rects.save_session,
             TestGlobalControl::LoadSession => self.test_rects.load_session,
+            TestGlobalControl::LoadSessionUrl => self.test_rects.load_session_url,
             TestGlobalControl::Settings => self.test_rects.settings,
             TestGlobalControl::StopAll => self.test_rects.stop_all,
             TestGlobalControl::MidiPanic => self.test_rects.midi_panic,
@@ -639,6 +655,15 @@ mod tests {
         )
         .is_empty());
         assert!(controls.take_load_session_requested());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
+        assert!(click(
+            &context,
+            &mut controls,
+            &state,
+            TestGlobalControl::LoadSessionUrl
+        )
+        .is_empty());
+        assert!(controls.take_load_session_url_requested());
         assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
         assert!(click(&context, &mut controls, &state, TestGlobalControl::Settings).is_empty());
         assert!(controls.take_settings_requested());

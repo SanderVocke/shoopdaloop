@@ -23,6 +23,7 @@ from build_single_file_app import build_single_file
 PACKAGE = Path(__file__).resolve().parent
 ROOT = PACKAGE.parents[2]
 ARCHIVE_ROOT = "shoopdaloop"
+SOURCE_TREE_MARKER = "SHOOP_SRC_TREE"
 PROFILES = ("debug", "release")
 NATIVE_PLATFORMS = ("linux", "windows", "macos")
 APPLICATION_ICON = ROOT / "resources" / "iconset" / "icon.png"
@@ -380,13 +381,17 @@ def verify_native(path: Path, platform: str) -> None:
             f"{app}Resources/icon.icns",
         }
         executable = f"{app}MacOS/shoopdaloop"
+        source_tree_marker = f"{app}MacOS/{SOURCE_TREE_MARKER}"
         builtins_prefix = f"{app}Resources/builtins/"
         component_manifest_path = f"{app}Frameworks/carla-runtime/manifest.json"
     else:
         executable = f"{root}{executable_name(platform)}"
+        source_tree_marker = f"{root}{SOURCE_TREE_MARKER}"
         required = metadata | fonts | {executable}
         builtins_prefix = f"{root}builtins/"
         component_manifest_path = f"{root}carla-runtime/manifest.json"
+    if source_tree_marker in names:
+        raise RuntimeError("native archive contains a source-tree marker")
     try:
         component_manifest = json.loads(
             payloads[component_manifest_path].decode("utf-8")

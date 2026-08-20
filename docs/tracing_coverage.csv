@@ -123,6 +123,7 @@ src/rust/shoop_settings/src/settings.rs,non_realtime_support,instrumented_indire
 src/rust/shoop_settings/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_settings/src/native_store.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_tracing/src/lib.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
+src/rust/shoopdaloop/build.rs,build_only,excluded,Cargo build script; not part of the application runtime.
 src/rust/shoopdaloop/src/app_args.rs,application_ui_and_control,excluded,"Parses startup inputs before runtime tracing boundaries are established."
 src/rust/shoopdaloop/src/browser_audio.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoopdaloop/src/browser_midi.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

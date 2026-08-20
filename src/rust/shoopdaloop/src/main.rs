@@ -226,6 +226,11 @@ struct UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     pending_tracing_action: Option<PendingTracingAction>,
     last_update: Instant,
+    startup_session: Option<String>,
+    session_url_input: String,
+    session_url_error: Option<String>,
+    session_url_prompt_open: bool,
+    session_url_confirmation: Option<String>,
     #[cfg(target_arch = "wasm32")]
     browser_self_test: BrowserSelfTest,
     #[cfg(target_arch = "wasm32")]
@@ -312,6 +317,11 @@ impl UnifiedApp {
             #[cfg(not(target_arch = "wasm32"))]
             pending_tracing_action: None,
             last_update: Instant::now(),
+            startup_session: args.session.clone(),
+            session_url_input: String::new(),
+            session_url_error: None,
+            session_url_prompt_open: false,
+            session_url_confirmation: None,
             #[cfg(target_arch = "wasm32")]
             browser_self_test: BrowserSelfTest::from_args(args),
             #[cfg(target_arch = "wasm32")]
@@ -331,6 +341,102 @@ impl UnifiedApp {
 }
 
 impl UnifiedApp {
+    fn process_session_source(&mut self, source: String) {
+        if is_http_url(&source) {
+            self.session_url_confirmation = Some(source);
+            return;
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        load_session_path(source, self.pending_file_intent_tx.clone());
+        #[cfg(target_arch = "wasm32")]
+        self.pending_file_intents
+            .borrow_mut()
+            .push_back(AppIntent::ReportFileIoError {
+                task_id: None,
+                message: "Filesystem session paths are unavailable in the web app".to_owned(),
+            });
+    }
+
+    fn show_session_url_dialogs(&mut self, context: &egui::Context) {
+        if self.session_url_prompt_open {
+            let mut submit = false;
+            let mut cancel = false;
+            egui::Modal::new(egui::Id::new("load_session_url_prompt")).show(context, |ui| {
+                ui.heading("Load session from URL");
+                ui.add_space(8.0);
+                ui.label("Session URL:");
+                let response = ui.text_edit_singleline(&mut self.session_url_input);
+                if let Some(error) = &self.session_url_error {
+                    ui.colored_label(ui.visuals().error_fg_color, error);
+                }
+                ui.horizontal(|ui| {
+                    submit = (response.lost_focus()
+                        && ui.input(|input| input.key_pressed(egui::Key::Enter)))
+                        || ui.button("Continue").clicked();
+                    cancel = ui.button("Cancel").clicked();
+                });
+            });
+            if cancel {
+                self.session_url_prompt_open = false;
+                self.session_url_error = None;
+            } else if submit {
+                let source = self.session_url_input.trim().to_owned();
+                if is_http_url(&source) {
+                    self.session_url_prompt_open = false;
+                    self.session_url_error = None;
+                    self.session_url_confirmation = Some(source);
+                } else {
+                    self.session_url_error =
+                        Some("Please enter an http:// or https:// URL".to_owned());
+                }
+            }
+        }
+
+        if let Some(url) = self.session_url_confirmation.clone() {
+            let mut fetch = false;
+            let mut cancel = false;
+            egui::Modal::new(egui::Id::new("confirm_session_url_fetch")).show(context, |ui| {
+                ui.heading("Fetch session from URL?");
+                ui.add_space(8.0);
+                ui.label("ShoopDaLoop will download and open this session:");
+                ui.monospace(&url);
+                ui.horizontal(|ui| {
+                    fetch = ui.button("Fetch and open").clicked();
+                    cancel = ui.button("Cancel").clicked();
+                });
+            });
+            if fetch {
+                self.session_url_confirmation = None;
+                self.fetch_session_url(url);
+            } else if cancel {
+                self.session_url_confirmation = None;
+            }
+        }
+    }
+
+    fn fetch_session_url(&self, url: String) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let pending = self.pending_file_intent_tx.clone();
+            let name = session_source_name(&url);
+            ehttp::fetch(ehttp::Request::get(&url), move |result| {
+                let _ = pending.send(session_fetch_result(name, result));
+            });
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let pending = Rc::clone(&self.pending_file_intents);
+            let name = session_source_name(&url);
+            wasm_bindgen_futures::spawn_local(async move {
+                let result = ehttp::fetch_async(ehttp::Request::get(&url)).await;
+                pending
+                    .borrow_mut()
+                    .push_back(session_fetch_result(name, result));
+            });
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn process_tracing(&mut self) {
         let Some(tracing) = self.tracing.as_ref().cloned() else {
@@ -715,6 +821,9 @@ impl UnifiedApp {
     }
 
     fn show(&mut self, ui: &mut egui::Ui) {
+        if let Some(source) = self.startup_session.take() {
+            self.process_session_source(source);
+        }
         let _span = tracing::trace_span!("frontend.egui.update").entered();
         self.settings.poll();
         if let Err(error) = self
@@ -776,6 +885,7 @@ impl UnifiedApp {
             self.handle_settings_action(action);
         }
         self.show_file_drop_overlay(ui.ctx());
+        self.show_session_url_dialogs(ui.ctx());
         #[cfg(not(target_arch = "wasm32"))]
         let drain_file_outputs = true;
         #[cfg(target_arch = "wasm32")]
@@ -827,6 +937,10 @@ impl UnifiedApp {
                         }
                     });
                 }
+                None
+            }
+            AppIntent::RequestLoadSessionUrl => {
+                self.session_url_prompt_open = true;
                 None
             }
             AppIntent::RequestLoopAudioImportPicker { loop_id } => {
@@ -909,6 +1023,9 @@ impl UnifiedApp {
                         });
                     }
                 });
+            }
+            AppIntent::RequestLoadSessionUrl => {
+                self.session_url_prompt_open = true;
             }
             AppIntent::RequestLoopAudioImportPicker { loop_id } => {
                 let pending = Rc::clone(&self.pending_file_intents);
@@ -1014,6 +1131,63 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_default()
         .to_string_lossy()
         .into_owned()
+}
+
+fn is_http_url(source: &str) -> bool {
+    ["https://", "http://"].iter().any(|scheme| {
+        source
+            .get(..scheme.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(scheme))
+            && source[scheme.len()..]
+                .split(['/', '?', '#'])
+                .next()
+                .is_some_and(|authority| !authority.is_empty())
+    })
+}
+
+fn session_source_name(source: &str) -> String {
+    source
+        .split(['?', '#'])
+        .next()
+        .and_then(|path| path.rsplit('/').next())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("downloaded-session.shoop")
+        .to_owned()
+}
+
+fn session_fetch_result(name: String, result: ehttp::Result<ehttp::Response>) -> AppIntent {
+    match result {
+        Ok(response) if response.ok => AppIntent::LoadSessionBytes {
+            name,
+            bytes: std::sync::Arc::from(response.bytes),
+        },
+        Ok(response) => AppIntent::ReportFileIoError {
+            task_id: None,
+            message: format!("Could not fetch session: HTTP {}", response.status),
+        },
+        Err(error) => AppIntent::ReportFileIoError {
+            task_id: None,
+            message: format!("Could not fetch session: {error}"),
+        },
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_session_path(source: String, sender: Sender<AppIntent>) {
+    std::thread::spawn(move || {
+        let path = Path::new(&source);
+        let intent = match std::fs::read(path) {
+            Ok(bytes) => AppIntent::LoadSessionBytes {
+                name: file_name(path),
+                bytes: std::sync::Arc::from(bytes),
+            },
+            Err(error) => AppIntent::ReportFileIoError {
+                task_id: None,
+                message: format!("Could not read {}: {error}", path.display()),
+            },
+        };
+        let _ = sender.send(intent);
+    });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -2087,7 +2261,7 @@ fn main() {
         });
         match result {
             Ok(count) => {
-                println!("Discovered {count} packaged built-in scripts in {root}");
+                println!("Discovered {count} built-in scripts in {root}");
                 return;
             }
             Err(error) => {
@@ -4304,7 +4478,7 @@ impl BrowserSelfTest {
                     [
                         (
                             "lua-api-higher-minor.lua",
-                            "shoop_announce_api_version(1, 4); require('shoop_control').set_solo(true)",
+                            "shoop_announce_api_version(1, 5); require('shoop_control').set_solo(true)",
                         ),
                         (
                             "lua-api-lower-major.lua",
@@ -4748,6 +4922,18 @@ mod tests {
     };
 
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn session_sources_recognize_http_urls_and_names() {
+        assert!(is_http_url("https://example.com/session.shoop"));
+        assert!(is_http_url("HTTP://EXAMPLE.COM/session.shoop"));
+        assert!(!is_http_url("https://"));
+        assert!(!is_http_url("session.shoop"));
+        assert_eq!(
+            session_source_name("https://example.com/sessions/demo.shoop?download=1#top"),
+            "demo.shoop"
+        );
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
@@ -5547,7 +5733,7 @@ mod tests {
         for (name, source) in [
             (
                 "lua-api-higher-minor.lua",
-                "shoop_announce_api_version(1, 4); require('shoop_control').set_solo(true)",
+                "shoop_announce_api_version(1, 5); require('shoop_control').set_solo(true)",
             ),
             (
                 "lua-api-lower-major.lua",

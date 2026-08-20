@@ -44,6 +44,7 @@ pub use app_widget::{
 pub use composite_loop_widget::CompositeLoopWidget;
 pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;
+pub(crate) use details_pane::MediaView;
 pub use global_controls::GlobalControls;
 pub use loop_widget::{LoopWidget, LoopWidgetResponse};
 pub use midi_sequence_widget::MidiSequenceWidget;

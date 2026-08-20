@@ -10,7 +10,7 @@ This document defines the Shoop Lua compatibility target for the native and brow
 - Setters accept exactly one of their documented argument counts. Unsupported selector/value types are errors. Setters return `nil` unless noted.
 - Multi-object getters return Lua sequences in selector order. A singular-looking selector still produces a sequence for getters documented as `list[...]`.
 - Mode, event, key, and modifier values are integers. `nil` represents an absent queued transition or target.
-- Gain-factor APIs use linear amplitude. Balance is clamped to `[-1, 1]`; fader positions are clamped to `[0, 1]` and use the same conversion curve as the application controls.
+- Gain-factor APIs use linear amplitude. Output and input balance are clamped to `[-1, 1]`; fader positions are clamped to `[0, 1]` and use the same conversion curve as the application controls.
 
 The auto-mute-other-track-inputs policy defaults off, and changing the policy does not alter current input monitoring. A respecting multi-track unmute treats its selector as one target group: selected tracks are unmuted and every track outside the group, including the sync track, is muted. Muting and non-respecting calls never affect tracks outside the selector.
 
@@ -54,6 +54,7 @@ The auto-mute-other-track-inputs policy defaults off, and changing the policy do
 | Track query | `track_get_gain_fader(selector)` | Sequence of output fader positions. |
 | Track query | `track_get_input_gain(selector)` | Sequence of linear input gains. |
 | Track query | `track_get_input_gain_fader(selector)` | Sequence of input fader positions. |
+| Track query | `track_get_input_balance(selector)` | Sequence of input balances. |
 | Track query | `track_get_muted(selector)` | Sequence of output mute states. |
 | Track mutation | `track_set_muted(selector, muted)` | Sets output mute. |
 | Track query | `track_get_input_muted(selector)` | Sequence of inverse input-monitoring states. |
@@ -63,6 +64,7 @@ The auto-mute-other-track-inputs policy defaults off, and changing the policy do
 | Track mutation | `track_set_gain_fader(selector, position)` | Sets output gain through the fader curve. |
 | Track mutation | `track_set_input_gain(selector, gain)` | Sets linear input gain. |
 | Track mutation | `track_set_input_gain_fader(selector, position)` | Sets input gain through the fader curve. |
+| Track mutation | `track_set_input_balance(selector, balance)` | Sets input balance, clamped to `[-1, 1]`. |
 | Global | `set_apply_n_cycles(n)` / `get_apply_n_cycles()` | Sets/gets the non-negative fixed recording cycle count; zero disables it. |
 | Global | `set_solo(active)` / `get_solo()` | Sets/gets solo policy. |
 | Global | `set_sync_active(active)` / `get_sync_active()` | Sets/gets synchronized-trigger policy. |
@@ -110,7 +112,7 @@ Each script gets its own Lua 5.4 state. Runtime or callback failure changes only
 |---|---|---|
 | `keyboard.lua` | Selection/target queries and mutations; mode query/trigger; clear/grab/record-with-target; track input mute; global cycle count; keyboard subscription. | Stable coordinates, synchronized and immediate transitions, selection movement, target recording, fixed cycles, selected-track input monitoring, and press/release sampler state from `shoop_helpers`. |
 | `akai_apc_mini_mk1.lua` | Loop trigger/clear/grab/select/target/composition; track gain/balance/input mute; global controls; loop/global callbacks; timer; MIDI auto-open input/output. | Full grid and sync coordinate mapping, regular composition append/parallel execution, event-driven LEDs, delayed reset, input hotplug, output broadcast/throttling, and controller reconnect. |
-| `akai_apc_mini_mk2_v3.lua` | The same controller/control families plus click/hold helper timers. | MK2 v3 grid/color mapping, click/hold global controls, hotplug, bounded MIDI output, and reconnect. |
+| `akai_apc_mini_mk2.lua` | The same controller/control families plus click/hold helper timers. | MK2 grid/color mapping, click/hold global controls, hotplug, bounded MIDI output, and reconnect. |
 
 The APC source indexes coordinate pairs as `coords[1]`/`coords[2]`; nested numeric indexing is invalid. This behavior is part of the shared script contract.
 

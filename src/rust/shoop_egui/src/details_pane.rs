@@ -2,9 +2,92 @@ use crate::{
     AppIntent, CompositeLoopWidget, LoopDetailsState, LoopId, MidiSequenceWidget, WaveformWidget,
 };
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MediaView {
+    pub(crate) timeline_start: f64,
+    pub(crate) timeline_end: f64,
+    pub(crate) start_frame: f64,
+    pub(crate) end_frame: f64,
+}
+
+impl MediaView {
+    pub(crate) fn visible_frames(self) -> f64 {
+        (self.end_frame - self.start_frame).max(1.0)
+    }
+
+    pub(crate) fn frame_to_x(self, frame: f64, rect: egui::Rect) -> f32 {
+        rect.left() + ((frame - self.start_frame) / self.visible_frames()) as f32 * rect.width()
+    }
+
+    pub(crate) fn pan(&mut self, drag_delta_x: f32, width: f32) {
+        let visible_frames = self.visible_frames();
+        let max_start = (self.timeline_end - visible_frames).max(self.timeline_start);
+        self.start_frame = (self.start_frame
+            - f64::from(drag_delta_x) * visible_frames / f64::from(width.max(1.0)))
+        .clamp(self.timeline_start, max_start);
+        self.end_frame = self.start_frame + visible_frames;
+    }
+}
+
+#[derive(Debug)]
+struct MediaViewState {
+    zoom: f32,
+    offset: f64,
+}
+
+impl Default for MediaViewState {
+    fn default() -> Self {
+        Self {
+            zoom: 1.0,
+            offset: 0.0,
+        }
+    }
+}
+
+impl MediaViewState {
+    fn view(&mut self, (timeline_start, timeline_end): (f64, f64)) -> MediaView {
+        let total_frames = (timeline_end - timeline_start).max(1.0);
+        let visible_frames = (total_frames / f64::from(self.zoom)).max(1.0);
+        let max_offset = (timeline_end - visible_frames).max(timeline_start);
+        self.offset = self.offset.clamp(timeline_start, max_offset);
+        MediaView {
+            timeline_start,
+            timeline_end,
+            start_frame: self.offset,
+            end_frame: self.offset + visible_frames,
+        }
+    }
+}
+
+fn media_bounds(details: &LoopDetailsState) -> (f64, f64) {
+    let mut start = 0.0_f64;
+    let mut end = 1.0_f64;
+    for channel in &details.channels {
+        start = start.min(channel.start_offset as f64);
+        end = end.max(channel.samples.len() as f64).max(
+            channel
+                .start_offset
+                .saturating_add_unsigned(channel.loop_length) as f64,
+        );
+    }
+    for channel in &details.midi_channels {
+        start = start.min(channel.start_offset as f64);
+        end = end.max(
+            channel
+                .start_offset
+                .saturating_add_unsigned(channel.loop_length) as f64,
+        );
+        if let Some(event_end) = channel.events.iter().map(|event| event.frame).max() {
+            end = end.max(f64::from(event_end));
+        }
+    }
+    (start, end.max(start + 1.0))
+}
+
 #[derive(Debug, Default)]
 pub struct DetailsPane {
     loop_id: LoopId,
+    media_view: MediaViewState,
     waveforms: Vec<WaveformWidget>,
     midi_sequences: Vec<MidiSequenceWidget>,
     composite: CompositeLoopWidget,
@@ -23,6 +106,7 @@ impl DetailsPane {
 
         if self.loop_id != details.loop_id {
             self.loop_id = details.loop_id;
+            self.media_view = MediaViewState::default();
             self.waveforms.clear();
             self.midi_sequences.clear();
         }
@@ -46,6 +130,16 @@ impl DetailsPane {
             return Vec::new();
         }
 
+        ui.add(
+            egui::Slider::new(&mut self.media_view.zoom, 1.0..=64.0)
+                .logarithmic(true)
+                .show_value(false)
+                .text("zoom"),
+        )
+        .on_hover_text(format!("Media zoom: {:.1}×", self.media_view.zoom));
+
+        let media_view = self.media_view.view(media_bounds(details));
+        let mut pan_frames = 0.0;
         self.waveforms
             .resize_with(details.channels.len(), WaveformWidget::default);
         self.midi_sequences
@@ -57,15 +151,16 @@ impl DetailsPane {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.vertical(|ui| {
                     for (channel, waveform) in details.channels.iter().zip(&mut self.waveforms) {
-                        waveform.show(ui, channel);
+                        pan_frames += waveform.show(ui, channel, media_view);
                     }
                     for (channel, sequence) in
                         details.midi_channels.iter().zip(&mut self.midi_sequences)
                     {
-                        sequence.show(ui, channel);
+                        pan_frames += sequence.show(ui, channel, media_view);
                     }
                 });
             });
+        self.media_view.offset = media_view.start_frame + pan_frames;
         Vec::new()
     }
 }
@@ -116,6 +211,38 @@ mod tests {
         assert_eq!(pane.composite.rendered_event_count(), 1);
         assert!(pane.waveforms.is_empty());
         assert!(pane.midi_sequences.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mixed_media_uses_one_bounded_frame_view() {
+        let details = LoopDetailsState {
+            channels: vec![WaveformChannelState {
+                samples: Arc::from([0.0; 100]),
+                loop_length: 80,
+                ..Default::default()
+            }],
+            midi_channels: vec![MidiSequenceChannelState {
+                events: Arc::from([MidiEventState {
+                    frame: 220,
+                    data: Arc::from([0x90, 60, 100]),
+                }]),
+                start_offset: -20,
+                loop_length: 150,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let bounds = media_bounds(&details);
+        assert_eq!(bounds, (-20.0, 220.0));
+
+        let mut state = MediaViewState {
+            zoom: 2.0,
+            offset: -20.0,
+        };
+        let mut view = state.view(bounds);
+        assert_eq!((view.start_frame, view.end_frame), (-20.0, 100.0));
+        view.pan(-1_000.0, 100.0);
+        assert_eq!((view.start_frame, view.end_frame), (100.0, 220.0));
     }
 
     #[shoop_wasm_test_support::shoop_test]

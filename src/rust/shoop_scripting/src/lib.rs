@@ -58,6 +58,12 @@ const AKAI_APC_MINI_MK1_SCRIPT: &str = unsafe {
     ))
 };
 #[cfg(test)]
+const AKAI_APC_MINI_MK2_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/akai_apc_mini_mk2.lua"
+    ))
+};
+#[cfg(test)]
 const DIALOG_EXAMPLE_SCRIPT: &str = unsafe {
     std::str::from_utf8_unchecked(include_bytes!(
         "../../../../resources/builtins/examples/dialogs.lua"
@@ -1465,6 +1471,9 @@ dialog.simple('Help', {dialog.markdown_file('content/help.md')})
             .check_syntax("akai_apc_mini_mk1.lua", AKAI_APC_MINI_MK1_SCRIPT)
             .unwrap();
         runtime
+            .check_syntax("akai_apc_mini_mk2.lua", AKAI_APC_MINI_MK2_SCRIPT)
+            .unwrap();
+        runtime
             .check_syntax("dialogs.lua", DIALOG_EXAMPLE_SCRIPT)
             .unwrap();
         for (name, source) in BUILTIN_LIBRARIES {
@@ -1501,15 +1510,15 @@ dialog.simple('Help', {dialog.markdown_file('content/help.md')})
             ("return", "must be the first Shoop API call"),
             (
                 "shoop_announce_api_version(2, 0)",
-                "script requests 2.0, host supports 1.3",
+                "script requests 2.0, host supports 1.4",
             ),
             (
                 "shoop_announce_api_version(0, 0)",
-                "script requests 0.0, host supports 1.3",
+                "script requests 0.0, host supports 1.4",
             ),
             (
-                "shoop_announce_api_version(1, 4)",
-                "script requests 1.4, host supports 1.3",
+                "shoop_announce_api_version(1, 5)",
+                "script requests 1.5, host supports 1.4",
             ),
             (
                 "shoop_announce_api_version(-1, 0)",
@@ -1845,6 +1854,7 @@ d.open('Simple')
                         output_balance: 0.0,
                         output_muted: false,
                         input_gain_db: 0.0,
+                        input_balance: 0.0,
                         input_muted: false,
                     },
                     ControlTrack {
@@ -1854,6 +1864,7 @@ d.open('Simple')
                         output_balance: -0.25,
                         output_muted: true,
                         input_gain_db: 6.0,
+                        input_balance: -0.5,
                         input_muted: true,
                     },
                     ControlTrack {
@@ -1863,6 +1874,7 @@ d.open('Simple')
                         output_balance: 0.5,
                         output_muted: false,
                         input_gain_db: -6.0,
+                        input_balance: 0.75,
                         input_muted: false,
                     },
                 ],
@@ -1936,6 +1948,7 @@ eq(#c.track_get_balance(tracks), 3, 'track balance shape')
 eq(#c.track_get_gain_fader(tracks), 3, 'track fader shape')
 eq(#c.track_get_input_gain(tracks), 3, 'input gain shape')
 eq(#c.track_get_input_gain_fader(tracks), 3, 'input fader shape')
+eq(c.track_get_input_balance(0)[1], -0.5, 'input balance')
 eq(c.track_get_muted(0)[1], true, 'track muted')
 eq(c.track_get_input_muted(0)[1], true, 'input muted')
 c.track_set_muted({0,1}, false)
@@ -1945,6 +1958,8 @@ c.track_set_gain_fader({0,1}, 0.75)
 c.track_set_balance({0,1}, 2)
 c.track_set_input_gain({0,1}, 2)
 c.track_set_input_gain_fader({0,1}, 0.25)
+c.track_set_input_balance({0,1}, 2)
+eq(c.track_get_input_balance(0)[1], 1, 'clamped input balance')
 
 eq(c.get_apply_n_cycles(), 3, 'cycles')
 c.set_apply_n_cycles(5)
@@ -1979,7 +1994,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
             .map(|name| (*name).to_owned())
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(called, expected);
-        assert_eq!(bridge.borrow().operations.len(), 31);
+        assert_eq!(bridge.borrow().operations.len(), 32);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -2067,6 +2082,7 @@ if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('t
                     output_balance: 0.0,
                     output_muted: false,
                     input_gain_db: 0.0,
+                    input_balance: 0.0,
                     input_muted: false,
                 }],
                 ..Default::default()
@@ -2129,6 +2145,7 @@ c.track_set_muted(99, true)
             output_balance: 0.0,
             output_muted: false,
             input_gain_db: 0.0,
+            input_balance: 0.0,
             input_muted,
         };
         let bridge = Rc::new(RefCell::new(ControlBridge {
@@ -2238,6 +2255,7 @@ if c.get_auto_mute_other_track_inputs() then error('global setter') end
                     output_balance: 0.0,
                     output_muted: false,
                     input_gain_db: 0.0,
+                    input_balance: 0.0,
                     input_muted: false,
                 }],
                 ..Default::default()
@@ -2339,7 +2357,7 @@ if not c.get_solo() then error('solo') end
         let id = manager
             .add(
                 "future.lua",
-                "shoop_announce_api_version(1, 4)",
+                "shoop_announce_api_version(1, 5)",
                 ScriptKind::Ephemeral,
                 true,
             )
@@ -2352,7 +2370,7 @@ if not c.get_solo() then error('solo') end
             .latest_error
             .as_deref()
             .unwrap()
-            .contains("script requests 1.4, host supports 1.3"));
+            .contains("script requests 1.5, host supports 1.4"));
 
         assert!(manager.start(id).is_err());
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Incompatible);
@@ -2583,6 +2601,210 @@ end)
                 "key:1:65:100663296",
             ]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn click_hold_detector_dispatches_exactly_once_and_ignores_stale_timers() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add_announced(
+                "click hold detector",
+                r#"
+local c = require('shoop_control')
+local h = require('shoop_helpers')
+local detector = h.create_click_hold_detector(
+    250,
+    function() print_info('click') end,
+    function() print_info('hold-start') end,
+    function() print_info('hold-stop') end
+)
+local actions = {
+    'press', 'release',
+    'press', 'release',
+    'press', 'release', 'press', 'release',
+    'press', 'press', 'release', 'release'
+}
+local next_action = 1
+c.register_global_event_cb(function()
+    detector[actions[next_action]]()
+    next_action = next_action + 1
+end)
+"#,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        let messages = |manager: &ScriptManager| {
+            manager
+                .logs(id)
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.message)
+                .collect::<Vec<_>>()
+        };
+
+        manager.dispatch_global_event();
+        manager.advance_timers(std::time::Duration::from_millis(249));
+        manager.dispatch_global_event();
+        assert_eq!(messages(&manager), ["click"]);
+        manager.advance_timers(std::time::Duration::from_millis(1));
+        assert_eq!(messages(&manager), ["click"]);
+
+        manager.dispatch_global_event();
+        manager.advance_timers(std::time::Duration::from_millis(250));
+        manager.advance_timers(std::time::Duration::from_millis(250));
+        manager.dispatch_global_event();
+        assert_eq!(messages(&manager), ["click", "hold-start", "hold-stop"]);
+
+        manager.dispatch_global_event();
+        manager.advance_timers(std::time::Duration::from_millis(100));
+        manager.dispatch_global_event();
+        manager.dispatch_global_event();
+        manager.advance_timers(std::time::Duration::from_millis(150));
+        assert_eq!(
+            messages(&manager),
+            ["click", "hold-start", "hold-stop", "click"]
+        );
+        manager.advance_timers(std::time::Duration::from_millis(100));
+        manager.dispatch_global_event();
+        assert_eq!(
+            messages(&manager),
+            [
+                "click",
+                "hold-start",
+                "hold-stop",
+                "click",
+                "hold-start",
+                "hold-stop"
+            ]
+        );
+
+        manager.dispatch_global_event();
+        manager.dispatch_global_event();
+        manager.dispatch_global_event();
+        manager.dispatch_global_event();
+        assert_eq!(
+            messages(&manager),
+            [
+                "click",
+                "hold-start",
+                "hold-stop",
+                "click",
+                "hold-start",
+                "hold-stop",
+                "click"
+            ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn apc_mini_mk1_global_controls_use_click_and_hold_semantics() {
+        let (midi, control) = FakeMidiService::new();
+        control.set_endpoints(vec![MidiEndpoint {
+            id: "apc-source".to_owned(),
+            name: "APC MINI MIDI".to_owned(),
+            direction: MidiEndpointDirection::Output,
+        }]);
+        let mut manager = ScriptManager::new_with_midi(Box::new(midi));
+        manager
+            .add(
+                "akai_apc_mini_mk1.lua",
+                AKAI_APC_MINI_MK1_SCRIPT,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_midi(std::time::Duration::from_millis(1));
+
+        control.push_input("apc-source", vec![0x90, 83, 127]);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        manager.advance_timers(std::time::Duration::from_millis(249));
+        assert!(manager.take_control_operations().is_empty());
+        control.push_input("apc-source", vec![0x80, 83, 0]);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSolo(true)]
+        );
+        manager.advance_timers(std::time::Duration::from_millis(1));
+        assert!(manager.take_control_operations().is_empty());
+
+        control.push_input("apc-source", vec![0x90, 87, 127]);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        manager.advance_timers(std::time::Duration::from_millis(250));
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSyncActive(false)]
+        );
+        manager.advance_timers(std::time::Duration::from_millis(250));
+        assert!(manager.take_control_operations().is_empty());
+        control.push_input("apc-source", vec![0x80, 87, 0]);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSyncActive(true)]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn apc_mini_mk2_global_controls_use_click_and_hold_semantics() {
+        let (midi, control) = FakeMidiService::new();
+        control.set_endpoints(vec![MidiEndpoint {
+            id: "apc-mk2-source".to_owned(),
+            name: "APC Mini mk2 Control".to_owned(),
+            direction: MidiEndpointDirection::Output,
+        }]);
+        let mut manager = ScriptManager::new_with_midi(Box::new(midi));
+        manager
+            .add(
+                "akai_apc_mini_mk2.lua",
+                AKAI_APC_MINI_MK2_SCRIPT,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_midi(std::time::Duration::from_millis(1));
+
+        for (note, expected) in [
+            (113, ControlOperation::SetSolo(true)),
+            (117, ControlOperation::SetSyncActive(false)),
+            (118, ControlOperation::SetAutoMuteOtherTrackInputs(true)),
+        ] {
+            control.push_input("apc-mk2-source", vec![0x90, note, 127]);
+            manager.advance_midi(std::time::Duration::from_millis(1));
+            assert!(manager.take_control_operations().is_empty());
+            control.push_input("apc-mk2-source", vec![0x80, note, 0]);
+            manager.advance_midi(std::time::Duration::from_millis(1));
+            assert_eq!(manager.take_control_operations(), [expected]);
+        }
+
+        for (note, held, restored) in [
+            (
+                113,
+                ControlOperation::SetSolo(false),
+                ControlOperation::SetSolo(true),
+            ),
+            (
+                117,
+                ControlOperation::SetSyncActive(true),
+                ControlOperation::SetSyncActive(false),
+            ),
+            (
+                118,
+                ControlOperation::SetAutoMuteOtherTrackInputs(false),
+                ControlOperation::SetAutoMuteOtherTrackInputs(true),
+            ),
+        ] {
+            control.push_input("apc-mk2-source", vec![0x90, note, 127]);
+            manager.advance_midi(std::time::Duration::from_millis(1));
+            manager.advance_timers(std::time::Duration::from_millis(250));
+            assert_eq!(manager.take_control_operations(), [held]);
+            manager.advance_timers(std::time::Duration::from_millis(250));
+            assert!(manager.take_control_operations().is_empty());
+            control.push_input("apc-mk2-source", vec![0x80, note, 0]);
+            manager.advance_midi(std::time::Duration::from_millis(1));
+            assert_eq!(manager.take_control_operations(), [restored]);
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3185,6 +3407,26 @@ end, function() end, 10)
         let apc = extract_documentation(AKAI_APC_MINI_MK1_SCRIPT).unwrap();
         assert!(apc.starts_with("# Akai APC Mini MK1 controls\n"));
         assert!(apc.contains("| Device label | ShoopDaLoop function |"));
+        assert!(apc.contains(
+            "**SOLO** | Click to toggle solo permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(apc.contains(
+            "**SYNC** | Click to toggle synchronization permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(!apc.contains("SHIFT** to make the toggle permanent"));
+        let apc_mk2 = extract_documentation(AKAI_APC_MINI_MK2_SCRIPT).unwrap();
+        assert!(apc_mk2.starts_with("# Akai APC Mini MK2 controls\n"));
+        assert!(apc_mk2.contains(
+            "**SOLO** | Click to toggle solo permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(apc_mk2.contains(
+            "**SYNC (DRUM)** | Click to toggle synchronization permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(apc_mk2.contains(
+            "**AUTO-MUTE (NOTE)** | Click to toggle auto-muting permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(apc_mk2.contains("Use **SYNC (DRUM)** and **AUTO-MUTE (NOTE)** without **SHIFT**"));
+        assert!(!apc_mk2.contains("SHIFT** to make the toggle permanent"));
         let example = extract_documentation(DIALOG_EXAMPLE_SCRIPT).unwrap();
         assert!(example.starts_with("# Script dialog example\n"));
     }

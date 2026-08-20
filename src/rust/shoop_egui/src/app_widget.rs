@@ -461,6 +461,53 @@ pub fn register_bundled_script_settings(
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+const SOURCE_TREE_MARKER: &str = "SHOOP_SRC_TREE";
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_SOURCE_TREE_MARKER_BYTES: u64 = 4096;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn packaged_builtins_location(executable: &std::path::Path) -> std::path::PathBuf {
+    #[cfg(target_os = "macos")]
+    let path = executable
+        .parent()
+        .and_then(std::path::Path::parent)
+        .map(|contents| contents.join("Resources/builtins"));
+    #[cfg(not(target_os = "macos"))]
+    let path = executable
+        .parent()
+        .map(|directory| directory.join("builtins"));
+    path.unwrap_or_else(|| "builtins".into())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn marked_source_builtins_location(executable: &std::path::Path) -> Option<std::path::PathBuf> {
+    let executable_directory = executable.parent()?;
+    if executable_directory.as_os_str().is_empty() {
+        return None;
+    }
+    let marker = executable_directory.join(SOURCE_TREE_MARKER);
+    if std::fs::metadata(&marker).ok()?.len() > MAX_SOURCE_TREE_MARKER_BYTES {
+        return None;
+    }
+    let source_root = std::fs::read_to_string(marker).ok()?;
+    let source_root = std::path::Path::new(source_root.trim());
+    if source_root.as_os_str().is_empty() || source_root.is_absolute() {
+        return None;
+    }
+    Some(
+        executable_directory
+            .join(source_root)
+            .join("resources/builtins"),
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn builtins_location_for_executable(executable: &std::path::Path) -> std::path::PathBuf {
+    marked_source_builtins_location(executable)
+        .unwrap_or_else(|| packaged_builtins_location(executable))
+}
+
 pub fn default_builtins_location() -> String {
     #[cfg(target_arch = "wasm32")]
     {
@@ -468,18 +515,10 @@ pub fn default_builtins_location() -> String {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let executable = std::env::current_exe().unwrap_or_else(|_| "shoopdaloop".into());
-        #[cfg(target_os = "macos")]
-        let path = executable
-            .parent()
-            .and_then(std::path::Path::parent)
-            .map(|contents| contents.join("Resources/builtins"))
-            .unwrap_or_else(|| "builtins".into());
-        #[cfg(not(target_os = "macos"))]
-        let path = executable
-            .parent()
-            .map(|directory| directory.join("builtins"))
-            .unwrap_or_else(|| "builtins".into());
+        let path = match std::env::current_exe() {
+            Ok(executable) => builtins_location_for_executable(&executable),
+            Err(_) => "builtins".into(),
+        };
         path.to_string_lossy().into_owned()
     }
 }
@@ -759,6 +798,9 @@ impl AppWidget {
                             }
                             if self.global_controls.take_load_session_requested() {
                                 actions.push(AppAction::RequestLoadSessionPicker);
+                            }
+                            if self.global_controls.take_load_session_url_requested() {
+                                actions.push(AppAction::RequestLoadSessionUrl);
                             }
                             if self.global_controls.take_settings_requested() {
                                 self.settings.open(settings_state);
@@ -2869,6 +2911,52 @@ mod tests {
             output.textures_delta.clear();
         }
         assert!(uploaded_logo);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn source_tree_marker_overrides_only_the_executable_sibling_location() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable_directory = directory.path().join("target/debug");
+        std::fs::create_dir_all(&executable_directory).unwrap();
+        let executable = executable_directory.join("shoopdaloop");
+        let packaged = packaged_builtins_location(&executable);
+
+        std::fs::write(executable_directory.join(SOURCE_TREE_MARKER), "../..\n").unwrap();
+        assert_eq!(
+            builtins_location_for_executable(&executable),
+            executable_directory.join("../../resources/builtins")
+        );
+
+        std::fs::remove_file(executable_directory.join(SOURCE_TREE_MARKER)).unwrap();
+        std::fs::write(
+            executable_directory
+                .parent()
+                .unwrap()
+                .join(SOURCE_TREE_MARKER),
+            "..\n",
+        )
+        .unwrap();
+        assert_eq!(builtins_location_for_executable(&executable), packaged);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn source_tree_marker_accepts_only_bounded_relative_utf8_paths() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("shoopdaloop");
+        let marker = directory.path().join(SOURCE_TREE_MARKER);
+
+        std::fs::write(&marker, directory.path().to_string_lossy().as_bytes()).unwrap();
+        assert!(marked_source_builtins_location(&executable).is_none());
+        std::fs::write(
+            &marker,
+            vec![b'x'; MAX_SOURCE_TREE_MARKER_BYTES as usize + 1],
+        )
+        .unwrap();
+        assert!(marked_source_builtins_location(&executable).is_none());
+        std::fs::write(&marker, [0xff]).unwrap();
+        assert!(marked_source_builtins_location(&executable).is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]

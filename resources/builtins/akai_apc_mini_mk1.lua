@@ -11,7 +11,7 @@
 -- | REC ARM | **RECORD** |
 -- | MUTE | **GRAB** |
 -- | First blank soft key | **SYNC** |
--- | Second blank soft key | Sync-loop button |
+-- | Bottom-right grid button | Sync-loop button |
 -- | SEND | **DRY** |
 -- | DEVICE | **SET N CYCLES** |
 --
@@ -31,8 +31,8 @@
 --
 -- | Control | Action |
 -- | --- | --- |
--- | **SOLO** | Toggle solo while held. Add **SHIFT** to make the toggle permanent. |
--- | **SYNC** | Toggle synchronization while held. Add **SHIFT** to make the toggle permanent. |
+-- | **SOLO** | Click to toggle solo permanently. Hold for 250 ms to toggle it momentarily until release. |
+-- | **SYNC** | Click to toggle synchronization permanently. Hold for 250 ms to toggle it momentarily until release. |
 -- | **STOP ALL CLIPS** | Stop all loops. Add **SELECT** to deselect all loops, or **SHIFT** to clear all loops. |
 -- | **DEVICE** | Hold and press a grid button to set the number of recording cycles. Grid positions count from the top left, left to right; the bottom-right button resets to zero. |
 --
@@ -109,25 +109,23 @@ local BUTTON_device = 71
 -- constants: redefined button IDs for ShoopDaLoop.
 local BUTTON_grab = BUTTON_mute
 local BUTTON_record = BUTTON_rec_arm
-local BUTTON_sync_loop = BUTTON_blank_2
 local BUTTON_sync = BUTTON_blank_1
 local BUTTON_dry = BUTTON_send
 local BUTTON_n_cycles = BUTTON_device
+
+-- Global-control presses become holds after this shared timeout.
+local GLOBAL_CONTROL_HOLD_TIMEOUT_MS = 250
 
 -- state variables.
 -- these will be used to track the current state
 -- of button presses and other things.
 local STATE_shift_pressed = false
 local STATE_select_pressed = false
-local STATE_solo_pressed = false
-local STATE_solo_toggle_permanent = false
 local STATE_record_pressed = false
 local STATE_grab_pressed = false
 local STATE_stop_pressed = false
 local STATE_dry_pressed = false
 local STATE_n_cycles_pressed = false
-local STATE_sync_pressed = false
-local STATE_sync_toggle_permanent = false
 local STATE_volume_pressed = false
 local STATE_pan_pressed = false
 local STATE_composition_active = false
@@ -145,7 +143,7 @@ local send_fn = nil
 
 -- Convert a MIDI note to the corresponding loop location on the grid
 local note_to_loop_coords = function(note)
-    if note == BUTTON_sync_loop then return {-1,0} end -- Special case for sync loop button
+    if note == 7 then return {-1,0} end -- Bottom-rightmost loop button is now sync loop
     if note >= 64 or note < 0 then return nil end
     local x = note % 8
     local y = 7 - note // 8
@@ -163,7 +161,7 @@ local led_message = function(coords, color)
             if color == LED_yellow then
                 color = LED_off
             end
-            return {0x90, BUTTON_sync_loop, color}
+            return {0x90, 7, color}
         else
             print_warning("led_message: invalid coords: (" .. x .. "," .. y .. ")")
             return {}
@@ -361,6 +359,38 @@ local recheck_global_controls = function()
     set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
 end
 
+local create_global_control_detector = function(get_state, set_state)
+    local held_restore_state = nil
+    return shoop_helpers.create_click_hold_detector(
+        GLOBAL_CONTROL_HOLD_TIMEOUT_MS,
+        function()
+            set_state(not get_state())
+            recheck_global_controls()
+        end,
+        function()
+            held_restore_state = get_state()
+            set_state(not held_restore_state)
+            recheck_global_controls()
+        end,
+        function()
+            if held_restore_state ~= nil then
+                set_state(held_restore_state)
+                held_restore_state = nil
+            end
+            recheck_global_controls()
+        end
+    )
+end
+
+local solo_detector = create_global_control_detector(
+    shoop_control.get_solo,
+    shoop_control.set_solo
+)
+local sync_detector = create_global_control_detector(
+    shoop_control.get_sync_active,
+    shoop_control.set_sync_active
+)
+
 -- This reset function ensures the button and loop colors on the device match
 -- the state of ShoopDaLoop.
 local reset = function()
@@ -387,11 +417,8 @@ local handle_noteOn = function(msg)
         set_led_by_note(BUTTON_select, LED_green)
         STATE_select_pressed = true
     elseif note == BUTTON_solo then
-        print_debug("toggle solo (pressed)")
-        shoop_helpers.toggle_solo()
-        STATE_solo_toggle_permanent = STATE_shift_pressed
-        set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
-        STATE_solo_pressed = true
+        print_debug("solo pressed")
+        solo_detector.press()
     elseif note == BUTTON_record then
         print_debug("record active")
         set_led_by_note(BUTTON_record, LED_green)
@@ -418,11 +445,8 @@ local handle_noteOn = function(msg)
             STATE_n_cycles_pressed = true
         end
     elseif note == BUTTON_sync then
-        print_debug("toggle sync active")
-        shoop_helpers.toggle_sync_active()
-        STATE_sync_active_toggle_permanent = STATE_shift_pressed
-        set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
-        STATE_sync_pressed = true
+        print_debug("sync pressed")
+        sync_detector.press()
     elseif note == BUTTON_clip_stop_all_clips then
         if STATE_shift_pressed then
             -- Shift + Stop All = Clear All
@@ -465,13 +489,8 @@ local handle_noteOff = function(msg)
         set_led_by_note(BUTTON_select, LED_off)
         STATE_select_pressed = false
     elseif note == BUTTON_solo then
-        if not STATE_solo_toggle_permanent then
-            print_debug("toggle solo back")
-            shoop_helpers.toggle_solo() -- toggle back
-        end
-        set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
-        STATE_solo_toggle_permanent = false
-        STATE_solo_pressed = false
+        print_debug("solo released")
+        solo_detector.release()
     elseif note == BUTTON_record then
         print_debug("record inactive")
         set_led_by_note(BUTTON_record, LED_off)
@@ -495,12 +514,8 @@ local handle_noteOff = function(msg)
         set_led_by_note(BUTTON_n_cycles, LED_off)
         STATE_n_cycles_pressed = false
     elseif note == BUTTON_sync then
-        if not STATE_sync_active_toggle_permanent then
-            print_debug("toggle sync back")
-            shoop_helpers.toggle_sync_active() -- toggle back
-        end
-        set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
-        STATE_sync_active_toggle_permanent = false
+        print_debug("sync released")
+        sync_detector.release()
     elseif note == BUTTON_volume then
         print_debug("volume inactive")
         STATE_volume_pressed = false
