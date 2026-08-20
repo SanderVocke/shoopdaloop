@@ -65,6 +65,8 @@ Out of scope: changing grid-pad actions, ordinary modifiers, controller mappings
 - [ ] Manually verify on MK2: click and hold behavior for SOLO, SYNC (DRUM), and AUTO-MUTE (NOTE), with no yellow/red firmware mode grid takeover.
 - [x] Confirm both scripts' extracted Markdown documentation matches actual behavior.
 
+Hardware validation status: the host exposes an APC Mini MK2 but no MK1. Completing the two manual checks requires physical button actuation and visual confirmation of the controller grid; automated MIDI/controller simulations cannot establish the absence of firmware color takeover.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
