@@ -1099,6 +1099,9 @@ fn configured_catalog_scripts(
     let root = settings
         .get(shoop_egui::BUILTINS_LOCATION)
         .map_err(|error| error.to_string())?;
+    if root.trim().is_empty() {
+        return Err("built-ins location must not be empty".to_owned());
+    }
     let enabled = settings
         .get(shoop_egui::BUILTIN_SCRIPTS)
         .map_err(|error| error.to_string())?
@@ -1657,6 +1660,9 @@ async fn fetch_browser_catalog(
     };
 
     let root = root.trim_end_matches('/');
+    if root.is_empty() {
+        return Err("built-ins catalog root must not be empty".to_owned());
+    }
     let catalog_bytes = fetch_browser_bytes(
         &format!("{root}/catalog.json"),
         shoop_script_resources::ResourceLimits::default().max_file_bytes,
