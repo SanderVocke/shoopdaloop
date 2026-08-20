@@ -180,10 +180,12 @@ pub enum TinySynthFxParameter {
     EqLow,
     EqMid,
     EqHigh,
+    VocoderMix,
+    VocoderSensitivity,
 }
 
 impl TinySynthFxParameter {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::MasterGain,
         Self::ReverbAmount,
         Self::DistortionDrive,
@@ -191,6 +193,8 @@ impl TinySynthFxParameter {
         Self::EqLow,
         Self::EqMid,
         Self::EqHigh,
+        Self::VocoderMix,
+        Self::VocoderSensitivity,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -202,6 +206,8 @@ impl TinySynthFxParameter {
             Self::EqLow => "EQ low",
             Self::EqMid => "EQ mid",
             Self::EqHigh => "EQ high",
+            Self::VocoderMix => "Vocoder mix",
+            Self::VocoderSensitivity => "Vocoder sensitivity",
         }
     }
 }
@@ -259,6 +265,9 @@ pub struct TinySynthFxState {
     pub eq_low_db: f32,
     pub eq_mid_db: f32,
     pub eq_high_db: f32,
+    pub vocoder_enabled: bool,
+    pub vocoder_mix: f32,
+    pub vocoder_sensitivity: f32,
     pub midi_cc_assignments: Arc<[TinySynthFxMidiCcAssignment]>,
 }
 
@@ -1477,6 +1486,9 @@ pub type LoopWidgetAction = LoopAction;
 pub enum TinySynthFxControl {
     SelectPreset(String),
     SetMasterGainDb(f32),
+    SetVocoderEnabled(bool),
+    SetVocoderMix(f32),
+    SetVocoderSensitivity(f32),
     SetReverbEnabled(bool),
     SetReverbAmount(f32),
     SetDistortionEnabled(bool),
@@ -1770,6 +1782,9 @@ impl TinySynthFxControl {
         match self {
             Self::SelectPreset(_) => "track.tiny_synth_fx.select_preset",
             Self::SetMasterGainDb(_) => "track.tiny_synth_fx.master_gain",
+            Self::SetVocoderEnabled(_) => "track.tiny_synth_fx.vocoder_enabled",
+            Self::SetVocoderMix(_) => "track.tiny_synth_fx.vocoder_mix",
+            Self::SetVocoderSensitivity(_) => "track.tiny_synth_fx.vocoder_sensitivity",
             Self::SetReverbEnabled(_) => "track.tiny_synth_fx.reverb_enabled",
             Self::SetReverbAmount(_) => "track.tiny_synth_fx.reverb_amount",
             Self::SetDistortionEnabled(_) => "track.tiny_synth_fx.distortion_enabled",
@@ -2225,6 +2240,10 @@ mod tests {
         assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::SetDistortionDrive(4.0)).kind(),
             "track.tiny_synth_fx.distortion_drive"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::SetVocoderSensitivity(0.5)).kind(),
+            "track.tiny_synth_fx.vocoder_sensitivity"
         );
         assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::AssignMidiCc(

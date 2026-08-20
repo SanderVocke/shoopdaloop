@@ -1612,6 +1612,15 @@ impl NativeRuntime {
                     TinySynthFxControl::SetMasterGainDb(value) => {
                         fx.chain.tiny_set_master_gain_db(value)?
                     }
+                    TinySynthFxControl::SetVocoderEnabled(value) => {
+                        fx.chain.tiny_set_vocoder_enabled(value)?
+                    }
+                    TinySynthFxControl::SetVocoderMix(value) => {
+                        fx.chain.tiny_set_vocoder_mix(value)?
+                    }
+                    TinySynthFxControl::SetVocoderSensitivity(value) => {
+                        fx.chain.tiny_set_vocoder_sensitivity(value)?
+                    }
                     TinySynthFxControl::SetReverbEnabled(value) => {
                         fx.chain.tiny_set_reverb_enabled(value)?
                     }
@@ -2573,6 +2582,9 @@ impl Backend for NativeBackend {
                             eq_low_db: editor.eq_low_db,
                             eq_mid_db: editor.eq_mid_db,
                             eq_high_db: editor.eq_high_db,
+                            vocoder_enabled: editor.vocoder_enabled,
+                            vocoder_mix: editor.vocoder_mix,
+                            vocoder_sensitivity: editor.vocoder_sensitivity,
                             midi_cc_assignments: editor
                                 .midi_cc_assignments
                                 .into_iter()
@@ -3987,6 +3999,30 @@ mod tests {
         backend
             .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
             .unwrap();
+        for control in [
+            TinySynthFxControl::SetVocoderEnabled(true),
+            TinySynthFxControl::SetVocoderMix(0.75),
+            TinySynthFxControl::SetVocoderSensitivity(0.625),
+        ] {
+            backend
+                .set_track_fx_control(
+                    created.track_id,
+                    BackendTrackFxControl::TinySynthFx(control),
+                )
+                .unwrap();
+        }
+        let snapshot = backend.poll().unwrap();
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = snapshot.tracks
+            [&created.track_id]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX editor state");
+        };
+        assert!(editor.vocoder_enabled);
+        assert_eq!(editor.vocoder_mix, 0.75);
+        assert_eq!(editor.vocoder_sensitivity, 0.625);
 
         let captured = backend.capture_session().unwrap();
         let wet = &captured.tracks[0].loops[0].audio[1].samples;

@@ -672,6 +672,9 @@ enum FxControlKey {
     Visible,
     TinyPreset,
     TinyMasterGain,
+    TinyVocoderEnabled,
+    TinyVocoderMix,
+    TinyVocoderSensitivity,
     TinyReverbEnabled,
     TinyReverbAmount,
     TinyDistortionEnabled,
@@ -701,6 +704,15 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
                 }
                 shoop_backend::TinySynthFxControl::SetMasterGainDb(value) => {
                     editor.master_gain_db = *value
+                }
+                shoop_backend::TinySynthFxControl::SetVocoderEnabled(value) => {
+                    editor.vocoder_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetVocoderMix(value) => {
+                    editor.vocoder_mix = *value
+                }
+                shoop_backend::TinySynthFxControl::SetVocoderSensitivity(value) => {
+                    editor.vocoder_sensitivity = *value
                 }
                 shoop_backend::TinySynthFxControl::SetReverbEnabled(value) => {
                     editor.reverb_enabled = *value
@@ -773,6 +785,13 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
         BackendTrackFxControl::TinySynthFx(control) => match control {
             shoop_backend::TinySynthFxControl::SelectPreset(_) => FxControlKey::TinyPreset,
             shoop_backend::TinySynthFxControl::SetMasterGainDb(_) => FxControlKey::TinyMasterGain,
+            shoop_backend::TinySynthFxControl::SetVocoderEnabled(_) => {
+                FxControlKey::TinyVocoderEnabled
+            }
+            shoop_backend::TinySynthFxControl::SetVocoderMix(_) => FxControlKey::TinyVocoderMix,
+            shoop_backend::TinySynthFxControl::SetVocoderSensitivity(_) => {
+                FxControlKey::TinyVocoderSensitivity
+            }
             shoop_backend::TinySynthFxControl::SetReverbEnabled(_) => {
                 FxControlKey::TinyReverbEnabled
             }
@@ -8314,6 +8333,10 @@ fn document_midi_cc_assignment(
         BackendTinySynthFxParameter::EqLow => TinySynthFxParameterDocument::EqLow,
         BackendTinySynthFxParameter::EqMid => TinySynthFxParameterDocument::EqMid,
         BackendTinySynthFxParameter::EqHigh => TinySynthFxParameterDocument::EqHigh,
+        BackendTinySynthFxParameter::VocoderMix => TinySynthFxParameterDocument::VocoderMix,
+        BackendTinySynthFxParameter::VocoderSensitivity => {
+            TinySynthFxParameterDocument::VocoderSensitivity
+        }
     };
     TinySynthFxMidiCcAssignmentDocument {
         parameter,
@@ -8337,6 +8360,10 @@ fn backend_midi_cc_assignment(
         TinySynthFxParameterDocument::EqLow => BackendTinySynthFxParameter::EqLow,
         TinySynthFxParameterDocument::EqMid => BackendTinySynthFxParameter::EqMid,
         TinySynthFxParameterDocument::EqHigh => BackendTinySynthFxParameter::EqHigh,
+        TinySynthFxParameterDocument::VocoderMix => BackendTinySynthFxParameter::VocoderMix,
+        TinySynthFxParameterDocument::VocoderSensitivity => {
+            BackendTinySynthFxParameter::VocoderSensitivity
+        }
     };
     BackendTinySynthFxMidiCcAssignment {
         parameter,

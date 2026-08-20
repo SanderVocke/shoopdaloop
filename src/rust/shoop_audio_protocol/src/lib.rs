@@ -315,6 +315,9 @@ pub enum WireTrackFxControl {
     ClearLogs,
     TinySelectPreset(String),
     TinySetMasterGainDb(f32),
+    TinySetVocoderEnabled(bool),
+    TinySetVocoderMix(f32),
+    TinySetVocoderSensitivity(f32),
     TinySetReverbEnabled(bool),
     TinySetReverbAmount(f32),
     TinySetDistortionEnabled(bool),
@@ -342,11 +345,14 @@ impl WireTrackFxControl {
             Self::TinySetEqLowDb(_) => 5,
             Self::TinySetEqMidDb(_) => 6,
             Self::TinySetEqHighDb(_) => 7,
+            Self::TinySetVocoderMix(_) => 8,
+            Self::TinySetVocoderSensitivity(_) => 9,
             Self::SetVisible(_)
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
             | Self::ClearLogs
             | Self::TinySelectPreset(_)
+            | Self::TinySetVocoderEnabled(_)
             | Self::TinySetReverbEnabled(_)
             | Self::TinySetDistortionEnabled(_)
             | Self::TinySetCompressorEnabled(_)
@@ -561,6 +567,8 @@ pub enum WireTinySynthFxParameter {
     EqLow,
     EqMid,
     EqHigh,
+    VocoderMix,
+    VocoderSensitivity,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -616,6 +624,14 @@ pub struct WireTrackFxState {
     pub tiny: WireTinySynthFxState,
 }
 
+const fn default_vocoder_mix() -> f32 {
+    1.0
+}
+
+const fn default_vocoder_sensitivity() -> f32 {
+    0.5
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireTinySynthFxState {
     pub selected_preset_id: Option<String>,
@@ -630,6 +646,12 @@ pub struct WireTinySynthFxState {
     pub eq_low_db: f32,
     pub eq_mid_db: f32,
     pub eq_high_db: f32,
+    #[serde(default)]
+    pub vocoder_enabled: bool,
+    #[serde(default = "default_vocoder_mix")]
+    pub vocoder_mix: f32,
+    #[serde(default = "default_vocoder_sensitivity")]
+    pub vocoder_sensitivity: f32,
     #[serde(default)]
     pub midi_cc_assignments: Vec<WireTinySynthFxMidiCcAssignment>,
 }
@@ -989,6 +1011,9 @@ mod tests {
             WireTrackFxControl::RestoreState("state".to_owned()),
             WireTrackFxControl::TinySelectPreset("pad".to_owned()),
             WireTrackFxControl::TinySetMasterGainDb(-12.0),
+            WireTrackFxControl::TinySetVocoderEnabled(true),
+            WireTrackFxControl::TinySetVocoderMix(0.75),
+            WireTrackFxControl::TinySetVocoderSensitivity(0.625),
             WireTrackFxControl::TinySetReverbEnabled(true),
             WireTrackFxControl::TinySetReverbAmount(0.4),
             WireTrackFxControl::TinySetDistortionEnabled(true),
@@ -1000,11 +1025,11 @@ mod tests {
             WireTrackFxControl::TinySetEqMidDb(-2.0),
             WireTrackFxControl::TinySetEqHighDb(1.5),
             WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
-                parameter: WireTinySynthFxParameter::EqHigh,
+                parameter: WireTinySynthFxParameter::VocoderSensitivity,
                 channel: 3,
                 controller: 74,
             }),
-            WireTrackFxControl::TinyRemoveMidiCc(WireTinySynthFxParameter::EqHigh),
+            WireTrackFxControl::TinyRemoveMidiCc(WireTinySynthFxParameter::VocoderSensitivity),
             WireTrackFxControl::TinyClearMidiCcAssignments,
             WireTrackFxControl::TinyPanic,
         ]
@@ -1022,5 +1047,36 @@ mod tests {
             let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
             assert_eq!(decoded, command);
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn legacy_tiny_synth_wire_state_supplies_vocoder_defaults() {
+        let state = WireTinySynthFxState {
+            selected_preset_id: None,
+            master_gain_db: -6.0,
+            reverb_enabled: false,
+            reverb_amount: 0.25,
+            distortion_enabled: false,
+            distortion_drive: 4.0,
+            compressor_enabled: false,
+            compressor_amount: 0.5,
+            eq_enabled: false,
+            eq_low_db: 0.0,
+            eq_mid_db: 0.0,
+            eq_high_db: 0.0,
+            vocoder_enabled: true,
+            vocoder_mix: 0.25,
+            vocoder_sensitivity: 0.75,
+            midi_cc_assignments: Vec::new(),
+        };
+        let mut encoded = serde_json::to_value(state).unwrap();
+        let object = encoded.as_object_mut().unwrap();
+        object.remove("vocoder_enabled");
+        object.remove("vocoder_mix");
+        object.remove("vocoder_sensitivity");
+        let restored: WireTinySynthFxState = serde_json::from_value(encoded).unwrap();
+        assert!(!restored.vocoder_enabled);
+        assert_eq!(restored.vocoder_mix, 1.0);
+        assert_eq!(restored.vocoder_sensitivity, 0.5);
     }
 }

@@ -528,6 +528,8 @@ pub enum BackendTinySynthFxParameter {
     EqLow,
     EqMid,
     EqHigh,
+    VocoderMix,
+    VocoderSensitivity,
 }
 
 impl From<shoop_engine::LatestMidiMessage> for BackendLatestMidiMessage {
@@ -966,6 +968,8 @@ fn engine_tiny_synth_parameter(
         TinySynthFxParameter::EqLow => EngineParameter::EqLow,
         TinySynthFxParameter::EqMid => EngineParameter::EqMid,
         TinySynthFxParameter::EqHigh => EngineParameter::EqHigh,
+        TinySynthFxParameter::VocoderMix => EngineParameter::VocoderMix,
+        TinySynthFxParameter::VocoderSensitivity => EngineParameter::VocoderSensitivity,
     }
 }
 
@@ -981,6 +985,8 @@ fn app_tiny_synth_parameter(
         EngineParameter::EqLow => TinySynthFxParameter::EqLow,
         EngineParameter::EqMid => TinySynthFxParameter::EqMid,
         EngineParameter::EqHigh => TinySynthFxParameter::EqHigh,
+        EngineParameter::VocoderMix => TinySynthFxParameter::VocoderMix,
+        EngineParameter::VocoderSensitivity => TinySynthFxParameter::VocoderSensitivity,
     }
 }
 
@@ -1015,6 +1021,8 @@ fn backend_midi_cc_assignment(
         TinySynthFxParameter::EqLow => BackendTinySynthFxParameter::EqLow,
         TinySynthFxParameter::EqMid => BackendTinySynthFxParameter::EqMid,
         TinySynthFxParameter::EqHigh => BackendTinySynthFxParameter::EqHigh,
+        TinySynthFxParameter::VocoderMix => BackendTinySynthFxParameter::VocoderMix,
+        TinySynthFxParameter::VocoderSensitivity => BackendTinySynthFxParameter::VocoderSensitivity,
     };
     BackendTinySynthFxMidiCcAssignment {
         parameter,
@@ -1034,6 +1042,8 @@ fn app_backend_midi_cc_assignment(
         BackendTinySynthFxParameter::EqLow => TinySynthFxParameter::EqLow,
         BackendTinySynthFxParameter::EqMid => TinySynthFxParameter::EqMid,
         BackendTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
+        BackendTinySynthFxParameter::VocoderMix => TinySynthFxParameter::VocoderMix,
+        BackendTinySynthFxParameter::VocoderSensitivity => TinySynthFxParameter::VocoderSensitivity,
     };
     TinySynthFxMidiCcAssignment {
         parameter,
@@ -1143,6 +1153,9 @@ pub fn default_tiny_synth_fx_state() -> TrackFxState {
             eq_low_db: editor.eq_low_db,
             eq_mid_db: editor.eq_mid_db,
             eq_high_db: editor.eq_high_db,
+            vocoder_enabled: editor.vocoder_enabled,
+            vocoder_mix: editor.vocoder_mix,
+            vocoder_sensitivity: editor.vocoder_sensitivity,
             midi_cc_assignments: editor
                 .midi_cc_assignments
                 .into_iter()
@@ -3134,6 +3147,9 @@ fn engine_tiny_fx_state(fx: &mut EngineTinyFx) -> TrackFxState {
             eq_low_db: editor.eq_low_db,
             eq_mid_db: editor.eq_mid_db,
             eq_high_db: editor.eq_high_db,
+            vocoder_enabled: editor.vocoder_enabled,
+            vocoder_mix: editor.vocoder_mix,
+            vocoder_sensitivity: editor.vocoder_sensitivity,
             midi_cc_assignments: editor
                 .midi_cc_assignments
                 .into_iter()
@@ -3798,6 +3814,24 @@ impl Backend for EngineBackend {
                     fx.control.set_master_gain_db(value)?;
                     if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
                         processor.set_master_gain_db(value);
+                    }
+                }
+                TinySynthFxControl::SetVocoderEnabled(value) => {
+                    fx.control.set_vocoder_enabled(value);
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_vocoder_enabled(value);
+                    }
+                }
+                TinySynthFxControl::SetVocoderMix(value) => {
+                    fx.control.set_vocoder_mix(value)?;
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_vocoder_mix(value);
+                    }
+                }
+                TinySynthFxControl::SetVocoderSensitivity(value) => {
+                    fx.control.set_vocoder_sensitivity(value)?;
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_vocoder_sensitivity(value);
                     }
                 }
                 TinySynthFxControl::SetReverbEnabled(value) => {
@@ -8494,6 +8528,9 @@ mod tests {
             )
             .unwrap();
         for control in [
+            TinySynthFxControl::SetVocoderEnabled(true),
+            TinySynthFxControl::SetVocoderMix(0.75),
+            TinySynthFxControl::SetVocoderSensitivity(0.625),
             TinySynthFxControl::SetReverbEnabled(true),
             TinySynthFxControl::SetReverbAmount(0.4),
             TinySynthFxControl::SetCompressorEnabled(true),
@@ -8582,6 +8619,9 @@ mod tests {
             panic!("missing Tiny Synth/FX editor state");
         };
         assert_eq!(editor.selected_preset_id.as_deref(), Some("pad"));
+        assert!(editor.vocoder_enabled);
+        assert_eq!(editor.vocoder_mix, 0.75);
+        assert_eq!(editor.vocoder_sensitivity, 0.625);
         assert!(editor.reverb_enabled);
         assert_eq!(editor.reverb_amount, 0.4);
         assert!(editor.compressor_enabled);

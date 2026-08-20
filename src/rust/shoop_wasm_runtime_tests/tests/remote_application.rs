@@ -562,6 +562,9 @@ async fn remote_tiny_synth_fx_state_round_trips_through_session() {
     let track_id = harness.snapshot().tracks[1].id;
     for control in [
         TinySynthFxControl::SetMasterGainDb(-12.0),
+        TinySynthFxControl::SetVocoderEnabled(true),
+        TinySynthFxControl::SetVocoderMix(0.75),
+        TinySynthFxControl::SetVocoderSensitivity(0.625),
         TinySynthFxControl::SetReverbEnabled(true),
         TinySynthFxControl::SetReverbAmount(0.4),
         TinySynthFxControl::SetEqEnabled(true),
@@ -584,6 +587,9 @@ async fn remote_tiny_synth_fx_state_round_trips_through_session() {
                         fx.editor.as_ref(),
                         Some(TrackProcessorEditorState::TinySynthFx(editor))
                             if (editor.master_gain_db + 12.0).abs() < f32::EPSILON
+                                && editor.vocoder_enabled
+                                && (editor.vocoder_mix - 0.75).abs() < f32::EPSILON
+                                && (editor.vocoder_sensitivity - 0.625).abs() < f32::EPSILON
                                 && editor.reverb_enabled
                                 && (editor.reverb_amount - 0.4).abs() < f32::EPSILON
                                 && editor.eq_enabled
@@ -602,6 +608,9 @@ async fn remote_tiny_synth_fx_state_round_trips_through_session() {
                         fx.editor.as_ref(),
                         Some(TrackProcessorEditorState::TinySynthFx(editor))
                             if (editor.master_gain_db + 12.0).abs() < f32::EPSILON
+                                && editor.vocoder_enabled
+                                && (editor.vocoder_mix - 0.75).abs() < f32::EPSILON
+                                && (editor.vocoder_sensitivity - 0.625).abs() < f32::EPSILON
                                 && editor.reverb_enabled
                                 && (editor.reverb_amount - 0.4).abs() < f32::EPSILON
                                 && editor.eq_enabled
@@ -619,6 +628,9 @@ async fn remote_tiny_synth_fx_state_round_trips_through_session() {
         panic!("missing loaded Tiny Synth/FX editor state");
     };
     assert!((editor.master_gain_db + 12.0).abs() < f32::EPSILON);
+    assert!(editor.vocoder_enabled);
+    assert!((editor.vocoder_mix - 0.75).abs() < f32::EPSILON);
+    assert!((editor.vocoder_sensitivity - 0.625).abs() < f32::EPSILON);
     assert!(editor.reverb_enabled);
     assert!((editor.reverb_amount - 0.4).abs() < f32::EPSILON);
     assert!(editor.eq_enabled);

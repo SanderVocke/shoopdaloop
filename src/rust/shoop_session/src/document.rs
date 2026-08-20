@@ -278,6 +278,8 @@ pub enum TinySynthFxParameterDocument {
     EqLow,
     EqMid,
     EqHigh,
+    VocoderMix,
+    VocoderSensitivity,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]

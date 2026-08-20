@@ -821,6 +821,9 @@ impl RemoteWorkletBackend {
                                     eq_low_db: fx.tiny.eq_low_db,
                                     eq_mid_db: fx.tiny.eq_mid_db,
                                     eq_high_db: fx.tiny.eq_high_db,
+                                    vocoder_enabled: fx.tiny.vocoder_enabled,
+                                    vocoder_mix: fx.tiny.vocoder_mix,
+                                    vocoder_sensitivity: fx.tiny.vocoder_sensitivity,
                                     midi_cc_assignments: fx
                                         .tiny
                                         .midi_cc_assignments
@@ -1166,6 +1169,13 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
         }
         WireTrackFxControl::TinySetMasterGainDb(value) => {
             TinySynthFxControl::SetMasterGainDb(*value)
+        }
+        WireTrackFxControl::TinySetVocoderEnabled(value) => {
+            TinySynthFxControl::SetVocoderEnabled(*value)
+        }
+        WireTrackFxControl::TinySetVocoderMix(value) => TinySynthFxControl::SetVocoderMix(*value),
+        WireTrackFxControl::TinySetVocoderSensitivity(value) => {
+            TinySynthFxControl::SetVocoderSensitivity(*value)
         }
         WireTrackFxControl::TinySetReverbEnabled(value) => {
             TinySynthFxControl::SetReverbEnabled(*value)
@@ -1549,6 +1559,12 @@ impl Backend for RemoteWorkletBackend {
                             .contains(value) =>
                 {
                     return Err(anyhow!("invalid Tiny Synth/FX master gain"));
+                }
+                TinySynthFxControl::SetVocoderMix(value)
+                | TinySynthFxControl::SetVocoderSensitivity(value)
+                    if !value.is_finite() || !(0.0..=1.0).contains(value) =>
+                {
+                    return Err(anyhow!("invalid Tiny Synth/FX vocoder control"));
                 }
                 TinySynthFxControl::SetReverbAmount(value)
                     if !value.is_finite() || !(0.0..=1.0).contains(value) =>
@@ -2332,6 +2348,8 @@ fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxP
         WireTinySynthFxParameter::EqLow => TinySynthFxParameter::EqLow,
         WireTinySynthFxParameter::EqMid => TinySynthFxParameter::EqMid,
         WireTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
+        WireTinySynthFxParameter::VocoderMix => TinySynthFxParameter::VocoderMix,
+        WireTinySynthFxParameter::VocoderSensitivity => TinySynthFxParameter::VocoderSensitivity,
     }
 }
 
@@ -2344,6 +2362,8 @@ fn to_wire_tiny_parameter(parameter: TinySynthFxParameter) -> WireTinySynthFxPar
         TinySynthFxParameter::EqLow => WireTinySynthFxParameter::EqLow,
         TinySynthFxParameter::EqMid => WireTinySynthFxParameter::EqMid,
         TinySynthFxParameter::EqHigh => WireTinySynthFxParameter::EqHigh,
+        TinySynthFxParameter::VocoderMix => WireTinySynthFxParameter::VocoderMix,
+        TinySynthFxParameter::VocoderSensitivity => WireTinySynthFxParameter::VocoderSensitivity,
     }
 }
 
@@ -2358,6 +2378,15 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             TinySynthFxControl::SelectPreset(value) => WireTrackFxControl::TinySelectPreset(value),
             TinySynthFxControl::SetMasterGainDb(value) => {
                 WireTrackFxControl::TinySetMasterGainDb(value)
+            }
+            TinySynthFxControl::SetVocoderEnabled(value) => {
+                WireTrackFxControl::TinySetVocoderEnabled(value)
+            }
+            TinySynthFxControl::SetVocoderMix(value) => {
+                WireTrackFxControl::TinySetVocoderMix(value)
+            }
+            TinySynthFxControl::SetVocoderSensitivity(value) => {
+                WireTrackFxControl::TinySetVocoderSensitivity(value)
             }
             TinySynthFxControl::SetReverbEnabled(value) => {
                 WireTrackFxControl::TinySetReverbEnabled(value)
@@ -2570,8 +2599,11 @@ mod tests {
             eq_low_db: 1.0,
             eq_mid_db: -1.0,
             eq_high_db: 2.0,
+            vocoder_enabled: true,
+            vocoder_mix: 0.75,
+            vocoder_sensitivity: 0.625,
             midi_cc_assignments: vec![WireTinySynthFxMidiCcAssignment {
-                parameter: WireTinySynthFxParameter::EqHigh,
+                parameter: WireTinySynthFxParameter::VocoderSensitivity,
                 channel: 3,
                 controller: 74,
             }],
@@ -2748,6 +2780,25 @@ mod tests {
         );
         let snapshot = backend.poll().unwrap();
         assert_eq!(snapshot.tracks.len(), 2);
+        let Some(TrackProcessorEditorState::TinySynthFx(tiny)) = snapshot.tracks
+            [&BackendTrackId::from_raw(2)]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX state");
+        };
+        assert!(tiny.vocoder_enabled);
+        assert_eq!(tiny.vocoder_mix, 0.75);
+        assert_eq!(tiny.vocoder_sensitivity, 0.625);
+        assert_eq!(
+            tiny.midi_cc_assignments.as_ref(),
+            [TinySynthFxMidiCcAssignment {
+                parameter: TinySynthFxParameter::VocoderSensitivity,
+                channel: 3,
+                controller: 74,
+            }]
+        );
         assert_eq!(snapshot.loops.len(), modes.len());
         assert_eq!(snapshot.composites.len(), 1);
         assert_eq!(snapshot.connections.application_ports.len(), roles.len());

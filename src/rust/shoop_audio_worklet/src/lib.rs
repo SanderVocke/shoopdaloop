@@ -764,6 +764,8 @@ fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxP
         WireTinySynthFxParameter::EqLow => TinySynthFxParameter::EqLow,
         WireTinySynthFxParameter::EqMid => TinySynthFxParameter::EqMid,
         WireTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
+        WireTinySynthFxParameter::VocoderMix => TinySynthFxParameter::VocoderMix,
+        WireTinySynthFxParameter::VocoderSensitivity => TinySynthFxParameter::VocoderSensitivity,
     }
 }
 
@@ -776,6 +778,8 @@ fn to_wire_tiny_parameter(parameter: TinySynthFxParameter) -> WireTinySynthFxPar
         TinySynthFxParameter::EqLow => WireTinySynthFxParameter::EqLow,
         TinySynthFxParameter::EqMid => WireTinySynthFxParameter::EqMid,
         TinySynthFxParameter::EqHigh => WireTinySynthFxParameter::EqHigh,
+        TinySynthFxParameter::VocoderMix => WireTinySynthFxParameter::VocoderMix,
+        TinySynthFxParameter::VocoderSensitivity => WireTinySynthFxParameter::VocoderSensitivity,
     }
 }
 
@@ -791,6 +795,15 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         }
         WireTrackFxControl::TinySetMasterGainDb(value) => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetMasterGainDb(value))
+        }
+        WireTrackFxControl::TinySetVocoderEnabled(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetVocoderEnabled(value))
+        }
+        WireTrackFxControl::TinySetVocoderMix(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetVocoderMix(value))
+        }
+        WireTrackFxControl::TinySetVocoderSensitivity(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetVocoderSensitivity(value))
         }
         WireTrackFxControl::TinySetReverbEnabled(value) => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetReverbEnabled(value))
@@ -1049,6 +1062,9 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                             eq_low_db: editor.eq_low_db,
                             eq_mid_db: editor.eq_mid_db,
                             eq_high_db: editor.eq_high_db,
+                            vocoder_enabled: editor.vocoder_enabled,
+                            vocoder_mix: editor.vocoder_mix,
+                            vocoder_sensitivity: editor.vocoder_sensitivity,
                             midi_cc_assignments: editor
                                 .midi_cc_assignments
                                 .iter()
@@ -1761,6 +1777,9 @@ mod tests {
         for (sequence, control) in [
             WireTrackFxControl::TinySelectPreset("pad".to_owned()),
             WireTrackFxControl::TinySetMasterGainDb(-12.0),
+            WireTrackFxControl::TinySetVocoderEnabled(true),
+            WireTrackFxControl::TinySetVocoderMix(0.8),
+            WireTrackFxControl::TinySetVocoderSensitivity(0.6),
             WireTrackFxControl::TinySetReverbEnabled(true),
             WireTrackFxControl::TinySetReverbAmount(0.4),
             WireTrackFxControl::TinySetDistortionEnabled(true),
@@ -1772,7 +1791,7 @@ mod tests {
             WireTrackFxControl::TinySetEqMidDb(-2.0),
             WireTrackFxControl::TinySetEqHighDb(1.5),
             WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
-                parameter: WireTinySynthFxParameter::ReverbAmount,
+                parameter: WireTinySynthFxParameter::VocoderSensitivity,
                 channel: 2,
                 controller: 17,
             }),
@@ -1798,7 +1817,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                26,
+                29,
                 Command::PushMidiInput {
                     host_port_id: "webmidi:source:tiny".to_owned(),
                     events: vec![shoop_audio_protocol::WireMidiEvent {
@@ -1811,7 +1830,7 @@ mod tests {
             Event::Ack
         ));
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
-        let Event::Snapshot(snapshot) = command(&mut host, 27, Command::Poll).event else {
+        let Event::Snapshot(snapshot) = command(&mut host, 30, Command::Poll).event else {
             panic!("missing worklet snapshot");
         };
         assert_eq!(
@@ -1831,12 +1850,15 @@ mod tests {
         assert!(fx.visible);
         assert_eq!(fx.tiny.selected_preset_id, None);
         assert_eq!(fx.tiny.master_gain_db, -12.0);
+        assert!(fx.tiny.vocoder_enabled);
+        assert_eq!(fx.tiny.vocoder_mix, 0.8);
+        assert_eq!(fx.tiny.vocoder_sensitivity, 1.0);
         assert!(fx.tiny.reverb_enabled);
-        assert_eq!(fx.tiny.reverb_amount, 1.0);
+        assert_eq!(fx.tiny.reverb_amount, 0.4);
         assert_eq!(
             fx.tiny.midi_cc_assignments,
             [WireTinySynthFxMidiCcAssignment {
-                parameter: WireTinySynthFxParameter::ReverbAmount,
+                parameter: WireTinySynthFxParameter::VocoderSensitivity,
                 channel: 2,
                 controller: 17,
             }]
