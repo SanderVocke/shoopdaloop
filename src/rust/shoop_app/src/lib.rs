@@ -68,10 +68,17 @@ const COMMAND_CAPACITY: usize = 1024;
 const MAX_COOPERATIVE_COMMANDS_PER_TICK: usize = 64;
 const POLL_INTERVAL: Duration = Duration::from_millis(16);
 #[cfg(test)]
-const TEST_KEYBOARD_SCRIPT: &str = include_str!("../../../../resources/builtins/keyboard.lua");
+const TEST_KEYBOARD_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/keyboard.lua"
+    ))
+};
 #[cfg(test)]
-const TEST_APC_MINI_SCRIPT: &str =
-    include_str!("../../../../resources/builtins/akai_apc_mini_mk1.lua");
+const TEST_APC_MINI_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/akai_apc_mini_mk1.lua"
+    ))
+};
 
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(2);
 const PREVIEW_OUTPUT_CAPACITY: usize = 1;

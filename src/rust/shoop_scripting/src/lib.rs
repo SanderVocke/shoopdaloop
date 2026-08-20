@@ -46,13 +46,23 @@ pub use shoop_script_resources::{ResourceOrigin, ScriptResourceBundle};
 use std::sync::Arc;
 
 #[cfg(test)]
-const KEYBOARD_SCRIPT: &str = include_str!("../../../../resources/builtins/keyboard.lua");
+const KEYBOARD_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/keyboard.lua"
+    ))
+};
 #[cfg(test)]
-const AKAI_APC_MINI_MK1_SCRIPT: &str =
-    include_str!("../../../../resources/builtins/akai_apc_mini_mk1.lua");
+const AKAI_APC_MINI_MK1_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/akai_apc_mini_mk1.lua"
+    ))
+};
 #[cfg(test)]
-const DIALOG_EXAMPLE_SCRIPT: &str =
-    include_str!("../../../../resources/builtins/examples/dialogs.lua");
+const DIALOG_EXAMPLE_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/examples/dialogs.lua"
+    ))
+};
 const SANDBOX_SOURCE: &str = include_str!("../../../lua/system/sandbox.lua");
 const MAX_LOG_ENTRIES: usize = 100;
 

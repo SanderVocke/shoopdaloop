@@ -1074,10 +1074,17 @@ impl eframe::App for UnifiedApp {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-const TEST_KEYBOARD_SCRIPT: &str = include_str!("../../../../resources/builtins/keyboard.lua");
+const TEST_KEYBOARD_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/keyboard.lua"
+    ))
+};
 #[cfg(all(test, not(target_arch = "wasm32")))]
-const TEST_DIALOG_SCRIPT: &str =
-    include_str!("../../../../resources/builtins/examples/dialogs.lua");
+const TEST_DIALOG_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/examples/dialogs.lua"
+    ))
+};
 
 #[cfg(any(test, target_arch = "wasm32"))]
 const KEYBOARD_SCRIPT_FILENAME: &str = "keyboard.lua";
