@@ -530,6 +530,7 @@ pub enum BackendTinySynthFxParameter {
     EqHigh,
     VocoderMix,
     VocoderSensitivity,
+    NoiseGateThreshold,
 }
 
 impl From<shoop_engine::LatestMidiMessage> for BackendLatestMidiMessage {
@@ -970,6 +971,7 @@ fn engine_tiny_synth_parameter(
         TinySynthFxParameter::EqHigh => EngineParameter::EqHigh,
         TinySynthFxParameter::VocoderMix => EngineParameter::VocoderMix,
         TinySynthFxParameter::VocoderSensitivity => EngineParameter::VocoderSensitivity,
+        TinySynthFxParameter::NoiseGateThreshold => EngineParameter::NoiseGateThreshold,
     }
 }
 
@@ -987,6 +989,7 @@ fn app_tiny_synth_parameter(
         EngineParameter::EqHigh => TinySynthFxParameter::EqHigh,
         EngineParameter::VocoderMix => TinySynthFxParameter::VocoderMix,
         EngineParameter::VocoderSensitivity => TinySynthFxParameter::VocoderSensitivity,
+        EngineParameter::NoiseGateThreshold => TinySynthFxParameter::NoiseGateThreshold,
     }
 }
 
@@ -1023,6 +1026,7 @@ fn backend_midi_cc_assignment(
         TinySynthFxParameter::EqHigh => BackendTinySynthFxParameter::EqHigh,
         TinySynthFxParameter::VocoderMix => BackendTinySynthFxParameter::VocoderMix,
         TinySynthFxParameter::VocoderSensitivity => BackendTinySynthFxParameter::VocoderSensitivity,
+        TinySynthFxParameter::NoiseGateThreshold => BackendTinySynthFxParameter::NoiseGateThreshold,
     };
     BackendTinySynthFxMidiCcAssignment {
         parameter,
@@ -1044,6 +1048,7 @@ fn app_backend_midi_cc_assignment(
         BackendTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
         BackendTinySynthFxParameter::VocoderMix => TinySynthFxParameter::VocoderMix,
         BackendTinySynthFxParameter::VocoderSensitivity => TinySynthFxParameter::VocoderSensitivity,
+        BackendTinySynthFxParameter::NoiseGateThreshold => TinySynthFxParameter::NoiseGateThreshold,
     };
     TinySynthFxMidiCcAssignment {
         parameter,
@@ -1156,6 +1161,8 @@ pub fn default_tiny_synth_fx_state() -> TrackFxState {
             vocoder_enabled: editor.vocoder_enabled,
             vocoder_mix: editor.vocoder_mix,
             vocoder_sensitivity: editor.vocoder_sensitivity,
+            noise_gate_enabled: editor.noise_gate_enabled,
+            noise_gate_threshold_db: editor.noise_gate_threshold_db,
             midi_cc_assignments: editor
                 .midi_cc_assignments
                 .into_iter()
@@ -3150,6 +3157,8 @@ fn engine_tiny_fx_state(fx: &mut EngineTinyFx) -> TrackFxState {
             vocoder_enabled: editor.vocoder_enabled,
             vocoder_mix: editor.vocoder_mix,
             vocoder_sensitivity: editor.vocoder_sensitivity,
+            noise_gate_enabled: editor.noise_gate_enabled,
+            noise_gate_threshold_db: editor.noise_gate_threshold_db,
             midi_cc_assignments: editor
                 .midi_cc_assignments
                 .into_iter()
@@ -3832,6 +3841,18 @@ impl Backend for EngineBackend {
                     fx.control.set_vocoder_sensitivity(value)?;
                     if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
                         processor.set_vocoder_sensitivity(value);
+                    }
+                }
+                TinySynthFxControl::SetNoiseGateEnabled(value) => {
+                    fx.control.set_noise_gate_enabled(value);
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_noise_gate_enabled(value);
+                    }
+                }
+                TinySynthFxControl::SetNoiseGateThresholdDb(value) => {
+                    fx.control.set_noise_gate_threshold_db(value)?;
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.set_noise_gate_threshold_db(value);
                     }
                 }
                 TinySynthFxControl::SetReverbEnabled(value) => {
@@ -8531,6 +8552,8 @@ mod tests {
             TinySynthFxControl::SetVocoderEnabled(true),
             TinySynthFxControl::SetVocoderMix(0.75),
             TinySynthFxControl::SetVocoderSensitivity(0.625),
+            TinySynthFxControl::SetNoiseGateEnabled(true),
+            TinySynthFxControl::SetNoiseGateThresholdDb(-42.5),
             TinySynthFxControl::SetReverbEnabled(true),
             TinySynthFxControl::SetReverbAmount(0.4),
             TinySynthFxControl::SetCompressorEnabled(true),
@@ -8566,6 +8589,18 @@ mod tests {
         backend
             .set_track_fx_control(
                 created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                    TinySynthFxMidiCcAssignment {
+                        parameter: TinySynthFxParameter::NoiseGateThreshold,
+                        channel: 2,
+                        controller: 19,
+                    },
+                )),
+            )
+            .unwrap();
+        backend
+            .set_track_fx_control(
+                created.track_id,
                 BackendTrackFxControl::RestoreState(state.clone()),
             )
             .unwrap();
@@ -8576,11 +8611,18 @@ mod tests {
         );
         assert_eq!(
             captured.tracks[0].tiny_synth_midi_cc_assignments,
-            [BackendTinySynthFxMidiCcAssignment {
-                parameter: BackendTinySynthFxParameter::ReverbAmount,
-                channel: 2,
-                controller: 18,
-            }]
+            [
+                BackendTinySynthFxMidiCcAssignment {
+                    parameter: BackendTinySynthFxParameter::ReverbAmount,
+                    channel: 2,
+                    controller: 18,
+                },
+                BackendTinySynthFxMidiCcAssignment {
+                    parameter: BackendTinySynthFxParameter::NoiseGateThreshold,
+                    channel: 2,
+                    controller: 19,
+                },
+            ]
         );
         assert!(backend
             .set_track_fx_control(
@@ -8622,6 +8664,8 @@ mod tests {
         assert!(editor.vocoder_enabled);
         assert_eq!(editor.vocoder_mix, 0.75);
         assert_eq!(editor.vocoder_sensitivity, 0.625);
+        assert!(editor.noise_gate_enabled);
+        assert_eq!(editor.noise_gate_threshold_db, -42.5);
         assert!(editor.reverb_enabled);
         assert_eq!(editor.reverb_amount, 0.4);
         assert!(editor.compressor_enabled);
@@ -8632,17 +8676,32 @@ mod tests {
         assert_eq!(editor.eq_high_db, 1.5);
         assert_eq!(
             editor.midi_cc_assignments.as_ref(),
-            [TinySynthFxMidiCcAssignment {
-                parameter: TinySynthFxParameter::ReverbAmount,
-                channel: 2,
-                controller: 18,
-            }]
+            [
+                TinySynthFxMidiCcAssignment {
+                    parameter: TinySynthFxParameter::ReverbAmount,
+                    channel: 2,
+                    controller: 18,
+                },
+                TinySynthFxMidiCcAssignment {
+                    parameter: TinySynthFxParameter::NoiseGateThreshold,
+                    channel: 2,
+                    controller: 19,
+                },
+            ]
         );
         backend
             .set_track_fx_control(
                 restored_track,
                 BackendTrackFxControl::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
                     TinySynthFxParameter::ReverbAmount,
+                )),
+            )
+            .unwrap();
+        backend
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
+                    TinySynthFxParameter::NoiseGateThreshold,
                 )),
             )
             .unwrap();
@@ -8682,6 +8741,98 @@ mod tests {
             panic!("missing Tiny Synth/FX editor state");
         };
         assert!(editor.midi_cc_assignments.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn browser_tiny_synth_combined_gate_opens_and_closes_a_held_carrier_at_all_mixes() {
+        for mix in [0.0, 0.5, 1.0] {
+            let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+            backend.configure_web_audio_channels(1, 1).unwrap();
+            backend
+                .configure_web_midi_endpoints(vec![BackendHostPortDescriptor {
+                    id: "webmidi:source:gate".to_owned(),
+                    name: "Gate MIDI".to_owned(),
+                    data_type: BackendPortDataType::Midi,
+                    direction: BackendPortDirection::Output,
+                }])
+                .unwrap();
+            let created = backend
+                .create_track(TrackRequest {
+                    port_name_base: format!("gate_{mix}"),
+                    topology: BackendTrackTopology::DryWetProcessor {
+                        processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                        dry_audio_channels: 1,
+                        wet_audio_channels: 1,
+                        dry_midi: true,
+                    },
+                    initial_loops: 1,
+                })
+                .unwrap();
+            let midi_input = created
+                .ports
+                .iter()
+                .find(|port| port.role == BackendPortRole::MidiInput)
+                .unwrap();
+            backend
+                .set_port_connected(midi_input.id, "webmidi:source:gate", true)
+                .unwrap();
+            backend
+                .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+                .unwrap();
+            for control in [
+                TinySynthFxControl::SelectPreset("square".to_owned()),
+                TinySynthFxControl::SetVocoderEnabled(true),
+                TinySynthFxControl::SetVocoderMix(mix),
+                TinySynthFxControl::SetVocoderSensitivity(1.0),
+                TinySynthFxControl::SetNoiseGateEnabled(true),
+                TinySynthFxControl::SetNoiseGateThresholdDb(-20.0),
+            ] {
+                backend
+                    .set_track_fx_control(
+                        created.track_id,
+                        BackendTrackFxControl::TinySynthFx(control),
+                    )
+                    .unwrap();
+            }
+            backend.poll().unwrap();
+            backend
+                .stage_web_midi_input("webmidi:source:gate", &[0x90, 45, 127])
+                .unwrap();
+
+            let silence = [0.0; 128];
+            let mut output = [0.0; 128];
+            backend
+                .process_audio_quantum(&silence, 1, &mut output, 1, 128)
+                .unwrap();
+            assert!(output.iter().all(|sample| sample.abs() < 1.0e-7));
+
+            let talking =
+                std::array::from_fn::<_, 128, _>(|frame| if frame % 109 < 54 { 0.5 } else { -0.5 });
+            let mut heard = false;
+            for _ in 0..8 {
+                backend
+                    .process_audio_quantum(&talking, 1, &mut output, 1, 128)
+                    .unwrap();
+                heard |= output.iter().any(|sample| sample.abs() > 1.0e-4);
+            }
+            assert!(heard, "gate did not open at vocoder mix {mix}");
+
+            for _ in 0..64 {
+                backend
+                    .process_audio_quantum(&silence, 1, &mut output, 1, 128)
+                    .unwrap();
+            }
+            assert!(output.iter().all(|sample| sample.abs() < 1.0e-7));
+
+            heard = false;
+            for _ in 0..8 {
+                backend
+                    .process_audio_quantum(&talking, 1, &mut output, 1, 128)
+                    .unwrap();
+                heard |= output.iter().any(|sample| sample.abs() > 1.0e-4);
+            }
+            assert!(heard, "held carrier did not reopen at vocoder mix {mix}");
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

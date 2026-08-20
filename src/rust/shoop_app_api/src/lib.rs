@@ -182,10 +182,11 @@ pub enum TinySynthFxParameter {
     EqHigh,
     VocoderMix,
     VocoderSensitivity,
+    NoiseGateThreshold,
 }
 
 impl TinySynthFxParameter {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::MasterGain,
         Self::ReverbAmount,
         Self::DistortionDrive,
@@ -195,6 +196,7 @@ impl TinySynthFxParameter {
         Self::EqHigh,
         Self::VocoderMix,
         Self::VocoderSensitivity,
+        Self::NoiseGateThreshold,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -208,6 +210,7 @@ impl TinySynthFxParameter {
             Self::EqHigh => "EQ high",
             Self::VocoderMix => "Vocoder mix",
             Self::VocoderSensitivity => "Vocoder sensitivity",
+            Self::NoiseGateThreshold => "Noise Gate threshold",
         }
     }
 }
@@ -268,6 +271,8 @@ pub struct TinySynthFxState {
     pub vocoder_enabled: bool,
     pub vocoder_mix: f32,
     pub vocoder_sensitivity: f32,
+    pub noise_gate_enabled: bool,
+    pub noise_gate_threshold_db: f32,
     pub midi_cc_assignments: Arc<[TinySynthFxMidiCcAssignment]>,
 }
 
@@ -294,6 +299,8 @@ pub const MIN_TINY_SYNTH_FX_GAIN_DB: f32 = -60.0;
 pub const MAX_TINY_SYNTH_FX_GAIN_DB: f32 = 0.0;
 pub const MIN_TINY_SYNTH_FX_EQ_GAIN_DB: f32 = -12.0;
 pub const MAX_TINY_SYNTH_FX_EQ_GAIN_DB: f32 = 12.0;
+pub const MIN_TINY_SYNTH_FX_NOISE_GATE_THRESHOLD_DB: f32 = -80.0;
+pub const MAX_TINY_SYNTH_FX_NOISE_GATE_THRESHOLD_DB: f32 = 0.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DefaultRecordingAction {
@@ -1489,6 +1496,8 @@ pub enum TinySynthFxControl {
     SetVocoderEnabled(bool),
     SetVocoderMix(f32),
     SetVocoderSensitivity(f32),
+    SetNoiseGateEnabled(bool),
+    SetNoiseGateThresholdDb(f32),
     SetReverbEnabled(bool),
     SetReverbAmount(f32),
     SetDistortionEnabled(bool),
@@ -1785,6 +1794,8 @@ impl TinySynthFxControl {
             Self::SetVocoderEnabled(_) => "track.tiny_synth_fx.vocoder_enabled",
             Self::SetVocoderMix(_) => "track.tiny_synth_fx.vocoder_mix",
             Self::SetVocoderSensitivity(_) => "track.tiny_synth_fx.vocoder_sensitivity",
+            Self::SetNoiseGateEnabled(_) => "track.tiny_synth_fx.noise_gate_enabled",
+            Self::SetNoiseGateThresholdDb(_) => "track.tiny_synth_fx.noise_gate_threshold",
             Self::SetReverbEnabled(_) => "track.tiny_synth_fx.reverb_enabled",
             Self::SetReverbAmount(_) => "track.tiny_synth_fx.reverb_amount",
             Self::SetDistortionEnabled(_) => "track.tiny_synth_fx.distortion_enabled",
@@ -2244,6 +2255,14 @@ mod tests {
         assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::SetVocoderSensitivity(0.5)).kind(),
             "track.tiny_synth_fx.vocoder_sensitivity"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::SetNoiseGateThresholdDb(-50.0)).kind(),
+            "track.tiny_synth_fx.noise_gate_threshold"
+        );
+        assert_eq!(
+            TinySynthFxParameter::NoiseGateThreshold.label(),
+            "Noise Gate threshold"
         );
         assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::AssignMidiCc(

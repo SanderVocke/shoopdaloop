@@ -1621,6 +1621,12 @@ impl NativeRuntime {
                     TinySynthFxControl::SetVocoderSensitivity(value) => {
                         fx.chain.tiny_set_vocoder_sensitivity(value)?
                     }
+                    TinySynthFxControl::SetNoiseGateEnabled(value) => {
+                        fx.chain.tiny_set_noise_gate_enabled(value)?
+                    }
+                    TinySynthFxControl::SetNoiseGateThresholdDb(value) => {
+                        fx.chain.tiny_set_noise_gate_threshold_db(value)?
+                    }
                     TinySynthFxControl::SetReverbEnabled(value) => {
                         fx.chain.tiny_set_reverb_enabled(value)?
                     }
@@ -2585,6 +2591,8 @@ impl Backend for NativeBackend {
                             vocoder_enabled: editor.vocoder_enabled,
                             vocoder_mix: editor.vocoder_mix,
                             vocoder_sensitivity: editor.vocoder_sensitivity,
+                            noise_gate_enabled: editor.noise_gate_enabled,
+                            noise_gate_threshold_db: editor.noise_gate_threshold_db,
                             midi_cc_assignments: editor
                                 .midi_cc_assignments
                                 .into_iter()
@@ -4003,6 +4011,8 @@ mod tests {
             TinySynthFxControl::SetVocoderEnabled(true),
             TinySynthFxControl::SetVocoderMix(0.75),
             TinySynthFxControl::SetVocoderSensitivity(0.625),
+            TinySynthFxControl::SetNoiseGateEnabled(true),
+            TinySynthFxControl::SetNoiseGateThresholdDb(-42.5),
         ] {
             backend
                 .set_track_fx_control(
@@ -4010,6 +4020,64 @@ mod tests {
                     BackendTrackFxControl::TinySynthFx(control),
                 )
                 .unwrap();
+        }
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            let track = &runtime.tracks[&created.track_id];
+            let input = track.audio_inputs[0].clone();
+            let output = track.audio_outputs[0].clone();
+            let midi = track.midi_input.as_ref().unwrap().clone();
+            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
+                time: 0,
+                data: vec![0x90, 45, 127],
+            })
+            .unwrap();
+            let silence = [0.0; 128];
+            input.dummy_queue_data(&silence).unwrap();
+            output.dummy_request_data(128).unwrap();
+            runtime.driver.dummy_request_controlled_frames(128);
+            runtime.driver.dummy_run_requested_frames();
+            assert!(output
+                .dummy_dequeue_data(128)
+                .iter()
+                .all(|sample| sample.abs() < 1.0e-7));
+
+            let talking =
+                std::array::from_fn::<_, 128, _>(|frame| if frame % 109 < 54 { 0.5 } else { -0.5 });
+            let mut heard = false;
+            for _ in 0..8 {
+                input.dummy_queue_data(&talking).unwrap();
+                output.dummy_request_data(128).unwrap();
+                runtime.driver.dummy_request_controlled_frames(128);
+                runtime.driver.dummy_run_requested_frames();
+                heard |= output
+                    .dummy_dequeue_data(128)
+                    .iter()
+                    .any(|sample| sample.abs() > 1.0e-4);
+            }
+            assert!(heard);
+            for iteration in 0..64 {
+                input.dummy_queue_data(&silence).unwrap();
+                output.dummy_request_data(128).unwrap();
+                runtime.driver.dummy_request_controlled_frames(128);
+                runtime.driver.dummy_run_requested_frames();
+                let closed = output.dummy_dequeue_data(128);
+                if iteration == 63 {
+                    assert!(closed.iter().all(|sample| sample.abs() < 1.0e-7));
+                }
+            }
+            heard = false;
+            for _ in 0..8 {
+                input.dummy_queue_data(&talking).unwrap();
+                output.dummy_request_data(128).unwrap();
+                runtime.driver.dummy_request_controlled_frames(128);
+                runtime.driver.dummy_run_requested_frames();
+                heard |= output
+                    .dummy_dequeue_data(128)
+                    .iter()
+                    .any(|sample| sample.abs() > 1.0e-4);
+            }
+            assert!(heard);
         }
         let snapshot = backend.poll().unwrap();
         let Some(TrackProcessorEditorState::TinySynthFx(editor)) = snapshot.tracks
@@ -4023,6 +4091,8 @@ mod tests {
         assert!(editor.vocoder_enabled);
         assert_eq!(editor.vocoder_mix, 0.75);
         assert_eq!(editor.vocoder_sensitivity, 0.625);
+        assert!(editor.noise_gate_enabled);
+        assert_eq!(editor.noise_gate_threshold_db, -42.5);
 
         let captured = backend.capture_session().unwrap();
         let wet = &captured.tracks[0].loops[0].audio[1].samples;

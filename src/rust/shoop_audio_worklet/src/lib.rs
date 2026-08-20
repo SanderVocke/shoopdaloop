@@ -766,6 +766,7 @@ fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxP
         WireTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
         WireTinySynthFxParameter::VocoderMix => TinySynthFxParameter::VocoderMix,
         WireTinySynthFxParameter::VocoderSensitivity => TinySynthFxParameter::VocoderSensitivity,
+        WireTinySynthFxParameter::NoiseGateThreshold => TinySynthFxParameter::NoiseGateThreshold,
     }
 }
 
@@ -780,6 +781,7 @@ fn to_wire_tiny_parameter(parameter: TinySynthFxParameter) -> WireTinySynthFxPar
         TinySynthFxParameter::EqHigh => WireTinySynthFxParameter::EqHigh,
         TinySynthFxParameter::VocoderMix => WireTinySynthFxParameter::VocoderMix,
         TinySynthFxParameter::VocoderSensitivity => WireTinySynthFxParameter::VocoderSensitivity,
+        TinySynthFxParameter::NoiseGateThreshold => WireTinySynthFxParameter::NoiseGateThreshold,
     }
 }
 
@@ -804,6 +806,12 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         }
         WireTrackFxControl::TinySetVocoderSensitivity(value) => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetVocoderSensitivity(value))
+        }
+        WireTrackFxControl::TinySetNoiseGateEnabled(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetNoiseGateEnabled(value))
+        }
+        WireTrackFxControl::TinySetNoiseGateThresholdDb(value) => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetNoiseGateThresholdDb(value))
         }
         WireTrackFxControl::TinySetReverbEnabled(value) => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetReverbEnabled(value))
@@ -1065,6 +1073,8 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                             vocoder_enabled: editor.vocoder_enabled,
                             vocoder_mix: editor.vocoder_mix,
                             vocoder_sensitivity: editor.vocoder_sensitivity,
+                            noise_gate_enabled: editor.noise_gate_enabled,
+                            noise_gate_threshold_db: editor.noise_gate_threshold_db,
                             midi_cc_assignments: editor
                                 .midi_cc_assignments
                                 .iter()
@@ -1780,6 +1790,8 @@ mod tests {
             WireTrackFxControl::TinySetVocoderEnabled(true),
             WireTrackFxControl::TinySetVocoderMix(0.8),
             WireTrackFxControl::TinySetVocoderSensitivity(0.6),
+            WireTrackFxControl::TinySetNoiseGateEnabled(true),
+            WireTrackFxControl::TinySetNoiseGateThresholdDb(-42.5),
             WireTrackFxControl::TinySetReverbEnabled(true),
             WireTrackFxControl::TinySetReverbAmount(0.4),
             WireTrackFxControl::TinySetDistortionEnabled(true),
@@ -1791,7 +1803,7 @@ mod tests {
             WireTrackFxControl::TinySetEqMidDb(-2.0),
             WireTrackFxControl::TinySetEqHighDb(1.5),
             WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
-                parameter: WireTinySynthFxParameter::VocoderSensitivity,
+                parameter: WireTinySynthFxParameter::NoiseGateThreshold,
                 channel: 2,
                 controller: 17,
             }),
@@ -1817,7 +1829,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                29,
+                31,
                 Command::PushMidiInput {
                     host_port_id: "webmidi:source:tiny".to_owned(),
                     events: vec![shoop_audio_protocol::WireMidiEvent {
@@ -1830,7 +1842,7 @@ mod tests {
             Event::Ack
         ));
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
-        let Event::Snapshot(snapshot) = command(&mut host, 30, Command::Poll).event else {
+        let Event::Snapshot(snapshot) = command(&mut host, 32, Command::Poll).event else {
             panic!("missing worklet snapshot");
         };
         assert_eq!(
@@ -1852,13 +1864,15 @@ mod tests {
         assert_eq!(fx.tiny.master_gain_db, -12.0);
         assert!(fx.tiny.vocoder_enabled);
         assert_eq!(fx.tiny.vocoder_mix, 0.8);
-        assert_eq!(fx.tiny.vocoder_sensitivity, 1.0);
+        assert_eq!(fx.tiny.vocoder_sensitivity, 0.6);
+        assert!(fx.tiny.noise_gate_enabled);
+        assert_eq!(fx.tiny.noise_gate_threshold_db, 0.0);
         assert!(fx.tiny.reverb_enabled);
         assert_eq!(fx.tiny.reverb_amount, 0.4);
         assert_eq!(
             fx.tiny.midi_cc_assignments,
             [WireTinySynthFxMidiCcAssignment {
-                parameter: WireTinySynthFxParameter::VocoderSensitivity,
+                parameter: WireTinySynthFxParameter::NoiseGateThreshold,
                 channel: 2,
                 controller: 17,
             }]

@@ -675,6 +675,8 @@ enum FxControlKey {
     TinyVocoderEnabled,
     TinyVocoderMix,
     TinyVocoderSensitivity,
+    TinyNoiseGateEnabled,
+    TinyNoiseGateThreshold,
     TinyReverbEnabled,
     TinyReverbAmount,
     TinyDistortionEnabled,
@@ -713,6 +715,12 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
                 }
                 shoop_backend::TinySynthFxControl::SetVocoderSensitivity(value) => {
                     editor.vocoder_sensitivity = *value
+                }
+                shoop_backend::TinySynthFxControl::SetNoiseGateEnabled(value) => {
+                    editor.noise_gate_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetNoiseGateThresholdDb(value) => {
+                    editor.noise_gate_threshold_db = *value
                 }
                 shoop_backend::TinySynthFxControl::SetReverbEnabled(value) => {
                     editor.reverb_enabled = *value
@@ -791,6 +799,12 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
             shoop_backend::TinySynthFxControl::SetVocoderMix(_) => FxControlKey::TinyVocoderMix,
             shoop_backend::TinySynthFxControl::SetVocoderSensitivity(_) => {
                 FxControlKey::TinyVocoderSensitivity
+            }
+            shoop_backend::TinySynthFxControl::SetNoiseGateEnabled(_) => {
+                FxControlKey::TinyNoiseGateEnabled
+            }
+            shoop_backend::TinySynthFxControl::SetNoiseGateThresholdDb(_) => {
+                FxControlKey::TinyNoiseGateThreshold
             }
             shoop_backend::TinySynthFxControl::SetReverbEnabled(_) => {
                 FxControlKey::TinyReverbEnabled
@@ -8337,6 +8351,9 @@ fn document_midi_cc_assignment(
         BackendTinySynthFxParameter::VocoderSensitivity => {
             TinySynthFxParameterDocument::VocoderSensitivity
         }
+        BackendTinySynthFxParameter::NoiseGateThreshold => {
+            TinySynthFxParameterDocument::NoiseGateThreshold
+        }
     };
     TinySynthFxMidiCcAssignmentDocument {
         parameter,
@@ -8363,6 +8380,9 @@ fn backend_midi_cc_assignment(
         TinySynthFxParameterDocument::VocoderMix => BackendTinySynthFxParameter::VocoderMix,
         TinySynthFxParameterDocument::VocoderSensitivity => {
             BackendTinySynthFxParameter::VocoderSensitivity
+        }
+        TinySynthFxParameterDocument::NoiseGateThreshold => {
+            BackendTinySynthFxParameter::NoiseGateThreshold
         }
     };
     BackendTinySynthFxMidiCcAssignment {
@@ -9756,6 +9776,11 @@ mod tests {
         for control in [
             shoop_app_api::TinySynthFxControl::SelectPreset("pad".to_owned()),
             shoop_app_api::TinySynthFxControl::SetMasterGainDb(-12.0),
+            shoop_app_api::TinySynthFxControl::SetVocoderEnabled(true),
+            shoop_app_api::TinySynthFxControl::SetVocoderMix(0.75),
+            shoop_app_api::TinySynthFxControl::SetVocoderSensitivity(0.625),
+            shoop_app_api::TinySynthFxControl::SetNoiseGateEnabled(true),
+            shoop_app_api::TinySynthFxControl::SetNoiseGateThresholdDb(-42.5),
             shoop_app_api::TinySynthFxControl::SetReverbEnabled(true),
             shoop_app_api::TinySynthFxControl::SetReverbAmount(0.4),
             shoop_app_api::TinySynthFxControl::SetDistortionEnabled(true),
@@ -9771,6 +9796,13 @@ mod tests {
                     parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
                     channel: 6,
                     controller: 74,
+                },
+            ),
+            shoop_app_api::TinySynthFxControl::AssignMidiCc(
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::NoiseGateThreshold,
+                    channel: 6,
+                    controller: 75,
                 },
             ),
         ] {
@@ -9826,11 +9858,18 @@ mod tests {
         assert!(!current_state.is_empty());
         assert_eq!(
             saved_track.fx_chain.as_ref().unwrap().midi_cc_assignments,
-            [TinySynthFxMidiCcAssignmentDocument {
-                parameter: TinySynthFxParameterDocument::EqHigh,
-                channel: 6,
-                controller: 74,
-            }]
+            [
+                TinySynthFxMidiCcAssignmentDocument {
+                    parameter: TinySynthFxParameterDocument::EqHigh,
+                    channel: 6,
+                    controller: 74,
+                },
+                TinySynthFxMidiCcAssignmentDocument {
+                    parameter: TinySynthFxParameterDocument::NoiseGateThreshold,
+                    channel: 6,
+                    controller: 75,
+                },
+            ]
         );
         let take_id = saved_track.loops[0]
             .channels
@@ -9876,6 +9915,11 @@ mod tests {
         };
         assert_eq!(editor.selected_preset_id.as_deref(), Some("pad"));
         assert_eq!(editor.master_gain_db, -12.0);
+        assert!(editor.vocoder_enabled);
+        assert_eq!(editor.vocoder_mix, 0.75);
+        assert_eq!(editor.vocoder_sensitivity, 0.625);
+        assert!(editor.noise_gate_enabled);
+        assert_eq!(editor.noise_gate_threshold_db, -42.5);
         assert!(editor.reverb_enabled);
         assert_eq!(editor.reverb_amount, 0.4);
         assert!(editor.distortion_enabled);
@@ -9888,11 +9932,18 @@ mod tests {
         assert_eq!(editor.eq_high_db, 1.5);
         assert_eq!(
             editor.midi_cc_assignments.as_ref(),
-            [shoop_app_api::TinySynthFxMidiCcAssignment {
-                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
-                channel: 6,
-                controller: 74,
-            }]
+            [
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                    channel: 6,
+                    controller: 74,
+                },
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::NoiseGateThreshold,
+                    channel: 6,
+                    controller: 75,
+                },
+            ]
         );
         assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
         let loaded_track_id = loaded.tracks[1].id;
@@ -9928,11 +9979,18 @@ mod tests {
         assert_eq!(restored_editor.selected_preset_id.as_deref(), Some("pad"));
         assert_eq!(
             restored_editor.midi_cc_assignments.as_ref(),
-            [shoop_app_api::TinySynthFxMidiCcAssignment {
-                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
-                channel: 6,
-                controller: 74,
-            }]
+            [
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                    channel: 6,
+                    controller: 74,
+                },
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::NoiseGateThreshold,
+                    channel: 6,
+                    controller: 75,
+                },
+            ]
         );
 
         runtime
@@ -9968,6 +10026,11 @@ mod tests {
         };
         assert_eq!(switched_editor.master_gain_db, -12.0);
         assert_eq!(switched_editor.selected_preset_id.as_deref(), Some("pad"));
+        assert!(switched_editor.vocoder_enabled);
+        assert_eq!(switched_editor.vocoder_mix, 0.75);
+        assert_eq!(switched_editor.vocoder_sensitivity, 0.625);
+        assert!(switched_editor.noise_gate_enabled);
+        assert_eq!(switched_editor.noise_gate_threshold_db, -42.5);
         assert!(switched_editor.reverb_enabled);
         assert_eq!(switched_editor.reverb_amount, 0.4);
         assert!(switched_editor.distortion_enabled);
@@ -9976,11 +10039,18 @@ mod tests {
         assert_eq!(switched_editor.compressor_amount, 0.6);
         assert_eq!(
             switched_editor.midi_cc_assignments.as_ref(),
-            [shoop_app_api::TinySynthFxMidiCcAssignment {
-                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
-                channel: 6,
-                controller: 74,
-            }]
+            [
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                    channel: 6,
+                    controller: 74,
+                },
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::NoiseGateThreshold,
+                    channel: 6,
+                    controller: 75,
+                },
+            ]
         );
         assert!(switched_editor.eq_enabled);
         assert_eq!(switched_editor.eq_low_db, 3.0);

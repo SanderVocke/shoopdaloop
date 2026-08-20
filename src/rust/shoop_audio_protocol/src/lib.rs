@@ -318,6 +318,8 @@ pub enum WireTrackFxControl {
     TinySetVocoderEnabled(bool),
     TinySetVocoderMix(f32),
     TinySetVocoderSensitivity(f32),
+    TinySetNoiseGateEnabled(bool),
+    TinySetNoiseGateThresholdDb(f32),
     TinySetReverbEnabled(bool),
     TinySetReverbAmount(f32),
     TinySetDistortionEnabled(bool),
@@ -347,12 +349,14 @@ impl WireTrackFxControl {
             Self::TinySetEqHighDb(_) => 7,
             Self::TinySetVocoderMix(_) => 8,
             Self::TinySetVocoderSensitivity(_) => 9,
+            Self::TinySetNoiseGateThresholdDb(_) => 10,
             Self::SetVisible(_)
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
             | Self::ClearLogs
             | Self::TinySelectPreset(_)
             | Self::TinySetVocoderEnabled(_)
+            | Self::TinySetNoiseGateEnabled(_)
             | Self::TinySetReverbEnabled(_)
             | Self::TinySetDistortionEnabled(_)
             | Self::TinySetCompressorEnabled(_)
@@ -569,6 +573,7 @@ pub enum WireTinySynthFxParameter {
     EqHigh,
     VocoderMix,
     VocoderSensitivity,
+    NoiseGateThreshold,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -632,6 +637,10 @@ const fn default_vocoder_sensitivity() -> f32 {
     0.5
 }
 
+const fn default_noise_gate_threshold_db() -> f32 {
+    -50.0
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireTinySynthFxState {
     pub selected_preset_id: Option<String>,
@@ -652,6 +661,10 @@ pub struct WireTinySynthFxState {
     pub vocoder_mix: f32,
     #[serde(default = "default_vocoder_sensitivity")]
     pub vocoder_sensitivity: f32,
+    #[serde(default)]
+    pub noise_gate_enabled: bool,
+    #[serde(default = "default_noise_gate_threshold_db")]
+    pub noise_gate_threshold_db: f32,
     #[serde(default)]
     pub midi_cc_assignments: Vec<WireTinySynthFxMidiCcAssignment>,
 }
@@ -1014,6 +1027,8 @@ mod tests {
             WireTrackFxControl::TinySetVocoderEnabled(true),
             WireTrackFxControl::TinySetVocoderMix(0.75),
             WireTrackFxControl::TinySetVocoderSensitivity(0.625),
+            WireTrackFxControl::TinySetNoiseGateEnabled(true),
+            WireTrackFxControl::TinySetNoiseGateThresholdDb(-42.5),
             WireTrackFxControl::TinySetReverbEnabled(true),
             WireTrackFxControl::TinySetReverbAmount(0.4),
             WireTrackFxControl::TinySetDistortionEnabled(true),
@@ -1050,7 +1065,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn legacy_tiny_synth_wire_state_supplies_vocoder_defaults() {
+    fn legacy_tiny_synth_wire_state_supplies_vocoder_and_gate_defaults() {
         let state = WireTinySynthFxState {
             selected_preset_id: None,
             master_gain_db: -6.0,
@@ -1067,6 +1082,8 @@ mod tests {
             vocoder_enabled: true,
             vocoder_mix: 0.25,
             vocoder_sensitivity: 0.75,
+            noise_gate_enabled: true,
+            noise_gate_threshold_db: -42.5,
             midi_cc_assignments: Vec::new(),
         };
         let mut encoded = serde_json::to_value(state).unwrap();
@@ -1074,9 +1091,13 @@ mod tests {
         object.remove("vocoder_enabled");
         object.remove("vocoder_mix");
         object.remove("vocoder_sensitivity");
+        object.remove("noise_gate_enabled");
+        object.remove("noise_gate_threshold_db");
         let restored: WireTinySynthFxState = serde_json::from_value(encoded).unwrap();
         assert!(!restored.vocoder_enabled);
         assert_eq!(restored.vocoder_mix, 1.0);
         assert_eq!(restored.vocoder_sensitivity, 0.5);
+        assert!(!restored.noise_gate_enabled);
+        assert_eq!(restored.noise_gate_threshold_db, -50.0);
     }
 }

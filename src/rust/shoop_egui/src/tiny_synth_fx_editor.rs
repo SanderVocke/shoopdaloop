@@ -2,7 +2,8 @@ use crate::{
     TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackAction,
     TrackProcessorDescriptor, TrackProcessorEditorDescriptor, TrackProcessorEditorState,
     TrackState, MAX_TINY_SYNTH_FX_EQ_GAIN_DB, MAX_TINY_SYNTH_FX_GAIN_DB,
-    MIN_TINY_SYNTH_FX_EQ_GAIN_DB, MIN_TINY_SYNTH_FX_GAIN_DB,
+    MAX_TINY_SYNTH_FX_NOISE_GATE_THRESHOLD_DB, MIN_TINY_SYNTH_FX_EQ_GAIN_DB,
+    MIN_TINY_SYNTH_FX_GAIN_DB, MIN_TINY_SYNTH_FX_NOISE_GATE_THRESHOLD_DB,
 };
 
 #[derive(Debug)]
@@ -25,6 +26,10 @@ pub(crate) struct TinySynthFxEditor {
     vocoder_mix_rect: Option<egui::Rect>,
     #[cfg(test)]
     vocoder_sensitivity_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    noise_gate_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    noise_gate_threshold_rect: Option<egui::Rect>,
     #[cfg(test)]
     reverb_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -76,6 +81,10 @@ impl Default for TinySynthFxEditor {
             vocoder_mix_rect: None,
             #[cfg(test)]
             vocoder_sensitivity_rect: None,
+            #[cfg(test)]
+            noise_gate_rect: None,
+            #[cfg(test)]
+            noise_gate_threshold_rect: None,
             #[cfg(test)]
             reverb_rect: None,
             #[cfg(test)]
@@ -249,6 +258,38 @@ impl TinySynthFxEditor {
                 if vocoder_sensitivity_response.changed() {
                     actions.push(TrackAction::TinySynthFx(
                         TinySynthFxControl::SetVocoderSensitivity(vocoder_sensitivity),
+                    ));
+                }
+
+                let mut noise_gate_enabled = editor.noise_gate_enabled;
+                let noise_gate = ui.checkbox(&mut noise_gate_enabled, "Noise Gate");
+                #[cfg(test)]
+                {
+                    self.noise_gate_rect = Some(noise_gate.rect);
+                }
+                if noise_gate.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetNoiseGateEnabled(noise_gate_enabled),
+                    ));
+                }
+                let mut noise_gate_threshold_db = editor.noise_gate_threshold_db;
+                let noise_gate_threshold_response = ui.add_enabled(
+                    noise_gate_enabled,
+                    egui::Slider::new(
+                        &mut noise_gate_threshold_db,
+                        MIN_TINY_SYNTH_FX_NOISE_GATE_THRESHOLD_DB
+                            ..=MAX_TINY_SYNTH_FX_NOISE_GATE_THRESHOLD_DB,
+                    )
+                    .text("Threshold")
+                    .suffix(" dB"),
+                );
+                #[cfg(test)]
+                {
+                    self.noise_gate_threshold_rect = Some(noise_gate_threshold_response.rect);
+                }
+                if noise_gate_threshold_response.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetNoiseGateThresholdDb(noise_gate_threshold_db),
                     ));
                 }
 
@@ -528,6 +569,16 @@ impl TinySynthFxEditor {
     }
 
     #[cfg(test)]
+    pub(crate) fn noise_gate_rect(&self) -> Option<egui::Rect> {
+        self.noise_gate_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn noise_gate_threshold_rect(&self) -> Option<egui::Rect> {
+        self.noise_gate_threshold_rect
+    }
+
+    #[cfg(test)]
     pub(crate) fn reverb_rect(&self) -> Option<egui::Rect> {
         self.reverb_rect
     }
@@ -664,6 +715,8 @@ mod tests {
                     vocoder_enabled: false,
                     vocoder_mix: 1.0,
                     vocoder_sensitivity: 0.5,
+                    noise_gate_enabled: false,
+                    noise_gate_threshold_db: -50.0,
                     reverb_enabled: false,
                     reverb_amount: 0.25,
                     distortion_enabled: false,
@@ -844,6 +897,7 @@ mod tests {
         let mut editor = TinySynthFxEditor::default();
         assert!(TinySynthFxParameter::ALL.contains(&TinySynthFxParameter::VocoderMix));
         assert!(TinySynthFxParameter::ALL.contains(&TinySynthFxParameter::VocoderSensitivity));
+        assert!(TinySynthFxParameter::ALL.contains(&TinySynthFxParameter::NoiseGateThreshold));
         frame(&context, &mut editor, &state, &processor, Vec::new());
 
         let open = editor.midi_learn_rect().unwrap().center();
@@ -856,6 +910,7 @@ mod tests {
         let assign = editor.midi_assign_rect().unwrap().center();
         assert!(click(&context, &mut editor, &state, &processor, assign).is_empty());
 
+        editor.selected_midi_parameter = TinySynthFxParameter::NoiseGateThreshold;
         state.controls.latest_input_midi_message = LatestMidiMessage::new([0xb4, 19, 88, 0], 3);
         frame(&context, &mut editor, &state, &processor, Vec::new());
         let assign = editor.midi_assign_rect().unwrap().center();
@@ -863,7 +918,7 @@ mod tests {
             click(&context, &mut editor, &state, &processor, assign),
             [TrackAction::TinySynthFx(TinySynthFxControl::AssignMidiCc(
                 TinySynthFxMidiCcAssignment {
-                    parameter: TinySynthFxParameter::MasterGain,
+                    parameter: TinySynthFxParameter::NoiseGateThreshold,
                     channel: 4,
                     controller: 19,
                 }
@@ -877,20 +932,20 @@ mod tests {
                 controller: 19,
             },
             TinySynthFxMidiCcAssignment {
-                parameter: TinySynthFxParameter::VocoderSensitivity,
+                parameter: TinySynthFxParameter::NoiseGateThreshold,
                 channel: 1,
                 controller: 74,
             },
         ]);
         frame(&context, &mut editor, &state, &processor, Vec::new());
         let remove = editor
-            .midi_remove_rect(TinySynthFxParameter::VocoderSensitivity)
+            .midi_remove_rect(TinySynthFxParameter::NoiseGateThreshold)
             .unwrap()
             .center();
         assert_eq!(
             click(&context, &mut editor, &state, &processor, remove),
             [TrackAction::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
-                TinySynthFxParameter::VocoderSensitivity
+                TinySynthFxParameter::NoiseGateThreshold
             ))]
         );
         let remove_all = editor.midi_remove_all_rect().unwrap().center();
@@ -977,6 +1032,38 @@ mod tests {
                     if (0.0..=1.0).contains(value)
             ));
         }
+
+        let disabled_threshold = editor.noise_gate_threshold_rect().unwrap().center();
+        assert!(click(
+            &context,
+            &mut editor,
+            &state,
+            &processor,
+            disabled_threshold
+        )
+        .is_empty());
+        let noise_gate = editor.noise_gate_rect().unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, noise_gate),
+            [TrackAction::TinySynthFx(
+                TinySynthFxControl::SetNoiseGateEnabled(true)
+            )]
+        );
+        state_mut(&mut state).noise_gate_enabled = true;
+        let _ = frame(&context, &mut editor, &state, &processor, Vec::new());
+        let threshold_rect = editor.noise_gate_threshold_rect().unwrap();
+        let threshold_actions = click(
+            &context,
+            &mut editor,
+            &state,
+            &processor,
+            egui::pos2(threshold_rect.left() + 8.0, threshold_rect.center().y),
+        );
+        assert!(matches!(
+            threshold_actions.as_slice(),
+            [TrackAction::TinySynthFx(TinySynthFxControl::SetNoiseGateThresholdDb(value))]
+                if (-80.0..=0.0).contains(value)
+        ));
 
         let reverb = editor.reverb_rect().unwrap().center();
         assert_eq!(

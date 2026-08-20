@@ -824,6 +824,8 @@ impl RemoteWorkletBackend {
                                     vocoder_enabled: fx.tiny.vocoder_enabled,
                                     vocoder_mix: fx.tiny.vocoder_mix,
                                     vocoder_sensitivity: fx.tiny.vocoder_sensitivity,
+                                    noise_gate_enabled: fx.tiny.noise_gate_enabled,
+                                    noise_gate_threshold_db: fx.tiny.noise_gate_threshold_db,
                                     midi_cc_assignments: fx
                                         .tiny
                                         .midi_cc_assignments
@@ -1176,6 +1178,12 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
         WireTrackFxControl::TinySetVocoderMix(value) => TinySynthFxControl::SetVocoderMix(*value),
         WireTrackFxControl::TinySetVocoderSensitivity(value) => {
             TinySynthFxControl::SetVocoderSensitivity(*value)
+        }
+        WireTrackFxControl::TinySetNoiseGateEnabled(value) => {
+            TinySynthFxControl::SetNoiseGateEnabled(*value)
+        }
+        WireTrackFxControl::TinySetNoiseGateThresholdDb(value) => {
+            TinySynthFxControl::SetNoiseGateThresholdDb(*value)
         }
         WireTrackFxControl::TinySetReverbEnabled(value) => {
             TinySynthFxControl::SetReverbEnabled(*value)
@@ -1565,6 +1573,14 @@ impl Backend for RemoteWorkletBackend {
                     if !value.is_finite() || !(0.0..=1.0).contains(value) =>
                 {
                     return Err(anyhow!("invalid Tiny Synth/FX vocoder control"));
+                }
+                TinySynthFxControl::SetNoiseGateThresholdDb(value)
+                    if !value.is_finite()
+                        || !(shoop_app_api::MIN_TINY_SYNTH_FX_NOISE_GATE_THRESHOLD_DB
+                            ..=shoop_app_api::MAX_TINY_SYNTH_FX_NOISE_GATE_THRESHOLD_DB)
+                            .contains(value) =>
+                {
+                    return Err(anyhow!("invalid Tiny Synth/FX noise-gate threshold"));
                 }
                 TinySynthFxControl::SetReverbAmount(value)
                     if !value.is_finite() || !(0.0..=1.0).contains(value) =>
@@ -2350,6 +2366,7 @@ fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxP
         WireTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
         WireTinySynthFxParameter::VocoderMix => TinySynthFxParameter::VocoderMix,
         WireTinySynthFxParameter::VocoderSensitivity => TinySynthFxParameter::VocoderSensitivity,
+        WireTinySynthFxParameter::NoiseGateThreshold => TinySynthFxParameter::NoiseGateThreshold,
     }
 }
 
@@ -2364,6 +2381,7 @@ fn to_wire_tiny_parameter(parameter: TinySynthFxParameter) -> WireTinySynthFxPar
         TinySynthFxParameter::EqHigh => WireTinySynthFxParameter::EqHigh,
         TinySynthFxParameter::VocoderMix => WireTinySynthFxParameter::VocoderMix,
         TinySynthFxParameter::VocoderSensitivity => WireTinySynthFxParameter::VocoderSensitivity,
+        TinySynthFxParameter::NoiseGateThreshold => WireTinySynthFxParameter::NoiseGateThreshold,
     }
 }
 
@@ -2387,6 +2405,12 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             }
             TinySynthFxControl::SetVocoderSensitivity(value) => {
                 WireTrackFxControl::TinySetVocoderSensitivity(value)
+            }
+            TinySynthFxControl::SetNoiseGateEnabled(value) => {
+                WireTrackFxControl::TinySetNoiseGateEnabled(value)
+            }
+            TinySynthFxControl::SetNoiseGateThresholdDb(value) => {
+                WireTrackFxControl::TinySetNoiseGateThresholdDb(value)
             }
             TinySynthFxControl::SetReverbEnabled(value) => {
                 WireTrackFxControl::TinySetReverbEnabled(value)
@@ -2602,6 +2626,8 @@ mod tests {
             vocoder_enabled: true,
             vocoder_mix: 0.75,
             vocoder_sensitivity: 0.625,
+            noise_gate_enabled: true,
+            noise_gate_threshold_db: -42.5,
             midi_cc_assignments: vec![WireTinySynthFxMidiCcAssignment {
                 parameter: WireTinySynthFxParameter::VocoderSensitivity,
                 channel: 3,
@@ -2791,6 +2817,8 @@ mod tests {
         assert!(tiny.vocoder_enabled);
         assert_eq!(tiny.vocoder_mix, 0.75);
         assert_eq!(tiny.vocoder_sensitivity, 0.625);
+        assert!(tiny.noise_gate_enabled);
+        assert_eq!(tiny.noise_gate_threshold_db, -42.5);
         assert_eq!(
             tiny.midi_cc_assignments.as_ref(),
             [TinySynthFxMidiCcAssignment {
