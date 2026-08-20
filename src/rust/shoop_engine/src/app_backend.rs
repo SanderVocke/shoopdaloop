@@ -6338,6 +6338,44 @@ impl FXChain {
         Ok(())
     }
 
+    pub fn tiny_set_noise_gate_enabled(&self, enabled: bool) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_noise_gate_enabled(enabled);
+            }
+        })?;
+        control.lock().unwrap().set_noise_gate_enabled(enabled);
+        Ok(())
+    }
+
+    pub fn tiny_set_noise_gate_threshold_db(&self, threshold_db: f32) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !threshold_db.is_finite()
+            || !(engine::tiny_synth_fx::MIN_NOISE_GATE_THRESHOLD_DB
+                ..=engine::tiny_synth_fx::MAX_NOISE_GATE_THRESHOLD_DB)
+                .contains(&threshold_db)
+        {
+            return Err(anyhow!("invalid Tiny Synth/FX noise-gate threshold"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_noise_gate_threshold_db(threshold_db);
+            }
+        })?;
+        control
+            .lock()
+            .unwrap()
+            .set_noise_gate_threshold_db(threshold_db)?;
+        Ok(())
+    }
+
     pub fn tiny_set_reverb_enabled(&self, enabled: bool) -> Result<()> {
         let FXChainBackendKind::Tiny(control) = &self.backend else {
             return Err(anyhow!("FX chain is not Tiny Synth/FX"));

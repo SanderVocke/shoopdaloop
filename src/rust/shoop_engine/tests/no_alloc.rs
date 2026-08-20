@@ -328,6 +328,8 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         processor.set_vocoder_enabled(true);
         processor.set_vocoder_mix(0.75);
         processor.set_vocoder_sensitivity(0.625);
+        processor.set_noise_gate_enabled(true);
+        processor.set_noise_gate_threshold_db(-42.5);
         processor.set_reverb_enabled(true);
         processor.set_reverb_amount(0.5);
         processor.set_distortion_enabled(true);

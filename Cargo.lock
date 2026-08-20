@@ -4641,7 +4641,7 @@ dependencies = [
 [[package]]
 name = "tinyviolin"
 version = "0.4.0"
-source = "git+https://github.com/SanderVocke/tinyviolin.git?rev=2a8004866bd8fabc5c54b1849a34acbd10e20f21#2a8004866bd8fabc5c54b1849a34acbd10e20f21"
+source = "git+https://github.com/SanderVocke/tinyviolin.git?rev=727812ffff2c4664b648e1887c199c5a0be46025#727812ffff2c4664b648e1887c199c5a0be46025"
 
 [[package]]
 name = "toml"

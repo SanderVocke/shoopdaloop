@@ -13,6 +13,8 @@ pub const MAX_MASTER_GAIN_DB: f32 = 0.0;
 pub const DEFAULT_MASTER_GAIN_DB: f32 = -6.0;
 pub const MIN_EQ_GAIN_DB: f32 = -12.0;
 pub const MAX_EQ_GAIN_DB: f32 = 12.0;
+pub const MIN_NOISE_GATE_THRESHOLD_DB: f32 = -80.0;
+pub const MAX_NOISE_GATE_THRESHOLD_DB: f32 = 0.0;
 const GAIN_SMOOTH_SECONDS: f32 = 0.02;
 const STATE_PREFIX: &str = "shoop-tiny-synth-fx:1:";
 const MAX_PROCESSOR_STATE_BYTES: usize = 256 * 1024;
@@ -30,10 +32,11 @@ pub enum TinySynthFxParameter {
     EqHigh,
     VocoderMix,
     VocoderSensitivity,
+    NoiseGateThreshold,
 }
 
 impl TinySynthFxParameter {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::MasterGain,
         Self::ReverbAmount,
         Self::DistortionDrive,
@@ -43,6 +46,7 @@ impl TinySynthFxParameter {
         Self::EqHigh,
         Self::VocoderMix,
         Self::VocoderSensitivity,
+        Self::NoiseGateThreshold,
     ];
 
     fn index(self) -> usize {
@@ -57,6 +61,7 @@ impl TinySynthFxParameter {
             | Self::CompressorAmount
             | Self::VocoderMix
             | Self::VocoderSensitivity => (0.0, 1.0),
+            Self::NoiseGateThreshold => (MIN_NOISE_GATE_THRESHOLD_DB, MAX_NOISE_GATE_THRESHOLD_DB),
             Self::DistortionDrive => (1.0, 20.0),
             Self::EqLow | Self::EqMid | Self::EqHigh => (MIN_EQ_GAIN_DB, MAX_EQ_GAIN_DB),
         };
@@ -178,6 +183,8 @@ pub struct TinySynthFxEditorState {
     pub vocoder_enabled: bool,
     pub vocoder_mix: f32,
     pub vocoder_sensitivity: f32,
+    pub noise_gate_enabled: bool,
+    pub noise_gate_threshold_db: f32,
     pub midi_cc_assignments: Vec<TinySynthFxMidiCcAssignment>,
 }
 
@@ -275,6 +282,8 @@ impl TinySynthFxControlState {
             vocoder_enabled: settings.vocoder_enabled,
             vocoder_mix: settings.vocoder_mix,
             vocoder_sensitivity: settings.vocoder_sensitivity,
+            noise_gate_enabled: settings.noise_gate_enabled,
+            noise_gate_threshold_db: settings.noise_gate_threshold_db,
             midi_cc_assignments: self.midi_cc_assignments.iter().collect(),
         }
     }
@@ -315,6 +324,21 @@ impl TinySynthFxControlState {
         self.synchronized_revision = self
             .runtime_state
             .publish(TinySynthFxParameter::VocoderSensitivity, sensitivity);
+        Ok(())
+    }
+
+    pub fn set_noise_gate_enabled(&mut self, enabled: bool) {
+        self.audio.set_noise_gate_enabled(enabled);
+    }
+
+    pub fn set_noise_gate_threshold_db(
+        &mut self,
+        threshold_db: f32,
+    ) -> Result<(), tinyviolin::ProcessError> {
+        self.audio.set_noise_gate_threshold_db(threshold_db)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::NoiseGateThreshold, threshold_db);
         Ok(())
     }
 
@@ -422,6 +446,9 @@ impl TinySynthFxControlState {
         let _ = self
             .audio
             .set_vocoder_sensitivity(values[TinySynthFxParameter::VocoderSensitivity.index()]);
+        let _ = self
+            .audio
+            .set_noise_gate_threshold_db(values[TinySynthFxParameter::NoiseGateThreshold.index()]);
         let _ = self
             .audio
             .set_reverb_amount(values[TinySynthFxParameter::ReverbAmount.index()]);
@@ -624,6 +651,7 @@ impl TinySynthFxProcessor {
             TinySynthFxParameter::EqHigh => self.set_eq_high_db(value),
             TinySynthFxParameter::VocoderMix => self.set_vocoder_mix(value),
             TinySynthFxParameter::VocoderSensitivity => self.set_vocoder_sensitivity(value),
+            TinySynthFxParameter::NoiseGateThreshold => self.set_noise_gate_threshold_db(value),
         }
         self.runtime_state.publish_midi(parameter, value);
     }
@@ -653,6 +681,14 @@ impl TinySynthFxProcessor {
 
     pub fn set_vocoder_sensitivity(&mut self, sensitivity: f32) {
         let _ = self.audio.set_vocoder_sensitivity(sensitivity);
+    }
+
+    pub fn set_noise_gate_enabled(&mut self, enabled: bool) {
+        self.audio.set_noise_gate_enabled(enabled);
+    }
+
+    pub fn set_noise_gate_threshold_db(&mut self, threshold_db: f32) {
+        let _ = self.audio.set_noise_gate_threshold_db(threshold_db);
     }
 
     pub fn set_reverb_enabled(&mut self, enabled: bool) {
@@ -768,6 +804,7 @@ fn control_values(
         settings.eq_high_db,
         settings.vocoder_mix,
         settings.vocoder_sensitivity,
+        settings.noise_gate_threshold_db,
     ]
 }
 
@@ -831,6 +868,8 @@ mod tests {
         source.set_vocoder_enabled(true);
         source.set_vocoder_mix(0.75).unwrap();
         source.set_vocoder_sensitivity(0.625).unwrap();
+        source.set_noise_gate_enabled(true);
+        source.set_noise_gate_threshold_db(-42.5).unwrap();
         source.set_reverb_enabled(true);
         source.set_reverb_amount(0.4).unwrap();
         source.set_distortion_enabled(true);
@@ -919,6 +958,7 @@ mod tests {
                     TinySynthFxParameter::EqHigh => editor.eq_high_db,
                     TinySynthFxParameter::VocoderMix => editor.vocoder_mix,
                     TinySynthFxParameter::VocoderSensitivity => editor.vocoder_sensitivity,
+                    TinySynthFxParameter::NoiseGateThreshold => editor.noise_gate_threshold_db,
                 };
                 check!((actual - parameter.value_from_cc(cc_value)).abs() < 1.0e-6);
             }
@@ -953,6 +993,74 @@ mod tests {
             .iter()
             .zip(&controlled.plane(0, 1_024).unwrap()[512..])
             .any(|(baseline, controlled)| (*baseline - *controlled).abs() > 1.0e-6));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mapped_noise_gate_threshold_starts_at_the_cc_sample_offset() {
+        let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
+        control.set_noise_gate_enabled(true);
+        control.assign_midi_cc(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::NoiseGateThreshold,
+            channel: 0,
+            controller: 7,
+        });
+        let mut baseline = control.prepare_processor(48_000.0, 1, 2_048).unwrap();
+        let mut controlled = control.prepare_processor(48_000.0, 1, 2_048).unwrap();
+        baseline.plane_mut(0, 2_048).unwrap().fill(0.01);
+        controlled.plane_mut(0, 2_048).unwrap().fill(0.01);
+        baseline.process(2_048, &[]);
+        controlled.process(
+            2_048,
+            &[MidiStorageElem::new(1_024, &[0xb0, 7, 127]).unwrap()],
+        );
+
+        check!(
+            baseline.plane(0, 2_048).unwrap()[..1_024]
+                == controlled.plane(0, 2_048).unwrap()[..1_024]
+        );
+        check!(baseline.plane(0, 2_048).unwrap()[1_024..]
+            .iter()
+            .zip(&controlled.plane(0, 2_048).unwrap()[1_024..])
+            .any(|(baseline, controlled)| (*baseline - *controlled).abs() > 1.0e-6));
+        check!(control.editor_state().noise_gate_threshold_db == 0.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn combined_gate_and_vocoder_open_and_close_a_held_midi_carrier() {
+        let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
+        control.select_preset("square").unwrap();
+        control.set_vocoder_enabled(true);
+        control.set_vocoder_mix(0.0).unwrap();
+        control.set_noise_gate_enabled(true);
+        control.set_noise_gate_threshold_db(-20.0).unwrap();
+        let mut processor = control.prepare_processor(48_000.0, 1, 4_096).unwrap();
+        let note = MidiStorageElem::new(0, &[0x90, 45, 127]).unwrap();
+
+        processor.plane_mut(0, 4_096).unwrap().fill(0.0);
+        processor.process(4_096, std::slice::from_ref(&note));
+        check!(processor
+            .plane(0, 4_096)
+            .unwrap()
+            .iter()
+            .all(|sample| sample.abs() < 1.0e-7));
+
+        processor.plane_mut(0, 4_096).unwrap().fill(0.5);
+        processor.process(4_096, &[]);
+        check!(processor.plane(0, 4_096).unwrap()[1_024..]
+            .iter()
+            .any(|sample| sample.abs() > 0.01));
+
+        processor.plane_mut(0, 4_096).unwrap().fill(0.0);
+        processor.process(4_096, &[]);
+        check!(processor.plane(0, 4_096).unwrap()[3_500..]
+            .iter()
+            .all(|sample| sample.abs() < 1.0e-7));
+
+        processor.plane_mut(0, 4_096).unwrap().fill(0.5);
+        processor.process(4_096, &[]);
+        check!(processor.plane(0, 4_096).unwrap()[1_024..]
+            .iter()
+            .any(|sample| sample.abs() > 0.01));
     }
 
     #[shoop_wasm_test_support::shoop_test]
