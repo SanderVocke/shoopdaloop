@@ -799,6 +799,9 @@ impl AppWidget {
                             if self.global_controls.take_load_session_requested() {
                                 actions.push(AppAction::RequestLoadSessionPicker);
                             }
+                            if self.global_controls.take_load_session_url_requested() {
+                                actions.push(AppAction::RequestLoadSessionUrl);
+                            }
                             if self.global_controls.take_settings_requested() {
                                 self.settings.open(settings_state);
                             }

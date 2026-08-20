@@ -1414,6 +1414,7 @@ impl ApplicationModel {
             AppIntent::RequestNewSession => self.begin_new_session(),
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
+            | AppIntent::RequestLoadSessionUrl
             | AppIntent::RequestLoopAudioImportPicker { .. }
             | AppIntent::RequestLoopMidiImportPicker { .. } => Ok(()),
             AppIntent::LoadSessionBytes { name, bytes } => self.begin_load_session(name, &bytes),
