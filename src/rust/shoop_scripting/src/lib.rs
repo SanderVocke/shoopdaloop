@@ -2318,6 +2318,55 @@ end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn apc_mini_mk1_global_controls_use_click_and_hold_semantics() {
+        let (midi, control) = FakeMidiService::new();
+        control.set_endpoints(vec![MidiEndpoint {
+            id: "apc-source".to_owned(),
+            name: "APC MINI MIDI".to_owned(),
+            direction: MidiEndpointDirection::Output,
+        }]);
+        let mut manager = ScriptManager::new_with_midi(Box::new(midi));
+        manager
+            .add(
+                "akai_apc_mini_mk1.lua",
+                AKAI_APC_MINI_MK1_SCRIPT,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_midi(std::time::Duration::from_millis(1));
+
+        control.push_input("apc-source", vec![0x90, 83, 127]);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        manager.advance_timers(std::time::Duration::from_millis(249));
+        assert!(manager.take_control_operations().is_empty());
+        control.push_input("apc-source", vec![0x80, 83, 0]);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSolo(true)]
+        );
+        manager.advance_timers(std::time::Duration::from_millis(1));
+        assert!(manager.take_control_operations().is_empty());
+
+        control.push_input("apc-source", vec![0x90, 87, 127]);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        manager.advance_timers(std::time::Duration::from_millis(250));
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSyncActive(false)]
+        );
+        manager.advance_timers(std::time::Duration::from_millis(250));
+        assert!(manager.take_control_operations().is_empty());
+        control.push_input("apc-source", vec![0x80, 87, 0]);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSyncActive(true)]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn timers_are_due_ordered_non_reentrant_capped_and_cancelled_on_stop() {
         let mut manager = ScriptManager::new();
         let id = manager

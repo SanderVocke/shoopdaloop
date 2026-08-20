@@ -44,11 +44,11 @@ Out of scope: changing grid-pad actions, ordinary modifiers, controller mappings
 
 ### 2. MK1 integration
 
-- [ ] Replace the existing SOLO and SYNC press/release permanence state with detector instances.
-- [ ] Map click to permanent toggle and hold-start/hold-stop to momentary toggle/restore.
-- [ ] Remove SHIFT-based permanent-toggle behavior while preserving unrelated SHIFT actions.
-- [ ] Update the MK1 leading Markdown documentation block.
-- [ ] Verify Lua syntax and MK1 control-state tests or simulations.
+- [x] Replace the existing SOLO and SYNC press/release permanence state with detector instances.
+- [x] Map click to permanent toggle and hold-start/hold-stop to momentary toggle/restore.
+- [x] Remove SHIFT-based permanent-toggle behavior while preserving unrelated SHIFT actions.
+- [x] Update the MK1 leading Markdown documentation block.
+- [x] Verify Lua syntax and MK1 control-state tests or simulations.
 
 ### 3. MK2 v3 integration
 
