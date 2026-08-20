@@ -526,6 +526,7 @@ pub struct AppWidget {
     pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
     script_control_pressed: bool,
     pending_ephemeral_scripts: VecDeque<PendingEphemeralScript>,
+    new_session_confirmation_open: bool,
     tracing_status: TracingStatus,
     tracing_stopped: Option<TracingStopped>,
     last_callback_count: u64,
@@ -590,6 +591,7 @@ impl AppWidget {
             pressed_script_keys: BTreeMap::new(),
             script_control_pressed: false,
             pending_ephemeral_scripts: VecDeque::new(),
+            new_session_confirmation_open: false,
             tracing_status: TracingStatus::default(),
             tracing_stopped: None,
             last_callback_count: 0,
@@ -722,6 +724,9 @@ impl AppWidget {
                             );
                             if self.global_controls.take_connections_requested() {
                                 self.connections.open(ConnectionScope::AllTracks);
+                            }
+                            if self.global_controls.take_new_session_requested() {
+                                self.new_session_confirmation_open = true;
                             }
                             if self.global_controls.take_save_session_requested() {
                                 actions.push(AppAction::RequestSaveSession);
@@ -913,6 +918,7 @@ impl AppWidget {
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
         self.show_ephemeral_script_confirmation(ui.ctx(), state, &mut actions);
+        self.show_new_session_confirmation(ui.ctx(), &mut actions);
         self.show_tracing_stopped(ui.ctx());
         if !actions.is_empty() || !settings_actions.is_empty() {
             tracing::debug!(
@@ -1004,6 +1010,43 @@ impl AppWidget {
             actions.push(self.accept_ephemeral_script().unwrap());
         } else if cancel {
             self.pending_ephemeral_scripts.pop_front();
+        }
+    }
+
+    fn show_new_session_confirmation(
+        &mut self,
+        context: &egui::Context,
+        actions: &mut Vec<AppAction>,
+    ) {
+        if !self.new_session_confirmation_open {
+            return;
+        }
+        let mut accept = false;
+        let mut cancel = false;
+        let modal =
+            egui::Modal::new(egui::Id::new("new_session_confirmation")).show(context, |ui| {
+                ui.heading("Create a new session?");
+                ui.label("All tracks and unsaved session data will be discarded.");
+                ui.add_space(6.0);
+                egui::Sides::new().show(
+                    ui,
+                    |ui| {
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    },
+                    |ui| {
+                        if ui.button("New session").clicked() {
+                            accept = true;
+                        }
+                    },
+                );
+            });
+        if accept {
+            actions.push(AppAction::RequestNewSession);
+        }
+        if accept || cancel || modal.should_close() {
+            self.new_session_confirmation_open = false;
         }
     }
 
