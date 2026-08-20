@@ -4,10 +4,10 @@ This contract applies to Lua scripts run by `shoopdaloop` on native and browser 
 
 ## API version announcement
 
-The current Shoop Lua API version is **1.3**. Every script must make this its first Shoop API call:
+The current Shoop Lua API version is **1.4**. Every script must make this its first Shoop API call:
 
 ```lua
-shoop_announce_api_version(1, 3)
+shoop_announce_api_version(1, 4)
 ```
 
 The announcement function is a permanent, unversioned global. Its name and two-integer `(major, minor)` signature do not depend on any module and are reserved to remain stable across future API versions.

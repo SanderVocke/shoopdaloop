@@ -1,4 +1,4 @@
-use crate::{colors, MidiEventState, MidiSequenceChannelState};
+use crate::{colors, MediaView, MidiEventState, MidiSequenceChannelState};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 
@@ -64,8 +64,6 @@ fn note_spans(events: &[MidiEventState], timeline_end: u32) -> Vec<MidiNoteSpan>
 
 #[derive(Debug)]
 pub struct MidiSequenceWidget {
-    zoom: f32,
-    offset: f64,
     source: Option<Arc<[MidiEventState]>>,
     parsed_timeline_end: u32,
     notes: Vec<MidiNoteSpan>,
@@ -74,8 +72,6 @@ pub struct MidiSequenceWidget {
 impl Default for MidiSequenceWidget {
     fn default() -> Self {
         Self {
-            zoom: 1.0,
-            offset: 0.0,
             source: None,
             parsed_timeline_end: 0,
             notes: Vec::new(),
@@ -84,10 +80,22 @@ impl Default for MidiSequenceWidget {
 }
 
 impl MidiSequenceWidget {
-    pub fn show(&mut self, ui: &mut egui::Ui, channel: &MidiSequenceChannelState) {
+    pub(crate) fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        channel: &MidiSequenceChannelState,
+        view: MediaView,
+    ) -> f64 {
         self.update_notes(channel);
         let desired = egui::vec2(ui.available_width(), 96.0);
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::drag());
+        let pan_frames = if response.dragged() {
+            let mut panned_view = view;
+            panned_view.pan(response.drag_delta().x, rect.width());
+            panned_view.start_frame - view.start_frame
+        } else {
+            0.0
+        };
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
         painter.rect_stroke(
@@ -96,24 +104,7 @@ impl MidiSequenceWidget {
             egui::Stroke::new(1.0, colors::MUTED_FOREGROUND),
             egui::StrokeKind::Inside,
         );
-        let event_end = self.notes.iter().map(|note| note.end).max().unwrap_or(0);
-        let timeline_start = channel.start_offset.min(0) as f64;
-        let timeline_end = channel
-            .start_offset
-            .saturating_add_unsigned(channel.loop_length)
-            .max(i64::from(event_end))
-            .max(1) as f64;
-        let total_frames = (timeline_end - timeline_start).max(1.0);
-        let visible_frames = (total_frames / f64::from(self.zoom)).max(1.0);
-        let max_offset = (timeline_end - visible_frames).max(timeline_start);
-        if response.dragged() {
-            let frames_per_point = visible_frames / f64::from(rect.width().max(1.0));
-            self.offset -= f64::from(response.drag_delta().x) * frames_per_point;
-        }
-        self.offset = self.offset.clamp(timeline_start, max_offset);
-        let frame_to_x = |frame: f64| {
-            rect.left() + ((frame - self.offset) / visible_frames) as f32 * rect.width()
-        };
+        let frame_to_x = |frame: f64| view.frame_to_x(frame, rect);
 
         let loop_left = frame_to_x(channel.start_offset as f64).clamp(rect.left(), rect.right());
         let loop_right = frame_to_x(
@@ -178,21 +169,10 @@ impl MidiSequenceWidget {
         }
         let label_rect = egui::Rect::from_min_max(
             rect.left_top() + egui::vec2(6.0, 3.0),
-            egui::pos2(rect.right() - 122.0, rect.top() + 22.0),
+            rect.right_top() + egui::vec2(-6.0, 22.0),
         );
-        ui.put(label_rect, egui::Label::new(&channel.label).truncate());
-        let zoom_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.right() - 116.0, rect.top() + 3.0),
-            egui::vec2(110.0, 18.0),
-        );
-        ui.put(
-            zoom_rect,
-            egui::Slider::new(&mut self.zoom, 1.0..=64.0)
-                .logarithmic(true)
-                .show_value(false)
-                .text("zoom"),
-        )
-        .on_hover_text(format!("MIDI zoom: {:.1}×", self.zoom));
+        ui.place(label_rect, egui::Label::new(&channel.label).truncate());
+        pan_frames
     }
 
     fn update_notes(&mut self, channel: &MidiSequenceChannelState) {
@@ -286,6 +266,30 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn overlay_does_not_move_layout_cursor_into_the_lane() {
+        let context = egui::Context::default();
+        let mut widget = MidiSequenceWidget::default();
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let top = ui.next_widget_position().y;
+            widget.show(
+                ui,
+                &MidiSequenceChannelState {
+                    label: "MIDI 1".to_owned(),
+                    ..Default::default()
+                },
+                MediaView {
+                    timeline_start: 0.0,
+                    timeline_end: 16.0,
+                    start_frame: 0.0,
+                    end_frame: 16.0,
+                },
+            );
+            assert!(ui.next_widget_position().y >= top + 96.0);
+        });
+        output.textures_delta.clear();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn widget_paints_empty_and_populated_sequences() {
         let context = egui::Context::default();
         let mut widget = MidiSequenceWidget::default();
@@ -301,6 +305,12 @@ mod tests {
                         events: Arc::clone(&events),
                         loop_length: 16,
                         ..Default::default()
+                    },
+                    MediaView {
+                        timeline_start: 0.0,
+                        timeline_end: 16.0,
+                        start_frame: 0.0,
+                        end_frame: 16.0,
                     },
                 );
             });

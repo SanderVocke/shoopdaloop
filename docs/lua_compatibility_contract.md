@@ -10,7 +10,7 @@ This document defines the Shoop Lua compatibility target for the native and brow
 - Setters accept exactly one of their documented argument counts. Unsupported selector/value types are errors. Setters return `nil` unless noted.
 - Multi-object getters return Lua sequences in selector order. A singular-looking selector still produces a sequence for getters documented as `list[...]`.
 - Mode, event, key, and modifier values are integers. `nil` represents an absent queued transition or target.
-- Gain-factor APIs use linear amplitude. Balance is clamped to `[-1, 1]`; fader positions are clamped to `[0, 1]` and use the same conversion curve as the application controls.
+- Gain-factor APIs use linear amplitude. Output and input balance are clamped to `[-1, 1]`; fader positions are clamped to `[0, 1]` and use the same conversion curve as the application controls.
 
 The auto-mute-other-track-inputs policy defaults off, and changing the policy does not alter current input monitoring. A respecting multi-track unmute treats its selector as one target group: selected tracks are unmuted and every track outside the group, including the sync track, is muted. Muting and non-respecting calls never affect tracks outside the selector.
 
@@ -54,6 +54,7 @@ The auto-mute-other-track-inputs policy defaults off, and changing the policy do
 | Track query | `track_get_gain_fader(selector)` | Sequence of output fader positions. |
 | Track query | `track_get_input_gain(selector)` | Sequence of linear input gains. |
 | Track query | `track_get_input_gain_fader(selector)` | Sequence of input fader positions. |
+| Track query | `track_get_input_balance(selector)` | Sequence of input balances. |
 | Track query | `track_get_muted(selector)` | Sequence of output mute states. |
 | Track mutation | `track_set_muted(selector, muted)` | Sets output mute. |
 | Track query | `track_get_input_muted(selector)` | Sequence of inverse input-monitoring states. |
@@ -63,6 +64,7 @@ The auto-mute-other-track-inputs policy defaults off, and changing the policy do
 | Track mutation | `track_set_gain_fader(selector, position)` | Sets output gain through the fader curve. |
 | Track mutation | `track_set_input_gain(selector, gain)` | Sets linear input gain. |
 | Track mutation | `track_set_input_gain_fader(selector, position)` | Sets input gain through the fader curve. |
+| Track mutation | `track_set_input_balance(selector, balance)` | Sets input balance, clamped to `[-1, 1]`. |
 | Global | `set_apply_n_cycles(n)` / `get_apply_n_cycles()` | Sets/gets the non-negative fixed recording cycle count; zero disables it. |
 | Global | `set_solo(active)` / `get_solo()` | Sets/gets solo policy. |
 | Global | `set_sync_active(active)` / `get_sync_active()` | Sets/gets synchronized-trigger policy. |

@@ -1801,6 +1801,7 @@ impl ApplicationModel {
                 output_balance: track.controls.output_balance,
                 output_muted: track.controls.output_muted,
                 input_gain_db: track.controls.input_gain_db,
+                input_balance: track.controls.input_balance,
                 input_muted: !track.controls.input_monitoring,
             });
             for (row, id) in track.loops.iter().enumerate() {
@@ -2166,6 +2167,12 @@ impl ApplicationModel {
             ),
             ControlOperation::SetTrackInputGain { tracks, gain_db } => self
                 .apply_script_track_action(backend, tracks, TrackAction::InputGainChanged(gain_db)),
+            ControlOperation::SetTrackInputBalance { tracks, balance } => self
+                .apply_script_track_action(
+                    backend,
+                    tracks,
+                    TrackAction::InputBalanceChanged(balance),
+                ),
             ControlOperation::SetTrackInputMuted {
                 tracks,
                 muted,
@@ -10612,7 +10619,7 @@ d.open('Actor dialog')
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),
                 source: Arc::from(
-                    "shoop_announce_api_version(1, 4); __shoop_control.set_solo(true)",
+                    "shoop_announce_api_version(1, 5); __shoop_control.set_solo(true)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -10630,7 +10637,7 @@ d.open('Actor dialog')
             .latest_error
             .as_deref()
             .unwrap();
-        assert!(error.contains("script requests 1.4, host supports 1.3"));
+        assert!(error.contains("script requests 1.5, host supports 1.4"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -15640,7 +15647,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     fn scripts_export_exact_source_and_convert_session_ownership() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
-        let source = "shoop_announce_api_version(1, 4)\nprint('future')";
+        let source = "shoop_announce_api_version(1, 5)\nprint('future')";
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "future.lua".to_owned(),

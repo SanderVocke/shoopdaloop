@@ -1133,15 +1133,15 @@ dialog.simple('Help', {dialog.markdown_file('content/help.md')})
             ("return", "must be the first Shoop API call"),
             (
                 "shoop_announce_api_version(2, 0)",
-                "script requests 2.0, host supports 1.3",
+                "script requests 2.0, host supports 1.4",
             ),
             (
                 "shoop_announce_api_version(0, 0)",
-                "script requests 0.0, host supports 1.3",
+                "script requests 0.0, host supports 1.4",
             ),
             (
-                "shoop_announce_api_version(1, 4)",
-                "script requests 1.4, host supports 1.3",
+                "shoop_announce_api_version(1, 5)",
+                "script requests 1.5, host supports 1.4",
             ),
             (
                 "shoop_announce_api_version(-1, 0)",
@@ -1477,6 +1477,7 @@ d.open('Simple')
                         output_balance: 0.0,
                         output_muted: false,
                         input_gain_db: 0.0,
+                        input_balance: 0.0,
                         input_muted: false,
                     },
                     ControlTrack {
@@ -1486,6 +1487,7 @@ d.open('Simple')
                         output_balance: -0.25,
                         output_muted: true,
                         input_gain_db: 6.0,
+                        input_balance: -0.5,
                         input_muted: true,
                     },
                     ControlTrack {
@@ -1495,6 +1497,7 @@ d.open('Simple')
                         output_balance: 0.5,
                         output_muted: false,
                         input_gain_db: -6.0,
+                        input_balance: 0.75,
                         input_muted: false,
                     },
                 ],
@@ -1568,6 +1571,7 @@ eq(#c.track_get_balance(tracks), 3, 'track balance shape')
 eq(#c.track_get_gain_fader(tracks), 3, 'track fader shape')
 eq(#c.track_get_input_gain(tracks), 3, 'input gain shape')
 eq(#c.track_get_input_gain_fader(tracks), 3, 'input fader shape')
+eq(c.track_get_input_balance(0)[1], -0.5, 'input balance')
 eq(c.track_get_muted(0)[1], true, 'track muted')
 eq(c.track_get_input_muted(0)[1], true, 'input muted')
 c.track_set_muted({0,1}, false)
@@ -1577,6 +1581,8 @@ c.track_set_gain_fader({0,1}, 0.75)
 c.track_set_balance({0,1}, 2)
 c.track_set_input_gain({0,1}, 2)
 c.track_set_input_gain_fader({0,1}, 0.25)
+c.track_set_input_balance({0,1}, 2)
+eq(c.track_get_input_balance(0)[1], 1, 'clamped input balance')
 
 eq(c.get_apply_n_cycles(), 3, 'cycles')
 c.set_apply_n_cycles(5)
@@ -1611,7 +1617,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
             .map(|name| (*name).to_owned())
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(called, expected);
-        assert_eq!(bridge.borrow().operations.len(), 31);
+        assert_eq!(bridge.borrow().operations.len(), 32);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1699,6 +1705,7 @@ if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('t
                     output_balance: 0.0,
                     output_muted: false,
                     input_gain_db: 0.0,
+                    input_balance: 0.0,
                     input_muted: false,
                 }],
                 ..Default::default()
@@ -1761,6 +1768,7 @@ c.track_set_muted(99, true)
             output_balance: 0.0,
             output_muted: false,
             input_gain_db: 0.0,
+            input_balance: 0.0,
             input_muted,
         };
         let bridge = Rc::new(RefCell::new(ControlBridge {
@@ -1870,6 +1878,7 @@ if c.get_auto_mute_other_track_inputs() then error('global setter') end
                     output_balance: 0.0,
                     output_muted: false,
                     input_gain_db: 0.0,
+                    input_balance: 0.0,
                     input_muted: false,
                 }],
                 ..Default::default()
@@ -1971,7 +1980,7 @@ if not c.get_solo() then error('solo') end
         let id = manager
             .add(
                 "future.lua",
-                "shoop_announce_api_version(1, 4)",
+                "shoop_announce_api_version(1, 5)",
                 ScriptKind::Ephemeral,
                 true,
             )
@@ -1984,7 +1993,7 @@ if not c.get_solo() then error('solo') end
             .latest_error
             .as_deref()
             .unwrap()
-            .contains("script requests 1.4, host supports 1.3"));
+            .contains("script requests 1.5, host supports 1.4"));
 
         assert!(manager.start(id).is_err());
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Incompatible);

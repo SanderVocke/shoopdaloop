@@ -59,6 +59,7 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
     "track_get_gain_fader",
     "track_get_input_gain",
     "track_get_input_gain_fader",
+    "track_get_input_balance",
     "track_get_muted",
     "track_set_muted",
     "track_get_input_muted",
@@ -68,6 +69,7 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
     "track_set_gain_fader",
     "track_set_input_gain",
     "track_set_input_gain_fader",
+    "track_set_input_balance",
     "set_apply_n_cycles",
     "get_apply_n_cycles",
     "set_solo",
@@ -110,6 +112,7 @@ pub struct ControlTrack {
     pub output_balance: f32,
     pub output_muted: bool,
     pub input_gain_db: f32,
+    pub input_balance: f32,
     pub input_muted: bool,
 }
 
@@ -213,6 +216,10 @@ pub enum ControlOperation {
     SetTrackInputGain {
         tracks: Vec<TrackId>,
         gain_db: f32,
+    },
+    SetTrackInputBalance {
+        tracks: Vec<TrackId>,
+        balance: f32,
     },
     SetTrackInputMuted {
         tracks: Vec<TrackId>,
@@ -1258,6 +1265,9 @@ fn install_track_api(
     set_track_list_getter(lua, module, "track_get_input_gain_fader", bridge, |track| {
         Value::Number(f64::from(db_to_fader(track.input_gain_db)))
     })?;
+    set_track_list_getter(lua, module, "track_get_input_balance", bridge, |track| {
+        Value::Number(f64::from(track.input_balance))
+    })?;
     set_track_list_getter(lua, module, "track_get_muted", bridge, |track| {
         Value::Boolean(track.output_muted)
     })?;
@@ -1357,6 +1367,16 @@ fn install_track_api(
         |tracks, fader| ControlOperation::SetTrackInputGain {
             tracks,
             gain_db: fader_to_db(fader),
+        },
+    )?;
+    set_track_number(
+        lua,
+        module,
+        "track_set_input_balance",
+        bridge,
+        |tracks, balance| ControlOperation::SetTrackInputBalance {
+            tracks,
+            balance: balance.clamp(-1.0, 1.0),
         },
     )?;
     Ok(())
@@ -1936,6 +1956,11 @@ fn shadow_track_operation(snapshot: &mut ControlSnapshot, operation: &ControlOpe
                 if tracks.contains(&track.id) =>
             {
                 track.input_gain_db = *gain_db
+            }
+            ControlOperation::SetTrackInputBalance { tracks, balance }
+                if tracks.contains(&track.id) =>
+            {
+                track.input_balance = *balance
             }
             _ => {}
         }

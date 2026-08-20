@@ -1,4 +1,4 @@
-use crate::{colors, waveform::WaveformPyramid, WaveformChannelState};
+use crate::{colors, waveform::WaveformPyramid, MediaView, WaveformChannelState};
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -81,8 +81,6 @@ impl WaveformPreprocessor {
 
 #[derive(Debug)]
 pub struct WaveformWidget {
-    zoom: f32,
-    offset: usize,
     pyramid: Option<WaveformPyramid>,
     #[cfg(not(target_arch = "wasm32"))]
     requested_samples: Option<Arc<[f32]>>,
@@ -93,8 +91,6 @@ pub struct WaveformWidget {
 impl Default for WaveformWidget {
     fn default() -> Self {
         Self {
-            zoom: 1.0,
-            offset: 0,
             pyramid: None,
             #[cfg(not(target_arch = "wasm32"))]
             requested_samples: None,
@@ -105,9 +101,21 @@ impl Default for WaveformWidget {
 }
 
 impl WaveformWidget {
-    pub fn show(&mut self, ui: &mut egui::Ui, channel: &WaveformChannelState) {
+    pub(crate) fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        channel: &WaveformChannelState,
+        view: MediaView,
+    ) -> f64 {
         let desired = egui::vec2(ui.available_width(), 72.0);
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::drag());
+        let pan_frames = if response.dragged() {
+            let mut panned_view = view;
+            panned_view.pan(response.drag_delta().x, rect.width());
+            panned_view.start_frame - view.start_frame
+        } else {
+            0.0
+        };
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, colors::WAVEFORM_BACKGROUND);
         painter.rect_stroke(
@@ -129,25 +137,11 @@ impl WaveformWidget {
                 egui::FontId::proportional(12.0),
                 colors::MUTED_FOREGROUND,
             );
-            Self::show_overlay(ui, rect, &channel.label, &mut self.zoom);
-            return;
+            Self::show_label(ui, rect, &channel.label);
+            return pan_frames;
         }
 
-        let visible_samples = ((channel.samples.len() as f32 / self.zoom).round() as usize)
-            .clamp(1, channel.samples.len());
-        let max_offset = channel.samples.len().saturating_sub(visible_samples);
-        if response.dragged() {
-            let samples_per_point = visible_samples as f32 / rect.width().max(1.0);
-            let delta = (-response.drag_delta().x * samples_per_point).round() as isize;
-            self.offset = self.offset.saturating_add_signed(delta).min(max_offset);
-        } else {
-            self.offset = self.offset.min(max_offset);
-        }
-
-        let offset = self.offset;
-        let sample_to_x = |sample: i64| {
-            rect.left() + (sample as f32 - offset as f32) / visible_samples as f32 * rect.width()
-        };
+        let sample_to_x = |sample: i64| view.frame_to_x(sample as f64, rect);
         let loop_start = channel.start_offset;
         let loop_end = loop_start.saturating_add_unsigned(channel.loop_length);
         let left = sample_to_x(loop_start).clamp(rect.left(), rect.right());
@@ -176,20 +170,33 @@ impl WaveformWidget {
                 egui::FontId::proportional(12.0),
                 colors::MUTED_FOREGROUND,
             );
-            Self::show_overlay(ui, rect, &channel.label, &mut self.zoom);
-            return;
+            Self::show_label(ui, rect, &channel.label);
+            return pan_frames;
         };
+        let sample_start = view
+            .start_frame
+            .floor()
+            .max(0.0)
+            .min(channel.samples.len() as f64) as usize;
+        let sample_end = view
+            .end_frame
+            .ceil()
+            .max(0.0)
+            .min(channel.samples.len() as f64) as usize;
+        let sample_count = sample_end.saturating_sub(sample_start);
         let bins = pyramid.bins(
-            self.offset,
-            visible_samples,
+            sample_start,
+            sample_count,
             rect.width().round().max(1.0) as usize,
         );
 
         let center = rect.center().y;
         let half_height = rect.height() * 0.5 - 2.0;
-        let denominator = bins.len().saturating_sub(1).max(1) as f32;
+        let denominator = bins.len().saturating_sub(1).max(1) as f64;
         for (index, bin) in bins.iter().enumerate() {
-            let x = rect.left() + index as f32 / denominator * rect.width();
+            let sample = sample_start as f64
+                + index as f64 / denominator * sample_count.saturating_sub(1) as f64;
+            let x = view.frame_to_x(sample, rect);
             let top = center - bin.max.clamp(-1.0, 1.0) * half_height;
             let bottom = center - bin.min.clamp(-1.0, 1.0) * half_height;
             painter.vline(
@@ -209,27 +216,16 @@ impl WaveformWidget {
                 );
             }
         }
-        Self::show_overlay(ui, rect, &channel.label, &mut self.zoom);
+        Self::show_label(ui, rect, &channel.label);
+        pan_frames
     }
 
-    fn show_overlay(ui: &mut egui::Ui, rect: egui::Rect, label: &str, zoom: &mut f32) {
+    fn show_label(ui: &mut egui::Ui, rect: egui::Rect, label: &str) {
         let label_rect = egui::Rect::from_min_max(
             rect.left_top() + egui::vec2(6.0, 3.0),
-            egui::pos2(rect.right() - 122.0, rect.top() + 22.0),
+            rect.right_top() + egui::vec2(-6.0, 22.0),
         );
-        ui.put(label_rect, egui::Label::new(label).truncate());
-        let zoom_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.right() - 116.0, rect.top() + 3.0),
-            egui::vec2(110.0, 18.0),
-        );
-        ui.put(
-            zoom_rect,
-            egui::Slider::new(zoom, 1.0..=64.0)
-                .logarithmic(true)
-                .show_value(false)
-                .text("zoom"),
-        )
-        .on_hover_text(format!("Waveform zoom: {:.1}×", *zoom));
+        ui.place(label_rect, egui::Label::new(label).truncate());
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -281,6 +277,30 @@ impl WaveformWidget {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn overlay_does_not_move_layout_cursor_into_the_lane() {
+        let context = egui::Context::default();
+        let mut widget = WaveformWidget::default();
+        let mut output = context.run_ui(Default::default(), |ui| {
+            let top = ui.next_widget_position().y;
+            widget.show(
+                ui,
+                &WaveformChannelState {
+                    label: "Direct 1".to_owned(),
+                    ..Default::default()
+                },
+                MediaView {
+                    timeline_start: 0.0,
+                    timeline_end: 16.0,
+                    start_frame: 0.0,
+                    end_frame: 16.0,
+                },
+            );
+            assert!(ui.next_widget_position().y >= top + 72.0);
+        });
+        output.textures_delta.clear();
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn asynchronously_prepares_and_caches_samples() {
