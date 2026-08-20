@@ -22,6 +22,7 @@ shoop_backend = { path = "../shoop_backend" }
 shoop_egui = { path = "../shoop_egui" }
 shoop_scripting = { path = "../shoop_scripting" }
 tracing = { workspace = true }
+ehttp = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_common = { path = "../shoop_common" }

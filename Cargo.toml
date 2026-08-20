@@ -60,6 +60,7 @@ zip = { version = "8.6", default-features = false, features = ["deflate"] }
 hound = "3.5"
 rfd = { version = "0.16", default-features = false }
 tracing = "0.1"
+ehttp = "0.6"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-tracy = { version = "=0.11.4", default-features = false, features = ["enable", "manual-lifetime", "ondemand", "timer-fallback"] }

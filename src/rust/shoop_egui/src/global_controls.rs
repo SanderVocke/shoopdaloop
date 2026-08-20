@@ -15,6 +15,7 @@ pub struct GlobalControls {
     connections_requested: bool,
     save_session_requested: bool,
     load_session_requested: bool,
+    load_session_url_requested: bool,
     settings_requested: bool,
     apply_n_cycles: OptimisticValue<u32>,
     apply_n_cycles_dragging: bool,
@@ -72,6 +73,7 @@ impl GlobalControls {
         self.connections_requested = false;
         self.save_session_requested = false;
         self.load_session_requested = false;
+        self.load_session_url_requested = false;
         self.settings_requested = false;
         let mut actions = Vec::new();
         ui.horizontal(|ui| {
@@ -94,6 +96,11 @@ impl GlobalControls {
                     self.record_rect(TestGlobalControl::LoadSession, &load_session);
                     if load_session.clicked() {
                         self.load_session_requested = true;
+                        ui.close();
+                    }
+                    let load_session_url = ui.button("Load session from URL…");
+                    if load_session_url.clicked() {
+                        self.load_session_url_requested = true;
                         ui.close();
                     }
                     let settings = ui.button("Settings");
@@ -332,6 +339,10 @@ impl GlobalControls {
             }
         });
         actions
+    }
+
+    pub fn take_load_session_url_requested(&mut self) -> bool {
+        std::mem::take(&mut self.load_session_url_requested)
     }
 
     pub fn take_connections_requested(&mut self) -> bool {

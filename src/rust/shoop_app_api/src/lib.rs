@@ -1674,6 +1674,7 @@ pub enum AppIntent {
     ResetXruns,
     RequestSaveSession,
     RequestLoadSessionPicker,
+    RequestLoadSessionUrl,
     LoadSessionBytes {
         name: String,
         bytes: Arc<[u8]>,
@@ -1877,6 +1878,7 @@ impl AppIntent {
             Self::ResetXruns => "audio.reset_xruns",
             Self::RequestSaveSession => "session.request_save",
             Self::RequestLoadSessionPicker => "session.request_load_picker",
+            Self::RequestLoadSessionUrl => "session.request_load_url",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
             Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
