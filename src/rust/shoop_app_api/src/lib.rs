@@ -1672,6 +1672,7 @@ pub enum AppIntent {
         message: String,
     },
     ResetXruns,
+    RequestNewSession,
     RequestSaveSession,
     RequestLoadSessionPicker,
     LoadSessionBytes {
@@ -1875,6 +1876,7 @@ impl AppIntent {
                 "audio_driver.complete_persistence"
             }
             Self::ResetXruns => "audio.reset_xruns",
+            Self::RequestNewSession => "session.request_new",
             Self::RequestSaveSession => "session.request_save",
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
