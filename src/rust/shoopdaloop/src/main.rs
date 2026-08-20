@@ -2087,7 +2087,7 @@ fn main() {
         });
         match result {
             Ok(count) => {
-                println!("Discovered {count} packaged built-in scripts in {root}");
+                println!("Discovered {count} built-in scripts in {root}");
                 return;
             }
             Err(error) => {

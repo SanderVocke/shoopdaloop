@@ -18,6 +18,8 @@ cargo run -p shoopdaloop
 cargo run -p shoopdaloop --no-default-features
 ```
 
+Native Cargo builds place a `SHOOP_SRC_TREE` marker beside the executable. The marker contains the relative path back to the repository root, so binaries run directly from `target/debug` or `target/release` load `resources/builtins` from the checkout. Runtime resolution checks only that exact sibling marker; it does not search parent directories. Packaged applications omit the marker and use their packaged `builtins` directory instead.
+
 `--tracing` captures Tracy 0.13.1-compatible profiling data in process and writes a numbered file below `./traces` after the application exits normally. It does not expose a live TCP profiler endpoint or require an external capture tool:
 
 ```sh

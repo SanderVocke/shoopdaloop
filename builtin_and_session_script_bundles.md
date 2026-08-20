@@ -27,7 +27,7 @@ Out of scope:
 
 - No production application script (`keyboard.lua`, controller scripts, examples, or future equivalents) is named or embedded with `include_str!` in Rust.
 - Native startup resolves the configured built-ins directory, recursively discovers regular `.lua` files in deterministic relative-path order, and lists every valid discovered script even when disabled.
-- The built-ins location is a global setting. Its default is the packaged `builtins` directory beside the executable on Linux/Windows and under the application Resources directory on macOS; hosted browser packaging uses an external `builtins` root and generated catalog.
+- The built-ins location is a global setting. Native Cargo builds generate an exact executable-sibling `SHOOP_SRC_TREE` marker whose relative source-root path selects `resources/builtins`; without that marker, the default is the packaged `builtins` directory beside the executable on Linux/Windows and under the application Resources directory on macOS. Hosted browser packaging uses an external `builtins` root and generated catalog.
 - Native and hosted-web artifacts contain the complete built-ins tree with directory structure, Markdown, and images preserved. A web artifact that cannot carry the external tree is not advertised as self-contained with built-ins.
 - A **Rescan built-in scripts** action is available from the Scripts UI. A successful rescan adds new scripts, reloads changed scripts, removes deleted scripts, and preserves enabled choices by normalized relative identity without restarting the application.
 - A missing/unreadable built-ins root or malformed individual script produces actionable diagnostics and does not crash startup or silently destroy the last usable runtime catalog during rescan.

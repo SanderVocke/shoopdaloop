@@ -4007,6 +4007,7 @@ dependencies = [
  "shoop_script_resources",
  "shoop_settings",
  "shoop_wasm_test_support",
+ "tempfile",
  "tracing",
  "tracy-nextest-capture",
  "wasm-bindgen-test",

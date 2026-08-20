@@ -88,7 +88,7 @@ Version 1 registers the cross-target appearance scale, track defaults, and dynam
 | `appearance.ui_scale_factor` | number | `1.0`, or `1.25` when the detected screen's shortest side is at most 800 UI points | Explicit Apply and save; allowed range is 0.75–2.0 |
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
-| `scripting.builtins.location` | string | packaged `builtins` beside the executable on Linux/Windows, `Contents/Resources/builtins` on macOS, and external `builtins` root in hosted browser builds | Startup, successful Save, or explicit rescan |
+| `scripting.builtins.location` | string | source-tree `resources/builtins` when an exact executable-sibling `SHOOP_SRC_TREE` marker is present; otherwise packaged `builtins` beside the executable on Linux/Windows, `Contents/Resources/builtins` on macOS, and external `builtins` root in hosted browser builds | Startup, successful Save, or explicit rescan |
 | `scripting.builtins.scripts` | ordered string/toggle list | `[]` | After a successful Save |
 | `scripting.user_scripts` | ordered string/toggle list | `[]` | After a successful Save |
 | `audio.selected_driver` | string | `"dummy"` | Next native startup; changed by a successful confirmed Switch |
