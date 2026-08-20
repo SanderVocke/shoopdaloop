@@ -320,11 +320,14 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
     assert_no_alloc(|| {
         let processor = session.tiny_synth_fx_processor_mut("tiny").unwrap();
         processor.assign_midi_cc(shoop_engine::tiny_synth_fx::TinySynthFxMidiCcAssignment {
-            parameter: shoop_engine::tiny_synth_fx::TinySynthFxParameter::ReverbAmount,
+            parameter: shoop_engine::tiny_synth_fx::TinySynthFxParameter::VocoderSensitivity,
             channel: 0,
             controller: 17,
         });
         processor.set_master_gain_db(-12.0);
+        processor.set_vocoder_enabled(true);
+        processor.set_vocoder_mix(0.75);
+        processor.set_vocoder_sensitivity(0.625);
         processor.set_reverb_enabled(true);
         processor.set_reverb_amount(0.5);
         processor.set_distortion_enabled(true);
@@ -339,7 +342,8 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         processor.panic();
         session.process(4);
         let processor = session.tiny_synth_fx_processor_mut("tiny").unwrap();
-        processor.remove_midi_cc(shoop_engine::tiny_synth_fx::TinySynthFxParameter::ReverbAmount);
+        processor
+            .remove_midi_cc(shoop_engine::tiny_synth_fx::TinySynthFxParameter::VocoderSensitivity);
         processor.clear_midi_cc_assignments();
     });
 }

@@ -28,10 +28,12 @@ pub enum TinySynthFxParameter {
     EqLow,
     EqMid,
     EqHigh,
+    VocoderMix,
+    VocoderSensitivity,
 }
 
 impl TinySynthFxParameter {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::MasterGain,
         Self::ReverbAmount,
         Self::DistortionDrive,
@@ -39,6 +41,8 @@ impl TinySynthFxParameter {
         Self::EqLow,
         Self::EqMid,
         Self::EqHigh,
+        Self::VocoderMix,
+        Self::VocoderSensitivity,
     ];
 
     fn index(self) -> usize {
@@ -49,7 +53,10 @@ impl TinySynthFxParameter {
         let normalized = value as f32 / 127.0;
         let (minimum, maximum) = match self {
             Self::MasterGain => (MIN_MASTER_GAIN_DB, MAX_MASTER_GAIN_DB),
-            Self::ReverbAmount | Self::CompressorAmount => (0.0, 1.0),
+            Self::ReverbAmount
+            | Self::CompressorAmount
+            | Self::VocoderMix
+            | Self::VocoderSensitivity => (0.0, 1.0),
             Self::DistortionDrive => (1.0, 20.0),
             Self::EqLow | Self::EqMid | Self::EqHigh => (MIN_EQ_GAIN_DB, MAX_EQ_GAIN_DB),
         };
@@ -66,7 +73,7 @@ pub struct TinySynthFxMidiCcAssignment {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TinySynthFxMidiCcAssignments {
-    sources: [Option<(u8, u8)>; 7],
+    sources: [Option<(u8, u8)>; TinySynthFxParameter::ALL.len()],
 }
 
 impl TinySynthFxMidiCcAssignments {
@@ -115,13 +122,13 @@ impl TinySynthFxMidiCcAssignments {
 
 #[derive(Debug)]
 struct TinySynthFxRuntimeState {
-    values: [AtomicU32; 7],
+    values: [AtomicU32; TinySynthFxParameter::ALL.len()],
     revision: AtomicU64,
     midi_customized_preset: AtomicBool,
 }
 
 impl TinySynthFxRuntimeState {
-    fn new(values: [f32; 7]) -> Self {
+    fn new(values: [f32; TinySynthFxParameter::ALL.len()]) -> Self {
         Self {
             values: values.map(|value| AtomicU32::new(value.to_bits())),
             revision: AtomicU64::new(1),
@@ -149,7 +156,7 @@ impl TinySynthFxRuntimeState {
         self.revision.load(Ordering::Acquire)
     }
 
-    fn values(&self) -> [f32; 7] {
+    fn values(&self) -> [f32; TinySynthFxParameter::ALL.len()] {
         std::array::from_fn(|index| f32::from_bits(self.values[index].load(Ordering::Relaxed)))
     }
 }
@@ -168,6 +175,9 @@ pub struct TinySynthFxEditorState {
     pub eq_low_db: f32,
     pub eq_mid_db: f32,
     pub eq_high_db: f32,
+    pub vocoder_enabled: bool,
+    pub vocoder_mix: f32,
+    pub vocoder_sensitivity: f32,
     pub midi_cc_assignments: Vec<TinySynthFxMidiCcAssignment>,
 }
 
@@ -262,6 +272,9 @@ impl TinySynthFxControlState {
             eq_low_db: settings.eq_low_db,
             eq_mid_db: settings.eq_mid_db,
             eq_high_db: settings.eq_high_db,
+            vocoder_enabled: settings.vocoder_enabled,
+            vocoder_mix: settings.vocoder_mix,
+            vocoder_sensitivity: settings.vocoder_sensitivity,
             midi_cc_assignments: self.midi_cc_assignments.iter().collect(),
         }
     }
@@ -279,6 +292,29 @@ impl TinySynthFxControlState {
         self.synchronized_revision = self
             .runtime_state
             .publish(TinySynthFxParameter::MasterGain, gain_db);
+        Ok(())
+    }
+
+    pub fn set_vocoder_enabled(&mut self, enabled: bool) {
+        self.audio.set_vocoder_enabled(enabled);
+    }
+
+    pub fn set_vocoder_mix(&mut self, mix: f32) -> Result<(), tinyviolin::ProcessError> {
+        self.audio.set_vocoder_mix(mix)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::VocoderMix, mix);
+        Ok(())
+    }
+
+    pub fn set_vocoder_sensitivity(
+        &mut self,
+        sensitivity: f32,
+    ) -> Result<(), tinyviolin::ProcessError> {
+        self.audio.set_vocoder_sensitivity(sensitivity)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::VocoderSensitivity, sensitivity);
         Ok(())
     }
 
@@ -380,6 +416,12 @@ impl TinySynthFxControlState {
         }
         let values = self.runtime_state.values();
         self.master_gain_db = values[TinySynthFxParameter::MasterGain.index()];
+        let _ = self
+            .audio
+            .set_vocoder_mix(values[TinySynthFxParameter::VocoderMix.index()]);
+        let _ = self
+            .audio
+            .set_vocoder_sensitivity(values[TinySynthFxParameter::VocoderSensitivity.index()]);
         let _ = self
             .audio
             .set_reverb_amount(values[TinySynthFxParameter::ReverbAmount.index()]);
@@ -580,6 +622,8 @@ impl TinySynthFxProcessor {
             TinySynthFxParameter::EqLow => self.set_eq_low_db(value),
             TinySynthFxParameter::EqMid => self.set_eq_mid_db(value),
             TinySynthFxParameter::EqHigh => self.set_eq_high_db(value),
+            TinySynthFxParameter::VocoderMix => self.set_vocoder_mix(value),
+            TinySynthFxParameter::VocoderSensitivity => self.set_vocoder_sensitivity(value),
         }
         self.runtime_state.publish_midi(parameter, value);
     }
@@ -597,6 +641,18 @@ impl TinySynthFxProcessor {
             (self.sample_rate * GAIN_SMOOTH_SECONDS).round().max(1.0) as u32;
         self.gain_step =
             (self.target_gain - self.current_gain) / self.gain_samples_remaining as f32;
+    }
+
+    pub fn set_vocoder_enabled(&mut self, enabled: bool) {
+        self.audio.set_vocoder_enabled(enabled);
+    }
+
+    pub fn set_vocoder_mix(&mut self, mix: f32) {
+        let _ = self.audio.set_vocoder_mix(mix);
+    }
+
+    pub fn set_vocoder_sensitivity(&mut self, sensitivity: f32) {
+        let _ = self.audio.set_vocoder_sensitivity(sensitivity);
     }
 
     pub fn set_reverb_enabled(&mut self, enabled: bool) {
@@ -697,7 +753,10 @@ pub fn available_presets() -> impl Iterator<Item = (&'static str, &'static str)>
         .map(|preset| (preset.id(), preset.name()))
 }
 
-fn control_values(master_gain_db: f32, audio: &HostedAudioProcessor) -> [f32; 7] {
+fn control_values(
+    master_gain_db: f32,
+    audio: &HostedAudioProcessor,
+) -> [f32; TinySynthFxParameter::ALL.len()] {
     let settings = audio.effect_settings();
     [
         master_gain_db,
@@ -707,6 +766,8 @@ fn control_values(master_gain_db: f32, audio: &HostedAudioProcessor) -> [f32; 7]
         settings.eq_low_db,
         settings.eq_mid_db,
         settings.eq_high_db,
+        settings.vocoder_mix,
+        settings.vocoder_sensitivity,
     ]
 }
 
@@ -767,6 +828,9 @@ mod tests {
         let mut source = TinySynthFxControlState::new(48_000.0).unwrap();
         source.select_preset("pad").unwrap();
         source.set_master_gain_db(-12.5).unwrap();
+        source.set_vocoder_enabled(true);
+        source.set_vocoder_mix(0.75).unwrap();
+        source.set_vocoder_sensitivity(0.625).unwrap();
         source.set_reverb_enabled(true);
         source.set_reverb_amount(0.4).unwrap();
         source.set_distortion_enabled(true);
@@ -853,10 +917,42 @@ mod tests {
                     TinySynthFxParameter::EqLow => editor.eq_low_db,
                     TinySynthFxParameter::EqMid => editor.eq_mid_db,
                     TinySynthFxParameter::EqHigh => editor.eq_high_db,
+                    TinySynthFxParameter::VocoderMix => editor.vocoder_mix,
+                    TinySynthFxParameter::VocoderSensitivity => editor.vocoder_sensitivity,
                 };
                 check!((actual - parameter.value_from_cc(cc_value)).abs() < 1.0e-6);
             }
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mapped_vocoder_sensitivity_starts_at_the_cc_sample_offset() {
+        let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
+        control.set_vocoder_enabled(true);
+        control.set_vocoder_mix(1.0).unwrap();
+        control.assign_midi_cc(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::VocoderSensitivity,
+            channel: 0,
+            controller: 7,
+        });
+        let mut baseline = control.prepare_processor(48_000.0, 1, 1_024).unwrap();
+        let mut controlled = control.prepare_processor(48_000.0, 1, 1_024).unwrap();
+        baseline.plane_mut(0, 1_024).unwrap().fill(0.2);
+        controlled.plane_mut(0, 1_024).unwrap().fill(0.2);
+        let note = MidiStorageElem::new(0, &[0x90, 45, 127]).unwrap();
+        baseline.process(1_024, std::slice::from_ref(&note));
+        controlled.process(
+            1_024,
+            &[note, MidiStorageElem::new(512, &[0xb0, 7, 127]).unwrap()],
+        );
+
+        check!(
+            baseline.plane(0, 1_024).unwrap()[..512] == controlled.plane(0, 1_024).unwrap()[..512]
+        );
+        check!(baseline.plane(0, 1_024).unwrap()[512..]
+            .iter()
+            .zip(&controlled.plane(0, 1_024).unwrap()[512..])
+            .any(|(baseline, controlled)| (*baseline - *controlled).abs() > 1.0e-6));
     }
 
     #[shoop_wasm_test_support::shoop_test]

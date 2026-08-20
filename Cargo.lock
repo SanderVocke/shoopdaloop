@@ -4640,9 +4640,8 @@ dependencies = [
 
 [[package]]
 name = "tinyviolin"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e69cf6c01e440dc464f648f0a5cb20ac525d32e854f628456083d2ffbc875dbb"
+version = "0.4.0"
+source = "git+https://github.com/SanderVocke/tinyviolin.git?rev=2a8004866bd8fabc5c54b1849a34acbd10e20f21#2a8004866bd8fabc5c54b1849a34acbd10e20f21"
 
 [[package]]
 name = "toml"

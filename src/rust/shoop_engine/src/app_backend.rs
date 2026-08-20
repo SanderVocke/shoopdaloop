@@ -6287,6 +6287,57 @@ impl FXChain {
         Ok(())
     }
 
+    pub fn tiny_set_vocoder_enabled(&self, enabled: bool) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_vocoder_enabled(enabled);
+            }
+        })?;
+        control.lock().unwrap().set_vocoder_enabled(enabled);
+        Ok(())
+    }
+
+    pub fn tiny_set_vocoder_mix(&self, mix: f32) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !mix.is_finite() || !(0.0..=1.0).contains(&mix) {
+            return Err(anyhow!("invalid Tiny Synth/FX vocoder mix"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_vocoder_mix(mix);
+            }
+        })?;
+        control.lock().unwrap().set_vocoder_mix(mix)?;
+        Ok(())
+    }
+
+    pub fn tiny_set_vocoder_sensitivity(&self, sensitivity: f32) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if !sensitivity.is_finite() || !(0.0..=1.0).contains(&sensitivity) {
+            return Err(anyhow!("invalid Tiny Synth/FX vocoder sensitivity"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.set_vocoder_sensitivity(sensitivity);
+            }
+        })?;
+        control
+            .lock()
+            .unwrap()
+            .set_vocoder_sensitivity(sensitivity)?;
+        Ok(())
+    }
+
     pub fn tiny_set_reverb_enabled(&self, enabled: bool) -> Result<()> {
         let FXChainBackendKind::Tiny(control) = &self.backend else {
             return Err(anyhow!("FX chain is not Tiny Synth/FX"));
