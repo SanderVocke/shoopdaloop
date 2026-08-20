@@ -1472,9 +1472,10 @@ impl Runtime {
                     })?;
                 }
             } else {
-                self.handle.dispatch(AppIntent::AddScriptSource {
+                self.handle.dispatch(AppIntent::AddScriptFileSource {
                     name: script.name.clone(),
                     source: script.source.into(),
+                    source_path: identity.clone(),
                     kind: script.kind,
                     enabled: script.enabled,
                 })?;
@@ -3533,9 +3534,21 @@ impl BrowserSelfTest {
                 bundle.document.scripts.push(shoop_session::ScriptDocument {
                     id: 9_000_001,
                     name: BROWSER_SESSION_SCRIPT_NAME.to_owned(),
-                    source: BROWSER_SESSION_SCRIPT_SOURCE.to_owned(),
+                    entrypoint: "main.lua".to_owned(),
                     enabled: true,
                 });
+                bundle.scripts.insert(
+                    9_000_001,
+                    std::sync::Arc::new(
+                        shoop_scripting::ScriptResourceBundle::source_only(
+                            "main.lua",
+                            std::sync::Arc::<[u8]>::from(
+                                BROWSER_SESSION_SCRIPT_SOURCE.as_bytes(),
+                            ),
+                        )
+                        .expect("browser self-test source must form a valid bundle"),
+                    ),
+                );
                 let bytes = match shoop_session::encode_session(&bundle, env!("CARGO_PKG_VERSION"))
                 {
                     Ok(bytes) => bytes,
@@ -3650,8 +3663,11 @@ impl BrowserSelfTest {
                 };
                 if !bundle.document.scripts.iter().any(|script| {
                     script.name == BROWSER_SESSION_SCRIPT_NAME
-                        && script.source == BROWSER_SESSION_SCRIPT_SOURCE
                         && script.enabled
+                        && bundle.scripts.get(&script.id).is_some_and(|resources| {
+                            resources.entrypoint_resource().bytes.as_ref()
+                                == BROWSER_SESSION_SCRIPT_SOURCE.as_bytes()
+                        })
                 }) {
                     return self.fail("browser session Lua source did not round trip exactly");
                 }

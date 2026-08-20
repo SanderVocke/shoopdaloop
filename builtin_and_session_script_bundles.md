@@ -87,30 +87,30 @@ Out of scope:
 
 ### 4. Introduce provider-backed Lua and Markdown resource loading
 
-- [ ] Refactor `ScriptFileReader` into a provider-backed reader supporting canonical filesystem roots and immutable in-memory bundles with identical path validation/error semantics.
-- [ ] Attach the correct provider when starting built-in, user, run-once, and session scripts; retain useful virtual chunk names for Lua diagnostics.
-- [ ] Route `shoop_file.load` and `dialog.markdown_file` through the provider and preserve binary versus UTF-8 behavior.
-- [ ] Add a generation-scoped script-resource registry and egui custom bytes/image loader; make Markdown viewers use provider base URIs instead of deriving `file://` directly from a script name.
-- [ ] Ensure Markdown paths remain relative to the Lua script directory as specified, including Markdown loaded from nested paths.
-- [ ] Verify equivalent filesystem/bundle reads, missing resources, UTF-8 errors, image decoding, stale generations, cache invalidation, and cross-script isolation.
+- [x] Refactor `ScriptFileReader` into a provider-backed reader supporting canonical filesystem roots and immutable in-memory bundles with identical path validation/error semantics.
+- [x] Attach the correct provider when starting built-in, user, run-once, and session scripts; retain useful virtual chunk names for Lua diagnostics.
+- [x] Route `shoop_file.load` and `dialog.markdown_file` through the provider and preserve binary versus UTF-8 behavior.
+- [x] Add a generation-scoped script-resource registry and egui custom bytes/image loader; make Markdown viewers use provider base URIs instead of deriving `file://` directly from a script name.
+- [x] Ensure Markdown paths remain relative to the Lua script directory as specified, including Markdown loaded from nested paths.
+- [x] Verify equivalent filesystem/bundle reads, missing resources, UTF-8 errors, image decoding, stale generations, cache invalidation, and cross-script isolation.
 
 ### 5. Redesign `.shoop` session script persistence
 
-- [ ] Add a new session document version/DTO in which each `ScriptDocument` references an entrypoint and per-script resource records rather than carrying only an inline source string.
-- [ ] Extend `SessionBundle` and archive encoding/decoding with deterministic `scripts/<script-id>/...` payload entries, ownership metadata, exact byte counts, hashes, and resource kinds.
-- [ ] Validate script IDs, entrypoint presence/type, normalized unique paths, owner/path agreement, hashes, supported types, and resource budgets before constructing runtime state.
-- [ ] Implement and test migration from the current source-only session document into a one-entry in-memory bundle; continue rejecting unsupported future versions transactionally.
-- [ ] Carry bundles through `SessionScriptSource`, `ScriptManager`, save snapshots, load staging, replacement, conversion away from/back to session ownership, and sample-rate conversion without loss or machine paths.
+- [x] Add a new session document version/DTO in which each `ScriptDocument` references an entrypoint and per-script resource records rather than carrying only an inline source string.
+- [x] Extend `SessionBundle` and archive encoding/decoding with deterministic `scripts/<script-id>/...` payload entries, ownership metadata, exact byte counts, hashes, and resource kinds.
+- [x] Validate script IDs, entrypoint presence/type, normalized unique paths, owner/path agreement, hashes, supported types, and resource budgets before constructing runtime state.
+- [x] Implement and test migration from the current source-only session document into a one-entry in-memory bundle; continue rejecting unsupported future versions transactionally.
+- [x] Carry bundles through `SessionScriptSource`, `ScriptManager`, save snapshots, load staging, replacement, conversion away from/back to session ownership, and sample-rate conversion without loss or machine paths.
 - [ ] Update session-format documentation and golden/round-trip/adversarial archive tests.
 
 ### 6. Capture filesystem resources during session conversion
 
-- [ ] Split “include in session” into a request/completion flow so the composition layer can scan without blocking the application actor.
-- [ ] For filesystem-backed scripts, recursively collect supported Markdown/images below the script parent, canonicalize and read them on a worker, enforce limits, and return an immutable bundle tagged with request/script generation.
-- [ ] Combine scanned companions with the actor’s current Lua source as the bundle entrypoint, so conversion never silently substitutes changed on-disk Lua for the running source.
-- [ ] For source-only or already bundle-backed scripts, create/reuse the in-memory bundle without filesystem work.
-- [ ] Commit ownership and resources together only if the completion still matches the requested script generation; report stale/failing scans without partial conversion.
-- [ ] Verify nested resources, duplicate basenames in different directories, symlink escape, unreadable/oversized files, source changes during scan, repeated requests, and conversion away/back.
+- [x] Split “include in session” into a request/completion flow so the composition layer can scan without blocking the application actor.
+- [x] For filesystem-backed scripts, recursively collect supported Markdown/images below the script parent, canonicalize and read them on a worker, enforce limits, and return an immutable bundle tagged with request/script generation.
+- [x] Combine scanned companions with the actor’s current Lua source as the bundle entrypoint, so conversion never silently substitutes changed on-disk Lua for the running source.
+- [x] For source-only or already bundle-backed scripts, create/reuse the in-memory bundle without filesystem work.
+- [x] Commit ownership and resources together only if the completion still matches the requested script generation; report stale/failing scans without partial conversion.
+- [x] Verify nested resources, duplicate basenames in different directories, symlink escape, unreadable/oversized files, source changes during scan, repeated requests, and conversion away/back.
 
 ### 7. End-to-end validation and documentation
 

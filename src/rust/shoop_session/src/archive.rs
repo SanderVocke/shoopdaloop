@@ -6,8 +6,12 @@ use crate::document::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use shoop_script_resources::{
+    NormalizedRelativePath, ResourceKind, ResourceLimits, ScriptResource, ScriptResourceBundle,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Read, Write};
+use std::sync::Arc;
 use thiserror::Error;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
@@ -69,6 +73,13 @@ impl From<std::io::Error> for SessionError {
     }
 }
 
+#[derive(Deserialize)]
+struct SessionManifestHeader {
+    format: String,
+    format_version: FormatVersion,
+    document_version: u16,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct SessionManifest {
     format: String,
@@ -78,6 +89,18 @@ struct SessionManifest {
     sample_rate: u32,
     document: SessionDocument,
     media: Vec<MediaRecord>,
+    #[serde(default)]
+    scripts: Vec<ScriptResourceRecord>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ScriptResourceRecord {
+    owner_script_id: u64,
+    relative_path: String,
+    path: String,
+    kind: ResourceKind,
+    uncompressed_bytes: u64,
+    sha256: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -137,6 +160,25 @@ pub fn encode_session(
         payloads.insert(path, bytes);
     }
     records.sort_by(|left, right| left.id.cmp(&right.id));
+    let mut script_records = Vec::new();
+    for (owner_script_id, bundle) in &bundle.scripts {
+        for (relative_path, resource) in bundle.resources.iter() {
+            let path = format!("scripts/{owner_script_id}/{}", relative_path.as_str());
+            script_records.push(ScriptResourceRecord {
+                owner_script_id: *owner_script_id,
+                relative_path: relative_path.to_string(),
+                path: path.clone(),
+                kind: resource.kind,
+                uncompressed_bytes: resource.bytes.len() as u64,
+                sha256: resource.sha256(),
+            });
+            payloads.insert(path, resource.bytes.to_vec());
+        }
+    }
+    script_records.sort_by(|left, right| {
+        (left.owner_script_id, &left.relative_path)
+            .cmp(&(right.owner_script_id, &right.relative_path))
+    });
     let manifest = SessionManifest {
         format: SESSION_FORMAT.to_owned(),
         format_version: FormatVersion::default(),
@@ -145,6 +187,7 @@ pub fn encode_session(
         sample_rate: bundle.document.sample_rate,
         document: bundle.document.clone(),
         media: records,
+        scripts: script_records,
     };
     encode_zip(&manifest, payloads)
 }
@@ -162,16 +205,24 @@ pub fn decode_session_with_limits(
     }
     inspect_central_directory(bytes, limits)?;
     let mut archive = ZipArchive::new(Cursor::new(bytes))?;
-    inspect_archive(&mut archive, limits)?;
+    let archive_paths = inspect_archive(&mut archive, limits)?;
     let manifest_bytes = read_entry(&mut archive, MANIFEST_PATH, limits.max_uncompressed_bytes)?;
-    let manifest: SessionManifest = serde_json::from_slice(&manifest_bytes)
+    let manifest_value: serde_json::Value = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
-    check_version(
-        &manifest.format,
-        manifest.format_version,
-        manifest.document_version,
-        SESSION_DOCUMENT_VERSION,
-    )?;
+    let header: SessionManifestHeader = serde_json::from_value(manifest_value.clone())
+        .map_err(|error| SessionError::Manifest(error.to_string()))?;
+    if header.format_version.major != FORMAT_MAJOR
+        || header.format_version.minor > FORMAT_MINOR
+        || !(1..=SESSION_DOCUMENT_VERSION).contains(&header.document_version)
+    {
+        return Err(SessionError::UnsupportedVersion {
+            format: header.format,
+            major: header.format_version.major,
+            minor: header.format_version.minor,
+        });
+    }
+    let mut manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
+        .map_err(|error| SessionError::Manifest(error.to_string()))?;
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
     }
@@ -180,6 +231,27 @@ pub fn decode_session_with_limits(
             "manifest and document sample rates differ".to_owned(),
         ));
     }
+    let mut declared_paths = BTreeSet::from([MANIFEST_PATH.to_owned()]);
+    declared_paths.extend(manifest.media.iter().map(|record| record.path.clone()));
+    if manifest.document_version == SESSION_DOCUMENT_VERSION {
+        declared_paths.extend(manifest.scripts.iter().map(|record| record.path.clone()));
+    }
+    if archive_paths != declared_paths {
+        return Err(SessionError::Archive(format!(
+            "archive entries do not match the manifest; undeclared={:?}, missing={:?}",
+            archive_paths
+                .difference(&declared_paths)
+                .collect::<Vec<_>>(),
+            declared_paths
+                .difference(&archive_paths)
+                .collect::<Vec<_>>()
+        )));
+    }
+    let script_bundles = if manifest.document_version < SESSION_DOCUMENT_VERSION {
+        migrate_legacy_script_bundles(&manifest_value, &mut manifest.document)?
+    } else {
+        decode_script_bundles(&mut archive, &manifest.document, manifest.scripts, limits)?
+    };
     let mut media = BTreeMap::new();
     let mut record_ids = BTreeSet::new();
     let mut record_paths = BTreeSet::new();
@@ -222,9 +294,151 @@ pub fn decode_session_with_limits(
     let bundle = SessionBundle {
         document: manifest.document,
         media,
+        scripts: script_bundles,
     };
     validate_bundle(&bundle)?;
     Ok(bundle)
+}
+
+fn migrate_legacy_script_bundles(
+    manifest: &serde_json::Value,
+    document: &mut SessionDocument,
+) -> Result<BTreeMap<u64, Arc<ScriptResourceBundle>>, SessionError> {
+    #[derive(Deserialize)]
+    struct LegacyScript {
+        id: u64,
+        source: String,
+    }
+
+    let legacy: Vec<LegacyScript> = serde_json::from_value(
+        manifest
+            .get("document")
+            .and_then(|document| document.get("scripts"))
+            .cloned()
+            .unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
+    )
+    .map_err(|error| SessionError::Manifest(format!("legacy scripts: {error}")))?;
+    if legacy.len() != document.scripts.len() {
+        return Err(SessionError::Validation(
+            "legacy script records do not match the session document".to_owned(),
+        ));
+    }
+    let sources = legacy
+        .into_iter()
+        .map(|script| (script.id, script.source))
+        .collect::<BTreeMap<_, _>>();
+    let mut bundles = BTreeMap::new();
+    for script in &mut document.scripts {
+        let source = sources.get(&script.id).ok_or_else(|| {
+            SessionError::Validation(format!("legacy script {} has no source", script.id))
+        })?;
+        script.entrypoint = "main.lua".to_owned();
+        let bundle = ScriptResourceBundle::source_only(
+            &script.entrypoint,
+            Arc::<[u8]>::from(source.as_bytes()),
+        )
+        .map_err(|error| SessionError::Validation(error.to_string()))?;
+        if bundles.insert(script.id, Arc::new(bundle)).is_some() {
+            return Err(SessionError::Validation(format!(
+                "duplicate script ID {}",
+                script.id
+            )));
+        }
+    }
+    Ok(bundles)
+}
+
+fn decode_script_bundles(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+    document: &SessionDocument,
+    records: Vec<ScriptResourceRecord>,
+    limits: DecodeLimits,
+) -> Result<BTreeMap<u64, Arc<ScriptResourceBundle>>, SessionError> {
+    let resource_limits = ResourceLimits::default();
+    let script_entrypoints = document
+        .scripts
+        .iter()
+        .map(|script| {
+            NormalizedRelativePath::parse(&script.entrypoint)
+                .map(|entrypoint| (script.id, entrypoint))
+                .map_err(|error| {
+                    SessionError::Validation(format!(
+                        "script {} entrypoint is invalid: {error}",
+                        script.id
+                    ))
+                })
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()?;
+    if script_entrypoints.len() != document.scripts.len() {
+        return Err(SessionError::Validation(
+            "duplicate script IDs in document".to_owned(),
+        ));
+    }
+    let mut grouped = BTreeMap::<u64, BTreeMap<NormalizedRelativePath, ScriptResource>>::new();
+    let mut record_paths = BTreeSet::new();
+    let mut aggregate = 0_u64;
+    for record in records {
+        if !script_entrypoints.contains_key(&record.owner_script_id) {
+            return Err(SessionError::Validation(format!(
+                "resource belongs to unknown script {}",
+                record.owner_script_id
+            )));
+        }
+        let relative = NormalizedRelativePath::parse(&record.relative_path).map_err(|error| {
+            SessionError::Validation(format!(
+                "script {} resource path is invalid: {error}",
+                record.owner_script_id
+            ))
+        })?;
+        let expected_path = format!("scripts/{}/{}", record.owner_script_id, relative.as_str());
+        if record.path != expected_path || !record_paths.insert(record.path.clone()) {
+            return Err(SessionError::Validation(format!(
+                "script resource owner/path mismatch or duplicate: {:?}",
+                record.path
+            )));
+        }
+        if record.uncompressed_bytes > resource_limits.max_file_bytes {
+            return Err(SessionError::ResourceLimit(format!(
+                "script resource {:?} exceeds per-file limit {}",
+                record.path, resource_limits.max_file_bytes
+            )));
+        }
+        aggregate = aggregate.saturating_add(record.uncompressed_bytes);
+        if aggregate > resource_limits.max_aggregate_bytes
+            || aggregate > limits.max_uncompressed_bytes
+        {
+            return Err(SessionError::ResourceLimit(
+                "script resources exceed the aggregate limit".to_owned(),
+            ));
+        }
+        let bytes = read_entry(archive, &record.path, record.uncompressed_bytes)?;
+        if bytes.len() as u64 != record.uncompressed_bytes || sha256(&bytes) != record.sha256 {
+            return Err(SessionError::HashMismatch { id: record.path });
+        }
+        if grouped
+            .entry(record.owner_script_id)
+            .or_default()
+            .insert(
+                relative,
+                ScriptResource::new(record.kind, Arc::<[u8]>::from(bytes)),
+            )
+            .is_some()
+        {
+            return Err(SessionError::Validation(
+                "duplicate normalized script resource path".to_owned(),
+            ));
+        }
+    }
+    let mut bundles = BTreeMap::new();
+    for (script_id, entrypoint) in script_entrypoints {
+        let resources = grouped.remove(&script_id).ok_or_else(|| {
+            SessionError::Validation(format!("script {script_id} has no resource records"))
+        })?;
+        let bundle = ScriptResourceBundle::new(entrypoint, resources, resource_limits)
+            .map_err(|error| SessionError::Validation(format!("script {script_id}: {error}")))?;
+        bundles.insert(script_id, Arc::new(bundle));
+    }
+    Ok(bundles)
 }
 
 fn encode_zip<T: Serialize>(
@@ -346,7 +560,7 @@ fn inspect_central_directory(bytes: &[u8], limits: DecodeLimits) -> Result<(), S
 fn inspect_archive(
     archive: &mut ZipArchive<Cursor<&[u8]>>,
     limits: DecodeLimits,
-) -> Result<(), SessionError> {
+) -> Result<BTreeSet<String>, SessionError> {
     if archive.len() > limits.max_entries {
         return Err(SessionError::ResourceLimit(format!(
             "{} entries exceeds {}",
@@ -379,7 +593,7 @@ fn inspect_archive(
             )));
         }
     }
-    Ok(())
+    Ok(names)
 }
 
 fn read_entry(
@@ -434,6 +648,42 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     if bundle.document.sample_rate == 0 {
         return Err(SessionError::Validation(
             "sample rate must be non-zero".to_owned(),
+        ));
+    }
+    let mut script_ids = BTreeSet::new();
+    for script in &bundle.document.scripts {
+        require_id(script.id, "script")?;
+        if !script_ids.insert(script.id) {
+            return Err(SessionError::Validation(format!(
+                "duplicate script ID {}",
+                script.id
+            )));
+        }
+        if script.name.trim().is_empty() {
+            return Err(SessionError::Validation(format!(
+                "script {} has an empty name",
+                script.id
+            )));
+        }
+        let entrypoint = NormalizedRelativePath::parse(&script.entrypoint).map_err(|error| {
+            SessionError::Validation(format!(
+                "script {} entrypoint is invalid: {error}",
+                script.id
+            ))
+        })?;
+        let resources = bundle.scripts.get(&script.id).ok_or_else(|| {
+            SessionError::Validation(format!("script {} resource bundle is missing", script.id))
+        })?;
+        if resources.entrypoint != entrypoint {
+            return Err(SessionError::Validation(format!(
+                "script {} entrypoint does not match its resource bundle",
+                script.id
+            )));
+        }
+    }
+    if bundle.scripts.keys().copied().collect::<BTreeSet<_>>() != script_ids {
+        return Err(SessionError::Validation(
+            "script resource owners do not match the session document".to_owned(),
         ));
     }
     let mut track_ids = BTreeSet::new();

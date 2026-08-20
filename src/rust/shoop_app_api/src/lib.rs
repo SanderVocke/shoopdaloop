@@ -1628,6 +1628,13 @@ pub enum AppIntent {
         kind: ScriptKind,
         enabled: bool,
     },
+    AddScriptFileSource {
+        name: String,
+        source: Arc<str>,
+        source_path: String,
+        kind: ScriptKind,
+        enabled: bool,
+    },
     AddEphemeralScript {
         name: String,
         source: Arc<str>,
@@ -1874,6 +1881,7 @@ impl AppIntent {
             Self::SetCompositeEventMode { .. } => "loop.composite.set_event_mode",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
+            Self::AddScriptFileSource { .. } => "scripting.add_file_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
             Self::ReconcileCatalogScripts { .. } => "scripting.reconcile_catalog",
             Self::SetScriptEnabled { .. } => "scripting.set_enabled",

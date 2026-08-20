@@ -110,6 +110,7 @@ pub struct SessionScriptSource {
     pub document_id: u64,
     pub name: String,
     pub source: String,
+    pub bundle: Arc<ScriptResourceBundle>,
     pub enabled: bool,
 }
 
@@ -836,11 +837,13 @@ impl ScriptManager {
             self.scripts.remove(&id);
         }
         for script in scripts {
-            let id = self.add(
+            let id = self.add_with_resources(
                 script.name.clone(),
                 script.source.clone(),
                 ScriptKind::Session,
                 script.enabled,
+                None,
+                Some(Arc::clone(&script.bundle)),
             )?;
             self.scripts.get_mut(&id).unwrap().session_document_id = Some(script.document_id);
         }
@@ -855,6 +858,15 @@ impl ScriptManager {
                 document_id: record.session_document_id.unwrap_or(record.id.raw()),
                 name: record.name.clone(),
                 source: record.source.clone(),
+                bundle: record.resource_bundle.clone().unwrap_or_else(|| {
+                    Arc::new(
+                        ScriptResourceBundle::source_only(
+                            "main.lua",
+                            Arc::<[u8]>::from(record.source.as_bytes()),
+                        )
+                        .expect("valid source-only session script bundle"),
+                    )
+                }),
                 enabled: record.enabled,
             })
             .collect()
@@ -987,6 +999,53 @@ impl ScriptManager {
         Ok(())
     }
 
+    pub fn conversion_source(
+        &self,
+        id: ScriptId,
+    ) -> anyhow::Result<(
+        String,
+        Option<String>,
+        Option<Arc<ScriptResourceBundle>>,
+        u64,
+    )> {
+        let record = self.require(id)?;
+        Ok((
+            record.source.clone(),
+            record.source_path.clone(),
+            record.resource_bundle.clone(),
+            record.resource_generation,
+        ))
+    }
+
+    pub fn commit_session_bundle(
+        &mut self,
+        id: ScriptId,
+        expected_source: &str,
+        expected_generation: u64,
+        bundle: Arc<ScriptResourceBundle>,
+    ) -> anyhow::Result<()> {
+        let record = self.require(id)?;
+        if record.kind == ScriptKind::Session
+            || record.source != expected_source
+            || record.resource_generation != expected_generation
+        {
+            bail!("stale script conversion completion")
+        }
+        self.stop(id)?;
+        let session_document_id = self
+            .scripts
+            .values()
+            .filter_map(|record| record.session_document_id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let record = self.scripts.get_mut(&id).unwrap();
+        record.resource_bundle = Some(bundle);
+        record.kind = ScriptKind::Session;
+        record.session_document_id = Some(session_document_id);
+        Ok(())
+    }
+
     pub fn convert_kind(&mut self, id: ScriptId, kind: ScriptKind) -> anyhow::Result<()> {
         let current = self.require(id)?.kind;
         let allowed = matches!(kind, ScriptKind::Session) && current != ScriptKind::Session
@@ -1008,6 +1067,12 @@ impl ScriptManager {
             None
         };
         let record = self.scripts.get_mut(&id).unwrap();
+        if kind == ScriptKind::Session && record.resource_bundle.is_none() {
+            record.resource_bundle = Some(Arc::new(ScriptResourceBundle::source_only(
+                "main.lua",
+                Arc::<[u8]>::from(record.source.as_bytes()),
+            )?));
+        }
         record.kind = kind;
         record.session_document_id = session_document_id;
         Ok(())
@@ -2223,11 +2288,14 @@ if not c.get_solo() then error('solo') end
         assert_eq!(manager.states()[0].kind, ScriptKind::Session);
         assert_eq!(manager.source(id).unwrap(), ("portable.lua", source));
         assert_eq!(manager.session_scripts()[0].source, source);
+        let bundle = manager.session_scripts()[0].bundle.clone();
 
         manager.convert_kind(id, ScriptKind::Ephemeral).unwrap();
         assert_eq!(manager.states()[0].kind, ScriptKind::Ephemeral);
         assert!(manager.session_scripts().is_empty());
         assert_eq!(manager.source(id).unwrap(), ("portable.lua", source));
+        manager.convert_kind(id, ScriptKind::Session).unwrap();
+        assert!(Arc::ptr_eq(&manager.session_scripts()[0].bundle, &bundle));
     }
 
     #[shoop_wasm_test_support::shoop_test]
