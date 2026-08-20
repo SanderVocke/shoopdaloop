@@ -13,6 +13,7 @@ const CONTROL_BUTTON_SIZE: [f32; 2] = [34.0, 28.0];
 #[derive(Debug, Default)]
 pub struct GlobalControls {
     connections_requested: bool,
+    new_session_requested: bool,
     save_session_requested: bool,
     load_session_requested: bool,
     settings_requested: bool,
@@ -26,6 +27,7 @@ pub struct GlobalControls {
 enum TestGlobalControl {
     MainMenu,
     Connections,
+    NewSession,
     SaveSession,
     LoadSession,
     Settings,
@@ -47,6 +49,7 @@ enum TestGlobalControl {
 struct TestGlobalControlRects {
     main_menu: Option<egui::Rect>,
     connections: Option<egui::Rect>,
+    new_session: Option<egui::Rect>,
     save_session: Option<egui::Rect>,
     load_session: Option<egui::Rect>,
     settings: Option<egui::Rect>,
@@ -70,6 +73,7 @@ impl GlobalControls {
         state: &GlobalControlState,
     ) -> Vec<GlobalControlAction> {
         self.connections_requested = false;
+        self.new_session_requested = false;
         self.save_session_requested = false;
         self.load_session_requested = false;
         self.settings_requested = false;
@@ -84,6 +88,12 @@ impl GlobalControls {
                         ui.close();
                     }
                     ui.separator();
+                    let new_session = ui.button("New session");
+                    self.record_rect(TestGlobalControl::NewSession, &new_session);
+                    if new_session.clicked() {
+                        self.new_session_requested = true;
+                        ui.close();
+                    }
                     let save_session = ui.button("Save session…");
                     self.record_rect(TestGlobalControl::SaveSession, &save_session);
                     if save_session.clicked() {
@@ -342,6 +352,10 @@ impl GlobalControls {
         std::mem::take(&mut self.save_session_requested)
     }
 
+    pub fn take_new_session_requested(&mut self) -> bool {
+        std::mem::take(&mut self.new_session_requested)
+    }
+
     pub fn take_load_session_requested(&mut self) -> bool {
         std::mem::take(&mut self.load_session_requested)
     }
@@ -355,6 +369,7 @@ impl GlobalControls {
         let target = match control {
             TestGlobalControl::MainMenu => &mut self.test_rects.main_menu,
             TestGlobalControl::Connections => &mut self.test_rects.connections,
+            TestGlobalControl::NewSession => &mut self.test_rects.new_session,
             TestGlobalControl::SaveSession => &mut self.test_rects.save_session,
             TestGlobalControl::LoadSession => &mut self.test_rects.load_session,
             TestGlobalControl::Settings => &mut self.test_rects.settings,
@@ -385,6 +400,7 @@ impl GlobalControls {
         match control {
             TestGlobalControl::MainMenu => self.test_rects.main_menu,
             TestGlobalControl::Connections => self.test_rects.connections,
+            TestGlobalControl::NewSession => self.test_rects.new_session,
             TestGlobalControl::SaveSession => self.test_rects.save_session,
             TestGlobalControl::LoadSession => self.test_rects.load_session,
             TestGlobalControl::Settings => self.test_rects.settings,
@@ -496,7 +512,7 @@ mod tests {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(1000.0, 100.0),
+                    egui::vec2(1000.0, 200.0),
                 )),
                 events,
                 ..Default::default()
@@ -596,6 +612,15 @@ mod tests {
         )
         .is_empty());
         assert!(controls.take_connections_requested());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
+        assert!(click(
+            &context,
+            &mut controls,
+            &state,
+            TestGlobalControl::NewSession
+        )
+        .is_empty());
+        assert!(controls.take_new_session_requested());
         assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
         assert!(click(
             &context,

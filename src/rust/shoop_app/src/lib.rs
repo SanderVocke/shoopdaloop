@@ -1403,6 +1403,7 @@ impl ApplicationModel {
                 self.status.xruns = 0;
                 Ok(())
             }
+            AppIntent::RequestNewSession => self.begin_new_session(),
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
             | AppIntent::RequestLoopAudioImportPicker { .. }
@@ -3142,6 +3143,17 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn begin_new_session(&mut self) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        let task_id = self.start_io_task(IoTaskKind::LoadSession, "Creating new session");
+        let document = SessionDocument::empty(self.status.sample_rate);
+        self.begin_session_load(
+            "new session".to_owned(),
+            SessionBundle::new(document),
+            task_id,
+        )
+    }
+
     fn begin_load_session(&mut self, name: String, bytes: &[u8]) -> Result<(), String> {
         self.ensure_io_idle()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Validating session");
@@ -3153,6 +3165,15 @@ impl ApplicationModel {
                 return Err(message);
             }
         };
+        self.begin_session_load(name, bundle, task_id)
+    }
+
+    fn begin_session_load(
+        &mut self,
+        name: String,
+        bundle: SessionBundle,
+        task_id: TaskId,
+    ) -> Result<(), String> {
         let session_scripts = match session_script_sources(&bundle) {
             Ok(scripts) => scripts,
             Err(message) => {
@@ -9428,6 +9449,30 @@ mod tests {
         assert!(snapshot.tracks[0].loops[0].sync);
         assert!(snapshot.tracks[0].id.is_valid());
         assert!(snapshot.tracks[0].loops[0].id.is_valid());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_session_replaces_existing_tracks() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Recorded track".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks.len() > 1);
+
+        runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+        runtime.tick(Duration::ZERO);
+
+        assert!(runtime.snapshot().tracks.is_empty());
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
