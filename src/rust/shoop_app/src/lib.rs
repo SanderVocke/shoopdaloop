@@ -2994,7 +2994,7 @@ impl ApplicationModel {
     fn begin_new_session(&mut self) -> Result<(), String> {
         self.ensure_io_idle()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Creating new session");
-        let document = SessionDocument::empty(self.status.sample_rate);
+        let document = new_session_document(self.status.sample_rate);
         self.begin_session_load(
             "new session".to_owned(),
             SessionBundle::new(document),
@@ -8278,6 +8278,81 @@ impl ApplicationModel {
     }
 }
 
+fn new_session_document(sample_rate: u32) -> SessionDocument {
+    let mut document = SessionDocument::empty(sample_rate);
+    document.track_groups.push(TrackGroupDocument {
+        name: "sync".to_owned(),
+        tracks: vec![TrackDocument {
+            id: 1,
+            name: "Sync".to_owned(),
+            port_name_base: "sync_loop".to_owned(),
+            is_sync: true,
+            width: None,
+            topology: TrackTopologyDocument::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            controls: TrackControlsDocument::default(),
+            loops: vec![LoopDocument {
+                id: 1,
+                name: "sync loop".to_owned(),
+                length_frames: 0,
+                is_sync: true,
+                gain: 1.0,
+                balance: 0.0,
+                channels: vec![ChannelDocument {
+                    id: 1,
+                    mode: ChannelModeDocument::Direct,
+                    data_type: DataTypeDocument::Audio,
+                    data_length_frames: 0,
+                    start_offset_frames: 0,
+                    preplay_frames: 0,
+                    gain: 1.0,
+                    connected_port_ids: vec![1, 2],
+                    media_id: None,
+                    recording_started_at: None,
+                    recording_fx_state_id: None,
+                }],
+                composite: None,
+            }],
+            ports: vec![
+                PortDocument {
+                    id: 1,
+                    name: "sync_loop_direct_in".to_owned(),
+                    data_type: DataTypeDocument::Audio,
+                    direction: PortDirectionDocument::Input,
+                    role: PortRoleDocument::AudioInput,
+                    input_connectability: vec![ConnectabilityDocument::External],
+                    output_connectability: vec![ConnectabilityDocument::Internal],
+                    gain: 1.0,
+                    muted: false,
+                    passthrough_muted: false,
+                    internal_connections: Vec::new(),
+                    external_connections: Vec::new(),
+                    ringbuffer_frames: 0,
+                },
+                PortDocument {
+                    id: 2,
+                    name: "sync_loop_direct_out".to_owned(),
+                    data_type: DataTypeDocument::Audio,
+                    direction: PortDirectionDocument::Output,
+                    role: PortRoleDocument::AudioOutput,
+                    input_connectability: vec![ConnectabilityDocument::Internal],
+                    output_connectability: vec![ConnectabilityDocument::External],
+                    gain: 1.0,
+                    muted: false,
+                    passthrough_muted: false,
+                    internal_connections: Vec::new(),
+                    external_connections: Vec::new(),
+                    ringbuffer_frames: 0,
+                },
+            ],
+            fx_chain: None,
+        }],
+    });
+    document
+}
+
 fn click_timing_spec(request: &ClickTrackRequest) -> ClickTrackTimingSpec {
     ClickTrackTimingSpec {
         bpm: request.bpm,
@@ -9269,7 +9344,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn new_session_replaces_existing_tracks() {
+    fn new_session_replaces_existing_tracks_and_restores_sync_track() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         runtime
@@ -9285,9 +9360,13 @@ mod tests {
         runtime.dispatch(AppIntent::RequestNewSession).unwrap();
         runtime.tick(Duration::ZERO);
 
-        assert!(runtime.snapshot().tracks.is_empty());
+        let snapshot = runtime.snapshot();
+        assert_eq!(snapshot.tracks.len(), 1);
+        assert!(snapshot.tracks[0].is_sync);
+        assert_eq!(snapshot.tracks[0].loops.len(), 1);
+        assert!(snapshot.tracks[0].loops[0].sync);
         assert_eq!(
-            runtime.snapshot().io_task.as_ref().unwrap().status,
+            snapshot.io_task.as_ref().unwrap().status,
             IoTaskStatus::Completed
         );
     }
