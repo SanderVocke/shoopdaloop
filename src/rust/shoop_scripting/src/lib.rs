@@ -2944,9 +2944,26 @@ end, function() end, 10)
         let apc = extract_documentation(AKAI_APC_MINI_MK1_SCRIPT).unwrap();
         assert!(apc.starts_with("# Akai APC Mini MK1 controls\n"));
         assert!(apc.contains("| Device label | ShoopDaLoop function |"));
+        assert!(apc.contains(
+            "**SOLO** | Click to toggle solo permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(apc.contains(
+            "**SYNC** | Click to toggle synchronization permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(!apc.contains("SHIFT** to make the toggle permanent"));
         let apc_mk2 = extract_documentation(AKAI_APC_MINI_MK2_V3_SCRIPT).unwrap();
         assert!(apc_mk2.starts_with("# Akai APC Mini MK2 controls\n"));
+        assert!(apc_mk2.contains(
+            "**SOLO** | Click to toggle solo permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(apc_mk2.contains(
+            "**SYNC (DRUM)** | Click to toggle synchronization permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
+        assert!(apc_mk2.contains(
+            "**AUTO-MUTE (NOTE)** | Click to toggle auto-muting permanently. Hold for 250 ms to toggle it momentarily until release."
+        ));
         assert!(apc_mk2.contains("Use **SYNC (DRUM)** and **AUTO-MUTE (NOTE)** without **SHIFT**"));
+        assert!(!apc_mk2.contains("SHIFT** to make the toggle permanent"));
         let example = extract_documentation(DIALOG_EXAMPLE_SCRIPT).unwrap();
         assert!(example.starts_with("# Script dialog example\n"));
     }
