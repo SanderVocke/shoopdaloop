@@ -4065,6 +4065,7 @@ name = "shoop_script_resources"
 version = "0.3.0"
 dependencies = [
  "serde",
+ "serde_json",
  "sha2 0.11.0",
  "shoop_wasm_test_support",
  "tempfile",

@@ -996,6 +996,93 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn path_conversions_and_every_bundle_budget_are_enforced() {
+        let parent = NormalizedRelativePath::parse("help").unwrap();
+        let child = NormalizedRelativePath::parse("images/icon.png").unwrap();
+        assert_eq!(
+            parent.join(&child).unwrap().as_str(),
+            "help/images/icon.png"
+        );
+        let encoded = serde_json::to_string(&child).unwrap();
+        let decoded: NormalizedRelativePath = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(String::from(decoded), "images/icon.png");
+
+        let entrypoint = NormalizedRelativePath::parse("main.lua").unwrap();
+        let companion = NormalizedRelativePath::parse("help.md").unwrap();
+        let resources = BTreeMap::from([
+            (
+                entrypoint.clone(),
+                ScriptResource::new(ResourceKind::Lua, Arc::<[u8]>::from(&b"return"[..])),
+            ),
+            (
+                companion,
+                ScriptResource::new(ResourceKind::Markdown, Arc::<[u8]>::from(&b"help"[..])),
+            ),
+        ]);
+        let bundle = ScriptResourceBundle::new(
+            entrypoint.clone(),
+            resources.clone(),
+            ResourceLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(bundle.byte_count(), 10);
+
+        assert!(matches!(
+            ScriptResourceBundle::new(
+                entrypoint.clone(),
+                resources.clone(),
+                ResourceLimits {
+                    max_files_per_script: 1,
+                    ..ResourceLimits::default()
+                },
+            ),
+            Err(BundleError::FileCountLimit { .. })
+        ));
+        assert!(matches!(
+            ScriptResourceBundle::new(
+                entrypoint.clone(),
+                resources.clone(),
+                ResourceLimits {
+                    max_file_bytes: 5,
+                    ..ResourceLimits::default()
+                },
+            ),
+            Err(BundleError::FileLimit { .. })
+        ));
+        assert!(matches!(
+            ScriptResourceBundle::new(
+                entrypoint.clone(),
+                resources.clone(),
+                ResourceLimits {
+                    max_script_bytes: 9,
+                    ..ResourceLimits::default()
+                },
+            ),
+            Err(BundleError::ScriptLimit { .. })
+        ));
+        assert!(matches!(
+            ScriptResourceBundle::new(
+                NormalizedRelativePath::parse("missing.lua").unwrap(),
+                resources,
+                ResourceLimits::default(),
+            ),
+            Err(BundleError::MissingEntrypoint(_))
+        ));
+        let image = NormalizedRelativePath::parse("image.png").unwrap();
+        assert!(matches!(
+            ScriptResourceBundle::new(
+                image.clone(),
+                BTreeMap::from([(
+                    image,
+                    ScriptResource::new(ResourceKind::Image, Arc::<[u8]>::from(&b"png"[..])),
+                )]),
+                ResourceLimits::default(),
+            ),
+            Err(BundleError::InvalidEntrypoint(_))
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn registry_is_generation_scoped_and_rejects_malformed_uris() {
         let bundle = Arc::new(
             ScriptResourceBundle::source_only("main.lua", Arc::<[u8]>::from(&b"one"[..])).unwrap(),
@@ -1032,6 +1119,122 @@ mod tests {
             assert!(read_resource_uri(uri).is_err(), "accepted {uri:?}");
         }
         unregister_resource_scope("script-1");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn filesystem_registry_and_uri_parser_cover_success_and_error_boundaries() {
+        let temporary = tempfile::tempdir().unwrap();
+        std::fs::create_dir(temporary.path().join("images")).unwrap();
+        std::fs::write(temporary.path().join("images/icon.png"), [1, 2, 3]).unwrap();
+        let origin = ResourceOrigin {
+            scope: "filesystem".to_owned(),
+            generation: 9,
+        };
+        register_resource_provider(
+            &origin,
+            RegisteredResourceProvider::Filesystem(temporary.path().to_owned()),
+        )
+        .unwrap();
+        assert_eq!(
+            read_resource_uri("shoop-script-resource://filesystem/9/images/icon.png")
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            [1, 2, 3]
+        );
+        assert!(read_resource_uri("https://example.invalid/image.png")
+            .unwrap()
+            .is_none());
+        assert!(read_resource_uri("shoop-script-resource://filesystem/9/missing.png").is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("/etc/passwd", temporary.path().join("escape.png")).unwrap();
+            assert!(read_resource_uri("shoop-script-resource://filesystem/9/escape.png").is_err());
+        }
+        for uri in [
+            "shoop-script-resource://missing-generation",
+            "shoop-script-resource://bad!scope/1/image.png",
+            "shoop-script-resource://filesystem/nope/image.png",
+            "shoop-script-resource://filesystem/9/",
+            "shoop-script-resource://filesystem/9/images\\icon.png",
+            "shoop-script-resource://filesystem/9/%FF.png",
+            "shoop-script-resource://filesystem/9/%",
+            "shoop-script-resource://filesystem/9/%2f",
+        ] {
+            assert!(read_resource_uri(uri).is_err(), "accepted {uri:?}");
+        }
+        let bad_origin = ResourceOrigin {
+            scope: "bad scope".to_owned(),
+            generation: 1,
+        };
+        assert!(register_resource_provider(
+            &bad_origin,
+            RegisteredResourceProvider::Filesystem(temporary.path().to_owned()),
+        )
+        .is_err());
+        let file = temporary.path().join("not-a-directory");
+        std::fs::write(&file, []).unwrap();
+        assert!(register_resource_provider(
+            &ResourceOrigin {
+                scope: "file".to_owned(),
+                generation: 1,
+            },
+            RegisteredResourceProvider::Filesystem(file),
+        )
+        .is_err());
+        let nested = NormalizedRelativePath::parse("space name/help.md").unwrap();
+        assert!(origin.base_uri_below(&nested).contains("space%20name"));
+        unregister_resource_scope("filesystem");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_scan_reports_structural_and_resource_limit_failures() {
+        let root_file = tempfile::NamedTempFile::new().unwrap();
+        assert!(matches!(
+            scan_builtin_directory(root_file.path(), 1, ResourceLimits::default()),
+            Err(ScanError::Path { .. })
+        ));
+        let temporary = tempfile::tempdir().unwrap();
+        std::fs::write(temporary.path().join("A.lua"), "return").unwrap();
+        std::fs::write(temporary.path().join("a.LUA"), "return").unwrap();
+        let collision =
+            scan_builtin_directory(temporary.path(), 1, ResourceLimits::default()).unwrap();
+        assert!(!collision.deletions_safe);
+        assert!(collision
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("differs only by case")));
+
+        let oversized = scan_builtin_directory(
+            temporary.path(),
+            1,
+            ResourceLimits {
+                max_file_bytes: 1,
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap();
+        assert!(oversized.entries.is_empty());
+        assert!(oversized
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("per-file")));
+        let aggregate = scan_builtin_directory(
+            temporary.path(),
+            1,
+            ResourceLimits {
+                max_aggregate_bytes: 1,
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap();
+        assert!(aggregate.entries.is_empty());
+        assert!(aggregate
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("aggregate")));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1156,6 +1359,136 @@ mod tests {
             size_error,
             ScanError::Bundle(BundleError::ScriptLimit { .. })
         ));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn conversion_rejects_source_companion_and_limited_read_edges() {
+        let temporary = tempfile::tempdir().unwrap();
+        let wrong_extension = temporary.path().join("controller.txt");
+        std::fs::write(&wrong_extension, "return").unwrap();
+        assert!(capture_filesystem_bundle(
+            &wrong_extension,
+            Arc::<[u8]>::from(&b"return"[..]),
+            ResourceLimits::default(),
+        )
+        .is_err());
+        let script = temporary.path().join("controller.lua");
+        std::fs::write(&script, "return").unwrap();
+        for limits in [
+            ResourceLimits {
+                max_file_bytes: 1,
+                ..ResourceLimits::default()
+            },
+            ResourceLimits {
+                max_files_per_script: 0,
+                ..ResourceLimits::default()
+            },
+            ResourceLimits {
+                max_script_bytes: 1,
+                ..ResourceLimits::default()
+            },
+        ] {
+            assert!(
+                capture_filesystem_bundle(&script, Arc::<[u8]>::from(&b"return"[..]), limits,)
+                    .is_err()
+            );
+        }
+        std::fs::write(temporary.path().join("large.md"), [0; 8]).unwrap();
+        assert!(matches!(
+            capture_filesystem_bundle(
+                &script,
+                Arc::<[u8]>::from(&b"return"[..]),
+                ResourceLimits {
+                    max_file_bytes: 7,
+                    ..ResourceLimits::default()
+                },
+            ),
+            Err(ScanError::Bundle(BundleError::FileLimit { .. }))
+        ));
+        let limited = temporary.path().join("limited.bin");
+        std::fs::write(&limited, [1, 2, 3]).unwrap();
+        assert!(read_file_limited(&limited, 4, 3).is_err());
+        assert!(read_file_limited(&limited, 0, 1).is_err());
+        assert!(read_file_limited(&temporary.path().join("missing"), 0, 1).is_err());
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), unix))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_path_and_symlink_edge_failures_are_bounded() {
+        use std::os::unix::ffi::OsStringExt as _;
+
+        let temporary = tempfile::tempdir().unwrap();
+        let invalid_name = temporary.path().join(std::ffi::OsString::from_vec(vec![
+            0xff, b'.', b'l', b'u', b'a',
+        ]));
+        std::fs::write(&invalid_name, "return").unwrap();
+        assert!(capture_filesystem_bundle(
+            &invalid_name,
+            Arc::<[u8]>::from(&b"return"[..]),
+            ResourceLimits::default(),
+        )
+        .is_err());
+        assert!(capture_filesystem_bundle(
+            &temporary.path().join("missing/controller.lua"),
+            Arc::<[u8]>::from(&b"return"[..]),
+            ResourceLimits::default(),
+        )
+        .is_err());
+        let directory_script = temporary.path().join("directory.lua");
+        std::fs::create_dir(&directory_script).unwrap();
+        assert!(capture_filesystem_bundle(
+            &directory_script,
+            Arc::<[u8]>::from(&b"return"[..]),
+            ResourceLimits::default(),
+        )
+        .is_err());
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        let linked_script = temporary.path().join("linked.lua");
+        std::os::unix::fs::symlink(outside.path(), &linked_script).unwrap();
+        assert!(capture_filesystem_bundle(
+            &linked_script,
+            Arc::<[u8]>::from(&b"return"[..]),
+            ResourceLimits::default(),
+        )
+        .is_err());
+
+        let collision_root = tempfile::tempdir().unwrap();
+        let script = collision_root.path().join("main.lua");
+        std::fs::write(&script, "return").unwrap();
+        std::fs::write(collision_root.path().join("Help.md"), "one").unwrap();
+        std::fs::write(collision_root.path().join("help.MD"), "two").unwrap();
+        assert!(matches!(
+            capture_filesystem_bundle(
+                &script,
+                Arc::<[u8]>::from(&b"return"[..]),
+                ResourceLimits::default(),
+            ),
+            Err(ScanError::Bundle(BundleError::CaseCollision(_)))
+        ));
+
+        let scan_root = tempfile::tempdir().unwrap();
+        std::fs::write(scan_root.path().join("real.lua"), "return").unwrap();
+        std::os::unix::fs::symlink(
+            scan_root.path().join("real.lua"),
+            scan_root.path().join("linked.lua"),
+        )
+        .unwrap();
+        assert!(matches!(
+            scan_builtin_directory(
+                scan_root.path(),
+                1,
+                ResourceLimits {
+                    max_scan_entries: 1,
+                    ..ResourceLimits::default()
+                },
+            ),
+            Err(ScanError::EntryLimit(1))
+        ));
+        let catalog =
+            scan_builtin_directory(scan_root.path(), 1, ResourceLimits::default()).unwrap();
+        assert_eq!(catalog.entries.len(), 2);
+        assert!(catalog.diagnostics.is_empty());
     }
 
     #[cfg(all(not(target_arch = "wasm32"), unix))]
