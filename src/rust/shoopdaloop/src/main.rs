@@ -227,6 +227,7 @@ struct UnifiedApp {
     last_update: Instant,
     startup_session: Option<String>,
     session_url_input: String,
+    session_url_error: Option<String>,
     session_url_prompt_open: bool,
     session_url_confirmation: Option<String>,
     #[cfg(target_arch = "wasm32")]
@@ -317,6 +318,7 @@ impl UnifiedApp {
             last_update: Instant::now(),
             startup_session: args.session.clone(),
             session_url_input: String::new(),
+            session_url_error: None,
             session_url_prompt_open: false,
             session_url_confirmation: None,
             #[cfg(target_arch = "wasm32")]
@@ -357,26 +359,35 @@ impl UnifiedApp {
 
     fn show_session_url_dialogs(&mut self, context: &egui::Context) {
         if self.session_url_prompt_open {
-            let mut open = true;
             let mut submit = false;
-            egui::Window::new("Load session from URL")
-                .collapsible(false)
-                .resizable(false)
-                .open(&mut open)
-                .show(context, |ui| {
-                    ui.label("Session URL:");
-                    let response = ui.text_edit_singleline(&mut self.session_url_input);
+            let mut cancel = false;
+            egui::Modal::new(egui::Id::new("load_session_url_prompt")).show(context, |ui| {
+                ui.heading("Load session from URL");
+                ui.add_space(8.0);
+                ui.label("Session URL:");
+                let response = ui.text_edit_singleline(&mut self.session_url_input);
+                if let Some(error) = &self.session_url_error {
+                    ui.colored_label(ui.visuals().error_fg_color, error);
+                }
+                ui.horizontal(|ui| {
                     submit = (response.lost_focus()
                         && ui.input(|input| input.key_pressed(egui::Key::Enter)))
                         || ui.button("Continue").clicked();
+                    cancel = ui.button("Cancel").clicked();
                 });
-            self.session_url_prompt_open = open && !submit;
-            if submit {
+            });
+            if cancel {
+                self.session_url_prompt_open = false;
+                self.session_url_error = None;
+            } else if submit {
                 let source = self.session_url_input.trim().to_owned();
                 if is_http_url(&source) {
+                    self.session_url_prompt_open = false;
+                    self.session_url_error = None;
                     self.session_url_confirmation = Some(source);
                 } else {
-                    self.pending_file_error("Please enter an http:// or https:// URL".to_owned());
+                    self.session_url_error =
+                        Some("Please enter an http:// or https:// URL".to_owned());
                 }
             }
         }
@@ -384,17 +395,16 @@ impl UnifiedApp {
         if let Some(url) = self.session_url_confirmation.clone() {
             let mut fetch = false;
             let mut cancel = false;
-            egui::Window::new("Fetch session from URL?")
-                .collapsible(false)
-                .resizable(false)
-                .show(context, |ui| {
-                    ui.label("ShoopDaLoop will download and open this session:");
-                    ui.monospace(&url);
-                    ui.horizontal(|ui| {
-                        fetch = ui.button("Fetch and open").clicked();
-                        cancel = ui.button("Cancel").clicked();
-                    });
+            egui::Modal::new(egui::Id::new("confirm_session_url_fetch")).show(context, |ui| {
+                ui.heading("Fetch session from URL?");
+                ui.add_space(8.0);
+                ui.label("ShoopDaLoop will download and open this session:");
+                ui.monospace(&url);
+                ui.horizontal(|ui| {
+                    fetch = ui.button("Fetch and open").clicked();
+                    cancel = ui.button("Cancel").clicked();
                 });
+            });
             if fetch {
                 self.session_url_confirmation = None;
                 self.fetch_session_url(url);
@@ -402,23 +412,6 @@ impl UnifiedApp {
                 self.session_url_confirmation = None;
             }
         }
-    }
-
-    fn pending_file_error(&self, message: String) {
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = self
-            .pending_file_intent_tx
-            .send(AppIntent::ReportFileIoError {
-                task_id: None,
-                message,
-            });
-        #[cfg(target_arch = "wasm32")]
-        self.pending_file_intents
-            .borrow_mut()
-            .push_back(AppIntent::ReportFileIoError {
-                task_id: None,
-                message,
-            });
     }
 
     fn fetch_session_url(&self, url: String) {
@@ -1132,7 +1125,15 @@ fn file_name(path: &Path) -> String {
 }
 
 fn is_http_url(source: &str) -> bool {
-    source.starts_with("https://") || source.starts_with("http://")
+    ["https://", "http://"].iter().any(|scheme| {
+        source
+            .get(..scheme.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(scheme))
+            && source[scheme.len()..]
+                .split(['/', '?', '#'])
+                .next()
+                .is_some_and(|authority| !authority.is_empty())
+    })
 }
 
 fn session_source_name(source: &str) -> String {
@@ -4334,6 +4335,18 @@ mod tests {
     };
 
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn session_sources_recognize_http_urls_and_names() {
+        assert!(is_http_url("https://example.com/session.shoop"));
+        assert!(is_http_url("HTTP://EXAMPLE.COM/session.shoop"));
+        assert!(!is_http_url("https://"));
+        assert!(!is_http_url("session.shoop"));
+        assert_eq!(
+            session_source_name("https://example.com/sessions/demo.shoop?download=1#top"),
+            "demo.shoop"
+        );
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]

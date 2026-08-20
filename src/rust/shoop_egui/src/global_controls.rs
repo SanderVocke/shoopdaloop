@@ -29,6 +29,7 @@ enum TestGlobalControl {
     Connections,
     SaveSession,
     LoadSession,
+    LoadSessionUrl,
     Settings,
     StopAll,
     MidiPanic,
@@ -50,6 +51,7 @@ struct TestGlobalControlRects {
     connections: Option<egui::Rect>,
     save_session: Option<egui::Rect>,
     load_session: Option<egui::Rect>,
+    load_session_url: Option<egui::Rect>,
     settings: Option<egui::Rect>,
     stop_all: Option<egui::Rect>,
     midi_panic: Option<egui::Rect>,
@@ -99,6 +101,7 @@ impl GlobalControls {
                         ui.close();
                     }
                     let load_session_url = ui.button("Load session from URL…");
+                    self.record_rect(TestGlobalControl::LoadSessionUrl, &load_session_url);
                     if load_session_url.clicked() {
                         self.load_session_url_requested = true;
                         ui.close();
@@ -368,6 +371,7 @@ impl GlobalControls {
             TestGlobalControl::Connections => &mut self.test_rects.connections,
             TestGlobalControl::SaveSession => &mut self.test_rects.save_session,
             TestGlobalControl::LoadSession => &mut self.test_rects.load_session,
+            TestGlobalControl::LoadSessionUrl => &mut self.test_rects.load_session_url,
             TestGlobalControl::Settings => &mut self.test_rects.settings,
             TestGlobalControl::StopAll => &mut self.test_rects.stop_all,
             TestGlobalControl::MidiPanic => &mut self.test_rects.midi_panic,
@@ -398,6 +402,7 @@ impl GlobalControls {
             TestGlobalControl::Connections => self.test_rects.connections,
             TestGlobalControl::SaveSession => self.test_rects.save_session,
             TestGlobalControl::LoadSession => self.test_rects.load_session,
+            TestGlobalControl::LoadSessionUrl => self.test_rects.load_session_url,
             TestGlobalControl::Settings => self.test_rects.settings,
             TestGlobalControl::StopAll => self.test_rects.stop_all,
             TestGlobalControl::MidiPanic => self.test_rects.midi_panic,
@@ -507,7 +512,7 @@ mod tests {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(1000.0, 100.0),
+                    egui::vec2(1000.0, 160.0),
                 )),
                 events,
                 ..Default::default()
@@ -625,6 +630,15 @@ mod tests {
         )
         .is_empty());
         assert!(controls.take_load_session_requested());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
+        assert!(click(
+            &context,
+            &mut controls,
+            &state,
+            TestGlobalControl::LoadSessionUrl
+        )
+        .is_empty());
+        assert!(controls.take_load_session_url_requested());
         assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
         assert!(click(&context, &mut controls, &state, TestGlobalControl::Settings).is_empty());
         assert!(controls.take_settings_requested());
