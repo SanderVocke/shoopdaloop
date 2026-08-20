@@ -8,8 +8,8 @@
 -- | --- | --- |
 -- | **RECORD (REC ARM)** | Record a grid pad. |
 -- | **GRAB (MUTE)** | Grab a grid pad. |
--- | **SYNC (DRUM)** | Temporarily or permanently toggle synchronization. |
--- | **AUTO-MUTE (NOTE)** | Temporarily or permanently toggle auto-muting of other track inputs. |
+-- | **SYNC (DRUM)** | Click or hold to toggle synchronization. |
+-- | **AUTO-MUTE (NOTE)** | Click or hold to toggle auto-muting of other track inputs. |
 -- | **DRY (SEND)** | Apply dry-through-wet actions and control input gain. |
 -- | **SET N CYCLES (DEVICE)** | Set recording cycles and control input balance. |
 -- | Bottom-right grid pad | Control the sync loop. |
@@ -40,11 +40,13 @@
 --
 -- | Control | Action |
 -- | --- | --- |
--- | **SOLO** | Toggle solo while held. Add **SHIFT** to make the toggle permanent. |
--- | **SYNC (DRUM)** | Toggle synchronization while held. Add **SHIFT** to make the toggle permanent. |
--- | **AUTO-MUTE (NOTE)** | Toggle auto-muting of other track inputs while held. Add **SHIFT** to make the toggle permanent. |
+-- | **SOLO** | Click to toggle solo permanently. Hold for 250 ms to toggle it momentarily until release. |
+-- | **SYNC (DRUM)** | Click to toggle synchronization permanently. Hold for 250 ms to toggle it momentarily until release. |
+-- | **AUTO-MUTE (NOTE)** | Click to toggle auto-muting permanently. Hold for 250 ms to toggle it momentarily until release. |
 -- | **STOP ALL CLIPS** | Stop all loops. Add **SELECT** to deselect all loops, or **SHIFT** to clear all loops. |
 -- | **SET N CYCLES (DEVICE)** | Hold and press a grid pad to set the number of recording cycles. Grid positions count from the top left, left to right; the bottom-right grid pad resets to zero. Add **SHIFT** to resynchronize the controller state and LEDs. |
+--
+-- Use **SYNC (DRUM)** and **AUTO-MUTE (NOTE)** without **SHIFT**. The shifted button gestures are reserved by the controller firmware and can take over the grid colors and mode.
 --
 -- ## Faders and track controls
 --
@@ -118,16 +120,16 @@ local BUTTON_sync_loop = 7
 local BUTTON_dry = BUTTON_send
 local BUTTON_n_cycles = BUTTON_device
 
+-- Global-control presses become holds after this shared timeout.
+local GLOBAL_CONTROL_HOLD_TIMEOUT_MS = 250
+
 local STATE_shift_pressed = false
 local STATE_select_pressed = false
-local STATE_solo_toggle_permanent = false
 local STATE_record_pressed = false
 local STATE_grab_pressed = false
 local STATE_stop_pressed = false
 local STATE_dry_pressed = false
 local STATE_n_cycles_pressed = false
-local STATE_sync_toggle_permanent = false
-local STATE_auto_mute_toggle_permanent = false
 local STATE_volume_pressed = false
 local STATE_pan_pressed = false
 local STATE_composition_active = false
@@ -283,6 +285,42 @@ local recheck_global_controls = function()
     )
 end
 
+local create_global_control_detector = function(get_state, set_state)
+    local held_restore_state = nil
+    return shoop_helpers.create_click_hold_detector(
+        GLOBAL_CONTROL_HOLD_TIMEOUT_MS,
+        function()
+            set_state(not get_state())
+            recheck_global_controls()
+        end,
+        function()
+            held_restore_state = get_state()
+            set_state(not held_restore_state)
+            recheck_global_controls()
+        end,
+        function()
+            if held_restore_state ~= nil then
+                set_state(held_restore_state)
+                held_restore_state = nil
+            end
+            recheck_global_controls()
+        end
+    )
+end
+
+local solo_detector = create_global_control_detector(
+    shoop_control.get_solo,
+    shoop_control.set_solo
+)
+local sync_detector = create_global_control_detector(
+    shoop_control.get_sync_active,
+    shoop_control.set_sync_active
+)
+local auto_mute_detector = create_global_control_detector(
+    shoop_control.get_auto_mute_other_track_inputs,
+    shoop_control.set_auto_mute_other_track_inputs
+)
+
 local send_introduction = function()
     if send_fn == nil then return end
     send_fn({0xF0, 0x47, 0x7F, 0x4F, 0x60, 0x00, 0x04, 0x00, 0x01, 0x00, 0x00, 0xF7})
@@ -373,9 +411,7 @@ local handle_note_on = function(msg)
         STATE_select_pressed = true
         set_led(BUTTON_select, COLOR_green)
     elseif note == BUTTON_solo then
-        STATE_solo_toggle_permanent = STATE_shift_pressed
-        shoop_helpers.toggle_solo()
-        recheck_global_controls()
+        solo_detector.press()
     elseif note == BUTTON_record then
         STATE_record_pressed = true
         set_led(BUTTON_record, COLOR_green)
@@ -396,15 +432,9 @@ local handle_note_on = function(msg)
             set_led(BUTTON_n_cycles, COLOR_green)
         end
     elseif note == BUTTON_sync then
-        STATE_sync_toggle_permanent = STATE_shift_pressed
-        shoop_helpers.toggle_sync_active()
-        recheck_global_controls()
+        sync_detector.press()
     elseif note == BUTTON_auto_mute then
-        STATE_auto_mute_toggle_permanent = STATE_shift_pressed
-        shoop_control.set_auto_mute_other_track_inputs(
-            not shoop_control.get_auto_mute_other_track_inputs()
-        )
-        recheck_global_controls()
+        auto_mute_detector.press()
     elseif note == BUTTON_stop_all then
         set_led(BUTTON_stop_all, COLOR_green)
         if STATE_shift_pressed then
@@ -438,9 +468,7 @@ local handle_note_off = function(msg)
         STATE_select_pressed = false
         set_led(BUTTON_select, COLOR_off)
     elseif note == BUTTON_solo then
-        if not STATE_solo_toggle_permanent then shoop_helpers.toggle_solo() end
-        STATE_solo_toggle_permanent = false
-        recheck_global_controls()
+        solo_detector.release()
     elseif note == BUTTON_record then
         STATE_record_pressed = false
         set_led(BUTTON_record, COLOR_off)
@@ -460,17 +488,9 @@ local handle_note_off = function(msg)
         STATE_n_cycles_pressed = false
         set_led(BUTTON_n_cycles, COLOR_off)
     elseif note == BUTTON_sync then
-        if not STATE_sync_toggle_permanent then shoop_helpers.toggle_sync_active() end
-        STATE_sync_toggle_permanent = false
-        recheck_global_controls()
+        sync_detector.release()
     elseif note == BUTTON_auto_mute then
-        if not STATE_auto_mute_toggle_permanent then
-            shoop_control.set_auto_mute_other_track_inputs(
-                not shoop_control.get_auto_mute_other_track_inputs()
-            )
-        end
-        STATE_auto_mute_toggle_permanent = false
-        recheck_global_controls()
+        auto_mute_detector.release()
     elseif note == BUTTON_stop_all then
         set_led(BUTTON_stop_all, COLOR_off)
     elseif note == BUTTON_volume then

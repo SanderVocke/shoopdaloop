@@ -52,11 +52,11 @@ Out of scope: changing grid-pad actions, ordinary modifiers, controller mappings
 
 ### 3. MK2 v3 integration
 
-- [ ] Apply the detector to SOLO, SYNC (DRUM), and AUTO-MUTE (NOTE).
-- [ ] Remove SHIFT-based permanent-toggle behavior while preserving unrelated SHIFT actions.
-- [ ] Ensure plain DRUM and NOTE presses do not activate the controller's firmware-reserved shifted modes.
-- [ ] Update the MK2 v3 leading Markdown documentation block, including the relabeled control names.
-- [ ] Verify Lua syntax and MK2 v3 control-state tests or simulations.
+- [x] Apply the detector to SOLO, SYNC (DRUM), and AUTO-MUTE (NOTE).
+- [x] Remove SHIFT-based permanent-toggle behavior while preserving unrelated SHIFT actions.
+- [x] Ensure plain DRUM and NOTE presses do not activate the controller's firmware-reserved shifted modes.
+- [x] Update the MK2 v3 leading Markdown documentation block, including the relabeled control names.
+- [x] Verify Lua syntax and MK2 v3 control-state tests or simulations.
 
 ### 4. End-to-end validation
 

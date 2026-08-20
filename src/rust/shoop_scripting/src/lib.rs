@@ -44,6 +44,8 @@ pub use midi::{
 pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");
 pub const AKAI_APC_MINI_MK1_SCRIPT: &str =
     include_str!("../../../lua/builtins/akai_apc_mini_mk1.lua");
+pub const AKAI_APC_MINI_MK2_V3_SCRIPT: &str =
+    include_str!("../../../lua/builtins/akai_apc_mini_mk2_v3.lua");
 pub const DIALOG_EXAMPLE_SCRIPT: &str = include_str!("../../../lua/examples/dialogs.lua");
 const SANDBOX_SOURCE: &str = include_str!("../../../lua/system/sandbox.lua");
 const MAX_LOG_ENTRIES: usize = 100;
@@ -1095,6 +1097,9 @@ dialog.simple('Help', {dialog.markdown_file('content/help.md')})
             .unwrap();
         runtime
             .check_syntax("akai_apc_mini_mk1.lua", AKAI_APC_MINI_MK1_SCRIPT)
+            .unwrap();
+        runtime
+            .check_syntax("akai_apc_mini_mk2_v3.lua", AKAI_APC_MINI_MK2_V3_SCRIPT)
             .unwrap();
         runtime
             .check_syntax("dialogs.lua", DIALOG_EXAMPLE_SCRIPT)
@@ -2367,6 +2372,67 @@ end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn apc_mini_mk2_v3_global_controls_use_click_and_hold_semantics() {
+        let (midi, control) = FakeMidiService::new();
+        control.set_endpoints(vec![MidiEndpoint {
+            id: "apc-mk2-source".to_owned(),
+            name: "APC Mini mk2 Control".to_owned(),
+            direction: MidiEndpointDirection::Output,
+        }]);
+        let mut manager = ScriptManager::new_with_midi(Box::new(midi));
+        manager
+            .add(
+                "akai_apc_mini_mk2_v3.lua",
+                AKAI_APC_MINI_MK2_V3_SCRIPT,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_midi(std::time::Duration::from_millis(1));
+
+        for (note, expected) in [
+            (113, ControlOperation::SetSolo(true)),
+            (117, ControlOperation::SetSyncActive(false)),
+            (118, ControlOperation::SetAutoMuteOtherTrackInputs(true)),
+        ] {
+            control.push_input("apc-mk2-source", vec![0x90, note, 127]);
+            manager.advance_midi(std::time::Duration::from_millis(1));
+            assert!(manager.take_control_operations().is_empty());
+            control.push_input("apc-mk2-source", vec![0x80, note, 0]);
+            manager.advance_midi(std::time::Duration::from_millis(1));
+            assert_eq!(manager.take_control_operations(), [expected]);
+        }
+
+        for (note, held, restored) in [
+            (
+                113,
+                ControlOperation::SetSolo(false),
+                ControlOperation::SetSolo(true),
+            ),
+            (
+                117,
+                ControlOperation::SetSyncActive(true),
+                ControlOperation::SetSyncActive(false),
+            ),
+            (
+                118,
+                ControlOperation::SetAutoMuteOtherTrackInputs(false),
+                ControlOperation::SetAutoMuteOtherTrackInputs(true),
+            ),
+        ] {
+            control.push_input("apc-mk2-source", vec![0x90, note, 127]);
+            manager.advance_midi(std::time::Duration::from_millis(1));
+            manager.advance_timers(std::time::Duration::from_millis(250));
+            assert_eq!(manager.take_control_operations(), [held]);
+            manager.advance_timers(std::time::Duration::from_millis(250));
+            assert!(manager.take_control_operations().is_empty());
+            control.push_input("apc-mk2-source", vec![0x80, note, 0]);
+            manager.advance_midi(std::time::Duration::from_millis(1));
+            assert_eq!(manager.take_control_operations(), [restored]);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn timers_are_due_ordered_non_reentrant_capped_and_cancelled_on_stop() {
         let mut manager = ScriptManager::new();
         let id = manager
@@ -2878,6 +2944,9 @@ end, function() end, 10)
         let apc = extract_documentation(AKAI_APC_MINI_MK1_SCRIPT).unwrap();
         assert!(apc.starts_with("# Akai APC Mini MK1 controls\n"));
         assert!(apc.contains("| Device label | ShoopDaLoop function |"));
+        let apc_mk2 = extract_documentation(AKAI_APC_MINI_MK2_V3_SCRIPT).unwrap();
+        assert!(apc_mk2.starts_with("# Akai APC Mini MK2 controls\n"));
+        assert!(apc_mk2.contains("Use **SYNC (DRUM)** and **AUTO-MUTE (NOTE)** without **SHIFT**"));
         let example = extract_documentation(DIALOG_EXAMPLE_SCRIPT).unwrap();
         assert!(example.starts_with("# Script dialog example\n"));
     }
