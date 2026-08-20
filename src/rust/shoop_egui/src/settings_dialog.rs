@@ -1302,7 +1302,11 @@ impl SettingsDialog {
                             .and_then(|paths| paths.get(&script.id))
                             .map(String::as_str)
                             .unwrap_or(&script.name);
-                        crate::script_markdown_viewer(script_path).show(
+                        crate::script_markdown_viewer(
+                            script_path,
+                            script.resource_base_uri.as_deref(),
+                        )
+                        .show(
                             ui,
                             &mut self.markdown_cache,
                             script
@@ -1937,10 +1941,12 @@ mod tests {
             scripts: Arc::from([crate::ScriptState {
                 id: script_id,
                 name: "dialogs.lua".to_owned(),
+                identity: None,
                 kind: ScriptKind::Example,
                 enabled: false,
                 lifecycle: ScriptLifecycle::Inactive,
                 documentation: Some("# Dialog example".to_owned()),
+                resource_base_uri: None,
                 latest_error: None,
                 activity: Default::default(),
                 midi: Default::default(),
@@ -2013,12 +2019,14 @@ mod tests {
             scripts: Arc::from([crate::ScriptState {
                 id: script_id,
                 name: "documented.lua".to_owned(),
+                identity: None,
                 kind: ScriptKind::User,
                 enabled: true,
                 lifecycle: ScriptLifecycle::Listening,
                 documentation: Some(
                     "# Guide\n\n| Key | Action |\n| --- | --- |\n| Space | Play |\n".to_owned(),
                 ),
+                resource_base_uri: None,
                 latest_error: None,
                 activity: Default::default(),
                 midi: Default::default(),
@@ -2054,10 +2062,12 @@ mod tests {
             scripts: Arc::from([crate::ScriptState {
                 id: script_id,
                 name: "future.lua".to_owned(),
+                identity: None,
                 kind: ScriptKind::Ephemeral,
                 enabled: true,
                 lifecycle: ScriptLifecycle::Incompatible,
                 documentation: None,
+                resource_base_uri: None,
                 latest_error: Some("script requests 2.0, host supports 1.2".to_owned()),
                 activity: Default::default(),
                 midi: Default::default(),
@@ -2142,10 +2152,12 @@ mod tests {
                 crate::ScriptState {
                     id: script_id,
                     name: "controller.lua".to_owned(),
+                    identity: None,
                     kind: ScriptKind::User,
                     enabled: true,
                     lifecycle: crate::ScriptLifecycle::Listening,
                     documentation: Some("Controller documentation".to_owned()),
+                    resource_base_uri: None,
                     latest_error: None,
                     activity: Default::default(),
                     midi: Default::default(),
@@ -2154,10 +2166,12 @@ mod tests {
                 crate::ScriptState {
                     id: second_script_id,
                     name: "second.lua".to_owned(),
+                    identity: None,
                     kind: ScriptKind::User,
                     enabled: false,
                     lifecycle: crate::ScriptLifecycle::Inactive,
                     documentation: None,
+                    resource_base_uri: None,
                     latest_error: None,
                     activity: Default::default(),
                     midi: Default::default(),

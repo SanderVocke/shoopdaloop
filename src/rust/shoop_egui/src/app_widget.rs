@@ -2161,10 +2161,12 @@ mod tests {
                 scripts: Arc::from([crate::ScriptState {
                     id: crate::ScriptId::from_raw(1),
                     name: "controller.lua".to_owned(),
+                    identity: None,
                     kind: crate::ScriptKind::Bundled,
                     enabled: true,
                     lifecycle: crate::ScriptLifecycle::Listening,
                     documentation: None,
+                    resource_base_uri: None,
                     latest_error: None,
                     activity: Default::default(),
                     midi: Default::default(),
@@ -2689,10 +2691,12 @@ mod tests {
                 scripts: Arc::from([crate::ScriptState {
                     id: script_id,
                     name: "controller.lua".to_owned(),
+                    identity: None,
                     kind: crate::ScriptKind::User,
                     enabled: true,
                     lifecycle: crate::ScriptLifecycle::Error,
                     documentation: Some("Controller help".to_owned()),
+                    resource_base_uri: None,
                     latest_error: Some("bad callback".to_owned()),
                     activity: crate::ScriptActivityDiagnostics {
                         loop_callbacks: 1,

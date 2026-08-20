@@ -31,6 +31,7 @@ pub use control::{
     SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
 use dialog::{install_dialog_api, DialogIdSource, DialogRegistry};
+pub use file::ScriptResourceProvider;
 use file::{install_file_api, ScriptFileReader};
 use key_constants::{KEY_CONSTANTS, MODIFIER_CONSTANTS};
 #[cfg(not(target_arch = "wasm32"))]
@@ -40,6 +41,9 @@ pub use midi::{
     MidiEndpoint, MidiEndpointDirection, MidiEndpointSnapshot, NullMidiService,
     MAX_MIDI_MESSAGE_BYTES, MIDI_QUEUE_CAPACITY,
 };
+use shoop_script_resources::unregister_resource_scope;
+pub use shoop_script_resources::{ResourceOrigin, ScriptResourceBundle};
+use std::sync::Arc;
 
 pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");
 pub const AKAI_APC_MINI_MK1_SCRIPT: &str =
@@ -208,7 +212,24 @@ impl LuaRuntime {
     }
 
     pub fn execute(&self, name: &str, source: &str) -> anyhow::Result<()> {
-        self.files.set_script_path(name);
+        let provider = std::path::Path::new(name)
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .map(|path| ScriptResourceProvider::Filesystem(path.to_owned()))
+            .unwrap_or_default();
+        self.execute_with_resources(name, source, provider, None)
+    }
+
+    pub fn execute_with_resources(
+        &self,
+        name: &str,
+        source: &str,
+        provider: ScriptResourceProvider,
+        origin: Option<ResourceOrigin>,
+    ) -> anyhow::Result<()> {
+        self.files
+            .configure(provider, origin)
+            .map_err(|error| anyhow!("could not configure resources for {name}: {error}"))?;
         self.run_sandboxed
             .call::<_, ()>(source)
             .map_err(|error| anyhow!("could not execute Lua source {name}: {error}"))?;
@@ -392,8 +413,11 @@ fn install_require(
 struct ScriptRecord {
     id: ScriptId,
     name: String,
+    identity: Option<String>,
     source: String,
     source_path: Option<String>,
+    resource_bundle: Option<Arc<ScriptResourceBundle>>,
+    resource_generation: u64,
     kind: ScriptKind,
     enabled: bool,
     lifecycle: ScriptLifecycle,
@@ -553,6 +577,18 @@ impl ScriptManager {
         enabled: bool,
         source_path: Option<String>,
     ) -> anyhow::Result<ScriptId> {
+        self.add_with_resources(name, source, kind, enabled, source_path, None)
+    }
+
+    pub fn add_with_resources(
+        &mut self,
+        name: impl Into<String>,
+        source: impl Into<String>,
+        kind: ScriptKind,
+        enabled: bool,
+        source_path: Option<String>,
+        resource_bundle: Option<Arc<ScriptResourceBundle>>,
+    ) -> anyhow::Result<ScriptId> {
         let name = name.into();
         let source = source.into();
         LuaRuntime::new()?.check_syntax(&name, &source)?;
@@ -564,8 +600,11 @@ impl ScriptManager {
                 id,
                 documentation: extract_documentation(&source),
                 name,
+                identity: None,
                 source,
                 source_path,
+                resource_bundle,
+                resource_generation: 0,
                 kind,
                 enabled,
                 lifecycle: ScriptLifecycle::Inactive,
@@ -578,6 +617,36 @@ impl ScriptManager {
         if enabled {
             let _ = self.start(id);
         }
+        Ok(id)
+    }
+
+    pub fn add_builtin(
+        &mut self,
+        identity: impl Into<String>,
+        source: impl Into<String>,
+        enabled: bool,
+        source_path: Option<String>,
+        resource_bundle: Option<Arc<ScriptResourceBundle>>,
+    ) -> anyhow::Result<ScriptId> {
+        let identity = identity.into();
+        let normalized = shoop_script_resources::NormalizedRelativePath::parse(&identity)?;
+        if self
+            .scripts
+            .values()
+            .any(|record| record.identity.as_deref() == Some(normalized.as_str()))
+        {
+            bail!("duplicate built-in script identity {normalized}");
+        }
+        let name = normalized.file_name().to_owned();
+        let id = self.add_with_resources(
+            name,
+            source,
+            ScriptKind::Bundled,
+            enabled,
+            source_path,
+            resource_bundle,
+        )?;
+        self.scripts.get_mut(&id).unwrap().identity = Some(normalized.to_string());
         Ok(id)
     }
 
@@ -748,13 +817,32 @@ impl ScriptManager {
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
         }
+        let scope = format!("script-{}", record.id.raw());
+        unregister_resource_scope(&scope);
+        record.resource_generation = record.resource_generation.saturating_add(1).max(1);
         record.lifecycle = ScriptLifecycle::Running;
         record.latest_error = None;
         record.archived_logs.clear();
         let runtime =
             LuaRuntime::new_with_services(Rc::clone(&self.control), Rc::clone(&self.dialog_ids))?;
         let execution_name = record.source_path.as_deref().unwrap_or(&record.name);
-        match runtime.execute(execution_name, &record.source) {
+        let provider = if let Some(bundle) = &record.resource_bundle {
+            ScriptResourceProvider::Bundle(Arc::clone(bundle))
+        } else {
+            record
+                .source_path
+                .as_deref()
+                .and_then(|path| std::path::Path::new(path).parent())
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| ScriptResourceProvider::Filesystem(path.to_owned()))
+                .unwrap_or_default()
+        };
+        let origin =
+            (!matches!(provider, ScriptResourceProvider::None)).then_some(ResourceOrigin {
+                scope,
+                generation: record.resource_generation,
+            });
+        match runtime.execute_with_resources(execution_name, &record.source, provider, origin) {
             Ok(()) => {
                 if runtime.is_listening() {
                     record.lifecycle = ScriptLifecycle::Listening;
@@ -780,6 +868,7 @@ impl ScriptManager {
 
     pub fn stop(&mut self, id: ScriptId) -> anyhow::Result<()> {
         let record = self.scripts.get_mut(&id).ok_or_else(|| stale_script(id))?;
+        unregister_resource_scope(&format!("script-{}", record.id.raw()));
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
             record.archived_logs = runtime.logs();
@@ -858,10 +947,22 @@ impl ScriptManager {
                 ScriptState {
                     id: record.id,
                     name: record.name.clone(),
+                    identity: record.identity.clone().map(Arc::from),
                     kind: record.kind,
                     enabled: record.enabled,
                     lifecycle: record.lifecycle,
                     documentation: record.documentation.clone(),
+                    resource_base_uri: (record.resource_generation > 0
+                        && (record.resource_bundle.is_some() || record.source_path.is_some()))
+                    .then(|| {
+                        Arc::from(
+                            ResourceOrigin {
+                                scope: format!("script-{}", record.id.raw()),
+                                generation: record.resource_generation,
+                            }
+                            .base_uri(),
+                        )
+                    }),
                     latest_error: record.latest_error.clone(),
                     activity: ApiScriptActivityDiagnostics {
                         loop_callbacks: activity.loop_callbacks,
@@ -1259,7 +1360,7 @@ d.open('Simple')
             manager.take_control_operations(),
             [ControlOperation::SetSolo(true)]
         );
-        let ScriptDialogElement::Markdown { text, links } = &simple.elements[3] else {
+        let ScriptDialogElement::Markdown { text, links, .. } = &simple.elements[3] else {
             panic!("expected markdown");
         };
         assert_eq!(text, "Choose [Clear solo](clear-solo).");

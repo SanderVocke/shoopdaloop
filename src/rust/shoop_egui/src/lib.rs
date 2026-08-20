@@ -19,6 +19,7 @@ mod midi_sequence_widget;
 mod optimistic_value;
 mod piano_pane;
 mod script_dialogs;
+mod script_resource_loader;
 mod settings_dialog;
 mod tiny_synth_fx_editor;
 mod track_controls;
@@ -59,15 +60,25 @@ pub use waveform_widget::WaveformWidget;
 
 pub fn initialize(context: &egui::Context) {
     fonts::initialize(context);
+    let loader = script_resource_loader::ScriptResourceLoader;
+    if !context.is_loader_installed(egui::load::BytesLoader::id(&loader)) {
+        context.add_bytes_loader(std::sync::Arc::new(loader));
+    }
     context.all_styles_mut(|style| {
         style.visuals.widgets.hovered.bg_fill = colors::HOVER_BACKGROUND;
         style.visuals.widgets.hovered.weak_bg_fill = colors::HOVER_BACKGROUND;
     });
 }
 
-fn script_markdown_viewer(script_path: &str) -> egui_commonmark::CommonMarkViewer<'static> {
-    egui_commonmark::CommonMarkViewer::new()
-        .default_implicit_uri_scheme(script_markdown_base_uri(script_path))
+fn script_markdown_viewer(
+    script_path: &str,
+    resource_base_uri: Option<&str>,
+) -> egui_commonmark::CommonMarkViewer<'static> {
+    egui_commonmark::CommonMarkViewer::new().default_implicit_uri_scheme(
+        resource_base_uri
+            .map(str::to_owned)
+            .unwrap_or_else(|| script_markdown_base_uri(script_path)),
+    )
 }
 
 fn script_markdown_base_uri(script_path: &str) -> String {

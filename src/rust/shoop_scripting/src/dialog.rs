@@ -122,6 +122,7 @@ pub fn install_dialog_api(
         )?;
 
         let versions_ = Rc::clone(&versions);
+        let files_ = Rc::clone(&files);
         module.set(
             "markdown",
             lua.create_function(move |lua, (text, links): (String, Option<Table>)| {
@@ -130,6 +131,7 @@ pub fn install_dialog_api(
                 element.set(ELEMENT_KIND, "markdown")?;
                 element.set("text", text)?;
                 element.set("links", links)?;
+                element.set("resource_base_uri", files_.base_uri(None)?)?;
                 Ok(element)
             })?,
         )?;
@@ -140,10 +142,12 @@ pub fn install_dialog_api(
             lua.create_function(move |lua, (path, links): (String, Option<Table>)| {
                 versions_.require_announced()?;
                 let text = files.read_utf8(&path)?;
+                let resource_base_uri = files.base_uri(Some(&path))?;
                 let element = lua.create_table()?;
                 element.set(ELEMENT_KIND, "markdown")?;
                 element.set("text", text)?;
                 element.set("links", links)?;
+                element.set("resource_base_uri", resource_base_uri)?;
                 Ok(element)
             })?,
         )?;
@@ -346,6 +350,9 @@ fn parse_content(
                 parsed.push(ScriptDialogElement::Markdown {
                     text,
                     links: Arc::from(links),
+                    resource_base_uri: element
+                        .get::<_, Option<String>>("resource_base_uri")?
+                        .map(Arc::from),
                 });
             }
             "button" => {

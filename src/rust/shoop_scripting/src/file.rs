@@ -1,21 +1,42 @@
 use std::cell::RefCell;
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use omnilua::{Function, Lua, Table};
+use shoop_script_resources::{
+    register_resource_provider, NormalizedRelativePath, RegisteredResourceProvider, ResourceOrigin,
+    ScriptResourceBundle,
+};
 
 use crate::api_version::ApiVersionState;
 use crate::{install_compatibility_value, runtime_error};
 
+#[derive(Clone, Debug, Default)]
+pub enum ScriptResourceProvider {
+    #[default]
+    None,
+    Filesystem(PathBuf),
+    Bundle(Arc<ScriptResourceBundle>),
+}
+
+#[derive(Default)]
+struct ReaderState {
+    provider: ScriptResourceProvider,
+    origin: Option<ResourceOrigin>,
+}
+
 #[derive(Default)]
 pub struct ScriptFileReader {
-    script_directory: RefCell<Option<PathBuf>>,
+    state: RefCell<ReaderState>,
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    use shoop_script_resources::{ResourceKind, ResourceLimits, ScriptResource};
+    use std::collections::BTreeMap;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn fixture() -> PathBuf {
@@ -75,51 +96,159 @@ mod tests {
 
         std::fs::remove_dir_all(root).unwrap();
     }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bundle_and_filesystem_providers_have_matching_reads() {
+        let root = fixture();
+        let filesystem = ScriptFileReader::default();
+        filesystem.set_script_path(root.join("script.lua").to_str().unwrap());
+        let path = NormalizedRelativePath::parse("content/data.bin").unwrap();
+        let bundle = ScriptResourceBundle::new(
+            NormalizedRelativePath::parse("script.lua").unwrap(),
+            BTreeMap::from([
+                (
+                    NormalizedRelativePath::parse("script.lua").unwrap(),
+                    ScriptResource::new(ResourceKind::Lua, Arc::<[u8]>::from(&b""[..])),
+                ),
+                (
+                    path,
+                    ScriptResource::new(
+                        ResourceKind::Image,
+                        Arc::<[u8]>::from(&[0_u8, 255, 42][..]),
+                    ),
+                ),
+            ]),
+            ResourceLimits::default(),
+        );
+        assert!(bundle.is_err());
+
+        std::fs::write(root.join("content/data.png"), [0, 255, 42]).unwrap();
+        let bundle = Arc::new(
+            ScriptResourceBundle::new(
+                NormalizedRelativePath::parse("script.lua").unwrap(),
+                BTreeMap::from([
+                    (
+                        NormalizedRelativePath::parse("script.lua").unwrap(),
+                        ScriptResource::new(ResourceKind::Lua, Arc::<[u8]>::from(&b""[..])),
+                    ),
+                    (
+                        NormalizedRelativePath::parse("content/data.png").unwrap(),
+                        ScriptResource::new(
+                            ResourceKind::Image,
+                            Arc::<[u8]>::from(&[0_u8, 255, 42][..]),
+                        ),
+                    ),
+                ]),
+                ResourceLimits::default(),
+            )
+            .unwrap(),
+        );
+        let memory = ScriptFileReader::default();
+        memory
+            .configure(ScriptResourceProvider::Bundle(bundle), None)
+            .unwrap();
+        assert_eq!(
+            filesystem.read("content/data.png").unwrap(),
+            memory.read("content/data.png").unwrap()
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 impl ScriptFileReader {
+    #[cfg(test)]
     pub fn set_script_path(&self, script_path: &str) {
-        let directory = Path::new(script_path)
+        let provider = std::path::Path::new(script_path)
             .parent()
             .filter(|path| !path.as_os_str().is_empty())
-            .map(Path::to_owned);
-        *self.script_directory.borrow_mut() = directory;
+            .map(|path| ScriptResourceProvider::Filesystem(path.to_owned()))
+            .unwrap_or_default();
+        let _ = self.configure(provider, None);
+    }
+
+    pub fn configure(
+        &self,
+        provider: ScriptResourceProvider,
+        origin: Option<ResourceOrigin>,
+    ) -> Result<(), String> {
+        let provider = match provider {
+            ScriptResourceProvider::Filesystem(root) => {
+                let root = root
+                    .canonicalize()
+                    .map_err(|error| format!("could not resolve script directory: {error}"))?;
+                ScriptResourceProvider::Filesystem(root)
+            }
+            provider => provider,
+        };
+        if let Some(origin) = &origin {
+            let registered = match &provider {
+                ScriptResourceProvider::Filesystem(root) => {
+                    RegisteredResourceProvider::Filesystem(root.clone())
+                }
+                ScriptResourceProvider::Bundle(bundle) => {
+                    RegisteredResourceProvider::Bundle(Arc::clone(bundle))
+                }
+                ScriptResourceProvider::None => {
+                    return Err("cannot register an empty script resource provider".to_owned());
+                }
+            };
+            register_resource_provider(origin, registered)?;
+        }
+        *self.state.borrow_mut() = ReaderState { provider, origin };
+        Ok(())
     }
 
     fn read(&self, relative_path: &str) -> omnilua::Result<Vec<u8>> {
-        let relative_path = Path::new(relative_path);
-        if relative_path.as_os_str().is_empty()
-            || relative_path
-                .components()
-                .any(|component| !matches!(component, Component::Normal(_)))
-        {
-            return Err(runtime_error(
-                "script file path must name a deeper relative location",
-            ));
+        let relative_path = NormalizedRelativePath::parse(relative_path)
+            .map_err(|_| runtime_error("script file path must name a deeper relative location"))?;
+        match &self.state.borrow().provider {
+            ScriptResourceProvider::None => Err(runtime_error(
+                "script file loading requires an attached resource provider",
+            )),
+            ScriptResourceProvider::Filesystem(root) => {
+                let resolved =
+                    root.join(relative_path.as_str())
+                        .canonicalize()
+                        .map_err(|error| {
+                            runtime_error(format!("could not resolve script file: {error}"))
+                        })?;
+                if !resolved.starts_with(root) || !resolved.is_file() {
+                    return Err(runtime_error(
+                        "script file path must resolve below the script directory",
+                    ));
+                }
+                std::fs::read(&resolved)
+                    .map_err(|error| runtime_error(format!("could not read script file: {error}")))
+            }
+            ScriptResourceProvider::Bundle(bundle) => bundle
+                .get(&relative_path)
+                .map(|resource| resource.bytes.to_vec())
+                .ok_or_else(|| {
+                    runtime_error(format!("undeclared script resource {relative_path:?}"))
+                }),
         }
-        let script_directory = self.script_directory.borrow();
-        let script_directory = script_directory.as_ref().ok_or_else(|| {
-            runtime_error("script file loading requires a script with a filesystem location")
-        })?;
-        let root = script_directory.canonicalize().map_err(|error| {
-            runtime_error(format!("could not resolve script directory: {error}"))
-        })?;
-        let path = root.join(relative_path);
-        let resolved = path
-            .canonicalize()
-            .map_err(|error| runtime_error(format!("could not resolve script file: {error}")))?;
-        if !resolved.starts_with(&root) || resolved == root {
-            return Err(runtime_error(
-                "script file path must resolve below the script directory",
-            ));
-        }
-        std::fs::read(&resolved)
-            .map_err(|error| runtime_error(format!("could not read script file: {error}")))
     }
 
     pub fn read_utf8(&self, relative_path: &str) -> omnilua::Result<String> {
         String::from_utf8(self.read(relative_path)?)
             .map_err(|error| runtime_error(format!("script file is not UTF-8: {error}")))
+    }
+
+    pub fn base_uri(&self, relative_path: Option<&str>) -> omnilua::Result<Option<String>> {
+        let state = self.state.borrow();
+        let Some(origin) = &state.origin else {
+            return Ok(None);
+        };
+        match relative_path {
+            Some(path) => {
+                let path = NormalizedRelativePath::parse(path).map_err(|_| {
+                    runtime_error("script file path must name a deeper relative location")
+                })?;
+                Ok(Some(origin.base_uri_below(&path)))
+            }
+            None => Ok(Some(origin.base_uri())),
+        }
     }
 }
 

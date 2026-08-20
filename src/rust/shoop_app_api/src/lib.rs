@@ -1180,6 +1180,7 @@ pub enum ScriptDialogElement {
     Markdown {
         text: String,
         links: Arc<[ScriptDialogMarkdownLink]>,
+        resource_base_uri: Option<Arc<str>>,
     },
     Button {
         id: Option<ScriptDialogButtonId>,
@@ -1212,10 +1213,12 @@ pub struct ScriptDialogState {
 pub struct ScriptState {
     pub id: ScriptId,
     pub name: String,
+    pub identity: Option<Arc<str>>,
     pub kind: ScriptKind,
     pub enabled: bool,
     pub lifecycle: ScriptLifecycle,
     pub documentation: Option<String>,
+    pub resource_base_uri: Option<Arc<str>>,
     pub latest_error: Option<String>,
     pub activity: ScriptActivityDiagnostics,
     pub midi: ScriptMidiDiagnostics,
@@ -2311,6 +2314,7 @@ mod tests {
                             destination: "more".to_owned(),
                             callback_id: button_id,
                         }]),
+                        resource_base_uri: None,
                     },
                     ScriptDialogElement::Button {
                         id: Some(button_id),
@@ -2343,10 +2347,12 @@ mod tests {
         let state = ScriptState {
             id: script_id,
             name: "controller.lua".to_owned(),
+            identity: None,
             kind: ScriptKind::User,
             enabled: true,
             lifecycle: ScriptLifecycle::Listening,
             documentation: Some("Controller help\n".to_owned()),
+            resource_base_uri: None,
             latest_error: None,
             activity: ScriptActivityDiagnostics::default(),
             midi: ScriptMidiDiagnostics::default(),
