@@ -1642,6 +1642,7 @@ pub enum AppIntent {
     },
     ReconcileCatalogScripts {
         scripts: Arc<[CatalogScriptSource]>,
+        preserve_identities: Arc<[String]>,
     },
     SetScriptEnabled {
         script_id: ScriptId,

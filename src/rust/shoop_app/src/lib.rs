@@ -1353,9 +1353,10 @@ impl ApplicationModel {
                 source,
                 source_path,
             } => self.add_ephemeral_script(backend, name, source, source_path),
-            AppIntent::ReconcileCatalogScripts { scripts } => {
-                self.reconcile_catalog_scripts(backend, &scripts)
-            }
+            AppIntent::ReconcileCatalogScripts {
+                scripts,
+                preserve_identities,
+            } => self.reconcile_catalog_scripts(backend, &scripts, &preserve_identities),
             AppIntent::SetScriptEnabled { script_id, enabled } => {
                 self.set_script_enabled(backend, script_id, enabled)
             }
@@ -1614,11 +1615,12 @@ impl ApplicationModel {
         &mut self,
         backend: &mut dyn Backend,
         scripts: &[shoop_app_api::CatalogScriptSource],
+        preserve_identities: &[String],
     ) -> Result<(), String> {
         self.prepare_script_invocation();
         let result = self
             .script_manager
-            .reconcile_catalog_scripts(scripts)
+            .reconcile_catalog_scripts(scripts, preserve_identities)
             .map_err(|error| error.to_string())
             .and_then(|()| self.apply_script_operations(backend));
         self.refresh_scripting_view();

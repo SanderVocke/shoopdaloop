@@ -1088,7 +1088,7 @@ const APC_MINI_SCRIPT_FILENAME: &str = "akai_apc_mini_mk1.lua";
 fn configured_catalog_scripts(
     settings: &shoop_settings::SettingsSnapshot,
     generation: u64,
-) -> Result<(Vec<StartupScript>, Vec<String>), String> {
+) -> Result<(Vec<StartupScript>, Vec<String>, Vec<String>, bool), String> {
     let root = settings
         .get(shoop_egui::BUILTINS_LOCATION)
         .map_err(|error| error.to_string())?;
@@ -1106,6 +1106,18 @@ fn configured_catalog_scripts(
     )
     .map_err(|error| error.to_string())?;
     let syntax = shoop_scripting::LuaRuntime::new().map_err(|error| error.to_string())?;
+    let deletions_safe = catalog.deletions_safe;
+    let mut preserve_identities = catalog
+        .diagnostics
+        .iter()
+        .filter_map(|diagnostic| diagnostic.path.as_deref())
+        .filter_map(|path| shoop_script_resources::NormalizedRelativePath::parse(path).ok())
+        .filter(|path| {
+            shoop_script_resources::classify_resource(path)
+                == Some(shoop_script_resources::ResourceKind::Lua)
+        })
+        .map(|path| path.to_string())
+        .collect::<Vec<_>>();
     let mut warnings = catalog
         .diagnostics
         .into_iter()
@@ -1120,6 +1132,7 @@ fn configured_catalog_scripts(
         let name = entry.identity.file_name().to_owned();
         if let Err(error) = syntax.check_syntax(&name, &entry.source) {
             warnings.push(format!("{identity}: {error}"));
+            preserve_identities.push(identity);
             continue;
         }
         let kind = if identity.starts_with("examples/") {
@@ -1143,18 +1156,28 @@ fn configured_catalog_scripts(
             enabled,
         });
     }
-    Ok((scripts, warnings))
+    let valid = scripts
+        .iter()
+        .filter_map(|script| script.identity.as_deref())
+        .map(str::to_lowercase)
+        .collect::<std::collections::BTreeSet<_>>();
+    preserve_identities.retain(|identity| !valid.contains(&identity.to_lowercase()));
+    preserve_identities.sort();
+    preserve_identities.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    Ok((scripts, warnings, preserve_identities, deletions_safe))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn configured_startup_scripts(
     settings: &shoop_settings::SettingsSnapshot,
 ) -> anyhow::Result<(Vec<StartupScript>, Vec<String>, Vec<String>)> {
-    let (mut scripts, mut warnings) = match configured_catalog_scripts(settings, 1) {
+    let (mut scripts, mut warnings, _, _) = match configured_catalog_scripts(settings, 1) {
         Ok(result) => result,
         Err(error) => (
             Vec::new(),
             vec![format!("could not scan built-in scripts: {error}")],
+            Vec::new(),
+            false,
         ),
     };
     let mut identities = scripts
@@ -1243,7 +1266,10 @@ struct Runtime {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-type CatalogScanCompletion = (u64, Result<(Vec<StartupScript>, Vec<String>), String>);
+type CatalogScanCompletion = (
+    u64,
+    Result<(Vec<StartupScript>, Vec<String>, Vec<String>, bool), String>,
+);
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
@@ -1320,16 +1346,24 @@ impl Runtime {
                 continue;
             }
             match result {
-                Ok((scripts, warnings)) => {
+                Ok((scripts, warnings, preserve_identities, deletions_safe)) => {
                     for warning in warnings {
                         let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
                             task_id: None,
                             message: warning,
                         });
                     }
+                    if !deletions_safe {
+                        let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
+                            task_id: None,
+                            message: "built-in scan could not enumerate the complete tree; the previous catalog was retained".to_owned(),
+                        });
+                        continue;
+                    }
                     let desired = scripts
                         .iter()
                         .filter_map(|script| script.identity.clone())
+                        .chain(preserve_identities.iter().cloned())
                         .collect::<std::collections::BTreeSet<_>>();
                     let descriptors = scripts
                         .iter()
@@ -1351,6 +1385,7 @@ impl Runtime {
                         .handle
                         .dispatch(AppIntent::ReconcileCatalogScripts {
                             scripts: descriptors.into(),
+                            preserve_identities: preserve_identities.into(),
                         })
                         .is_ok()
                     {
@@ -1564,7 +1599,7 @@ struct BrowserBuiltinFile {
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn fetch_browser_bytes(url: &str) -> Result<Vec<u8>, String> {
+async fn fetch_browser_bytes(url: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
     use wasm_bindgen::JsCast as _;
     use wasm_bindgen_futures::JsFuture;
 
@@ -1580,28 +1615,62 @@ async fn fetch_browser_bytes(url: &str) -> Result<Vec<u8>, String> {
             response.status()
         ));
     }
-    let buffer = JsFuture::from(
-        response
-            .array_buffer()
-            .map_err(|error| format!("could not read {url}: {error:?}"))?,
-    )
-    .await
-    .map_err(|error| format!("could not read {url}: {error:?}"))?;
-    Ok(js_sys::Uint8Array::new(&buffer).to_vec())
+    let stream = response
+        .body()
+        .ok_or_else(|| format!("fetch for {url} returned no body"))?;
+    let reader = stream
+        .get_reader()
+        .dyn_into::<web_sys::ReadableStreamDefaultReader>()
+        .map_err(|_| format!("could not create a bounded reader for {url}"))?;
+    let mut bytes = Vec::new();
+    loop {
+        let result = JsFuture::from(reader.read())
+            .await
+            .map_err(|error| format!("could not read {url}: {error:?}"))?
+            .dyn_into::<web_sys::ReadableStreamReadResult>()
+            .map_err(|_| format!("fetch for {url} returned an invalid stream result"))?;
+        if result.get_done().unwrap_or(false) {
+            break;
+        }
+        let chunk = js_sys::Uint8Array::new(&result.get_value());
+        let next = (bytes.len() as u64)
+            .checked_add(chunk.length() as u64)
+            .ok_or_else(|| format!("fetch for {url} exceeded its byte limit"))?;
+        if next > max_bytes {
+            return Err(format!(
+                "fetch for {url} is {next} bytes; limit is {max_bytes}"
+            ));
+        }
+        let start = bytes.len();
+        bytes.resize(next as usize, 0);
+        chunk.copy_to(&mut bytes[start..]);
+    }
+    Ok(bytes)
 }
 
 #[cfg(target_arch = "wasm32")]
 async fn fetch_browser_catalog(
     root: String,
     enabled: std::collections::BTreeMap<String, bool>,
-) -> Result<(Vec<shoop_egui::CatalogScriptSource>, Vec<String>), String> {
+) -> Result<
+    (
+        Vec<shoop_egui::CatalogScriptSource>,
+        Vec<String>,
+        Vec<String>,
+    ),
+    String,
+> {
     use shoop_script_resources::{
         classify_resource, NormalizedRelativePath, ResourceKind, ResourceLimits, ScriptResource,
         ScriptResourceBundle,
     };
 
     let root = root.trim_end_matches('/');
-    let catalog_bytes = fetch_browser_bytes(&format!("{root}/catalog.json")).await?;
+    let catalog_bytes = fetch_browser_bytes(
+        &format!("{root}/catalog.json"),
+        shoop_script_resources::ResourceLimits::default().max_file_bytes,
+    )
+    .await?;
     let catalog: BrowserBuiltinCatalog = serde_json::from_slice(&catalog_bytes)
         .map_err(|error| format!("built-ins catalog is malformed: {error}"))?;
     if catalog.format != "shoop-builtins-catalog" || catalog.version != 1 {
@@ -1632,7 +1701,8 @@ async fn fetch_browser_catalog(
     }
     let mut fetched = std::collections::BTreeMap::new();
     for (path, kind, declared_bytes, declared_hash) in declarations {
-        let bytes = fetch_browser_bytes(&format!("{root}/{}", path.as_str())).await?;
+        let bytes =
+            fetch_browser_bytes(&format!("{root}/{}", path.as_str()), declared_bytes).await?;
         if bytes.len() as u64 != declared_bytes
             || shoop_script_resources::sha256(&bytes) != declared_hash
         {
@@ -1647,6 +1717,7 @@ async fn fetch_browser_catalog(
     let syntax = shoop_scripting::LuaRuntime::new().map_err(|error| error.to_string())?;
     let mut scripts = Vec::new();
     let mut warnings = Vec::new();
+    let mut preserve_identities = Vec::new();
     for (identity, source_resource) in fetched.iter().filter(|(path, resource)| {
         classify_resource(path) == Some(ResourceKind::Lua) && resource.kind == ResourceKind::Lua
     }) {
@@ -1654,11 +1725,13 @@ async fn fetch_browser_catalog(
             Ok(source) => source,
             Err(error) => {
                 warnings.push(format!("{identity}: script is not UTF-8: {error}"));
+                preserve_identities.push(identity.to_string());
                 continue;
             }
         };
         if let Err(error) = syntax.check_syntax(identity.file_name(), source) {
             warnings.push(format!("{identity}: {error}"));
+            preserve_identities.push(identity.to_string());
             continue;
         }
         let prefix = identity
@@ -1699,7 +1772,7 @@ async fn fetch_browser_catalog(
                 && enabled.get(&identity_text).copied().unwrap_or(false),
         });
     }
-    Ok((scripts, warnings))
+    Ok((scripts, warnings, preserve_identities))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1722,7 +1795,14 @@ struct Runtime {
 #[cfg(target_arch = "wasm32")]
 type BrowserCatalogCompletion = (
     u64,
-    Result<(Vec<shoop_egui::CatalogScriptSource>, Vec<String>), String>,
+    Result<
+        (
+            Vec<shoop_egui::CatalogScriptSource>,
+            Vec<String>,
+            Vec<String>,
+        ),
+        String,
+    >,
 );
 
 #[cfg(target_arch = "wasm32")]
@@ -1775,7 +1855,7 @@ impl Runtime {
                 continue;
             }
             match result {
-                Ok((scripts, warnings)) => {
+                Ok((scripts, warnings, preserve_identities)) => {
                     for warning in warnings {
                         let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
                             task_id: None,
@@ -1784,6 +1864,7 @@ impl Runtime {
                     }
                     let _ = self.runtime.dispatch(AppIntent::ReconcileCatalogScripts {
                         scripts: scripts.into(),
+                        preserve_identities: preserve_identities.into(),
                     });
                 }
                 Err(error) => {
@@ -2315,7 +2396,56 @@ fn set_browser_settings_test_status(status: &str, channels: u32, midi: bool, rec
 const BROWSER_SESSION_SCRIPT_NAME: &str = "browser-self-test-session.lua";
 #[cfg(target_arch = "wasm32")]
 const BROWSER_SESSION_SCRIPT_SOURCE: &str =
-    "shoop_announce_api_version(1, 0); local shoop_control = require('shoop_control'); shoop_control.register_keyboard_event_cb(function(_) end)";
+    "shoop_announce_api_version(1, 0); local shoop_control = require('shoop_control'); local dialog = require('shoop_dialog'); dialog.simple('Browser bundle resources', {dialog.markdown_file('help.md')}); shoop_control.register_keyboard_event_cb(function(_) end)";
+#[cfg(target_arch = "wasm32")]
+const BROWSER_SESSION_MARKDOWN: &[u8] = b"# Browser bundle\n\n![resource](image.png)";
+#[cfg(target_arch = "wasm32")]
+const BROWSER_SESSION_IMAGE: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
+    0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99, 0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+    0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
+#[cfg(target_arch = "wasm32")]
+fn browser_session_script_bundle() -> std::sync::Arc<shoop_scripting::ScriptResourceBundle> {
+    use shoop_script_resources::{
+        NormalizedRelativePath, ResourceKind, ResourceLimits, ScriptResource, ScriptResourceBundle,
+    };
+
+    let entrypoint = NormalizedRelativePath::parse("main.lua").unwrap();
+    std::sync::Arc::new(
+        ScriptResourceBundle::new(
+            entrypoint.clone(),
+            std::collections::BTreeMap::from([
+                (
+                    entrypoint,
+                    ScriptResource::new(
+                        ResourceKind::Lua,
+                        std::sync::Arc::<[u8]>::from(BROWSER_SESSION_SCRIPT_SOURCE.as_bytes()),
+                    ),
+                ),
+                (
+                    NormalizedRelativePath::parse("help.md").unwrap(),
+                    ScriptResource::new(
+                        ResourceKind::Markdown,
+                        std::sync::Arc::<[u8]>::from(BROWSER_SESSION_MARKDOWN),
+                    ),
+                ),
+                (
+                    NormalizedRelativePath::parse("image.png").unwrap(),
+                    ScriptResource::new(
+                        ResourceKind::Image,
+                        std::sync::Arc::<[u8]>::from(BROWSER_SESSION_IMAGE),
+                    ),
+                ),
+            ]),
+            ResourceLimits::default(),
+        )
+        .expect("browser self-test resources must form a valid bundle"),
+    )
+}
 
 #[cfg(target_arch = "wasm32")]
 fn browser_unsupported_session_bytes(
@@ -3570,18 +3700,9 @@ impl BrowserSelfTest {
                     entrypoint: "main.lua".to_owned(),
                     enabled: true,
                 });
-                bundle.scripts.insert(
-                    9_000_001,
-                    std::sync::Arc::new(
-                        shoop_scripting::ScriptResourceBundle::source_only(
-                            "main.lua",
-                            std::sync::Arc::<[u8]>::from(
-                                BROWSER_SESSION_SCRIPT_SOURCE.as_bytes(),
-                            ),
-                        )
-                        .expect("browser self-test source must form a valid bundle"),
-                    ),
-                );
+                bundle
+                    .scripts
+                    .insert(9_000_001, browser_session_script_bundle());
                 let bytes = match shoop_session::encode_session(&bundle, env!("CARGO_PKG_VERSION"))
                 {
                     Ok(bytes) => bytes,
@@ -3658,6 +3779,33 @@ impl BrowserSelfTest {
                         snapshot.scripting.scripts
                     ));
                 }
+                let resource_base_uri = snapshot
+                    .scripting
+                    .dialogs
+                    .iter()
+                    .find(|dialog| dialog.name == "Browser bundle resources")
+                    .and_then(|dialog| match &dialog.kind {
+                        shoop_egui::ScriptDialogKind::Simple(content) => {
+                            content.elements.iter().find_map(|element| match element {
+                                shoop_egui::ScriptDialogElement::Markdown {
+                                    resource_base_uri,
+                                    ..
+                                } => resource_base_uri.as_deref(),
+                                _ => None,
+                            })
+                        }
+                        shoop_egui::ScriptDialogKind::Paged(_) => None,
+                    });
+                let Some(resource_base_uri) = resource_base_uri else {
+                    return self.fail("browser session Markdown lost its bundle resource origin");
+                };
+                let image_uri = format!("{resource_base_uri}image.png");
+                if !matches!(
+                    shoop_script_resources::read_resource_uri(&image_uri),
+                    Ok(Some(bytes)) if bytes.as_ref() == BROWSER_SESSION_IMAGE
+                ) {
+                    return self.fail("browser session image was unavailable from its bundle");
+                }
                 if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
                     && snapshot.status.callback_count <= callbacks_before
                 {
@@ -3700,6 +3848,28 @@ impl BrowserSelfTest {
                         && bundle.scripts.get(&script.id).is_some_and(|resources| {
                             resources.entrypoint_resource().bytes.as_ref()
                                 == BROWSER_SESSION_SCRIPT_SOURCE.as_bytes()
+                                && resources
+                                    .resources
+                                    .get(
+                                        &shoop_script_resources::NormalizedRelativePath::parse(
+                                            "help.md",
+                                        )
+                                        .unwrap(),
+                                    )
+                                    .is_some_and(|resource| {
+                                        resource.bytes.as_ref() == BROWSER_SESSION_MARKDOWN
+                                    })
+                                && resources
+                                    .resources
+                                    .get(
+                                        &shoop_script_resources::NormalizedRelativePath::parse(
+                                            "image.png",
+                                        )
+                                        .unwrap(),
+                                    )
+                                    .is_some_and(|resource| {
+                                        resource.bytes.as_ref() == BROWSER_SESSION_IMAGE
+                                    })
                         })
                 }) {
                     return self.fail("browser session Lua source did not round trip exactly");
@@ -5092,6 +5262,50 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing.lua"));
         assert!(validate_script_draft(&draft).is_err());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn catalog_adapter_marks_invalid_existing_identities_for_preservation() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("valid.lua"),
+            "shoop_announce_api_version(1, 0)",
+        )
+        .unwrap();
+        std::fs::write(directory.path().join("invalid.lua"), "function(").unwrap();
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(
+            shoop_egui::BUILTINS_LOCATION,
+            directory.path().to_string_lossy().into_owned(),
+        );
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+
+        let (scripts, warnings, preserve, deletions_safe) =
+            configured_catalog_scripts(&settings, 4).unwrap();
+        assert_eq!(
+            scripts
+                .iter()
+                .filter_map(|script| script.identity.as_deref())
+                .collect::<Vec<_>>(),
+            ["valid.lua"]
+        );
+        assert_eq!(preserve, ["invalid.lua"]);
+        assert!(deletions_safe);
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("invalid.lua")));
     }
 
     #[cfg(not(target_arch = "wasm32"))]

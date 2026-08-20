@@ -464,6 +464,7 @@ pub struct BuiltinCatalog {
     pub generation: u64,
     pub entries: Vec<BuiltinCatalogEntry>,
     pub diagnostics: Vec<ScanDiagnostic>,
+    pub deletions_safe: bool,
 }
 
 pub fn sha256(bytes: &[u8]) -> String {
@@ -551,8 +552,10 @@ pub fn scan_builtin_directory(
             });
             continue;
         }
-        total = total.saturating_add(metadata.len());
-        if total > limits.max_aggregate_bytes {
+        if total
+            .checked_add(metadata.len())
+            .is_none_or(|bytes| bytes > limits.max_aggregate_bytes)
+        {
             diagnostics.push(ScanDiagnostic {
                 path: Some(identity.to_string()),
                 message: format!(
@@ -562,16 +565,19 @@ pub fn scan_builtin_directory(
             });
             break;
         }
-        let bytes = match std::fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                diagnostics.push(ScanDiagnostic {
-                    path: Some(identity.to_string()),
-                    message: format!("could not read script: {error}"),
-                });
-                continue;
-            }
-        };
+        let remaining = limits.max_aggregate_bytes - total;
+        let bytes =
+            match read_file_limited(&path, metadata.len(), limits.max_file_bytes.min(remaining)) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    diagnostics.push(ScanDiagnostic {
+                        path: Some(identity.to_string()),
+                        message: format!("could not read script: {error}"),
+                    });
+                    continue;
+                }
+            };
+        total += bytes.len() as u64;
         let hash = sha256(&bytes);
         match String::from_utf8(bytes) {
             Ok(source) => entries.push(BuiltinCatalogEntry {
@@ -585,10 +591,19 @@ pub fn scan_builtin_directory(
             }),
         }
     }
+    let deletions_safe = diagnostics.iter().all(|diagnostic| {
+        diagnostic
+            .path
+            .as_deref()
+            .and_then(|path| NormalizedRelativePath::parse(path).ok())
+            .is_some_and(|path| classify_resource(&path) == Some(ResourceKind::Lua))
+            && !diagnostic.message.contains("differs only by case")
+    });
     Ok(BuiltinCatalog {
         generation,
         entries,
         diagnostics,
+        deletions_safe,
     })
 }
 
@@ -644,6 +659,30 @@ pub fn capture_filesystem_bundle(
         });
     }
     files.sort_by(|left, right| left.0.cmp(&right.0));
+    let current_source = current_source.into();
+    let source_bytes = current_source.len() as u64;
+    if source_bytes > limits.max_file_bytes {
+        return Err(ScanError::Bundle(BundleError::FileLimit {
+            path: entrypoint.to_string(),
+            bytes: source_bytes,
+            limit: limits.max_file_bytes,
+        }));
+    }
+    if limits.max_files_per_script == 0 {
+        return Err(ScanError::Bundle(BundleError::FileCountLimit {
+            files: 1,
+            limit: 0,
+        }));
+    }
+    if source_bytes > limits.max_script_bytes {
+        return Err(ScanError::Bundle(BundleError::ScriptLimit {
+            bytes: source_bytes,
+            limit: limits.max_script_bytes,
+        }));
+    }
+    let mut resource_count = 1_usize;
+    let mut total = source_bytes;
+    let mut case_folded = BTreeSet::from([entrypoint.case_folded()]);
     let mut resources = BTreeMap::new();
     resources.insert(
         entrypoint.clone(),
@@ -656,6 +695,18 @@ pub fn capture_filesystem_bundle(
         if kind == ResourceKind::Lua {
             continue;
         }
+        resource_count = resource_count.saturating_add(1);
+        if resource_count > limits.max_files_per_script {
+            return Err(ScanError::Bundle(BundleError::FileCountLimit {
+                files: resource_count,
+                limit: limits.max_files_per_script,
+            }));
+        }
+        if !case_folded.insert(relative.case_folded()) {
+            return Err(ScanError::Bundle(BundleError::CaseCollision(
+                relative.to_string(),
+            )));
+        }
         let metadata = path.metadata().map_err(|error| ScanError::Path {
             path: relative.to_string(),
             message: format!("could not inspect resource: {error}"),
@@ -667,10 +718,25 @@ pub fn capture_filesystem_bundle(
                 limit: limits.max_file_bytes,
             }));
         }
-        let bytes = std::fs::read(&path).map_err(|error| ScanError::Path {
+        if total
+            .checked_add(metadata.len())
+            .is_none_or(|bytes| bytes > limits.max_script_bytes)
+        {
+            return Err(ScanError::Bundle(BundleError::ScriptLimit {
+                bytes: total.saturating_add(metadata.len()),
+                limit: limits.max_script_bytes,
+            }));
+        }
+        let bytes = read_file_limited(
+            &path,
+            metadata.len(),
+            limits.max_file_bytes.min(limits.max_script_bytes - total),
+        )
+        .map_err(|error| ScanError::Path {
             path: relative.to_string(),
             message: format!("could not read resource: {error}"),
         })?;
+        total += bytes.len() as u64;
         if resources
             .insert(
                 relative.clone(),
@@ -685,6 +751,32 @@ pub fn capture_filesystem_bundle(
         }
     }
     ScriptResourceBundle::new(entrypoint, resources, limits).map_err(ScanError::from)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_file_limited(
+    path: &std::path::Path,
+    declared_bytes: u64,
+    limit: u64,
+) -> Result<Vec<u8>, String> {
+    use std::io::Read as _;
+
+    if declared_bytes > limit {
+        return Err(format!(
+            "declared size {declared_bytes} exceeds limit {limit}"
+        ));
+    }
+    let capacity = usize::try_from(declared_bytes)
+        .map_err(|_| "declared size does not fit memory".to_owned())?;
+    let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut bytes = Vec::with_capacity(capacity);
+    file.take(limit.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("file expanded beyond limit {limit}"));
+    }
+    Ok(bytes)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -930,6 +1022,25 @@ mod tests {
         );
         assert_eq!(catalog.diagnostics.len(), 1);
         assert_eq!(catalog.diagnostics[0].path.as_deref(), Some("bad.lua"));
+        assert!(catalog.deletions_safe);
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), unix))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn scan_marks_incomplete_directory_enumeration_as_unsafe_for_deletions() {
+        let temporary = tempfile::tempdir().unwrap();
+        let target = temporary.path().join("real");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("script.lua"), "return").unwrap();
+        std::os::unix::fs::symlink(&target, temporary.path().join("linked")).unwrap();
+
+        let catalog =
+            scan_builtin_directory(temporary.path(), 1, ResourceLimits::default()).unwrap();
+        assert!(!catalog.deletions_safe);
+        assert!(catalog
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("directory symlinks")));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -961,6 +1072,44 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["controller.lua", "help/images/a.png", "help/readme.md"]
         );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn conversion_enforces_count_and_aggregate_limits_before_retaining_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        let script = temporary.path().join("controller.lua");
+        std::fs::write(&script, "return").unwrap();
+        std::fs::write(temporary.path().join("one.md"), [1, 2, 3]).unwrap();
+        std::fs::write(temporary.path().join("two.md"), [4, 5, 6]).unwrap();
+
+        let count_error = capture_filesystem_bundle(
+            &script,
+            Arc::<[u8]>::from(&b"return"[..]),
+            ResourceLimits {
+                max_files_per_script: 2,
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(
+            count_error,
+            ScanError::Bundle(BundleError::FileCountLimit { .. })
+        ));
+
+        let size_error = capture_filesystem_bundle(
+            &script,
+            Arc::<[u8]>::from(&b"return"[..]),
+            ResourceLimits {
+                max_script_bytes: 8,
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(
+            size_error,
+            ScanError::Bundle(BundleError::ScriptLimit { .. })
+        ));
     }
 
     #[cfg(all(not(target_arch = "wasm32"), unix))]

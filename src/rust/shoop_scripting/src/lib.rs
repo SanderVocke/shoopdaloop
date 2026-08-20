@@ -656,8 +656,9 @@ impl ScriptManager {
     pub fn reconcile_catalog_scripts(
         &mut self,
         scripts: &[CatalogScriptSource],
+        preserve_identities: &[String],
     ) -> anyhow::Result<()> {
-        let runtime = LuaRuntime::new()?;
+        let syntax = LuaRuntime::new()?;
         let mut identities = std::collections::BTreeSet::new();
         for script in scripts {
             let identity = shoop_script_resources::NormalizedRelativePath::parse(&script.identity)?;
@@ -667,21 +668,56 @@ impl ScriptManager {
             if !matches!(script.kind, ScriptKind::Bundled | ScriptKind::Example) {
                 bail!("catalog script {identity} has an invalid kind");
             }
-            runtime.check_syntax(&script.name, &script.source)?;
+        }
+        let mut preserved = std::collections::BTreeSet::new();
+        for identity in preserve_identities {
+            let identity = shoop_script_resources::NormalizedRelativePath::parse(identity)?;
+            if identities.contains(&identity.case_folded())
+                || !preserved.insert(identity.case_folded())
+            {
+                bail!("duplicate preserved catalog script identity {identity}");
+            }
         }
 
         let desired = scripts
             .iter()
             .map(|script| (script.identity.as_str(), script))
             .collect::<BTreeMap<_, _>>();
+        let mut failures = Vec::new();
+        let mut failed = std::collections::BTreeSet::new();
+        for script in scripts {
+            let existing = self
+                .scripts
+                .values()
+                .find(|record| record.identity.as_deref() == Some(script.identity.as_str()));
+            let changed = existing.is_none_or(|record| {
+                record.source != script.source.as_ref()
+                    || record.source_path != script.source_path
+                    || record.resource_bundle != script.resource_bundle
+                    || record.kind != script.kind
+            });
+            let validation = syntax
+                .check_syntax(&script.name, &script.source)
+                .and_then(|()| {
+                    if script.enabled && changed {
+                        self.stage_catalog_script(script)
+                    } else {
+                        Ok(())
+                    }
+                });
+            if let Err(error) = validation {
+                failed.insert(script.identity.as_str());
+                failures.push(format!("{}: {error}", script.identity));
+            }
+        }
+
         let removed = self
             .scripts
             .values()
             .filter(|record| {
-                record
-                    .identity
-                    .as_deref()
-                    .is_some_and(|identity| !desired.contains_key(identity))
+                record.identity.as_deref().is_some_and(|identity| {
+                    !desired.contains_key(identity) && !preserved.contains(&identity.to_lowercase())
+                })
             })
             .map(|record| record.id)
             .collect::<Vec<_>>();
@@ -690,8 +726,10 @@ impl ScriptManager {
             self.scripts.remove(&id);
         }
 
-        let mut failures = Vec::new();
         for script in scripts {
+            if failed.contains(script.identity.as_str()) {
+                continue;
+            }
             let existing = self.scripts.values().find_map(|record| {
                 (record.identity.as_deref() == Some(script.identity.as_str())).then_some(record.id)
             });
@@ -705,6 +743,22 @@ impl ScriptManager {
                 };
                 let enabled_changed = self.scripts[&id].enabled != script.enabled;
                 if changed {
+                    let old = {
+                        let record = self.scripts.get(&id).unwrap();
+                        (
+                            record.name.clone(),
+                            record.source.clone(),
+                            record.source_path.clone(),
+                            record.resource_bundle.clone(),
+                            record.kind,
+                            record.enabled,
+                            record.documentation.clone(),
+                            record.lifecycle,
+                            record.latest_error.clone(),
+                            record.archived_logs.clone(),
+                        )
+                    };
+                    let old_enabled = old.5;
                     self.stop(id)?;
                     let record = self.scripts.get_mut(&id).unwrap();
                     record.name = script.name.clone();
@@ -714,9 +768,29 @@ impl ScriptManager {
                     record.kind = script.kind;
                     record.enabled = script.enabled;
                     record.documentation = extract_documentation(&record.source);
+                    record.lifecycle = ScriptLifecycle::Inactive;
+                    record.latest_error = None;
+                    record.archived_logs.clear();
                     if script.enabled {
                         if let Err(error) = self.start(id) {
-                            failures.push(format!("{}: {error}", script.identity));
+                            let record = self.scripts.get_mut(&id).unwrap();
+                            record.name = old.0;
+                            record.source = old.1;
+                            record.source_path = old.2;
+                            record.resource_bundle = old.3;
+                            record.kind = old.4;
+                            record.enabled = old_enabled;
+                            record.documentation = old.6;
+                            record.lifecycle = old.7;
+                            record.latest_error = old.8;
+                            record.archived_logs = old.9;
+                            let mut message = format!("{}: {error}", script.identity);
+                            if old_enabled {
+                                if let Err(restore) = self.start(id) {
+                                    message.push_str(&format!("; restore failed: {restore}"));
+                                }
+                            }
+                            failures.push(message);
                         }
                     }
                 } else if enabled_changed {
@@ -746,6 +820,27 @@ impl ScriptManager {
                 failures.join("; ")
             )
         }
+    }
+
+    fn stage_catalog_script(&self, script: &CatalogScriptSource) -> anyhow::Result<()> {
+        let control = Rc::new(RefCell::new(ControlBridge {
+            snapshot: self.control.borrow().snapshot.clone(),
+            operations: Vec::new(),
+        }));
+        let runtime = LuaRuntime::new_with_control(control)?;
+        let provider = if let Some(bundle) = &script.resource_bundle {
+            ScriptResourceProvider::Bundle(Arc::clone(bundle))
+        } else {
+            script
+                .source_path
+                .as_deref()
+                .and_then(|path| std::path::Path::new(path).parent())
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| ScriptResourceProvider::Filesystem(path.to_owned()))
+                .unwrap_or_default()
+        };
+        let execution_name = script.source_path.as_deref().unwrap_or(&script.name);
+        runtime.execute_with_resources(execution_name, &script.source, provider, None)
     }
 
     pub fn add_ephemeral(
@@ -2955,10 +3050,13 @@ end, function() end, 10)
         };
         let mut manager = ScriptManager::new();
         manager
-            .reconcile_catalog_scripts(&[
-                source("controllers/a.lua", "a1", true),
-                source("controllers/b.lua", "b1", false),
-            ])
+            .reconcile_catalog_scripts(
+                &[
+                    source("controllers/a.lua", "a1", true),
+                    source("controllers/b.lua", "b1", false),
+                ],
+                &[],
+            )
             .unwrap();
         let initial = manager.states();
         assert_eq!(initial.len(), 2);
@@ -2969,10 +3067,13 @@ end, function() end, 10)
             .id;
 
         manager
-            .reconcile_catalog_scripts(&[
-                source("controllers/a.lua", "a2", true),
-                source("controllers/c.lua", "c1", false),
-            ])
+            .reconcile_catalog_scripts(
+                &[
+                    source("controllers/a.lua", "a2", true),
+                    source("controllers/c.lua", "c1", false),
+                ],
+                &[],
+            )
             .unwrap();
         let reconciled = manager.states();
         assert_eq!(reconciled.len(), 2);
@@ -2992,9 +3093,19 @@ end, function() end, 10)
             .any(|script| script.identity.as_deref() == Some("controllers/b.lua")));
 
         let before = manager.states();
-        let mut malformed = source("controllers/bad.lua", "bad", false);
-        malformed.source = Arc::from("not valid Lua !");
-        assert!(manager.reconcile_catalog_scripts(&[malformed]).is_err());
+        let mut malformed = source("controllers/a.lua", "bad", true);
+        malformed.source = Arc::from("shoop_announce_api_version(1, 0); error('broken')");
+        assert!(manager
+            .reconcile_catalog_scripts(&[malformed, source("controllers/c.lua", "c1", false)], &[],)
+            .is_err());
+        assert_eq!(manager.states(), before);
+
+        manager
+            .reconcile_catalog_scripts(
+                &[source("controllers/c.lua", "c1", false)],
+                &["controllers/a.lua".to_owned()],
+            )
+            .unwrap();
         assert_eq!(manager.states(), before);
     }
 
