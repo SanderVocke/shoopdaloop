@@ -1059,6 +1059,17 @@ pub enum ScriptKind {
     Ephemeral,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CatalogScriptSource {
+    pub identity: String,
+    pub name: String,
+    pub source: Arc<str>,
+    pub source_path: Option<String>,
+    pub resource_bundle: Option<Arc<shoop_script_resources::ScriptResourceBundle>>,
+    pub kind: ScriptKind,
+    pub enabled: bool,
+}
+
 pub fn is_ephemeral_script_version(display_name: &str, source_name: &str) -> bool {
     if display_name == source_name {
         return true;
@@ -1180,6 +1191,7 @@ pub enum ScriptDialogElement {
     Markdown {
         text: String,
         links: Arc<[ScriptDialogMarkdownLink]>,
+        resource_base_uri: Option<Arc<str>>,
     },
     Button {
         id: Option<ScriptDialogButtonId>,
@@ -1212,10 +1224,12 @@ pub struct ScriptDialogState {
 pub struct ScriptState {
     pub id: ScriptId,
     pub name: String,
+    pub identity: Option<Arc<str>>,
     pub kind: ScriptKind,
     pub enabled: bool,
     pub lifecycle: ScriptLifecycle,
     pub documentation: Option<String>,
+    pub resource_base_uri: Option<Arc<str>>,
     pub latest_error: Option<String>,
     pub activity: ScriptActivityDiagnostics,
     pub midi: ScriptMidiDiagnostics,
@@ -1614,10 +1628,21 @@ pub enum AppIntent {
         kind: ScriptKind,
         enabled: bool,
     },
+    AddScriptFileSource {
+        name: String,
+        source: Arc<str>,
+        source_path: String,
+        kind: ScriptKind,
+        enabled: bool,
+    },
     AddEphemeralScript {
         name: String,
         source: Arc<str>,
         source_path: Option<String>,
+    },
+    ReconcileCatalogScripts {
+        scripts: Arc<[CatalogScriptSource]>,
+        preserve_identities: Arc<[String]>,
     },
     SetScriptEnabled {
         script_id: ScriptId,
@@ -1672,6 +1697,7 @@ pub enum AppIntent {
         message: String,
     },
     ResetXruns,
+    RequestNewSession,
     RequestSaveSession,
     RequestLoadSessionPicker,
     LoadSessionBytes {
@@ -1857,7 +1883,9 @@ impl AppIntent {
             Self::SetCompositeEventMode { .. } => "loop.composite.set_event_mode",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
+            Self::AddScriptFileSource { .. } => "scripting.add_file_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
+            Self::ReconcileCatalogScripts { .. } => "scripting.reconcile_catalog",
             Self::SetScriptEnabled { .. } => "scripting.set_enabled",
             Self::RestartScript { .. } => "scripting.restart",
             Self::ReplaceScriptSource { .. } => "scripting.replace_source",
@@ -1875,6 +1903,7 @@ impl AppIntent {
                 "audio_driver.complete_persistence"
             }
             Self::ResetXruns => "audio.reset_xruns",
+            Self::RequestNewSession => "session.request_new",
             Self::RequestSaveSession => "session.request_save",
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
@@ -2311,6 +2340,7 @@ mod tests {
                             destination: "more".to_owned(),
                             callback_id: button_id,
                         }]),
+                        resource_base_uri: None,
                     },
                     ScriptDialogElement::Button {
                         id: Some(button_id),
@@ -2343,10 +2373,12 @@ mod tests {
         let state = ScriptState {
             id: script_id,
             name: "controller.lua".to_owned(),
+            identity: None,
             kind: ScriptKind::User,
             enabled: true,
             lifecycle: ScriptLifecycle::Listening,
             documentation: Some("Controller help\n".to_owned()),
+            resource_base_uri: None,
             latest_error: None,
             activity: ScriptActivityDiagnostics::default(),
             midi: ScriptMidiDiagnostics::default(),

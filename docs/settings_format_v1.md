@@ -41,8 +41,13 @@ The file is canonical UTF-8 JSON with a trailing newline:
   "writer_version": "0.0.0",
   "values": {
     "carla.hosting_mode": "in_process",
-    "scripting.bundled.akai_apc_mini_mk1.enabled": false,
-    "scripting.bundled.keyboard.enabled": true,
+    "scripting.builtins.location": "/opt/shoopdaloop/builtins",
+    "scripting.builtins.scripts": [
+      {
+        "value": "keyboard.lua",
+        "enabled": true
+      }
+    ],
     "scripting.user_scripts": [
       {
         "value": "/home/user/controller.lua",
@@ -76,15 +81,15 @@ On load:
 - Unknown keys remain opaque JSON values and are preserved byte-semantically as JSON values across a same-version save. They are not exposed to consumers or the settings dialog.
 - Duplicate registrations, invalid defaults, incompatible editor/type combinations, and typed reads using the wrong key type are programming errors rejected while composing/testing the registry.
 
-Version 1 registers the cross-target appearance scale, track defaults, and bundled-script toggles below. Native composition additionally registers the ordered user-script path list and audio-driver preferences. Browser composition omits machine-path and native-audio definitions and preserves them as unknown values if encountered.
+Version 1 registers the cross-target appearance scale, track defaults, and dynamic built-in script settings below. Native composition additionally registers the ordered user-script path list and audio-driver preferences. Browser composition omits machine-path and native-audio definitions and preserves them as unknown values if encountered.
 
 | Key | Type | Default | Effect |
 |---|---|---:|---|
 | `appearance.ui_scale_factor` | number | `1.0`, or `1.25` when the detected screen's shortest side is at most 800 UI points | Explicit Apply and save; allowed range is 0.75–2.0 |
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
-| `scripting.bundled.keyboard.enabled` | boolean | `true` | After a successful Save |
-| `scripting.bundled.akai_apc_mini_mk1.enabled` | boolean | `false` | After a successful Save |
+| `scripting.builtins.location` | string | packaged `builtins` beside the executable on Linux/Windows, `Contents/Resources/builtins` on macOS, and external `builtins` root in hosted browser builds | Startup, successful Save, or explicit rescan |
+| `scripting.builtins.scripts` | ordered string/toggle list | `[]` | After a successful Save |
 | `scripting.user_scripts` | ordered string/toggle list | `[]` | After a successful Save |
 | `audio.selected_driver` | string | `"dummy"` | Next native startup; changed by a successful confirmed Switch |
 | `audio.dummy.sample_rate` | `u32` | `48000` | Confirmed dummy Switch |
@@ -111,7 +116,7 @@ An ordered string/toggle list is a JSON array. Each entry is exactly an object w
 
 The UI scale multiplies egui's monitor-native pixels-per-point value and is applied at startup. Moving its slider only changes the settings draft; applying it requires the explicit **Apply and save** action.
 
-The track defaults do not change an existing track, an already-open Add Track draft, or session data. Bundled script toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state. Both bundled scripts remain discoverable on native and browser targets; only `keyboard.lua` runs by default.
+The track defaults do not change an existing track, an already-open Add Track draft, or session data. Built-in identities are normalized slash-separated paths, never basenames. New discoveries are disabled until explicitly enabled. The former keyboard/MK1 boolean keys migrate once into `scripting.builtins.scripts` when present and are removed from the active document model. Dynamic toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state.
 
 ## Version checks and migration
 
@@ -124,7 +129,7 @@ Readers parse only the envelope first. No values are applied until format and ve
 - Adding an optional setting normally does not require a document-version change because missing keys default and unknown keys are retained. Change the document version when the envelope or representation of existing values changes.
 - Format and document versions are independent from `.shoop` session versions and predecessor schema names.
 
-There is no pre-v1 application settings format and therefore no production migration into v1. The ordered dispatcher is tested independently so a future v2 can add a concrete v1-to-v2 step without changing runtime consumers.
+There is no pre-v1 application settings envelope. Within version 1, the former `scripting.bundled.keyboard.enabled` and `scripting.bundled.akai_apc_mini_mk1.enabled` values have a one-way compatibility migration into the dynamic identity list. The ordered dispatcher is tested independently so a future v2 can add a concrete v1-to-v2 step without changing runtime consumers.
 
 ## Loading, saving, and recovery
 
@@ -132,7 +137,7 @@ A missing document is a normal first run and publishes registered defaults.
 
 Malformed, unsupported, unreadable, or storage-unavailable input publishes defaults plus an actionable diagnostic. The source is not automatically rewritten. An unsupported future document must never be normalized by an older application. The settings dialog requires an explicit recovery/reset action before replacing rejected source data.
 
-The application has one Settings dialog. Registered categories are tabs. Native builds include a **Scripts** tab with bundled toggles, user-file management, lifecycle, documentation, logs, and MIDI diagnostics. Browser builds include the same bundled toggles and runtime diagnostics but omit the native user-path definition and Add-file action.
+The application has one Settings dialog. Registered categories are tabs. Native builds include a **Scripts** tab with the built-ins location, dynamic discovered toggles, explicit **Rescan built-in scripts**, user-file management, lifecycle, documentation, logs, and MIDI diagnostics. Browser builds use the generated external catalog and include the same dynamic toggles, rescan, and runtime diagnostics but omit the native user-path definition and Add-file action.
 
 Dialog edits are drafts. Cancel or close discards them. Save validates the complete draft, merges known values into the retained current-version document, and preserves unknown keys. Native script files are read and syntax-checked before a script-settings draft is accepted. Running scripts are reconciled only after persistence publishes the committed revision; runtime-only Stop, Restart, and Reload actions do not mutate the draft.
 

@@ -28,6 +28,9 @@ pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.keyboard.enabled");
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.akai_apc_mini_mk1.enabled");
+pub const BUILTINS_LOCATION: SettingKey<String> = SettingKey::new("scripting.builtins.location");
+pub const BUILTIN_SCRIPTS: SettingKey<StringToggleList> =
+    SettingKey::new("scripting.builtins.scripts");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
 
@@ -433,11 +436,11 @@ pub fn register_bundled_script_settings(
 ) -> Result<(), SettingsRegistryError> {
     builder.register(
         SettingDefinition::new(
-            KEYBOARD_SCRIPT_ENABLED,
-            true,
+            BUILTINS_LOCATION,
+            default_builtins_location(),
             "Scripts",
-            "Enable keyboard controls",
-            "Run the bundled keyboard.lua script at startup.",
+            "Built-in scripts location",
+            "Directory containing the distributable built-in Lua scripts and their resources.",
         )
         .category_order(20)
         .setting_order(10)
@@ -445,17 +448,40 @@ pub fn register_bundled_script_settings(
     )?;
     builder.register(
         SettingDefinition::new(
-            APC_MINI_SCRIPT_ENABLED,
-            false,
+            BUILTIN_SCRIPTS,
+            StringToggleList::default(),
             "Scripts",
-            "Enable Akai APC Mini MK1 controls",
-            "Run the bundled akai_apc_mini_mk1.lua script at startup.",
+            "Enabled built-in scripts",
+            "Discovered built-in identities and whether they run at startup.",
         )
         .category_order(20)
         .setting_order(20)
         .effect(SettingEffect::Immediate),
     )?;
     Ok(())
+}
+
+pub fn default_builtins_location() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        "builtins".to_owned()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let executable = std::env::current_exe().unwrap_or_else(|_| "shoopdaloop".into());
+        #[cfg(target_os = "macos")]
+        let path = executable
+            .parent()
+            .and_then(std::path::Path::parent)
+            .map(|contents| contents.join("Resources/builtins"))
+            .unwrap_or_else(|| "builtins".into());
+        #[cfg(not(target_os = "macos"))]
+        let path = executable
+            .parent()
+            .map(|directory| directory.join("builtins"))
+            .unwrap_or_else(|| "builtins".into());
+        path.to_string_lossy().into_owned()
+    }
 }
 
 pub fn register_script_settings(
@@ -526,6 +552,7 @@ pub struct AppWidget {
     pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
     script_control_pressed: bool,
     pending_ephemeral_scripts: VecDeque<PendingEphemeralScript>,
+    new_session_confirmation_open: bool,
     tracing_status: TracingStatus,
     tracing_stopped: Option<TracingStopped>,
     last_callback_count: u64,
@@ -590,6 +617,7 @@ impl AppWidget {
             pressed_script_keys: BTreeMap::new(),
             script_control_pressed: false,
             pending_ephemeral_scripts: VecDeque::new(),
+            new_session_confirmation_open: false,
             tracing_status: TracingStatus::default(),
             tracing_stopped: None,
             last_callback_count: 0,
@@ -722,6 +750,9 @@ impl AppWidget {
                             );
                             if self.global_controls.take_connections_requested() {
                                 self.connections.open(ConnectionScope::AllTracks);
+                            }
+                            if self.global_controls.take_new_session_requested() {
+                                self.new_session_confirmation_open = true;
                             }
                             if self.global_controls.take_save_session_requested() {
                                 actions.push(AppAction::RequestSaveSession);
@@ -913,6 +944,7 @@ impl AppWidget {
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
         self.show_ephemeral_script_confirmation(ui.ctx(), state, &mut actions);
+        self.show_new_session_confirmation(ui.ctx(), &mut actions);
         self.show_tracing_stopped(ui.ctx());
         if !actions.is_empty() || !settings_actions.is_empty() {
             tracing::debug!(
@@ -1004,6 +1036,43 @@ impl AppWidget {
             actions.push(self.accept_ephemeral_script().unwrap());
         } else if cancel {
             self.pending_ephemeral_scripts.pop_front();
+        }
+    }
+
+    fn show_new_session_confirmation(
+        &mut self,
+        context: &egui::Context,
+        actions: &mut Vec<AppAction>,
+    ) {
+        if !self.new_session_confirmation_open {
+            return;
+        }
+        let mut accept = false;
+        let mut cancel = false;
+        let modal =
+            egui::Modal::new(egui::Id::new("new_session_confirmation")).show(context, |ui| {
+                ui.heading("Create a new session?");
+                ui.label("All tracks and unsaved session data will be discarded.");
+                ui.add_space(6.0);
+                egui::Sides::new().show(
+                    ui,
+                    |ui| {
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    },
+                    |ui| {
+                        if ui.button("New session").clicked() {
+                            accept = true;
+                        }
+                    },
+                );
+            });
+        if accept {
+            actions.push(AppAction::RequestNewSession);
+        }
+        if accept || cancel || modal.should_close() {
+            self.new_session_confirmation_open = false;
         }
     }
 
@@ -2161,10 +2230,12 @@ mod tests {
                 scripts: Arc::from([crate::ScriptState {
                     id: crate::ScriptId::from_raw(1),
                     name: "controller.lua".to_owned(),
+                    identity: None,
                     kind: crate::ScriptKind::Bundled,
                     enabled: true,
                     lifecycle: crate::ScriptLifecycle::Listening,
                     documentation: None,
+                    resource_base_uri: None,
                     latest_error: None,
                     activity: Default::default(),
                     midi: Default::default(),
@@ -2689,10 +2760,12 @@ mod tests {
                 scripts: Arc::from([crate::ScriptState {
                     id: script_id,
                     name: "controller.lua".to_owned(),
+                    identity: None,
                     kind: crate::ScriptKind::User,
                     enabled: true,
                     lifecycle: crate::ScriptLifecycle::Error,
                     documentation: Some("Controller help".to_owned()),
+                    resource_base_uri: None,
                     latest_error: Some("bad callback".to_owned()),
                     activity: crate::ScriptActivityDiagnostics {
                         loop_callbacks: 1,
@@ -2804,12 +2877,14 @@ mod tests {
         register_settings(&mut builder).unwrap();
         register_bundled_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
-        assert!(registry.definition(KEYBOARD_SCRIPT_ENABLED.id()).is_some());
-        assert!(registry.definition(APC_MINI_SCRIPT_ENABLED.id()).is_some());
+        assert!(registry.definition(BUILTINS_LOCATION.id()).is_some());
+        assert!(registry.definition(BUILTIN_SCRIPTS.id()).is_some());
+        assert!(registry.definition(KEYBOARD_SCRIPT_ENABLED.id()).is_none());
+        assert!(registry.definition(APC_MINI_SCRIPT_ENABLED.id()).is_none());
         assert!(registry.definition(USER_SCRIPTS.id()).is_none());
         let defaults = registry.defaults(1);
-        assert!(defaults.get(KEYBOARD_SCRIPT_ENABLED).unwrap());
-        assert!(!defaults.get(APC_MINI_SCRIPT_ENABLED).unwrap());
+        assert!(!defaults.get(BUILTINS_LOCATION).unwrap().is_empty());
+        assert!(defaults.get(BUILTIN_SCRIPTS).unwrap().0.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

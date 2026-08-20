@@ -1,0 +1,42 @@
+{
+  "files": [
+    {
+      "bytes": 21546,
+      "kind": "lua",
+      "path": "akai_apc_mini_mk1.lua",
+      "sha256": "250300110ce9f9ba05d5e154eb192e5d5da9bc89d45c7d3ed75b7beaf5fae112"
+    },
+    {
+      "bytes": 19976,
+      "kind": "lua",
+      "path": "akai_apc_mini_mk2.lua",
+      "sha256": "097902b0d83ad957471d5a45806be85b0e56c4bc42b9c5541fbf1eafc5f2205d"
+    },
+    {
+      "bytes": 1656,
+      "kind": "lua",
+      "path": "examples/dialogs.lua",
+      "sha256": "c361b82e2cfa36ad94a0f2ff3798ad53e441117b8500594f47c8996c991d0fe2"
+    },
+    {
+      "bytes": 18096,
+      "kind": "image",
+      "path": "examples/help/dialog.png",
+      "sha256": "f36d21dbbcbc8193059dbd4f40e8cf5281100abed8d06cc773e1ca2b299396ba"
+    },
+    {
+      "bytes": 140,
+      "kind": "markdown",
+      "path": "examples/help/readme.md",
+      "sha256": "25541194188967e66577abaf3da3dbac33a7fb5a3a41360bd3a5d50feba754f7"
+    },
+    {
+      "bytes": 9108,
+      "kind": "lua",
+      "path": "keyboard.lua",
+      "sha256": "869d18b6a79fa74a96fbab7aa432a0af896d0f23b46cacb8f0977d62f4560f4e"
+    }
+  ],
+  "format": "shoop-builtins-catalog",
+  "version": 1
+}

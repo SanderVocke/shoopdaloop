@@ -17,6 +17,7 @@ shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend" }
 shoop_session = { path = "../shoop_session" }
 shoop_scripting = { path = "../shoop_scripting" }
+shoop_script_resources = { path = "../shoop_script_resources" }
 tracing = { workspace = true }
 
 [dev-dependencies]
@@ -24,6 +25,7 @@ shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 midir.workspace = true
+tempfile.workspace = true
 tracy-nextest-capture.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

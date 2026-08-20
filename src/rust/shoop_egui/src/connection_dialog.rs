@@ -1540,10 +1540,12 @@ mod tests {
             scripts: Arc::from([ScriptState {
                 id: script_id,
                 name: "APC".to_owned(),
+                identity: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
                 lifecycle: ScriptLifecycle::Listening,
                 documentation: None,
+                resource_base_uri: None,
                 latest_error: None,
                 activity: ScriptActivityDiagnostics::default(),
                 midi: ScriptMidiDiagnostics::default(),

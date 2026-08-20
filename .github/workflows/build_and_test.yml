@@ -615,7 +615,7 @@ jobs:
           path: artifacts/${{ matrix.artifact }}
           archive: false
 
-      - name: Upload self-contained web application
+      - name: Upload core-only single-file web application
         if: matrix.target == 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:

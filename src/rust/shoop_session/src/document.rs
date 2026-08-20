@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+use shoop_script_resources::ScriptResourceBundle;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 pub const SESSION_FORMAT: &str = "shoop-session";
 pub const MIDI_FORMAT: &str = "shoop-midi";
@@ -7,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 2;
+pub const SESSION_DOCUMENT_VERSION: u16 = 3;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -30,6 +32,8 @@ pub struct SessionBundle {
     pub document: SessionDocument,
     #[serde(skip)]
     pub media: BTreeMap<String, MediaPayload>,
+    #[serde(skip)]
+    pub scripts: BTreeMap<u64, Arc<ScriptResourceBundle>>,
 }
 
 impl SessionBundle {
@@ -37,6 +41,7 @@ impl SessionBundle {
         Self {
             document,
             media: BTreeMap::new(),
+            scripts: BTreeMap::new(),
         }
     }
 }
@@ -324,7 +329,8 @@ pub struct CompositeEventDocument {
 pub struct ScriptDocument {
     pub id: u64,
     pub name: String,
-    pub source: String,
+    #[serde(default)]
+    pub entrypoint: String,
     pub enabled: bool,
 }
 

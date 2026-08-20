@@ -2,6 +2,8 @@
 --
 -- Demonstrates script-owned ShoopDaLoop dialogs using the `shoop_dialog` module.
 --
+-- ![Bundled dialog resource](help/dialog.png)
+--
 -- ## Windows
 --
 -- | Window | Kind | Demonstrates |

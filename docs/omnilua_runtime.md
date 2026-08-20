@@ -6,7 +6,7 @@ ShoopDaLoop uses **omniLua 0.7.1** as its only embedded Lua runtime. The workspa
 
 The workspace disables omniLua's default features and enables `coroutine`, `io`, and `os`. Shoop's sandbox exposes the base, string, table, and math libraries, the coroutine functions listed by `src/lua/system/sandbox.lua`, and only `os.clock`, `os.difftime`, and `os.time`. It does not expose `io`, dynamic package loading, the debug library, or host filesystem APIs. The `io` Cargo feature is linked only because omniLua 0.7.1's `os` implementation references its internal `io` result helper; no `io` table is copied into the Shoop sandbox.
 
-Shoop supplies its own bounded `require` implementation for the single-sourced modules embedded from `src/lua/lib`. Built-in scripts remain embedded directly from `src/lua/builtins`.
+Shoop supplies its own bounded `require` implementation for the host API modules embedded from `src/lua/lib`. Application scripts are not embedded: native builds discover the packaged `builtins` directory and hosted browser builds fetch its generated external catalog and files.
 
 ## Dependency and license audit
 

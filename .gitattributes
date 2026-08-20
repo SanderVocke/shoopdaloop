@@ -1,1 +1,8 @@
 src/rust/shoop_engine/test_data/* text eol=lf
+resources/builtins/*.lua text eol=lf
+resources/builtins/**/*.lua text eol=lf
+resources/builtins/*.md text eol=lf
+resources/builtins/**/*.md text eol=lf
+resources/builtins/catalog.json text eol=lf
+resources/builtins/*.png binary
+resources/builtins/**/*.png binary

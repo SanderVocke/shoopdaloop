@@ -1,5 +1,5 @@
 [package]
-name = "shoop_app_api"
+name = "shoop_script_resources"
 version.workspace = true
 edition = "2021"
 
@@ -12,10 +12,14 @@ default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-shoop_script_resources = { path = "../shoop_script_resources" }
+serde = { workspace = true, features = ["derive", "rc"] }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+tempfile = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tracy-nextest-capture.workspace = true

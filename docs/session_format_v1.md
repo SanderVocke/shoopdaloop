@@ -25,7 +25,7 @@ This document defines the first application persistence format. Predecessor `.sh
 - tracks, loops, channels, ports, buses, global ports, internal links, and external autoconnect names;
 - selected and targeted stable loop IDs;
 - composite timelines and script-composite state;
-- scripts, MIDI-control configuration, and session-local settings;
+- script bundle descriptors, MIDI-control configuration, and session-local settings;
 - FX chain descriptors and exact processor-state strings for Carla and Tiny Synth/FX;
 - captured FX-state records referenced by recorded channels;
 - a sorted media index.
@@ -35,6 +35,16 @@ Transient loop mode/position, queued transitions, meters, driver/device handles,
 ### Audio payload
 
 Each audio channel has its own `media/audio/<content-id>.f32le` entry. The bytes are the exact little-endian IEEE-754 `f32::to_bits()` sequence. The media index records frame count, byte count, and hash. Per-channel entries avoid aggregate codec channel limits and permit content sharing.
+
+### Script bundle payloads
+
+Session document version 3 stores each script as `{ id, name, entrypoint, enabled }`; it never stores source inline or records a machine path. The manifest has a sorted script-resource index. Every record declares its owner script ID, normalized relative path, resource kind (`lua`, `markdown`, or `image`), exact uncompressed byte count, lowercase SHA-256, and archive path `scripts/<script-id>/<relative-path>`. The entrypoint must be a declared Lua resource. Resource names are scoped by owner, so different scripts may use the same relative names without collision.
+
+Script payloads are immutable bytes and are not extracted when loaded. Native and browser runtimes provide them directly to `shoop_file.load`, `dialog.markdown_file`, and the Markdown image loader. Absolute paths, empty or dot components, backslashes, traversal, case-colliding or duplicate normalized paths, owner/path mismatches, undeclared entries, unsupported types, malformed hashes, and cross-script lookups are rejected before session commit.
+
+Source-only session documents from document versions 1 and 2 migrate in memory to a `main.lua` one-entry bundle. New saves always write document version 3. Unsupported future document versions fail before payload construction or application mutation.
+
+When a filesystem script is included in a session, the application keeps the currently running Lua source and recursively captures regular Markdown and PNG files below the Lua file's parent. It does not follow directory symlinks and rejects escaping file symlinks. The conversion uses limits of 16 MiB per file, 64 MiB and 10,000 files per script, and 256 MiB aggregate script resources. A scan/read/limit/staleness failure leaves ownership unchanged. Source-only scripts produce an entrypoint-only bundle, while an existing bundle is reused when converting away from and back to session ownership.
 
 ### MIDI payload
 
@@ -102,6 +112,6 @@ Default archive limits are 1,000,000 entries and 16 GiB total declared uncompres
 
 Malformed paths, duplicate entries, unknown/undeclared payloads, count/size overflow, CRC/SHA mismatch, unsupported version/capability, and interrupted staged replacement fail without publishing a partial session. Retry by correcting/selecting another file. Cancellation before commit leaves the prior model/backend mapping intact. A save request made during recording/replacement is explicitly rejected until content settles; playing does not block saving and is not transitioned.
 
-The current application can instantiate direct and Tiny Synth/FX sync/main track topology plus source-bearing session scripts on native and browser targets. Native builds additionally instantiate External and advertised Carla Rack/Patchbay/Patchbay16x dry/wet tracks, preserve role-bearing media and links across driver switches, and restore current and compatible recorded-take processor state before publication. Script source is syntax-checked before commit, activated only after the shared session replacement commits, and captured exactly on save. Lua API compatibility is independent of this session format version; an incompatible script is retained without being runnable. Version-1 documents now write `connection_model_version: 1`; a missing/zero value identifies a pre-normalized document. On browser load only, that marker migrates the former implicit Web Audio mapping to explicit default routes. New documents persist exact confirmed host IDs, including intentional disconnections, so session replacement removes startup defaults before restoring saved links. Deferred buses, generic MIDI-control configuration, and session-local settings remain codec-representable but cause a capability error if runtime instantiation would be required. Unknown or unavailable track processors likewise fail transactionally rather than flattening to direct topology.
+The current application can instantiate direct and Tiny Synth/FX sync/main track topology plus bundled session scripts on native and browser targets. Native builds additionally instantiate External and advertised Carla Rack/Patchbay/Patchbay16x dry/wet tracks, preserve role-bearing media and links across driver switches, and restore current and compatible recorded-take processor state before publication. Script bundle resources and source syntax are checked before commit, activated only after the shared session replacement commits, and captured exactly on save. Lua API compatibility is independent of this session format version; an incompatible script is retained without being runnable. Version-1 documents now write `connection_model_version: 1`; a missing/zero value identifies a pre-normalized document. On browser load only, that marker migrates the former implicit Web Audio mapping to explicit default routes. New documents persist exact confirmed host IDs, including intentional disconnections, so session replacement removes startup defaults before restoring saved links. Deferred buses, generic MIDI-control configuration, and session-local settings remain codec-representable but cause a capability error if runtime instantiation would be required. Unknown or unavailable track processors likewise fail transactionally rather than flattening to direct topology.
 
 Predecessor `.shl`, `session.1`, tar/JSON/FLAC archives, and JSON `.smf` are not sniffed or migrated. They produce an unsupported-format error and leave the running session unchanged.

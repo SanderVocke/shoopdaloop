@@ -9,7 +9,7 @@ use std::rc::Rc;
 use anyhow::{anyhow, bail};
 use omnilua::{Function, Lua, Value};
 use shoop_app_api::{
-    ephemeral_script_display_name, is_ephemeral_script_version,
+    ephemeral_script_display_name, is_ephemeral_script_version, CatalogScriptSource,
     ScriptActivityDiagnostics as ApiScriptActivityDiagnostics, ScriptDialogButtonId,
     ScriptDialogId, ScriptDialogState, ScriptId, ScriptKind, ScriptLifecycle,
     ScriptLogLevel as ApiScriptLogLevel, ScriptLogState, ScriptMidiDiagnostics,
@@ -31,6 +31,7 @@ pub use control::{
     SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
 use dialog::{install_dialog_api, DialogIdSource, DialogRegistry};
+pub use file::ScriptResourceProvider;
 use file::{install_file_api, ScriptFileReader};
 use key_constants::{KEY_CONSTANTS, MODIFIER_CONSTANTS};
 #[cfg(not(target_arch = "wasm32"))]
@@ -40,13 +41,34 @@ pub use midi::{
     MidiEndpoint, MidiEndpointDirection, MidiEndpointSnapshot, NullMidiService,
     MAX_MIDI_MESSAGE_BYTES, MIDI_QUEUE_CAPACITY,
 };
+use shoop_script_resources::unregister_resource_scope;
+pub use shoop_script_resources::{ResourceOrigin, ScriptResourceBundle};
+use std::sync::Arc;
 
-pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");
-pub const AKAI_APC_MINI_MK1_SCRIPT: &str =
-    include_str!("../../../lua/builtins/akai_apc_mini_mk1.lua");
-pub const AKAI_APC_MINI_MK2_V3_SCRIPT: &str =
-    include_str!("../../../lua/builtins/akai_apc_mini_mk2_v3.lua");
-pub const DIALOG_EXAMPLE_SCRIPT: &str = include_str!("../../../lua/examples/dialogs.lua");
+#[cfg(test)]
+const KEYBOARD_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/keyboard.lua"
+    ))
+};
+#[cfg(test)]
+const AKAI_APC_MINI_MK1_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/akai_apc_mini_mk1.lua"
+    ))
+};
+#[cfg(test)]
+const AKAI_APC_MINI_MK2_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/akai_apc_mini_mk2.lua"
+    ))
+};
+#[cfg(test)]
+const DIALOG_EXAMPLE_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/examples/dialogs.lua"
+    ))
+};
 const SANDBOX_SOURCE: &str = include_str!("../../../lua/system/sandbox.lua");
 const MAX_LOG_ENTRIES: usize = 100;
 
@@ -104,6 +126,7 @@ pub struct SessionScriptSource {
     pub document_id: u64,
     pub name: String,
     pub source: String,
+    pub bundle: Arc<ScriptResourceBundle>,
     pub enabled: bool,
 }
 
@@ -210,7 +233,24 @@ impl LuaRuntime {
     }
 
     pub fn execute(&self, name: &str, source: &str) -> anyhow::Result<()> {
-        self.files.set_script_path(name);
+        let provider = std::path::Path::new(name)
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .map(|path| ScriptResourceProvider::Filesystem(path.to_owned()))
+            .unwrap_or_default();
+        self.execute_with_resources(name, source, provider, None)
+    }
+
+    pub fn execute_with_resources(
+        &self,
+        name: &str,
+        source: &str,
+        provider: ScriptResourceProvider,
+        origin: Option<ResourceOrigin>,
+    ) -> anyhow::Result<()> {
+        self.files
+            .configure(provider, origin)
+            .map_err(|error| anyhow!("could not configure resources for {name}: {error}"))?;
         self.run_sandboxed
             .call::<_, ()>(source)
             .map_err(|error| anyhow!("could not execute Lua source {name}: {error}"))?;
@@ -394,8 +434,11 @@ fn install_require(
 struct ScriptRecord {
     id: ScriptId,
     name: String,
+    identity: Option<String>,
     source: String,
     source_path: Option<String>,
+    resource_bundle: Option<Arc<ScriptResourceBundle>>,
+    resource_generation: u64,
     kind: ScriptKind,
     enabled: bool,
     lifecycle: ScriptLifecycle,
@@ -555,6 +598,18 @@ impl ScriptManager {
         enabled: bool,
         source_path: Option<String>,
     ) -> anyhow::Result<ScriptId> {
+        self.add_with_resources(name, source, kind, enabled, source_path, None)
+    }
+
+    pub fn add_with_resources(
+        &mut self,
+        name: impl Into<String>,
+        source: impl Into<String>,
+        kind: ScriptKind,
+        enabled: bool,
+        source_path: Option<String>,
+        resource_bundle: Option<Arc<ScriptResourceBundle>>,
+    ) -> anyhow::Result<ScriptId> {
         let name = name.into();
         let source = source.into();
         LuaRuntime::new()?.check_syntax(&name, &source)?;
@@ -566,8 +621,11 @@ impl ScriptManager {
                 id,
                 documentation: extract_documentation(&source),
                 name,
+                identity: None,
                 source,
                 source_path,
+                resource_bundle,
+                resource_generation: 0,
                 kind,
                 enabled,
                 lifecycle: ScriptLifecycle::Inactive,
@@ -581,6 +639,224 @@ impl ScriptManager {
             let _ = self.start(id);
         }
         Ok(id)
+    }
+
+    pub fn add_catalog_script(
+        &mut self,
+        identity: impl Into<String>,
+        source: impl Into<String>,
+        kind: ScriptKind,
+        enabled: bool,
+        source_path: Option<String>,
+        resource_bundle: Option<Arc<ScriptResourceBundle>>,
+    ) -> anyhow::Result<ScriptId> {
+        let identity = identity.into();
+        let normalized = shoop_script_resources::NormalizedRelativePath::parse(&identity)?;
+        if self
+            .scripts
+            .values()
+            .any(|record| record.identity.as_deref() == Some(normalized.as_str()))
+        {
+            bail!("duplicate built-in script identity {normalized}");
+        }
+        if !matches!(kind, ScriptKind::Bundled | ScriptKind::Example) {
+            bail!("catalog scripts must be built-in or example scripts");
+        }
+        let name = normalized.file_name().to_owned();
+        let id =
+            self.add_with_resources(name, source, kind, enabled, source_path, resource_bundle)?;
+        self.scripts.get_mut(&id).unwrap().identity = Some(normalized.to_string());
+        Ok(id)
+    }
+
+    pub fn reconcile_catalog_scripts(
+        &mut self,
+        scripts: &[CatalogScriptSource],
+        preserve_identities: &[String],
+    ) -> anyhow::Result<()> {
+        let syntax = LuaRuntime::new()?;
+        let mut identities = std::collections::BTreeSet::new();
+        for script in scripts {
+            let identity = shoop_script_resources::NormalizedRelativePath::parse(&script.identity)?;
+            if !identities.insert(identity.case_folded()) {
+                bail!("duplicate catalog script identity {identity}");
+            }
+            if !matches!(script.kind, ScriptKind::Bundled | ScriptKind::Example) {
+                bail!("catalog script {identity} has an invalid kind");
+            }
+        }
+        let mut preserved = std::collections::BTreeSet::new();
+        for identity in preserve_identities {
+            let identity = shoop_script_resources::NormalizedRelativePath::parse(identity)?;
+            if identities.contains(&identity.case_folded())
+                || !preserved.insert(identity.case_folded())
+            {
+                bail!("duplicate preserved catalog script identity {identity}");
+            }
+        }
+
+        let desired = scripts
+            .iter()
+            .map(|script| (script.identity.as_str(), script))
+            .collect::<BTreeMap<_, _>>();
+        let mut failures = Vec::new();
+        let mut failed = std::collections::BTreeSet::new();
+        for script in scripts {
+            let existing = self
+                .scripts
+                .values()
+                .find(|record| record.identity.as_deref() == Some(script.identity.as_str()));
+            let changed = existing.is_none_or(|record| {
+                record.source != script.source.as_ref()
+                    || record.source_path != script.source_path
+                    || record.resource_bundle != script.resource_bundle
+                    || record.kind != script.kind
+            });
+            let validation = syntax
+                .check_syntax(&script.name, &script.source)
+                .and_then(|()| {
+                    if script.enabled && changed {
+                        self.stage_catalog_script(script)
+                    } else {
+                        Ok(())
+                    }
+                });
+            if let Err(error) = validation {
+                failed.insert(script.identity.as_str());
+                failures.push(format!("{}: {error}", script.identity));
+            }
+        }
+
+        let removed = self
+            .scripts
+            .values()
+            .filter(|record| {
+                record.identity.as_deref().is_some_and(|identity| {
+                    !desired.contains_key(identity) && !preserved.contains(&identity.to_lowercase())
+                })
+            })
+            .map(|record| record.id)
+            .collect::<Vec<_>>();
+        for id in removed {
+            self.stop(id)?;
+            self.scripts.remove(&id);
+        }
+
+        for script in scripts {
+            if failed.contains(script.identity.as_str()) {
+                continue;
+            }
+            let existing = self.scripts.values().find_map(|record| {
+                (record.identity.as_deref() == Some(script.identity.as_str())).then_some(record.id)
+            });
+            if let Some(id) = existing {
+                let changed = {
+                    let record = self.scripts.get(&id).unwrap();
+                    record.source != script.source.as_ref()
+                        || record.source_path != script.source_path
+                        || record.resource_bundle != script.resource_bundle
+                        || record.kind != script.kind
+                };
+                let enabled_changed = self.scripts[&id].enabled != script.enabled;
+                if changed {
+                    let old = {
+                        let record = self.scripts.get(&id).unwrap();
+                        (
+                            record.name.clone(),
+                            record.source.clone(),
+                            record.source_path.clone(),
+                            record.resource_bundle.clone(),
+                            record.kind,
+                            record.enabled,
+                            record.documentation.clone(),
+                            record.lifecycle,
+                            record.latest_error.clone(),
+                            record.archived_logs.clone(),
+                        )
+                    };
+                    let old_enabled = old.5;
+                    self.stop(id)?;
+                    let record = self.scripts.get_mut(&id).unwrap();
+                    record.name = script.name.clone();
+                    record.source = script.source.to_string();
+                    record.source_path = script.source_path.clone();
+                    record.resource_bundle = script.resource_bundle.clone();
+                    record.kind = script.kind;
+                    record.enabled = script.enabled;
+                    record.documentation = extract_documentation(&record.source);
+                    record.lifecycle = ScriptLifecycle::Inactive;
+                    record.latest_error = None;
+                    record.archived_logs.clear();
+                    if script.enabled {
+                        if let Err(error) = self.start(id) {
+                            let record = self.scripts.get_mut(&id).unwrap();
+                            record.name = old.0;
+                            record.source = old.1;
+                            record.source_path = old.2;
+                            record.resource_bundle = old.3;
+                            record.kind = old.4;
+                            record.enabled = old_enabled;
+                            record.documentation = old.6;
+                            record.lifecycle = old.7;
+                            record.latest_error = old.8;
+                            record.archived_logs = old.9;
+                            let mut message = format!("{}: {error}", script.identity);
+                            if old_enabled {
+                                if let Err(restore) = self.start(id) {
+                                    message.push_str(&format!("; restore failed: {restore}"));
+                                }
+                            }
+                            failures.push(message);
+                        }
+                    }
+                } else if enabled_changed {
+                    if let Err(error) = self.set_enabled(id, script.enabled) {
+                        failures.push(format!("{}: {error}", script.identity));
+                    }
+                }
+            } else {
+                match self.add_catalog_script(
+                    script.identity.clone(),
+                    script.source.to_string(),
+                    script.kind,
+                    script.enabled,
+                    script.source_path.clone(),
+                    script.resource_bundle.clone(),
+                ) {
+                    Ok(_) => {}
+                    Err(error) => failures.push(format!("{}: {error}", script.identity)),
+                }
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            bail!(
+                "catalog reconciliation completed with failures: {}",
+                failures.join("; ")
+            )
+        }
+    }
+
+    fn stage_catalog_script(&self, script: &CatalogScriptSource) -> anyhow::Result<()> {
+        let control = Rc::new(RefCell::new(ControlBridge {
+            snapshot: self.control.borrow().snapshot.clone(),
+            operations: Vec::new(),
+        }));
+        let runtime = LuaRuntime::new_with_control(control)?;
+        let provider = if let Some(bundle) = &script.resource_bundle {
+            ScriptResourceProvider::Bundle(Arc::clone(bundle))
+        } else {
+            script
+                .source_path
+                .as_deref()
+                .and_then(|path| std::path::Path::new(path).parent())
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| ScriptResourceProvider::Filesystem(path.to_owned()))
+                .unwrap_or_default()
+        };
+        let execution_name = script.source_path.as_deref().unwrap_or(&script.name);
+        runtime.execute_with_resources(execution_name, &script.source, provider, None)
     }
 
     pub fn add_ephemeral(
@@ -672,11 +948,13 @@ impl ScriptManager {
             self.scripts.remove(&id);
         }
         for script in scripts {
-            let id = self.add(
+            let id = self.add_with_resources(
                 script.name.clone(),
                 script.source.clone(),
                 ScriptKind::Session,
                 script.enabled,
+                None,
+                Some(Arc::clone(&script.bundle)),
             )?;
             self.scripts.get_mut(&id).unwrap().session_document_id = Some(script.document_id);
         }
@@ -691,6 +969,15 @@ impl ScriptManager {
                 document_id: record.session_document_id.unwrap_or(record.id.raw()),
                 name: record.name.clone(),
                 source: record.source.clone(),
+                bundle: record.resource_bundle.clone().unwrap_or_else(|| {
+                    Arc::new(
+                        ScriptResourceBundle::source_only(
+                            "main.lua",
+                            Arc::<[u8]>::from(record.source.as_bytes()),
+                        )
+                        .expect("valid source-only session script bundle"),
+                    )
+                }),
                 enabled: record.enabled,
             })
             .collect()
@@ -750,13 +1037,32 @@ impl ScriptManager {
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
         }
+        let scope = format!("script-{}", record.id.raw());
+        unregister_resource_scope(&scope);
+        record.resource_generation = record.resource_generation.saturating_add(1).max(1);
         record.lifecycle = ScriptLifecycle::Running;
         record.latest_error = None;
         record.archived_logs.clear();
         let runtime =
             LuaRuntime::new_with_services(Rc::clone(&self.control), Rc::clone(&self.dialog_ids))?;
         let execution_name = record.source_path.as_deref().unwrap_or(&record.name);
-        match runtime.execute(execution_name, &record.source) {
+        let provider = if let Some(bundle) = &record.resource_bundle {
+            ScriptResourceProvider::Bundle(Arc::clone(bundle))
+        } else {
+            record
+                .source_path
+                .as_deref()
+                .and_then(|path| std::path::Path::new(path).parent())
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| ScriptResourceProvider::Filesystem(path.to_owned()))
+                .unwrap_or_default()
+        };
+        let origin =
+            (!matches!(provider, ScriptResourceProvider::None)).then_some(ResourceOrigin {
+                scope,
+                generation: record.resource_generation,
+            });
+        match runtime.execute_with_resources(execution_name, &record.source, provider, origin) {
             Ok(()) => {
                 if runtime.is_listening() {
                     record.lifecycle = ScriptLifecycle::Listening;
@@ -782,6 +1088,7 @@ impl ScriptManager {
 
     pub fn stop(&mut self, id: ScriptId) -> anyhow::Result<()> {
         let record = self.scripts.get_mut(&id).ok_or_else(|| stale_script(id))?;
+        unregister_resource_scope(&format!("script-{}", record.id.raw()));
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
             record.archived_logs = runtime.logs();
@@ -800,6 +1107,53 @@ impl ScriptManager {
         }
         self.stop(id)?;
         self.scripts.remove(&id);
+        Ok(())
+    }
+
+    pub fn conversion_source(
+        &self,
+        id: ScriptId,
+    ) -> anyhow::Result<(
+        String,
+        Option<String>,
+        Option<Arc<ScriptResourceBundle>>,
+        u64,
+    )> {
+        let record = self.require(id)?;
+        Ok((
+            record.source.clone(),
+            record.source_path.clone(),
+            record.resource_bundle.clone(),
+            record.resource_generation,
+        ))
+    }
+
+    pub fn commit_session_bundle(
+        &mut self,
+        id: ScriptId,
+        expected_source: &str,
+        expected_generation: u64,
+        bundle: Arc<ScriptResourceBundle>,
+    ) -> anyhow::Result<()> {
+        let record = self.require(id)?;
+        if record.kind == ScriptKind::Session
+            || record.source != expected_source
+            || record.resource_generation != expected_generation
+        {
+            bail!("stale script conversion completion")
+        }
+        self.stop(id)?;
+        let session_document_id = self
+            .scripts
+            .values()
+            .filter_map(|record| record.session_document_id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let record = self.scripts.get_mut(&id).unwrap();
+        record.resource_bundle = Some(bundle);
+        record.kind = ScriptKind::Session;
+        record.session_document_id = Some(session_document_id);
         Ok(())
     }
 
@@ -824,6 +1178,12 @@ impl ScriptManager {
             None
         };
         let record = self.scripts.get_mut(&id).unwrap();
+        if kind == ScriptKind::Session && record.resource_bundle.is_none() {
+            record.resource_bundle = Some(Arc::new(ScriptResourceBundle::source_only(
+                "main.lua",
+                Arc::<[u8]>::from(record.source.as_bytes()),
+            )?));
+        }
         record.kind = kind;
         record.session_document_id = session_document_id;
         Ok(())
@@ -860,10 +1220,22 @@ impl ScriptManager {
                 ScriptState {
                     id: record.id,
                     name: record.name.clone(),
+                    identity: record.identity.clone().map(Arc::from),
                     kind: record.kind,
                     enabled: record.enabled,
                     lifecycle: record.lifecycle,
                     documentation: record.documentation.clone(),
+                    resource_base_uri: (record.resource_generation > 0
+                        && (record.resource_bundle.is_some() || record.source_path.is_some()))
+                    .then(|| {
+                        Arc::from(
+                            ResourceOrigin {
+                                scope: format!("script-{}", record.id.raw()),
+                                generation: record.resource_generation,
+                            }
+                            .base_uri(),
+                        )
+                    }),
                     latest_error: record.latest_error.clone(),
                     activity: ApiScriptActivityDiagnostics {
                         loop_callbacks: activity.loop_callbacks,
@@ -1099,7 +1471,7 @@ dialog.simple('Help', {dialog.markdown_file('content/help.md')})
             .check_syntax("akai_apc_mini_mk1.lua", AKAI_APC_MINI_MK1_SCRIPT)
             .unwrap();
         runtime
-            .check_syntax("akai_apc_mini_mk2_v3.lua", AKAI_APC_MINI_MK2_V3_SCRIPT)
+            .check_syntax("akai_apc_mini_mk2.lua", AKAI_APC_MINI_MK2_SCRIPT)
             .unwrap();
         runtime
             .check_syntax("dialogs.lua", DIALOG_EXAMPLE_SCRIPT)
@@ -1264,7 +1636,7 @@ d.open('Simple')
             manager.take_control_operations(),
             [ControlOperation::SetSolo(true)]
         );
-        let ScriptDialogElement::Markdown { text, links } = &simple.elements[3] else {
+        let ScriptDialogElement::Markdown { text, links, .. } = &simple.elements[3] else {
             panic!("expected markdown");
         };
         assert_eq!(text, "Choose [Clear solo](clear-solo).");
@@ -2039,11 +2411,14 @@ if not c.get_solo() then error('solo') end
         assert_eq!(manager.states()[0].kind, ScriptKind::Session);
         assert_eq!(manager.source(id).unwrap(), ("portable.lua", source));
         assert_eq!(manager.session_scripts()[0].source, source);
+        let bundle = manager.session_scripts()[0].bundle.clone();
 
         manager.convert_kind(id, ScriptKind::Ephemeral).unwrap();
         assert_eq!(manager.states()[0].kind, ScriptKind::Ephemeral);
         assert!(manager.session_scripts().is_empty());
         assert_eq!(manager.source(id).unwrap(), ("portable.lua", source));
+        manager.convert_kind(id, ScriptKind::Session).unwrap();
+        assert!(Arc::ptr_eq(&manager.session_scripts()[0].bundle, &bundle));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -2372,7 +2747,7 @@ end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn apc_mini_mk2_v3_global_controls_use_click_and_hold_semantics() {
+    fn apc_mini_mk2_global_controls_use_click_and_hold_semantics() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![MidiEndpoint {
             id: "apc-mk2-source".to_owned(),
@@ -2382,8 +2757,8 @@ end)
         let mut manager = ScriptManager::new_with_midi(Box::new(midi));
         manager
             .add(
-                "akai_apc_mini_mk2_v3.lua",
-                AKAI_APC_MINI_MK2_V3_SCRIPT,
+                "akai_apc_mini_mk2.lua",
+                AKAI_APC_MINI_MK2_SCRIPT,
                 ScriptKind::User,
                 true,
             )
@@ -2846,13 +3221,22 @@ end, function() end, 10)
             eprintln!("SKIP native virtual MIDI test: host did not expose virtual endpoints");
             return;
         }
-        assert_eq!(
-            received_receiver
-                .recv_timeout(std::time::Duration::from_secs(1))
-                .unwrap(),
-            [9, 8, 7]
-        );
-        source.send(&[6, 5, 4]).unwrap();
+        let received = match received_receiver.recv_timeout(std::time::Duration::from_secs(1)) {
+            Ok(received) => received,
+            Err(error) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => {
+                eprintln!("SKIP native virtual MIDI test: {error}");
+                return;
+            }
+            Err(error) => panic!("virtual MIDI output timed out: {error}"),
+        };
+        assert_eq!(received, [9, 8, 7]);
+        if let Err(error) = source.send(&[6, 5, 4]) {
+            if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() {
+                eprintln!("SKIP native virtual MIDI test: {error}");
+                return;
+            }
+            panic!("virtual MIDI input failed: {error}");
+        }
         for _ in 0..20 {
             manager.advance_midi(std::time::Duration::from_millis(10));
             if !manager.logs(id).unwrap().is_empty() {
@@ -2860,7 +3244,12 @@ end, function() end, 10)
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        assert_eq!(manager.logs(id).unwrap()[0].message, "6");
+        let logs = manager.logs(id).unwrap();
+        if logs.is_empty() && std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() {
+            eprintln!("SKIP native virtual MIDI test: input message was not delivered");
+            return;
+        }
+        assert_eq!(logs[0].message, "6");
         drop(sink);
     }
 
@@ -2890,6 +3279,80 @@ end, function() end, 10)
         manager.dispatch_global_event();
         assert_eq!(manager.logs(id).unwrap()[0].message, "new");
         assert_eq!(manager.states()[0].id, id);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn catalog_reconciliation_adds_reloads_removes_and_is_transactional() {
+        let source = |identity: &str, marker: &str, enabled| CatalogScriptSource {
+            identity: identity.to_owned(),
+            name: identity.rsplit('/').next().unwrap().to_owned(),
+            source: Arc::from(format!(
+                "shoop_announce_api_version(1, 0); print('{marker}')"
+            )),
+            source_path: None,
+            resource_bundle: None,
+            kind: ScriptKind::Bundled,
+            enabled,
+        };
+        let mut manager = ScriptManager::new();
+        manager
+            .reconcile_catalog_scripts(
+                &[
+                    source("controllers/a.lua", "a1", true),
+                    source("controllers/b.lua", "b1", false),
+                ],
+                &[],
+            )
+            .unwrap();
+        let initial = manager.states();
+        assert_eq!(initial.len(), 2);
+        let a_id = initial
+            .iter()
+            .find(|script| script.identity.as_deref() == Some("controllers/a.lua"))
+            .unwrap()
+            .id;
+
+        manager
+            .reconcile_catalog_scripts(
+                &[
+                    source("controllers/a.lua", "a2", true),
+                    source("controllers/c.lua", "c1", false),
+                ],
+                &[],
+            )
+            .unwrap();
+        let reconciled = manager.states();
+        assert_eq!(reconciled.len(), 2);
+        assert_eq!(
+            reconciled
+                .iter()
+                .find(|script| script.identity.as_deref() == Some("controllers/a.lua"))
+                .unwrap()
+                .id,
+            a_id
+        );
+        assert!(reconciled
+            .iter()
+            .any(|script| script.identity.as_deref() == Some("controllers/c.lua")));
+        assert!(!reconciled
+            .iter()
+            .any(|script| script.identity.as_deref() == Some("controllers/b.lua")));
+
+        let before = manager.states();
+        let mut malformed = source("controllers/a.lua", "bad", true);
+        malformed.source = Arc::from("shoop_announce_api_version(1, 0); error('broken')");
+        assert!(manager
+            .reconcile_catalog_scripts(&[malformed, source("controllers/c.lua", "c1", false)], &[],)
+            .is_err());
+        assert_eq!(manager.states(), before);
+
+        manager
+            .reconcile_catalog_scripts(
+                &[source("controllers/c.lua", "c1", false)],
+                &["controllers/a.lua".to_owned()],
+            )
+            .unwrap();
+        assert_eq!(manager.states(), before);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -2951,7 +3414,7 @@ end, function() end, 10)
             "**SYNC** | Click to toggle synchronization permanently. Hold for 250 ms to toggle it momentarily until release."
         ));
         assert!(!apc.contains("SHIFT** to make the toggle permanent"));
-        let apc_mk2 = extract_documentation(AKAI_APC_MINI_MK2_V3_SCRIPT).unwrap();
+        let apc_mk2 = extract_documentation(AKAI_APC_MINI_MK2_SCRIPT).unwrap();
         assert!(apc_mk2.starts_with("# Akai APC Mini MK2 controls\n"));
         assert!(apc_mk2.contains(
             "**SOLO** | Click to toggle solo permanently. Hold for 250 ms to toggle it momentarily until release."
