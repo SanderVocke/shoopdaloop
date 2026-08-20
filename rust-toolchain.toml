@@ -1,9 +1,2 @@
-# Nightly is required, not preferred: .cargo/config.toml enables the unstable
-# `bindeps` feature (artifact dependencies), and stable cargo rejects the
-# workspace at manifest-parse time with a bare `artifact = ... requires -Z
-# bindeps` error that does not say which toolchain is needed.
-#
-# CI selects nightly explicitly in .github/actions/prepare_build; this makes local
-# builds agree without needing `cargo +nightly` on every invocation.
 [toolchain]
-channel = "nightly"
+channel = "stable"

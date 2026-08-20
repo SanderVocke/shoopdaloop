@@ -18,7 +18,6 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::content_snapshot::MidiProcessSnapshotWriter;
 use crate::loop_mode::LoopMode;
-use crate::midi;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
 use crate::state_mirror::MidiChannelStateMirror;
@@ -564,13 +563,13 @@ impl MidiChannel {
             }
         }
 
-        // Anything other than plain forward playback leaves notes hanging.
+        // Anything other than plain forward playback can leave played notes hanging.
         let interrupted = self.prev_process_flags.contains(ProcessFlags::PLAYBACK)
             && (!flags.contains(ProcessFlags::PLAYBACK)
                 || pos_before != self.prev_pos_after as i32);
         if interrupted && n_samples > 0 {
             let time = self.play.map(|p| p.n_frames_processed).unwrap_or(0);
-            self.send_all_sound_off(out, time);
+            self.stop_active_playback_notes(out, time);
         }
 
         let mut adopted_prerecording = false;
@@ -1000,17 +999,21 @@ impl MidiChannel {
         }
     }
 
-    /// arguably it should cover all 16.
-    fn send_all_sound_off(&mut self, out: &mut Vec<MidiStorageElem>, time: u32) {
-        let msg = midi::all_sound_off(0);
-        self.send(out, time, &msg);
+    fn stop_active_playback_notes(&mut self, out: &mut Vec<MidiStorageElem>, time: u32) {
+        let mut cleanup = std::mem::take(&mut self.restore_scratch);
+        self.output_state.all_notes_off_into(&mut cleanup);
+        for message in &cleanup {
+            self.send(out, time, message.data());
+        }
+        self.restore_scratch = cleanup;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use crate::midi;
+    use assert2::check;
 
     use ChannelMode as C;
     use LoopMode as L;
@@ -1036,7 +1039,7 @@ mod tests {
         ch.set_recording_buffer(n);
         ch.set_playback_buffer(n);
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 mode,
                 L::Unknown,
@@ -1058,7 +1061,7 @@ mod tests {
         msgs.iter().map(|m| m.time).collect()
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn records_incoming_messages_with_relative_times() {
         let mut ch = channel();
         let input = [
@@ -1071,7 +1074,7 @@ mod tests {
         check!(ch.length() == 8);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_across_two_calls_offsets_times() {
         let mut ch = channel();
         ch.set_recording_buffer(8);
@@ -1082,7 +1085,7 @@ mod tests {
         ];
         let mut out = Vec::new();
         // Two 4-frame halves of one 8-frame cycle.
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Recording,
                 L::Unknown,
@@ -1096,7 +1099,7 @@ mod tests {
                 &mut out
             )
         );
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Recording,
                 L::Unknown,
@@ -1115,7 +1118,7 @@ mod tests {
         check!(ch.length() == 8);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replacing_overwrites_the_processed_interval() {
         let mut ch = channel();
         ch.set_contents(
@@ -1143,7 +1146,7 @@ mod tests {
         check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn partial_replacement_preserves_events_outside_the_interval() {
         let mut ch = channel();
         ch.set_contents(
@@ -1169,7 +1172,7 @@ mod tests {
         check!(ch.contents()[1].data() == midi::cc(0, 7, 42).as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replacement_with_no_input_erases_the_interval() {
         let mut ch = channel();
         ch.set_contents(
@@ -1187,7 +1190,7 @@ mod tests {
         check!(times(&ch.contents()) == vec![1, 6]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replacement_across_split_calls_uses_loop_relative_times() {
         let mut ch = channel();
         ch.set_contents(
@@ -1240,7 +1243,7 @@ mod tests {
         check!(ch.contents()[1].data() == midi::note_off(0, 64, 0).as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replacement_split_at_loop_wrap_uses_each_side_of_the_boundary() {
         let mut ch = channel();
         ch.set_contents(
@@ -1293,7 +1296,7 @@ mod tests {
         check!(ch.contents()[1].data() == midi::note_on(0, 64, 100).as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replacement_skips_input_before_the_channel_start_offset() {
         let mut ch = channel();
         ch.set_contents(
@@ -1322,7 +1325,7 @@ mod tests {
         check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replacement_at_loop_start_updates_playback_start_state() {
         let mut ch = channel();
         ch.set_contents(&[ev(1, &midi::note_on(0, 60, 100))], 4, None);
@@ -1345,7 +1348,7 @@ mod tests {
             .contains(&midi::cc(0, 7, 42).to_vec()));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replacement_reports_insufficient_storage_without_partial_mutation() {
         let mut ch = MidiChannel::with_capacity_elems(3, C::Direct);
         ch.set_contents(
@@ -1384,7 +1387,7 @@ mod tests {
         check!(times(&ch.contents()) == vec![0, 2, 6]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn messages_beyond_the_window_are_deferred() {
         let mut ch = channel();
         let input = [ev(9, &midi::note_on(0, 60, 1))];
@@ -1393,7 +1396,7 @@ mod tests {
         check!(ch.n_events() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn input_state_is_tracked_even_when_not_recording() {
         let mut ch = channel();
         let input = [ev(1, &midi::cc(0, 7, 42))];
@@ -1402,7 +1405,7 @@ mod tests {
         check!(ch.input_state().cc_value(0, 7) == Some(42));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn plays_back_recorded_messages_at_buffer_relative_times() {
         let mut ch = channel();
         cycle(
@@ -1425,7 +1428,7 @@ mod tests {
         check!(ch.n_events_triggered() == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_only_emits_messages_inside_the_window() {
         let mut ch = channel();
         cycle(
@@ -1446,7 +1449,7 @@ mod tests {
         check!(times(&out) == vec![1, 2]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_updates_output_state() {
         let mut ch = channel();
         cycle(
@@ -1462,8 +1465,32 @@ mod tests {
         check!(ch.n_notes_active() == 1);
     }
 
-    #[test]
-    fn interrupting_playback_sends_all_sound_off() {
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_wrap_stops_only_notes_owned_by_playback() {
+        let mut ch = channel();
+        ch.set_contents(&[ev(0, &midi::note_on(0, 60, 100))], 4, None);
+        let mut mixed_state = MidiStateTracker::new(TrackWhat::ALL);
+        mixed_state.process(&midi::note_on(0, 64, 100));
+        for message in cycle(&mut ch, L::Playing, 4, 0, 4, &[]) {
+            mixed_state.process(message.data());
+        }
+
+        let out = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        for message in &out {
+            mixed_state.process(message.data());
+        }
+        check!(out.len() == 2);
+        check!(out[0].data() == midi::note_off(0, 60, 0).as_slice());
+        check!(out[1].data() == midi::note_on(0, 60, 100).as_slice());
+        check!(!out
+            .iter()
+            .any(|message| midi::all_sound_off_channel(message.data()).is_some()));
+        check!(mixed_state.note_velocity(0, 60) == Some(100));
+        check!(mixed_state.note_velocity(0, 64) == Some(100));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn interrupting_playback_stops_its_active_notes() {
         let mut ch = channel();
         cycle(
             &mut ch,
@@ -1477,10 +1504,10 @@ mod tests {
         // Stopping mid-playback must silence anything left sounding.
         let out = cycle(&mut ch, L::Stopped, 4, 0, 4, &[]);
         check!(out.len() == 1);
-        check!(midi::all_sound_off_channel(out[0].data()) == Some(0));
+        check!(out[0].data() == midi::note_off(0, 60, 0).as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_position_jump_also_counts_as_interruption() {
         let mut ch = channel();
         cycle(
@@ -1496,11 +1523,11 @@ mod tests {
         let out = cycle(&mut ch, L::Playing, 4, 6, 8, &[]);
         check!(out
             .iter()
-            .any(|m| midi::all_sound_off_channel(m.data()) == Some(0)));
+            .any(|message| message.data() == midi::note_off(0, 60, 0).as_slice()));
     }
 
-    #[test]
-    fn uninterrupted_forward_playback_sends_no_all_sound_off() {
+    #[shoop_wasm_test_support::shoop_test]
+    fn uninterrupted_forward_playback_sends_no_cleanup() {
         let mut ch = channel();
         cycle(
             &mut ch,
@@ -1515,13 +1542,10 @@ mod tests {
         );
         cycle(&mut ch, L::Playing, 4, 0, 8, &[]);
         let out = cycle(&mut ch, L::Playing, 4, 4, 8, &[]);
-        check!(!out
-            .iter()
-            .any(|m| midi::all_sound_off_channel(m.data()) == Some(0)));
         check!(times(&out) == vec![1]); // frame 5 is buffer-relative frame 1
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn input_drift_since_record_start_is_reverted_on_playback() {
         let mut ch = channel();
         // A controller value the recording was made against.
@@ -1555,7 +1579,7 @@ mod tests {
         check!(ch.output_state().cc_value(0, 7) == Some(99));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     /// State the input never moved needs no restore: in Direct mode the input
     /// already reached the receiver, so re-sending it would be noise.
     fn undrifted_state_is_not_restored_on_playback() {
@@ -1578,7 +1602,7 @@ mod tests {
         check!(times(&out) == vec![1, 2]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn set_length_truncates_recorded_messages() {
         let mut ch = channel();
         cycle(
@@ -1598,7 +1622,7 @@ mod tests {
         check!(times(&ch.contents()) == vec![1]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn clear_empties_everything() {
         let mut ch = channel();
         cycle(
@@ -1615,7 +1639,7 @@ mod tests {
         check!(ch.recording_start_state_messages().is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn set_contents_restores_messages_and_start_state() {
         let mut ch = channel();
         let msgs = [ev(1, &midi::note_on(0, 60, 7))];
@@ -1630,12 +1654,12 @@ mod tests {
             .any(|m| m.data() == midi::note_on(0, 60, 7).as_slice()));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn without_buffers_nothing_is_recorded() {
         let mut ch = channel();
         ch.clear_buffers();
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Recording,
                 L::Unknown,
@@ -1653,7 +1677,7 @@ mod tests {
         check!(out.is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_past_the_input_buffer_errors() {
         let mut ch = channel();
         ch.set_recording_buffer(2);
@@ -1671,7 +1695,7 @@ mod tests {
             &[],
             &mut out,
         );
-        let_assert!(
+        assert2::assert!(let
             Err(MidiChannelError::RecordOutOfBounds {
                 n_samples,
                 available
@@ -1681,7 +1705,7 @@ mod tests {
         check!(available == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playing_past_the_output_buffer_errors() {
         let mut ch = channel();
         ch.set_recording_buffer(8);
@@ -1699,7 +1723,7 @@ mod tests {
             &[],
             &mut out,
         );
-        let_assert!(
+        assert2::assert!(let
             Err(MidiChannelError::PlaybackOutOfBounds {
                 n_samples,
                 available
@@ -1709,7 +1733,7 @@ mod tests {
         check!(available == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disabled_channel_does_nothing() {
         let mut ch = MidiChannel::with_capacity_elems(64, C::Disabled);
         cycle(
@@ -1724,7 +1748,7 @@ mod tests {
         check!(ch.next_poi(L::Playing, L::Unknown, None, None, 0) == None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn next_poi_is_smallest_remaining_buffer() {
         let mut ch = channel();
         ch.set_playback_buffer(8);
@@ -1734,14 +1758,14 @@ mod tests {
         check!(ch.next_poi(L::Stopped, L::Unknown, None, None, 0) == None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_record_carries_over_into_recording() {
         let mut ch = channel();
         // Recording is one trigger away: this cycle pre-records.
         ch.set_recording_buffer(4);
         ch.set_playback_buffer(4);
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Stopped,
                 L::Recording,
@@ -1762,7 +1786,7 @@ mod tests {
         // the start offset marks where sample 0 really is.
         ch.set_recording_buffer(4);
         ch.set_playback_buffer(4);
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Recording,
                 L::Unknown,
@@ -1785,13 +1809,13 @@ mod tests {
         check!(ch.start_offset() == 4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_record_discarded_when_recording_does_not_follow() {
         let mut ch = channel();
         ch.set_recording_buffer(4);
         ch.set_playback_buffer(4);
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = ch.process(
                 L::Stopped,
                 L::Recording,
@@ -1811,7 +1835,7 @@ mod tests {
         check!(ch.start_offset() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn record_position_accounts_for_start_offset() {
         let mut ch = channel();
         // A non-zero start offset makes the storage write position differ from
@@ -1829,7 +1853,7 @@ mod tests {
         check!(times(&ch.contents()) == vec![12]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_skips_messages_before_the_start_offset() {
         let mut ch = channel();
         ch.set_contents(
@@ -1848,7 +1872,7 @@ mod tests {
         check!(played.contains(&midi::note_on(0, 61, 1).to_vec()));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_playing_before_the_start_offset_stays_silent() {
         let mut ch = channel();
         ch.set_contents(
@@ -1869,7 +1893,7 @@ mod tests {
         check!(played.contains(&midi::note_on(0, 61, 1).to_vec()));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_play_samples_widen_the_validity_window() {
         let mut ch = channel();
         ch.set_contents(
@@ -1889,7 +1913,7 @@ mod tests {
         check!(played.contains(&midi::note_on(0, 61, 1).to_vec()));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn start_state_is_restored_only_once_per_playback_run() {
         let mut ch = channel();
         ch.set_contents(
@@ -1908,7 +1932,7 @@ mod tests {
         check!(out.iter().filter(|m| midi::is_note_on(m.data())).count() == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn reset_state_tracking_forgets_everything() {
         let mut ch = channel();
         cycle(&mut ch, L::Stopped, 4, 0, 0, &[ev(0, &midi::cc(0, 7, 9))]);

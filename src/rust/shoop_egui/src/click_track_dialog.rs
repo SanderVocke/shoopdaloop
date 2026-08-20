@@ -463,7 +463,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn defaults_fill_and_capability_reconciliation_are_stable_by_loop_id() {
         let state = state();
         let target = &state.tracks[0].loops[0];
@@ -488,7 +488,7 @@ mod tests {
         assert_eq!(dialog.drafts[&target.id].kind, ClickTrackKind::Audio);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn validation_covers_fractional_bpm_limits_and_kind_specific_state() {
         let state = state();
         let target = &state.tracks[0].loops[0];
@@ -506,7 +506,7 @@ mod tests {
         assert!(validate_draft(&draft, target, &state.click_track, 48_000).is_err());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cancel_closes_without_discarding_the_stable_loop_draft() {
         let state = state();
         let target = &state.tracks[0].loops[0];
@@ -519,7 +519,7 @@ mod tests {
         assert_eq!(dialog.drafts[&target.id].bpm, 123.5);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn preview_and_generate_actions_preserve_the_exact_stable_target_and_draft() {
         let state = state();
         let target = &state.tracks[0].loops[0];
@@ -540,7 +540,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dialog_paints_at_minimum_and_common_sizes_and_drops_stale_target() {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();
@@ -548,7 +548,7 @@ mod tests {
             let state = state();
             let mut dialog = ClickTrackDialog::default();
             dialog.open(&state.tracks[0].loops[0], &state.click_track);
-            let _ = context.run_ui(
+            let mut ignored_output_0 = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -558,6 +558,7 @@ mod tests {
                     assert!(intents.is_empty());
                 },
             );
+            ignored_output_0.textures_delta.clear();
             assert!(dialog.generate_rect.is_some());
             assert!(dialog.preview_rect.is_some());
             let stale = AppState {
@@ -570,7 +571,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn preview_is_disabled_when_the_platform_has_no_audio_path() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -578,9 +579,10 @@ mod tests {
         let mut dialog = ClickTrackDialog::default();
         dialog.set_preview_available(false);
         dialog.open(&state.tracks[0].loops[0], &state.click_track);
-        let _ = context.run_ui(Default::default(), |_ui| {
+        let mut ignored_output_1 = context.run_ui(Default::default(), |_ui| {
             assert!(dialog.show(&context, &state).is_empty());
         });
+        ignored_output_1.textures_delta.clear();
         assert!(!dialog.preview_enabled);
     }
 }

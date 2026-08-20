@@ -566,7 +566,7 @@ mod tests {
         Some(SyncSourceState::default())
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn stop() {
         let mut l = BasicLoop::default();
 
@@ -583,7 +583,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn record() {
         let mut l = BasicLoop::default();
         l.set_mode(LoopMode::Recording);
@@ -602,7 +602,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn planned_transition() {
         let mut l = BasicLoop::default();
         l.set_sync_source(idle_sync_source());
@@ -621,7 +621,7 @@ mod tests {
         check!(l.next_poi().unwrap_or(999) == 10); // end of loop
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn planned_transition_delayed() {
         let mut l = BasicLoop::default();
         l.set_sync_source(idle_sync_source());
@@ -646,7 +646,7 @@ mod tests {
         check!(l.next_poi().unwrap_or(999) == 11); // end of loop
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn planned_transitions_delayed() {
         let mut l = BasicLoop::default();
         l.set_sync_source(idle_sync_source());
@@ -684,7 +684,7 @@ mod tests {
         check!(l.mode() == LoopMode::Recording);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn planned_transitions_cancellation_1() {
         let mut l = BasicLoop::default();
         l.set_sync_source(idle_sync_source());
@@ -720,7 +720,7 @@ mod tests {
         check!(l.next_poi().unwrap_or(999) == 999);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn generate_trigger() {
         let mut l = BasicLoop::default();
         l.set_mode(LoopMode::Stopped);
@@ -732,7 +732,7 @@ mod tests {
         check!(l.is_triggering_now() == true);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn generate_trigger_on_restart() {
         let mut l = BasicLoop::default();
         check!(l.is_triggering_now() == false);
@@ -762,7 +762,7 @@ mod tests {
         check!(l.is_triggering_now() == false);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_0_length() {
         let mut l = BasicLoop::default();
         l.set_mode(LoopMode::Playing);
@@ -775,7 +775,7 @@ mod tests {
         check!(l.mode() == LoopMode::Stopped);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dominant_poi_prefers_earlier_and_unions_coincident() {
         let a = PointOfInterest {
             when: 5,
@@ -804,7 +804,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dominant_poi_of_folds() {
         let a = PointOfInterest {
             when: 9,
@@ -819,7 +819,7 @@ mod tests {
         check!(dominant_poi_of(&[Some(a), None, Some(b)]) == Some(b));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     #[should_panic(expected = "beyond its next POI")]
     fn processing_past_poi_panics() {
         let mut l = BasicLoop::default();
@@ -829,7 +829,7 @@ mod tests {
         l.process(11);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn nothing_pending_once_position_reaches_length() {
         let mut l = BasicLoop::default();
         l.set_length(10);
@@ -847,7 +847,7 @@ mod tests {
         check!(l.predicted_next_trigger_eta() == Some(1));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playing_to_playing_preserves_position() {
         let mut l = BasicLoop::default();
         l.set_length(10);
@@ -866,7 +866,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_resets_length() {
         let mut l = BasicLoop::default();
         l.set_length(10);
@@ -877,7 +877,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unsynced_loop_transitions_immediately() {
         let mut l = BasicLoop::default();
         l.set_mode(LoopMode::Recording);

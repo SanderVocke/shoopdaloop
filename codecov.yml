@@ -1,35 +1,20 @@
+# Harness-only Rust is executed inside Wasm, where the repository's native
+# llvm-cov job cannot instrument it. Migrated production tests retain native
+# execution and coverage; only adapters/fixtures are exempted here.
 ignore:
-  - ".github"
-  - "docs"
-  - "dist"
-  - "distribution"
-  - "scripts"
-  - "build"
-  - "src/qml/third_party"
-  - "portable"
-
-fixes:
-  - "/__w/shoopdaloop/shoopdaloop/::"
-
-comment:
-  layout: "header, diff, flags, components"
-
-component_management:
-  individual_components:
-    - component_id: rust
-      name: Rust
-      paths:
-        - "src/rust/**"
+  - "src/rust/shoop_test_macros/**"
+  - "src/rust/shoop_wasm_test_support/**"
+  - "src/rust/shoop_wasm_runtime_tests/**"
 
 coverage:
   status:
+    # Large ownership moves can make project coverage fluctuate even when the
+    # changed lines are well covered. Keep that tolerance bounded while the
+    # patch target continues to enforce the repository's current coverage.
     project:
       default:
-        branches:
-          - master
-        informational: true
+        target: auto
+        threshold: 1%
     patch:
       default:
-        branches:
-          - master
-        informational: true
+        target: auto

@@ -1,83 +1,33 @@
-MIDI Controllers
+MIDI controllers
 ----------------
 
-**ShoopDaLoop** can be controlled by MIDI signals. This can be done either through the retained QML MIDI-rule configuration or by writing advanced integration scripts in Lua. For the latter, see :ref:`Lua scripting <lua_scripting>`.
+ShoopDaLoop controller integration is script-based. Open **Settings → Scripts**
+to enable the bundled APC Mini script or manage other scripts. Scripts are
+grouped by kind in a table; its icon controls open separate help, log, and status
+windows showing callbacks, timers, logical MIDI rules, matched and connected
+endpoints, queue drops, and failures.
+The table also exports every script's source and manages session ownership.
+Incompatible scripts remain visible with their error status so they can be
+exported and updated, but their start control is disabled.
 
-The egui application supports script-created MIDI control ports, including the bundled APC Mini integration, but not the generic QML MIDI-rule editor described below. Open **Settings** and select **Scripts** to enable a controller script and inspect its rules, connections, queue drops, and failures. Persistent startup edits take effect after **Save**. Native builds use the selected JACK or midir service. Browser builds provide the bundled Scripts surface and, after the independent **Enable Web MIDI + SysEx** permission action, use discovered browser endpoints for Lua input/output. Browser user-script file paths remain unavailable.
+Native builds discover MIDI through the selected JACK or midir service. Browser
+builds discover physical endpoints after the independent **Enable Web MIDI +
+SysEx** action. Denied or unavailable Web MIDI does not disable audio, keyboard
+control, or the rest of the application.
 
-To configure MIDI settings, open the Settings dialog and go to the **MIDI Control** tab:
+Autoconnection
+~~~~~~~~~~~~~~
 
-.. image:: resources/midi_settings.png
-   :width: 500px
-   :align: center
+A script-created logical MIDI port contains a direction and a full-name regular
+expression. It connects to every compatible matching endpoint and reconnects
+after hotplug. An empty expression matches nothing. Output rules can set a
+positive message rate; zero is unthrottled. Queues are bounded and expose drop
+counters rather than growing indefinitely.
 
+Custom controllers
+~~~~~~~~~~~~~~~~~~
 
-Autoconnect
-^^^^^^^^^^^
-
-In most cases, you will want **ShoopDaLoop** to connect automatically to your controller. Script-created MIDI ports match the regular expression against the complete endpoint name, reconnect after hotplug, and connect in the compatible direction. An empty pattern intentionally matches nothing. Positive script output rates limit the logical port's FIFO output; ``0`` is unthrottled. A delayed control pump sends at most one rate-limited message instead of catching up with a burst.
-
-The egui Settings **Scripts** tab expands each logical MIDI rule to show its direction and pattern, every currently matched endpoint, every connected endpoint, and the latest rule-specific failure. Aggregate connection, dropped-message, and error counters remain visible above those details.
-
-In the retained QML frontend, enter a regular expression for your device name into the respective JACK autoconnect field:
-
-.. image:: resources/autoconnect.png
-   :width: 300px
-   :align: center
-
-Save your configuration and try it out. When connecting your device, **ShoopDaLoop** should automatically connect to it.
-
-MIDI control rules
-^^^^^^^^^^^^^^^^^^
-
-MIDI controllers are set up as a list of **rules**. A rule defines a filter that selects incoming MIDI messages, possibly a condition, and an action to execute. Rules can be simple mappings of messages to actions, up to advanced rules where filters and actions may both incorporate snippets of Lua code.
-
-Example 1: Simple mapping using MIDI Learn
-""""""""""""""""""""""""""""""""""""""""""
-
-In this example we want to map an incoming note to perform the default action on any selected loop(s).
-
-First, ensure your device is automatically or manually connected to **ShoopDaLoop**'s **control** MIDI port.
-
-Next, click the "+" to add a new MIDI trigger. A filter dialog greets you:
-
-.. image:: resources/midi_filter.png
-   :width: 400px
-   :align: center
-
-Here we configure the filter selecting our incoming MIDI message which will trigger our action. Rather than choosing the filter manually, press a button on your MIDI controller. A notification should appear of what was just received:
-
-.. image:: resources/midi_learn.png
-   :width: 300px
-   :align: center
-
-Click "Use" to use the received message as a filter. If you wish, you may modify the filter (such as making it independent of channel by setting the channel to Any). Press OK to accept the trigger.
-
-A new trigger has been added to the list. From the "Do:" dropdown, choose "Default Loop Action". Leave the newly appeared "loops" input set to "selection".
-
-Save your configuration and test it out: Close the settings window, use the mouse or keyboard to select a loop (it will light up yellow) and press the same button on your MIDI controller. It should now (try to) transition to Recording.
-
-Example 2: Advanced note-to-loop mapping
-""""""""""""""""""""""""""""""""""""""""
-
-Some midi controllers have row(s) or grid(s) of buttons that can be used to trigger loops. In that case it is cumbersome to set up individual rules for every button.
-
-Instead, we can use a single rule that maps the incoming note to the loop number. This can be done by using a Lua expression in the filter.
-
-As in example 1, set up your device so it is connected and open the filter dialog for a new trigger rule. Try out a few buttons on your controller and note down the note number received. You will need to work out the formula that calculates the **ShoopDaLoop** loop coordinates (row, column) from the note number. In our example, let's assume we
-worked out that the row will be the note divided by 8, and the column will be the remainder.
-
-Again, let's choose the Default Loop Action, but now, for the "loops" input, choose "custom".
-
-A box appears where a Lua expression can be entered. In Lua:
-
-- Division is done with the "//" operator
-- Remainder is done with the "%" operator
-- An array is specified with curly braces "{}".
-
-So our loop coordinates expression in this case is: "{note//8, note%8}". Press OK to accept the trigger.
-
-Your loop buttons should now be mapped to ShoopDaLoop's grid.
-
-
-
+Controller behavior can use the ``shoop_control`` Lua API, callbacks, timers,
+and MIDI helpers. Native builds may add user script files. Browser builds use
+bundled and session-contained sources and intentionally omit machine file-path
+actions. See :ref:`Lua scripting <lua_scripting>`.

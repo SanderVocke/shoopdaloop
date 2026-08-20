@@ -4,16 +4,21 @@
 //!
 //! Pure logic plus the application-facing backend driver interface used by the frontend.
 
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
 pub mod app_backend;
 pub mod audio_channel;
 pub mod audio_midi_loop;
 pub mod basic_loop;
 pub mod buffer_queue;
+#[cfg(feature = "carla")]
+pub mod carla_native;
 pub mod carla_processor;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod carla_shared_memory;
-#[cfg(all(feature = "lv2", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
 pub mod carla_subprocess;
 pub mod channel_mode;
 pub mod chunked_samples;
@@ -38,8 +43,6 @@ pub mod graph_build;
 pub mod graph_scheduler;
 pub mod internal_audio_port;
 pub mod loop_mode;
-#[cfg(feature = "lv2")]
-pub mod lv2_carla;
 pub mod midi;
 pub mod midi_buffering_input_port;
 pub mod midi_channel;
@@ -52,6 +55,7 @@ pub mod midi_storage;
 #[cfg(feature = "midir")]
 pub mod midir_driver;
 pub mod multichannel_audio;
+pub mod pending_midi_control;
 pub mod port;
 pub mod profiling;
 pub mod realtime_alloc_guard;
@@ -135,6 +139,7 @@ pub use midi_sorting_buffer::MidiSortingBuffer;
 pub use midi_state::{MidiStateTracker, TrackWhat};
 pub use midi_storage::{Cursor, CursorFindResult, MidiStorage, MidiStorageElem, TruncateSide};
 pub use multichannel_audio::{MultichannelAudio, MultichannelAudioError};
+pub use pending_midi_control::{PendingMidiControlState, MAX_PENDING_MIDI_CONTROLS};
 pub use port::{
     AudioPort, PortConnectability, PortConnectabilityKind, PortDataType, PortDirection,
 };
@@ -145,7 +150,10 @@ pub use session::{
     ReclaimedCompositeTimeline, RejectedCompositeTimeline, Session, SessionError, Topology,
     MAX_AUDIO_RINGBUFFER_ADOPTIONS, MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS,
 };
-pub use state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
+pub use state::{
+    AudioChannelState, AudioPortState, LatestMidiMessage, LoopState, MidiChannelState,
+    MidiPortState,
+};
 pub use state_mirror::{
     AudioChannelStateMirror, AudioPortStateMirror, CompositeStateMirror,
     CompositeStateMirrorSnapshot, LoopStateMirror, MidiChannelStateMirror, MidiPortStateMirror,

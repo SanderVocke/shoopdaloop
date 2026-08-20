@@ -26,7 +26,7 @@ fn close(a: f32, b: f32) -> bool {
     (a - b).abs() <= 1e-5 * a.abs().max(b.abs()).max(1.0)
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn internal_audio_port_properties() {
     let p = port(4);
 
@@ -36,7 +36,7 @@ fn internal_audio_port_properties() {
     check!(!p.has_implicit_output_sink());
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn internal_audio_port_gain() {
     let mut p = port(4);
     let samples = [0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0];
@@ -53,7 +53,7 @@ fn internal_audio_port_gain() {
     check!(close(buf[2], 1.0));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn internal_audio_port_mute() {
     let mut p = port(4);
     let samples = [0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0];
@@ -70,7 +70,7 @@ fn internal_audio_port_mute() {
     check!(close(buf[2], 0.0));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn internal_audio_port_peak() {
     let mut p = port(4);
     let samples = [0.0f32, 0.5, 0.9, 0.5, 0.0];
@@ -95,7 +95,7 @@ fn internal_audio_port_peak() {
     check!(close(p.audio().output_peak(), 0.0));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn internal_audio_port_noop_zero() {
     let mut p = port(4);
     let samples = [0.0f32, 0.5, 0.9, 0.5, 0.0];
@@ -115,7 +115,7 @@ fn internal_audio_port_noop_zero() {
     check!(buf[..5].iter().all(|&v| close(v, 0.0)));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn internal_audio_port_get_ringbuffer_data() {
     let mut p = port(4);
 
@@ -128,3 +128,5 @@ fn internal_audio_port_get_ringbuffer_data() {
     let last = s.buffers.last().expect("a captured buffer");
     check!(last[..4] == [0.0, 0.1, 0.2, 0.3]);
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

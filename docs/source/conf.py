@@ -18,9 +18,7 @@ author = 'Sander Vocke'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinxcontrib.fulltoc',
-              'sphinxcontrib.plantuml',
-              'shoop_docstrings']
+extensions = ['shoop_docstrings']
 
 templates_path = []
 exclude_patterns = []
@@ -31,10 +29,5 @@ include_patterns = ['index.rst','developers.rst','usage.rst','concept.rst']
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'sphinx_material'
-html_static_path = ['_static']
-html_theme_options = {
-    'color_primary': 'grey',
-    'color_accent': 'grey',
-}
+html_theme = 'alabaster'
 

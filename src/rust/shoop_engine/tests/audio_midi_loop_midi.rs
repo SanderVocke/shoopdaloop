@@ -4,7 +4,7 @@
 //! was self-consistent but wrong.
 //!
 
-use assert2::{check, let_assert};
+use assert2::check;
 use shoop_engine::audio_midi_loop::AudioMidiLoop;
 use shoop_engine::basic_loop::SyncSourceState;
 use shoop_engine::channel_mode::ChannelMode;
@@ -40,7 +40,7 @@ fn with_time(m: &MidiStorageElem, time: u32) -> (u32, Vec<u8>) {
 fn process(l: &mut AudioMidiLoop, n: u32, input: &[MidiStorageElem]) -> Vec<MidiStorageElem> {
     let midi_in = vec![input.to_vec()];
     let mut midi_out = vec![Vec::new()];
-    let_assert!(Ok(()) = l.process(n, &midi_in, &mut midi_out));
+    assert2::assert!(let Ok(()) = l.process(n, &midi_in, &mut midi_out));
     midi_out.remove(0)
 }
 
@@ -68,7 +68,7 @@ fn loop_with_channel(capacity: usize) -> AudioMidiLoop {
     l
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_stop() {
     let mut l = loop_with_channel(512);
 
@@ -85,7 +85,7 @@ fn midi_stop() {
     check!(l.position() == 0);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_record() {
     let mut l = loop_with_channel(512);
 
@@ -124,7 +124,7 @@ fn midi_record() {
     check!(msgs[1] == as_pair(&source[1]));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_record_append_out_of_order() {
     let mut l = loop_with_channel(512);
 
@@ -158,7 +158,7 @@ fn midi_record_append_out_of_order() {
     check!(msgs[1] == with_time(&source[2], 111));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_record_multiple_source_buffers() {
     let mut l = loop_with_channel(512);
 
@@ -245,7 +245,7 @@ fn midi_record_multiple_source_buffers() {
     check!(msgs[8] == with_time(&buf2[2], buf2[2].time + 30));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_playback() {
     let mut l = loop_with_channel(512);
     let recorded = [
@@ -279,7 +279,7 @@ fn midi_playback() {
     check!(played[2] == as_pair(&recorded[2]));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_record_onto_longer_buffer() {
     let mut l = loop_with_channel(1024);
     let existing = [
@@ -337,7 +337,7 @@ fn midi_record_onto_longer_buffer() {
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_pitch_wheel_round_trips_through_a_recording() {
     // engine's constructor agrees with what it recorded and played back.
     let mut l = loop_with_channel(512);
@@ -354,7 +354,7 @@ fn midi_pitch_wheel_round_trips_through_a_recording() {
     check!(msgs[0].1 == wheel.to_vec());
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_prerecord() {
     let mut sync_source = AudioMidiLoop::default();
     sync_source.set_length(100);
@@ -415,7 +415,7 @@ fn midi_prerecord() {
     // Advancing the sync source shortens the follower's predicted trigger. The
     // sync source has no channels, so nothing bounds it but its own length.
     sync_source.resync_poi();
-    let_assert!(Ok(()) = sync_source.process::<Vec<MidiStorageElem>>(60, &[], &mut []));
+    assert2::assert!(let Ok(()) = sync_source.process::<Vec<MidiStorageElem>>(60, &[], &mut []));
     refresh_sync(&mut l, &sync_source);
     l.resync_poi();
     check!(l.predicted_next_trigger_eta().unwrap_or(999) == 40);
@@ -439,7 +439,7 @@ struct StateTracking {
     expect_reset_pitch: u16,
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_cc_state_tracking() {
     let cases = [
         // Playing from the start reverts to centre, the value the tracker starts at.
@@ -559,7 +559,7 @@ fn midi_cc_state_tracking() {
     }
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_corner_case_note_started_before_loop_boundary() {
     // A note that started before recording began but ended inside it must be
     // re-started when playback starts, or the note is lost.
@@ -625,13 +625,11 @@ fn midi_corner_case_note_started_before_loop_boundary() {
     // not reassigned, so times continue from 30.
     let out = process(&mut l, 30, &source);
     let played: Vec<(u32, Vec<u8>)> = out.iter().map(as_pair).collect();
-    check!(played.len() == 5);
-    // A loop wrap counts as a playback interruption, so All Sound Off leads.
-    check!(midi::is_cc(&played[0].1));
-    check!(played[1] == (30, midi::note_on(0, 100, 90).to_vec()));
-    check!(played[2] == (38, midi::note_off(0, 100, 80).to_vec()));
-    check!(played[3] == (48, midi::note_on(0, 100, 70).to_vec()));
-    check!(played[4] == (58, midi::note_off(0, 100, 60).to_vec()));
+    check!(played.len() == 4);
+    check!(played[0] == (30, midi::note_on(0, 100, 90).to_vec()));
+    check!(played[1] == (38, midi::note_off(0, 100, 80).to_vec()));
+    check!(played[2] == (48, midi::note_on(0, 100, 70).to_vec()));
+    check!(played[3] == (58, midi::note_off(0, 100, 60).to_vec()));
 }
 
 ///
@@ -669,8 +667,8 @@ fn process_synced(
 
         let midi_in = vec![input.to_vec()];
         let mut midi_out = vec![Vec::new()];
-        let_assert!(Ok(()) = l.process(until, &midi_in, &mut midi_out));
-        let_assert!(Ok(()) = sync_source.process::<Vec<MidiStorageElem>>(until, &[], &mut []));
+        assert2::assert!(let Ok(()) = l.process(until, &midi_in, &mut midi_out));
+        assert2::assert!(let Ok(()) = sync_source.process::<Vec<MidiStorageElem>>(until, &[], &mut []));
         out.append(&mut midi_out[0]);
 
         l.handle_poi();
@@ -684,7 +682,7 @@ fn process_synced(
     out
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_corner_case_note_started_during_pre_play() {
     // A note started during pre-play needs no restore, because it was already sent.
     // But once the loop wraps and there is no pre-play left, it must be inserted.
@@ -769,19 +767,17 @@ fn midi_corner_case_note_started_during_pre_play() {
     check!(played[1] == (17, midi::note_on(0, 100, 70).to_vec()));
     check!(played[2] == (19, midi::note_off(0, 100, 60).to_vec()));
 
-    // Another cycle. There is no pre-play left, so the wrap emits All Sound Off and
-    // the note-on has to be inserted.
+    // Another cycle. There is no pre-play left, so the note-on is inserted.
     let out = process_synced(&mut l, &mut sync_source, 10, &source);
     let played: Vec<(u32, Vec<u8>)> = out.iter().map(as_pair).collect();
-    check!(played.len() == 5);
-    check!(midi::is_cc(&played[0].1));
-    check!(played[1] == (20, midi::note_on(0, 100, 90).to_vec()));
-    check!(played[2] == (25, midi::note_off(0, 100, 80).to_vec()));
-    check!(played[3] == (27, midi::note_on(0, 100, 70).to_vec()));
-    check!(played[4] == (29, midi::note_off(0, 100, 60).to_vec()));
+    check!(played.len() == 4);
+    check!(played[0] == (20, midi::note_on(0, 100, 90).to_vec()));
+    check!(played[1] == (25, midi::note_off(0, 100, 80).to_vec()));
+    check!(played[2] == (27, midi::note_on(0, 100, 70).to_vec()));
+    check!(played[3] == (29, midi::note_off(0, 100, 60).to_vec()));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_corner_case_note_pre_recorded_but_no_preplay() {
     // Same as the pre-play case with no pre-play window. The pre-recorded note-on
     // sits before the loop's start offset, so it never plays from the recording and
@@ -858,15 +854,14 @@ fn midi_corner_case_note_pre_recorded_but_no_preplay() {
 
     let out = process_synced(&mut l, &mut sync_source, 10, &source);
     let played: Vec<(u32, Vec<u8>)> = out.iter().map(as_pair).collect();
-    check!(played.len() == 5);
-    check!(midi::is_cc(&played[0].1));
-    check!(played[1] == (20, midi::note_on(0, 100, 90).to_vec()));
-    check!(played[2] == (25, midi::note_off(0, 100, 80).to_vec()));
-    check!(played[3] == (27, midi::note_on(0, 100, 70).to_vec()));
-    check!(played[4] == (29, midi::note_off(0, 100, 60).to_vec()));
+    check!(played.len() == 4);
+    check!(played[0] == (20, midi::note_on(0, 100, 90).to_vec()));
+    check!(played[1] == (25, midi::note_off(0, 100, 80).to_vec()));
+    check!(played[2] == (27, midi::note_on(0, 100, 70).to_vec()));
+    check!(played[3] == (29, midi::note_off(0, 100, 60).to_vec()));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_preplay() {
     let mut sync_source = AudioMidiLoop::default();
     sync_source.set_length(100);
@@ -919,3 +914,5 @@ fn midi_preplay() {
         check!(as_pair(m) == with_time(&recorded[20 + i], t), "message {i}");
     }
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

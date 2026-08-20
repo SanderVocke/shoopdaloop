@@ -15,7 +15,7 @@ const ROBOTO_BOLD_ITALIC_BYTES: &[u8] =
     include_bytes!("../../../../resources/fonts/roboto/Roboto-BoldItalic.ttf");
 
 pub fn initialize(context: &egui::Context) {
-    context.set_fonts(roboto_font_definitions());
+    context.set_fonts(shoop_font_definitions());
     context.all_styles_mut(|style| {
         if let Some(heading) = style.text_styles.get_mut(&egui::TextStyle::Heading) {
             heading.family = named_family(ROBOTO_BOLD);
@@ -23,7 +23,7 @@ pub fn initialize(context: &egui::Context) {
     });
 }
 
-fn roboto_font_definitions() -> egui::FontDefinitions {
+fn shoop_font_definitions() -> egui::FontDefinitions {
     let mut definitions = egui::FontDefinitions::default();
     let proportional_fallbacks = definitions
         .families
@@ -58,6 +58,19 @@ fn roboto_font_definitions() -> egui::FontDefinitions {
         &proportional_fallbacks,
     );
 
+    insert_font_insert(&mut definitions, egui_material_icons::font_insert());
+    let material_family = definitions
+        .families
+        .entry(egui::FontFamily::Name(
+            egui_material_icons::FONT_FAMILY.into(),
+        ))
+        .or_default();
+    for fallback in std::iter::once(ROBOTO_REGULAR.to_owned()).chain(proportional_fallbacks) {
+        if !material_family.contains(&fallback) {
+            material_family.push(fallback);
+        }
+    }
+
     definitions
 }
 
@@ -80,6 +93,25 @@ fn insert_font(definitions: &mut egui::FontDefinitions, name: &str, bytes: &'sta
     );
 }
 
+fn insert_font_insert(
+    definitions: &mut egui::FontDefinitions,
+    insertion: egui::epaint::text::FontInsert,
+) {
+    let egui::epaint::text::FontInsert {
+        name,
+        data,
+        families,
+    } = insertion;
+    definitions.font_data.insert(name.clone(), Arc::new(data));
+    for insertion in families {
+        let family = definitions.families.entry(insertion.family).or_default();
+        match insertion.priority {
+            egui::epaint::text::FontPriority::Highest => family.insert(0, name.clone()),
+            egui::epaint::text::FontPriority::Lowest => family.push(name.clone()),
+        }
+    }
+}
+
 fn insert_family(
     definitions: &mut egui::FontDefinitions,
     name: &str,
@@ -99,9 +131,33 @@ fn named_family(name: &str) -> egui::FontFamily {
 mod tests {
     use super::*;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn material_icon_family_has_a_text_fallback() {
+        let context = egui::Context::default();
+        initialize(&context);
+        let mut ignored_output_0 = context.run_ui(egui::RawInput::default(), |ui| {
+            let font_id = egui::FontId::new(
+                18.0,
+                egui::FontFamily::Name(egui_material_icons::FONT_FAMILY.into()),
+            );
+            ui.fonts_mut(|fonts| {
+                assert!(fonts.has_glyph(&font_id, '?'));
+                assert!(fonts.has_glyph(
+                    &font_id,
+                    egui_material_icons::icons::ICON_PLAY_ARROW
+                        .codepoint
+                        .chars()
+                        .next()
+                        .unwrap()
+                ));
+            });
+        });
+        ignored_output_0.textures_delta.clear();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn bundled_roboto_faces_are_registered() {
-        let definitions = roboto_font_definitions();
+        let definitions = shoop_font_definitions();
         for name in [
             ROBOTO_REGULAR,
             ROBOTO_ITALIC,
@@ -114,5 +170,14 @@ mod tests {
         for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
             assert_eq!(definitions.families[&family][0], ROBOTO_REGULAR);
         }
+
+        let material_family = egui::FontFamily::Name(egui_material_icons::FONT_FAMILY.into());
+        assert_eq!(
+            definitions.families[&material_family][0],
+            egui_material_icons::FONT_FAMILY
+        );
+        assert!(definitions.families[&material_family]
+            .iter()
+            .any(|name| name == ROBOTO_REGULAR));
     }
 }

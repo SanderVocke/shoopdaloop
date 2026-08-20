@@ -410,7 +410,7 @@ mod tests {
         MidiStateTracker::new(TrackWhat::ALL)
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tracks_notes_on_and_off() {
         let mut t = tracker();
         check!(t.n_notes_active() == 0);
@@ -423,7 +423,7 @@ mod tests {
         check!(t.note_velocity(0, 60) == None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn zero_velocity_note_on_releases() {
         let mut t = tracker();
         t.process(&midi::note_on(0, 60, 100));
@@ -431,7 +431,7 @@ mod tests {
         check!(t.n_notes_active() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn retriggering_a_sounding_note_does_not_double_count() {
         let mut t = tracker();
         t.process(&midi::note_on(0, 60, 10));
@@ -440,14 +440,14 @@ mod tests {
         check!(t.note_velocity(0, 60) == Some(20));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn note_off_for_silent_note_does_not_underflow() {
         let mut t = tracker();
         t.process(&midi::note_off(0, 60, 0));
         check!(t.n_notes_active() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn all_notes_off_clears_only_its_channel() {
         let mut t = tracker();
         t.process(&midi::note_on(0, 60, 1));
@@ -459,7 +459,7 @@ mod tests {
         check!(t.note_velocity(1, 61) == Some(1));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn all_sound_off_also_clears_notes() {
         let mut t = tracker();
         t.process(&midi::note_on(2, 40, 1));
@@ -467,7 +467,7 @@ mod tests {
         check!(t.n_notes_active() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tracks_controls_and_programs() {
         let mut t = tracker();
         check!(t.cc_value(0, 7) == None);
@@ -484,7 +484,7 @@ mod tests {
         check!(t.program(5) == Some(12));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn untracked_categories_are_not_stored() {
         let mut t = MidiStateTracker::new(TrackWhat {
             notes: true,
@@ -500,7 +500,7 @@ mod tests {
         check!(t.n_notes_active() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cc_value_of_zero_is_distinct_from_unset() {
         let mut t = tracker();
         check!(t.cc_value(0, 7) == None);
@@ -511,7 +511,7 @@ mod tests {
         check!(msgs.contains(&midi::cc(0, 7, 0).to_vec()));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn clear_resets_everything() {
         let mut t = tracker();
         t.process(&midi::note_on(0, 60, 1));
@@ -528,7 +528,7 @@ mod tests {
         check!(t.cc_value(0, 64) == Some(0));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn state_as_messages_reproduces_state() {
         let mut t = tracker();
         t.process(&midi::cc(0, 7, 90));
@@ -542,7 +542,7 @@ mod tests {
         check!(replayed == t);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn state_as_messages_puts_controls_before_notes() {
         let mut t = tracker();
         t.process(&midi::note_on(0, 60, 100));
@@ -553,7 +553,7 @@ mod tests {
         check!(cc_at < note_at);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn diff_to_produces_the_missing_messages() {
         let mut from = tracker();
         from.process(&midi::cc(0, 7, 10));
@@ -569,7 +569,7 @@ mod tests {
         check!(applied == to);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     /// A controller the target never observed is sent as 0 rather than skipped:
     /// leaving it where it drifted to is worse than assuming the neutral value.
     /// The advertised bound really does bound it, so audio-thread callers can size
@@ -594,7 +594,7 @@ mod tests {
         check!(out.len() > MAX_DIFF_MESSAGES / 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn diff_to_zeroes_a_controller_the_target_never_observed() {
         let mut from = tracker();
         from.process(&midi::cc(0, 7, 90));
@@ -605,7 +605,7 @@ mod tests {
         check!(from.diff_to(&to) == vec![midi::cc(0, 7, 0).to_vec()]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     /// Unlike controllers, a program or channel pressure the target never observed
     /// is left alone: there is no neutral program to fall back to.
     fn diff_to_skips_an_unobserved_program_or_pressure() {
@@ -617,7 +617,7 @@ mod tests {
         check!(from.diff_to(&to).is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn diff_to_releases_notes_no_longer_sounding() {
         let mut from = tracker();
         from.process(&midi::note_on(0, 60, 5));
@@ -634,7 +634,7 @@ mod tests {
         check!(applied.n_notes_active() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn diff_to_retriggers_notes_whose_velocity_changed() {
         let mut from = tracker();
         from.process(&midi::note_on(0, 60, 5));
@@ -653,7 +653,7 @@ mod tests {
         check!(applied == to);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn diff_to_identical_state_is_empty() {
         let mut a = tracker();
         a.process(&midi::note_on(0, 60, 5));
@@ -662,7 +662,7 @@ mod tests {
         check!(a.diff_to(&b).is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn copy_relevant_state_copies_shared_categories_only() {
         let mut full = tracker();
         full.process(&midi::note_on(0, 60, 7));
@@ -680,7 +680,7 @@ mod tests {
         check!(notes_only.cc_value(0, 7) == None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn copy_relevant_state_does_not_add_untracked_categories() {
         let mut full = tracker();
         full.process(&midi::note_on(0, 60, 7));
@@ -700,7 +700,7 @@ mod tests {
         check!(controls_only.all_notes_off_messages().is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn all_notes_off_messages_covers_sounding_notes() {
         let mut t = tracker();
         t.process(&midi::note_on(0, 60, 1));
@@ -712,7 +712,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_message_is_ignored() {
         let mut t = tracker();
         t.process(&[]);

@@ -4,7 +4,9 @@ use shoop_engine::{
     CompositeSection, CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode,
     LoopIdentity, LoopMode, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, Session,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 struct Fixture {
@@ -87,7 +89,7 @@ fn fixture_with_cycles(n_cycles: i64) -> Fixture {
     }
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn prepared_timeline_and_control_cross_at_callback_boundaries_and_publish_state() {
     let Fixture {
         session,
@@ -138,7 +140,7 @@ fn prepared_timeline_and_control_cross_at_callback_boundaries_and_publish_state(
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn latched_fault_only_recovers_through_an_accepted_reset_command() {
     let Fixture {
         mut session,
@@ -162,7 +164,7 @@ fn latched_fault_only_recovers_through_an_accepted_reset_command() {
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn immediate_transition_validates_seek_before_acceptance() {
     let Fixture {
         session,
@@ -215,7 +217,7 @@ fn immediate_transition_validates_seek_before_acceptance() {
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn synchronized_transition_countdown_and_record_option_are_engine_owned() {
     let Fixture {
         session,
@@ -257,7 +259,7 @@ fn synchronized_transition_countdown_and_record_option_are_engine_owned() {
     assert_eq!(second.iteration, 0);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn primitive_loop_mirror_publishes_composite_anticipated_transitions() {
     let Fixture {
         mut session,
@@ -286,7 +288,7 @@ fn primitive_loop_mirror_publishes_composite_anticipated_transitions() {
     assert_eq!(child_state.read().maybe_next_mode, None);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn a_timestamp_that_is_past_at_callback_acceptance_is_rejected_not_applied_late() {
     let Fixture {
         session,
@@ -327,7 +329,7 @@ fn a_timestamp_that_is_past_at_callback_acceptance_is_rejected_not_applied_late(
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn prepared_timeline_is_rejected_if_primitive_topology_changed_before_acceptance() {
     let Fixture {
         mut session,
@@ -348,7 +350,7 @@ fn prepared_timeline_is_rejected_if_primitive_topology_changed_before_acceptance
     assert!(engine.session().composite_timeline().is_empty());
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn running_timeline_replacement_activates_at_iteration_zero_and_reclaims_off_rt() {
     let Fixture {
         session,
@@ -415,7 +417,7 @@ fn running_timeline_replacement_activates_at_iteration_zero_and_reclaims_off_rt(
     assert_eq!(engine.session().composite_timeline().n_retired_plans(), 0);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn pending_replacement_activates_immediately_and_preserves_countdown() {
     let Fixture {
         session,
@@ -445,7 +447,7 @@ fn pending_replacement_activates_immediately_and_preserves_countdown() {
     assert_eq!(node.runtime.pending().unwrap().boundaries_to_skip, 2);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn stop_before_iteration_zero_activates_pending_plan_stopped() {
     let Fixture {
         session,
@@ -480,7 +482,7 @@ fn stop_before_iteration_zero_activates_pending_plan_stopped() {
     assert_eq!(engine.session().composite_timeline().n_retired_plans(), 1);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn newest_running_replacement_supersedes_older_candidate() {
     let Fixture {
         session,
@@ -516,7 +518,7 @@ fn newest_running_replacement_supersedes_older_candidate() {
     assert_eq!(engine.session().composite_timeline_version(), 3);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn running_dependency_topology_change_restarts_at_the_install_boundary() {
     let Fixture {
         session,
@@ -549,7 +551,7 @@ fn running_dependency_topology_change_restarts_at_the_install_boundary() {
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn running_dependency_addition_restarts_retained_sources_and_nested_children() {
     let Fixture {
         session,
@@ -677,7 +679,7 @@ fn running_dependency_addition_restarts_retained_sources_and_nested_children() {
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn older_prepared_version_is_rejected_even_if_compilers_finish_out_of_order() {
     let Fixture {
         session,
@@ -702,7 +704,7 @@ fn older_prepared_version_is_rejected_even_if_compilers_finish_out_of_order() {
     assert_eq!(handle.poll_trace().unwrap().composite_timeline_version, 2);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn transition_history_survives_frontend_polling_stall() {
     let Fixture {
         session,
@@ -738,7 +740,7 @@ fn transition_history_survives_frontend_polling_stall() {
         .any(|entry| entry.at_sample >= 32));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn stale_trace_publication_is_dropped_without_stalling_processing() {
     let (mut engine, _handle) = split(Session::default(), 8);
 
@@ -756,7 +758,8 @@ fn stale_trace_publication_is_dropped_without_stalling_processing() {
     );
 }
 
-#[test]
+#[cfg(not(target_arch = "wasm32"))]
+#[shoop_wasm_test_support::shoop_test]
 fn callback_drain_has_a_fixed_cutoff() {
     let mut session = Session::default();
     let loop_idx = session.create_loop();
@@ -799,3 +802,5 @@ fn callback_drain_has_a_fixed_cutoff() {
     assert_eq!(engine.session().loop_(loop_idx).unwrap().length(), 2);
     assert_eq!(engine.stats().commands_applied.load(Ordering::Relaxed), 2);
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

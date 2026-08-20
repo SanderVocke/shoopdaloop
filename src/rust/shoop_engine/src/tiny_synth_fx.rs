@@ -3,6 +3,9 @@ use base64::Engine;
 use tinyviolin::midi::MidiMessage;
 use tinyviolin::{AudioProcessor, Preset};
 
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
+
 use crate::midi_storage::MidiStorageElem;
 
 pub const MIN_MASTER_GAIN_DB: f32 = -60.0;
@@ -14,6 +17,142 @@ const GAIN_SMOOTH_SECONDS: f32 = 0.02;
 const STATE_PREFIX: &str = "shoop-tiny-synth-fx:1:";
 const MAX_PROCESSOR_STATE_BYTES: usize = 256 * 1024;
 type HostedAudioProcessor = AudioProcessor<32, 1>;
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum TinySynthFxParameter {
+    MasterGain,
+    ReverbAmount,
+    DistortionDrive,
+    CompressorAmount,
+    EqLow,
+    EqMid,
+    EqHigh,
+}
+
+impl TinySynthFxParameter {
+    pub const ALL: [Self; 7] = [
+        Self::MasterGain,
+        Self::ReverbAmount,
+        Self::DistortionDrive,
+        Self::CompressorAmount,
+        Self::EqLow,
+        Self::EqMid,
+        Self::EqHigh,
+    ];
+
+    fn index(self) -> usize {
+        self as usize
+    }
+
+    pub fn value_from_cc(self, value: u8) -> f32 {
+        let normalized = value as f32 / 127.0;
+        let (minimum, maximum) = match self {
+            Self::MasterGain => (MIN_MASTER_GAIN_DB, MAX_MASTER_GAIN_DB),
+            Self::ReverbAmount | Self::CompressorAmount => (0.0, 1.0),
+            Self::DistortionDrive => (1.0, 20.0),
+            Self::EqLow | Self::EqMid | Self::EqHigh => (MIN_EQ_GAIN_DB, MAX_EQ_GAIN_DB),
+        };
+        minimum + normalized * (maximum - minimum)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TinySynthFxMidiCcAssignment {
+    pub parameter: TinySynthFxParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TinySynthFxMidiCcAssignments {
+    sources: [Option<(u8, u8)>; 7],
+}
+
+impl TinySynthFxMidiCcAssignments {
+    pub fn assign(&mut self, assignment: TinySynthFxMidiCcAssignment) -> bool {
+        if assignment.channel > 15 || assignment.controller > 127 {
+            return false;
+        }
+        for source in &mut self.sources {
+            if *source == Some((assignment.channel, assignment.controller)) {
+                *source = None;
+            }
+        }
+        self.sources[assignment.parameter.index()] =
+            Some((assignment.channel, assignment.controller));
+        true
+    }
+
+    pub fn remove(&mut self, parameter: TinySynthFxParameter) {
+        self.sources[parameter.index()] = None;
+    }
+
+    pub fn clear(&mut self) {
+        self.sources.fill(None);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = TinySynthFxMidiCcAssignment> + '_ {
+        TinySynthFxParameter::ALL
+            .into_iter()
+            .filter_map(|parameter| {
+                self.sources[parameter.index()].map(|(channel, controller)| {
+                    TinySynthFxMidiCcAssignment {
+                        parameter,
+                        channel,
+                        controller,
+                    }
+                })
+            })
+    }
+
+    fn matching_parameter(&self, channel: u8, controller: u8) -> Option<TinySynthFxParameter> {
+        TinySynthFxParameter::ALL
+            .into_iter()
+            .find(|parameter| self.sources[parameter.index()] == Some((channel, controller)))
+    }
+}
+
+#[derive(Debug)]
+struct TinySynthFxRuntimeState {
+    values: [AtomicU32; 7],
+    revision: AtomicU64,
+    midi_customized_preset: AtomicBool,
+}
+
+impl TinySynthFxRuntimeState {
+    fn new(values: [f32; 7]) -> Self {
+        Self {
+            values: values.map(|value| AtomicU32::new(value.to_bits())),
+            revision: AtomicU64::new(1),
+            midi_customized_preset: AtomicBool::new(false),
+        }
+    }
+
+    fn publish(&self, parameter: TinySynthFxParameter, value: f32) -> u64 {
+        self.values[parameter.index()].store(value.to_bits(), Ordering::Relaxed);
+        self.revision.fetch_add(1, Ordering::Release) + 1
+    }
+
+    fn publish_midi(&self, parameter: TinySynthFxParameter, value: f32) {
+        if parameter != TinySynthFxParameter::MasterGain {
+            self.midi_customized_preset.store(true, Ordering::Relaxed);
+        }
+        self.publish(parameter, value);
+    }
+
+    fn reset_midi_customized_preset(&self) {
+        self.midi_customized_preset.store(false, Ordering::Relaxed);
+    }
+
+    fn revision(&self) -> u64 {
+        self.revision.load(Ordering::Acquire)
+    }
+
+    fn values(&self) -> [f32; 7] {
+        std::array::from_fn(|index| f32::from_bits(self.values[index].load(Ordering::Relaxed)))
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TinySynthFxEditorState {
@@ -29,6 +168,7 @@ pub struct TinySynthFxEditorState {
     pub eq_low_db: f32,
     pub eq_mid_db: f32,
     pub eq_high_db: f32,
+    pub midi_cc_assignments: Vec<TinySynthFxMidiCcAssignment>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -55,6 +195,9 @@ impl std::error::Error for TinySynthFxStateError {}
 pub struct TinySynthFxControlState {
     audio: Box<HostedAudioProcessor>,
     master_gain_db: f32,
+    midi_cc_assignments: TinySynthFxMidiCcAssignments,
+    runtime_state: Arc<TinySynthFxRuntimeState>,
+    synchronized_revision: u64,
 }
 
 impl TinySynthFxControlState {
@@ -63,9 +206,16 @@ impl TinySynthFxControlState {
         if let Some(preset) = audio.available_presets().first().copied() {
             audio.select_preset(preset);
         }
+        let runtime_state = Arc::new(TinySynthFxRuntimeState::new(control_values(
+            DEFAULT_MASTER_GAIN_DB,
+            &audio,
+        )));
         Ok(Self {
             audio,
             master_gain_db: DEFAULT_MASTER_GAIN_DB,
+            midi_cc_assignments: TinySynthFxMidiCcAssignments::default(),
+            runtime_state,
+            synchronized_revision: 1,
         })
     }
 
@@ -78,20 +228,29 @@ impl TinySynthFxControlState {
             .load_state(&state)
             .map_err(|_| TinySynthFxStateError::InvalidProcessorState)?;
         result.master_gain_db = master_gain_db;
+        result.publish_all_runtime_values();
         Ok(result)
     }
 
-    pub fn encode(&self) -> String {
+    pub fn encode(&mut self) -> String {
+        self.synchronize_runtime_values();
         encode_state(self.master_gain_db, &self.audio.serialize_state())
     }
 
-    pub fn editor_state(&self) -> TinySynthFxEditorState {
+    pub fn editor_state(&mut self) -> TinySynthFxEditorState {
+        self.synchronize_runtime_values();
         let settings = self.audio.effect_settings();
         TinySynthFxEditorState {
-            selected_preset_id: self
-                .audio
-                .selected_preset()
-                .map(|preset| preset.id().to_owned()),
+            selected_preset_id: (!self
+                .runtime_state
+                .midi_customized_preset
+                .load(Ordering::Relaxed))
+            .then(|| {
+                self.audio
+                    .selected_preset()
+                    .map(|preset| preset.id().to_owned())
+            })
+            .flatten(),
             master_gain_db: self.master_gain_db,
             reverb_enabled: settings.reverb_enabled,
             reverb_amount: settings.reverb_amount,
@@ -103,16 +262,23 @@ impl TinySynthFxControlState {
             eq_low_db: settings.eq_low_db,
             eq_mid_db: settings.eq_mid_db,
             eq_high_db: settings.eq_high_db,
+            midi_cc_assignments: self.midi_cc_assignments.iter().collect(),
         }
     }
 
     pub fn select_preset(&mut self, id: &str) -> Result<(), tinyviolin::midi::MidiError> {
-        self.audio.select_preset_by_id(id)
+        self.audio.select_preset_by_id(id)?;
+        self.runtime_state.reset_midi_customized_preset();
+        self.publish_all_runtime_values();
+        Ok(())
     }
 
     pub fn set_master_gain_db(&mut self, gain_db: f32) -> Result<(), TinySynthFxStateError> {
         validate_gain(gain_db)?;
         self.master_gain_db = gain_db;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::MasterGain, gain_db);
         Ok(())
     }
 
@@ -121,7 +287,11 @@ impl TinySynthFxControlState {
     }
 
     pub fn set_reverb_amount(&mut self, amount: f32) -> Result<(), tinyviolin::ProcessError> {
-        self.audio.set_reverb_amount(amount)
+        self.audio.set_reverb_amount(amount)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::ReverbAmount, amount);
+        Ok(())
     }
 
     pub fn set_distortion_enabled(&mut self, enabled: bool) {
@@ -129,7 +299,11 @@ impl TinySynthFxControlState {
     }
 
     pub fn set_distortion_drive(&mut self, drive: f32) -> Result<(), tinyviolin::ProcessError> {
-        self.audio.set_distortion_drive(drive)
+        self.audio.set_distortion_drive(drive)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::DistortionDrive, drive);
+        Ok(())
     }
 
     pub fn set_compressor_enabled(&mut self, enabled: bool) {
@@ -137,7 +311,11 @@ impl TinySynthFxControlState {
     }
 
     pub fn set_compressor_amount(&mut self, amount: f32) -> Result<(), tinyviolin::ProcessError> {
-        self.audio.set_compressor_amount(amount)
+        self.audio.set_compressor_amount(amount)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::CompressorAmount, amount);
+        Ok(())
     }
 
     pub fn set_eq_enabled(&mut self, enabled: bool) {
@@ -145,15 +323,82 @@ impl TinySynthFxControlState {
     }
 
     pub fn set_eq_low_db(&mut self, gain_db: f32) -> Result<(), tinyviolin::ProcessError> {
-        self.audio.set_eq_low_db(gain_db)
+        self.audio.set_eq_low_db(gain_db)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::EqLow, gain_db);
+        Ok(())
     }
 
     pub fn set_eq_mid_db(&mut self, gain_db: f32) -> Result<(), tinyviolin::ProcessError> {
-        self.audio.set_eq_mid_db(gain_db)
+        self.audio.set_eq_mid_db(gain_db)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::EqMid, gain_db);
+        Ok(())
     }
 
     pub fn set_eq_high_db(&mut self, gain_db: f32) -> Result<(), tinyviolin::ProcessError> {
-        self.audio.set_eq_high_db(gain_db)
+        self.audio.set_eq_high_db(gain_db)?;
+        self.synchronized_revision = self
+            .runtime_state
+            .publish(TinySynthFxParameter::EqHigh, gain_db);
+        Ok(())
+    }
+
+    pub fn assign_midi_cc(&mut self, assignment: TinySynthFxMidiCcAssignment) -> bool {
+        self.midi_cc_assignments.assign(assignment)
+    }
+
+    pub fn remove_midi_cc(&mut self, parameter: TinySynthFxParameter) {
+        self.midi_cc_assignments.remove(parameter);
+    }
+
+    pub fn clear_midi_cc_assignments(&mut self) {
+        self.midi_cc_assignments.clear();
+    }
+
+    pub fn midi_cc_assignments(&self) -> TinySynthFxMidiCcAssignments {
+        self.midi_cc_assignments
+    }
+
+    pub fn set_midi_cc_assignments(&mut self, assignments: TinySynthFxMidiCcAssignments) {
+        self.midi_cc_assignments = assignments;
+    }
+
+    fn publish_all_runtime_values(&mut self) {
+        let values = control_values(self.master_gain_db, &self.audio);
+        for (parameter, value) in TinySynthFxParameter::ALL.into_iter().zip(values) {
+            self.synchronized_revision = self.runtime_state.publish(parameter, value);
+        }
+    }
+
+    fn synchronize_runtime_values(&mut self) {
+        let revision = self.runtime_state.revision();
+        if revision == self.synchronized_revision {
+            return;
+        }
+        let values = self.runtime_state.values();
+        self.master_gain_db = values[TinySynthFxParameter::MasterGain.index()];
+        let _ = self
+            .audio
+            .set_reverb_amount(values[TinySynthFxParameter::ReverbAmount.index()]);
+        let _ = self
+            .audio
+            .set_distortion_drive(values[TinySynthFxParameter::DistortionDrive.index()]);
+        let _ = self
+            .audio
+            .set_compressor_amount(values[TinySynthFxParameter::CompressorAmount.index()]);
+        let _ = self
+            .audio
+            .set_eq_low_db(values[TinySynthFxParameter::EqLow.index()]);
+        let _ = self
+            .audio
+            .set_eq_mid_db(values[TinySynthFxParameter::EqMid.index()]);
+        let _ = self
+            .audio
+            .set_eq_high_db(values[TinySynthFxParameter::EqHigh.index()]);
+        self.synchronized_revision = revision;
     }
 
     pub fn prepare_processor(
@@ -168,6 +413,8 @@ impl TinySynthFxControlState {
             max_frames,
             &self.audio.serialize_state(),
             self.master_gain_db,
+            self.midi_cc_assignments,
+            Arc::clone(&self.runtime_state),
         )
     }
 }
@@ -181,6 +428,8 @@ pub struct TinySynthFxProcessor {
     target_gain: f32,
     gain_step: f32,
     gain_samples_remaining: u32,
+    midi_cc_assignments: TinySynthFxMidiCcAssignments,
+    runtime_state: Arc<TinySynthFxRuntimeState>,
 }
 
 impl std::fmt::Debug for TinySynthFxProcessor {
@@ -200,6 +449,8 @@ impl TinySynthFxProcessor {
         max_frames: usize,
         state: &[u8],
         master_gain_db: f32,
+        midi_cc_assignments: TinySynthFxMidiCcAssignments,
+        runtime_state: Arc<TinySynthFxRuntimeState>,
     ) -> Result<Self, TinySynthFxStateError> {
         validate_gain(master_gain_db)?;
         let processing_channels = channel_count.max(1);
@@ -222,6 +473,8 @@ impl TinySynthFxProcessor {
             target_gain: gain,
             gain_step: 0.0,
             gain_samples_remaining: 0,
+            midi_cc_assignments,
+            runtime_state,
         })
     }
 
@@ -263,6 +516,8 @@ impl TinySynthFxProcessor {
             let _ = self
                 .audio
                 .render_range(&mut self.planes.planes, cursor..offset);
+            self.apply_gain(cursor, offset);
+            self.apply_midi_cc(event.data());
             if let Ok(message) = MidiMessage::new(event.data()) {
                 let _ = self.audio.dispatch_midi(message);
             }
@@ -271,7 +526,11 @@ impl TinySynthFxProcessor {
         let _ = self
             .audio
             .render_range(&mut self.planes.planes, cursor..frames);
-        for frame in 0..frames {
+        self.apply_gain(cursor, frames);
+    }
+
+    fn apply_gain(&mut self, start: usize, end: usize) {
+        for frame in start..end {
             let gain = self.next_gain();
             for plane in self
                 .planes
@@ -282,6 +541,47 @@ impl TinySynthFxProcessor {
                 plane[frame] *= gain;
             }
         }
+    }
+
+    pub fn process_midi_controls_only(&mut self, events: &[MidiStorageElem]) {
+        for event in events {
+            self.apply_midi_cc(event.data());
+        }
+    }
+
+    pub fn assign_midi_cc(&mut self, assignment: TinySynthFxMidiCcAssignment) -> bool {
+        self.midi_cc_assignments.assign(assignment)
+    }
+
+    pub fn remove_midi_cc(&mut self, parameter: TinySynthFxParameter) {
+        self.midi_cc_assignments.remove(parameter);
+    }
+
+    pub fn clear_midi_cc_assignments(&mut self) {
+        self.midi_cc_assignments.clear();
+    }
+
+    fn apply_midi_cc(&mut self, data: &[u8]) {
+        if data.len() != 3 || data[0] & 0xf0 != 0xb0 || data[1] > 127 || data[2] > 127 {
+            return;
+        }
+        let Some(parameter) = self
+            .midi_cc_assignments
+            .matching_parameter(data[0] & 0x0f, data[1])
+        else {
+            return;
+        };
+        let value = parameter.value_from_cc(data[2]);
+        match parameter {
+            TinySynthFxParameter::MasterGain => self.set_master_gain_db(value),
+            TinySynthFxParameter::ReverbAmount => self.set_reverb_amount(value),
+            TinySynthFxParameter::DistortionDrive => self.set_distortion_drive(value),
+            TinySynthFxParameter::CompressorAmount => self.set_compressor_amount(value),
+            TinySynthFxParameter::EqLow => self.set_eq_low_db(value),
+            TinySynthFxParameter::EqMid => self.set_eq_mid_db(value),
+            TinySynthFxParameter::EqHigh => self.set_eq_high_db(value),
+        }
+        self.runtime_state.publish_midi(parameter, value);
     }
 
     pub fn select_preset(&mut self, id: &str) {
@@ -397,6 +697,19 @@ pub fn available_presets() -> impl Iterator<Item = (&'static str, &'static str)>
         .map(|preset| (preset.id(), preset.name()))
 }
 
+fn control_values(master_gain_db: f32, audio: &HostedAudioProcessor) -> [f32; 7] {
+    let settings = audio.effect_settings();
+    [
+        master_gain_db,
+        settings.reverb_amount,
+        settings.distortion_drive,
+        settings.compressor_amount,
+        settings.eq_low_db,
+        settings.eq_mid_db,
+        settings.eq_high_db,
+    ]
+}
+
 fn encode_state(master_gain_db: f32, state: &[u8]) -> String {
     format!(
         "{STATE_PREFIX}{:08x}:{}",
@@ -447,8 +760,9 @@ fn db_to_gain(gain_db: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert2::check;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn control_state_round_trips_library_state_and_gain() {
         let mut source = TinySynthFxControlState::new(48_000.0).unwrap();
         source.select_preset("pad").unwrap();
@@ -464,7 +778,7 @@ mod tests {
         source.set_eq_mid_db(-2.0).unwrap();
         source.set_eq_high_db(1.5).unwrap();
         let encoded = source.encode();
-        let restored = TinySynthFxControlState::from_encoded(44_100.0, &encoded).unwrap();
+        let mut restored = TinySynthFxControlState::from_encoded(44_100.0, &encoded).unwrap();
         assert_eq!(restored.editor_state(), source.editor_state());
         assert_eq!(restored.encode(), encoded);
         for (channels, max_frames) in [(0, 17), (1, 64), (7, 257)] {
@@ -476,7 +790,115 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_cc_assignments_replace_source_and_target_conflicts() {
+        let mut assignments = TinySynthFxMidiCcAssignments::default();
+        check!(assignments.assign(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::MasterGain,
+            channel: 2,
+            controller: 7,
+        }));
+        check!(assignments.assign(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::ReverbAmount,
+            channel: 2,
+            controller: 7,
+        }));
+        check!(
+            assignments.iter().collect::<Vec<_>>()
+                == [TinySynthFxMidiCcAssignment {
+                    parameter: TinySynthFxParameter::ReverbAmount,
+                    channel: 2,
+                    controller: 7,
+                }]
+        );
+        check!(assignments.assign(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::ReverbAmount,
+            channel: 3,
+            controller: 8,
+        }));
+        check!(
+            assignments.iter().collect::<Vec<_>>()
+                == [TinySynthFxMidiCcAssignment {
+                    parameter: TinySynthFxParameter::ReverbAmount,
+                    channel: 3,
+                    controller: 8,
+                }]
+        );
+        check!(!assignments.assign(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::EqLow,
+            channel: 16,
+            controller: 1,
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_cc_controls_every_continuous_parameter_and_updates_control_state() {
+        for parameter in TinySynthFxParameter::ALL {
+            for cc_value in [0, 63, 127] {
+                let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
+                check!(control.assign_midi_cc(TinySynthFxMidiCcAssignment {
+                    parameter,
+                    channel: 5,
+                    controller: 17,
+                }));
+                let mut processor = control.prepare_processor(48_000.0, 1, 4).unwrap();
+                let event = MidiStorageElem::new(2, &[0xb5, 17, cc_value]).unwrap();
+                processor.process(4, &[event]);
+                let editor = control.editor_state();
+                let actual = match parameter {
+                    TinySynthFxParameter::MasterGain => editor.master_gain_db,
+                    TinySynthFxParameter::ReverbAmount => editor.reverb_amount,
+                    TinySynthFxParameter::DistortionDrive => editor.distortion_drive,
+                    TinySynthFxParameter::CompressorAmount => editor.compressor_amount,
+                    TinySynthFxParameter::EqLow => editor.eq_low_db,
+                    TinySynthFxParameter::EqMid => editor.eq_mid_db,
+                    TinySynthFxParameter::EqHigh => editor.eq_high_db,
+                };
+                check!((actual - parameter.value_from_cc(cc_value)).abs() < 1.0e-6);
+            }
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mapped_master_gain_starts_at_the_cc_sample_offset() {
+        let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
+        control.assign_midi_cc(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::MasterGain,
+            channel: 0,
+            controller: 7,
+        });
+        let mut processor = control.prepare_processor(48_000.0, 1, 8).unwrap();
+        processor.plane_mut(0, 8).unwrap().fill(1.0);
+        processor.process(8, &[MidiStorageElem::new(4, &[0xb0, 7, 0]).unwrap()]);
+        let output = processor.plane(0, 8).unwrap();
+        let initial_gain = db_to_gain(DEFAULT_MASTER_GAIN_DB);
+        check!(output[..4]
+            .iter()
+            .all(|sample| (*sample - initial_gain).abs() < 1.0e-6));
+        check!(output[4] < initial_gain);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_cc_mapping_requires_an_exact_channel_and_controller_match() {
+        let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
+        control.assign_midi_cc(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::ReverbAmount,
+            channel: 3,
+            controller: 12,
+        });
+        let initial = control.editor_state().reverb_amount;
+        let mut processor = control.prepare_processor(48_000.0, 1, 4).unwrap();
+        for data in [[0xb2, 12, 127], [0xb3, 13, 127], [0x93, 12, 127]] {
+            processor.process_midi_controls_only(&[MidiStorageElem::new(0, &data).unwrap()]);
+        }
+        check!(control.editor_state().reverb_amount == initial);
+        processor.process_midi_controls_only(&[MidiStorageElem::new(0, &[0xb3, 12, 127]).unwrap()]);
+        let editor = control.editor_state();
+        check!(editor.reverb_amount == 1.0);
+        check!(editor.selected_preset_id.is_none());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn malformed_or_out_of_range_state_is_rejected() {
         assert!(TinySynthFxControlState::from_encoded(48_000.0, "not-state").is_err());
         let invalid_gain = format!(
@@ -503,7 +925,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn matched_mono_stereo_and_seven_channel_audio_mix_the_same_timed_synth() {
         for channels in [1, 2, 7] {
             let control = TinySynthFxControlState::new(48_000.0).unwrap();
@@ -536,7 +958,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unsupported_or_malformed_midi_preserves_the_audio_quantum() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut processor = control.prepare_processor(48_000.0, 1, 64).unwrap();
@@ -555,7 +977,7 @@ mod tests {
             .all(|sample| (*sample - expected).abs() < 1.0e-6));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn all_notes_off_and_all_sound_off_reach_tinyviolin_at_sample_offsets() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let note_on = MidiStorageElem::new(0, &[0x90, 69, 127]).unwrap();
@@ -604,7 +1026,7 @@ mod tests {
             .all(|sample| sample.abs() < 1.0e-7));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn zero_audio_midi_and_effect_controls_are_stable() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut silent = control.prepare_processor(48_000.0, 0, 64).unwrap();
@@ -645,7 +1067,7 @@ mod tests {
         processor.process(64, &[]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pitch_bend_and_modulation_wheel_reach_tinyviolin() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let note_on = MidiStorageElem::new(0, &[0x90, 69, 127]).unwrap();
@@ -682,7 +1104,7 @@ mod tests {
             .any(|(modulated, centered)| (*modulated - *centered).abs() > 1.0e-4));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn master_gain_changes_are_smoothed_to_the_exact_target() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut processor = control.prepare_processor(48_000.0, 1, 128).unwrap();
@@ -707,7 +1129,7 @@ mod tests {
             .all(|sample| (*sample - target).abs() < 1.0e-6));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn sustained_variable_block_processing_remains_finite_and_active() {
         let control = TinySynthFxControlState::new(48_000.0).unwrap();
         let mut processor = control.prepare_processor(48_000.0, 2, 128).unwrap();
@@ -732,7 +1154,7 @@ mod tests {
         assert!(observed_signal);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn presets_are_runtime_advertised_with_unique_stable_ids() {
         let presets = available_presets().collect::<Vec<_>>();
         assert!(presets.len() >= 12);

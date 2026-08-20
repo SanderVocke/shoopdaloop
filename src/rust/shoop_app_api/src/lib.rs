@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use std::fmt;
 use std::sync::Arc;
 
@@ -36,6 +39,8 @@ entity_id!(PortId);
 entity_id!(ChannelId);
 entity_id!(TaskId);
 entity_id!(ScriptId);
+entity_id!(ScriptDialogId);
+entity_id!(ScriptDialogButtonId);
 
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct HostPortId(String);
@@ -166,6 +171,80 @@ pub struct FxGenerationLogState {
     pub dropped_stderr_bytes: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum TinySynthFxParameter {
+    MasterGain,
+    ReverbAmount,
+    DistortionDrive,
+    CompressorAmount,
+    EqLow,
+    EqMid,
+    EqHigh,
+}
+
+impl TinySynthFxParameter {
+    pub const ALL: [Self; 7] = [
+        Self::MasterGain,
+        Self::ReverbAmount,
+        Self::DistortionDrive,
+        Self::CompressorAmount,
+        Self::EqLow,
+        Self::EqMid,
+        Self::EqHigh,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::MasterGain => "Master gain",
+            Self::ReverbAmount => "Reverb amount",
+            Self::DistortionDrive => "Distortion drive",
+            Self::CompressorAmount => "Compressor amount",
+            Self::EqLow => "EQ low",
+            Self::EqMid => "EQ mid",
+            Self::EqHigh => "EQ high",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TinySynthFxMidiCcAssignment {
+    pub parameter: TinySynthFxParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LatestMidiMessage {
+    pub bytes: [u8; 4],
+    pub len: u8,
+}
+
+impl LatestMidiMessage {
+    pub const fn new(bytes: [u8; 4], len: u8) -> Option<Self> {
+        if len == 0 || len > 4 {
+            None
+        } else {
+            Some(Self { bytes, len })
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.bytes[..self.len as usize]
+    }
+
+    pub const fn midi_cc(self) -> Option<(u8, u8, u8)> {
+        if self.len == 3
+            && self.bytes[0] & 0xf0 == 0xb0
+            && self.bytes[1] <= 127
+            && self.bytes[2] <= 127
+        {
+            Some((self.bytes[0] & 0x0f, self.bytes[1], self.bytes[2]))
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TinySynthFxState {
     pub selected_preset_id: Option<String>,
@@ -180,6 +259,7 @@ pub struct TinySynthFxState {
     pub eq_low_db: f32,
     pub eq_mid_db: f32,
     pub eq_high_db: f32,
+    pub midi_cc_assignments: Arc<[TinySynthFxMidiCcAssignment]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -239,6 +319,7 @@ pub struct GlobalControlState {
     pub play_after_record: bool,
     pub sync: bool,
     pub solo: bool,
+    pub auto_mute_other_track_inputs: bool,
     pub apply_n_cycles: u32,
 }
 
@@ -249,6 +330,7 @@ impl Default for GlobalControlState {
             play_after_record: true,
             sync: true,
             solo: false,
+            auto_mute_other_track_inputs: false,
             apply_n_cycles: 0,
         }
     }
@@ -448,9 +530,9 @@ pub struct StatusState {
     pub processed_frames: u64,
     pub input_peak: f32,
     pub output_peak: f32,
-    pub callback_budget_overruns: u32,
     pub render_discontinuities: u32,
     pub memory_growths: u32,
+    pub render_memory_growths: u32,
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
@@ -482,6 +564,7 @@ pub struct TrackControlState {
     pub input_peak_left_db: f32,
     pub input_peak_right_db: f32,
     pub input_midi_activity: bool,
+    pub latest_input_midi_message: Option<LatestMidiMessage>,
 }
 
 impl Default for TrackControlState {
@@ -505,6 +588,7 @@ impl Default for TrackControlState {
             input_peak_left_db: -200.0,
             input_peak_right_db: -200.0,
             input_midi_activity: false,
+            latest_input_midi_message: None,
         }
     }
 }
@@ -522,10 +606,19 @@ impl TrackControlState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum StructuralState {
+    #[default]
+    Confirmed,
+    Creating,
+    Removing,
+}
+
 #[derive(Clone, Debug)]
 pub struct LoopState {
     pub id: LoopId,
     pub name: String,
+    pub structural_state: StructuralState,
     pub length_frames: u64,
     pub position: f32,
     pub mode: LoopMode,
@@ -533,6 +626,9 @@ pub struct LoopState {
     pub next_transition_delay: Option<u32>,
     pub empty: bool,
     pub composite_kind: CompositeKind,
+    pub composite_iteration: Option<u32>,
+    pub composite_cycle_count: u64,
+    pub active_composite_children: Arc<[LoopId]>,
     pub sync: bool,
     pub targeted: bool,
     pub selected: bool,
@@ -555,6 +651,7 @@ impl Default for LoopState {
         Self {
             id: LoopId::INVALID,
             name: "Loop".to_owned(),
+            structural_state: StructuralState::Confirmed,
             length_frames: 0,
             position: 0.0,
             mode: LoopMode::Unknown,
@@ -562,6 +659,9 @@ impl Default for LoopState {
             next_transition_delay: None,
             empty: true,
             composite_kind: CompositeKind::None,
+            composite_iteration: None,
+            composite_cycle_count: 0,
+            active_composite_children: Arc::from([]),
             sync: false,
             targeted: false,
             selected: false,
@@ -636,6 +736,7 @@ pub enum TrackPortOwnerKind {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ApplicationPortOwner {
+    GlobalFxControl,
     Track {
         track_id: TrackId,
         kind: TrackPortOwnerKind,
@@ -755,6 +856,7 @@ pub enum TrackTopology {
 pub struct TrackState {
     pub id: TrackId,
     pub name: String,
+    pub structural_state: StructuralState,
     pub is_sync: bool,
     pub topology: TrackTopology,
     pub fx: Option<TrackFxState>,
@@ -786,6 +888,75 @@ impl Default for WaveformChannelState {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MidiEventState {
+    pub frame: u32,
+    pub data: Arc<[u8]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MidiSequenceChannelState {
+    pub id: ChannelId,
+    pub label: String,
+    pub content_revision: u64,
+    pub events: Arc<[MidiEventState]>,
+    pub start_offset: i64,
+    pub loop_length: u64,
+    pub played_sample: Option<i64>,
+}
+
+impl Default for MidiSequenceChannelState {
+    fn default() -> Self {
+        Self {
+            id: ChannelId::INVALID,
+            label: String::new(),
+            content_revision: 0,
+            events: Arc::from([]),
+            start_offset: 0,
+            loop_length: 0,
+            played_sample: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeTrackDetailsState {
+    pub id: TrackId,
+    pub name: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct CompositeEventId {
+    pub playlist_index: u32,
+    pub section_index: u32,
+    pub parallel_index: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeEventDetailsState {
+    pub loop_id: LoopId,
+    pub loop_name: String,
+    pub track_id: TrackId,
+    pub start_frame: u64,
+    pub end_frame: u64,
+    pub playlist_index: u32,
+    pub section_index: u32,
+    pub parallel_index: u32,
+    pub mode: Option<String>,
+    pub forced_n_cycles: Option<u32>,
+    pub loop_mode: LoopMode,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeDetailsState {
+    pub kind: CompositeKind,
+    pub cycle_length_frames: u64,
+    pub timeline_length_frames: u64,
+    pub played_frame: Option<u64>,
+    pub tracks: Vec<CompositeTrackDetailsState>,
+    pub events: Vec<CompositeEventDetailsState>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
     pub generation: u64,
@@ -793,6 +964,9 @@ pub struct LoopDetailsState {
     pub title: String,
     pub loading: bool,
     pub channels: Vec<WaveformChannelState>,
+    pub midi_loading: bool,
+    pub midi_channels: Vec<MidiSequenceChannelState>,
+    pub composite: Option<CompositeDetailsState>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -863,10 +1037,57 @@ pub struct KeyEvent {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LuaApiVersion {
+    pub major: u32,
+    pub minor: u32,
+}
+
+impl LuaApiVersion {
+    pub const fn accepts(self, requested: Self) -> bool {
+        requested.major == self.major && requested.minor <= self.minor
+    }
+}
+
+pub const LUA_API_VERSION: LuaApiVersion = LuaApiVersion { major: 1, minor: 3 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
     Bundled,
+    Example,
     User,
     Session,
+    Ephemeral,
+}
+
+pub fn is_ephemeral_script_version(display_name: &str, source_name: &str) -> bool {
+    if display_name == source_name {
+        return true;
+    }
+    display_name
+        .strip_prefix(source_name)
+        .and_then(|suffix| suffix.strip_prefix(" (run once "))
+        .and_then(|suffix| suffix.strip_suffix(')'))
+        .and_then(|version| version.parse::<u32>().ok())
+        .is_some_and(|version| version >= 2)
+}
+
+pub fn ephemeral_script_display_name<'a>(
+    source_name: &str,
+    existing_names: impl IntoIterator<Item = &'a str>,
+) -> String {
+    let existing_names = existing_names
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    if !existing_names.contains(source_name) {
+        return source_name.to_owned();
+    }
+    for version in 2_u32.. {
+        let candidate = format!("{source_name} (run once {version})");
+        if !existing_names.contains(candidate.as_str()) {
+            return candidate;
+        }
+    }
+    unreachable!("u32 script version space exhausted")
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -876,6 +1097,7 @@ pub enum ScriptLifecycle {
     Running,
     Listening,
     Finished,
+    Incompatible,
     Error,
 }
 
@@ -934,6 +1156,58 @@ pub struct ScriptMidiDiagnostics {
     pub rule_states: Arc<[ScriptMidiRuleDiagnostics]>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ScriptDialogRichTextStyle {
+    pub strong: bool,
+    pub italics: bool,
+    pub monospace: bool,
+    pub underline: bool,
+    pub strikethrough: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptDialogMarkdownLink {
+    pub destination: String,
+    pub callback_id: ScriptDialogButtonId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ScriptDialogElement {
+    RichText {
+        text: String,
+        style: ScriptDialogRichTextStyle,
+    },
+    Markdown {
+        text: String,
+        links: Arc<[ScriptDialogMarkdownLink]>,
+    },
+    Button {
+        id: Option<ScriptDialogButtonId>,
+        label: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptDialogContent {
+    pub elements: Arc<[ScriptDialogElement]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ScriptDialogKind {
+    Simple(ScriptDialogContent),
+    Paged(Arc<[ScriptDialogContent]>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptDialogState {
+    pub id: ScriptDialogId,
+    pub owner_script_id: ScriptId,
+    pub owner_script_name: String,
+    pub name: String,
+    pub kind: ScriptDialogKind,
+    pub open_request: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScriptState {
     pub id: ScriptId,
@@ -951,14 +1225,18 @@ pub struct ScriptState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScriptingState {
     pub supported: bool,
+    pub api_version: LuaApiVersion,
     pub scripts: Arc<[ScriptState]>,
+    pub dialogs: Arc<[ScriptDialogState]>,
 }
 
 impl Default for ScriptingState {
     fn default() -> Self {
         Self {
             supported: false,
+            api_version: LUA_API_VERSION,
             scripts: Arc::from([]),
+            dialogs: Arc::from([]),
         }
     }
 }
@@ -1171,8 +1449,10 @@ impl Default for ClickTrackRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LoopAction {
+    NameChanged(String),
     IconClicked(SelectionModifiers),
     IconDoubleClicked,
+    DefaultClicked,
     PlayClicked,
     PlayDryClicked,
     RecordClicked,
@@ -1182,6 +1462,13 @@ pub enum LoopAction {
     GainChanged(f32),
     BalanceChanged(f32),
     RestoreRecordedFxState,
+    ConvertToComposite,
+    Duplicate,
+    DuplicateTo(LoopId),
+    ComposeIntoEnd(LoopId),
+    ComposeIntoParallel(LoopId),
+    SwapWith(LoopId),
+    MoveBefore(Option<LoopId>),
 }
 
 pub type LoopWidgetAction = LoopAction;
@@ -1200,18 +1487,26 @@ pub enum TinySynthFxControl {
     SetEqLowDb(f32),
     SetEqMidDb(f32),
     SetEqHighDb(f32),
+    AssignMidiCc(TinySynthFxMidiCcAssignment),
+    RemoveMidiCc(TinySynthFxParameter),
+    ClearMidiCcAssignments,
     Panic,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackAction {
+    Remove,
+    MoveBefore(Option<TrackId>),
     NameChanged(String),
     OutputGainChanged(f32),
     OutputBalanceChanged(f32),
     OutputMuteChanged(bool),
     InputGainChanged(f32),
     InputBalanceChanged(f32),
-    InputMonitoringChanged(bool),
+    InputMonitoringChanged {
+        enabled: bool,
+        respect_auto_mute: bool,
+    },
     FxActiveChanged(bool),
     FxVisibilityChanged(bool),
     FxToggleOrRecover,
@@ -1225,6 +1520,7 @@ pub type TrackWidgetAction = TrackAction;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GlobalControlAction {
     StopAll,
+    MidiPanic,
     DeselectAll,
     ClearRecordings { include_sync: bool },
     ClearAll { include_sync: bool },
@@ -1232,6 +1528,7 @@ pub enum GlobalControlAction {
     SetPlayAfterRecord(bool),
     SetSync(bool),
     SetSolo(bool),
+    SetAutoMuteOtherTrackInputs(bool),
     SetApplyNCycles(u32),
 }
 
@@ -1277,12 +1574,50 @@ pub enum AppIntent {
     AddLoop {
         track_id: TrackId,
     },
+    ComposeLoopSerial {
+        target_loop_id: LoopId,
+        source_loop_id: LoopId,
+    },
+    ComposeLoopAt {
+        target_loop_id: LoopId,
+        source_loop_id: LoopId,
+        start_iteration: u64,
+    },
+    DeleteCompositeEvents {
+        target_loop_id: LoopId,
+        events: Vec<CompositeEventId>,
+    },
+    RelocateCompositeEvents {
+        target_loop_id: LoopId,
+        events: Vec<CompositeEventId>,
+        start_iteration: u64,
+        duplicate: bool,
+    },
+    SetCompositeLoopCycles {
+        target_loop_id: LoopId,
+        source_loop_id: LoopId,
+        n_cycles: Option<u32>,
+    },
+    SetCompositeKind {
+        target_loop_id: LoopId,
+        kind: CompositeKind,
+    },
+    SetCompositeEventMode {
+        target_loop_id: LoopId,
+        event: CompositeEventId,
+        mode: LoopMode,
+    },
     KeyEvent(KeyEvent),
     AddScriptSource {
         name: String,
         source: Arc<str>,
         kind: ScriptKind,
         enabled: bool,
+    },
+    AddEphemeralScript {
+        name: String,
+        source: Arc<str>,
+        source_path: Option<String>,
     },
     SetScriptEnabled {
         script_id: ScriptId,
@@ -1300,6 +1635,21 @@ pub enum AppIntent {
     },
     ForgetScript {
         script_id: ScriptId,
+    },
+    ExportScript {
+        script_id: ScriptId,
+    },
+    ConvertScriptKind {
+        script_id: ScriptId,
+        kind: ScriptKind,
+    },
+    RemoveSessionScript {
+        script_id: ScriptId,
+    },
+    InvokeScriptDialogButton {
+        script_id: ScriptId,
+        dialog_id: ScriptDialogId,
+        button_id: ScriptDialogButtonId,
     },
     SetPortConnected {
         port_id: PortId,
@@ -1321,6 +1671,7 @@ pub enum AppIntent {
         success: bool,
         message: String,
     },
+    ResetXruns,
     RequestSaveSession,
     RequestLoadSessionPicker,
     LoadSessionBytes {
@@ -1390,8 +1741,10 @@ pub enum AppIntent {
 impl LoopAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::NameChanged(_) => "loop.name",
             Self::IconClicked(_) => "loop.icon_clicked",
             Self::IconDoubleClicked => "loop.icon_double_clicked",
+            Self::DefaultClicked => "loop.default",
             Self::PlayClicked => "loop.play",
             Self::PlayDryClicked => "loop.play_dry",
             Self::RecordClicked => "loop.record",
@@ -1401,6 +1754,13 @@ impl LoopAction {
             Self::GainChanged(_) => "loop.gain",
             Self::BalanceChanged(_) => "loop.balance",
             Self::RestoreRecordedFxState => "loop.restore_recorded_fx",
+            Self::ConvertToComposite => "loop.convert_to_composite",
+            Self::Duplicate => "loop.duplicate",
+            Self::DuplicateTo(_) => "loop.duplicate_to",
+            Self::ComposeIntoEnd(_) => "loop.compose_into_end",
+            Self::ComposeIntoParallel(_) => "loop.compose_into_parallel",
+            Self::SwapWith(_) => "loop.swap_with",
+            Self::MoveBefore(_) => "loop.move_before",
         }
     }
 }
@@ -1420,6 +1780,9 @@ impl TinySynthFxControl {
             Self::SetEqLowDb(_) => "track.tiny_synth_fx.eq_low",
             Self::SetEqMidDb(_) => "track.tiny_synth_fx.eq_mid",
             Self::SetEqHighDb(_) => "track.tiny_synth_fx.eq_high",
+            Self::AssignMidiCc(_) => "track.tiny_synth_fx.midi_cc_assign",
+            Self::RemoveMidiCc(_) => "track.tiny_synth_fx.midi_cc_remove",
+            Self::ClearMidiCcAssignments => "track.tiny_synth_fx.midi_cc_clear",
             Self::Panic => "track.tiny_synth_fx.panic",
         }
     }
@@ -1428,13 +1791,15 @@ impl TinySynthFxControl {
 impl TrackAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::Remove => "track.remove",
+            Self::MoveBefore(_) => "track.move_before",
             Self::NameChanged(_) => "track.name",
             Self::OutputGainChanged(_) => "track.output_gain",
             Self::OutputBalanceChanged(_) => "track.output_balance",
             Self::OutputMuteChanged(_) => "track.output_mute",
             Self::InputGainChanged(_) => "track.input_gain",
             Self::InputBalanceChanged(_) => "track.input_balance",
-            Self::InputMonitoringChanged(_) => "track.input_monitoring",
+            Self::InputMonitoringChanged { .. } => "track.input_monitoring",
             Self::FxActiveChanged(_) => "track.fx_active",
             Self::FxVisibilityChanged(_) => "track.fx_visibility",
             Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
@@ -1449,6 +1814,7 @@ impl GlobalControlAction {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::StopAll => "global.stop_all",
+            Self::MidiPanic => "global.midi_panic",
             Self::DeselectAll => "global.deselect_all",
             Self::ClearRecordings { .. } => "global.clear_recordings",
             Self::ClearAll { .. } => "global.clear_all",
@@ -1456,6 +1822,7 @@ impl GlobalControlAction {
             Self::SetPlayAfterRecord(_) => "global.play_after_record",
             Self::SetSync(_) => "global.sync",
             Self::SetSolo(_) => "global.solo",
+            Self::SetAutoMuteOtherTrackInputs(_) => "global.auto_mute_other_track_inputs",
             Self::SetApplyNCycles(_) => "global.apply_n_cycles",
         }
     }
@@ -1481,13 +1848,25 @@ impl AppIntent {
             Self::AddTrack(_) => "track.add_direct",
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
             Self::AddLoop { .. } => "loop.add_row",
+            Self::ComposeLoopSerial { .. } => "loop.compose_serial",
+            Self::ComposeLoopAt { .. } => "loop.compose_at",
+            Self::DeleteCompositeEvents { .. } => "loop.composite.delete_events",
+            Self::RelocateCompositeEvents { .. } => "loop.composite.relocate_events",
+            Self::SetCompositeLoopCycles { .. } => "loop.composite.set_loop_cycles",
+            Self::SetCompositeKind { .. } => "loop.composite.set_kind",
+            Self::SetCompositeEventMode { .. } => "loop.composite.set_event_mode",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
+            Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
             Self::SetScriptEnabled { .. } => "scripting.set_enabled",
             Self::RestartScript { .. } => "scripting.restart",
             Self::ReplaceScriptSource { .. } => "scripting.replace_source",
             Self::StopScript { .. } => "scripting.stop",
             Self::ForgetScript { .. } => "scripting.forget",
+            Self::ExportScript { .. } => "scripting.export",
+            Self::ConvertScriptKind { .. } => "scripting.convert_kind",
+            Self::RemoveSessionScript { .. } => "scripting.remove_session",
+            Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
             Self::SetPortConnected { .. } => "connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
             Self::RequestAudioDriverSwitch { .. } => "audio_driver.request_switch",
@@ -1495,6 +1874,7 @@ impl AppIntent {
             Self::CompleteAudioDriverSwitchPersistence { .. } => {
                 "audio_driver.complete_persistence"
             }
+            Self::ResetXruns => "audio.reset_xruns",
             Self::RequestSaveSession => "session.request_save",
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
@@ -1535,7 +1915,34 @@ pub struct AppNotification {
 mod tests {
     use super::*;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn ephemeral_script_names_track_source_versions_without_colliding() {
+        assert!(is_ephemeral_script_version(
+            "controller.lua",
+            "controller.lua"
+        ));
+        assert!(is_ephemeral_script_version(
+            "controller.lua (run once 2)",
+            "controller.lua"
+        ));
+        assert!(!is_ephemeral_script_version(
+            "controller.lua (copy)",
+            "controller.lua"
+        ));
+        assert_eq!(
+            ephemeral_script_display_name("controller.lua", std::iter::empty()),
+            "controller.lua"
+        );
+        assert_eq!(
+            ephemeral_script_display_name(
+                "controller.lua",
+                ["controller.lua", "controller.lua (run once 2)"]
+            ),
+            "controller.lua (run once 3)"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn ids_retain_raw_identity_and_invalid_is_distinct() {
         let first = TrackId::from_raw(10);
         let second = TrackId::from_raw(11);
@@ -1568,7 +1975,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_spec_uses_capability_catalog_and_constraints() {
         let processor = synthetic_processor();
         let spec = TrackSpec {
@@ -1612,7 +2019,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_constraints_require_matched_audio_and_midi() {
         let constraints = TrackProcessorConstraints {
             max_dry_audio_channels: None,
@@ -1627,7 +2034,7 @@ mod tests {
         assert!(!constraints.accepts(1, 1, false));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn processor_descriptors_preserve_future_ui_facets() {
         let processor = synthetic_processor();
         assert_eq!(processor.id.as_str(), "browser_native_test");
@@ -1637,7 +2044,7 @@ mod tests {
         assert_eq!(AppSnapshot::default().track_processors.len(), 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn direct_track_spec_validates_name_and_audio_range() {
         assert_eq!(
             DirectTrackSpec {
@@ -1664,7 +2071,7 @@ mod tests {
         .is_ok());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn click_track_defaults_and_intents_preserve_visible_contract_and_target() {
         let request = ClickTrackRequest::default();
         assert_eq!(request.kind, ClickTrackKind::Audio);
@@ -1690,7 +2097,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_notes_validate_the_full_midi_range() {
         assert_eq!(MidiNote::new(0).unwrap().value(), 0);
         assert_eq!(MidiNote::new(60).unwrap().value(), 60);
@@ -1702,7 +2109,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn intents_preserve_stable_ids_and_selection_modifiers() {
         let track_id = TrackId::from_raw(7);
         let loop_id = LoopId::from_raw(42);
@@ -1720,9 +2127,96 @@ mod tests {
                 action: LoopAction::IconClicked(SelectionModifiers { additive: true }),
             }
         );
+        let source_loop_id = LoopId::from_raw(99);
+        let compose = AppIntent::ComposeLoopSerial {
+            target_loop_id: loop_id,
+            source_loop_id,
+        };
+        assert_eq!(compose.kind(), "loop.compose_serial");
+        assert_eq!(
+            compose,
+            AppIntent::ComposeLoopSerial {
+                target_loop_id: loop_id,
+                source_loop_id,
+            }
+        );
+        let positioned = AppIntent::ComposeLoopAt {
+            target_loop_id: loop_id,
+            source_loop_id,
+            start_iteration: 3,
+        };
+        assert_eq!(positioned.kind(), "loop.compose_at");
+        assert_eq!(
+            positioned,
+            AppIntent::ComposeLoopAt {
+                target_loop_id: loop_id,
+                source_loop_id,
+                start_iteration: 3,
+            }
+        );
+        let delete = AppIntent::DeleteCompositeEvents {
+            target_loop_id: loop_id,
+            events: vec![CompositeEventId {
+                playlist_index: 1,
+                section_index: 2,
+                parallel_index: 3,
+            }],
+        };
+        assert_eq!(delete.kind(), "loop.composite.delete_events");
+        assert_eq!(
+            delete,
+            AppIntent::DeleteCompositeEvents {
+                target_loop_id: loop_id,
+                events: vec![CompositeEventId {
+                    playlist_index: 1,
+                    section_index: 2,
+                    parallel_index: 3,
+                }],
+            }
+        );
+        let force_length = AppIntent::SetCompositeLoopCycles {
+            target_loop_id: loop_id,
+            source_loop_id,
+            n_cycles: Some(4),
+        };
+        assert_eq!(force_length.kind(), "loop.composite.set_loop_cycles");
+        assert_eq!(
+            AppIntent::SetCompositeKind {
+                target_loop_id: loop_id,
+                kind: CompositeKind::Script,
+            }
+            .kind(),
+            "loop.composite.set_kind"
+        );
+        assert_eq!(
+            AppIntent::SetCompositeEventMode {
+                target_loop_id: loop_id,
+                event: CompositeEventId {
+                    playlist_index: 1,
+                    section_index: 2,
+                    parallel_index: 3,
+                },
+                mode: LoopMode::Recording,
+            }
+            .kind(),
+            "loop.composite.set_event_mode"
+        );
+        assert_eq!(
+            LoopAction::NameChanged("Verse".to_owned()).kind(),
+            "loop.name"
+        );
+        assert_eq!(
+            LoopAction::ConvertToComposite.kind(),
+            "loop.convert_to_composite"
+        );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_controls_have_stable_intent_kinds() {
+        assert_eq!(GlobalControlAction::MidiPanic.kind(), "global.midi_panic");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_controls_have_stable_intent_kinds() {
         assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::SelectPreset("pad".to_owned())).kind(),
@@ -1733,12 +2227,117 @@ mod tests {
             "track.tiny_synth_fx.distortion_drive"
         );
         assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                TinySynthFxMidiCcAssignment {
+                    parameter: TinySynthFxParameter::EqLow,
+                    channel: 2,
+                    controller: 18,
+                }
+            ))
+            .kind(),
+            "track.tiny_synth_fx.midi_cc_assign"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
+                TinySynthFxParameter::EqLow
+            ))
+            .kind(),
+            "track.tiny_synth_fx.midi_cc_remove"
+        );
+        assert_eq!(
+            TrackAction::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments).kind(),
+            "track.tiny_synth_fx.midi_cc_clear"
+        );
+        assert_eq!(
             TrackAction::TinySynthFx(TinySynthFxControl::Panic).kind(),
             "track.tiny_synth_fx.panic"
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn latest_midi_message_only_recognizes_complete_control_changes() {
+        assert_eq!(
+            LatestMidiMessage::new([0xb7, 74, 99, 0], 3)
+                .unwrap()
+                .midi_cc(),
+            Some((7, 74, 99))
+        );
+        for message in [
+            LatestMidiMessage::new([0xb7, 74, 0, 0], 2).unwrap(),
+            LatestMidiMessage::new([0x97, 74, 99, 0], 3).unwrap(),
+            LatestMidiMessage::new([0xb7, 74, 99, 1], 4).unwrap(),
+            LatestMidiMessage::new([0xb7, 200, 99, 0], 3).unwrap(),
+            LatestMidiMessage::new([0xb7, 74, 200, 0], 3).unwrap(),
+        ] {
+            assert_eq!(message.midi_cc(), None);
+        }
+        assert!(LatestMidiMessage::new([0; 4], 0).is_none());
+        assert!(LatestMidiMessage::new([0; 4], 5).is_none());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn lua_api_versions_use_major_equality_and_minor_backwards_compatibility() {
+        let host = LuaApiVersion { major: 2, minor: 4 };
+        assert!(host.accepts(LuaApiVersion { major: 2, minor: 0 }));
+        assert!(host.accepts(host));
+        assert!(!host.accepts(LuaApiVersion { major: 2, minor: 5 }));
+        assert!(!host.accepts(LuaApiVersion { major: 1, minor: 4 }));
+        assert!(!host.accepts(LuaApiVersion { major: 3, minor: 0 }));
+        assert_eq!(LUA_API_VERSION, LuaApiVersion { major: 1, minor: 3 });
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dialog_contract_preserves_plain_order_and_callback_identity() {
+        let script_id = ScriptId::from_raw(8);
+        let dialog_id = ScriptDialogId::from_raw(12);
+        let button_id = ScriptDialogButtonId::from_raw(14);
+        let state = ScriptDialogState {
+            id: dialog_id,
+            owner_script_id: script_id,
+            owner_script_name: "owner.lua".to_owned(),
+            name: "Help".to_owned(),
+            kind: ScriptDialogKind::Simple(ScriptDialogContent {
+                elements: Arc::from([
+                    ScriptDialogElement::RichText {
+                        text: "First".to_owned(),
+                        style: ScriptDialogRichTextStyle {
+                            strong: true,
+                            ..Default::default()
+                        },
+                    },
+                    ScriptDialogElement::Markdown {
+                        text: "[More](more)".to_owned(),
+                        links: Arc::from([ScriptDialogMarkdownLink {
+                            destination: "more".to_owned(),
+                            callback_id: button_id,
+                        }]),
+                    },
+                    ScriptDialogElement::Button {
+                        id: Some(button_id),
+                        label: "Run".to_owned(),
+                    },
+                ]),
+            }),
+            open_request: 3,
+        };
+        let ScriptDialogKind::Simple(content) = &state.kind else {
+            panic!("expected simple dialog");
+        };
+        assert_eq!(content.elements.len(), 3);
+        assert_eq!(state.owner_script_id, script_id);
+        assert_eq!(state.open_request, 3);
+        assert_eq!(
+            AppIntent::InvokeScriptDialogButton {
+                script_id,
+                dialog_id,
+                button_id,
+            }
+            .kind(),
+            "scripting.dialog_button"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn script_contract_preserves_plain_state_and_stable_intents() {
         let script_id = ScriptId::from_raw(8);
         let state = ScriptState {
@@ -1768,7 +2367,7 @@ mod tests {
         assert!(!AppSnapshot::default().scripting.supported);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connection_contract_preserves_identity_roles_and_exact_desired_state() {
         let port_id = PortId::from_raw(17);
         let track_id = TrackId::from_raw(3);
@@ -1831,7 +2430,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connection_snapshots_are_structurally_shared_and_independent() {
         let ports: Arc<[ApplicationPortState]> = Arc::from([]);
         let first = AppSnapshot {
@@ -1858,7 +2457,7 @@ mod tests {
         assert_eq!(first.connections.revision, 4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_controls_are_clamped_to_ui_ranges() {
         let mut state = TrackControlState {
             output_gain_db: 50.0,
@@ -1874,7 +2473,7 @@ mod tests {
         assert_eq!(state.input_balance, 1.0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_driver_configs_have_stable_kinds_and_independent_defaults() {
         let dummy = AudioDriverConfig::default();
         let jack = AudioDriverConfig::Jack(JackAudioDriverConfig::default());
@@ -1887,7 +2486,7 @@ mod tests {
         assert_ne!(dummy, jack);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn latency_is_calculated_from_buffer_size_and_sample_rate() {
         let status = StatusState {
             buffer_size: 256,

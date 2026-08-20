@@ -34,7 +34,7 @@ mod tests {
     use super::*;
     use assert2::check;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn discriminants_match_c_abi() {
         check!(LoopMode::Unknown as u32 == 0);
         check!(LoopMode::Stopped as u32 == 1);
@@ -45,7 +45,7 @@ mod tests {
         check!(LoopMode::RecordingDryIntoWet as u32 == 6);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playing_modes() {
         check!(LoopMode::Playing.is_playing_mode());
         check!(LoopMode::Replacing.is_playing_mode());

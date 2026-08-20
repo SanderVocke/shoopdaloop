@@ -6,7 +6,7 @@
 
 #![cfg(all(feature = "midir", unix))]
 
-use assert2::{check, let_assert};
+use assert2::check;
 use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::external_midi_port::ExternalMidiPort;
 use shoop_engine::loop_mode::LoopMode;
@@ -24,7 +24,7 @@ fn virtual_name(suffix: &str) -> String {
     format!("shoop-test-{suffix}")
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn a_message_sent_over_a_virtual_port_is_captured() {
     let name = virtual_name("capture");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-test-in", &name) else {
@@ -70,7 +70,7 @@ fn a_message_sent_over_a_virtual_port_is_captured() {
     check!(capture.n_dropped() == 0);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn captured_midi_is_recorded_by_a_loop() {
     let name = virtual_name("record");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-rec-in", &name) else {
@@ -88,10 +88,10 @@ fn captured_midi_is_recorded_by_a_loop() {
         PortDirection::Input,
     )));
     let l = s.create_loop();
-    let_assert!(Ok(c) = s.add_midi_channel(l, 256, ChannelMode::Direct));
-    let_assert!(Ok(()) = s.connect_channel_input(c, input));
-    let_assert!(Ok(()) = s.apply_graph_changes());
-    let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+    assert2::assert!(let Ok(c) = s.add_midi_channel(l, 256, ChannelMode::Direct));
+    assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+    assert2::assert!(let Ok(()) = s.apply_graph_changes());
+    assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
 
     // Send two messages over the real connection.
     let mut sender = ExternalMidiPort::new("sender", PortDirection::Output);
@@ -120,14 +120,14 @@ fn captured_midi_is_recorded_by_a_loop() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
 
-    let_assert!(Some(ch) = s.loop_(l).and_then(|l| l.midi_channel(0)));
+    assert2::assert!(let Some(ch) = s.loop_(l).and_then(|l| l.midi_channel(0)));
     check!(ch.n_events() == 2, "the loop did not record both messages");
     let contents = ch.contents();
     check!(contents[0].data() == midi::note_on(0, 62, 90).as_slice());
     check!(contents[1].data() == midi::note_off(0, 62, 64).as_slice());
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn an_oversized_message_is_refused_rather_than_truncated() {
     let name = virtual_name("sysex");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-sx-in", &name) else {
@@ -166,3 +166,5 @@ fn an_oversized_message_is_refused_rather_than_truncated() {
         "the oversized message was not refused"
     );
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

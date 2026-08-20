@@ -1,10 +1,10 @@
-# ShoopDaLoop egui settings format, version 1
+# ShoopDaLoop settings format, version 1
 
 ## Status and identity
 
-This document defines the first application-settings format for the pure-egui application. It is independent from `.shoop` sessions and from the retained QML `settings.1` document.
+This document defines the first application-settings format. It is independent from `.shoop` sessions and predecessor settings documents.
 
-The egui application does not search for, read, import, or rewrite QML settings. A QML document has no `format: "shoop-egui-settings"` marker and is rejected as a different format.
+The application does not search for, read, import, or rewrite predecessor settings. A document without the `format: "shoop-egui-settings"` marker is rejected as a different format.
 
 ## Storage locations
 
@@ -24,7 +24,7 @@ The resolved path shown by the application is authoritative; environment variabl
 
 Browser builds store the same canonical JSON text in origin-scoped `localStorage` under `org.shoopdaloop.egui.settings`. Different schemes, hosts, ports, browser profiles, and private/direct-file policies may produce separate or unavailable stores. Settings are not synchronized across origins.
 
-These identities deliberately do not collide with the retained QML `settings.json` path or schema.
+These retained identities are part of the settings format's compatibility contract.
 
 ## Version 1 document
 
@@ -76,10 +76,11 @@ On load:
 - Unknown keys remain opaque JSON values and are preserved byte-semantically as JSON values across a same-version save. They are not exposed to consumers or the settings dialog.
 - Duplicate registrations, invalid defaults, incompatible editor/type combinations, and typed reads using the wrong key type are programming errors rejected while composing/testing the registry.
 
-Version 1 registers the cross-target track defaults and bundled-script toggles below. Native composition additionally registers the ordered user-script path list and audio-driver preferences. Browser composition omits machine-path and native-audio definitions and preserves them as unknown values if encountered.
+Version 1 registers the cross-target appearance scale, track defaults, and bundled-script toggles below. Native composition additionally registers the ordered user-script path list and audio-driver preferences. Browser composition omits machine-path and native-audio definitions and preserves them as unknown values if encountered.
 
 | Key | Type | Default | Effect |
 |---|---|---:|---|
+| `appearance.ui_scale_factor` | number | `1.0`, or `1.25` when the detected screen's shortest side is at most 800 UI points | Explicit Apply and save; allowed range is 0.75–2.0 |
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
 | `scripting.bundled.keyboard.enabled` | boolean | `true` | After a successful Save |
@@ -108,6 +109,8 @@ These optional keys do not change document version 1. Each driver keeps an indep
 
 An ordered string/toggle list is a JSON array. Each entry is exactly an object with a non-empty unique `value` string and an `enabled` boolean. Array order is retained. The generic editor supports editing, toggling, adding, removing, and resetting entries. Invalid or duplicate entries reject a draft; malformed stored values produce a diagnostic and use the registered default.
 
+The UI scale multiplies egui's monitor-native pixels-per-point value and is applied at startup. Moving its slider only changes the settings draft; applying it requires the explicit **Apply and save** action.
+
 The track defaults do not change an existing track, an already-open Add Track draft, or session data. Bundled script toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state. Both bundled scripts remain discoverable on native and browser targets; only `keyboard.lua` runs by default.
 
 ## Version checks and migration
@@ -119,9 +122,9 @@ Readers parse only the envelope first. No values are applied until format and ve
 - A supported older document is decoded into its version-specific DTO and passed through every registered pure `Vn -> Vn+1` migration in order. Runtime consumers receive only the current resolved model.
 - A migration either returns one complete next-version DTO or fails without publishing values or writing storage.
 - Adding an optional setting normally does not require a document-version change because missing keys default and unknown keys are retained. Change the document version when the envelope or representation of existing values changes.
-- Format and document versions are independent from `.shoop` session versions and QML schema names.
+- Format and document versions are independent from `.shoop` session versions and predecessor schema names.
 
-There is no pre-v1 egui settings format and therefore no production migration into v1. The ordered dispatcher is tested independently so a future v2 can add a concrete v1-to-v2 step without changing runtime consumers.
+There is no pre-v1 application settings format and therefore no production migration into v1. The ordered dispatcher is tested independently so a future v2 can add a concrete v1-to-v2 step without changing runtime consumers.
 
 ## Loading, saving, and recovery
 

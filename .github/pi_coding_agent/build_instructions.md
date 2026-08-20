@@ -1,3 +1,0 @@
-- Build the whole project with `cargo build` at the repository root. If it fails with a dependency or permission issue, stop and report the environment problem.
-- Run Rust tests with `cargo test --workspace --features shoop_engine/app_backend`.
-- Run the frontend integration gate with `target/debug/shoopdaloop_dev.sh --self-test` after building the app.

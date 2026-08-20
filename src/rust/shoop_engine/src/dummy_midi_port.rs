@@ -20,8 +20,7 @@ use thiserror::Error;
 pub struct RequestPending;
 
 /// Messages reserved for each of the port's buffers, so a cycle that emits
-/// messages does not allocate. A loop wrap alone emits All Sound Off, so even an
-/// idle output port needs room.
+/// messages does not allocate. Playback interruption may emit targeted note-offs.
 const RESERVE: usize = 256;
 
 /// Output-side reserve: a playback state restore arrives as one burst, and this
@@ -267,7 +266,7 @@ impl DummyMidiPort {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     use PortDirection as D;
 
@@ -286,7 +285,7 @@ mod tests {
         msgs.iter().map(|m| m.time).collect()
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn reports_its_identity() {
         let p = input_port();
         check!(p.id() == PortId(1));
@@ -295,7 +294,7 @@ mod tests {
         check!(p.data_type() == PortDataType::Midi);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn is_readable_and_writable_in_both_directions() {
         for p in [input_port(), output_port()] {
             check!(p.has_internal_read_access());
@@ -305,7 +304,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connectability_follows_direction() {
         check!(input_port().input_connectability() == PortConnectability::EXTERNAL);
         check!(input_port().output_connectability() == PortConnectability::INTERNAL);
@@ -313,7 +312,7 @@ mod tests {
         check!(output_port().output_connectability() == PortConnectability::EXTERNAL);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn queued_messages_are_kept_in_time_order() {
         let mut p = input_port();
         check!(p.queue_empty());
@@ -324,14 +323,14 @@ mod tests {
         check!(times(p.visible_events()) == vec![1, 5]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn oversized_queued_messages_are_refused() {
         let mut p = input_port();
         check!(!p.queue_msg(0, &[1, 2, 3, 4, 5]));
         check!(p.queue_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn only_messages_within_the_cycle_are_visible() {
         let mut p = input_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
@@ -342,7 +341,7 @@ mod tests {
         check!(p.n_events() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_queue_advances_across_cycles() {
         let mut p = input_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
@@ -358,7 +357,7 @@ mod tests {
         check!(times(p.visible_events()) == vec![2]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn messages_falling_behind_the_queue_are_dropped() {
         let mut p = input_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
@@ -369,28 +368,28 @@ mod tests {
         check!(p.queue_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn clear_queues_resets_everything() {
         let mut p = output_port();
         p.queue_msg(1, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = p.request_data(4));
+        assert2::assert!(let Ok(()) = p.request_data(4));
         p.clear_queues();
         check!(p.queue_empty());
         check!(p.n_requested_frames() == 0);
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_second_request_is_refused_while_one_is_outstanding() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(8));
+        assert2::assert!(let Ok(()) = p.request_data(8));
         check!(p.request_data(4) == Err(RequestPending));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn written_output_is_captured_during_a_request() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(4));
+        assert2::assert!(let Ok(()) = p.request_data(4));
         p.prepare(4);
         p.write_event(ev(1, &midi::note_on(0, 60, 100)));
         p.write_event(ev(3, &midi::note_off(0, 60, 0)));
@@ -402,10 +401,10 @@ mod tests {
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn captured_times_are_relative_to_the_request() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(8));
+        assert2::assert!(let Ok(()) = p.request_data(8));
         // First half of the request.
         p.prepare(4);
         p.write_event(ev(2, &midi::note_on(0, 60, 1)));
@@ -418,10 +417,10 @@ mod tests {
         check!(times(&p.take_written_requested_msgs()) == vec![2, 5]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn output_beyond_the_request_is_not_captured() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(2));
+        assert2::assert!(let Ok(()) = p.request_data(2));
         p.prepare(4);
         p.write_event(ev(1, &midi::note_on(0, 60, 1)));
         p.write_event(ev(3, &midi::note_on(0, 61, 1)));
@@ -430,7 +429,7 @@ mod tests {
         check!(times(&p.take_written_requested_msgs()) == vec![1]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn nothing_is_captured_without_a_request() {
         let mut p = output_port();
         p.prepare(4);
@@ -439,21 +438,21 @@ mod tests {
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_muted_port_captures_nothing() {
         let mut p = output_port();
         p.midi_mut().set_muted(true);
-        let_assert!(Ok(()) = p.request_data(4));
+        assert2::assert!(let Ok(()) = p.request_data(4));
         p.prepare(4);
         p.write_event(ev(1, &midi::note_on(0, 60, 1)));
         p.process(4);
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_input_port_does_not_capture_written_output() {
         let mut p = input_port();
-        let_assert!(Ok(()) = p.request_data(4));
+        assert2::assert!(let Ok(()) = p.request_data(4));
         p.prepare(4);
         p.write_event(ev(1, &midi::note_on(0, 60, 1)));
         p.process(4);
@@ -461,10 +460,10 @@ mod tests {
         check!(p.take_written_requested_msgs().is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn written_output_is_sorted_before_capture() {
         let mut p = output_port();
-        let_assert!(Ok(()) = p.request_data(8));
+        assert2::assert!(let Ok(()) = p.request_data(8));
         p.prepare(8);
         p.write_event(ev(5, &midi::note_on(0, 60, 1)));
         p.write_event(ev(2, &midi::note_on(0, 61, 1)));
@@ -472,7 +471,7 @@ mod tests {
         check!(times(&p.take_written_requested_msgs()) == vec![2, 5]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn prepare_clears_the_written_buffer() {
         let mut p = output_port();
         p.prepare(4);
@@ -482,22 +481,22 @@ mod tests {
         check!(p.buffer().is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn incoming_messages_update_port_state() {
         let mut p = input_port();
         p.queue_msg(1, &midi::note_on(0, 60, 100));
         p.prepare(4);
         p.process(4);
-        let_assert!(Some(s) = p.midi().midi_state());
+        assert2::assert!(let Some(s) = p.midi().midi_state());
         check!(s.note_velocity(0, 60) == Some(100));
         check!(p.midi().n_input_events() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_request_holds_the_input_queue_in_place() {
         let mut p = output_port();
         p.queue_msg(6, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = p.request_data(8));
+        assert2::assert!(let Ok(()) = p.request_data(8));
         p.prepare(4);
         p.process(4);
         // Four frames were processed but all of them were inside the request, so
@@ -507,7 +506,7 @@ mod tests {
         check!(!p.queue_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn close_is_harmless() {
         let mut p = input_port();
         p.close();

@@ -3,10 +3,9 @@
 //! The tests under `tests/` exercise the audio-thread path of [`crate::cpal_driver`]
 //! without going through ALSA / CoreAudio / WASAPI.
 //!
-//! `MockHost` implements the four cpal traits -- [`HostTrait`], [`DeviceTrait`],
-//! [`StreamTrait`] -- the same way a platform host would. It is also used by
-//! the `CpalTest` driver type when the QML self-tests exercise CPAL virtual port
-//! routing on headless CI where no real audio device exists.
+//! `MockHost` implements the cpal host, device, and stream traits as a platform
+//! host would. The `CpalTest` driver uses it for virtual-port routing on headless
+//! CI where no real audio device exists.
 
 #![cfg(feature = "cpal")]
 

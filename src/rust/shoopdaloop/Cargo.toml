@@ -1,71 +1,107 @@
 [package]
 name = "shoopdaloop"
-version = "0.0.0"
-description = "Live looping application with DAW elements"
-authors = [
-    "Sander Vocke <sandervocke@gmail.com>"
-]
+version.workspace = true
 edition = "2021"
-license-file = "LICENSE"
 
-[lib]
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+no-default-features = true
 
-[[bin]]
-name = "print_shoopdaloop_out_dir"
-path = "src/bin/print_shoopdaloop_out_dir.rs"
+[features]
+default = ["native-fx"]
+native-fx = ["shoop_backend/native-fx"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-frontend = { path = "../frontend" }
-shoop_engine = { path = "../shoop_engine", features = ["cpal", "midir"] }
-shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
-shoop_settings = { path = "../shoop_settings", features = ["legacy"] }
-common = { path = "../common" }
-config = { path = "../config" }
-crashhandling = { path = "../crashhandling" }
-cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
-
-glob = { workspace = true }
 anyhow = { workspace = true }
-regex = { workspace = true }
-copy_dir = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
-log = { workspace = true }
-ctor = { workspace = true }
-toml = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-once_cell = { workspace = true }
-cxx-qt = { workspace = true }
-cxx-qt-lib = { workspace = true, features = ["full"] }
-assert_no_alloc = { workspace = true }
+clap = { workspace = true }
+eframe = { workspace = true }
+shoop_app = { path = "../shoop_app" }
+shoop_backend = { path = "../shoop_backend" }
+shoop_egui = { path = "../shoop_egui" }
+shoop_scripting = { path = "../shoop_scripting" }
 tracing = { workspace = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_common = { path = "../shoop_common" }
+shoop_backend = { path = "../shoop_backend", features = ["native-drivers"] }
+shoop_settings = { path = "../shoop_settings", features = ["native-store"] }
+rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
+rodio = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+shoop_settings = { path = "../shoop_settings" }
+rfd = { workspace = true, features = ["xdg-portal", "async-std"] }
+js-sys = "0.3"
+log = { workspace = true }
+serde_json = { workspace = true }
+shoop_audio_protocol = { path = "../shoop_audio_protocol" }
+shoop_session = { path = "../shoop_session" }
+shoop_worklet_client = { path = "../shoop_worklet_client" }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-time = "1.1"
+web-sys = { version = "0.3", features = [
+    "AudioContext",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "AudioContextState",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioScheduledSourceNode",
+    "AudioWorklet",
+    "AudioWorkletNode",
+    "AudioWorkletNodeOptions",
+    "Document",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlButtonElement",
+    "HtmlCanvasElement",
+    "Location",
+    "MediaDevices",
+    "MediaStream",
+    "MediaStreamAudioSourceNode",
+    "MediaStreamConstraints",
+    "MediaStreamTrack",
+    "MediaTrackSettings",
+    "MidiAccess",
+    "MidiInput",
+    "MidiInputMap",
+    "MidiMessageEvent",
+    "MidiOptions",
+    "MidiOutput",
+    "MidiOutputMap",
+    "MidiPort",
+    "MidiPortConnectionState",
+    "MidiPortDeviceState",
+    "MessageChannel",
+    "MessageEvent",
+    "MessagePort",
+    "Navigator",
+    "Response",
+    "Screen",
+    "Storage",
+    "Worker",
+    "WorkerOptions",
+    "WorkerType",
+    "Window",
+] }
+
 [dev-dependencies]
+serde_json = { workspace = true }
+shoop_session = { path = "../shoop_session" }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 tempfile = { workspace = true }
-libc = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
+shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
+tracy-nextest-capture.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"
 
 [lints]
 workspace = true
-
-[build-dependencies]
-common = { path = "../common" }
-config = { path = "../config" }
-cxx-qt-build = { workspace = true }
-
-
-glob = { workspace = true }
-copy_dir = { workspace = true }
-anyhow = { workspace = true }
-toml = { workspace = true }
-serde = { workspace = true }
-log = { workspace = true }
-ctor = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ["frontend/prebuild",
-            "shoop_engine/prebuild",
-            "common/prebuild",
-            "config/prebuild",
-            "crashhandling/prebuild",
-            "cxx_qt_lib_shoop/prebuild"]

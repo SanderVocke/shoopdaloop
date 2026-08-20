@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,23 +17,30 @@ use shoop_app_api::{
     AudioChannelMappingState, AudioChannelSelectionState, AudioDriverConfig,
     AudioDriverRuntimeState, AudioDriverState, AudioDriverSwitchState, AudioDriverSwitchStatus,
     ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest,
-    ClickTrackState, ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState,
-    ConnectionPolicy, ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId,
-    HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
-    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
+    ClickTrackState, CompositeDetailsState, CompositeEventDetailsState, CompositeEventId,
+    CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
+    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultRecordingAction,
+    DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
+    IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
+    LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState, NotificationLevel,
     PendingConnectionState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
-    SampleRateWarning, ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState,
-    TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
-    TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
+    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
+    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
+    TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec,
+    TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
-    Backend, BackendAudioChannelUpdate, BackendAudioContent, BackendChannelMode,
-    BackendConnectionSnapshot, BackendGrabRequest, BackendLoopContent, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiChannelUpdate, BackendMidiContent, BackendMidiEvent,
-    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortRole, BackendSessionData, BackendSessionPort, BackendSessionReplacement,
-    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    Backend, BackendAsyncResult, BackendAudioChannelUpdate, BackendAudioContent,
+    BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
+    BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest,
+    BackendLoopContent, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendMidiChannelUpdate, BackendMidiContent, BackendMidiData, BackendMidiEvent,
+    BackendMutationDetail, BackendOperationProgress, BackendPortDataType, BackendPortDescriptor,
+    BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
+    BackendSessionPort, BackendSessionReplacement, BackendSessionTrack, BackendSnapshot,
+    BackendTinySynthFxMidiCcAssignment, BackendTinySynthFxParameter, BackendTrackControl,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -48,7 +58,8 @@ use shoop_session::{
     ExactMidi, ExactMidiEvent, FxChainDocument, FxChainTypeDocument, FxStateDocument,
     GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
     MidiClickTrackSpec, MidiControlDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
-    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument,
+    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument,
+    TinySynthFxMidiCcAssignmentDocument, TinySynthFxParameterDocument, TrackControlsDocument,
     TrackDocument, TrackGroupDocument, TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS,
     MAX_CLICK_TRACK_FRAMES,
 };
@@ -183,6 +194,7 @@ impl From<TrySendError<ApplicationMessage>> for DispatchError {
 pub struct StartupScript {
     pub name: String,
     pub source: String,
+    pub source_path: Option<String>,
     pub kind: ScriptKind,
     pub enabled: bool,
 }
@@ -517,10 +529,13 @@ fn update_application(
             model.notify_error(format!("backend poll failed: {error}"));
         }
     }
+    if let Err(error) = model.refresh_backend_composite_configs(backend) {
+        model.notify_error(error);
+    }
     if let Err(error) = model.advance_script_compositions(backend, elapsed) {
         model.notify_error(error);
     }
-    if let Err(error) = model.refresh_selected_audio(backend) {
+    if let Err(error) = model.refresh_selected_media(backend) {
         model.notify_error(error);
     }
     model.advance_io(backend);
@@ -552,6 +567,9 @@ struct ApplicationModel {
     host_ports: BTreeMap<String, HostPortState>,
     confirmed_connections: BTreeSet<(PortId, String)>,
     pending_connections: BTreeMap<(PortId, String), PendingConnection>,
+    desired_track_controls: BTreeMap<(BackendTrackId, TrackControlKey), BackendTrackControl>,
+    desired_fx_controls: BTreeMap<(BackendTrackId, FxControlKey), BackendTrackFxControl>,
+    desired_loop_controls: BTreeMap<(BackendLoopId, LoopControlKey), f32>,
     connection_errors: Vec<ConnectionErrorState>,
     connection_revision: u64,
     connection_backend_available: bool,
@@ -565,6 +583,7 @@ struct ApplicationModel {
     active_piano_notes: BTreeMap<u8, BTreeSet<TrackId>>,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
+    last_callback_budget_overruns: u32,
     audio_drivers: AudioDriverRuntimeState,
     click_track: ClickTrackState,
     next_preview_request_id: u64,
@@ -585,6 +604,7 @@ struct TrackModel {
     id: TrackId,
     backend_id: BackendTrackId,
     name: String,
+    structural_state: StructuralState,
     port_name_base: String,
     is_sync: bool,
     audio_channels: u32,
@@ -595,10 +615,207 @@ struct TrackModel {
     controls: TrackControlState,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum TrackControlKey {
+    OutputGain,
+    OutputBalance,
+    OutputMute,
+    InputGain,
+    InputBalance,
+    InputMonitoring,
+}
+
+fn track_control_key(control: BackendTrackControl) -> TrackControlKey {
+    match control {
+        BackendTrackControl::OutputGainDb(_) => TrackControlKey::OutputGain,
+        BackendTrackControl::OutputBalance(_) => TrackControlKey::OutputBalance,
+        BackendTrackControl::OutputMute(_) => TrackControlKey::OutputMute,
+        BackendTrackControl::InputGainDb(_) => TrackControlKey::InputGain,
+        BackendTrackControl::InputBalance(_) => TrackControlKey::InputBalance,
+        BackendTrackControl::InputMonitoring(_) => TrackControlKey::InputMonitoring,
+    }
+}
+
+fn track_control_matches(state: &BackendTrackState, control: BackendTrackControl) -> bool {
+    match control {
+        BackendTrackControl::OutputGainDb(value) => {
+            (state.output_gain_db - value).abs() <= f32::EPSILON
+        }
+        BackendTrackControl::OutputBalance(value) => {
+            (state.output_balance - value).abs() <= f32::EPSILON
+        }
+        BackendTrackControl::OutputMute(value) => state.output_muted == value,
+        BackendTrackControl::InputGainDb(value) => {
+            (state.input_gain_db - value).abs() <= f32::EPSILON
+        }
+        BackendTrackControl::InputBalance(value) => {
+            (state.input_balance - value).abs() <= f32::EPSILON
+        }
+        BackendTrackControl::InputMonitoring(value) => state.input_monitoring == value,
+    }
+}
+
+fn apply_track_control(state: &mut TrackControlState, control: BackendTrackControl) {
+    match control {
+        BackendTrackControl::OutputGainDb(value) => state.output_gain_db = value,
+        BackendTrackControl::OutputBalance(value) => state.output_balance = value,
+        BackendTrackControl::OutputMute(value) => state.output_muted = value,
+        BackendTrackControl::InputGainDb(value) => state.input_gain_db = value,
+        BackendTrackControl::InputBalance(value) => state.input_balance = value,
+        BackendTrackControl::InputMonitoring(value) => state.input_monitoring = value,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum FxControlKey {
+    Active,
+    Visible,
+    TinyPreset,
+    TinyMasterGain,
+    TinyReverbEnabled,
+    TinyReverbAmount,
+    TinyDistortionEnabled,
+    TinyDistortionDrive,
+    TinyCompressorEnabled,
+    TinyCompressorAmount,
+    TinyEqEnabled,
+    TinyEqLow,
+    TinyEqMid,
+    TinyEqHigh,
+    TinyMidiAssignments,
+}
+
+fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
+    match control {
+        BackendTrackFxControl::SetActive(value) => fx.active = *value,
+        BackendTrackFxControl::SetVisible(value) => fx.visible = *value,
+        BackendTrackFxControl::TinySynthFx(control) => {
+            let Some(shoop_app_api::TrackProcessorEditorState::TinySynthFx(editor)) =
+                fx.editor.as_mut()
+            else {
+                return;
+            };
+            match control {
+                shoop_backend::TinySynthFxControl::SelectPreset(value) => {
+                    editor.selected_preset_id = Some(value.clone())
+                }
+                shoop_backend::TinySynthFxControl::SetMasterGainDb(value) => {
+                    editor.master_gain_db = *value
+                }
+                shoop_backend::TinySynthFxControl::SetReverbEnabled(value) => {
+                    editor.reverb_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetReverbAmount(value) => {
+                    editor.reverb_amount = *value
+                }
+                shoop_backend::TinySynthFxControl::SetDistortionEnabled(value) => {
+                    editor.distortion_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetDistortionDrive(value) => {
+                    editor.distortion_drive = *value
+                }
+                shoop_backend::TinySynthFxControl::SetCompressorEnabled(value) => {
+                    editor.compressor_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetCompressorAmount(value) => {
+                    editor.compressor_amount = *value
+                }
+                shoop_backend::TinySynthFxControl::SetEqEnabled(value) => {
+                    editor.eq_enabled = *value
+                }
+                shoop_backend::TinySynthFxControl::SetEqLowDb(value) => editor.eq_low_db = *value,
+                shoop_backend::TinySynthFxControl::SetEqMidDb(value) => editor.eq_mid_db = *value,
+                shoop_backend::TinySynthFxControl::SetEqHighDb(value) => editor.eq_high_db = *value,
+                shoop_backend::TinySynthFxControl::AssignMidiCc(assignment) => {
+                    let mut assignments = editor.midi_cc_assignments.to_vec();
+                    assignments.retain(|current| {
+                        current.parameter != assignment.parameter
+                            && (current.channel, current.controller)
+                                != (assignment.channel, assignment.controller)
+                    });
+                    assignments.push(*assignment);
+                    assignments.sort_by_key(|assignment| assignment.parameter);
+                    editor.midi_cc_assignments = assignments.into();
+                }
+                shoop_backend::TinySynthFxControl::RemoveMidiCc(parameter) => {
+                    let mut assignments = editor.midi_cc_assignments.to_vec();
+                    assignments.retain(|assignment| assignment.parameter != *parameter);
+                    editor.midi_cc_assignments = assignments.into();
+                }
+                shoop_backend::TinySynthFxControl::ClearMidiCcAssignments => {
+                    editor.midi_cc_assignments = Arc::from([]);
+                }
+                shoop_backend::TinySynthFxControl::Panic => {}
+            }
+        }
+        BackendTrackFxControl::ToggleOrRecover
+        | BackendTrackFxControl::RestoreState(_)
+        | BackendTrackFxControl::ClearLogs => {}
+    }
+}
+
+fn fx_control_matches(
+    fx: Option<&shoop_app_api::TrackFxState>,
+    control: &BackendTrackFxControl,
+) -> bool {
+    let Some(fx) = fx else {
+        return false;
+    };
+    let mut effective = fx.clone();
+    apply_fx_control(&mut effective, control);
+    effective == *fx
+}
+
+fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
+    Some(match control {
+        BackendTrackFxControl::SetActive(_) => FxControlKey::Active,
+        BackendTrackFxControl::SetVisible(_) => FxControlKey::Visible,
+        BackendTrackFxControl::TinySynthFx(control) => match control {
+            shoop_backend::TinySynthFxControl::SelectPreset(_) => FxControlKey::TinyPreset,
+            shoop_backend::TinySynthFxControl::SetMasterGainDb(_) => FxControlKey::TinyMasterGain,
+            shoop_backend::TinySynthFxControl::SetReverbEnabled(_) => {
+                FxControlKey::TinyReverbEnabled
+            }
+            shoop_backend::TinySynthFxControl::SetReverbAmount(_) => FxControlKey::TinyReverbAmount,
+            shoop_backend::TinySynthFxControl::SetDistortionEnabled(_) => {
+                FxControlKey::TinyDistortionEnabled
+            }
+            shoop_backend::TinySynthFxControl::SetDistortionDrive(_) => {
+                FxControlKey::TinyDistortionDrive
+            }
+            shoop_backend::TinySynthFxControl::SetCompressorEnabled(_) => {
+                FxControlKey::TinyCompressorEnabled
+            }
+            shoop_backend::TinySynthFxControl::SetCompressorAmount(_) => {
+                FxControlKey::TinyCompressorAmount
+            }
+            shoop_backend::TinySynthFxControl::SetEqEnabled(_) => FxControlKey::TinyEqEnabled,
+            shoop_backend::TinySynthFxControl::SetEqLowDb(_) => FxControlKey::TinyEqLow,
+            shoop_backend::TinySynthFxControl::SetEqMidDb(_) => FxControlKey::TinyEqMid,
+            shoop_backend::TinySynthFxControl::SetEqHighDb(_) => FxControlKey::TinyEqHigh,
+            shoop_backend::TinySynthFxControl::AssignMidiCc(_)
+            | shoop_backend::TinySynthFxControl::RemoveMidiCc(_)
+            | shoop_backend::TinySynthFxControl::ClearMidiCcAssignments => {
+                FxControlKey::TinyMidiAssignments
+            }
+            shoop_backend::TinySynthFxControl::Panic => return None,
+        },
+        BackendTrackFxControl::ToggleOrRecover
+        | BackendTrackFxControl::RestoreState(_)
+        | BackendTrackFxControl::ClearLogs => return None,
+    })
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum LoopControlKey {
+    Gain,
+    Balance,
+}
+
 struct ConnectionPortModel {
     id: PortId,
     backend_id: BackendPortId,
-    track_id: TrackId,
+    owner: ApplicationPortOwner,
     name: String,
     data_type: PortDataType,
     direction: PortDirection,
@@ -617,6 +834,7 @@ struct RecordedFxState {
     state: String,
 }
 
+#[derive(Clone)]
 struct LoopModel {
     id: LoopId,
     backend_id: BackendLoopId,
@@ -626,8 +844,100 @@ struct LoopModel {
     length: u32,
     position: u32,
     audio_data: Option<Vec<Arc<[f32]>>>,
+    midi_data: Option<Vec<MidiSequenceChannelState>>,
     script_composition: Vec<Vec<LoopId>>,
+    composite: Option<CompositeDocument>,
+    backend_composite: Option<BackendCompositeId>,
+    backend_composite_signature: Vec<(LoopId, u32)>,
+    repeat_sync: bool,
     recorded_fx_state: Option<RecordedFxState>,
+}
+
+fn composite_with_appended_sources(
+    existing: Option<&CompositeDocument>,
+    add: &[LoopId],
+    parallel: bool,
+) -> CompositeDocument {
+    let mut composite = existing.cloned().unwrap_or(CompositeDocument {
+        kind: CompositeKindDocument::Regular,
+        playlists: Vec::new(),
+    });
+    composite.kind = CompositeKindDocument::Regular;
+    for event in composite.playlists.iter_mut().flatten().flatten() {
+        event.mode = None;
+    }
+    if composite.playlists.is_empty() {
+        composite.playlists.push(Vec::new());
+    }
+    let playlist = &mut composite.playlists[0];
+    let events = add.iter().map(|source| CompositeEventDocument {
+        delay: 0,
+        loop_id: source.raw(),
+        mode: None,
+        n_cycles: None,
+    });
+    if parallel {
+        if playlist.is_empty() {
+            playlist.push(events.collect());
+        } else {
+            playlist.last_mut().unwrap().extend(events);
+        }
+    } else {
+        playlist.extend(events.map(|event| vec![event]));
+    }
+    composite
+}
+
+fn composite_with_source_at(
+    existing: &CompositeDocument,
+    source: LoopId,
+    start_iteration: u64,
+) -> CompositeDocument {
+    let mut composite = existing.clone();
+    let mode = (composite.kind == CompositeKindDocument::Script).then(|| "playing".to_owned());
+    composite.playlists.push(vec![vec![CompositeEventDocument {
+        delay: start_iteration,
+        loop_id: source.raw(),
+        mode,
+        n_cycles: None,
+    }]]);
+    composite
+}
+
+fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSequenceChannelState> {
+    data.channels
+        .into_iter()
+        .enumerate()
+        .map(|(index, channel)| {
+            let kind = match channel.mode {
+                BackendChannelMode::Direct => "MIDI",
+                BackendChannelMode::Dry => "Dry MIDI",
+                BackendChannelMode::Wet => "Wet MIDI",
+            };
+            MidiSequenceChannelState {
+                id: ChannelId::from_raw(
+                    model.id.raw().wrapping_shl(16) | 0x8000 | index as u64 + 1,
+                ),
+                label: format!("{kind} {}", index + 1),
+                content_revision: channel.content_revision,
+                events: channel
+                    .events
+                    .into_iter()
+                    .map(|event| MidiEventState {
+                        frame: event.time,
+                        data: Arc::from(event.data),
+                    })
+                    .collect(),
+                start_offset: i64::from(channel.start_offset),
+                loop_length: u64::from(model.length),
+                played_sample: matches!(
+                    model.state.mode,
+                    LoopMode::Playing | LoopMode::PlayingDryThroughWet
+                )
+                .then_some(i64::from(model.position)),
+            }
+        })
+        .collect()
 }
 
 struct ScriptCompositionPlayback {
@@ -638,6 +948,26 @@ struct ScriptCompositionPlayback {
 
 struct PendingAudioSwitch {
     target: shoop_app_api::ResolvedAudioDriverConfig,
+}
+
+enum BackendIoStepError {
+    Pending(BackendOperationProgress),
+    Failed(String),
+}
+
+impl From<String> for BackendIoStepError {
+    fn from(value: String) -> Self {
+        Self::Failed(value)
+    }
+}
+
+fn backend_progress_fraction(progress: BackendOperationProgress) -> f32 {
+    progress
+        .total
+        .filter(|total| *total > 0)
+        .map(|total| progress.completed as f32 / total as f32)
+        .unwrap_or(0.0)
+        .clamp(0.0, 1.0)
 }
 
 enum PendingIo {
@@ -704,6 +1034,17 @@ enum PendingIo {
         update: BackendLoopContentUpdate,
         message: String,
     },
+    CaptureLoopDuplicate {
+        source: LoopModel,
+        target: LoopId,
+    },
+    CommitLoopDuplicate {
+        source: LoopModel,
+        target: LoopId,
+        update: BackendLoopContentUpdate,
+        gain: f32,
+        balance: f32,
+    },
 }
 
 fn piano_failures(failures: Vec<String>) -> Result<(), String> {
@@ -741,10 +1082,32 @@ impl ApplicationModel {
         let mut connection_ports = BTreeMap::new();
         let port_ids = register_backend_ports(
             track_id,
+            TrackPortOwnerKind::Sync,
             &created.ports,
             &mut next_port_id,
             &mut connection_ports,
         );
+        let global_ports = backend.poll()?.connections.application_ports;
+        for descriptor in global_ports
+            .values()
+            .filter(|port| port.owner == BackendPortOwner::GlobalFxControl)
+        {
+            let id = PortId::from_raw(next_port_id);
+            next_port_id = next_port_id.saturating_add(1);
+            connection_ports.insert(
+                id,
+                ConnectionPortModel {
+                    id,
+                    backend_id: descriptor.id,
+                    owner: ApplicationPortOwner::GlobalFxControl,
+                    name: descriptor.name.clone(),
+                    data_type: PortDataType::Midi,
+                    direction: PortDirection::Input,
+                    role: PortRole::MidiInput,
+                    candidates: BTreeMap::new(),
+                },
+            );
+        }
         let loop_model = LoopModel {
             id: loop_id,
             backend_id: backend_loop,
@@ -753,6 +1116,7 @@ impl ApplicationModel {
             state: LoopState {
                 id: loop_id,
                 name: "sync loop".to_owned(),
+                structural_state: StructuralState::Creating,
                 sync: true,
                 show_gain: true,
                 has_audio: true,
@@ -761,7 +1125,12 @@ impl ApplicationModel {
             length: 0,
             position: 0,
             audio_data: None,
+            midi_data: None,
             script_composition: Vec::new(),
+            composite: None,
+            backend_composite: None,
+            backend_composite_signature: Vec::new(),
+            repeat_sync: false,
             recorded_fx_state: None,
         };
         #[cfg(not(target_arch = "wasm32"))]
@@ -777,6 +1146,7 @@ impl ApplicationModel {
                 id: track_id,
                 backend_id: created.track_id,
                 name: "Sync".to_owned(),
+                structural_state: StructuralState::Creating,
                 port_name_base: "sync_loop".to_owned(),
                 is_sync: true,
                 audio_channels: 1,
@@ -791,13 +1161,16 @@ impl ApplicationModel {
             host_ports: BTreeMap::new(),
             confirmed_connections: BTreeSet::new(),
             pending_connections: BTreeMap::new(),
+            desired_track_controls: BTreeMap::new(),
+            desired_fx_controls: BTreeMap::new(),
+            desired_loop_controls: BTreeMap::new(),
             connection_errors: Vec::new(),
             connection_revision: 1,
             connection_backend_available: false,
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
                 supported: true,
-                scripts: Arc::from([]),
+                ..Default::default()
             }),
             track_processors: backend
                 .track_processor_catalog()
@@ -809,6 +1182,7 @@ impl ApplicationModel {
             active_piano_notes: BTreeMap::new(),
             global: Default::default(),
             status: Default::default(),
+            last_callback_budget_overruns: 0,
             audio_drivers: backend.audio_driver_state().unwrap_or_default(),
             click_track: ClickTrackState {
                 sounds: click_sound_ids()
@@ -843,10 +1217,13 @@ impl ApplicationModel {
     fn install_startup_scripts(&mut self, scripts: Vec<StartupScript>) -> Vec<Option<ScriptId>> {
         let mut ids = Vec::with_capacity(scripts.len());
         for script in scripts {
-            match self
-                .script_manager
-                .add(script.name, script.source, script.kind, script.enabled)
-            {
+            match self.script_manager.add_with_source_path(
+                script.name,
+                script.source,
+                script.kind,
+                script.enabled,
+                script.source_path,
+            ) {
                 Ok(id) => ids.push(Some(id)),
                 Err(error) => {
                     ids.push(None);
@@ -881,6 +1258,45 @@ impl ApplicationModel {
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddTrackWithTopology(spec) => self.add_track_spec(backend, spec),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
+            AppIntent::ComposeLoopSerial {
+                target_loop_id,
+                source_loop_id,
+            } => self.compose_loop_serial(backend, target_loop_id, source_loop_id),
+            AppIntent::ComposeLoopAt {
+                target_loop_id,
+                source_loop_id,
+                start_iteration,
+            } => self.compose_loop_at(backend, target_loop_id, source_loop_id, start_iteration),
+            AppIntent::DeleteCompositeEvents {
+                target_loop_id,
+                events,
+            } => self.delete_composite_events(backend, target_loop_id, &events),
+            AppIntent::RelocateCompositeEvents {
+                target_loop_id,
+                events,
+                start_iteration,
+                duplicate,
+            } => self.relocate_composite_events(
+                backend,
+                target_loop_id,
+                &events,
+                start_iteration,
+                duplicate,
+            ),
+            AppIntent::SetCompositeLoopCycles {
+                target_loop_id,
+                source_loop_id,
+                n_cycles,
+            } => self.set_composite_loop_cycles(backend, target_loop_id, source_loop_id, n_cycles),
+            AppIntent::SetCompositeKind {
+                target_loop_id,
+                kind,
+            } => self.set_composite_kind(backend, target_loop_id, kind),
+            AppIntent::SetCompositeEventMode {
+                target_loop_id,
+                event,
+                mode,
+            } => self.set_composite_event_mode(backend, target_loop_id, event, mode),
             AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
             AppIntent::AddScriptSource {
                 name,
@@ -888,6 +1304,11 @@ impl ApplicationModel {
                 kind,
                 enabled,
             } => self.add_script_source(backend, name, source, kind, enabled),
+            AppIntent::AddEphemeralScript {
+                name,
+                source,
+                source_path,
+            } => self.add_ephemeral_script(backend, name, source, source_path),
             AppIntent::SetScriptEnabled { script_id, enabled } => {
                 self.set_script_enabled(backend, script_id, enabled)
             }
@@ -897,6 +1318,16 @@ impl ApplicationModel {
             }
             AppIntent::StopScript { script_id } => self.stop_script(script_id),
             AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
+            AppIntent::ExportScript { script_id } => self.export_script(script_id),
+            AppIntent::ConvertScriptKind { script_id, kind } => {
+                self.convert_script_kind(script_id, kind)
+            }
+            AppIntent::RemoveSessionScript { script_id } => self.remove_session_script(script_id),
+            AppIntent::InvokeScriptDialogButton {
+                script_id,
+                dialog_id,
+                button_id,
+            } => self.invoke_script_dialog_button(backend, script_id, dialog_id, button_id),
             AppIntent::SetPortConnected {
                 port_id,
                 host_port_id,
@@ -921,6 +1352,10 @@ impl ApplicationModel {
                 success,
                 message,
             } => self.complete_audio_driver_persistence(request_id, success, message),
+            AppIntent::ResetXruns => {
+                self.status.xruns = 0;
+                Ok(())
+            }
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
             | AppIntent::RequestLoopAudioImportPicker { .. }
@@ -998,7 +1433,7 @@ impl ApplicationModel {
                 let destinations = self
                     .tracks
                     .iter()
-                    .filter(|track| self.piano_track_is_eligible(track))
+                    .filter(|track| self.track_accepts_live_midi(track))
                     .map(|track| (track.id, track.backend_id))
                     .collect::<Vec<_>>();
                 let mut recipients = BTreeSet::new();
@@ -1038,12 +1473,45 @@ impl ApplicationModel {
         }
     }
 
-    fn piano_track_is_eligible(&self, track: &TrackModel) -> bool {
+    fn handle_midi_panic(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+        self.active_piano_notes.clear();
+        let destinations = self
+            .tracks
+            .iter()
+            .filter(|track| self.track_accepts_live_midi(track))
+            .map(|track| (track.id, track.backend_id))
+            .collect::<Vec<_>>();
+        let events = (0..16)
+            .map(|channel| BackendMidiEvent {
+                time: 0,
+                data: vec![0xb0 | channel, 120, 0],
+            })
+            .collect::<Vec<_>>();
+        let mut failures = Vec::new();
+        for (track_id, backend_id) in destinations {
+            if let Err(error) = backend.inject_midi_input(backend_id, &events) {
+                failures.push(format!("{track_id}: {error}"));
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "could not send MIDI panic to {} track(s): {}",
+                failures.len(),
+                failures.join("; ")
+            ))
+        }
+    }
+
+    fn track_accepts_live_midi(&self, track: &TrackModel) -> bool {
         track.controls.input_monitoring
             && track.port_ids.iter().any(|port_id| {
                 self.connection_ports.get(port_id).is_some_and(|port| {
-                    port.track_id == track.id
-                        && port.data_type == PortDataType::Midi
+                    matches!(
+                        port.owner,
+                        ApplicationPortOwner::Track { track_id, .. } if track_id == track.id
+                    ) && port.data_type == PortDataType::Midi
                         && port.direction == PortDirection::Input
                         && port.role == PortRole::MidiInput
                 })
@@ -1089,6 +1557,61 @@ impl ApplicationModel {
             .map(|_| ())
             .map_err(|error| error.to_string())
             .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
+    }
+
+    fn add_ephemeral_script(
+        &mut self,
+        backend: &mut dyn Backend,
+        name: String,
+        source: Arc<str>,
+        source_path: Option<String>,
+    ) -> Result<(), String> {
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .add_ephemeral_with_source_path(name, source.to_string(), source_path)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
+    }
+
+    fn export_script(&mut self, id: ScriptId) -> Result<(), String> {
+        let (name, source) = self
+            .script_manager
+            .source(id)
+            .map_err(|error| error.to_string())?;
+        let task_id = TaskId::from_raw(self.next_task_id);
+        self.next_task_id = self.next_task_id.saturating_add(1);
+        self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push_back(ApplicationFileOutput {
+                task_id,
+                suggested_name: name.to_owned(),
+                mime_type: "text/x-lua".to_owned(),
+                bytes: Arc::from(source.as_bytes()),
+            });
+        Ok(())
+    }
+
+    fn convert_script_kind(&mut self, id: ScriptId, kind: ScriptKind) -> Result<(), String> {
+        let result = self
+            .script_manager
+            .convert_kind(id, kind)
+            .map_err(|error| error.to_string());
+        self.refresh_scripting_view();
+        result
+    }
+
+    fn remove_session_script(&mut self, id: ScriptId) -> Result<(), String> {
+        let result = self
+            .script_manager
+            .remove_session_script(id)
+            .map_err(|error| error.to_string());
         self.refresh_scripting_view();
         result
     }
@@ -1152,6 +1675,23 @@ impl ApplicationModel {
             .map_err(|error| error.to_string());
         self.refresh_scripting_view();
         result
+    }
+
+    fn invoke_script_dialog_button(
+        &mut self,
+        backend: &mut dyn Backend,
+        script_id: ScriptId,
+        dialog_id: ScriptDialogId,
+        button_id: ScriptDialogButtonId,
+    ) -> Result<(), String> {
+        self.prepare_script_invocation();
+        let callback_result = self
+            .script_manager
+            .invoke_dialog_button(script_id, dialog_id, button_id)
+            .map_err(|error| error.to_string());
+        let operation_result = self.apply_script_operations(backend);
+        self.refresh_scripting_view();
+        callback_result.and(operation_result)
     }
 
     fn handle_script_key_event(
@@ -1222,6 +1762,8 @@ impl ApplicationModel {
             || current.solo != self.script_last_snapshot.solo
             || current.sync_active != self.script_last_snapshot.sync_active
             || current.play_after_record != self.script_last_snapshot.play_after_record
+            || current.auto_mute_other_track_inputs
+                != self.script_last_snapshot.auto_mute_other_track_inputs
             || current.default_recording_action
                 != self.script_last_snapshot.default_recording_action
         {
@@ -1289,6 +1831,7 @@ impl ApplicationModel {
             solo: self.global.solo,
             sync_active: self.global.sync,
             play_after_record: self.global.play_after_record,
+            auto_mute_other_track_inputs: self.global.auto_mute_other_track_inputs,
             default_recording_action: self.global.default_recording_action,
         }
     }
@@ -1313,19 +1856,29 @@ impl ApplicationModel {
                 align_to_sync_at,
             } => {
                 for id in loops {
-                    let backend_id = self
+                    let model = self
                         .loops
                         .get(&id)
-                        .ok_or_else(|| format!("stale or unknown loop {id}"))?
-                        .backend_id;
-                    backend
-                        .transition_loop_aligned(
-                            backend_id,
-                            backend_loop_mode(mode),
-                            cycles_delay,
-                            align_to_sync_at,
-                        )
-                        .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+                    if let Some(composite_id) = model.backend_composite {
+                        backend
+                            .transition_composite_loop(
+                                composite_id,
+                                backend_loop_mode(mode),
+                                cycles_delay,
+                                align_to_sync_at.map(i64::from),
+                            )
+                            .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                    } else {
+                        backend
+                            .transition_loop_aligned(
+                                model.backend_id,
+                                backend_loop_mode(mode),
+                                cycles_delay,
+                                align_to_sync_at,
+                            )
+                            .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                    }
                 }
                 Ok(())
             }
@@ -1432,7 +1985,7 @@ impl ApplicationModel {
                         model.state.selected = selected;
                     }
                 }
-                self.refresh_selected_audio(backend)
+                self.refresh_selected_media(backend)
             }
             ControlOperation::SetTarget { target } => {
                 for model in self.loops.values_mut() {
@@ -1447,13 +2000,23 @@ impl ApplicationModel {
                         .loops
                         .get_mut(&id)
                         .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+                    if let Some(composite_id) = model.backend_composite {
+                        backend
+                            .remove_composite_loop(composite_id)
+                            .map_err(|error| format!("could not remove composite {id}: {error}"))?;
+                    }
                     backend
                         .clear_loop(model.backend_id)
                         .map_err(|error| format!("could not clear loop {id}: {error}"))?;
                     model.length = 0;
                     model.state.empty = true;
                     model.state.composite_kind = shoop_app_api::CompositeKind::None;
+                    model.audio_data = None;
+                    model.midi_data = None;
                     model.script_composition.clear();
+                    model.composite = None;
+                    model.backend_composite = None;
+                    model.backend_composite_signature.clear();
                 }
                 Ok(())
             }
@@ -1501,22 +2064,50 @@ impl ApplicationModel {
                 }
                 let target_loop = self
                     .loops
-                    .get_mut(&target)
+                    .get(&target)
                     .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
-                if parallel && !target_loop.script_composition.is_empty() {
-                    target_loop
-                        .script_composition
-                        .last_mut()
-                        .unwrap()
-                        .extend(add);
-                } else if parallel {
-                    target_loop.script_composition.push(add);
-                } else {
-                    target_loop
-                        .script_composition
-                        .extend(add.into_iter().map(|source| vec![source]));
+                for source in &add {
+                    if *source == target
+                        || self.composite_references(*source, target, &mut BTreeSet::new())
+                    {
+                        return Err(format!(
+                            "adding loop {source} to composite {target} would create a cycle"
+                        ));
+                    }
                 }
-                let sections = target_loop.script_composition.clone();
+                let mut sections = target_loop.script_composition.clone();
+                if parallel && !sections.is_empty() {
+                    sections.last_mut().unwrap().extend(add.iter().copied());
+                } else if parallel {
+                    sections.push(add.clone());
+                } else {
+                    sections.extend(add.iter().copied().map(|source| vec![source]));
+                }
+                let composite =
+                    composite_with_appended_sources(target_loop.composite.as_ref(), &add, parallel);
+                let previous_backend_composite = target_loop.backend_composite;
+                let backend_composite = match self.backend_composite_config(&composite)? {
+                    Some(config) => match previous_backend_composite {
+                        Some(id) => {
+                            backend
+                                .configure_composite_loop(id, &config)
+                                .map_err(|error| {
+                                    format!("could not configure composite loop: {error}")
+                                })?;
+                            Some(id)
+                        }
+                        None => self.create_and_configure_backend_composite(backend, &composite)?,
+                    },
+                    None => {
+                        if let Some(id) = previous_backend_composite {
+                            backend.remove_composite_loop(id).map_err(|error| {
+                                format!("could not remove composite loop: {error}")
+                            })?;
+                        }
+                        None
+                    }
+                };
+                let signature = self.composite_length_signature(&composite);
                 let length = sections
                     .iter()
                     .map(|section| {
@@ -1529,17 +2120,21 @@ impl ApplicationModel {
                     })
                     .sum();
                 let target_loop = self.loops.get_mut(&target).unwrap();
+                target_loop.script_composition = sections;
                 target_loop.length = length;
                 target_loop.state.empty = false;
                 target_loop.state.composite_kind = shoop_app_api::CompositeKind::Regular;
+                target_loop.composite = Some(composite);
+                target_loop.backend_composite = backend_composite;
+                target_loop.backend_composite_signature = signature;
                 Ok(())
             }
             ControlOperation::SetRepeatSync { loops, active } => {
                 let sync = active.then(|| self.sync_backend_loop()).flatten();
-                for id in loops {
+                for id in &loops {
                     let backend_id = self
                         .loops
-                        .get(&id)
+                        .get(id)
                         .ok_or_else(|| format!("stale or unknown loop {id}"))?
                         .backend_id;
                     backend
@@ -1547,6 +2142,9 @@ impl ApplicationModel {
                         .map_err(|error| {
                             format!("could not update repeat sync for loop {id}: {error}")
                         })?;
+                }
+                for id in loops {
+                    self.loops.get_mut(&id).unwrap().repeat_sync = active;
                 }
                 Ok(())
             }
@@ -1568,12 +2166,11 @@ impl ApplicationModel {
             ),
             ControlOperation::SetTrackInputGain { tracks, gain_db } => self
                 .apply_script_track_action(backend, tracks, TrackAction::InputGainChanged(gain_db)),
-            ControlOperation::SetTrackInputMuted { tracks, muted } => self
-                .apply_script_track_action(
-                    backend,
-                    tracks,
-                    TrackAction::InputMonitoringChanged(!muted),
-                ),
+            ControlOperation::SetTrackInputMuted {
+                tracks,
+                muted,
+                respect_auto_mute,
+            } => self.handle_track_input_monitoring(backend, &tracks, !muted, respect_auto_mute),
             ControlOperation::SetApplyNCycles(value) => {
                 self.handle_global_action(backend, GlobalControlAction::SetApplyNCycles(value))
             }
@@ -1586,6 +2183,10 @@ impl ApplicationModel {
             ControlOperation::SetPlayAfterRecord(value) => {
                 self.handle_global_action(backend, GlobalControlAction::SetPlayAfterRecord(value))
             }
+            ControlOperation::SetAutoMuteOtherTrackInputs(value) => self.handle_global_action(
+                backend,
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(value),
+            ),
             ControlOperation::SetDefaultRecordingAction(value) => self.handle_global_action(
                 backend,
                 GlobalControlAction::SetDefaultRecordingAction(value),
@@ -1605,6 +2206,51 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn handle_track_input_monitoring(
+        &mut self,
+        backend: &mut dyn Backend,
+        tracks: &[TrackId],
+        enabled: bool,
+        respect_auto_mute: bool,
+    ) -> Result<(), String> {
+        let targets = tracks.iter().copied().collect::<BTreeSet<_>>();
+        if targets.is_empty() {
+            return Ok(());
+        }
+        for target in &targets {
+            if !self.tracks.iter().any(|track| track.id == *target) {
+                return Err(format!("stale or unknown track {target}"));
+            }
+        }
+        let mut updates = Vec::new();
+        if enabled && respect_auto_mute && self.global.auto_mute_other_track_inputs {
+            updates.extend(
+                self.tracks
+                    .iter()
+                    .filter(|track| !targets.contains(&track.id))
+                    .map(|track| (track.id, track.backend_id, false)),
+            );
+        }
+        updates.extend(
+            self.tracks
+                .iter()
+                .filter(|track| targets.contains(&track.id))
+                .map(|track| (track.id, track.backend_id, enabled)),
+        );
+        for (track_id, backend_id, value) in updates {
+            let control = BackendTrackControl::InputMonitoring(value);
+            backend
+                .set_track_control(backend_id, control)
+                .map_err(|error| format!("could not update track {track_id}: {error}"))?;
+            self.desired_track_controls
+                .insert((backend_id, TrackControlKey::InputMonitoring), control);
+            if let Some(track) = self.tracks.iter_mut().find(|track| track.id == track_id) {
+                apply_track_control(&mut track.controls, control);
+            }
+        }
+        Ok(())
+    }
+
     fn script_trigger_loops(
         &mut self,
         backend: &mut dyn Backend,
@@ -1615,13 +2261,23 @@ impl ApplicationModel {
         let backend_mode = backend_loop_mode(mode);
         let sync_length = self.sync_length().max(1);
         let mut expanded = Vec::new();
+        let mut backend_composite_targets = Vec::new();
         for id in loops {
-            let composition = self
+            let model = self
                 .loops
                 .get(id)
-                .ok_or_else(|| format!("stale or unknown loop {id}"))?
-                .script_composition
-                .clone();
+                .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+            if let Some(composite_id) = model.backend_composite {
+                backend
+                    .set_composite_play_after_record(composite_id, self.global.play_after_record)
+                    .map_err(|error| format!("could not set composite option: {error}"))?;
+                backend
+                    .transition_composite_loop(composite_id, backend_mode, delay, None)
+                    .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
+                backend_composite_targets.push(*id);
+                continue;
+            }
+            let composition = model.script_composition.clone();
             if composition.is_empty() {
                 expanded.push((*id, delay));
                 continue;
@@ -1723,7 +2379,8 @@ impl ApplicationModel {
                 LoopMode::Playing | LoopMode::PlayingDryThroughWet | LoopMode::Recording
             )
         {
-            let expanded_ids = expanded.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+            let mut expanded_ids = expanded.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+            expanded_ids.extend(backend_composite_targets);
             let target_tracks: Vec<_> = expanded_ids
                 .iter()
                 .filter_map(|id| self.loops.get(id).map(|model| model.track_id))
@@ -1848,6 +2505,8 @@ impl ApplicationModel {
         self.scripting_view = Arc::new(ScriptingState {
             supported: true,
             scripts: self.script_manager.states().into(),
+            dialogs: self.script_manager.dialogs().into(),
+            ..Default::default()
         });
         if !self.connection_view.loading {
             self.rebuild_connection_view();
@@ -2053,13 +2712,15 @@ impl ApplicationModel {
         if let Err(error) = self.apply_loaded_session(backend, &bundle, &replacement) {
             self.audio_drivers.switch.status = AudioDriverSwitchStatus::Restoring;
             self.audio_drivers.switch.message = "Restoring the prior audio driver".to_owned();
+            let rollback_data = session_bundle_to_backend(&source_bundle, &self.track_processors);
             let rollback = source.as_ref().ok_or_else(|| {
                 "could not restore switched session because source driver state is missing"
                     .to_owned()
             });
             let rollback = rollback.and_then(|source| {
+                let rollback_data = rollback_data?;
                 backend
-                    .switch_audio_driver(&source.configured, source.sample_rate, &capture)
+                    .switch_audio_driver(&source.configured, source.sample_rate, &rollback_data)
                     .map_err(|rollback_error| rollback_error.to_string())
                     .and_then(|mapping| {
                         self.apply_loaded_session(backend, &source_bundle, &mapping)
@@ -2697,13 +3358,19 @@ impl ApplicationModel {
             return;
         };
         match pending {
-            PendingIo::SaveSession => match backend.capture_session() {
-                Ok(capture) => match self.session_bundle_from_backend(&capture) {
-                    Ok(bundle) => self.start_session_encoding(bundle),
-                    Err(error) => self.fail_io(error),
-                },
-                Err(error) if io_pending_error(&error.to_string()) => {
+            PendingIo::SaveSession => match backend.capture_session_async() {
+                Ok(BackendAsyncResult::Ready(capture)) => {
+                    match self.session_bundle_from_backend(&capture) {
+                        Ok(bundle) => self.start_session_encoding(bundle),
+                        Err(error) => self.fail_io(error),
+                    }
+                }
+                Ok(BackendAsyncResult::Pending(progress)) => {
                     self.pending_io = Some(PendingIo::SaveSession);
+                    self.set_io_progress(
+                        backend_progress_fraction(progress) * 0.5,
+                        "Capturing session",
+                    );
                 }
                 Err(error) => self.fail_io(format!("could not capture session: {error}")),
             },
@@ -2732,8 +3399,8 @@ impl ApplicationModel {
                 name,
                 bundle,
                 backend_data,
-            } => match backend.replace_session(&backend_data) {
-                Ok(replacement) => {
+            } => match backend.replace_session_async(&backend_data) {
+                Ok(BackendAsyncResult::Ready(replacement)) => {
                     match self.apply_loaded_session(backend, &bundle, &replacement) {
                         Ok(()) => {
                             self.finish_io(
@@ -2744,12 +3411,16 @@ impl ApplicationModel {
                         Err(error) => self.fail_io(error),
                     }
                 }
-                Err(error) if io_pending_error(&error.to_string()) => {
+                Ok(BackendAsyncResult::Pending(progress)) => {
                     self.pending_io = Some(PendingIo::CommitSessionLoad {
                         name,
                         bundle,
                         backend_data,
                     });
+                    self.set_io_progress(
+                        0.75 + backend_progress_fraction(progress) * 0.2,
+                        "Replacing backend session",
+                    );
                 }
                 Err(error) => self.fail_io(format!("could not replace session: {error}")),
             },
@@ -2764,23 +3435,33 @@ impl ApplicationModel {
             } => {
                 if let Err(error) = self.export_loop_audio_now(backend, loop_id, format, &channels)
                 {
-                    if io_pending_error(&error) {
-                        self.pending_io = Some(PendingIo::ExportLoopAudio {
-                            loop_id,
-                            format,
-                            channels,
-                        });
-                    } else {
-                        self.fail_io(error);
+                    match error {
+                        BackendIoStepError::Pending(progress) => {
+                            self.pending_io = Some(PendingIo::ExportLoopAudio {
+                                loop_id,
+                                format,
+                                channels,
+                            });
+                            self.set_io_progress(
+                                backend_progress_fraction(progress) * 0.75,
+                                "Capturing loop audio",
+                            );
+                        }
+                        BackendIoStepError::Failed(error) => self.fail_io(error),
                     }
                 }
             }
             PendingIo::ExportLoopMidi { loop_id, standard } => {
                 if let Err(error) = self.export_loop_midi_now(backend, loop_id, standard) {
-                    if io_pending_error(&error) {
-                        self.pending_io = Some(PendingIo::ExportLoopMidi { loop_id, standard });
-                    } else {
-                        self.fail_io(error);
+                    match error {
+                        BackendIoStepError::Pending(progress) => {
+                            self.pending_io = Some(PendingIo::ExportLoopMidi { loop_id, standard });
+                            self.set_io_progress(
+                                backend_progress_fraction(progress) * 0.75,
+                                "Capturing loop MIDI",
+                            );
+                        }
+                        BackendIoStepError::Failed(error) => self.fail_io(error),
                     }
                 }
             }
@@ -2879,11 +3560,13 @@ impl ApplicationModel {
                 message,
             } => {
                 let backend_loop = self.loops.get(&loop_id).map(|model| model.backend_id);
-                match backend_loop
+                let result = backend_loop
                     .ok_or_else(|| anyhow!("stale loop {loop_id}"))
-                    .and_then(|backend_loop| backend.replace_loop_content(backend_loop, &update))
-                {
-                    Ok(()) => {
+                    .and_then(|backend_loop| {
+                        backend.replace_loop_content_async(backend_loop, &update)
+                    });
+                match result {
+                    Ok(BackendAsyncResult::Ready(())) => {
                         if let Some(model) = self.loops.get_mut(&loop_id) {
                             if let Some(length) = update.length {
                                 model.length = length;
@@ -2893,17 +3576,141 @@ impl ApplicationModel {
                             model.state.next_transition_delay = None;
                             model.state.empty = false;
                             model.audio_data = None;
+                            model.midi_data = None;
                         }
                         self.finish_io(IoTaskStatus::Completed, &message);
                     }
-                    Err(error) if io_pending_error(&error.to_string()) => {
+                    Ok(BackendAsyncResult::Pending(progress)) => {
                         self.pending_io = Some(PendingIo::CommitLoopImport {
                             loop_id,
                             update,
                             message,
                         });
+                        self.set_io_progress(
+                            0.75 + backend_progress_fraction(progress) * 0.2,
+                            "Replacing loop content",
+                        );
                     }
                     Err(error) => self.fail_io(format!("could not commit loop import: {error}")),
+                }
+            }
+            PendingIo::CaptureLoopDuplicate { source, target } => {
+                match backend.capture_session_async() {
+                    Ok(BackendAsyncResult::Ready(capture)) => {
+                        let content = capture
+                            .tracks
+                            .into_iter()
+                            .flat_map(|track| track.loops)
+                            .find(|content| content.source_id == source.backend_id.raw());
+                        match content {
+                            Some(content) => {
+                                let gain = content.gain;
+                                let balance = content.balance;
+                                let update = BackendLoopContentUpdate {
+                                    audio: content
+                                        .audio
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(channel, content)| BackendAudioChannelUpdate {
+                                            channel,
+                                            samples: content.samples,
+                                            start_offset: Some(content.start_offset),
+                                            preplay: Some(content.preplay),
+                                        })
+                                        .collect(),
+                                    midi: content
+                                        .midi
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(channel, content)| BackendMidiChannelUpdate {
+                                            channel,
+                                            length: content.length,
+                                            start_state: content.start_state,
+                                            events: content.events,
+                                            start_offset: Some(content.start_offset),
+                                            preplay: Some(content.preplay),
+                                        })
+                                        .collect(),
+                                    length: Some(content.length),
+                                };
+                                if update.audio.is_empty() && update.midi.is_empty() {
+                                    let result = self
+                                        .loops
+                                        .get(&target)
+                                        .ok_or_else(|| format!("stale loop {target}"))
+                                        .and_then(|model| {
+                                            backend.clear_loop(model.backend_id).map_err(|error| {
+                                                format!(
+                                                    "could not clear duplicate target {target}: {error}"
+                                                )
+                                            })
+                                        })
+                                        .and_then(|()| {
+                                            self.finish_primitive_loop_duplicate(
+                                                backend, source, target, gain, balance,
+                                            )
+                                        });
+                                    if let Err(error) = result {
+                                        self.notify_error(error);
+                                    }
+                                } else {
+                                    self.pending_io = Some(PendingIo::CommitLoopDuplicate {
+                                        source,
+                                        target,
+                                        update,
+                                        gain,
+                                        balance,
+                                    });
+                                }
+                            }
+                            None => self.notify_error(format!(
+                                "backend content for loop {} is unavailable",
+                                source.id
+                            )),
+                        }
+                    }
+                    Ok(BackendAsyncResult::Pending(_)) => {
+                        self.pending_io = Some(PendingIo::CaptureLoopDuplicate { source, target });
+                    }
+                    Err(error) => {
+                        self.notify_error(format!("could not capture loop {}: {error}", source.id))
+                    }
+                }
+            }
+            PendingIo::CommitLoopDuplicate {
+                source,
+                target,
+                update,
+                gain,
+                balance,
+            } => {
+                let target_backend = self.loops.get(&target).map(|model| model.backend_id);
+                let result = target_backend
+                    .ok_or_else(|| anyhow!("stale loop {target}"))
+                    .and_then(|target_backend| {
+                        backend.replace_loop_content_async(target_backend, &update)
+                    });
+                match result {
+                    Ok(BackendAsyncResult::Ready(())) => {
+                        match self
+                            .finish_primitive_loop_duplicate(backend, source, target, gain, balance)
+                        {
+                            Ok(()) => {}
+                            Err(error) => self.notify_error(error),
+                        }
+                    }
+                    Ok(BackendAsyncResult::Pending(_)) => {
+                        self.pending_io = Some(PendingIo::CommitLoopDuplicate {
+                            source,
+                            target,
+                            update,
+                            gain,
+                            balance,
+                        });
+                    }
+                    Err(error) => {
+                        self.notify_error(format!("could not duplicate loop content: {error}"))
+                    }
                 }
             }
         }
@@ -2982,7 +3789,7 @@ impl ApplicationModel {
                 initial_loops: slot_count,
             })
             .map_err(|error| format!("could not create track: {error}"))?;
-        let sync_backend = self.sync_backend_loop();
+        let sync_backend = self.global.sync.then(|| self.sync_backend_loop()).flatten();
         for backend_loop in &created.loops {
             backend
                 .set_loop_sync_source(*backend_loop, sync_backend)
@@ -2990,6 +3797,7 @@ impl ApplicationModel {
         }
         let port_ids = register_backend_ports(
             track_id,
+            TrackPortOwnerKind::Main,
             &created.ports,
             &mut self.next_port_id,
             &mut self.connection_ports,
@@ -3008,6 +3816,7 @@ impl ApplicationModel {
             id: track_id,
             backend_id: created.track_id,
             name: spec.name,
+            structural_state: StructuralState::Creating,
             port_name_base,
             is_sync: false,
             audio_channels: loop_audio_channels,
@@ -3056,7 +3865,7 @@ impl ApplicationModel {
             let backend_loop = backend
                 .add_loop_to_track(backend_track)
                 .map_err(|error| format!("could not add aligned loop: {error}"))?;
-            if let Some(sync) = self.sync_backend_loop() {
+            if let Some(sync) = self.global.sync.then(|| self.sync_backend_loop()).flatten() {
                 backend
                     .set_loop_sync_source(backend_loop, Some(sync))
                     .map_err(|error| format!("could not synchronize added loop: {error}"))?;
@@ -3076,18 +3885,139 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn remove_track_model(&mut self, index: usize) {
+        let track = self.tracks.remove(index);
+        let backend_loop_ids = track
+            .loops
+            .iter()
+            .filter_map(|loop_id| self.loops.get(loop_id).map(|model| model.backend_id))
+            .collect::<BTreeSet<_>>();
+        for loop_id in &track.loops {
+            self.script_composition_playback.remove(loop_id);
+            self.loops.remove(loop_id);
+        }
+        for port_id in track.port_ids.iter() {
+            self.connection_ports.remove(port_id);
+        }
+        self.desired_track_controls
+            .retain(|(backend_id, _), _| *backend_id != track.backend_id);
+        self.desired_fx_controls
+            .retain(|(backend_id, _), _| *backend_id != track.backend_id);
+        self.desired_loop_controls
+            .retain(|(backend_id, _), _| !backend_loop_ids.contains(backend_id));
+    }
+
+    fn remove_track(&mut self, backend: &mut dyn Backend, track_id: TrackId) -> Result<(), String> {
+        let index = self
+            .tracks
+            .iter()
+            .position(|track| track.id == track_id && !track.is_sync)
+            .ok_or_else(|| format!("stale, unknown, or sync track {track_id}"))?;
+        let loop_ids = self.tracks[index]
+            .loops
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let referenced = self.loops.values().any(|model| {
+            !loop_ids.contains(&model.id)
+                && model.composite.as_ref().is_some_and(|composite| {
+                    composite
+                        .playlists
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .any(|event| loop_ids.contains(&LoopId::from_raw(event.loop_id)))
+                })
+        });
+        if referenced {
+            return Err(format!(
+                "cannot remove track {track_id} while its loops are used by a composite"
+            ));
+        }
+        for loop_id in &loop_ids {
+            if let Some(composite_id) = self.loops[loop_id].backend_composite {
+                backend
+                    .remove_composite_loop(composite_id)
+                    .map_err(|error| format!("could not remove track composite: {error}"))?;
+            }
+        }
+        let backend_track_id = self.tracks[index].backend_id;
+        backend
+            .remove_track(backend_track_id)
+            .map_err(|error| format!("could not remove track {track_id}: {error}"))?;
+        self.tracks[index].structural_state = StructuralState::Removing;
+        for loop_id in loop_ids {
+            if let Some(model) = self.loops.get_mut(&loop_id) {
+                model.state.structural_state = StructuralState::Removing;
+            }
+        }
+        Ok(())
+    }
+
+    fn move_track_before(
+        &mut self,
+        source: TrackId,
+        target: Option<TrackId>,
+    ) -> Result<(), String> {
+        let source_index = self
+            .tracks
+            .iter()
+            .position(|track| track.id == source && !track.is_sync)
+            .ok_or_else(|| format!("stale, unknown, or sync track {source}"))?;
+        let target_index = target
+            .map(|target| {
+                self.tracks
+                    .iter()
+                    .position(|track| track.id == target && !track.is_sync)
+                    .ok_or_else(|| format!("stale, unknown, or sync track {target}"))
+            })
+            .transpose()?;
+        if target == Some(source) {
+            return Ok(());
+        }
+        let track = self.tracks.remove(source_index);
+        let target_index = target_index
+            .map(|index| index - usize::from(source_index < index))
+            .unwrap_or(self.tracks.len());
+        self.tracks.insert(target_index, track);
+        Ok(())
+    }
+
     fn handle_track_action(
         &mut self,
         backend: &mut dyn Backend,
         track_id: TrackId,
         action: TrackAction,
     ) -> Result<(), String> {
+        if action == TrackAction::Remove {
+            return self.remove_track(backend, track_id);
+        }
+        if let TrackAction::MoveBefore(target) = &action {
+            return self.move_track_before(track_id, *target);
+        }
+        if let TrackAction::InputMonitoringChanged {
+            enabled,
+            respect_auto_mute,
+        } = &action
+        {
+            return self.handle_track_input_monitoring(
+                backend,
+                &[track_id],
+                *enabled,
+                *respect_auto_mute,
+            );
+        }
         let track = self
             .tracks
             .iter_mut()
             .find(|track| track.id == track_id)
             .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        if matches!(&action, TrackAction::OutputBalanceChanged(_)) && !track.controls.output_stereo
+        {
+            return Ok(());
+        }
         let backend_action = match action {
+            TrackAction::Remove | TrackAction::MoveBefore(_) => unreachable!(),
             TrackAction::NameChanged(name) => {
                 track.name = name;
                 return Ok(());
@@ -3097,21 +4027,30 @@ impl ApplicationModel {
             TrackAction::OutputMuteChanged(value) => BackendTrackControl::OutputMute(value),
             TrackAction::InputGainChanged(value) => BackendTrackControl::InputGainDb(value),
             TrackAction::InputBalanceChanged(value) => BackendTrackControl::InputBalance(value),
-            TrackAction::InputMonitoringChanged(value) => {
-                BackendTrackControl::InputMonitoring(value)
-            }
+            TrackAction::InputMonitoringChanged { .. } => unreachable!(),
             TrackAction::FxActiveChanged(value) => {
-                return backend
-                    .set_track_fx_control(track.backend_id, BackendTrackFxControl::SetActive(value))
-                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+                let control = BackendTrackFxControl::SetActive(value);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"))?;
+                self.desired_fx_controls
+                    .insert((track.backend_id, FxControlKey::Active), control.clone());
+                if let Some(fx) = track.fx.as_mut() {
+                    apply_fx_control(fx, &control);
+                }
+                return Ok(());
             }
             TrackAction::FxVisibilityChanged(value) => {
-                return backend
-                    .set_track_fx_control(
-                        track.backend_id,
-                        BackendTrackFxControl::SetVisible(value),
-                    )
-                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+                let control = BackendTrackFxControl::SetVisible(value);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"))?;
+                self.desired_fx_controls
+                    .insert((track.backend_id, FxControlKey::Visible), control.clone());
+                if let Some(fx) = track.fx.as_mut() {
+                    apply_fx_control(fx, &control);
+                }
+                return Ok(());
             }
             TrackAction::FxToggleOrRecover => {
                 return backend
@@ -3131,20 +4070,33 @@ impl ApplicationModel {
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
             }
-            TrackAction::TinySynthFx(control) => {
-                return backend
-                    .set_track_fx_control(
-                        track.backend_id,
-                        BackendTrackFxControl::TinySynthFx(control),
-                    )
+            TrackAction::TinySynthFx(tiny) => {
+                let control = BackendTrackFxControl::TinySynthFx(tiny);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
                     .map_err(|error| {
                         format!("could not update Tiny Synth/FX track {track_id}: {error}")
-                    });
+                    })?;
+                if let Some(key) = fx_control_key(&control) {
+                    self.desired_fx_controls
+                        .insert((track.backend_id, key), control.clone());
+                    if let Some(fx) = track.fx.as_mut() {
+                        apply_fx_control(fx, &control);
+                    }
+                }
+                return Ok(());
             }
         };
         backend
             .set_track_control(track.backend_id, backend_action)
-            .map_err(|error| format!("could not update track {track_id}: {error}"))
+            .map_err(|error| format!("could not update track {track_id}: {error}"))?;
+        self.desired_track_controls.insert(
+            (track.backend_id, track_control_key(backend_action)),
+            backend_action,
+        );
+        apply_track_control(&mut track.controls, backend_action);
+        track.controls.clamp();
+        Ok(())
     }
 
     fn insert_loop(
@@ -3166,15 +4118,22 @@ impl ApplicationModel {
                 state: LoopState {
                     id,
                     name,
+                    structural_state: StructuralState::Creating,
                     show_gain: audio_channels > 0,
                     has_audio: audio_channels > 0,
                     stereo: audio_channels == 2,
+                    empty: true,
                     ..Default::default()
                 },
                 length: 0,
                 position: 0,
                 audio_data: None,
+                midi_data: None,
                 script_composition: Vec::new(),
+                composite: None,
+                backend_composite: None,
+                backend_composite_signature: Vec::new(),
+                repeat_sync: self.global.sync,
                 recorded_fx_state: None,
             },
         );
@@ -3226,6 +4185,12 @@ impl ApplicationModel {
             ));
         }
         match action {
+            LoopAction::NameChanged(name) => {
+                let model = self.loops.get_mut(&loop_id).expect("loop was checked");
+                model.name.clone_from(&name);
+                model.state.name = name;
+                Ok(())
+            }
             LoopAction::IconClicked(modifiers) => {
                 let was_selected = self
                     .loops
@@ -3251,7 +4216,7 @@ impl ApplicationModel {
                         model.state.selected = !was_selected;
                     }
                 }
-                self.refresh_selected_audio(backend)?;
+                self.refresh_selected_media(backend)?;
                 Ok(())
             }
             LoopAction::IconDoubleClicked => {
@@ -3268,9 +4233,10 @@ impl ApplicationModel {
                         model.state.targeted = true;
                     }
                 }
-                self.refresh_selected_audio(backend)?;
+                self.refresh_selected_media(backend)?;
                 Ok(())
             }
+            LoopAction::DefaultClicked => self.default_loop_action(backend, loop_id),
             LoopAction::PlayClicked => {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Playing)
             }
@@ -3293,6 +4259,8 @@ impl ApplicationModel {
                 backend
                     .set_loop_gain(loop_model.backend_id, value)
                     .map_err(|error| format!("could not set loop gain: {error}"))?;
+                self.desired_loop_controls
+                    .insert((loop_model.backend_id, LoopControlKey::Gain), value);
                 if let Some(model) = self.loops.get_mut(&loop_id) {
                     model.state.gain = value;
                 }
@@ -3309,6 +4277,8 @@ impl ApplicationModel {
                 backend
                     .set_loop_balance(loop_model.backend_id, value)
                     .map_err(|error| format!("could not set loop balance: {error}"))?;
+                self.desired_loop_controls
+                    .insert((loop_model.backend_id, LoopControlKey::Balance), value);
                 if let Some(model) = self.loops.get_mut(&loop_id) {
                     model.state.balance = value;
                 }
@@ -3337,7 +4307,1082 @@ impl ApplicationModel {
                     )
                     .map_err(|error| format!("could not restore recorded FX state: {error}"))
             }
+            LoopAction::ConvertToComposite => {
+                if loop_model.composite.is_some() {
+                    return Err(format!("loop {loop_id} is already a composite"));
+                }
+                let composite = CompositeDocument {
+                    kind: CompositeKindDocument::Regular,
+                    playlists: Vec::new(),
+                };
+                let signature = self.composite_length_signature(&composite);
+                let backend_composite =
+                    self.create_and_configure_backend_composite(backend, &composite)?;
+                if let Err(error) = backend.clear_loop(loop_model.backend_id) {
+                    if let Some(id) = backend_composite {
+                        let _ = backend.remove_composite_loop(id);
+                    }
+                    return Err(format!("could not clear loop {loop_id}: {error}"));
+                }
+                self.script_composition_playback.remove(&loop_id);
+                for candidate in self.loops.values_mut() {
+                    candidate.state.selected = false;
+                }
+                let model = self.loops.get_mut(&loop_id).expect("loop was checked");
+                model.length = 0;
+                model.position = 0;
+                model.audio_data = None;
+                model.midi_data = None;
+                model.script_composition.clear();
+                model.composite = Some(composite);
+                model.backend_composite = backend_composite;
+                model.backend_composite_signature = signature;
+                model.recorded_fx_state = None;
+                model.state.empty = true;
+                model.state.composite_kind = shoop_app_api::CompositeKind::Regular;
+                model.state.has_recorded_fx_state = false;
+                model.state.selected = true;
+                Ok(())
+            }
+            LoopAction::Duplicate => self.duplicate_loop_below(backend, track_id, loop_id),
+            LoopAction::DuplicateTo(target) => {
+                self.duplicate_loop_into(backend, track_id, loop_id, target)
+            }
+            LoopAction::ComposeIntoEnd(target) => {
+                self.compose_loop_into(backend, track_id, loop_id, target, false)
+            }
+            LoopAction::ComposeIntoParallel(target) => {
+                self.compose_loop_into(backend, track_id, loop_id, target, true)
+            }
+            LoopAction::SwapWith(target) => self.swap_loops(track_id, loop_id, target),
+            LoopAction::MoveBefore(target) => self.move_loop_before(track_id, loop_id, target),
         }
+    }
+
+    fn duplicate_loop_below(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+        source: LoopId,
+    ) -> Result<(), String> {
+        let track_index = self
+            .tracks
+            .iter()
+            .position(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        let source_index = self.tracks[track_index]
+            .loops
+            .iter()
+            .position(|id| *id == source)
+            .ok_or_else(|| format!("loop {source} does not belong to track {track_id}"))?;
+        let target = self.tracks[track_index].loops[source_index + 1..]
+            .iter()
+            .copied()
+            .find(|id| {
+                self.loops
+                    .get(id)
+                    .is_some_and(|model| model.state.empty && model.composite.is_none())
+            });
+        let target = match target {
+            Some(target) => target,
+            None => {
+                self.add_aligned_loop_row(backend, track_id)?;
+                *self.tracks[track_index]
+                    .loops
+                    .last()
+                    .expect("adding a row adds a loop to its target track")
+            }
+        };
+        self.duplicate_loop_into(backend, track_id, source, target)
+    }
+
+    fn duplicate_loop_into(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+        source: LoopId,
+        target: LoopId,
+    ) -> Result<(), String> {
+        if source == target {
+            return Err("a loop cannot be duplicated onto itself".to_owned());
+        }
+        let track = self
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        if !track.loops.contains(&source) || !track.loops.contains(&target) {
+            return Err(format!(
+                "loops {source} and {target} must belong to track {track_id}"
+            ));
+        }
+        if self.loops[&source].composite.is_some()
+            && self.composite_references(source, target, &mut BTreeSet::new())
+        {
+            return Err(format!(
+                "duplicating loop {source} onto {target} would create a cycle"
+            ));
+        }
+
+        let source_model = self.loops[&source].clone();
+        let target_backend = self.loops[&target].backend_id;
+        let source_name = self.loops[&source].name.clone();
+        let source_state = self.loops[&source].state.clone();
+        let source_length = self.loops[&source].length;
+        let source_audio_data = self.loops[&source].audio_data.clone();
+        let source_midi_data = self.loops[&source].midi_data.clone();
+        let source_script_composition = self.loops[&source].script_composition.clone();
+        let source_composite = self.loops[&source].composite.clone();
+        let source_repeat_sync = self.loops[&source].repeat_sync;
+        let source_recorded_fx_state = self.loops[&source].recorded_fx_state.clone();
+        let previous_backend_composite = self.loops[&target].backend_composite;
+
+        let backend_composite = if let Some(composite) = &source_composite {
+            let created = self.create_and_configure_backend_composite(backend, composite)?;
+            if let Err(error) = backend.clear_loop(target_backend) {
+                if let Some(id) = created {
+                    let _ = backend.remove_composite_loop(id);
+                }
+                return Err(format!(
+                    "could not clear duplicate target {target}: {error}"
+                ));
+            }
+            created
+        } else {
+            self.ensure_io_idle()?;
+            self.pending_io = Some(PendingIo::CaptureLoopDuplicate {
+                source: source_model,
+                target,
+            });
+            // Preserve immediate completion for in-process backends while remote
+            // backends retain the operation and continue it on later ticks.
+            self.advance_io(backend);
+            self.advance_io(backend);
+            return Ok(());
+        };
+        if let Some(id) = previous_backend_composite {
+            backend
+                .remove_composite_loop(id)
+                .map_err(|error| format!("could not replace duplicate target: {error}"))?;
+        }
+
+        self.script_composition_playback.remove(&target);
+        let signature = source_composite
+            .as_ref()
+            .map(|composite| self.composite_length_signature(composite))
+            .unwrap_or_default();
+        let model = self.loops.get_mut(&target).expect("target was checked");
+        model.name = source_name.clone();
+        model.state = source_state;
+        model.state.id = target;
+        model.state.name = source_name;
+        model.state.mode = LoopMode::Stopped;
+        model.state.position = 0.0;
+        model.state.next_mode = LoopMode::Unknown;
+        model.state.next_transition_delay = None;
+        model.state.selected = false;
+        model.state.targeted = false;
+        model.length = source_length;
+        model.position = 0;
+        model.audio_data = source_audio_data;
+        model.midi_data = source_midi_data;
+        model.script_composition = source_script_composition;
+        model.composite = source_composite;
+        model.backend_composite = backend_composite;
+        model.backend_composite_signature = signature;
+        model.repeat_sync = source_repeat_sync;
+        model.recorded_fx_state = source_recorded_fx_state;
+        Ok(())
+    }
+
+    fn finish_primitive_loop_duplicate(
+        &mut self,
+        backend: &mut dyn Backend,
+        source: LoopModel,
+        target: LoopId,
+        gain: f32,
+        balance: f32,
+    ) -> Result<(), String> {
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale loop {target}"))?;
+        let target_backend = target_model.backend_id;
+        let previous_backend_composite = target_model.backend_composite;
+        backend
+            .set_loop_gain(target_backend, gain)
+            .map_err(|error| format!("could not duplicate loop gain: {error}"))?;
+        backend
+            .set_loop_balance(target_backend, balance)
+            .map_err(|error| format!("could not duplicate loop balance: {error}"))?;
+        if let Some(id) = previous_backend_composite {
+            backend
+                .remove_composite_loop(id)
+                .map_err(|error| format!("could not replace duplicate target: {error}"))?;
+        }
+
+        self.script_composition_playback.remove(&target);
+        let model = self.loops.get_mut(&target).expect("target was checked");
+        model.name = source.name.clone();
+        model.state = source.state;
+        model.state.id = target;
+        model.state.name = source.name;
+        model.state.mode = LoopMode::Stopped;
+        model.state.position = 0.0;
+        model.state.next_mode = LoopMode::Unknown;
+        model.state.next_transition_delay = None;
+        model.state.selected = false;
+        model.state.targeted = false;
+        model.length = source.length;
+        model.position = 0;
+        model.audio_data = source.audio_data;
+        model.midi_data = source.midi_data;
+        model.script_composition = source.script_composition;
+        model.composite = None;
+        model.backend_composite = None;
+        model.backend_composite_signature.clear();
+        model.repeat_sync = source.repeat_sync;
+        model.recorded_fx_state = source.recorded_fx_state;
+        Ok(())
+    }
+
+    fn move_loop_before(
+        &mut self,
+        track_id: TrackId,
+        source: LoopId,
+        target: Option<LoopId>,
+    ) -> Result<(), String> {
+        let track = self
+            .tracks
+            .iter_mut()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        let source_index = track
+            .loops
+            .iter()
+            .position(|id| *id == source)
+            .ok_or_else(|| format!("loop {source} does not belong to track {track_id}"))?;
+        let target_index = target
+            .map(|target| {
+                track
+                    .loops
+                    .iter()
+                    .position(|id| *id == target)
+                    .ok_or_else(|| format!("loop {target} does not belong to track {track_id}"))
+            })
+            .transpose()?;
+        if target == Some(source) {
+            return Ok(());
+        }
+        track.loops.remove(source_index);
+        let target_index = target_index
+            .map(|index| index - usize::from(source_index < index))
+            .unwrap_or(track.loops.len());
+        track.loops.insert(target_index, source);
+        Ok(())
+    }
+
+    fn swap_loops(
+        &mut self,
+        track_id: TrackId,
+        source: LoopId,
+        target: LoopId,
+    ) -> Result<(), String> {
+        if source == target {
+            return Err("a loop cannot be swapped with itself".to_owned());
+        }
+        let track = self
+            .tracks
+            .iter_mut()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        let source_index = track
+            .loops
+            .iter()
+            .position(|id| *id == source)
+            .ok_or_else(|| format!("loop {source} does not belong to track {track_id}"))?;
+        let target_index = track
+            .loops
+            .iter()
+            .position(|id| *id == target)
+            .ok_or_else(|| format!("loop {target} does not belong to track {track_id}"))?;
+        track.loops.swap(source_index, target_index);
+        Ok(())
+    }
+
+    fn composite_length_signature(&self, composite: &CompositeDocument) -> Vec<(LoopId, u32)> {
+        let mut ids = composite
+            .playlists
+            .iter()
+            .flatten()
+            .flatten()
+            .map(|event| LoopId::from_raw(event.loop_id))
+            .collect::<BTreeSet<_>>();
+        if let Some(sync) = self
+            .tracks
+            .iter()
+            .find(|track| track.is_sync)
+            .and_then(|track| track.loops.first())
+        {
+            ids.insert(*sync);
+        }
+        ids.into_iter()
+            .filter_map(|id| self.loops.get(&id).map(|model| (id, model.length)))
+            .collect()
+    }
+
+    fn refresh_backend_composite_configs(
+        &mut self,
+        backend: &mut dyn Backend,
+    ) -> Result<(), String> {
+        let stale = self
+            .loops
+            .values()
+            .filter_map(|model| {
+                let composite_id = model.backend_composite?;
+                let composite = model.composite.as_ref()?;
+                let recording = matches!(
+                    model.state.mode,
+                    LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                ) || model.state.next_transition_delay == Some(0)
+                    && matches!(
+                        model.state.next_mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    );
+                let signature = self.composite_length_signature(composite);
+                (!recording && signature != model.backend_composite_signature).then_some((
+                    model.id,
+                    composite_id,
+                    composite.clone(),
+                    signature,
+                ))
+            })
+            .collect::<Vec<_>>();
+        for (id, composite_id, composite, signature) in stale {
+            let Some(config) = self.backend_composite_config(&composite)? else {
+                continue;
+            };
+            backend
+                .configure_composite_loop(composite_id, &config)
+                .map_err(|error| format!("could not refresh composite {id}: {error}"))?;
+            self.loops.get_mut(&id).unwrap().backend_composite_signature = signature;
+        }
+        Ok(())
+    }
+
+    fn backend_composite_config(
+        &self,
+        composite: &CompositeDocument,
+    ) -> Result<Option<BackendCompositeConfig>, String> {
+        let Some(sync_source) = self.sync_backend_loop() else {
+            return Ok(None);
+        };
+        let timelines = composite
+            .playlists
+            .iter()
+            .map(|playlist| {
+                playlist
+                    .iter()
+                    .map(|section| {
+                        section
+                            .iter()
+                            .map(|event| {
+                                let source_id = LoopId::from_raw(event.loop_id);
+                                let source = self.loops.get(&source_id).ok_or_else(|| {
+                                    format!("stale composition source {source_id}")
+                                })?;
+                                let target = match source.backend_composite {
+                                    Some(id) => BackendCompositeTarget::Composite(id),
+                                    None if source.composite.is_none() => {
+                                        BackendCompositeTarget::Loop(source.backend_id)
+                                    }
+                                    None => return Ok(None),
+                                };
+                                let delay = i64::try_from(event.delay).map_err(|_| {
+                                    "composite delay exceeds engine range".to_owned()
+                                })?;
+                                let mode = match event.mode.as_deref() {
+                                    None => None,
+                                    Some("stopped") => Some(BackendLoopMode::Stopped),
+                                    Some("playing") => Some(BackendLoopMode::Playing),
+                                    Some("recording") => Some(BackendLoopMode::Recording),
+                                    Some("replacing") => Some(BackendLoopMode::Replacing),
+                                    Some("playing_dry_through_wet") => {
+                                        Some(BackendLoopMode::PlayingDryThroughWet)
+                                    }
+                                    Some("recording_dry_into_wet") => {
+                                        Some(BackendLoopMode::RecordingDryIntoWet)
+                                    }
+                                    Some(mode) => {
+                                        return Err(format!("unsupported composite mode {mode}"));
+                                    }
+                                };
+                                Ok(Some(BackendCompositeEntry {
+                                    target,
+                                    delay,
+                                    n_cycles: event.n_cycles.map(i64::from),
+                                    mode,
+                                }))
+                            })
+                            .collect::<Result<Option<Vec<_>>, String>>()
+                    })
+                    .collect::<Result<Option<Vec<_>>, String>>()
+            })
+            .collect::<Result<Option<Vec<_>>, String>>()?;
+        let Some(timelines) = timelines else {
+            return Ok(None);
+        };
+        let kind = match composite.kind {
+            CompositeKindDocument::Regular => BackendCompositeKind::Regular,
+            CompositeKindDocument::Script => BackendCompositeKind::Script,
+        };
+        Ok(Some(BackendCompositeConfig {
+            kind,
+            sync_source,
+            timelines,
+        }))
+    }
+
+    fn create_and_configure_backend_composite(
+        &self,
+        backend: &mut dyn Backend,
+        composite: &CompositeDocument,
+    ) -> Result<Option<BackendCompositeId>, String> {
+        if !backend.supports_composite_loops() {
+            return Ok(None);
+        }
+        let Some(config) = self.backend_composite_config(composite)? else {
+            return Ok(None);
+        };
+        let id = backend
+            .create_composite_loop()
+            .map_err(|error| format!("could not create composite loop: {error}"))?;
+        if let Err(error) = backend.configure_composite_loop(id, &config) {
+            let _ = backend.remove_composite_loop(id);
+            return Err(format!("could not configure composite loop: {error}"));
+        }
+        Ok(Some(id))
+    }
+
+    fn restore_backend_composites(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+        let mut pending = self
+            .loops
+            .values()
+            .filter(|model| model.composite.is_some())
+            .map(|model| model.id)
+            .collect::<BTreeSet<_>>();
+        while !pending.is_empty() {
+            let ready = pending.iter().copied().find(|id| {
+                self.loops[id]
+                    .composite
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|composite| &composite.playlists)
+                    .flatten()
+                    .flatten()
+                    .map(|event| LoopId::from_raw(event.loop_id))
+                    .filter(|child| {
+                        self.loops
+                            .get(child)
+                            .is_some_and(|model| model.composite.is_some())
+                    })
+                    .all(|child| !pending.contains(&child))
+            });
+            let id = ready.ok_or_else(|| "composite dependency cycle".to_owned())?;
+            let composite = self.loops[&id].composite.clone().unwrap();
+            let backend_composite =
+                self.create_and_configure_backend_composite(backend, &composite)?;
+            let signature = self.composite_length_signature(&composite);
+            let model = self.loops.get_mut(&id).unwrap();
+            model.backend_composite = backend_composite;
+            model.backend_composite_signature = signature;
+            pending.remove(&id);
+        }
+        Ok(())
+    }
+
+    fn compose_loop_into(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+        source: LoopId,
+        target: LoopId,
+        parallel: bool,
+    ) -> Result<(), String> {
+        let track = self
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        if !track.loops.contains(&source) || !track.loops.contains(&target) {
+            return Err(format!(
+                "loops {source} and {target} must belong to track {track_id}"
+            ));
+        }
+        if source == target || self.composite_references(source, target, &mut BTreeSet::new()) {
+            return Err(format!(
+                "adding loop {source} to composite {target} would create a cycle"
+            ));
+        }
+        if self.loops[&target].composite.is_none() {
+            self.handle_loop_action(backend, track_id, target, LoopAction::ConvertToComposite)?;
+        }
+        self.apply_script_operation(
+            backend,
+            ControlOperation::ComposeAddToEnd {
+                target,
+                add: vec![source],
+                parallel,
+            },
+        )
+    }
+
+    fn compose_loop_serial(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        source: LoopId,
+    ) -> Result<(), String> {
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        if target_model.composite.is_none() {
+            return Err(format!("composition target {target} is not a composite"));
+        }
+        if !self.loops.contains_key(&source) {
+            return Err(format!("stale or unknown composition source {source}"));
+        }
+        if source == target || self.composite_references(source, target, &mut BTreeSet::new()) {
+            return Err(format!(
+                "adding loop {source} to composite {target} would create a cycle"
+            ));
+        }
+        self.apply_script_operation(
+            backend,
+            ControlOperation::ComposeAddToEnd {
+                target,
+                add: vec![source],
+                parallel: false,
+            },
+        )
+    }
+
+    fn compose_loop_at(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        source: LoopId,
+        start_iteration: u64,
+    ) -> Result<(), String> {
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        let existing = target_model
+            .composite
+            .as_ref()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        if !self.loops.contains_key(&source) {
+            return Err(format!("stale or unknown composition source {source}"));
+        }
+        if source == target || self.composite_references(source, target, &mut BTreeSet::new()) {
+            return Err(format!(
+                "adding loop {source} to composite {target} would create a cycle"
+            ));
+        }
+        if !backend.supports_composite_loops() {
+            return Err("positioned composite schedules require backend support".to_owned());
+        }
+
+        let composite = composite_with_source_at(existing, source, start_iteration);
+        let previous_backend_composite = target_model.backend_composite;
+        let config = self.backend_composite_config(&composite)?.ok_or_else(|| {
+            "positioned composite schedule is not backend-configurable".to_owned()
+        })?;
+        let backend_composite = match previous_backend_composite {
+            Some(id) => {
+                backend
+                    .configure_composite_loop(id, &config)
+                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                id
+            }
+            None => self
+                .create_and_configure_backend_composite(backend, &composite)?
+                .ok_or_else(|| "could not create positioned composite schedule".to_owned())?,
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let mut sections = target_model.script_composition.clone();
+        sections.push(vec![source]);
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.script_composition = sections;
+        target_model.length = length;
+        target_model.state.empty = false;
+        target_model.state.composite_kind = match composite.kind {
+            CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
+            CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
+        };
+        target_model.composite = Some(composite);
+        target_model.backend_composite = Some(backend_composite);
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn delete_composite_events(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        events: &[CompositeEventId],
+    ) -> Result<(), String> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        let existing = target_model
+            .composite
+            .as_ref()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        let selected = events.iter().copied().collect::<BTreeSet<_>>();
+        let composite = self.composite_without_events_preserving_positions(existing, &selected)?;
+        let previous_backend_composite = target_model.backend_composite;
+        let backend_composite = match self.backend_composite_config(&composite)? {
+            Some(config) => match previous_backend_composite {
+                Some(id) => {
+                    backend
+                        .configure_composite_loop(id, &config)
+                        .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                    Some(id)
+                }
+                None => self.create_and_configure_backend_composite(backend, &composite)?,
+            },
+            None => {
+                if let Some(id) = previous_backend_composite {
+                    backend
+                        .remove_composite_loop(id)
+                        .map_err(|error| format!("could not remove composite loop: {error}"))?;
+                }
+                None
+            }
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let sections = composite
+            .playlists
+            .first()
+            .map(|playlist| {
+                playlist
+                    .iter()
+                    .map(|section| {
+                        section
+                            .iter()
+                            .map(|event| LoopId::from_raw(event.loop_id))
+                            .collect()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let empty = composite.playlists.iter().flatten().all(Vec::is_empty);
+        let composite_kind = match composite.kind {
+            CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
+            CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
+        };
+        self.script_composition_playback.remove(&target);
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.script_composition = sections;
+        target_model.length = length;
+        target_model.state.empty = empty;
+        target_model.state.composite_kind = composite_kind;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = backend_composite;
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn relocate_composite_events(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        events: &[CompositeEventId],
+        start_iteration: u64,
+        duplicate: bool,
+    ) -> Result<(), String> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        let existing = target_model
+            .composite
+            .as_ref()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        let details = self.composite_details_snapshot(existing);
+        let selected = events.iter().copied().collect::<BTreeSet<_>>();
+        let selected_details = details
+            .events
+            .iter()
+            .filter(|event| {
+                selected.contains(&CompositeEventId {
+                    playlist_index: event.playlist_index,
+                    section_index: event.section_index,
+                    parallel_index: event.parallel_index,
+                })
+            })
+            .collect::<Vec<_>>();
+        if selected_details.len() != selected.len() {
+            return Err("composite relocation references a stale event".to_owned());
+        }
+        let cycle_length = details.cycle_length_frames.max(1);
+        let origin = selected_details
+            .iter()
+            .map(|event| event.start_frame / cycle_length)
+            .min()
+            .unwrap_or(0);
+        let mut composite = if duplicate {
+            existing.clone()
+        } else {
+            self.composite_without_events_preserving_positions(existing, &selected)?
+        };
+        for event in selected_details {
+            let document = &existing.playlists[event.playlist_index as usize]
+                [event.section_index as usize][event.parallel_index as usize];
+            let relative = event.start_frame / cycle_length - origin;
+            let mut document = document.clone();
+            document.delay = start_iteration
+                .checked_add(relative)
+                .ok_or_else(|| "composite relocation position overflow".to_owned())?;
+            composite.playlists.push(vec![vec![document]]);
+        }
+
+        let config = self
+            .backend_composite_config(&composite)?
+            .ok_or_else(|| "relocated composite is not backend-configurable".to_owned())?;
+        let backend_composite = match target_model.backend_composite {
+            Some(id) => {
+                backend
+                    .configure_composite_loop(id, &config)
+                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                id
+            }
+            None => self
+                .create_and_configure_backend_composite(backend, &composite)?
+                .ok_or_else(|| "could not create relocated composite schedule".to_owned())?,
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.length = length;
+        target_model.state.empty = false;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = Some(backend_composite);
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn set_composite_loop_cycles(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        source: LoopId,
+        n_cycles: Option<u32>,
+    ) -> Result<(), String> {
+        if n_cycles == Some(0) {
+            return Err("forced composite length must be at least one cycle".to_owned());
+        }
+        let target_model = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+        let mut composite = target_model
+            .composite
+            .clone()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        let mut found = false;
+        for event in composite.playlists.iter_mut().flatten().flatten() {
+            if event.loop_id == source.raw() {
+                event.n_cycles = n_cycles;
+                found = true;
+            }
+        }
+        if !found {
+            return Err(format!(
+                "composition target {target} does not schedule source {source}"
+            ));
+        }
+
+        let backend_composite = match target_model.backend_composite {
+            Some(id) => {
+                let config = self
+                    .backend_composite_config(&composite)?
+                    .ok_or_else(|| "composite is not backend-configurable".to_owned())?;
+                backend
+                    .configure_composite_loop(id, &config)
+                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                Some(id)
+            }
+            None => self.create_and_configure_backend_composite(backend, &composite)?,
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.length = length;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = backend_composite;
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn set_composite_kind(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        kind: shoop_app_api::CompositeKind,
+    ) -> Result<(), String> {
+        let document_kind = match kind {
+            shoop_app_api::CompositeKind::Regular => CompositeKindDocument::Regular,
+            shoop_app_api::CompositeKind::Script => CompositeKindDocument::Script,
+            shoop_app_api::CompositeKind::None => {
+                return Err("a composite cannot be changed to a primitive loop".to_owned());
+            }
+        };
+        let mut composite = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?
+            .composite
+            .clone()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        composite.kind = document_kind;
+        for event in composite.playlists.iter_mut().flatten().flatten() {
+            event.mode = match document_kind {
+                CompositeKindDocument::Regular => None,
+                CompositeKindDocument::Script => Some("playing".to_owned()),
+            };
+        }
+        self.commit_composite_editor_change(backend, target, composite)
+    }
+
+    fn set_composite_event_mode(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        event_id: CompositeEventId,
+        mode: LoopMode,
+    ) -> Result<(), String> {
+        let mode = match mode {
+            LoopMode::Stopped => "stopped",
+            LoopMode::Playing => "playing",
+            LoopMode::Recording => "recording",
+            LoopMode::Replacing => "replacing",
+            LoopMode::PlayingDryThroughWet => "playing_dry_through_wet",
+            LoopMode::RecordingDryIntoWet => "recording_dry_into_wet",
+            LoopMode::Unknown => return Err("unknown is not a script event mode".to_owned()),
+        };
+        let mut composite = self
+            .loops
+            .get(&target)
+            .ok_or_else(|| format!("stale or unknown composition target {target}"))?
+            .composite
+            .clone()
+            .ok_or_else(|| format!("composition target {target} is not a composite"))?;
+        if composite.kind != CompositeKindDocument::Script {
+            return Err("event modes can only be edited in script composites".to_owned());
+        }
+        let event = composite
+            .playlists
+            .get_mut(event_id.playlist_index as usize)
+            .and_then(|playlist| playlist.get_mut(event_id.section_index as usize))
+            .and_then(|section| section.get_mut(event_id.parallel_index as usize))
+            .ok_or_else(|| "stale or unknown composite event".to_owned())?;
+        event.mode = Some(mode.to_owned());
+        self.commit_composite_editor_change(backend, target, composite)
+    }
+
+    fn commit_composite_editor_change(
+        &mut self,
+        backend: &mut dyn Backend,
+        target: LoopId,
+        composite: CompositeDocument,
+    ) -> Result<(), String> {
+        let target_model = self.loops.get(&target).unwrap();
+        let previous_backend_composite = target_model.backend_composite;
+        let has_events = composite
+            .playlists
+            .iter()
+            .flatten()
+            .any(|section| !section.is_empty());
+        let config = (has_events && backend.supports_composite_loops())
+            .then(|| self.backend_composite_config(&composite))
+            .transpose()?
+            .flatten();
+        let backend_composite = match (previous_backend_composite, config) {
+            (Some(id), Some(config)) => {
+                backend
+                    .configure_composite_loop(id, &config)
+                    .map_err(|error| format!("could not configure composite loop: {error}"))?;
+                Some(id)
+            }
+            (None, Some(config)) => {
+                let id = backend
+                    .create_composite_loop()
+                    .map_err(|error| format!("could not create composite loop: {error}"))?;
+                if let Err(error) = backend.configure_composite_loop(id, &config) {
+                    let _ = backend.remove_composite_loop(id);
+                    return Err(format!("could not configure composite loop: {error}"));
+                }
+                Some(id)
+            }
+            (Some(id), None) => {
+                backend
+                    .remove_composite_loop(id)
+                    .map_err(|error| format!("could not remove composite loop: {error}"))?;
+                None
+            }
+            (None, None) => None,
+        };
+        let signature = self.composite_length_signature(&composite);
+        let length = self
+            .composite_details_snapshot(&composite)
+            .timeline_length_frames
+            .try_into()
+            .unwrap_or(u32::MAX);
+        let kind = match composite.kind {
+            CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
+            CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
+        };
+        let target_model = self.loops.get_mut(&target).unwrap();
+        target_model.length = length;
+        target_model.state.composite_kind = kind;
+        target_model.composite = Some(composite);
+        target_model.backend_composite = backend_composite;
+        target_model.backend_composite_signature = signature;
+        Ok(())
+    }
+
+    fn composite_without_events_preserving_positions(
+        &self,
+        existing: &CompositeDocument,
+        selected: &BTreeSet<CompositeEventId>,
+    ) -> Result<CompositeDocument, String> {
+        let sync_length = u64::from(self.sync_length()).max(1);
+        let mut composite = existing.clone();
+        let mut found = BTreeSet::new();
+        for (playlist_index, playlist) in composite.playlists.iter_mut().enumerate() {
+            let playlist_index = u32::try_from(playlist_index)
+                .map_err(|_| "composite playlist index exceeds editor range".to_owned())?;
+            let mut original_origin = 0_u64;
+            let mut new_origin = 0_u64;
+            for (section_index, section) in playlist.iter_mut().enumerate() {
+                let section_index = u32::try_from(section_index)
+                    .map_err(|_| "composite section index exceeds editor range".to_owned())?;
+                let original_duration =
+                    self.composite_section_duration_iterations(section, sync_length)?;
+                let delay_compensation =
+                    original_origin.checked_sub(new_origin).ok_or_else(|| {
+                        "composite deletion moved a section past its original position".to_owned()
+                    })?;
+                let mut retained = Vec::with_capacity(section.len());
+                for (parallel_index, event) in section.iter().enumerate() {
+                    let parallel_index = u32::try_from(parallel_index)
+                        .map_err(|_| "composite event index exceeds editor range".to_owned())?;
+                    let id = CompositeEventId {
+                        playlist_index,
+                        section_index,
+                        parallel_index,
+                    };
+                    if selected.contains(&id) {
+                        found.insert(id);
+                    } else {
+                        let mut event = event.clone();
+                        event.delay =
+                            event.delay.checked_add(delay_compensation).ok_or_else(|| {
+                                "composite delay overflow while preserving event position"
+                                    .to_owned()
+                            })?;
+                        retained.push(event);
+                    }
+                }
+                let new_duration =
+                    self.composite_section_duration_iterations(&retained, sync_length)?;
+                *section = retained;
+                original_origin = original_origin
+                    .checked_add(original_duration)
+                    .ok_or_else(|| "composite timeline duration overflow".to_owned())?;
+                new_origin = new_origin
+                    .checked_add(new_duration)
+                    .ok_or_else(|| "composite timeline duration overflow".to_owned())?;
+            }
+        }
+        if found != *selected {
+            return Err("composite deletion references a stale event".to_owned());
+        }
+        Ok(composite)
+    }
+
+    fn composite_section_duration_iterations(
+        &self,
+        section: &[CompositeEventDocument],
+        sync_length: u64,
+    ) -> Result<u64, String> {
+        section.iter().try_fold(0_u64, |duration, event| {
+            let event_duration = match event.n_cycles {
+                Some(0) => return Err("composite event has a zero cycle count".to_owned()),
+                Some(cycles) => u64::from(cycles),
+                None => {
+                    let source = self
+                        .loops
+                        .get(&LoopId::from_raw(event.loop_id))
+                        .ok_or_else(|| format!("stale composition source {}", event.loop_id))?;
+                    u64::from(source.length).div_ceil(sync_length).max(1)
+                }
+            };
+            let end = event
+                .delay
+                .checked_add(event_duration)
+                .ok_or_else(|| "composite event duration overflow".to_owned())?;
+            Ok(duration.max(end))
+        })
+    }
+
+    fn composite_references(
+        &self,
+        composite_id: LoopId,
+        searched: LoopId,
+        visited: &mut BTreeSet<LoopId>,
+    ) -> bool {
+        if !visited.insert(composite_id) {
+            return false;
+        }
+        self.loops
+            .get(&composite_id)
+            .and_then(|model| model.composite.as_ref())
+            .is_some_and(|composite| {
+                composite.playlists.iter().flatten().flatten().any(|event| {
+                    let child = LoopId::from_raw(event.loop_id);
+                    child == searched || self.composite_references(child, searched, visited)
+                })
+            })
     }
 
     fn capture_recording_fx_states(
@@ -3383,31 +5428,62 @@ impl ApplicationModel {
         Ok(())
     }
 
-    fn refresh_selected_audio(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+    fn refresh_selected_media(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
         let selected: Vec<_> = self
             .loops
             .values()
             .filter(|model| model.state.selected)
-            .map(|model| (model.id, model.backend_id))
+            .map(|model| {
+                (
+                    model.id,
+                    model.backend_id,
+                    model.state.has_audio,
+                    model.state.has_midi,
+                )
+            })
             .collect();
         for model in self.loops.values_mut() {
             if !model.state.selected {
                 model.audio_data = None;
+                model.midi_data = None;
             }
         }
-        if let [(id, backend_id)] = selected.as_slice() {
-            if self
-                .loops
-                .get(id)
-                .is_some_and(|model| model.audio_data.is_some())
-            {
-                return Ok(());
+        let [(id, backend_id, has_audio, has_midi)] = selected.as_slice() else {
+            return Ok(());
+        };
+        let (needs_audio, needs_midi) = self
+            .loops
+            .get(id)
+            .map(|model| (model.audio_data.is_none(), model.midi_data.is_none()))
+            .unwrap_or_default();
+        if needs_audio {
+            if *has_audio {
+                let data = backend
+                    .loop_audio_data(*backend_id)
+                    .map_err(|error| format!("could not fetch selected loop audio: {error}"))?;
+                if let (Some(model), Some(data)) = (self.loops.get_mut(id), data) {
+                    model.audio_data = Some(data);
+                }
+            } else if let Some(model) = self.loops.get_mut(id) {
+                model.audio_data = Some(Vec::new());
             }
-            let data = backend
-                .loop_audio_data(*backend_id)
-                .map_err(|error| format!("could not fetch selected loop audio: {error}"))?;
-            if let (Some(model), Some(data)) = (self.loops.get_mut(id), data) {
-                model.audio_data = Some(data);
+        }
+        if needs_midi {
+            if *has_midi {
+                let data = backend
+                    .loop_midi_data(*backend_id)
+                    .map_err(|error| format!("could not fetch selected loop MIDI: {error}"))?;
+                if let Some(data) = data {
+                    let Some(model) = self.loops.get(id) else {
+                        return Ok(());
+                    };
+                    let channels = midi_detail_channels(model, data);
+                    if let Some(model) = self.loops.get_mut(id) {
+                        model.midi_data = Some(channels);
+                    }
+                }
+            } else if let Some(model) = self.loops.get_mut(id) {
+                model.midi_data = Some(Vec::new());
             }
         }
         Ok(())
@@ -3475,10 +5551,55 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn default_loop_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+    ) -> Result<(), String> {
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale or unknown loop {loop_id}"))?;
+        let has_planned_transition = model.state.next_transition_delay.is_some()
+            && !matches!(model.state.next_mode, LoopMode::Unknown | LoopMode::Stopped);
+        let mode = if has_planned_transition {
+            BackendLoopMode::Stopped
+        } else if model.state.mode == LoopMode::Recording {
+            BackendLoopMode::Playing
+        } else if model.length == 0 && model.state.mode == LoopMode::Stopped {
+            if self.global.default_recording_action == DefaultRecordingAction::Grab {
+                return self.grab_single_target(backend, loop_id);
+            }
+            BackendLoopMode::Recording
+        } else if model.length > 0 && model.state.mode == LoopMode::Stopped {
+            BackendLoopMode::Playing
+        } else {
+            BackendLoopMode::Stopped
+        };
+        self.transition_single_target(backend, loop_id, mode)
+    }
+
     fn grab_targets(
         &mut self,
         backend: &mut dyn Backend,
         initiating_loop: LoopId,
+    ) -> Result<(), String> {
+        self.grab_targets_inner(backend, initiating_loop, true)
+    }
+
+    fn grab_single_target(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+    ) -> Result<(), String> {
+        self.grab_targets_inner(backend, initiating_loop, false)
+    }
+
+    fn grab_targets_inner(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+        include_selection: bool,
     ) -> Result<(), String> {
         let sync_length = self.sync_length();
         if sync_length == 0 {
@@ -3494,7 +5615,7 @@ impl ApplicationModel {
                 (cycles, current)
             });
         let n_cycles = self.global.apply_n_cycles.max(1);
-        let ids = if self.global.sync {
+        let ids = if self.global.sync && include_selection {
             self.action_target_ids(initiating_loop)
         } else {
             vec![initiating_loop]
@@ -3553,6 +5674,12 @@ impl ApplicationModel {
         backend
             .grab_loops(&requests)
             .map_err(|error| format!("could not grab loop recording: {error}"))?;
+        for id in &ids {
+            if let Some(model) = self.loops.get_mut(id) {
+                model.audio_data = None;
+                model.midi_data = None;
+            }
+        }
 
         if !self.global.sync {
             let delay = target.map(|_| self.target_delay()).unwrap_or(0);
@@ -3604,17 +5731,44 @@ impl ApplicationModel {
         initiating_loop: LoopId,
         mode: BackendLoopMode,
     ) -> Result<(), String> {
-        let initiating_selected = self
-            .loops
-            .get(&initiating_loop)
-            .is_some_and(|model| model.state.selected);
+        self.transition_targets_inner(backend, initiating_loop, mode, true)
+    }
+
+    fn transition_single_target(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+        mode: BackendLoopMode,
+    ) -> Result<(), String> {
+        self.transition_targets_inner(backend, initiating_loop, mode, false)
+    }
+
+    fn transition_targets_inner(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+        mode: BackendLoopMode,
+        include_selection: bool,
+    ) -> Result<(), String> {
+        let initiating_selected = include_selection
+            && self
+                .loops
+                .get(&initiating_loop)
+                .is_some_and(|model| model.state.selected);
         let targets: Vec<_> = self
             .loops
             .values()
             .filter(|model| {
                 model.id == initiating_loop || initiating_selected && model.state.selected
             })
-            .map(|model| (model.id, model.track_id, model.backend_id))
+            .map(|model| {
+                (
+                    model.id,
+                    model.track_id,
+                    model.backend_id,
+                    model.backend_composite,
+                )
+            })
             .collect();
         let delay = self.global.sync.then_some(self.target_delay());
         if matches!(
@@ -3623,7 +5777,7 @@ impl ApplicationModel {
                 | BackendLoopMode::Replacing
                 | BackendLoopMode::RecordingDryIntoWet
         ) {
-            let ids = targets.iter().map(|(id, _, _)| *id).collect::<Vec<_>>();
+            let ids = targets.iter().map(|(id, _, _, _)| *id).collect::<Vec<_>>();
             self.capture_recording_fx_states(backend, &ids)?;
         }
         if self.global.solo
@@ -3634,26 +5788,49 @@ impl ApplicationModel {
                     | BackendLoopMode::Recording
             )
         {
-            let track_ids: Vec<_> = targets.iter().map(|(_, track_id, _)| *track_id).collect();
-            let selected_ids: Vec<_> = targets.iter().map(|(id, _, _)| *id).collect();
+            let track_ids: Vec<_> = targets
+                .iter()
+                .map(|(_, track_id, _, _)| *track_id)
+                .collect();
+            let selected_ids: Vec<_> = targets.iter().map(|(id, _, _, _)| *id).collect();
             let others: Vec<_> = self
                 .loops
                 .values()
                 .filter(|model| {
                     track_ids.contains(&model.track_id) && !selected_ids.contains(&model.id)
                 })
-                .map(|model| (model.id, model.backend_id))
+                .map(|model| (model.id, model.backend_id, model.backend_composite))
                 .collect();
-            for (id, backend_id) in others {
-                backend
-                    .transition_loop(backend_id, BackendLoopMode::Stopped, delay)
-                    .map_err(|error| format!("could not solo-stop loop {id}: {error}"))?;
+            for (id, backend_id, composite_id) in others {
+                if let Some(composite_id) = composite_id {
+                    backend
+                        .transition_composite_loop(
+                            composite_id,
+                            BackendLoopMode::Stopped,
+                            delay,
+                            None,
+                        )
+                        .map_err(|error| format!("could not solo-stop loop {id}: {error}"))?;
+                } else {
+                    backend
+                        .transition_loop(backend_id, BackendLoopMode::Stopped, delay)
+                        .map_err(|error| format!("could not solo-stop loop {id}: {error}"))?;
+                }
             }
         }
-        for (id, _, backend_id) in targets {
-            backend
-                .transition_loop(backend_id, mode, delay)
-                .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+        for (id, _, backend_id, composite_id) in targets {
+            if let Some(composite_id) = composite_id {
+                backend
+                    .set_composite_play_after_record(composite_id, self.global.play_after_record)
+                    .map_err(|error| format!("could not set composite option: {error}"))?;
+                backend
+                    .transition_composite_loop(composite_id, mode, delay, None)
+                    .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+            } else {
+                backend
+                    .transition_loop(backend_id, mode, delay)
+                    .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+            }
             if mode == BackendLoopMode::Recording && self.global.apply_n_cycles > 0 {
                 let after = delay
                     .unwrap_or(0)
@@ -3663,11 +5840,19 @@ impl ApplicationModel {
                 } else {
                     BackendLoopMode::Stopped
                 };
-                backend
-                    .transition_loop(backend_id, next, Some(after))
-                    .map_err(|error| {
-                        format!("could not schedule recording end for {id}: {error}")
-                    })?;
+                if let Some(composite_id) = composite_id {
+                    backend
+                        .transition_composite_loop(composite_id, next, Some(after), None)
+                        .map_err(|error| {
+                            format!("could not schedule recording end for {id}: {error}")
+                        })?;
+                } else {
+                    backend
+                        .transition_loop(backend_id, next, Some(after))
+                        .map_err(|error| {
+                            format!("could not schedule recording end for {id}: {error}")
+                        })?;
+                }
             }
         }
         Ok(())
@@ -3828,10 +6013,12 @@ impl ApplicationModel {
                         .map_err(|error| format!("could not stop loop: {error}"))?;
                 }
             }
+            GlobalControlAction::MidiPanic => self.handle_midi_panic(backend)?,
             GlobalControlAction::DeselectAll => {
                 for model in self.loops.values_mut() {
                     model.state.selected = false;
                     model.audio_data = None;
+                    model.midi_data = None;
                 }
             }
             GlobalControlAction::ClearRecordings { include_sync }
@@ -3861,8 +6048,42 @@ impl ApplicationModel {
             GlobalControlAction::SetPlayAfterRecord(value) => {
                 self.global.play_after_record = value;
             }
-            GlobalControlAction::SetSync(value) => self.global.sync = value,
+            GlobalControlAction::SetSync(value) => {
+                let sync = value.then(|| self.sync_backend_loop()).flatten();
+                let targets = self
+                    .loops
+                    .values()
+                    .filter(|model| {
+                        self.tracks
+                            .iter()
+                            .find(|track| track.id == model.track_id)
+                            .is_some_and(|track| !track.is_sync)
+                    })
+                    .map(|model| (model.id, model.backend_id, model.repeat_sync))
+                    .collect::<Vec<_>>();
+                let mut applied: Vec<(LoopId, BackendLoopId, bool)> = Vec::new();
+                for (id, backend_id, previous) in &targets {
+                    if let Err(error) = backend.set_loop_sync_source(*backend_id, sync) {
+                        for (_, applied_backend, applied_previous) in applied.into_iter().rev() {
+                            let previous_source =
+                                applied_previous.then(|| self.sync_backend_loop()).flatten();
+                            let _ = backend.set_loop_sync_source(applied_backend, previous_source);
+                        }
+                        return Err(format!(
+                            "could not update loop {id} synchronization: {error}"
+                        ));
+                    }
+                    applied.push((*id, *backend_id, *previous));
+                }
+                for (id, _, _) in targets {
+                    self.loops.get_mut(&id).unwrap().repeat_sync = value;
+                }
+                self.global.sync = value;
+            }
             GlobalControlAction::SetSolo(value) => self.global.solo = value,
+            GlobalControlAction::SetAutoMuteOtherTrackInputs(value) => {
+                self.global.auto_mute_other_track_inputs = value;
+            }
             GlobalControlAction::SetApplyNCycles(value) => self.global.apply_n_cycles = value,
         }
         Ok(())
@@ -3877,13 +6098,142 @@ impl ApplicationModel {
             loop_count = snapshot.loops.len()
         )
         .entered();
+        let mut rejected_track_creations = BTreeSet::new();
+        for failure in &snapshot.mutation_failures {
+            match failure.detail.as_ref() {
+                Some(BackendMutationDetail::TrackCreation) => {
+                    if let Some(entity) = failure.entity {
+                        rejected_track_creations.insert(BackendTrackId::from_raw(entity));
+                    }
+                }
+                Some(BackendMutationDetail::TrackRemoval) => {
+                    if let Some(entity) = failure.entity {
+                        let backend_id = BackendTrackId::from_raw(entity);
+                        if let Some(track) = self
+                            .tracks
+                            .iter_mut()
+                            .find(|track| track.backend_id == backend_id)
+                        {
+                            track.structural_state = StructuralState::Confirmed;
+                            for loop_id in &track.loops {
+                                if let Some(model) = self.loops.get_mut(loop_id) {
+                                    model.state.structural_state = StructuralState::Confirmed;
+                                }
+                            }
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::LoopCreation { loop_id }) => {
+                    if let Some((id, track_id)) = self.loops.iter().find_map(|(id, model)| {
+                        (model.backend_id == *loop_id).then_some((*id, model.track_id))
+                    }) {
+                        self.loops.remove(&id);
+                        if let Some(track) =
+                            self.tracks.iter_mut().find(|track| track.id == track_id)
+                        {
+                            track.loops.retain(|candidate| *candidate != id);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            match failure.detail.as_ref() {
+                Some(
+                    BackendMutationDetail::TrackCreation
+                    | BackendMutationDetail::TrackRemoval
+                    | BackendMutationDetail::LoopCreation { .. },
+                ) => {}
+                Some(BackendMutationDetail::TrackControl(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let key = (
+                            BackendTrackId::from_raw(entity),
+                            track_control_key(*rejected),
+                        );
+                        if self.desired_track_controls.get(&key) == Some(rejected) {
+                            self.desired_track_controls.remove(&key);
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::LoopGain(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let key = (BackendLoopId::from_raw(entity), LoopControlKey::Gain);
+                        if self.desired_loop_controls.get(&key) == Some(rejected) {
+                            self.desired_loop_controls.remove(&key);
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::LoopBalance(rejected)) => {
+                    if let Some(entity) = failure.entity {
+                        let key = (BackendLoopId::from_raw(entity), LoopControlKey::Balance);
+                        if self.desired_loop_controls.get(&key) == Some(rejected) {
+                            self.desired_loop_controls.remove(&key);
+                        }
+                    }
+                }
+                Some(BackendMutationDetail::TrackFxControl(rejected)) => {
+                    if let (Some(entity), Some(control_key)) =
+                        (failure.entity, fx_control_key(rejected))
+                    {
+                        let key = (BackendTrackId::from_raw(entity), control_key);
+                        if self.desired_fx_controls.get(&key) == Some(rejected) {
+                            self.desired_fx_controls.remove(&key);
+                        }
+                    }
+                }
+                None => {}
+            }
+            self.notify_error(format!(
+                "Backend rejected {:?} mutation (driver generation {}, sequence {}): {}",
+                failure.kind, failure.driver_generation, failure.sequence, failure.message
+            ));
+        }
+        let rejected_indices = self
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, track)| {
+                rejected_track_creations
+                    .contains(&track.backend_id)
+                    .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        for index in rejected_indices.into_iter().rev() {
+            self.remove_track_model(index);
+        }
+        let confirmed_removal_indices = self
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, track)| {
+                (track.structural_state == StructuralState::Removing
+                    && !snapshot.tracks.contains_key(&track.backend_id))
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        for index in confirmed_removal_indices.into_iter().rev() {
+            self.remove_track_model(index);
+        }
         let switch = self.audio_drivers.switch.clone();
         self.audio_drivers = snapshot.audio_drivers.clone();
         if switch.status != AudioDriverSwitchStatus::Idle {
             self.audio_drivers.switch = switch;
         }
         self.status.dsp_load_percent = snapshot.status.dsp_load_percent;
-        self.status.xruns = self.status.xruns.saturating_add(snapshot.status.xruns);
+        let callback_xruns =
+            if snapshot.status.callback_budget_overruns >= self.last_callback_budget_overruns {
+                snapshot
+                    .status
+                    .callback_budget_overruns
+                    .saturating_sub(self.last_callback_budget_overruns)
+            } else {
+                snapshot.status.callback_budget_overruns
+            };
+        self.last_callback_budget_overruns = snapshot.status.callback_budget_overruns;
+        self.status.xruns = self
+            .status
+            .xruns
+            .saturating_add(snapshot.status.xruns)
+            .saturating_add(callback_xruns);
         self.status.buffer_size = snapshot.status.buffer_size;
         self.status.sample_rate = snapshot.status.sample_rate;
         self.status.audio_driver = match snapshot.status.driver_state {
@@ -3904,16 +6254,61 @@ impl ApplicationModel {
         self.status.processed_frames = snapshot.status.processed_frames;
         self.status.input_peak = snapshot.status.input_peak;
         self.status.output_peak = snapshot.status.output_peak;
-        self.status.callback_budget_overruns = snapshot.status.callback_budget_overruns;
         self.status.render_discontinuities = snapshot.status.render_discontinuities;
         self.status.memory_growths = snapshot.status.memory_growths;
+        let render_memory_growths =
+            if snapshot.status.render_memory_growths >= self.status.render_memory_growths {
+                snapshot
+                    .status
+                    .render_memory_growths
+                    .saturating_sub(self.status.render_memory_growths)
+            } else {
+                snapshot.status.render_memory_growths
+            };
+        self.status.render_memory_growths = snapshot.status.render_memory_growths;
+        if render_memory_growths > 0 {
+            let callback_label = if render_memory_growths == 1 {
+                "callback"
+            } else {
+                "callbacks"
+            };
+            self.notify_warning(format!(
+                "Audio recovered after memory grew during {render_memory_growths} render {callback_label}; timing may have been disrupted"
+            ));
+        }
         self.status.command_overflows = snapshot.status.command_overflows;
         self.status.storage_low_channels = snapshot.status.storage_low_channels;
         self.status.storage_exhaustions = snapshot.status.storage_exhaustions;
+        self.desired_track_controls
+            .retain(|(backend_id, _), desired| {
+                !snapshot
+                    .tracks
+                    .get(backend_id)
+                    .is_some_and(|state| track_control_matches(state, *desired))
+            });
+        self.desired_fx_controls.retain(|(backend_id, _), desired| {
+            !snapshot
+                .tracks
+                .get(backend_id)
+                .is_some_and(|state| fx_control_matches(state.fx.as_ref(), desired))
+        });
+        self.desired_loop_controls
+            .retain(|(backend_id, key), desired| {
+                !snapshot
+                    .loops
+                    .get(backend_id)
+                    .is_some_and(|state| match key {
+                        LoopControlKey::Gain => (state.gain - *desired).abs() <= f32::EPSILON,
+                        LoopControlKey::Balance => (state.balance - *desired).abs() <= f32::EPSILON,
+                    })
+            });
         for track in &mut self.tracks {
             let Some(backend_state) = snapshot.tracks.get(&track.backend_id) else {
                 continue;
             };
+            if track.structural_state == StructuralState::Creating {
+                track.structural_state = StructuralState::Confirmed;
+            }
             let (input_audio_channels, output_audio_channels, input_midi, output_midi) =
                 match &backend_state.topology {
                     BackendTrackTopology::Direct {
@@ -3933,6 +6328,13 @@ impl ApplicationModel {
                     } => (*dry_audio_channels, *wet_audio_channels, *dry_midi, false),
                 };
             track.fx.clone_from(&backend_state.fx);
+            if let Some(fx) = track.fx.as_mut() {
+                for ((backend_id, _), desired) in &self.desired_fx_controls {
+                    if *backend_id == track.backend_id {
+                        apply_fx_control(fx, desired);
+                    }
+                }
+            }
             let controls = &mut track.controls;
             controls.has_output = output_audio_channels > 0 || output_midi;
             controls.has_output_audio = output_audio_channels > 0;
@@ -3940,16 +6342,8 @@ impl ApplicationModel {
             controls.output_gain_db = backend_state.output_gain_db;
             controls.output_balance = backend_state.output_balance;
             controls.output_muted = backend_state.output_muted;
-            controls.output_peak_left_db = backend_state
-                .output_peaks
-                .first()
-                .copied()
-                .unwrap_or(-200.0);
-            controls.output_peak_right_db = backend_state
-                .output_peaks
-                .get(1)
-                .copied()
-                .unwrap_or(controls.output_peak_left_db);
+            (controls.output_peak_left_db, controls.output_peak_right_db) =
+                display_peaks(&backend_state.output_peaks, controls.output_stereo);
             controls.output_midi_activity = backend_state.output_midi_activity;
             controls.has_input = input_audio_channels > 0 || input_midi;
             controls.has_input_audio = input_audio_channels > 0;
@@ -3957,14 +6351,21 @@ impl ApplicationModel {
             controls.input_gain_db = backend_state.input_gain_db;
             controls.input_balance = backend_state.input_balance;
             controls.input_monitoring = backend_state.input_monitoring;
-            controls.input_peak_left_db =
-                backend_state.input_peaks.first().copied().unwrap_or(-200.0);
-            controls.input_peak_right_db = backend_state
-                .input_peaks
-                .get(1)
-                .copied()
-                .unwrap_or(controls.input_peak_left_db);
+            (controls.input_peak_left_db, controls.input_peak_right_db) =
+                display_peaks(&backend_state.input_peaks, controls.input_stereo);
             controls.input_midi_activity = backend_state.input_midi_activity;
+            controls.latest_input_midi_message =
+                backend_state.latest_input_midi_message.map(|message| {
+                    shoop_app_api::LatestMidiMessage {
+                        bytes: message.bytes,
+                        len: message.len,
+                    }
+                });
+            for ((backend_id, _), desired) in &self.desired_track_controls {
+                if *backend_id == track.backend_id {
+                    apply_track_control(controls, *desired);
+                }
+            }
             controls.clamp();
         }
         let track_capabilities = self
@@ -3983,11 +6384,26 @@ impl ApplicationModel {
             let Some(backend_state) = snapshot.loops.get(&model.backend_id) else {
                 continue;
             };
+            if model.state.structural_state == StructuralState::Creating {
+                model.state.structural_state = StructuralState::Confirmed;
+            }
             if model.script_composition.is_empty() {
                 model.length = backend_state.length;
                 model.position = backend_state.position;
             }
+            let was_changing = matches!(
+                model.state.mode,
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            );
             model.state.mode = app_loop_mode(backend_state.mode);
+            let is_changing = matches!(
+                model.state.mode,
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            );
+            if was_changing && !is_changing {
+                model.audio_data = None;
+                model.midi_data = None;
+            }
             model.state.next_mode = backend_state
                 .next_mode
                 .map(app_loop_mode)
@@ -4005,20 +6421,89 @@ impl ApplicationModel {
                 model.state.has_midi = *has_midi;
                 model.state.show_gain = *has_audio;
             }
-            model.state.gain = backend_state.gain;
-            model.state.balance = backend_state.balance;
-            model.state.peak_left_db = backend_state.audio_peaks.first().copied().unwrap_or(-200.0);
-            model.state.peak_right_db = backend_state
-                .audio_peaks
-                .get(1)
+            model.state.gain = self
+                .desired_loop_controls
+                .get(&(model.backend_id, LoopControlKey::Gain))
                 .copied()
-                .unwrap_or(model.state.peak_left_db);
+                .unwrap_or(backend_state.gain);
+            model.state.balance = self
+                .desired_loop_controls
+                .get(&(model.backend_id, LoopControlKey::Balance))
+                .copied()
+                .unwrap_or(backend_state.balance);
+            (model.state.peak_left_db, model.state.peak_right_db) =
+                display_peaks(&backend_state.audio_peaks, model.state.stereo);
             model.state.midi_activity = backend_state.midi_activity;
+        }
+        for track in &mut self.tracks {
+            track.controls.output_midi_activity = combined_output_midi_activity(
+                track.controls.output_midi_activity,
+                track.loops.iter().filter_map(|loop_id| {
+                    self.loops
+                        .get(loop_id)
+                        .map(|loop_| loop_.state.midi_activity)
+                }),
+            );
+        }
+        let app_loop_by_backend = self
+            .loops
+            .values()
+            .map(|model| (model.backend_id, model.id))
+            .collect::<BTreeMap<_, _>>();
+        let app_composite_by_backend = self
+            .loops
+            .values()
+            .filter_map(|model| model.backend_composite.map(|id| (id, model.id)))
+            .collect::<BTreeMap<_, _>>();
+        for model in self.loops.values_mut() {
+            let Some(composite_id) = model.backend_composite else {
+                continue;
+            };
+            let Some(state) = snapshot.composites.get(&composite_id) else {
+                continue;
+            };
+            model.state.mode = app_loop_mode(state.mode);
+            model.state.next_mode = state
+                .next_mode
+                .map(app_loop_mode)
+                .unwrap_or(model.state.mode);
+            model.state.next_transition_delay = state.next_transition_delay;
+            model.state.composite_iteration = Some(state.iteration);
+            model.state.composite_cycle_count = state.cycle_count;
+            model.state.active_composite_children = state
+                .active_children
+                .iter()
+                .filter_map(|child| match child.target {
+                    BackendCompositeTarget::Loop(id) => app_loop_by_backend.get(&id).copied(),
+                    BackendCompositeTarget::Composite(id) => {
+                        app_composite_by_backend.get(&id).copied()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into();
+            model.length = u32::try_from(state.length).unwrap_or(u32::MAX);
+            model.position = u32::try_from(state.position).unwrap_or(u32::MAX);
+            model.state.empty = model.composite.as_ref().is_none_or(|composite| {
+                composite
+                    .playlists
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .next()
+                    .is_none()
+            });
+            model.state.position = if model.length == 0 {
+                0.0
+            } else {
+                model.position as f32 / model.length as f32
+            };
         }
         let composites = self
             .loops
             .values()
-            .filter(|model| !model.script_composition.is_empty())
+            .filter(|model| {
+                model.backend_composite.is_none() && !model.script_composition.is_empty()
+            })
             .map(|model| (model.id, model.script_composition.clone()))
             .collect::<Vec<_>>();
         for (target, sections) in composites {
@@ -4033,11 +6518,23 @@ impl ApplicationModel {
                         .unwrap_or(0)
                 })
                 .sum();
-            let active_section = self
+            let Some(active_section) = self
                 .script_composition_playback
                 .get(&target)
                 .map(|playback| playback.section)
-                .unwrap_or(0);
+            else {
+                if let Some(model) = self.loops.get_mut(&target) {
+                    model.state.mode = LoopMode::Stopped;
+                    model.state.next_mode = LoopMode::Stopped;
+                    model.state.next_transition_delay = None;
+                    model.state.composite_iteration = None;
+                    model.state.composite_cycle_count = 0;
+                    model.state.active_composite_children = Arc::from([]);
+                    model.position = 0;
+                    model.state.position = 0.0;
+                }
+                continue;
+            };
             let section_offset = sections
                 .iter()
                 .take(active_section)
@@ -4083,6 +6580,33 @@ impl ApplicationModel {
 
     fn apply_connection_snapshot(&mut self, snapshot: BackendConnectionSnapshot) {
         self.connection_backend_available = snapshot.available;
+        for descriptor in snapshot
+            .application_ports
+            .values()
+            .filter(|port| port.owner == BackendPortOwner::GlobalFxControl)
+        {
+            if self
+                .connection_ports
+                .values()
+                .all(|port| port.backend_id != descriptor.id)
+            {
+                let id = PortId::from_raw(self.next_port_id);
+                self.next_port_id = self.next_port_id.saturating_add(1);
+                self.connection_ports.insert(
+                    id,
+                    ConnectionPortModel {
+                        id,
+                        backend_id: descriptor.id,
+                        owner: ApplicationPortOwner::GlobalFxControl,
+                        name: descriptor.name.clone(),
+                        data_type: PortDataType::Midi,
+                        direction: PortDirection::Input,
+                        role: PortRole::MidiInput,
+                        candidates: BTreeMap::new(),
+                    },
+                );
+            }
+        }
         for failure in snapshot.failures {
             let Some(port_id) = self
                 .connection_ports
@@ -4176,28 +6700,14 @@ impl ApplicationModel {
         let mut application_ports: Vec<ApplicationPortState> = self
             .connection_ports
             .values()
-            .map(|port| {
-                let is_sync = self
-                    .tracks
-                    .iter()
-                    .find(|track| track.id == port.track_id)
-                    .is_some_and(|track| track.is_sync);
-                ApplicationPortState {
-                    id: port.id,
-                    owner: ApplicationPortOwner::Track {
-                        track_id: port.track_id,
-                        kind: if is_sync {
-                            TrackPortOwnerKind::Sync
-                        } else {
-                            TrackPortOwnerKind::Main
-                        },
-                    },
-                    name: port.name.clone(),
-                    data_type: port.data_type,
-                    direction: port.direction,
-                    role: port.role,
-                    connection_policy: ConnectionPolicy::UserManaged,
-                }
+            .map(|port| ApplicationPortState {
+                id: port.id,
+                owner: port.owner.clone(),
+                name: port.name.clone(),
+                data_type: port.data_type,
+                direction: port.direction,
+                role: port.role,
+                connection_policy: ConnectionPolicy::UserManaged,
             })
             .collect();
         let mut normalized_hosts = self.host_ports.clone();
@@ -4548,29 +7058,12 @@ impl ApplicationModel {
                     is_sync: model.state.sync,
                     gain: content.gain,
                     balance: content.balance,
-                    channels: if model.script_composition.is_empty() {
+                    channels: if model.composite.is_none() {
                         channels
                     } else {
                         Vec::new()
                     },
-                    composite: (!model.script_composition.is_empty()).then(|| CompositeDocument {
-                        kind: CompositeKindDocument::Regular,
-                        playlists: vec![model
-                            .script_composition
-                            .iter()
-                            .map(|section| {
-                                section
-                                    .iter()
-                                    .map(|source| CompositeEventDocument {
-                                        delay_frames: 0,
-                                        loop_id: source.raw(),
-                                        mode: None,
-                                        n_cycles: None,
-                                    })
-                                    .collect()
-                            })
-                            .collect()],
-                    }),
+                    composite: model.composite.clone(),
                 });
             }
             let (topology, fx_chain) = match &captured.topology {
@@ -4635,6 +7128,12 @@ impl ApplicationModel {
                             chain_type,
                             ports: Vec::new(),
                             internal_state,
+                            midi_cc_assignments: captured
+                                .tiny_synth_midi_cc_assignments
+                                .iter()
+                                .copied()
+                                .map(document_midi_cc_assignment)
+                                .collect(),
                         }),
                     )
                 }
@@ -4664,6 +7163,32 @@ impl ApplicationModel {
                 main_tracks.push(document);
             }
         }
+        let global_ports = capture
+            .global_ports
+            .iter()
+            .map(|captured| {
+                let app_port = self
+                    .connection_ports
+                    .values()
+                    .find(|port| port.backend_id == captured.descriptor.id)
+                    .ok_or_else(|| "backend omitted global port mapping".to_owned())?;
+                Ok(PortDocument {
+                    id: app_port.id.raw(),
+                    name: "Global FX Control MIDI In".to_owned(),
+                    data_type: DataTypeDocument::Midi,
+                    direction: PortDirectionDocument::Input,
+                    role: PortRoleDocument::MidiInput,
+                    input_connectability: vec![ConnectabilityDocument::External],
+                    output_connectability: vec![ConnectabilityDocument::Internal],
+                    gain: 1.0,
+                    muted: false,
+                    passthrough_muted: true,
+                    internal_connections: Vec::new(),
+                    external_connections: captured.external_connections.clone(),
+                    ringbuffer_frames: 0,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         let document = SessionDocument {
             sample_rate: capture.sample_rate,
             connection_model_version: shoop_session::CONNECTION_MODEL_VERSION,
@@ -4677,6 +7202,7 @@ impl ApplicationModel {
                 play_after_record: self.global.play_after_record,
                 sync: self.global.sync,
                 solo: self.global.solo,
+                auto_mute_other_track_inputs: self.global.auto_mute_other_track_inputs,
                 apply_n_cycles: self.global.apply_n_cycles,
             },
             track_groups: vec![
@@ -4701,7 +7227,7 @@ impl ApplicationModel {
                 .find(|loop_| loop_.state.targeted)
                 .map(|loop_| loop_.id.raw()),
             buses: Vec::new(),
-            global_ports: Vec::new(),
+            global_ports,
             fx_states,
             scripts: self.session_script_documents(),
             midi_control: MidiControlDocument::default(),
@@ -4775,7 +7301,14 @@ impl ApplicationModel {
                     ConnectionPortModel {
                         id,
                         backend_id: created_port.id,
-                        track_id: TrackId::from_raw(track_document.id),
+                        owner: ApplicationPortOwner::Track {
+                            track_id: TrackId::from_raw(track_document.id),
+                            kind: if track_document.is_sync {
+                                TrackPortOwnerKind::Sync
+                            } else {
+                                TrackPortOwnerKind::Main
+                            },
+                        },
                         name: document.name.clone(),
                         data_type: app_data_type(document.data_type),
                         direction: app_port_direction(document.direction),
@@ -4790,7 +7323,10 @@ impl ApplicationModel {
                 loop_ids.push(id);
                 if !track_document.is_sync {
                     backend
-                        .set_loop_sync_source(*backend_loop, sync_source)
+                        .set_loop_sync_source(
+                            *backend_loop,
+                            bundle.document.global.sync.then_some(sync_source).flatten(),
+                        )
                         .map_err(|error| format!("could not restore loop sync: {error}"))?;
                 }
                 let has_audio = loop_document
@@ -4822,8 +7358,8 @@ impl ApplicationModel {
                         })
                     })
                     .transpose()?;
-                let script_composition = loop_document
-                    .composite
+                let composite = loop_document.composite.clone();
+                let script_composition = composite
                     .as_ref()
                     .and_then(|composite| composite.playlists.first())
                     .map(|playlist| {
@@ -4883,7 +7419,12 @@ impl ApplicationModel {
                             .map_err(|_| "loop length exceeds engine range".to_owned())?,
                         position: 0,
                         audio_data: None,
+                        midi_data: None,
                         script_composition,
+                        composite,
+                        backend_composite: None,
+                        backend_composite_signature: Vec::new(),
+                        repeat_sync: bundle.document.global.sync,
                         recorded_fx_state,
                     },
                 );
@@ -4892,6 +7433,7 @@ impl ApplicationModel {
                 id: TrackId::from_raw(track_document.id),
                 backend_id: created.track_id,
                 name: track_document.name.clone(),
+                structural_state: StructuralState::Confirmed,
                 port_name_base: track_document.port_name_base.clone(),
                 is_sync: track_document.is_sync,
                 audio_channels,
@@ -4922,6 +7464,46 @@ impl ApplicationModel {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
+        for document in &bundle.document.global_ports {
+            let backend_id = replacement
+                .global_ports
+                .get(&document.id)
+                .copied()
+                .ok_or_else(|| "backend omitted loaded global FX control port".to_owned())?;
+            connection_ports.insert(
+                PortId::from_raw(document.id),
+                ConnectionPortModel {
+                    id: PortId::from_raw(document.id),
+                    backend_id,
+                    owner: ApplicationPortOwner::GlobalFxControl,
+                    name: document.name.clone(),
+                    data_type: PortDataType::Midi,
+                    direction: PortDirection::Input,
+                    role: PortRole::MidiInput,
+                    candidates: BTreeMap::new(),
+                },
+            );
+        }
+        if bundle.document.global_ports.is_empty() {
+            let (source_id, backend_id) = replacement
+                .global_ports
+                .iter()
+                .next()
+                .ok_or_else(|| "backend omitted migrated global FX control port".to_owned())?;
+            connection_ports.insert(
+                PortId::from_raw(*source_id),
+                ConnectionPortModel {
+                    id: PortId::from_raw(*source_id),
+                    backend_id: *backend_id,
+                    owner: ApplicationPortOwner::GlobalFxControl,
+                    name: "Global FX Control MIDI In".to_owned(),
+                    data_type: PortDataType::Midi,
+                    direction: PortDirection::Input,
+                    role: PortRole::MidiInput,
+                    candidates: BTreeMap::new(),
+                },
+            );
+        }
         self.next_port_id = connection_ports
             .keys()
             .map(|id| id.raw())
@@ -4930,11 +7512,15 @@ impl ApplicationModel {
             .saturating_add(1);
         self.tracks = tracks;
         self.loops = loops;
+        self.restore_backend_composites(backend)?;
         self.script_composition_playback.clear();
         self.script_composition_frame_remainder = 0;
         self.active_piano_notes.clear();
         self.connection_ports = connection_ports;
         self.pending_connections.clear();
+        self.desired_track_controls.clear();
+        self.desired_fx_controls.clear();
+        self.desired_loop_controls.clear();
         self.connection_errors.clear();
         self.connection_revision = self.connection_revision.wrapping_add(1);
         self.connection_view = Arc::new(ConnectionViewState::default());
@@ -4946,6 +7532,8 @@ impl ApplicationModel {
         self.global.play_after_record = bundle.document.global.play_after_record;
         self.global.sync = bundle.document.global.sync;
         self.global.solo = bundle.document.global.solo;
+        self.global.auto_mute_other_track_inputs =
+            bundle.document.global.auto_mute_other_track_inputs;
         self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
         self.script_manager
             .replace_session_scripts(&session_script_sources(bundle))
@@ -4955,6 +7543,25 @@ impl ApplicationModel {
     }
 
     fn snapshot(&self) -> AppSnapshot {
+        let selected_composite_references = self
+            .loops
+            .values()
+            .filter(|model| model.state.selected)
+            .filter_map(|model| {
+                model.composite.as_ref().map(|composite| {
+                    (
+                        model.state.composite_kind,
+                        composite
+                            .playlists
+                            .iter()
+                            .flatten()
+                            .flatten()
+                            .map(|event| LoopId::from_raw(event.loop_id)),
+                    )
+                })
+            })
+            .flat_map(|(kind, references)| references.map(move |loop_id| (loop_id, kind)))
+            .collect::<BTreeMap<_, _>>();
         AppSnapshot {
             revision: self.revision,
             tracks: self
@@ -4963,6 +7570,7 @@ impl ApplicationModel {
                 .map(|track| TrackState {
                     id: track.id,
                     name: track.name.clone(),
+                    structural_state: track.structural_state,
                     is_sync: track.is_sync,
                     topology: track.topology.clone(),
                     fx: track.fx.clone(),
@@ -4974,6 +7582,10 @@ impl ApplicationModel {
                             let mut state = model.state.clone();
                             state.name.clone_from(&model.name);
                             state.length_frames = u64::from(model.length);
+                            state.selected_composite_kind = selected_composite_references
+                                .get(&model.id)
+                                .copied()
+                                .unwrap_or_default();
                             state
                         })
                         .collect(),
@@ -5028,13 +7640,121 @@ impl ApplicationModel {
                     .collect()
             })
             .unwrap_or_default();
+        let midi_channels = model
+            .midi_data
+            .as_ref()
+            .map(|channels| {
+                channels
+                    .iter()
+                    .cloned()
+                    .map(|mut channel| {
+                        channel.loop_length = u64::from(model.length);
+                        channel.played_sample = matches!(
+                            model.state.mode,
+                            LoopMode::Playing | LoopMode::PlayingDryThroughWet
+                        )
+                        .then_some(i64::from(model.position));
+                        channel
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let composite = model.composite.as_ref().map(|composite| {
+            let mut details = self.composite_details_snapshot(composite);
+            details.played_frame = matches!(
+                model.state.mode,
+                LoopMode::Playing | LoopMode::PlayingDryThroughWet
+            )
+            .then_some(u64::from(model.position));
+            details
+        });
         Some(LoopDetailsState {
             generation: self.revision,
             loop_id: model.id,
             title: model.name.clone(),
-            loading: model.audio_data.is_none(),
+            loading: composite.is_none() && model.state.has_audio && model.audio_data.is_none(),
             channels,
+            midi_loading: composite.is_none() && model.state.has_midi && model.midi_data.is_none(),
+            midi_channels,
+            composite,
         })
+    }
+
+    fn composite_details_snapshot(&self, composite: &CompositeDocument) -> CompositeDetailsState {
+        let cycle_length_frames = u64::from(self.sync_length()).max(1);
+        let tracks = self
+            .tracks
+            .iter()
+            .filter(|track| !track.is_sync)
+            .map(|track| CompositeTrackDetailsState {
+                id: track.id,
+                name: track.name.clone(),
+            })
+            .collect();
+        let mut events = Vec::new();
+        let mut timeline_length_frames = 0_u64;
+        for (playlist_index, playlist) in composite.playlists.iter().enumerate() {
+            let mut section_start = 0_u64;
+            for (section_index, section) in playlist.iter().enumerate() {
+                let mut section_duration = 0_u64;
+                for (parallel_index, event) in section.iter().enumerate() {
+                    let Some(source) = self.loops.get(&LoopId::from_raw(event.loop_id)) else {
+                        continue;
+                    };
+                    let source_duration = u64::from(source.length);
+                    let natural_duration = if cycle_length_frames > 0 {
+                        source_duration
+                            .div_ceil(cycle_length_frames)
+                            .max(1)
+                            .saturating_mul(cycle_length_frames)
+                    } else {
+                        source_duration.max(1)
+                    };
+                    let duration = event
+                        .n_cycles
+                        .filter(|cycles| *cycles > 0)
+                        .map(|cycles| {
+                            let cycle = if cycle_length_frames > 0 {
+                                cycle_length_frames
+                            } else {
+                                natural_duration
+                            };
+                            cycle.saturating_mul(u64::from(cycles))
+                        })
+                        .unwrap_or(natural_duration);
+                    let delay_frames = event.delay.saturating_mul(cycle_length_frames);
+                    let start_frame = section_start.saturating_add(delay_frames);
+                    let end_frame = start_frame.saturating_add(duration);
+                    section_duration = section_duration.max(delay_frames.saturating_add(duration));
+                    timeline_length_frames = timeline_length_frames.max(end_frame);
+                    events.push(CompositeEventDetailsState {
+                        loop_id: source.id,
+                        loop_name: source.name.clone(),
+                        track_id: source.track_id,
+                        start_frame,
+                        end_frame,
+                        playlist_index: u32::try_from(playlist_index).unwrap_or(u32::MAX),
+                        section_index: u32::try_from(section_index).unwrap_or(u32::MAX),
+                        parallel_index: u32::try_from(parallel_index).unwrap_or(u32::MAX),
+                        mode: event.mode.clone(),
+                        forced_n_cycles: event.n_cycles,
+                        loop_mode: source.state.mode,
+                    });
+                }
+                section_start = section_start.saturating_add(section_duration);
+            }
+        }
+        CompositeDetailsState {
+            kind: match composite.kind {
+                CompositeKindDocument::Regular => shoop_app_api::CompositeKind::Regular,
+                CompositeKindDocument::Script => shoop_app_api::CompositeKind::Script,
+            },
+            cycle_length_frames,
+            timeline_length_frames,
+            played_frame: None,
+            tracks,
+            events,
+        }
     }
 
     fn prepare_loop_audio_import(
@@ -5364,7 +8084,7 @@ impl ApplicationModel {
         loop_id: LoopId,
         format: LoopAudioExportFormat,
         selected_channels: &[u32],
-    ) -> Result<(), String> {
+    ) -> Result<(), BackendIoStepError> {
         let task_id = self
             .io_task
             .as_ref()
@@ -5374,9 +8094,14 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture loop: {error}"))?;
+        let capture = match backend.capture_session_async().map_err(|error| {
+            BackendIoStepError::Failed(format!("could not capture loop: {error}"))
+        })? {
+            BackendAsyncResult::Ready(capture) => capture,
+            BackendAsyncResult::Pending(progress) => {
+                return Err(BackendIoStepError::Pending(progress));
+            }
+        };
         let labels = self
             .tracks
             .iter()
@@ -5444,7 +8169,7 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         loop_id: LoopId,
         standard: bool,
-    ) -> Result<(), String> {
+    ) -> Result<(), BackendIoStepError> {
         let task_id = self
             .io_task
             .as_ref()
@@ -5454,9 +8179,14 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let capture = backend
-            .capture_session()
-            .map_err(|error| format!("could not capture loop: {error}"))?;
+        let capture = match backend.capture_session_async().map_err(|error| {
+            BackendIoStepError::Failed(format!("could not capture loop: {error}"))
+        })? {
+            BackendAsyncResult::Ready(capture) => capture,
+            BackendAsyncResult::Pending(progress) => {
+                return Err(BackendIoStepError::Pending(progress));
+            }
+        };
         let content = capture
             .tracks
             .iter()
@@ -5509,11 +8239,16 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn notify_warning(&mut self, message: String) {
+        self.notify(NotificationLevel::Warning, message);
+    }
+
     fn notify_error(&mut self, message: String) {
-        self.notifications.push(AppNotification {
-            level: NotificationLevel::Error,
-            message,
-        });
+        self.notify(NotificationLevel::Error, message);
+    }
+
+    fn notify(&mut self, level: NotificationLevel, message: String) {
+        self.notifications.push(AppNotification { level, message });
         const MAX_NOTIFICATIONS: usize = 32;
         if self.notifications.len() > MAX_NOTIFICATIONS {
             self.notifications
@@ -5564,10 +8299,50 @@ fn safe_file_stem(name: &str) -> String {
     }
 }
 
-fn io_pending_error(message: &str) -> bool {
-    message.contains("session capture pending")
-        || message.contains("session replacement pending")
-        || message.contains("loop content replacement pending")
+fn document_midi_cc_assignment(
+    assignment: BackendTinySynthFxMidiCcAssignment,
+) -> TinySynthFxMidiCcAssignmentDocument {
+    let parameter = match assignment.parameter {
+        BackendTinySynthFxParameter::MasterGain => TinySynthFxParameterDocument::MasterGain,
+        BackendTinySynthFxParameter::ReverbAmount => TinySynthFxParameterDocument::ReverbAmount,
+        BackendTinySynthFxParameter::DistortionDrive => {
+            TinySynthFxParameterDocument::DistortionDrive
+        }
+        BackendTinySynthFxParameter::CompressorAmount => {
+            TinySynthFxParameterDocument::CompressorAmount
+        }
+        BackendTinySynthFxParameter::EqLow => TinySynthFxParameterDocument::EqLow,
+        BackendTinySynthFxParameter::EqMid => TinySynthFxParameterDocument::EqMid,
+        BackendTinySynthFxParameter::EqHigh => TinySynthFxParameterDocument::EqHigh,
+    };
+    TinySynthFxMidiCcAssignmentDocument {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn backend_midi_cc_assignment(
+    assignment: TinySynthFxMidiCcAssignmentDocument,
+) -> BackendTinySynthFxMidiCcAssignment {
+    let parameter = match assignment.parameter {
+        TinySynthFxParameterDocument::MasterGain => BackendTinySynthFxParameter::MasterGain,
+        TinySynthFxParameterDocument::ReverbAmount => BackendTinySynthFxParameter::ReverbAmount,
+        TinySynthFxParameterDocument::DistortionDrive => {
+            BackendTinySynthFxParameter::DistortionDrive
+        }
+        TinySynthFxParameterDocument::CompressorAmount => {
+            BackendTinySynthFxParameter::CompressorAmount
+        }
+        TinySynthFxParameterDocument::EqLow => BackendTinySynthFxParameter::EqLow,
+        TinySynthFxParameterDocument::EqMid => BackendTinySynthFxParameter::EqMid,
+        TinySynthFxParameterDocument::EqHigh => BackendTinySynthFxParameter::EqHigh,
+    };
+    BackendTinySynthFxMidiCcAssignment {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
 }
 
 fn fx_chain_type_for_processor(
@@ -5766,17 +8541,71 @@ fn session_script_sources(bundle: &SessionBundle) -> Vec<SessionScriptSource> {
         .collect()
 }
 
+fn valid_global_fx_port_document(port: &PortDocument) -> bool {
+    port.name == "Global FX Control MIDI In"
+        && port.data_type == DataTypeDocument::Midi
+        && port.direction == PortDirectionDocument::Input
+        && port.role == PortRoleDocument::MidiInput
+        && port.input_connectability == [ConnectabilityDocument::External]
+        && port.output_connectability == [ConnectabilityDocument::Internal]
+        && port.gain == 1.0
+        && !port.muted
+        && port.passthrough_muted
+        && port.internal_connections.is_empty()
+        && port.ringbuffer_frames == 0
+}
+
 fn session_bundle_to_backend(
     bundle: &SessionBundle,
     processors: &[TrackProcessorDescriptor],
 ) -> Result<BackendSessionData, String> {
     if !bundle.document.buses.is_empty()
-        || !bundle.document.global_ports.is_empty()
         || !bundle.document.midi_control.bindings.is_empty()
         || !bundle.document.settings.is_empty()
     {
-        return Err("session requires a feature not yet available in the egui runtime".to_owned());
+        return Err(
+            "session requires a feature not yet available in the application runtime".to_owned(),
+        );
     }
+    let used_ids = bundle
+        .document
+        .track_groups
+        .iter()
+        .flat_map(|group| &group.tracks)
+        .flat_map(|track| track.ports.iter().map(|port| port.id))
+        .collect::<BTreeSet<_>>();
+    let global_document = match bundle.document.global_ports.as_slice() {
+        [] => None,
+        [port] if valid_global_fx_port_document(port) => Some(port.clone()),
+        _ => return Err("session global FX control port is invalid".to_owned()),
+    };
+    let global_id = global_document
+        .as_ref()
+        .map(|port| port.id)
+        .unwrap_or_else(|| {
+            let mut id = 1_u64;
+            while used_ids.contains(&id) {
+                id = id.saturating_add(1);
+            }
+            id
+        });
+    if used_ids.contains(&global_id) {
+        return Err("session global FX control port ID conflicts with a track port".to_owned());
+    }
+    let global_ports = vec![BackendSessionPort {
+        source_id: global_id,
+        descriptor: BackendPortDescriptor {
+            id: BackendPortId::from_raw(global_id),
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        },
+        external_connections: global_document
+            .map(|port| port.external_connections)
+            .unwrap_or_default(),
+    }];
     let mut tracks = Vec::new();
     for track in bundle
         .document
@@ -5805,6 +8634,7 @@ fn session_bundle_to_backend(
                 source_id: port.id,
                 descriptor: BackendPortDescriptor {
                     id: BackendPortId::from_raw(port.id),
+                    owner: BackendPortOwner::Track,
                     name: port.name.clone(),
                     data_type: backend_data_type(port.data_type),
                     direction: backend_port_direction(port.direction),
@@ -5958,11 +8788,19 @@ fn session_bundle_to_backend(
                 .fx_chain
                 .as_ref()
                 .map(|chain| chain.internal_state.clone()),
+            tiny_synth_midi_cc_assignments: track
+                .fx_chain
+                .as_ref()
+                .into_iter()
+                .flat_map(|chain| chain.midi_cc_assignments.iter().copied())
+                .map(backend_midi_cc_assignment)
+                .collect(),
         });
     }
     Ok(BackendSessionData {
         sample_rate: bundle.document.sample_rate,
         tracks,
+        global_ports,
         use_legacy_browser_default_routes: cfg!(target_arch = "wasm32")
             && bundle.document.connection_model_version == 0,
     })
@@ -6091,6 +8929,7 @@ fn map_port_direction(value: BackendPortDirection) -> PortDirection {
 
 fn register_backend_ports(
     track_id: TrackId,
+    kind: TrackPortOwnerKind,
     descriptors: &[BackendPortDescriptor],
     next_port_id: &mut u64,
     ports: &mut BTreeMap<PortId, ConnectionPortModel>,
@@ -6104,7 +8943,10 @@ fn register_backend_ports(
             ConnectionPortModel {
                 id,
                 backend_id: descriptor.id,
-                track_id,
+                owner: match descriptor.owner {
+                    BackendPortOwner::Track => ApplicationPortOwner::Track { track_id, kind },
+                    BackendPortOwner::GlobalFxControl => ApplicationPortOwner::GlobalFxControl,
+                },
                 name: descriptor.name.clone(),
                 data_type: match descriptor.data_type {
                     BackendPortDataType::Audio => PortDataType::Audio,
@@ -6143,6 +8985,24 @@ fn backend_loop_mode(mode: LoopMode) -> BackendLoopMode {
     }
 }
 
+fn combined_output_midi_activity(
+    port_activity: bool,
+    loop_activity: impl IntoIterator<Item = bool>,
+) -> bool {
+    port_activity || loop_activity.into_iter().any(|active| active)
+}
+
+fn display_peaks(peaks: &[f32], stereo: bool) -> (f32, f32) {
+    if stereo {
+        let left = peaks.first().copied().unwrap_or(-200.0);
+        let right = peaks.get(1).copied().unwrap_or(left);
+        (left, right)
+    } else {
+        let peak = peaks.iter().copied().fold(-200.0, f32::max);
+        (peak, peak)
+    }
+}
+
 fn app_loop_mode(mode: BackendLoopMode) -> LoopMode {
     match mode {
         BackendLoopMode::Unknown => LoopMode::Unknown,
@@ -6157,13 +9017,38 @@ fn app_loop_mode(mode: BackendLoopMode) -> LoopMode {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(target_arch = "wasm32"))]
     use std::time::Instant;
 
     use shoop_app_api::{SelectionModifiers, TrackAction};
-    use shoop_backend::{BackendPortDataType, BackendPortDirection, EngineBackend, FakeBackend};
+    use shoop_backend::{
+        BackendPortDataType, BackendPortDirection, EngineBackend, FakeBackend, LocalDummyBackend,
+    };
 
     use super::*;
 
+    fn cooperative_start_with_midi(
+        backend: Box<dyn Backend>,
+        midi: Box<dyn shoop_scripting::MidiControlService>,
+    ) -> Result<CooperativeApplicationRuntime> {
+        CooperativeApplicationRuntime::start_with_scripts_and_midi(backend, Vec::new(), midi)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn track_output_midi_activity_includes_port_and_loop_playback() {
+        assert!(combined_output_midi_activity(false, [false, true]));
+        assert!(combined_output_midi_activity(true, [false, false]));
+        assert!(!combined_output_midi_activity(false, [false, false]));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn display_peaks_preserves_stereo_and_uses_the_loudest_other_channel_count() {
+        assert_eq!(display_peaks(&[-12.0, -6.0], true), (-12.0, -6.0));
+        assert_eq!(display_peaks(&[-18.0, -3.0, -9.0], false), (-3.0, -3.0));
+        assert_eq!(display_peaks(&[], false), (-200.0, -200.0));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn wait_for(
         handle: &ApplicationHandle,
         predicate: impl Fn(&AppSnapshot) -> bool,
@@ -6179,7 +9064,178 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn desired_control_helpers_cover_every_control_shape() {
+        let mut backend_track = BackendTrackState::default();
+        let mut controls = TrackControlState::default();
+        for control in [
+            BackendTrackControl::OutputGainDb(-3.0),
+            BackendTrackControl::OutputBalance(0.25),
+            BackendTrackControl::OutputMute(true),
+            BackendTrackControl::InputGainDb(-6.0),
+            BackendTrackControl::InputBalance(-0.5),
+            BackendTrackControl::InputMonitoring(true),
+        ] {
+            let _ = track_control_key(control);
+            assert!(!track_control_matches(&backend_track, control));
+            apply_track_control(&mut controls, control);
+            match control {
+                BackendTrackControl::OutputGainDb(value) => backend_track.output_gain_db = value,
+                BackendTrackControl::OutputBalance(value) => backend_track.output_balance = value,
+                BackendTrackControl::OutputMute(value) => backend_track.output_muted = value,
+                BackendTrackControl::InputGainDb(value) => backend_track.input_gain_db = value,
+                BackendTrackControl::InputBalance(value) => backend_track.input_balance = value,
+                BackendTrackControl::InputMonitoring(value) => {
+                    backend_track.input_monitoring = value
+                }
+            }
+            assert!(track_control_matches(&backend_track, control));
+        }
+
+        let assignment = shoop_app_api::TinySynthFxMidiCcAssignment {
+            parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+            channel: 2,
+            controller: 74,
+        };
+        let controls = [
+            BackendTrackFxControl::SetActive(true),
+            BackendTrackFxControl::SetVisible(true),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SelectPreset(
+                "pad".to_owned(),
+            )),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetMasterGainDb(
+                -9.0,
+            )),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetReverbEnabled(true),
+            ),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetReverbAmount(
+                0.3,
+            )),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetDistortionEnabled(true),
+            ),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetDistortionDrive(3.0),
+            ),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetCompressorEnabled(true),
+            ),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::SetCompressorAmount(0.4),
+            ),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqEnabled(
+                true,
+            )),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqLowDb(1.0)),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqMidDb(-2.0)),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqHighDb(2.5)),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::AssignMidiCc(
+                assignment,
+            )),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::RemoveMidiCc(
+                assignment.parameter,
+            )),
+            BackendTrackFxControl::TinySynthFx(
+                shoop_backend::TinySynthFxControl::ClearMidiCcAssignments,
+            ),
+            BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::Panic),
+            BackendTrackFxControl::ToggleOrRecover,
+            BackendTrackFxControl::RestoreState("state".to_owned()),
+            BackendTrackFxControl::ClearLogs,
+        ];
+        let mut fx = shoop_backend::default_tiny_synth_fx_state();
+        assert!(!fx_control_matches(
+            None,
+            &BackendTrackFxControl::SetActive(true)
+        ));
+        for control in &controls {
+            let _ = fx_control_key(control);
+            apply_fx_control(&mut fx, control);
+        }
+        let mut without_editor = fx.clone();
+        without_editor.editor = None;
+        apply_fx_control(
+            &mut without_editor,
+            &BackendTrackFxControl::TinySynthFx(shoop_backend::TinySynthFxControl::SetEqEnabled(
+                true,
+            )),
+        );
+        assert!(fx_control_matches(
+            Some(&fx),
+            &BackendTrackFxControl::SetActive(fx.active),
+        ));
+
+        let progress = |completed, total| BackendOperationProgress {
+            key: 1,
+            kind: shoop_backend::BackendOperationKind::SessionCapture,
+            completed,
+            total,
+        };
+        assert_eq!(backend_progress_fraction(progress(1, None)), 0.0);
+        assert_eq!(backend_progress_fraction(progress(1, Some(0))), 0.0);
+        assert_eq!(backend_progress_fraction(progress(1, Some(2))), 0.5);
+        assert_eq!(backend_progress_fraction(progress(3, Some(2))), 1.0);
+        let error = BackendIoStepError::from("typed failure".to_owned());
+        assert!(matches!(error, BackendIoStepError::Failed(message) if message == "typed failure"));
+    }
+
+    fn engine_model_with_regular_composite() -> (
+        LocalDummyBackend,
+        ApplicationModel,
+        TrackId,
+        LoopId,
+        [LoopId; 3],
+    ) {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Composite".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        let target = model.tracks[1].loops[0];
+        let sources = [
+            model.tracks[1].loops[1],
+            model.tracks[1].loops[2],
+            model.tracks[1].loops[3],
+        ];
+        for source in sources {
+            backend
+                .set_loop_length(model.loops[&source].backend_id, 4)
+                .unwrap();
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                target,
+                LoopAction::ConvertToComposite,
+            )
+            .unwrap();
+        for source in sources {
+            model
+                .compose_loop_serial(&mut backend, target, source)
+                .unwrap();
+        }
+        (backend, model, track_id, target, sources)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_initializes_a_distinct_sync_track() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let snapshot = runtime.handle().snapshot();
@@ -6191,7 +9247,331 @@ mod tests {
         assert!(snapshot.tracks[0].loops[0].id.is_valid());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn removing_and_recreating_a_track_reuses_its_port_names_without_stale_resources() {
+        let mut backend = EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        let spec = DirectTrackSpec {
+            name: "Reusable Track".to_owned(),
+            audio_channels: 2,
+            midi: true,
+        };
+        model.add_track(&mut backend, spec.clone()).unwrap();
+        let track = model.tracks.last().unwrap();
+        let track_id = track.id;
+        let backend_track_id = track.backend_id;
+        let port_name_base = track.port_name_base.clone();
+        let old_loop_ids = track
+            .loops
+            .iter()
+            .map(|id| model.loops[id].backend_id)
+            .collect::<Vec<_>>();
+        let old_port_ids = track
+            .port_ids
+            .iter()
+            .map(|id| model.connection_ports[id].backend_id)
+            .collect::<Vec<_>>();
+        let before = backend.poll().unwrap();
+        let old_port_names = old_port_ids
+            .iter()
+            .map(|id| before.connections.application_ports[id].name.clone())
+            .collect::<Vec<_>>();
+
+        model
+            .handle_track_action(&mut backend, track_id, TrackAction::Remove)
+            .unwrap();
+        let removed = backend.poll().unwrap();
+        assert!(!removed.tracks.contains_key(&backend_track_id));
+        assert!(old_loop_ids
+            .iter()
+            .all(|loop_id| !removed.loops.contains_key(loop_id)));
+        assert!(old_port_ids
+            .iter()
+            .all(|port_id| !removed.connections.application_ports.contains_key(port_id)));
+        assert_eq!(
+            model
+                .tracks
+                .iter()
+                .find(|track| track.id == track_id)
+                .map(|track| track.structural_state),
+            Some(StructuralState::Removing)
+        );
+        model.apply_backend_snapshot(removed);
+        assert!(!model.tracks.iter().any(|track| track.id == track_id));
+
+        model.add_track(&mut backend, spec).unwrap();
+        let recreated = model.tracks.last().unwrap();
+        assert_eq!(recreated.port_name_base, port_name_base);
+        let new_port_ids = recreated
+            .port_ids
+            .iter()
+            .map(|id| model.connection_ports[id].backend_id)
+            .collect::<Vec<_>>();
+        assert!(new_port_ids
+            .iter()
+            .all(|port_id| !old_port_ids.contains(port_id)));
+        let snapshot = backend.poll().unwrap();
+        let new_port_names = new_port_ids
+            .iter()
+            .map(|id| snapshot.connections.application_ports[id].name.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(new_port_names, old_port_names);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_name_change_is_published() {
+        let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let initial = runtime.handle().snapshot();
+        let track_id = initial.tracks[0].id;
+        let loop_id = initial.tracks[0].loops[0].id;
+        runtime
+            .handle()
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::NameChanged("Count-in".to_owned()),
+            })
+            .unwrap();
+        let snapshot = wait_for(&runtime.handle(), |snapshot| {
+            snapshot.tracks[0].loops[0].name == "Count-in"
+        });
+        assert_eq!(snapshot.tracks[0].loops[0].name, "Count-in");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_and_track_move_actions_reorder_by_stable_insertion_target() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        for index in 1..=3 {
+            model
+                .add_track(
+                    &mut backend,
+                    DirectTrackSpec {
+                        name: format!("Track {index}"),
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                )
+                .unwrap();
+        }
+
+        let sync = model.tracks[0].id;
+        let first_track = model.tracks[1].id;
+        let second_track = model.tracks[2].id;
+        let third_track = model.tracks[3].id;
+        model
+            .handle_track_action(
+                &mut backend,
+                first_track,
+                TrackAction::MoveBefore(Some(third_track)),
+            )
+            .unwrap();
+        assert_eq!(
+            model
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            [sync, second_track, first_track, third_track]
+        );
+        model
+            .handle_track_action(&mut backend, first_track, TrackAction::MoveBefore(None))
+            .unwrap();
+        assert_eq!(
+            model
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            [sync, second_track, third_track, first_track]
+        );
+
+        let track_index = model
+            .tracks
+            .iter()
+            .position(|track| track.id == second_track)
+            .unwrap();
+        let original = model.tracks[track_index].loops.clone();
+        model
+            .handle_loop_action(
+                &mut backend,
+                second_track,
+                original[0],
+                LoopAction::MoveBefore(Some(original[2])),
+            )
+            .unwrap();
+        let mut expected = original.clone();
+        let moved = expected.remove(0);
+        expected.insert(1, moved);
+        assert_eq!(model.tracks[track_index].loops, expected);
+        model
+            .handle_loop_action(
+                &mut backend,
+                second_track,
+                original[0],
+                LoopAction::MoveBefore(None),
+            )
+            .unwrap();
+        let mut expected = original[1..].to_vec();
+        expected.push(original[0]);
+        assert_eq!(model.tracks[track_index].loops, expected);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn duplicate_uses_the_first_empty_slot_below_and_drop_actions_target_and_swap() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: true,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        let source = model.tracks[1].loops[1];
+        let occupied = model.tracks[1].loops[2];
+        let duplicate_target = model.tracks[1].loops[3];
+        let source_backend = model.loops[&source].backend_id;
+        let occupied_backend = model.loops[&occupied].backend_id;
+        let duplicate_backend = model.loops[&duplicate_target].backend_id;
+        let source_update = BackendLoopContentUpdate {
+            audio: vec![BackendAudioChannelUpdate {
+                channel: 0,
+                samples: vec![0.25, -0.5, 0.75, -1.0],
+                start_offset: Some(-2),
+                preplay: Some(3),
+            }],
+            midi: vec![BackendMidiChannelUpdate {
+                channel: 0,
+                length: 4,
+                start_state: vec![vec![0xB0, 7, 99]],
+                events: vec![BackendMidiEvent {
+                    time: 2,
+                    data: vec![0x90, 64, 100],
+                }],
+                start_offset: Some(-1),
+                preplay: Some(2),
+            }],
+            length: Some(4),
+        };
+        backend
+            .replace_loop_content(source_backend, &source_update)
+            .unwrap();
+        backend.set_loop_gain(source_backend, 0.42).unwrap();
+        backend.set_loop_balance(source_backend, -0.25).unwrap();
+        backend
+            .replace_loop_content(
+                occupied_backend,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![1.0, 1.0],
+                        start_offset: Some(0),
+                        preplay: Some(0),
+                    }],
+                    midi: Vec::new(),
+                    length: Some(2),
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                source,
+                LoopAction::NameChanged("Source".to_owned()),
+            )
+            .unwrap();
+
+        backend.delay_next_async_loop_copy();
+        model
+            .handle_loop_action(&mut backend, track_id, source, LoopAction::Duplicate)
+            .unwrap();
+        model.advance_io(&mut backend);
+        model.advance_io(&mut backend);
+        assert!(model.loops[&model.tracks[1].loops[0]].state.empty);
+        assert_eq!(model.loops[&occupied].length, 2);
+        assert_eq!(model.loops[&duplicate_target].name, "Source");
+        assert_eq!(model.loops[&duplicate_target].length, 4);
+        let captured = backend.capture_session().unwrap();
+        let track = captured
+            .tracks
+            .iter()
+            .find(|track| {
+                track
+                    .loops
+                    .iter()
+                    .any(|loop_| loop_.source_id == source_backend.raw())
+            })
+            .unwrap();
+        let source_content = track
+            .loops
+            .iter()
+            .find(|loop_| loop_.source_id == source_backend.raw())
+            .unwrap();
+        let duplicate_content = track
+            .loops
+            .iter()
+            .find(|loop_| loop_.source_id == duplicate_backend.raw())
+            .unwrap();
+        assert_eq!(duplicate_content.length, source_content.length);
+        assert_eq!(duplicate_content.gain, source_content.gain);
+        assert_eq!(duplicate_content.balance, source_content.balance);
+        assert_eq!(duplicate_content.audio, source_content.audio);
+        assert_eq!(duplicate_content.midi, source_content.midi);
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                source,
+                LoopAction::DuplicateTo(occupied),
+            )
+            .unwrap();
+        assert_eq!(model.loops[&occupied].name, "Source");
+        assert_eq!(model.loops[&occupied].length, 4);
+
+        let before = model.tracks[1].loops.clone();
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                source,
+                LoopAction::SwapWith(duplicate_target),
+            )
+            .unwrap();
+        assert_eq!(model.tracks[1].loops[1], duplicate_target);
+        assert_eq!(model.tracks[1].loops[3], source);
+        assert_eq!(model.tracks[1].loops[0], before[0]);
+        assert_eq!(model.tracks[1].loops[2], before[2]);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn application_publishes_backend_processor_capabilities() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new("future_browser_fx"),
@@ -6222,7 +9602,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn application_adds_external_dry_wet_tracks_from_processor_capabilities() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new(
@@ -6325,7 +9706,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_round_trips_controls_and_recorded_state() {
         let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -6358,6 +9739,13 @@ mod tests {
             shoop_app_api::TinySynthFxControl::SetEqLowDb(3.0),
             shoop_app_api::TinySynthFxControl::SetEqMidDb(-2.0),
             shoop_app_api::TinySynthFxControl::SetEqHighDb(1.5),
+            shoop_app_api::TinySynthFxControl::AssignMidiCc(
+                shoop_app_api::TinySynthFxMidiCcAssignment {
+                    parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                    channel: 6,
+                    controller: 74,
+                },
+            ),
         ] {
             runtime
                 .dispatch(AppIntent::Track {
@@ -6409,6 +9797,14 @@ mod tests {
         );
         let current_state = &saved_track.fx_chain.as_ref().unwrap().internal_state;
         assert!(!current_state.is_empty());
+        assert_eq!(
+            saved_track.fx_chain.as_ref().unwrap().midi_cc_assignments,
+            [TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         let take_id = saved_track.loops[0]
             .channels
             .iter()
@@ -6463,6 +9859,14 @@ mod tests {
         assert_eq!(editor.eq_low_db, 3.0);
         assert_eq!(editor.eq_mid_db, -2.0);
         assert_eq!(editor.eq_high_db, 1.5);
+        assert_eq!(
+            editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
         let loaded_track_id = loaded.tracks[1].id;
         let loaded_loop_id = loaded.tracks[1].loops[0].id;
@@ -6495,6 +9899,14 @@ mod tests {
         };
         assert_eq!(restored_editor.master_gain_db, -12.0);
         assert_eq!(restored_editor.selected_preset_id.as_deref(), Some("pad"));
+        assert_eq!(
+            restored_editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
 
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
@@ -6535,13 +9947,21 @@ mod tests {
         assert_eq!(switched_editor.distortion_drive, 7.0);
         assert!(switched_editor.compressor_enabled);
         assert_eq!(switched_editor.compressor_amount, 0.6);
+        assert_eq!(
+            switched_editor.midi_cc_assignments.as_ref(),
+            [shoop_app_api::TinySynthFxMidiCcAssignment {
+                parameter: shoop_app_api::TinySynthFxParameter::EqHigh,
+                channel: 6,
+                controller: 74,
+            }]
+        );
         assert!(switched_editor.eq_enabled);
         assert_eq!(switched_editor.eq_low_db, 3.0);
         assert_eq!(switched_editor.eq_mid_db, -2.0);
         assert_eq!(switched_editor.eq_high_db, 1.5);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn processed_track_session_round_trip_preserves_roles_state_and_recorded_take() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new(
@@ -6680,7 +10100,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_recorded_fx_restore_leaves_the_processed_track_usable() {
         let descriptor = shoop_app_api::TrackProcessorDescriptor {
             id: shoop_app_api::TrackProcessorTypeId::new(
@@ -6772,13 +10192,15 @@ mod tests {
         }));
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_starts_embedded_production_keyboard_script_without_checkout_files() {
         let runtime = ApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
                 source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
             }],
@@ -6793,7 +10215,8 @@ mod tests {
         assert!(snapshot.scripting.scripts[0].latest_error.is_none());
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn startup_script_ids_preserve_source_order_across_rejection_and_duplicate_names() {
         let runtime = ApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
@@ -6801,18 +10224,21 @@ mod tests {
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
                     source: "local =".to_owned(),
+                    source_path: None,
                     kind: ScriptKind::User,
                     enabled: true,
                 },
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
                     source: "print('second')".to_owned(),
+                    source_path: None,
                     kind: ScriptKind::User,
                     enabled: true,
                 },
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
                     source: "print('third')".to_owned(),
+                    source_path: None,
                     kind: ScriptKind::User,
                     enabled: false,
                 },
@@ -6831,13 +10257,14 @@ mod tests {
         assert_eq!(snapshot.scripting.scripts[1].id, ids[2].unwrap());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_startup_runs_embedded_keyboard_on_the_application_owner() {
         let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
                 source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
             }],
@@ -6868,11 +10295,11 @@ mod tests {
         assert!(runtime.snapshot().tracks[1].loops[0].selected);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn lua_control_ports_are_owner_managed_stable_and_visible_without_midi_hosts() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 2).unwrap();
-        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+        let mut runtime = cooperative_start_with_midi(
             Box::new(backend),
             Box::new(shoop_scripting::NullMidiService),
         )
@@ -6959,7 +10386,40 @@ mod tests {
         assert_eq!(restarted_ids, stable_ids);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_callback_can_request_script_dialog_opening() {
+        let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
+        midi_control.set_endpoints(vec![shoop_scripting::MidiEndpoint {
+            id: "controller-source".to_owned(),
+            name: "Controller".to_owned(),
+            direction: shoop_scripting::MidiEndpointDirection::Output,
+        }]);
+        let mut runtime =
+            cooperative_start_with_midi(Box::new(FakeBackend::default()), Box::new(midi)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "midi-dialog.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+shoop_announce_api_version(1, 0)
+local c=require('shoop_control')
+local d=require('shoop_dialog')
+d.simple('MIDI',{d.rich_text('Received')})
+c.auto_open_device_specific_midi_control_input('Controller', function() d.open('MIDI') end)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(runtime.snapshot().scripting.dialogs[0].open_request, 0);
+        midi_control.push_input("controller-source", vec![0x90, 60, 100]);
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(runtime.snapshot().scripting.dialogs[0].open_request, 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_track_and_control_views_share_canonical_host_rows() {
         let backend = FakeBackend::default();
         let backend_control = backend.connection_control();
@@ -6986,9 +10446,7 @@ mod tests {
                 direction: shoop_scripting::MidiEndpointDirection::Input,
             },
         ]);
-        let mut runtime =
-            CooperativeApplicationRuntime::start_with_midi(Box::new(backend), Box::new(midi))
-                .unwrap();
+        let mut runtime = cooperative_start_with_midi(Box::new(backend), Box::new(midi)).unwrap();
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
@@ -7043,7 +10501,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_owns_script_lifecycle_and_publishes_plain_states() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -7051,7 +10510,7 @@ mod tests {
         handle
             .dispatch(AppIntent::AddScriptSource {
                 name: "user.lua".to_owned(),
-                source: Arc::from("-- User docs\nprint('ready')"),
+                source: Arc::from("-- User docs\nshoop_announce_api_version(1, 0)\nprint('ready')"),
                 kind: ScriptKind::User,
                 enabled: true,
             })
@@ -7093,7 +10552,170 @@ mod tests {
         wait_for(&handle, |snapshot| snapshot.scripting.scripts.is_empty());
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn threaded_actor_routes_script_dialog_callbacks_and_teardown() {
+        let runtime = ApplicationRuntime::start_with_scripts(
+            Box::new(FakeBackend::default()),
+            vec![StartupScript {
+                name: "actor-dialog.lua".to_owned(),
+                source: r#"
+shoop_announce_api_version(1, 0)
+local c=require('shoop_control')
+local d=require('shoop_dialog')
+d.simple('Actor dialog',{d.button('Apply',function() c.set_solo(true) end)})
+d.open('Actor dialog')
+"#
+                .to_owned(),
+                source_path: None,
+                kind: ScriptKind::User,
+                enabled: true,
+            }],
+        )
+        .unwrap();
+        let handle = runtime.handle();
+        let initial = handle.snapshot();
+        assert_eq!(initial.scripting.dialogs.len(), 1);
+        assert_eq!(initial.scripting.dialogs[0].open_request, 1);
+        let dialog = &initial.scripting.dialogs[0];
+        let shoop_app_api::ScriptDialogKind::Simple(content) = &dialog.kind else {
+            panic!("expected simple dialog");
+        };
+        let shoop_app_api::ScriptDialogElement::Button {
+            id: Some(button_id),
+            ..
+        } = &content.elements[0]
+        else {
+            panic!("expected callback button");
+        };
+        handle
+            .dispatch(AppIntent::InvokeScriptDialogButton {
+                script_id: dialog.owner_script_id,
+                dialog_id: dialog.id,
+                button_id: *button_id,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| snapshot.global_controls.solo);
+        handle
+            .dispatch(AppIntent::StopScript {
+                script_id: dialog.owner_script_id,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| snapshot.scripting.dialogs.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn incompatible_script_version_is_published_without_side_effects() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "future.lua".to_owned(),
+                source: Arc::from(
+                    "shoop_announce_api_version(1, 4); __shoop_control.set_solo(true)",
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        assert!(!snapshot.global_controls.solo);
+        assert!(snapshot.scripting.dialogs.is_empty());
+        assert_eq!(
+            snapshot.scripting.scripts[0].lifecycle,
+            shoop_app_api::ScriptLifecycle::Incompatible
+        );
+        let error = snapshot.scripting.scripts[0]
+            .latest_error
+            .as_deref()
+            .unwrap();
+        assert!(error.contains("script requests 1.4, host supports 1.3"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn auto_mute_policy_change_dispatches_lua_global_event() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "global-listener.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+shoop_announce_api_version(1, 1)
+local c = require('shoop_control')
+c.register_global_event_cb(function() c.set_solo(true) end)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(!runtime.snapshot().global_controls.solo);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().global_controls.solo);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn lua_respecting_input_unmute_applies_global_policy_through_application() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        for name in ["first", "second"] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let first = runtime.snapshot().tracks[1].id;
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: first,
+                action: TrackAction::InputMonitoringChanged {
+                    enabled: true,
+                    respect_auto_mute: false,
+                },
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
+
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "exclusive-input.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+shoop_announce_api_version(1, 1)
+local c = require('shoop_control')
+c.set_auto_mute_other_track_inputs(true)
+c.track_set_input_muted(1, false, true)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        assert!(snapshot.global_controls.auto_mute_other_track_inputs);
+        assert!(!snapshot.tracks[0].controls.input_monitoring);
+        assert!(!snapshot.tracks[1].controls.input_monitoring);
+        assert!(snapshot.tracks[2].controls.input_monitoring);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn lua_control_batches_use_authoritative_application_and_backend_paths() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -7102,6 +10724,7 @@ mod tests {
                 name: "control.lua".to_owned(),
                 source: Arc::from(
                     r#"
+shoop_announce_api_version(1, 0)
 local c = require('shoop_control')
 c.set_solo(true)
 c.loop_select({-1, 0}, true)
@@ -7124,7 +10747,8 @@ c.loop_set_gain({-1, 0}, 0.25)
         );
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_keyboard_events_timers_and_committed_loop_events_are_dispatched() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -7133,6 +10757,7 @@ c.loop_set_gain({-1, 0}, 0.25)
                 name: "events.lua".to_owned(),
                 source: Arc::from(
                     r#"
+shoop_announce_api_version(1, 0)
 local c = require('shoop_control')
 c.register_keyboard_event_cb(function(event)
     if event.type == c.constants.KeyEventType_Pressed and event.key == c.constants.Key_Space then
@@ -7185,7 +10810,116 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(handle.snapshot().scripting.scripts[0].logs.len(), 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn script_dialogs_publish_open_in_callbacks_invoke_exact_buttons_and_teardown() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "owner.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+shoop_announce_api_version(1, 0)
+local c = require('shoop_control')
+local d = require('shoop_dialog')
+d.simple('Main', {
+    d.rich_text('Ready', {strong=true}),
+    d.button('Apply', function() c.set_solo(true); d.open('Other') end),
+})
+d.simple('Other', {d.rich_text('More')})
+d.open('Main')
+c.register_one_shot_timer_cb(1, function() d.open('Other') end)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let initial = runtime.snapshot();
+        assert_eq!(
+            initial.scripting.api_version,
+            shoop_app_api::LUA_API_VERSION
+        );
+        assert_eq!(initial.scripting.dialogs.len(), 2);
+        assert_eq!(initial.scripting.dialogs[0].name, "Main");
+        assert_eq!(initial.scripting.dialogs[0].open_request, 1);
+        assert_eq!(initial.scripting.dialogs[1].open_request, 0);
+        let owner = initial.scripting.dialogs[0].owner_script_id;
+        let dialog_id = initial.scripting.dialogs[0].id;
+        let shoop_app_api::ScriptDialogKind::Simple(content) = &initial.scripting.dialogs[0].kind
+        else {
+            panic!("expected simple dialog");
+        };
+        let shoop_app_api::ScriptDialogElement::Button {
+            id: Some(button_id),
+            ..
+        } = &content.elements[1]
+        else {
+            panic!("expected callback button");
+        };
+
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(runtime.snapshot().scripting.dialogs[1].open_request, 1);
+        runtime
+            .dispatch(AppIntent::InvokeScriptDialogButton {
+                script_id: owner,
+                dialog_id,
+                button_id: *button_id,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().global_controls.solo);
+        assert_eq!(runtime.snapshot().scripting.dialogs[1].open_request, 2);
+
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "other.lua".to_owned(),
+                source: Arc::from(
+                    "shoop_announce_api_version(1, 0); local d=require('shoop_dialog'); d.simple('Main',{d.rich_text('independent')})",
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(runtime.snapshot().scripting.dialogs.len(), 3);
+        assert_ne!(
+            runtime.snapshot().scripting.dialogs[0].id,
+            runtime.snapshot().scripting.dialogs[2].id
+        );
+
+        runtime
+            .dispatch(AppIntent::RestartScript { script_id: owner })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let restarted = runtime.snapshot();
+        assert_eq!(restarted.scripting.dialogs.len(), 3);
+        assert_ne!(restarted.scripting.dialogs[0].id, dialog_id);
+        runtime
+            .dispatch(AppIntent::InvokeScriptDialogButton {
+                script_id: owner,
+                dialog_id,
+                button_id: *button_id,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().notifications.iter().any(|notification| {
+            notification
+                .message
+                .contains("stale or unknown script dialog button")
+        }));
+
+        runtime
+            .dispatch(AppIntent::StopScript { script_id: owner })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let stopped = runtime.snapshot();
+        assert_eq!(stopped.scripting.dialogs.len(), 1);
+        assert_eq!(stopped.scripting.dialogs[0].owner_script_name, "other.lua");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn production_keyboard_script_handles_navigation_modes_numbers_targets_and_releases() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -7271,6 +11005,25 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         };
         press(&mut runtime, 16_777_236, 0);
         assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 73, 0);
+        assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
+        press(&mut runtime, 16_777_236, 0);
+        assert!(runtime.snapshot().tracks[2].loops[0].selected);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        press(&mut runtime, 73, 0);
+        assert!(!runtime.snapshot().tracks[1].controls.input_monitoring);
+        assert!(runtime.snapshot().tracks[2].controls.input_monitoring);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(false),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         press(&mut runtime, 16_777_236, 0);
         assert!(runtime.snapshot().tracks[2].loops[0].selected);
         press(&mut runtime, 16_777_234, 67_108_864);
@@ -7289,10 +11042,14 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
 
         press(&mut runtime, 49, 0);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 1);
         press(&mut runtime, 50, 0);
         assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 12);
         key(&mut runtime, 49, 0, KeyEventType::Released);
         key(&mut runtime, 50, 0, KeyEventType::Released);
+        press(&mut runtime, 51, 0);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 3);
+        key(&mut runtime, 51, 0, KeyEventType::Released);
         runtime
             .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
             .unwrap();
@@ -7368,6 +11125,21 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Recording
         );
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 82, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 80, 0);
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 80, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 76, 0);
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 76, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 77, 0);
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 77, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
         press(&mut runtime, 83, 0);
         press(&mut runtime, 76, 0);
         assert_eq!(
@@ -7381,6 +11153,13 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
         press(&mut runtime, 83, 0);
         press(&mut runtime, 71, 0);
+        let after_grab = runtime.snapshot();
+        assert!(after_grab
+            .notifications
+            .iter()
+            .any(|notification| notification
+                .message
+                .contains("cannot grab before the sync loop has a length")));
         press(&mut runtime, 80, 0);
         press(&mut runtime, 78, 0);
         assert_eq!(
@@ -7396,6 +11175,22 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.snapshot().tracks[1].loops[2].mode,
             LoopMode::Recording
         );
+        press(&mut runtime, 16_777_216, 0);
+        press(&mut runtime, 78, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[3].mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 79, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[3].mode,
+            LoopMode::Playing
+        );
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[2].mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 16_777_236, 0);
         press(&mut runtime, 84, 0);
         press(&mut runtime, 16_777_237, 0);
         press(&mut runtime, 87, 0);
@@ -7408,8 +11203,172 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .is_none());
     }
 
-    #[test]
-    fn script_snapshot_distinguishes_current_and_planned_modes_for_loops_and_composites() {
+    #[shoop_wasm_test_support::shoop_test]
+    fn production_keyboard_selects_sync_fallback_and_ctrl_momentary_toggle() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "keyboard.lua".to_owned(),
+                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        let key = |runtime: &mut CooperativeApplicationRuntime,
+                   key: i64,
+                   modifiers: i64,
+                   event_type: KeyEventType| {
+            runtime
+                .dispatch(AppIntent::KeyEvent(KeyEvent {
+                    event_type,
+                    key,
+                    modifiers,
+                }))
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::ZERO);
+        };
+        key(&mut runtime, 16_777_236, 0, KeyEventType::Pressed);
+        assert!(runtime.snapshot().tracks[0].loops[0].selected);
+
+        key(&mut runtime, 16_777_249, 67_108_864, KeyEventType::Pressed);
+        assert!(runtime.snapshot().global_controls.sync);
+        key(&mut runtime, 16_777_249, 0, KeyEventType::Released);
+        assert!(!runtime.snapshot().global_controls.sync);
+        assert!(runtime.snapshot().scripting.scripts[0]
+            .latest_error
+            .is_none());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn production_keyboard_default_action_covers_stopped_cancel_and_grab_policy() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Track".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "keyboard.lua".to_owned(),
+                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        let press = |runtime: &mut CooperativeApplicationRuntime, key: i64| {
+            runtime
+                .dispatch(AppIntent::KeyEvent(KeyEvent {
+                    event_type: KeyEventType::Pressed,
+                    key,
+                    modifiers: 0,
+                }))
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::ZERO);
+        };
+        press(&mut runtime, 16_777_236);
+        let loop_id = runtime.model.tracks[1].loops[0];
+        let backend_id = runtime.model.loops[&loop_id].backend_id;
+        runtime.backend.set_loop_length(backend_id, 100).unwrap();
+        runtime.tick(Duration::ZERO);
+
+        press(&mut runtime, 32);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        press(&mut runtime, 32);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Stopped
+        );
+        press(&mut runtime, 46);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::KeyEvent(KeyEvent {
+                event_type: KeyEventType::Released,
+                key: 46,
+                modifiers: 0,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Stopped
+        );
+
+        runtime
+            .backend
+            .transition_loop(backend_id, BackendLoopMode::Recording, Some(2))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].next_mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 32);
+        assert_ne!(
+            runtime.snapshot().tracks[1].loops[0].next_mode,
+            LoopMode::Recording
+        );
+
+        press(&mut runtime, 87);
+        assert!(runtime
+            .snapshot()
+            .notifications
+            .iter()
+            .any(|notification| notification
+                .message
+                .contains("cannot record with targeted: no loop is targeted")));
+        press(&mut runtime, 16_777_216);
+        let notifications_before_empty_w = runtime.snapshot().notifications.len();
+        press(&mut runtime, 87);
+        assert_eq!(
+            runtime.snapshot().notifications.len(),
+            notifications_before_empty_w + 1
+        );
+        press(&mut runtime, 16_777_236);
+        press(&mut runtime, 67);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetDefaultRecordingAction(
+                    shoop_app_api::DefaultRecordingAction::Grab,
+                ),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        press(&mut runtime, 32);
+        assert!(runtime
+            .snapshot()
+            .notifications
+            .iter()
+            .any(|notification| notification
+                .message
+                .contains("cannot grab before the sync loop has a length")));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn script_snapshot_keeps_child_and_composite_transition_state_independent() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
         runtime
@@ -7474,12 +11433,12 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .into_iter()
             .find(|loop_| loop_.id == composite_id)
             .unwrap();
-        assert_eq!(composite.mode, LoopMode::Playing);
-        assert_eq!(composite.next_mode, Some(LoopMode::Recording));
-        assert_eq!(composite.next_mode_delay, Some(2));
+        assert_eq!(composite.mode, LoopMode::Stopped);
+        assert_eq!(composite.next_mode, None);
+        assert_eq!(composite.next_mode_delay, None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_keyboard_plays_manual_recording_on_next_sync_cycle() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
@@ -7487,6 +11446,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
                 source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
             }],
@@ -7554,7 +11514,1245 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn composite_details_preserve_qml_schedule_semantics_and_canonical_session_data() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        for name in ["Target", "Rhythm", "Melody"] {
+            model
+                .add_track(
+                    &mut backend,
+                    DirectTrackSpec {
+                        name: name.to_owned(),
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                )
+                .unwrap();
+        }
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 50;
+        let target = model.tracks[1].loops[0];
+        let rhythm_a = model.tracks[2].loops[0];
+        let rhythm_b = model.tracks[2].loops[1];
+        let melody = model.tracks[3].loops[0];
+        model.loops.get_mut(&rhythm_a).unwrap().length = 100;
+        model.loops.get_mut(&rhythm_b).unwrap().length = 40;
+        model.loops.get_mut(&melody).unwrap().length = 60;
+        let composite = CompositeDocument {
+            kind: CompositeKindDocument::Script,
+            playlists: vec![
+                vec![
+                    vec![
+                        CompositeEventDocument {
+                            delay: 1,
+                            loop_id: rhythm_a.raw(),
+                            mode: Some("playing".to_owned()),
+                            n_cycles: None,
+                        },
+                        CompositeEventDocument {
+                            delay: 2,
+                            loop_id: rhythm_b.raw(),
+                            mode: Some("recording".to_owned()),
+                            n_cycles: Some(2),
+                        },
+                    ],
+                    vec![CompositeEventDocument {
+                        delay: 1,
+                        loop_id: melody.raw(),
+                        mode: Some("playing_dry_through_wet".to_owned()),
+                        n_cycles: None,
+                    }],
+                ],
+                vec![vec![CompositeEventDocument {
+                    delay: 3,
+                    loop_id: rhythm_b.raw(),
+                    mode: Some("playing".to_owned()),
+                    n_cycles: None,
+                }]],
+            ],
+        };
+        {
+            let target = model.loops.get_mut(&target).unwrap();
+            target.state.selected = true;
+            target.state.empty = false;
+            target.state.composite_kind = shoop_app_api::CompositeKind::Script;
+            target.script_composition = vec![vec![rhythm_a, rhythm_b], vec![melody]];
+            target.composite = Some(composite.clone());
+        }
+
+        let details = model.details_snapshot().unwrap();
+        assert!(!details.loading);
+        assert!(!details.midi_loading);
+        assert!(details.channels.is_empty());
+        assert!(details.midi_channels.is_empty());
+        let details = details.composite.unwrap();
+        assert_eq!(details.kind, shoop_app_api::CompositeKind::Script);
+        let snapshot = model.snapshot();
+        let loop_state = |id| {
+            snapshot
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .find(|loop_| loop_.id == id)
+                .unwrap()
+        };
+        assert_eq!(
+            loop_state(rhythm_a).selected_composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+        assert_eq!(
+            loop_state(rhythm_b).selected_composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+        assert_eq!(
+            loop_state(melody).selected_composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+        assert_eq!(
+            loop_state(target).selected_composite_kind,
+            shoop_app_api::CompositeKind::None
+        );
+        assert_eq!(details.cycle_length_frames, 50);
+        assert_eq!(
+            details
+                .tracks
+                .iter()
+                .map(|track| track.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Target", "Rhythm", "Melody"]
+        );
+        assert_eq!(
+            details
+                .events
+                .iter()
+                .map(|event| (
+                    event.loop_id,
+                    event.start_frame,
+                    event.end_frame,
+                    event.playlist_index,
+                    event.section_index,
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (rhythm_a, 50, 150, 0, 0),
+                (rhythm_b, 100, 200, 0, 0),
+                (melody, 250, 350, 0, 1),
+                (rhythm_b, 150, 200, 1, 0),
+            ]
+        );
+        assert_eq!(details.timeline_length_frames, 350);
+        assert_eq!(details.events[1].forced_n_cycles, Some(2));
+        assert_eq!(details.events[1].mode.as_deref(), Some("recording"));
+
+        let before_force = model.loops[&target].composite.clone().unwrap();
+        model
+            .loops
+            .get_mut(&target)
+            .unwrap()
+            .composite
+            .as_mut()
+            .unwrap()
+            .playlists[1][0]
+            .push(CompositeEventDocument {
+                delay: 0,
+                loop_id: rhythm_a.raw(),
+                mode: Some("playing".to_owned()),
+                n_cycles: None,
+            });
+        model
+            .set_composite_loop_cycles(&mut backend, target, rhythm_a, Some(4))
+            .unwrap();
+        assert_eq!(
+            model.loops[&target].composite.as_ref().unwrap().playlists[0][0][0].n_cycles,
+            Some(4)
+        );
+        assert_eq!(
+            model.loops[&target].composite.as_ref().unwrap().playlists[1][0][1].n_cycles,
+            Some(4)
+        );
+        assert_eq!(model.loops[&target].length, 400);
+        model
+            .set_composite_loop_cycles(&mut backend, target, rhythm_a, None)
+            .unwrap();
+        assert_eq!(
+            model.loops[&target].composite.as_ref().unwrap().playlists[0][0][0].n_cycles,
+            None
+        );
+        assert_eq!(
+            model.loops[&target].composite.as_ref().unwrap().playlists[1][0][1].n_cycles,
+            None
+        );
+        assert_eq!(model.loops[&target].length, 350);
+        assert!(model
+            .set_composite_loop_cycles(&mut backend, target, rhythm_a, Some(0))
+            .unwrap_err()
+            .contains("at least one cycle"));
+        model.loops.get_mut(&target).unwrap().composite = Some(before_force);
+
+        let capture = backend.capture_session().unwrap();
+        let saved = model.session_bundle_from_backend(&capture).unwrap();
+        let saved_composite = saved
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.id == target.raw())
+            .unwrap()
+            .composite
+            .as_ref()
+            .unwrap();
+        assert_eq!(saved_composite, &composite);
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::ComposeAddToEnd {
+                    target,
+                    add: vec![melody],
+                    parallel: false,
+                },
+            )
+            .unwrap();
+        let updated = model.loops[&target].composite.as_ref().unwrap();
+        assert_eq!(updated.kind, CompositeKindDocument::Regular);
+        assert_eq!(updated.playlists.len(), 2);
+        assert_eq!(updated.playlists[0][0][0].delay, 1);
+        assert_eq!(updated.playlists[1][0][0].delay, 3);
+        assert_eq!(
+            updated.playlists[0].last().unwrap()[0].loop_id,
+            melody.raw()
+        );
+        assert!(updated
+            .playlists
+            .iter()
+            .flatten()
+            .flatten()
+            .all(|event| event.mode.is_none()));
+
+        model.loops.get_mut(&target).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            playlists: Vec::new(),
+        });
+        let empty = model.details_snapshot().unwrap().composite.unwrap();
+        assert_eq!(empty.kind, shoop_app_api::CompositeKind::Regular);
+        assert!(empty.events.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compose_into_actions_convert_the_target_and_schedule_serial_or_parallel() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track = model.tracks[1].id;
+        let target = model.tracks[1].loops[0];
+        let source = model.tracks[1].loops[1];
+        let parallel_source = model.tracks[1].loops[2];
+        let end_source = model.tracks[1].loops[3];
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                track,
+                source,
+                LoopAction::ComposeIntoEnd(target),
+            )
+            .unwrap();
+        let target_model = &model.loops[&target];
+        assert_eq!(
+            target_model.state.composite_kind,
+            shoop_app_api::CompositeKind::Regular
+        );
+        assert_eq!(target_model.script_composition, [vec![source]]);
+        assert_eq!(
+            target_model.composite.as_ref().unwrap().playlists[0][0][0].loop_id,
+            source.raw()
+        );
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                track,
+                parallel_source,
+                LoopAction::ComposeIntoParallel(target),
+            )
+            .unwrap();
+        let target_model = &model.loops[&target];
+        assert_eq!(
+            target_model.script_composition,
+            [vec![source, parallel_source]]
+        );
+        assert_eq!(
+            target_model.composite.as_ref().unwrap().playlists[0][0]
+                .iter()
+                .map(|event| event.loop_id)
+                .collect::<Vec<_>>(),
+            [source.raw(), parallel_source.raw()]
+        );
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                track,
+                end_source,
+                LoopAction::ComposeIntoEnd(target),
+            )
+            .unwrap();
+        let target_model = &model.loops[&target];
+        assert_eq!(
+            target_model.script_composition,
+            [vec![source, parallel_source], vec![end_source]]
+        );
+        assert_eq!(
+            target_model.composite.as_ref().unwrap().playlists[0]
+                .iter()
+                .map(|section| section
+                    .iter()
+                    .map(|event| event.loop_id)
+                    .collect::<Vec<_>>())
+                .collect::<Vec<_>>(),
+            [
+                vec![source.raw(), parallel_source.raw()],
+                vec![end_source.raw()]
+            ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn gui_conversion_and_serial_composition_are_authoritative_and_cycle_safe() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        for name in ["Target", "Source", "Nested"] {
+            model
+                .add_track(
+                    &mut backend,
+                    DirectTrackSpec {
+                        name: name.to_owned(),
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                )
+                .unwrap();
+        }
+        let target_track = model.tracks[1].id;
+        let target = model.tracks[1].loops[0];
+        let source = model.tracks[2].loops[0];
+        let nested = model.tracks[3].loops[0];
+        let target_backend = model.loops[&target].backend_id;
+        {
+            let model = model.loops.get_mut(&target).unwrap();
+            model.length = 480;
+            model.audio_data = Some(vec![Arc::from([0.25, -0.25])]);
+            model.state.empty = false;
+            model.state.selected = false;
+        }
+        model.loops.get_mut(&source).unwrap().state.selected = true;
+        assert!(model
+            .compose_loop_serial(&mut backend, target, source)
+            .unwrap_err()
+            .contains("is not a composite"));
+        assert!(model.loops[&target].composite.is_none());
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                target_track,
+                target,
+                LoopAction::ConvertToComposite,
+            )
+            .unwrap();
+        assert!(backend
+            .operations()
+            .contains(&shoop_backend::FakeOperation::Clear(target_backend)));
+        let converted = &model.loops[&target];
+        assert_eq!(converted.length, 0);
+        assert!(converted.audio_data.is_none());
+        assert!(converted.script_composition.is_empty());
+        assert!(converted.state.selected);
+        assert!(!model.loops[&source].state.selected);
+        assert_eq!(
+            converted.composite.as_ref().unwrap(),
+            &CompositeDocument {
+                kind: CompositeKindDocument::Regular,
+                playlists: Vec::new(),
+            }
+        );
+        assert_eq!(
+            model.details_snapshot().unwrap().composite.unwrap().kind,
+            shoop_app_api::CompositeKind::Regular
+        );
+        let converted_before = model.loops[&target].composite.clone();
+        assert!(model
+            .handle_loop_action(
+                &mut backend,
+                target_track,
+                target,
+                LoopAction::ConvertToComposite,
+            )
+            .unwrap_err()
+            .contains("already a composite"));
+        assert_eq!(model.loops[&target].composite, converted_before);
+
+        model
+            .compose_loop_serial(&mut backend, target, source)
+            .unwrap();
+        let composed = &model.loops[&target];
+        assert_eq!(composed.script_composition, [vec![source]]);
+        assert_eq!(
+            composed.composite.as_ref().unwrap().playlists[0][0][0].loop_id,
+            source.raw()
+        );
+
+        backend.enable_composite_loops();
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 100;
+        model.loops.get_mut(&source).unwrap().length = 100;
+        backend
+            .set_loop_length(model.loops[&sync].backend_id, 100)
+            .unwrap();
+        backend
+            .set_loop_length(model.loops[&source].backend_id, 100)
+            .unwrap();
+        model
+            .compose_loop_at(&mut backend, target, source, 3)
+            .unwrap();
+        let positioned = &model.loops[&target];
+        assert_eq!(positioned.composite.as_ref().unwrap().playlists.len(), 2);
+        assert_eq!(
+            positioned.composite.as_ref().unwrap().playlists[1][0][0].delay,
+            3
+        );
+        assert_eq!(positioned.length, 400);
+        assert!(positioned.backend_composite.is_some());
+        assert_eq!(
+            model
+                .details_snapshot()
+                .unwrap()
+                .composite
+                .unwrap()
+                .events
+                .iter()
+                .map(|event| event.start_frame)
+                .collect::<Vec<_>>(),
+            [0, 300]
+        );
+        let before = positioned.composite.clone();
+        assert!(model
+            .compose_loop_serial(&mut backend, target, target)
+            .unwrap_err()
+            .contains("would create a cycle"));
+        assert!(model
+            .compose_loop_serial(&mut backend, target, LoopId::from_raw(u64::MAX))
+            .unwrap_err()
+            .contains("stale or unknown composition source"));
+        assert_eq!(model.loops[&target].composite, before);
+
+        model.loops.get_mut(&nested).unwrap().composite = Some(CompositeDocument {
+            kind: CompositeKindDocument::Regular,
+            playlists: vec![vec![vec![CompositeEventDocument {
+                delay: 0,
+                loop_id: target.raw(),
+                mode: None,
+                n_cycles: None,
+            }]]],
+        });
+        assert!(model
+            .compose_loop_serial(&mut backend, target, nested)
+            .unwrap_err()
+            .contains("would create a cycle"));
+        assert_eq!(model.loops[&target].composite, before);
+
+        let capture = backend.capture_session().unwrap();
+        let saved = model.session_bundle_from_backend(&capture).unwrap();
+        let saved_target = saved
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.id == target.raw())
+            .unwrap();
+        assert!(saved_target.channels.is_empty());
+        assert_eq!(saved_target.composite, before);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn failed_backend_composite_reconfiguration_does_not_commit_application_schedule() {
+        let mut backend = FakeBackend::default();
+        backend.enable_composite_loops();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Transactional".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track = model.tracks[1].id;
+        let target = model.tracks[1].loops[0];
+        let source = model.tracks[1].loops[1];
+        model
+            .handle_loop_action(&mut backend, track, target, LoopAction::ConvertToComposite)
+            .unwrap();
+        let before_composite = model.loops[&target].composite.clone();
+        let before_sections = model.loops[&target].script_composition.clone();
+        let before_backend = model.loops[&target].backend_composite;
+        let before_operations = backend.operations().len();
+
+        backend.fail_next_composite_configuration("injected composite configuration failure");
+        assert!(model
+            .compose_loop_serial(&mut backend, target, source)
+            .unwrap_err()
+            .contains("injected composite configuration failure"));
+
+        assert_eq!(model.loops[&target].composite, before_composite);
+        assert_eq!(model.loops[&target].script_composition, before_sections);
+        assert_eq!(model.loops[&target].backend_composite, before_backend);
+        assert_eq!(backend.operations().len(), before_operations);
+
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 1;
+        model.loops.get_mut(&source).unwrap().length = 1;
+        backend
+            .set_loop_length(model.loops[&sync].backend_id, 1)
+            .unwrap();
+        backend
+            .set_loop_length(model.loops[&source].backend_id, 1)
+            .unwrap();
+        model
+            .compose_loop_serial(&mut backend, target, source)
+            .unwrap();
+        let before_composite = model.loops[&target].composite.clone();
+        let before_sections = model.loops[&target].script_composition.clone();
+        let before_backend = model.loops[&target].backend_composite;
+        backend.fail_next_composite_configuration("injected composite deletion failure");
+        assert!(model
+            .delete_composite_events(
+                &mut backend,
+                target,
+                &[CompositeEventId {
+                    playlist_index: 0,
+                    section_index: 0,
+                    parallel_index: 0,
+                }],
+            )
+            .unwrap_err()
+            .contains("injected composite deletion failure"));
+        assert_eq!(model.loops[&target].composite, before_composite);
+        assert_eq!(model.loops[&target].script_composition, before_sections);
+        assert_eq!(model.loops[&target].backend_composite, before_backend);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn composite_event_deletion_keeps_later_sections_at_their_absolute_positions() {
+        let (mut backend, mut model, _, target, sources) = engine_model_with_regular_composite();
+        let before =
+            model.composite_details_snapshot(model.loops[&target].composite.as_ref().unwrap());
+        let last_start = before
+            .events
+            .iter()
+            .find(|event| event.loop_id == sources[2])
+            .unwrap()
+            .start_frame;
+
+        model
+            .delete_composite_events(
+                &mut backend,
+                target,
+                &[
+                    CompositeEventId {
+                        playlist_index: 0,
+                        section_index: 0,
+                        parallel_index: 0,
+                    },
+                    CompositeEventId {
+                        playlist_index: 0,
+                        section_index: 1,
+                        parallel_index: 0,
+                    },
+                ],
+            )
+            .unwrap();
+
+        let composite = model.loops[&target].composite.as_ref().unwrap();
+        assert!(composite.playlists[0][0].is_empty());
+        assert!(composite.playlists[0][1].is_empty());
+        assert_eq!(composite.playlists[0][2].len(), 1);
+        let after = model.composite_details_snapshot(composite);
+        assert_eq!(after.events.len(), 1);
+        assert_eq!(after.events[0].loop_id, sources[2]);
+        assert_eq!(after.events[0].start_frame, last_start);
+        assert_eq!(
+            model.loops[&target].length,
+            before.timeline_length_frames as u32
+        );
+
+        let unchanged = model.loops[&target].composite.clone();
+        assert!(model
+            .delete_composite_events(
+                &mut backend,
+                target,
+                &[CompositeEventId {
+                    playlist_index: 0,
+                    section_index: 99,
+                    parallel_index: 0,
+                }],
+            )
+            .unwrap_err()
+            .contains("stale event"));
+        assert_eq!(model.loops[&target].composite, unchanged);
+
+        model
+            .delete_composite_events(
+                &mut backend,
+                target,
+                &[CompositeEventId {
+                    playlist_index: 0,
+                    section_index: 2,
+                    parallel_index: 0,
+                }],
+            )
+            .unwrap();
+        assert!(model.loops[&target].composite.is_some());
+        assert!(model.loops[&target].state.empty);
+        assert_eq!(model.loops[&target].length, 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn composite_event_groups_move_or_duplicate_while_preserving_relative_positions() {
+        for duplicate in [false, true] {
+            let (mut backend, mut model, _, target, _) = engine_model_with_regular_composite();
+            let before =
+                model.composite_details_snapshot(model.loops[&target].composite.as_ref().unwrap());
+            let selected = [0_usize, 2]
+                .into_iter()
+                .map(|index| CompositeEventId {
+                    playlist_index: before.events[index].playlist_index,
+                    section_index: before.events[index].section_index,
+                    parallel_index: before.events[index].parallel_index,
+                })
+                .collect::<Vec<_>>();
+            let cycle_length = before.cycle_length_frames;
+            let relative = before.events[2].start_frame - before.events[0].start_frame;
+
+            model
+                .relocate_composite_events(&mut backend, target, &selected, 10, duplicate)
+                .unwrap();
+
+            let after =
+                model.composite_details_snapshot(model.loops[&target].composite.as_ref().unwrap());
+            assert_eq!(after.events.len(), if duplicate { 5 } else { 3 });
+            let moved = &after.events[after.events.len() - 2..];
+            assert_eq!(moved[0].start_frame, 10 * cycle_length);
+            assert_eq!(moved[1].start_frame - moved[0].start_frame, relative);
+            assert!(after.events.iter().any(|event| {
+                event.loop_id == before.events[1].loop_id
+                    && event.start_frame == before.events[1].start_frame
+            }));
+            assert_eq!(
+                after
+                    .events
+                    .iter()
+                    .filter(|event| event.loop_id == before.events[0].loop_id)
+                    .count(),
+                if duplicate { 2 } else { 1 }
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn rich_composite_survives_session_load_and_save_without_projection_loss() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Sources".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            if runtime.take_file_output().is_some_and(|output| {
+                let mut bundle = decode_session(&output.bytes).unwrap();
+                let track = &mut bundle.document.track_groups[1].tracks[0];
+                let target = track.loops[0].id;
+                let source_a = track.loops[1].id;
+                let source_b = track.loops[2].id;
+                track.loops[0].channels.clear();
+                track.loops[0].length_frames = 350;
+                track.loops[1].length_frames = 100;
+                track.loops[2].length_frames = 200;
+                let composite = CompositeDocument {
+                    kind: CompositeKindDocument::Script,
+                    playlists: vec![
+                        vec![
+                            vec![CompositeEventDocument {
+                                delay: 1,
+                                loop_id: source_a,
+                                mode: Some("recording".to_owned()),
+                                n_cycles: Some(3),
+                            }],
+                            vec![CompositeEventDocument {
+                                delay: 2,
+                                loop_id: source_b,
+                                mode: Some("playing".to_owned()),
+                                n_cycles: None,
+                            }],
+                        ],
+                        vec![vec![CompositeEventDocument {
+                            delay: 3,
+                            loop_id: source_b,
+                            mode: Some("playing_dry_through_wet".to_owned()),
+                            n_cycles: Some(2),
+                        }]],
+                    ],
+                };
+                track.loops[0].composite = Some(composite.clone());
+                bundle.document.selected_loop_ids = vec![target];
+                runtime
+                    .dispatch(AppIntent::LoadSessionBytes {
+                        name: "rich-composite.shoop".to_owned(),
+                        bytes: Arc::from(encode_session(&bundle, "test").unwrap()),
+                    })
+                    .unwrap();
+                for _ in 0..20 {
+                    runtime.tick(Duration::ZERO);
+                    if runtime
+                        .snapshot()
+                        .io_task
+                        .as_ref()
+                        .is_some_and(|task| task.status == IoTaskStatus::Completed)
+                    {
+                        break;
+                    }
+                }
+                let loaded = runtime.snapshot();
+                let details = loaded.details.as_ref().unwrap().composite.as_ref().unwrap();
+                assert_eq!(details.kind, shoop_app_api::CompositeKind::Script);
+                assert_eq!(details.events.len(), 3);
+                assert_eq!(details.events[0].start_frame, 1);
+                assert_eq!(details.events[0].mode.as_deref(), Some("recording"));
+                assert_eq!(details.events[0].forced_n_cycles, Some(3));
+                assert_eq!(details.events[2].playlist_index, 1);
+
+                runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+                for _ in 0..20 {
+                    runtime.tick(Duration::ZERO);
+                    if let Some(output) = runtime.take_file_output() {
+                        let saved = decode_session(&output.bytes).unwrap();
+                        let saved_composite = saved.document.track_groups[1].tracks[0].loops[0]
+                            .composite
+                            .as_ref()
+                            .unwrap();
+                        assert_eq!(saved_composite, &composite);
+                        return true;
+                    }
+                }
+                panic!("rich composite save did not complete");
+            }) {
+                return;
+            }
+        }
+        panic!("baseline session save did not complete");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latest_global_or_script_repeat_sync_policy_applies_to_existing_and_new_loops() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Unsynced".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let loop_id = model.tracks[1].loops[0];
+        assert!(!model.loops[&loop_id].repeat_sync);
+        assert_eq!(
+            backend.loop_sync_source(model.loops[&loop_id].backend_id),
+            None
+        );
+
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::SetRepeatSync {
+                    loops: vec![loop_id],
+                    active: true,
+                },
+            )
+            .unwrap();
+        assert!(model.loops[&loop_id].repeat_sync);
+        assert!(backend
+            .loop_sync_source(model.loops[&loop_id].backend_id)
+            .is_some());
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert!(model.loops[&loop_id].repeat_sync);
+
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        assert!(!model.loops[&loop_id].repeat_sync);
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(true))
+            .unwrap();
+        assert!(model.loops[&loop_id].repeat_sync);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn disabling_sync_makes_a_primitive_loop_repeat_at_its_own_boundary() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let sync = model.tracks[0].loops[0];
+        let track_id = model.tracks[1].id;
+        let loop_id = model.tracks[1].loops[0];
+        backend
+            .set_loop_length(model.loops[&sync].backend_id, 10)
+            .unwrap();
+        backend
+            .set_loop_length(model.loops[&loop_id].backend_id, 4)
+            .unwrap();
+        backend
+            .transition_loop(
+                model.loops[&sync].backend_id,
+                BackendLoopMode::Playing,
+                None,
+            )
+            .unwrap();
+        backend.advance(Duration::from_millis(1));
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        model
+            .handle_loop_action(&mut backend, track_id, loop_id, LoopAction::PlayClicked)
+            .unwrap();
+
+        backend.advance(Duration::from_millis(4));
+        let state = backend.poll().unwrap().loops[&model.loops[&loop_id].backend_id].clone();
+
+        assert_eq!(state.mode, BackendLoopMode::Playing);
+        assert_eq!(state.position, 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn independently_playing_a_child_does_not_advance_its_composite() {
+        let (mut backend, mut model, _, target, sources) = engine_model_with_regular_composite();
+        backend
+            .transition_loop(
+                model.loops[&sources[0]].backend_id,
+                BackendLoopMode::Playing,
+                None,
+            )
+            .unwrap();
+        backend.advance(Duration::from_millis(2));
+        model.apply_backend_snapshot(backend.poll().unwrap());
+
+        assert_eq!(
+            (
+                model.loops[&target].state.mode,
+                model.loops[&target].position
+            ),
+            (LoopMode::Stopped, 0)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn gui_play_on_a_regular_composite_starts_the_composite_and_first_child() {
+        let (mut backend, mut model, track_id, target, sources) =
+            engine_model_with_regular_composite();
+        model
+            .handle_global_action(&mut backend, GlobalControlAction::SetSync(false))
+            .unwrap();
+        model
+            .handle_loop_action(&mut backend, track_id, target, LoopAction::PlayClicked)
+            .unwrap();
+        backend.advance(Duration::from_millis(1));
+        model.apply_backend_snapshot(backend.poll().unwrap());
+
+        assert_eq!(
+            (
+                model.loops[&target].state.mode,
+                model.loops[&sources[0]].state.mode,
+            ),
+            (LoopMode::Playing, LoopMode::Playing)
+        );
+        assert!(sources[1..]
+            .iter()
+            .all(|source| model.loops[source].state.mode == LoopMode::Stopped));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn public_intents_disable_repeat_sync_for_an_independently_wrapping_loop() {
+        let backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Unsynced".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        let sync_track = snapshot.tracks[0].id;
+        let sync = snapshot.tracks[0].loops[0].id;
+        let track = snapshot.tracks[1].id;
+        let loop_id = snapshot.tracks[1].loops[0].id;
+        for (track_id, id, frames) in [(sync_track, sync, 10), (track, loop_id, 4)] {
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id,
+                    loop_id: id,
+                    action: LoopAction::RecordClicked,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::from_millis(frames));
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id,
+                    loop_id: id,
+                    action: LoopAction::StopClicked,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+        }
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: sync_track,
+                loop_id: sync,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(
+            runtime.snapshot().tracks[0].loops[0].mode,
+            LoopMode::Playing
+        );
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(4));
+        let loop_ = &runtime.snapshot().tracks[1].loops[0];
+        assert_eq!(loop_.mode, LoopMode::Playing);
+        assert_eq!(loop_.position, 0.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn public_intents_drive_three_section_engine_composite_and_isolate_child_control() {
+        let backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Composite".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        let sync_track = snapshot.tracks[0].id;
+        let sync = snapshot.tracks[0].loops[0].id;
+        let track = snapshot.tracks[1].id;
+        let target = snapshot.tracks[1].loops[0].id;
+        let sources = [
+            snapshot.tracks[1].loops[1].id,
+            snapshot.tracks[1].loops[2].id,
+            snapshot.tracks[1].loops[3].id,
+        ];
+        let mut record_for = |track_id, loop_id, frames| {
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id,
+                    loop_id,
+                    action: LoopAction::RecordClicked,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::from_millis(frames));
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id,
+                    loop_id,
+                    action: LoopAction::StopClicked,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+        };
+        record_for(sync_track, sync, 1);
+        for source in sources {
+            record_for(track, source, 4);
+        }
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: sync_track,
+                loop_id: sync,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: target,
+                action: LoopAction::ConvertToComposite,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        for source in sources {
+            runtime
+                .dispatch(AppIntent::ComposeLoopSerial {
+                    target_loop_id: target,
+                    source_loop_id: source,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+        }
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: sources[2],
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        let isolated = runtime.snapshot();
+        let parent = isolated.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        let child = isolated.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == sources[2])
+            .unwrap();
+        assert_eq!(child.mode, LoopMode::Playing);
+        assert!(child.position > 0.0);
+        assert_eq!(parent.mode, LoopMode::Stopped);
+        assert_eq!(parent.position, 0.0);
+        assert!(parent.active_composite_children.is_empty());
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: sources[2],
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: target,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let started = runtime.snapshot();
+        let parent = started.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.mode, LoopMode::Playing);
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
+
+        runtime.tick(Duration::from_millis(4));
+        let second = runtime.snapshot();
+        let parent = second.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[1]]);
+        assert_eq!(parent.composite_iteration, Some(4));
+        assert!((parent.position - 1.0 / 3.0).abs() < f32::EPSILON);
+        runtime.tick(Duration::from_millis(4));
+        let third = runtime.snapshot();
+        let parent = third.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[2]]);
+        runtime.tick(Duration::from_millis(4));
+        let wrapped = runtime.snapshot();
+        let parent = wrapped.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
+        assert_eq!(parent.composite_cycle_count, 1);
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        let output = loop {
+            runtime.tick(Duration::from_millis(1));
+            if let Some(output) = runtime.take_file_output() {
+                break output;
+            }
+        };
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "composite-round-trip.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            {
+                break;
+            }
+        }
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: target,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loaded = runtime.snapshot();
+        let parent = loaded.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.mode, LoopMode::Playing);
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 1_000,
+                    buffer_size: 2,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Persisting
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: target,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let replaced = runtime.snapshot();
+        let parent = replaced.tracks[1]
+            .loops
+            .iter()
+            .find(|loop_| loop_.id == target)
+            .unwrap();
+        assert_eq!(parent.mode, LoopMode::Playing);
+        assert_eq!(parent.active_composite_children.as_ref(), [sources[0]]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn regular_script_composition_plays_serial_sections_and_wraps_without_sync() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -7648,7 +12846,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(!model.script_composition_playback.contains_key(&target));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn script_composition_append_and_parallel_execute_on_engine_backend() {
         let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -7700,7 +12898,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .dispatch(AppIntent::AddScriptSource {
                 name: "composition.lua".to_owned(),
                 source: Arc::from(
-                    "local c=require('shoop_control'); c.loop_compose_add_to_end({0,0},{1,0},false); c.loop_compose_add_to_end({0,0},{2,0},true); c.loop_trigger({0,0},c.constants.LoopMode_Playing)",
+                    "shoop_announce_api_version(1, 0); local c=require('shoop_control'); c.loop_compose_add_to_end({0,0},{1,0},false); c.loop_compose_add_to_end({0,0},{2,0},true); c.loop_trigger({0,0},c.constants.LoopMode_Playing)",
                 ),
                 kind: ScriptKind::User,
                 enabled: true,
@@ -7750,7 +12948,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unchanged_apc_script_drives_authoritative_state_and_bounded_led_output() {
         let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
         midi_control.set_endpoints(vec![
@@ -7765,16 +12963,13 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                 direction: shoop_scripting::MidiEndpointDirection::Input,
             },
         ]);
-        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
-            Box::new(FakeBackend::default()),
-            Box::new(midi),
-        )
-        .unwrap();
+        let mut runtime =
+            cooperative_start_with_midi(Box::new(FakeBackend::default()), Box::new(midi)).unwrap();
         for index in 0..8 {
             runtime
                 .dispatch(AppIntent::AddTrack(DirectTrackSpec {
                     name: format!("Track {index}"),
-                    audio_channels: 2,
+                    audio_channels: if index == 0 { 1 } else { 2 },
                     midi: false,
                 }))
                 .unwrap();
@@ -7862,6 +13057,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         }
         assert!(reset.len() >= 67);
         assert!(reset.iter().all(|(_, message)| message.len() == 3));
+        assert!(reset.iter().any(|(_, message)| message == &[0x90, 83, 0]));
+        assert!(reset.iter().any(|(_, message)| message == &[0x90, 87, 1]));
 
         let send_note = |runtime: &mut CooperativeApplicationRuntime,
                          midi: &shoop_scripting::FakeMidiControl,
@@ -7874,6 +13071,67 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.tick(Duration::from_millis(2));
             runtime.tick(Duration::ZERO);
         };
+        let mut global_feedback = Vec::new();
+        for action in [
+            GlobalControlAction::SetSolo(true),
+            GlobalControlAction::SetSolo(false),
+            GlobalControlAction::SetSync(true),
+            GlobalControlAction::SetSync(false),
+        ] {
+            runtime.dispatch(AppIntent::Global(action)).unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::from_millis(2));
+            global_feedback.extend(midi_control.take_sent());
+        }
+        for _ in 0..10 {
+            runtime.tick(Duration::from_millis(1));
+            global_feedback.extend(midi_control.take_sent());
+        }
+        for expected in [[0x90, 83, 1], [0x90, 83, 0], [0x90, 87, 0], [0x90, 87, 1]] {
+            assert!(
+                global_feedback
+                    .iter()
+                    .any(|(_, message)| message == &expected),
+                "missing {expected:?} in {global_feedback:?}"
+            );
+        }
+
+        for note in [98, 86, 84, 85, 82, 70, 71, 68, 69] {
+            send_note(&mut runtime, &midi_control, note, true);
+            send_note(&mut runtime, &midi_control, note, false);
+            let feedback = midi_control.take_sent();
+            assert!(feedback
+                .iter()
+                .any(|(_, message)| message == &[0x90, note, 1]));
+            assert!(feedback
+                .iter()
+                .any(|(_, message)| message == &[0x90, note, 0]));
+        }
+
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(7)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 71, true);
+        send_note(&mut runtime, &midi_control, 71, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 7);
+        let mut debug_reset = midi_control.take_sent();
+        for _ in 0..70 {
+            runtime.tick(Duration::from_millis(1));
+            debug_reset.extend(midi_control.take_sent());
+        }
+        assert!(debug_reset.len() >= 67);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
+        runtime.tick(Duration::from_millis(2));
+        assert_eq!(runtime.snapshot().tracks[1].controls.output_gain_db, 0.0);
+
         let grid_note = 56;
         send_note(&mut runtime, &midi_control, grid_note, true);
         let after_default = runtime.snapshot();
@@ -7884,6 +13142,13 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             after_default.scripting.scripts[0],
             after_default.notifications
         );
+        send_note(&mut runtime, &midi_control, 70, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 70, false);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
         send_note(&mut runtime, &midi_control, 82, true);
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 82, false);
@@ -7891,6 +13156,25 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Stopped
         );
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 82, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert!(runtime.snapshot().tracks[1].loops[0].empty);
+        send_note(&mut runtime, &midi_control, 85, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 85, false);
+        assert!(runtime
+            .snapshot()
+            .notifications
+            .iter()
+            .any(|notification| notification
+                .message
+                .contains("cannot grab before the sync loop has a length")));
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 82, false);
 
         send_note(&mut runtime, &midi_control, 86, true);
         send_note(&mut runtime, &midi_control, grid_note, true);
@@ -7907,6 +13191,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 71, false);
         assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 1);
+        send_note(&mut runtime, &midi_control, 71, true);
+        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 71, false);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 0);
 
         send_note(&mut runtime, &midi_control, 68, true);
         midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
@@ -7917,11 +13205,49 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(runtime.snapshot().tracks[1].controls.output_muted);
         send_note(&mut runtime, &midi_control, 69, true);
         midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
+        midi_control.push_input("apc-source", vec![0xb0, 49, 127]);
         runtime.tick(Duration::from_millis(2));
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 69, false);
-        assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 1.0);
+        assert!(!runtime.snapshot().tracks[1].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 0.0);
+        assert!(runtime.snapshot().tracks[2].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[2].controls.output_balance, 1.0);
         assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
+
+        send_note(&mut runtime, &midi_control, 68, true);
+        midi_control.push_input("apc-source", vec![0xb0, 56, 127]);
+        runtime.tick(Duration::from_millis(2));
+        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 68, false);
+        assert_eq!(runtime.snapshot().tracks[0].controls.output_gain_db, 20.0);
+        assert!(runtime.snapshot().tracks[0].controls.output_muted);
+        send_note(&mut runtime, &midi_control, 69, true);
+        midi_control.push_input("apc-source", vec![0xb0, 56, 0]);
+        runtime.tick(Duration::from_millis(2));
+        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 69, false);
+        assert!(!runtime.snapshot().tracks[0].controls.output_stereo);
+        assert_eq!(runtime.snapshot().tracks[0].controls.output_balance, 0.0);
+        assert!(runtime.snapshot().tracks[0].controls.input_monitoring);
+
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        send_note(&mut runtime, &midi_control, 69, true);
+        send_note(&mut runtime, &midi_control, 57, true);
+        send_note(&mut runtime, &midi_control, 69, false);
+        assert!(!runtime.snapshot().tracks[1].controls.input_monitoring);
+        assert!(runtime.snapshot().tracks[2].controls.input_monitoring);
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(false),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         runtime
             .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
             .unwrap();
@@ -8061,6 +13387,28 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.snapshot().tracks[3].loops[0].id
         );
 
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 70, true);
+        send_note(&mut runtime, &midi_control, 56, true);
+        send_note(&mut runtime, &midi_control, 56, false);
+        send_note(&mut runtime, &midi_control, 59, true);
+        send_note(&mut runtime, &midi_control, 59, false);
+        send_note(&mut runtime, &midi_control, 70, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        let extended_sections = &runtime.model.loops[&target_id].script_composition;
+        assert_eq!(extended_sections.len(), 2);
+        assert_eq!(
+            extended_sections[0],
+            [
+                runtime.snapshot().tracks[2].loops[0].id,
+                runtime.snapshot().tracks[3].loops[0].id,
+            ]
+        );
+        assert_eq!(
+            extended_sections[1],
+            [runtime.snapshot().tracks[4].loops[0].id]
+        );
+
         // Re-enter composition mode and release each source before pressing the next one,
         // proving the production controller's regular serial append path as well.
         send_note(&mut runtime, &midi_control, 98, true);
@@ -8071,11 +13419,13 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         send_note(&mut runtime, &midi_control, 60, false);
         send_note(&mut runtime, &midi_control, 61, true);
         send_note(&mut runtime, &midi_control, 61, false);
+        send_note(&mut runtime, &midi_control, 88, true);
+        send_note(&mut runtime, &midi_control, 88, false);
         send_note(&mut runtime, &midi_control, 70, false);
         send_note(&mut runtime, &midi_control, 98, false);
         let serial_target = runtime.snapshot().tracks[4].loops[0].id;
         let serial_sections = &runtime.model.loops[&serial_target].script_composition;
-        assert_eq!(serial_sections.len(), 2);
+        assert_eq!(serial_sections.len(), 3);
         assert_eq!(
             serial_sections[0],
             [runtime.snapshot().tracks[5].loops[0].id]
@@ -8083,6 +13433,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(
             serial_sections[1],
             [runtime.snapshot().tracks[6].loops[0].id]
+        );
+        assert_eq!(
+            serial_sections[2],
+            [runtime.snapshot().tracks[0].loops[0].id]
         );
         assert!(runtime.snapshot().scripting.scripts[0]
             .latest_error
@@ -8136,8 +13490,148 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(midi_control.active_connections(), 0);
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn production_apc_reset_restores_authoritative_loop_colors() {
+        let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
+        midi_control.set_endpoints(vec![
+            shoop_scripting::MidiEndpoint {
+                id: "apc-source".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Output,
+            },
+            shoop_scripting::MidiEndpoint {
+                id: "apc-sink".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Input,
+            },
+        ]);
+        let mut runtime =
+            cooperative_start_with_midi(Box::new(FakeBackend::default()), Box::new(midi)).unwrap();
+        for index in 0..2 {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: format!("Track {index}"),
+                    audio_channels: 2,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let initial_loop_id = runtime.model.tracks[1].loops[2];
+        let initial_backend_id = runtime.model.loops[&initial_loop_id].backend_id;
+        runtime
+            .backend
+            .set_loop_length(initial_backend_id, 100)
+            .unwrap();
+        runtime
+            .backend
+            .transition_loop(initial_backend_id, BackendLoopMode::Recording, None)
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "akai_apc_mini_mk1.lua".to_owned(),
+                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        runtime.tick(Duration::from_millis(1_000));
+        let mut initial_reset = midi_control.take_sent();
+        for _ in 0..70 {
+            runtime.tick(Duration::from_millis(1));
+            initial_reset.extend(midi_control.take_sent());
+        }
+        assert!(initial_reset
+            .iter()
+            .any(|(_, message)| message == &[0x90, 40, 3]));
+
+        let send_note = |runtime: &mut CooperativeApplicationRuntime,
+                         midi: &shoop_scripting::FakeMidiControl,
+                         note: u8,
+                         pressed: bool| {
+            midi.push_input(
+                "apc-source",
+                vec![if pressed { 0x90 } else { 0x80 }, note, 0x7f],
+            );
+            runtime.tick(Duration::from_millis(2));
+            runtime.tick(Duration::ZERO);
+        };
+        let collect = |runtime: &mut CooperativeApplicationRuntime,
+                       midi: &shoop_scripting::FakeMidiControl| {
+            let mut messages = midi.take_sent();
+            for _ in 0..20 {
+                runtime.tick(Duration::from_millis(1));
+                messages.extend(midi.take_sent());
+            }
+            messages
+        };
+
+        send_note(&mut runtime, &midi_control, 56, true);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 56, 3]));
+        runtime.tick(Duration::from_millis(100));
+        send_note(&mut runtime, &midi_control, 56, true);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 56, 1]));
+        let loop_id = runtime.model.tracks[1].loops[0];
+        let backend_id = runtime.model.loops[&loop_id].backend_id;
+        runtime.backend.set_loop_length(backend_id, 100).unwrap();
+        runtime.tick(Duration::ZERO);
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, 56, true);
+        send_note(&mut runtime, &midi_control, 82, false);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 56, 5]));
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, 56, true);
+        send_note(&mut runtime, &midi_control, 82, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 56, 0]));
+
+        send_note(&mut runtime, &midi_control, 84, true);
+        send_note(&mut runtime, &midi_control, 41, true);
+        send_note(&mut runtime, &midi_control, 84, false);
+        assert!(collect(&mut runtime, &midi_control)
+            .iter()
+            .any(|(_, message)| message == &[0x90, 41, 3]));
+        midi_control.set_endpoints(Vec::new());
+        runtime.tick(Duration::from_millis(500));
+        midi_control.set_endpoints(vec![
+            shoop_scripting::MidiEndpoint {
+                id: "apc-source".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Output,
+            },
+            shoop_scripting::MidiEndpoint {
+                id: "apc-sink".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Input,
+            },
+        ]);
+        runtime.tick(Duration::from_millis(500));
+        runtime.tick(Duration::from_millis(1_000));
+        let mut reset = midi_control.take_sent();
+        for _ in 0..70 {
+            runtime.tick(Duration::from_millis(1));
+            reset.extend(midi_control.take_sent());
+        }
+        assert!(reset.iter().any(|(_, message)| message == &[0x90, 41, 3]));
+        assert!(!reset.iter().any(|(_, message)| message == &[0x90, 41, 0]));
+    }
+
     #[cfg(target_os = "linux")]
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unchanged_apc_script_uses_native_virtual_midi_when_available() {
         use midir::os::unix::{VirtualInput, VirtualOutput};
 
@@ -8176,7 +13670,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                 return;
             }
         };
-        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+        let mut runtime = cooperative_start_with_midi(
             Box::new(FakeBackend::default()),
             Box::new(NativeMidiService::new()),
         )
@@ -8217,7 +13711,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         drop(sink);
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_applies_intents_and_publishes_backend_state() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -8237,7 +13732,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(updated.revision > snapshot.revision);
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_rejects_stale_and_mismatched_ids_observably() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -8265,7 +13761,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .contains("stale or unknown track"));
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_track_creation_is_observable_and_not_partially_published() {
         let mut backend = FakeBackend::default();
         backend.fail_track_creation_after(1);
@@ -8280,21 +13777,21 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .unwrap();
         let snapshot = wait_for(&handle, |snapshot| !snapshot.notifications.is_empty());
         assert_eq!(snapshot.tracks.len(), 1);
-        assert!(snapshot
-            .connections
-            .application_ports
-            .iter()
-            .all(|port| matches!(
-                port.owner,
-                ApplicationPortOwner::Track { track_id, .. }
-                    if track_id == snapshot.tracks[0].id
-            )));
+        assert!(snapshot.connections.application_ports.iter().all(|port| {
+            port.owner == ApplicationPortOwner::GlobalFxControl
+                || matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. }
+                        if track_id == snapshot.tracks[0].id
+                )
+        }));
         assert!(snapshot.notifications[0]
             .message
             .contains("injected track creation failure"));
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn direct_track_creation_and_aligned_rows_are_published() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -8329,7 +13826,165 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .all(|track| track.loops.len() == 9));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn auto_mute_other_track_inputs_is_respected_per_monitoring_request() {
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        for name in ["first", "second", "third"] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                }),
+            );
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let first = model.tracks[1].id;
+        let second = model.tracks[2].id;
+        let third = model.tracks[3].id;
+        let monitoring = |model: &ApplicationModel| {
+            model
+                .tracks
+                .iter()
+                .map(|track| track.controls.input_monitoring)
+                .collect::<Vec<_>>()
+        };
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first, second], true, false)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_global_action(
+                &mut backend,
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(true),
+            )
+            .unwrap();
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_track_action(
+                &mut backend,
+                third,
+                TrackAction::InputMonitoringChanged {
+                    enabled: true,
+                    respect_auto_mute: true,
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, false, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first], true, false)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first], false, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, false, false, true]);
+
+        model
+            .handle_track_input_monitoring(&mut backend, &[first, second], true, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+
+        model
+            .handle_global_action(
+                &mut backend,
+                GlobalControlAction::SetAutoMuteOtherTrackInputs(false),
+            )
+            .unwrap();
+        assert_eq!(monitoring(&model), [false, true, true, false]);
+        model
+            .handle_track_input_monitoring(&mut backend, &[third], true, true)
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(monitoring(&model), [false, true, true, true]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_panic_fans_out_all_channels_and_continues_after_track_failure() {
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        for (name, audio_channels, midi) in [
+            ("fails", 0, true),
+            ("works", 0, true),
+            ("inactive", 0, true),
+            ("audio", 1, false),
+        ] {
+            model.handle_intent(
+                &mut backend,
+                AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi,
+                }),
+            );
+        }
+        for track_index in [1, 2, 4] {
+            let track_id = model.tracks[track_index].id;
+            model.handle_intent(
+                &mut backend,
+                AppIntent::Track {
+                    track_id,
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
+                },
+            );
+        }
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let failed = model.tracks[1].backend_id;
+        let successful = model.tracks[2].backend_id;
+        backend.fail_midi_input_for(failed);
+        model
+            .active_piano_notes
+            .insert(60, BTreeSet::from([model.tracks[1].id]));
+
+        let operation_start = backend.operations().len();
+        let error = model
+            .handle_global_action(&mut backend, GlobalControlAction::MidiPanic)
+            .unwrap_err();
+        assert!(error.contains("could not send MIDI panic to 1 track(s)"));
+        assert!(model.active_piano_notes.is_empty());
+        let injections = backend.operations()[operation_start..]
+            .iter()
+            .filter_map(|operation| match operation {
+                shoop_backend::FakeOperation::InjectMidiInput(track, events) => {
+                    Some((*track, events.clone()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(injections.len(), 1);
+        assert_eq!(injections[0].0, successful);
+        assert_eq!(
+            injections[0]
+                .1
+                .iter()
+                .map(|event| event.data.clone())
+                .collect::<Vec<_>>(),
+            (0..16)
+                .map(|channel| vec![0xb0 | channel, 120, 0])
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn piano_fanout_tracks_original_monitored_midi_recipients() {
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -8390,7 +14045,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8426,7 +14084,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(monitoring),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: monitoring,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8457,7 +14118,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn piano_partial_failure_keeps_successful_recipients_releasable() {
         let files = Arc::new(Mutex::new(VecDeque::new()));
         let previews = Arc::new(Mutex::new(VecDeque::new()));
@@ -8477,7 +14138,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                 &mut backend,
                 AppIntent::Track {
                     track_id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 },
             );
         }
@@ -8506,7 +14170,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(!model.active_piano_notes.contains_key(&64));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_backed_piano_fanout_records_into_each_monitored_midi_track() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -8525,7 +14189,10 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime
                 .dispatch(AppIntent::Track {
                     track_id: track.id,
-                    action: TrackAction::InputMonitoringChanged(true),
+                    action: TrackAction::InputMonitoringChanged {
+                        enabled: true,
+                        respect_auto_mute: false,
+                    },
                 })
                 .unwrap();
         }
@@ -8564,7 +14231,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(captured.tracks[3].loops[0].midi.is_empty());
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn controls_selection_details_solo_and_fixed_recording_are_functional() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -8599,7 +14267,11 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                     .as_ref()
                     .is_some_and(|details| details.loop_id == first)
         });
-        assert_eq!(snapshot.details.as_ref().unwrap().channels.len(), 2);
+        let details = snapshot.details.as_ref().unwrap();
+        assert_eq!(details.channels.len(), 2);
+        assert_eq!(details.midi_channels.len(), 1);
+        assert!(!details.loading);
+        assert!(!details.midi_loading);
 
         handle
             .dispatch(AppIntent::Loop {
@@ -8632,7 +14304,153 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(snapshot.global_controls.apply_n_cycles, 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_only_selection_publishes_immutable_midi_details() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "MIDI only".to_owned(),
+                    audio_channels: 0,
+                    midi: true,
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let track_id = model.tracks[1].id;
+        let loop_id = model.tracks[1].loops[0];
+        let backend_loop = model.loops[&loop_id].backend_id;
+        backend
+            .replace_loop_content(
+                backend_loop,
+                &BackendLoopContentUpdate {
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 24,
+                        start_state: Vec::new(),
+                        events: vec![
+                            BackendMidiEvent {
+                                time: 2,
+                                data: vec![0x90, 67, 99],
+                            },
+                            BackendMidiEvent {
+                                time: 18,
+                                data: vec![0x80, 67, 0],
+                            },
+                        ],
+                        start_offset: Some(-3),
+                        preplay: Some(4),
+                    }],
+                    length: Some(24),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .handle_loop_action(
+                &mut backend,
+                track_id,
+                loop_id,
+                LoopAction::IconClicked(SelectionModifiers::default()),
+            )
+            .unwrap();
+
+        let details = model.details_snapshot().unwrap();
+        assert!(details.channels.is_empty());
+        assert!(!details.loading);
+        assert!(!details.midi_loading);
+        assert_eq!(details.midi_channels.len(), 1);
+        let channel = &details.midi_channels[0];
+        assert_eq!(channel.start_offset, -3);
+        assert_eq!(channel.loop_length, 24);
+        assert_eq!(channel.events.len(), 2);
+        assert_eq!(channel.events[0].data.as_ref(), [0x90, 67, 99]);
+        assert_eq!(
+            backend.capture_session().unwrap().tracks[1].loops[0].midi[0]
+                .events
+                .len(),
+            2
+        );
+        let original_events = Arc::clone(&channel.events);
+        model
+            .apply_script_operation(
+                &mut backend,
+                ControlOperation::ClearLoops {
+                    loops: vec![loop_id],
+                },
+            )
+            .unwrap();
+        model.refresh_selected_media(&mut backend).unwrap();
+        let cleared = model.details_snapshot().unwrap();
+        assert!(cleared.midi_channels[0].events.is_empty());
+        assert!(!Arc::ptr_eq(
+            &cleared.midi_channels[0].events,
+            &original_events
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn default_click_targets_only_the_touched_loop_without_changing_selection() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        let touched = model.tracks[1].loops[0];
+        let other = model.tracks[1].loops[1];
+        for id in [touched, other] {
+            let loop_model = model.loops.get_mut(&id).unwrap();
+            loop_model.state.selected = true;
+            loop_model.state.mode = LoopMode::Stopped;
+            loop_model.length = 0;
+        }
+        let operation_start = backend.operations().len();
+
+        model
+            .handle_loop_action(&mut backend, track_id, touched, LoopAction::DefaultClicked)
+            .unwrap();
+
+        assert!(model.loops[&touched].state.selected);
+        assert!(model.loops[&other].state.selected);
+        let transitions = backend.operations()[operation_start..]
+            .iter()
+            .filter_map(|operation| match operation {
+                shoop_backend::FakeOperation::Transition(id, mode, delay) => {
+                    Some((*id, *mode, *delay))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            transitions,
+            [(
+                model.loops[&touched].backend_id,
+                BackendLoopMode::Recording,
+                Some(0),
+            )]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn target_delay_is_derived_from_target_and_sync_lengths() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -8673,8 +14491,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         )));
     }
 
-    #[test]
-    fn expanded_loop_actions_route_qml_equivalent_modes_grab_and_balance() {
+    #[shoop_wasm_test_support::shoop_test]
+    fn expanded_loop_actions_route_modes_grab_and_balance() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
             &mut backend,
@@ -8767,7 +14585,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         )));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn grab_policy_covers_targeted_selection_solo_and_immediate_completion() {
         let mut backend = FakeBackend::default();
         let mut model = ApplicationModel::initialize(
@@ -8852,7 +14670,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         )));
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn snapshot_reads_are_independent_of_actor_progress() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
@@ -8865,7 +14684,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(!updated.global_controls.sync);
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn actor_publishes_owned_ports_and_serializes_connection_churn_and_failure() {
         let backend = FakeBackend::default();
         let control = backend.connection_control();
@@ -8876,11 +14696,12 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         });
         assert!(initial.connections.backend_available);
         assert!(initial.connections.application_ports.iter().all(|port| {
-            matches!(
-                port.owner,
-                ApplicationPortOwner::Track { track_id, .. }
-                    if track_id == initial.tracks[0].id
-            ) && initial.tracks[0].port_ids.contains(&port.id)
+            port.owner == ApplicationPortOwner::GlobalFxControl
+                || (matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. }
+                        if track_id == initial.tracks[0].id
+                ) && initial.tracks[0].port_ids.contains(&port.id))
         }));
 
         handle
@@ -9024,7 +14845,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         });
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_connection_timeout_retains_confirmed_truth() {
         let backend = FakeBackend::default();
         let control = backend.connection_control();
@@ -9070,7 +14891,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         }));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unchanged_connection_views_are_structurally_shared_across_polls() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9085,13 +14906,14 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_driver_switch_requires_confirmation_and_resamples_transactionally() {
         let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
                 source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
             }],
@@ -9198,7 +15020,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_driver_switch_scales_recorded_loop_length_with_existing_resampler() {
         let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -9270,7 +15092,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn persistence_failure_keeps_new_driver_active_and_enables_save_retry() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9313,7 +15135,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cancelling_audio_driver_switch_leaves_runtime_unchanged() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9350,7 +15172,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(cancelled.audio_drivers.switch.message.contains("cancelled"));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn active_io_task_rejects_audio_driver_preflight_without_mutation() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9377,7 +15199,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .any(|notification| notification.message.contains("I/O task is active")));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_audio_driver_switch_restores_prior_runtime_and_reports_failure() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();
@@ -9425,7 +15247,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn remap_failure_rolls_back_the_committed_target_driver() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();
@@ -9453,7 +15275,9 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let failed = runtime.snapshot();
         assert_eq!(
             failed.audio_drivers.switch.status,
-            AudioDriverSwitchStatus::Failed
+            AudioDriverSwitchStatus::Failed,
+            "{}",
+            failed.audio_drivers.switch.message
         );
         assert!(failed
             .audio_drivers
@@ -9473,7 +15297,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(failed.tracks.len(), 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn rollback_failure_publishes_fatal_backend_state_with_both_errors() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();
@@ -9516,7 +15340,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .contains("could not remap switched session"));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn changed_commit_time_rate_requires_a_second_confirmation() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();
@@ -9562,7 +15386,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .contains("Confirm again"));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_blocks_confirmed_audio_driver_switch_without_stopping_recording() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9602,7 +15426,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(failed.status.sample_rate, 48_000);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_runtime_drives_the_engine_backed_dummy_workflow() {
         let backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -9690,16 +15514,24 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "machine.lua".to_owned(),
-                source: Arc::from("print('machine')"),
+                source: Arc::from("shoop_announce_api_version(1, 0); print('machine')"),
                 kind: ScriptKind::User,
                 enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddEphemeralScript {
+                name: "run-once.lua".to_owned(),
+                source: Arc::from("shoop_announce_api_version(1, 0); print('run once')"),
+                source_path: None,
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -9707,7 +15539,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         document.scripts.push(ScriptDocument {
             id: 77,
             name: "session.lua".to_owned(),
-            source: "require('shoop_control').set_solo(true)".to_owned(),
+            source: "shoop_announce_api_version(1, 0); require('shoop_control').set_solo(true)"
+                .to_owned(),
             enabled: true,
         });
         runtime
@@ -9720,7 +15553,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let loaded = runtime.snapshot();
-        assert_eq!(loaded.scripting.scripts.len(), 2);
+        assert_eq!(loaded.scripting.scripts.len(), 3);
         assert!(loaded
             .scripting
             .scripts
@@ -9731,6 +15564,9 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .scripts
             .iter()
             .any(|script| { script.name == "session.lua" && script.kind == ScriptKind::Session }));
+        assert!(loaded.scripting.scripts.iter().any(|script| {
+            script.name == "run-once.lua" && script.kind == ScriptKind::Ephemeral
+        }));
         assert!(loaded.global_controls.solo);
 
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
@@ -9742,7 +15578,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let before = runtime.snapshot().scripting.clone();
         let mut cancelled = document.clone();
         cancelled.sample_rate = 32_000;
-        cancelled.scripts[0].source = "require('shoop_control').set_solo(false)".to_owned();
+        cancelled.scripts[0].source =
+            "shoop_announce_api_version(1, 0); require('shoop_control').set_solo(false)".to_owned();
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "cancelled.shoop".to_owned(),
@@ -9793,11 +15630,85 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         let scripts = &runtime.snapshot().scripting.scripts;
-        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts.len(), 2);
         assert_eq!(scripts[0].name, "machine.lua");
+        assert_eq!(scripts[1].name, "run-once.lua");
+        assert_eq!(scripts[1].kind, ScriptKind::Ephemeral);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn scripts_export_exact_source_and_convert_session_ownership() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let source = "shoop_announce_api_version(1, 4)\nprint('future')";
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "future.lua".to_owned(),
+                source: Arc::from(source),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let script = &runtime.snapshot().scripting.scripts[0];
+        let script_id = script.id;
+        assert_eq!(
+            script.lifecycle,
+            shoop_app_api::ScriptLifecycle::Incompatible
+        );
+
+        runtime
+            .dispatch(AppIntent::ExportScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let output = runtime.take_file_output().unwrap();
+        assert_eq!(output.suggested_name, "future.lua");
+        assert_eq!(output.mime_type, "text/x-lua");
+        assert_eq!(&*output.bytes, source.as_bytes());
+
+        runtime
+            .dispatch(AppIntent::ConvertScriptKind {
+                script_id,
+                kind: ScriptKind::Session,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().scripting.scripts[0].kind,
+            ScriptKind::Session
+        );
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        let saved = decode_session(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert_eq!(saved.document.scripts.len(), 1);
+        assert_eq!(saved.document.scripts[0].source, source);
+
+        runtime
+            .dispatch(AppIntent::ConvertScriptKind {
+                script_id,
+                kind: ScriptKind::Ephemeral,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().scripting.scripts[0].kind,
+            ScriptKind::Ephemeral
+        );
+        runtime
+            .dispatch(AppIntent::ConvertScriptKind {
+                script_id,
+                kind: ScriptKind::Session,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RemoveSessionScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().scripting.scripts.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_session_round_trip_warns_before_resampling_and_rejects_old_files() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -9958,7 +15869,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "old.shl".to_owned(),
-                bytes: Arc::from(&b"old qml archive"[..]),
+                bytes: Arc::from(&b"unsupported predecessor archive"[..]),
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -9974,7 +15885,117 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .any(|notification| notification.message.contains("unsupported file format")));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_fx_port_round_trips_legacy_migrates_and_malformed_load_is_transactional() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        let global = runtime
+            .snapshot()
+            .connections
+            .application_ports
+            .iter()
+            .find(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+            .unwrap()
+            .clone();
+        assert_eq!(global.name, "Global FX Control MIDI In");
+        assert_eq!(global.connection_policy, ConnectionPolicy::UserManaged);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime.snapshot().io_task.as_ref().is_some_and(|task| {
+                task.kind == IoTaskKind::SaveSession && task.status == IoTaskStatus::Completed
+            }) {
+                break;
+            }
+        }
+        let saved = runtime.take_file_output().unwrap();
+        let bundle = decode_session(&saved.bytes).unwrap();
+        assert_eq!(bundle.document.global_ports.len(), 1);
+        let document = &bundle.document.global_ports[0];
+        assert_eq!(document.id, global.id.raw());
+        assert_eq!(document.ringbuffer_frames, 0);
+        assert!(document.internal_connections.is_empty());
+
+        let mut legacy = bundle.clone();
+        legacy.document.global_ports.clear();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "legacy.shoop".to_owned(),
+                bytes: Arc::from(encode_session(&legacy, "legacy").unwrap()),
+            })
+            .unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime.snapshot().io_task.as_ref().is_some_and(|task| {
+                task.kind == IoTaskKind::LoadSession && task.status == IoTaskStatus::Completed
+            }) {
+                break;
+            }
+        }
+        runtime.tick(Duration::ZERO);
+        let migrated = runtime.snapshot();
+        assert_eq!(
+            migrated
+                .connections
+                .application_ports
+                .iter()
+                .filter(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+                .count(),
+            1,
+            "task={:?}, ports={:?}",
+            migrated.io_task,
+            migrated.connections.application_ports
+        );
+        assert!(!migrated.connections.confirmed_links.iter().any(|link| {
+            migrated
+                .connections
+                .application_ports
+                .iter()
+                .find(|port| port.id == link.application_port_id)
+                .is_some_and(|port| port.owner == ApplicationPortOwner::GlobalFxControl)
+        }));
+
+        let before_tracks = migrated
+            .tracks
+            .iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>();
+        let mut malformed = bundle;
+        malformed
+            .document
+            .global_ports
+            .push(malformed.document.global_ports[0].clone());
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "malformed.shoop".to_owned(),
+                bytes: Arc::from(encode_session(&malformed, "malformed").unwrap()),
+            })
+            .unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Failed)
+            {
+                break;
+            }
+        }
+        let after = runtime.snapshot();
+        assert_eq!(
+            after
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            before_tracks
+        );
+        assert_eq!(after.io_task.as_ref().unwrap().status, IoTaskStatus::Failed);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn unsupported_deferred_topology_is_rejected_without_replacing_the_session() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -10046,7 +16067,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         }));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn invalid_loop_media_inputs_finish_tasks_as_failed() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -10104,7 +16125,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_audio_and_midi_io_map_channels_and_warn_before_resampling() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -10429,7 +16450,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .any(|event| event.frame == 75 && event.data == [0x90, 60, 100]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dry_wet_media_io_maps_and_exports_role_order_without_flattening() {
         let mut backend = FakeBackend::default();
         backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
@@ -10562,7 +16583,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn click_generation_and_preview_preserve_opposite_media_and_stable_identity() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
@@ -10763,7 +16784,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_backed_click_updates_preserve_running_sync_and_follower_alignment() {
         let backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
@@ -10845,7 +16866,63 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(follower.next_mode, LoopMode::Playing);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn callback_overruns_are_accumulated_as_resettable_xruns() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+
+        let mut snapshot = BackendSnapshot::default();
+        snapshot.status.xruns = 2;
+        snapshot.status.callback_budget_overruns = 3;
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.xruns, 5);
+
+        snapshot.status.xruns = 0;
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.xruns, 5);
+
+        snapshot.status.callback_budget_overruns = 5;
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.xruns, 7);
+
+        model.handle_intent(&mut backend, AppIntent::ResetXruns);
+        assert_eq!(model.status.xruns, 0);
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.xruns, 0);
+
+        snapshot.status.callback_budget_overruns = 1;
+        model.apply_backend_snapshot(snapshot);
+        assert_eq!(model.status.xruns, 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn render_memory_growth_is_a_recoverable_warning() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+
+        let mut snapshot = BackendSnapshot::default();
+        snapshot.status.render_memory_growths = 1;
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.status.render_memory_growths, 1);
+        assert_eq!(model.notifications.len(), 1);
+        assert_eq!(model.notifications[0].level, NotificationLevel::Warning);
+        assert!(model.notifications[0].message.contains("Audio recovered"));
+
+        model.apply_backend_snapshot(snapshot.clone());
+        assert_eq!(model.notifications.len(), 1);
+
+        snapshot.status.render_memory_growths = 3;
+        model.apply_backend_snapshot(snapshot);
+        assert_eq!(model.status.render_memory_growths, 3);
+        assert_eq!(model.notifications.len(), 2);
+        assert!(model.notifications[1].message.contains('2'));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn generated_click_update_resets_target_offsets_and_preserves_other_media() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -10945,7 +17022,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(model.loops[&sync_id].length, 115_200);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn click_generation_rejects_conflicts_and_failed_update_keeps_content() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -10988,7 +17065,296 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .contains("another I/O task"));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn structural_creation_and_removal_are_provisional_and_rejection_recovers() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Provisional".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks.last().unwrap().id;
+        let backend_id = model.tracks.last().unwrap().backend_id;
+        assert_eq!(
+            model.tracks.last().unwrap().structural_state,
+            StructuralState::Creating
+        );
+        let confirmed = backend.poll().unwrap();
+        model.apply_backend_snapshot(confirmed.clone());
+        assert_eq!(
+            model.tracks.last().unwrap().structural_state,
+            StructuralState::Confirmed
+        );
+
+        model
+            .handle_track_action(&mut backend, track_id, TrackAction::Remove)
+            .unwrap();
+        assert_eq!(
+            model.tracks.last().unwrap().structural_state,
+            StructuralState::Removing
+        );
+        assert!(model.tracks.last().unwrap().loops.iter().all(|loop_id| {
+            model.loops[loop_id].state.structural_state == StructuralState::Removing
+        }));
+        let mut rejected = confirmed;
+        rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 2,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackStructure,
+                entity: Some(backend_id.raw()),
+                detail: Some(BackendMutationDetail::TrackRemoval),
+                message: "removal rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(rejected);
+        assert_eq!(
+            model.tracks.last().unwrap().structural_state,
+            StructuralState::Confirmed
+        );
+        assert!(model.tracks.last().unwrap().loops.iter().all(|loop_id| {
+            model.loops[loop_id].state.structural_state == StructuralState::Confirmed
+        }));
+
+        let stale_index = model
+            .tracks
+            .iter()
+            .position(|track| track.id == track_id)
+            .unwrap();
+        model.remove_track_model(stale_index);
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Loop rejection".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let loop_track_id = model.tracks.last().unwrap().id;
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let previous_loop_count = model.tracks.last().unwrap().loops.len();
+        model
+            .add_aligned_loop_row(&mut backend, loop_track_id)
+            .unwrap();
+        let added_loop_id = *model.tracks.last().unwrap().loops.last().unwrap();
+        let added_backend_loop = model.loops[&added_loop_id].backend_id;
+        let mut loop_rejected = backend.poll().unwrap();
+        loop_rejected.loops.remove(&added_backend_loop);
+        loop_rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 3,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackStructure,
+                entity: Some(backend_id.raw()),
+                detail: Some(BackendMutationDetail::LoopCreation {
+                    loop_id: added_backend_loop,
+                }),
+                message: "loop creation rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(loop_rejected);
+        assert_eq!(
+            model.tracks.last().unwrap().loops.len(),
+            previous_loop_count
+        );
+        assert!(!model.loops.contains_key(&added_loop_id));
+
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Rejected creation".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let rejected_track_id = model.tracks.last().unwrap().id;
+        let rejected_backend_track = model.tracks.last().unwrap().backend_id;
+        let rejected_backend_loops = model
+            .tracks
+            .last()
+            .unwrap()
+            .loops
+            .iter()
+            .map(|loop_id| model.loops[loop_id].backend_id)
+            .collect::<Vec<_>>();
+        let mut creation_rejected = backend.poll().unwrap();
+        creation_rejected.tracks.remove(&rejected_backend_track);
+        for loop_id in rejected_backend_loops {
+            creation_rejected.loops.remove(&loop_id);
+        }
+        creation_rejected
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 4,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackStructure,
+                entity: Some(rejected_backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackCreation),
+                message: "track creation rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(creation_rejected);
+        assert!(model
+            .tracks
+            .iter()
+            .all(|track| track.id != rejected_track_id));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn desired_controls_survive_stale_snapshots_ignore_stale_rejection_and_converge() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        let track_id = model.tracks[0].id;
+        let backend_track = model.tracks[0].backend_id;
+        let loop_id = model.tracks[0].loops[0];
+        let backend_loop = model.loops[&loop_id].backend_id;
+
+        model.desired_track_controls.insert(
+            (backend_track, TrackControlKey::OutputGain),
+            BackendTrackControl::OutputGainDb(-6.0),
+        );
+        model
+            .desired_loop_controls
+            .insert((backend_loop, LoopControlKey::Gain), 0.7);
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(model.tracks[0].controls.output_gain_db, -6.0);
+        assert_eq!(model.loops[&loop_id].state.gain, 0.7);
+
+        model.desired_track_controls.insert(
+            (backend_track, TrackControlKey::OutputGain),
+            BackendTrackControl::OutputGainDb(-12.0),
+        );
+        let mut stale_rejection = backend.poll().unwrap();
+        stale_rejection
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 9,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackControl(
+                    BackendTrackControl::OutputGainDb(-6.0),
+                )),
+                message: "older gain rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(stale_rejection);
+        assert_eq!(model.tracks[0].controls.output_gain_db, -12.0);
+
+        let mut latest_rejection = backend.poll().unwrap();
+        latest_rejection
+            .mutation_failures
+            .push(shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 10,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackControl(
+                    BackendTrackControl::OutputGainDb(-12.0),
+                )),
+                message: "latest gain rejected".to_owned(),
+            });
+        model.apply_backend_snapshot(latest_rejection);
+        assert_eq!(model.tracks[0].id, track_id);
+        assert_eq!(model.tracks[0].controls.output_gain_db, 0.0);
+        assert!(!model
+            .desired_track_controls
+            .contains_key(&(backend_track, TrackControlKey::OutputGain)));
+
+        let fx_rejected = BackendTrackFxControl::SetVisible(true);
+        model
+            .desired_loop_controls
+            .insert((backend_loop, LoopControlKey::Gain), 0.5);
+        model
+            .desired_loop_controls
+            .insert((backend_loop, LoopControlKey::Balance), -0.25);
+        model
+            .desired_fx_controls
+            .insert((backend_track, FxControlKey::Visible), fx_rejected.clone());
+        let mut control_rejections = backend.poll().unwrap();
+        control_rejections.mutation_failures.extend([
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 11,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::LoopControl,
+                entity: Some(backend_loop.raw()),
+                detail: Some(BackendMutationDetail::LoopGain(0.5)),
+                message: "loop gain rejected".to_owned(),
+            },
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 12,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::LoopControl,
+                entity: Some(backend_loop.raw()),
+                detail: Some(BackendMutationDetail::LoopBalance(-0.25)),
+                message: "loop balance rejected".to_owned(),
+            },
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 13,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::TrackFxControl,
+                entity: Some(backend_track.raw()),
+                detail: Some(BackendMutationDetail::TrackFxControl(fx_rejected)),
+                message: "FX visibility rejected".to_owned(),
+            },
+            shoop_backend::BackendMutationFailure {
+                driver_generation: 1,
+                sequence: 14,
+                operation_key: None,
+                kind: shoop_backend::BackendMutationKind::SessionTransfer,
+                entity: None,
+                detail: None,
+                message: "uncorrelated operation rejected".to_owned(),
+            },
+        ]);
+        model.apply_backend_snapshot(control_rejections);
+        assert!(!model
+            .desired_loop_controls
+            .contains_key(&(backend_loop, LoopControlKey::Gain)));
+        assert!(!model
+            .desired_loop_controls
+            .contains_key(&(backend_loop, LoopControlKey::Balance)));
+        assert!(!model
+            .desired_fx_controls
+            .contains_key(&(backend_track, FxControlKey::Visible)));
+
+        model.desired_track_controls.insert(
+            (backend_track, TrackControlKey::OutputGain),
+            BackendTrackControl::OutputGainDb(-3.0),
+        );
+        backend
+            .set_track_control(backend_track, BackendTrackControl::OutputGainDb(-3.0))
+            .unwrap();
+        model.apply_backend_snapshot(backend.poll().unwrap());
+        assert_eq!(model.tracks[0].controls.output_gain_db, -3.0);
+        assert!(!model
+            .desired_track_controls
+            .contains_key(&(backend_track, TrackControlKey::OutputGain)));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_runtime_bounds_command_work_and_reports_capacity() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();

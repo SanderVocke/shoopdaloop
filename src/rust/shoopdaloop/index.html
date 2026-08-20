@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#181818" />
+    <link rel="icon" type="image/png" href="./icon.png" />
+    <title>ShoopDaLoop browser audio</title>
+    <link data-trunk rel="rust" data-bin="shoopdaloop" />
+    <link data-trunk rel="copy-file" href="../../../resources/iconset/icon.png" />
+    <link data-trunk rel="copy-file" href="raw_wasm_host.js" />
+    <link data-trunk rel="copy-file" href="audio_worklet.js" />
+    <link data-trunk rel="copy-file" href="audio_worker.js" />
+    <link data-trunk rel="copy-file" href="worker_fixture_contract.js" />
+    <link data-trunk rel="copy-dir" href="generated" />
+    <link data-trunk rel="copy-dir" href="../../../resources/fonts/roboto" />
+    <style>
+      @font-face {
+        font-family: "Roboto";
+        src: url("./roboto/Roboto-Regular.ttf") format("truetype");
+        font-style: normal;
+        font-weight: 400;
+      }
+
+      @font-face {
+        font-family: "Roboto";
+        src: url("./roboto/Roboto-Italic.ttf") format("truetype");
+        font-style: italic;
+        font-weight: 400;
+      }
+
+      @font-face {
+        font-family: "Roboto";
+        src: url("./roboto/Roboto-Bold.ttf") format("truetype");
+        font-style: normal;
+        font-weight: 700;
+      }
+
+      @font-face {
+        font-family: "Roboto";
+        src: url("./roboto/Roboto-BoldItalic.ttf") format("truetype");
+        font-style: italic;
+        font-weight: 700;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #181818;
+        font-family: "Roboto", sans-serif;
+      }
+
+      #shoop_canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: none;
+      }
+
+      #runtime_status {
+        position: fixed;
+        right: 8px;
+        bottom: 6px;
+        color: #aaa;
+        font-size: 11px;
+      }
+
+      #browser_permissions_dialog {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: rgb(0 0 0 / 65%);
+      }
+
+      #browser_permissions_dialog[hidden] {
+        display: none;
+      }
+
+      .browser_permissions_panel {
+        box-sizing: border-box;
+        width: min(560px, 100%);
+        max-height: 100%;
+        overflow: auto;
+        border: 1px solid #555;
+        border-radius: 8px;
+        padding: 20px;
+        color: #eee;
+        background: #242424;
+        box-shadow: 0 12px 40px rgb(0 0 0 / 55%);
+      }
+
+      .browser_permissions_panel h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+
+      .browser_permissions_panel > p {
+        margin: 0 0 16px;
+        color: #bbb;
+      }
+
+      .browser_permission_row {
+        display: grid;
+        grid-template-columns: minmax(150px, 1fr) minmax(120px, auto);
+        gap: 6px 16px;
+        align-items: center;
+        padding: 12px 0;
+        border-top: 1px solid #444;
+      }
+
+      .browser_permission_name {
+        font-weight: 700;
+      }
+
+      .browser_permission_status {
+        grid-column: 1;
+        color: #bbb;
+        font-size: 13px;
+      }
+
+      #enable_audio,
+      #enable_output_audio,
+      #enable_midi,
+      #close_browser_permissions {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        border: 1px solid #f0b429;
+        border-radius: 4px;
+        padding: 7px 10px;
+        color: #181818;
+        background: #f0b429;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: 700;
+      }
+
+      #enable_audio[hidden],
+      #enable_output_audio[hidden],
+      #enable_midi[hidden] {
+        display: none;
+      }
+
+      #enable_audio:disabled,
+      #enable_output_audio:disabled,
+      #enable_midi:disabled {
+        cursor: default;
+        opacity: 0.55;
+      }
+
+      .browser_permissions_actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 16px;
+      }
+
+      #close_browser_permissions {
+        grid-column: auto;
+        grid-row: auto;
+        border-color: #777;
+        color: #eee;
+        background: #444;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="shoop_canvas"></canvas>
+    <div
+      id="browser_permissions_dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="browser_permissions_title"
+    >
+      <div class="browser_permissions_panel">
+        <h1 id="browser_permissions_title">Browser audio and MIDI permissions</h1>
+        <p>
+          Enable the browser capabilities you want to use. You can open this dialog again from
+          Settings → Audio.
+        </p>
+        <div class="browser_permission_row">
+          <span class="browser_permission_name">Audio output</span>
+          <span id="audio_output_permission_status" class="browser_permission_status">Not enabled</span>
+          <button id="enable_output_audio" type="button">Enable output-only audio</button>
+        </div>
+        <div class="browser_permission_row">
+          <span class="browser_permission_name">Microphone audio</span>
+          <span id="microphone_permission_status" class="browser_permission_status">Not granted</span>
+          <button id="enable_audio" type="button">Enable microphone audio</button>
+        </div>
+        <div class="browser_permission_row">
+          <span class="browser_permission_name">Web MIDI + SysEx</span>
+          <span id="midi_permission_status" class="browser_permission_status">Not granted</span>
+          <button id="enable_midi" type="button">Enable Web MIDI + SysEx</button>
+        </div>
+        <div class="browser_permissions_actions">
+          <button
+            id="close_browser_permissions"
+            type="button"
+            onclick="document.getElementById('browser_permissions_dialog').hidden = true"
+          >Close</button>
+        </div>
+      </div>
+    </div>
+    <span id="runtime_status" data-driver-state="starting">Starting browser application…</span>
+    <noscript>This application requires JavaScript and WebAssembly. Browser audio availability depends on browser origin policy.</noscript>
+  </body>
+</html>

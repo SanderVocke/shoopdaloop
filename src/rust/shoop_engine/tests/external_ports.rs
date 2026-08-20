@@ -4,7 +4,7 @@
 //! `ExternalAudioPort` and `ExternalMidiPort` take one buffer per cycle, staged before
 //! the cycle runs, unlike the dummy ports whose queues span cycles.
 
-use assert2::{check, let_assert};
+use assert2::check;
 use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::engine::split;
 use shoop_engine::external_audio_port::ExternalAudioPort;
@@ -22,19 +22,19 @@ fn midi_port(name: &str, direction: PortDirection) -> Port {
     Port::ExternalMidi(ExternalMidiPort::new(name, direction))
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn a_driver_can_record_and_play_audio_through_the_session() {
     let mut s = Session::default();
     let input = s.add_port(audio_port("in", PortDirection::Input));
     let output = s.add_port(audio_port("out", PortDirection::Output));
     let l = s.create_loop();
-    let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-    let_assert!(Ok(()) = s.connect_channel_input(c, input));
-    let_assert!(Ok(()) = s.connect_channel_output(c, output));
-    let_assert!(Ok(()) = s.apply_graph_changes());
+    assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+    assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+    assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+    assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
     // Record four frames the way a driver would: stage its input buffer, then run.
-    let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+    assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
     let incoming = [0.25f32, 0.5, 0.75, 1.0];
     s.port_mut(input)
         .expect("port")
@@ -46,7 +46,7 @@ fn a_driver_can_record_and_play_audio_through_the_session() {
     check!(s.loop_(l).expect("loop").length() == 4);
 
     // Play it back and read the output the way a driver would.
-    let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+    assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
     s.process(4);
 
     let out = s
@@ -58,15 +58,15 @@ fn a_driver_can_record_and_play_audio_through_the_session() {
     check!(out == incoming);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn an_unfed_cycle_is_silent_rather_than_a_repeat() {
     let mut s = Session::default();
     let input = s.add_port(audio_port("in", PortDirection::Input));
     let l = s.create_loop();
-    let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-    let_assert!(Ok(()) = s.connect_channel_input(c, input));
-    let_assert!(Ok(()) = s.apply_graph_changes());
-    let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+    assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+    assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+    assert2::assert!(let Ok(()) = s.apply_graph_changes());
+    assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
 
     s.port_mut(input)
         .expect("port")
@@ -82,18 +82,18 @@ fn an_unfed_cycle_is_silent_rather_than_a_repeat() {
     check!(ch.data()[4..8] == [0.0; 4]);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn a_driver_can_record_and_play_midi_through_the_session() {
     let mut s = Session::default();
     let input = s.add_port(midi_port("min", PortDirection::Input));
     let output = s.add_port(midi_port("mout", PortDirection::Output));
     let l = s.create_loop();
-    let_assert!(Ok(c) = s.add_midi_channel(l, 256, ChannelMode::Direct));
-    let_assert!(Ok(()) = s.connect_channel_input(c, input));
-    let_assert!(Ok(()) = s.connect_channel_output(c, output));
-    let_assert!(Ok(()) = s.apply_graph_changes());
+    assert2::assert!(let Ok(c) = s.add_midi_channel(l, 256, ChannelMode::Direct));
+    assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+    assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+    assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-    let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+    assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
     {
         let p = s
             .port_mut(input)
@@ -116,7 +116,7 @@ fn a_driver_can_record_and_play_midi_through_the_session() {
 
     // Play it back; the driver reads what the output port is holding for it.
     s.loop_mut(l).expect("loop").set_length(4);
-    let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+    assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
     s.process(4);
 
     let out = s
@@ -134,20 +134,20 @@ fn a_driver_can_record_and_play_midi_through_the_session() {
 
 /// The whole boundary at once: a control command and a staged buffer meeting in one
 /// cycle, which is what a driver callback does every time it runs.
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn the_engine_drives_driver_shaped_ports() {
     let mut s = Session::default();
     let input = s.add_port(midi_port("min", PortDirection::Input));
     let output = s.add_port(midi_port("mout", PortDirection::Output));
     let l = s.create_loop();
-    let_assert!(Ok(c) = s.add_midi_channel(l, 256, ChannelMode::Direct));
-    let_assert!(Ok(()) = s.connect_channel_input(c, input));
-    let_assert!(Ok(()) = s.connect_channel_output(c, output));
-    let_assert!(Ok(()) = s.apply_graph_changes());
+    assert2::assert!(let Ok(c) = s.add_midi_channel(l, 256, ChannelMode::Direct));
+    assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+    assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+    assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
     let (mut engine, mut handle) = split(s, 16);
 
-    let_assert!(
+    assert2::assert!(let
         Ok(_) = handle.send(Box::new(move |s: &mut Session| {
             let _ = s.set_loop_mode(0, LoopMode::Recording);
         }))
@@ -181,3 +181,5 @@ fn the_engine_drives_driver_shaped_ports() {
             == 1
     );
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

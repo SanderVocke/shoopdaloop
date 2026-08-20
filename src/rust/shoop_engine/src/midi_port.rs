@@ -13,6 +13,7 @@ use crate::midi_sorting_buffer::MidiSortingBuffer;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{MidiStorage, MidiStorageElem};
 use crate::port::PortDataType;
+use crate::state::LatestMidiMessage;
 use crate::state_mirror::MidiPortStateMirror;
 use std::sync::Arc;
 
@@ -38,6 +39,7 @@ pub struct MidiPort {
     ringbuffer_capacity: usize,
     n_input_events: u32,
     n_output_events: u32,
+    latest_input_message: Option<LatestMidiMessage>,
     state: Arc<MidiPortStateMirror>,
 }
 
@@ -55,6 +57,7 @@ impl MidiPort {
             ringbuffer_capacity: DEFAULT_RINGBUFFER_CAPACITY_ELEMS,
             n_input_events: 0,
             n_output_events: 0,
+            latest_input_message: None,
             state: Arc::new(MidiPortStateMirror::default()),
         }
     }
@@ -135,6 +138,9 @@ impl MidiPort {
     pub fn reset_n_output_events(&mut self) {
         self.n_output_events = 0;
     }
+    pub fn latest_input_message(&self) -> Option<LatestMidiMessage> {
+        self.latest_input_message
+    }
 
     pub fn midi_state(&self) -> Option<&MidiStateTracker> {
         self.midi_state.as_ref()
@@ -195,6 +201,13 @@ impl MidiPort {
             self.publish_state();
             return;
         };
+        if let Some(message) = events
+            .last()
+            .and_then(|event| LatestMidiMessage::new(event.data()))
+        {
+            self.latest_input_message = Some(message);
+            self.state.publish_latest_input_message(message);
+        }
         self.n_input_events += events.len() as u32;
         let input_count = events.len() as u32;
 
@@ -231,7 +244,7 @@ impl MidiPort {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn port() -> MidiPort {
         MidiPort::with_ringbuffer_capacity(TrackWhat::ALL, 64)
@@ -245,12 +258,12 @@ mod tests {
         b.events().unwrap().iter().map(|e| e.time).collect()
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn reports_its_data_type() {
         check!(port().data_type() == PortDataType::Midi);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tracks_state_of_incoming_messages() {
         let mut p = port();
         let input = [
@@ -258,13 +271,13 @@ mod tests {
             ev(1, &midi::cc(0, 7, 42)),
         ];
         p.process(4, Some(&input), None);
-        let_assert!(Some(s) = p.midi_state());
+        assert2::assert!(let Some(s) = p.midi_state());
         check!(s.note_velocity(0, 60) == Some(100));
         check!(s.cc_value(0, 7) == Some(42));
         check!(p.n_notes_active() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn counts_input_events() {
         let mut p = port();
         p.process(4, Some(&[ev(0, &midi::note_on(0, 60, 1))]), None);
@@ -275,7 +288,38 @@ mod tests {
         check!(p.n_input_events() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn latest_input_message_is_exact_persistent_and_pre_mute() {
+        let mut p = port();
+        for data in [
+            &[0xf8][..],
+            &[0xc1, 7][..],
+            &[0xb2, 11, 64][..],
+            &[0xf0, 1, 2, 0xf7][..],
+        ] {
+            p.process(4, Some(&[ev(0, data)]), None);
+            check!(p.latest_input_message().unwrap().data() == data);
+            check!(
+                p.state
+                    .read(String::new())
+                    .latest_input_message
+                    .unwrap()
+                    .data()
+                    == data
+            );
+        }
+        p.set_muted(true);
+        p.process(
+            4,
+            Some(&[ev(0, &[0x90, 60, 1]), ev(1, &[0xb4, 19, 88])]),
+            None,
+        );
+        check!(p.latest_input_message().unwrap().data() == [0xb4, 19, 88]);
+        p.process(4, Some(&[]), None);
+        check!(p.latest_input_message().unwrap().data() == [0xb4, 19, 88]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn forwards_events_to_the_output_sink() {
         let mut p = port();
         let mut out = MidiSortingBuffer::with_capacity(8);
@@ -289,7 +333,7 @@ mod tests {
         check!(p.n_output_events() == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_input_only_port_counts_no_output() {
         let mut p = port();
         p.process(4, Some(&[ev(0, &midi::note_on(0, 60, 1))]), None);
@@ -299,7 +343,7 @@ mod tests {
         check!(p.n_output_events() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn muting_stops_output_but_not_state_tracking() {
         let mut p = port();
         p.set_muted(true);
@@ -316,7 +360,7 @@ mod tests {
         check!(p.n_input_events() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn muting_passthrough_queues_cleanup_for_forwarded_notes_once() {
         let mut p = port();
         p.record_passthrough(&[
@@ -340,7 +384,7 @@ mod tests {
         check!(p.take_passthrough_cleanup().is_none());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn released_and_never_forwarded_notes_need_no_passthrough_cleanup() {
         let mut p = port();
         p.record_passthrough(&[
@@ -352,7 +396,7 @@ mod tests {
         check!(p.take_passthrough_cleanup().is_none());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn muting_then_unmuting_before_processing_preserves_pending_cleanup() {
         let mut p = port();
         p.record_passthrough(&[ev(0, &midi::note_on(0, 60, 100))]);
@@ -365,7 +409,7 @@ mod tests {
         p.finish_passthrough_cleanup(cleanup);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn untracked_port_has_no_state() {
         let mut p = MidiPort::with_ringbuffer_capacity(TrackWhat::NOTHING, 64);
         p.process(4, Some(&[ev(0, &midi::note_on(0, 60, 1))]), None);
@@ -375,7 +419,7 @@ mod tests {
         check!(p.n_input_events() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn capture_is_off_until_asked_for() {
         let mut p = port();
         check!(p.ringbuffer_n_samples() == 0);
@@ -386,7 +430,7 @@ mod tests {
         check!(snap.n_events() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn capture_retains_recent_messages() {
         let mut p = port();
         p.set_ringbuffer_n_samples(100);
@@ -398,7 +442,7 @@ mod tests {
         check!(snap.n_events() == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn snapshot_clears_the_target_when_capture_is_inactive() {
         let p = port();
         let mut snap = MidiStorage::with_capacity_elems(8);
@@ -408,7 +452,7 @@ mod tests {
         check!(snap.n_events() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn messages_ageing_out_of_capture_update_the_lagging_state() {
         let mut p = port();
         // A window of only 4 frames, so messages age out quickly.
@@ -424,7 +468,7 @@ mod tests {
         check!(p.ringbuffer_tail_state().note_velocity(0, 60) == Some(100));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn shrinking_the_capture_window_is_reflected() {
         let mut p = port();
         p.set_ringbuffer_n_samples(100);
@@ -434,7 +478,7 @@ mod tests {
         check!(p.ringbuffer_n_samples() == 5);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_cycle_with_no_input_still_ages_capture() {
         let mut p = port();
         p.set_ringbuffer_n_samples(8);
@@ -445,7 +489,7 @@ mod tests {
         check!(p.ringbuffer_n_samples() == 8);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn output_event_count_resets() {
         let mut p = port();
         let mut out = MidiSortingBuffer::with_capacity(8);

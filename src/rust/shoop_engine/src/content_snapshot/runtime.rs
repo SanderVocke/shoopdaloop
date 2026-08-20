@@ -140,7 +140,7 @@ fn publisher_worker(commands: Receiver<RuntimeCommand>) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::content_snapshot::{ContentMutation, ContentRevision};
@@ -158,7 +158,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn one_worker_publishes_multiple_channel_streams() {
         let runtime = ContentSnapshotRuntime::new();
         let (mut first_writer, _first_control, first_reader) = runtime.create_audio_channel(4, 4);
@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(second_revision, ContentRevision(1));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn session_epoch_spans_all_registered_channels() {
         let runtime = ContentSnapshotRuntime::new();
         let (first, _first_control, _) = runtime.create_audio_channel(4, 2);
@@ -207,7 +207,7 @@ mod tests {
         assert!(!runtime.validate_epoch(stable));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn concurrent_readers_observe_only_complete_generations_under_stress() {
         let runtime = ContentSnapshotRuntime::new();
         let (mut writer, control, reader) = runtime.create_audio_channel(4, 8);
@@ -261,7 +261,7 @@ mod tests {
         assert!(!failed.load(Ordering::Acquire));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_reader_keeps_its_last_manifest_after_runtime_shutdown() {
         let reader = {
             let runtime = ContentSnapshotRuntime::new();

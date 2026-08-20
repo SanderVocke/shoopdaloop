@@ -162,7 +162,7 @@ pub struct SnapshotRead<T> {
 mod tests {
     use super::*;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_snapshot_trims_the_last_chunk_to_metadata_length() {
         let chunks = Arc::from([
             Arc::<[f32]>::from([1.0, 2.0]),
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(snapshot.contiguous(), vec![1.0, 2.0, 3.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_duration_is_independent_of_the_last_event() {
         let chunks = Arc::from([Arc::<[MidiEvent]>::from([MidiEvent {
             time: 2,

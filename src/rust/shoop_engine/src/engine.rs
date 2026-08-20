@@ -106,6 +106,8 @@ pub struct Stats {
     pub stuck_cycles: AtomicU32,
     /// Commands that arrived and were applied.
     pub commands_applied: AtomicU32,
+    /// Whether the engine is applying a batch removed from the visible command queue.
+    pub command_batch_in_flight: AtomicBool,
     /// Diagnostic trace publications skipped because every preallocated box was in use.
     pub trace_snapshots_dropped: AtomicU32,
     /// The newest command sequence that finished executing.
@@ -142,8 +144,8 @@ pub struct Stats {
     /// pay for one on every window whether or not anything had changed.
     ///
     /// A `true` reading can be trusted at once. A `false` reading only means the graph was
-    /// current when this was last written, so a caller must also satisfy itself that nothing
-    /// is still queued that could dirty it -- see [`EngineHandle::n_pending`].
+    /// current when this was last written, so a caller must also satisfy itself that no
+    /// topology command is queued or being applied.
     pub graph_stale: AtomicBool,
     /// Backend DSP load, as a percentage scaled by 100 so it fits an integer.
     ///
@@ -342,14 +344,7 @@ impl Engine {
     }
 
     fn process_inner(&mut self, n_frames: usize) {
-        {
-            let _span = shoop_tracing::realtime_span!("engine.rt.commands");
-            self.apply_commands();
-        }
-        {
-            let _span = shoop_tracing::realtime_span!("engine.rt.graph_state");
-            self.publish_graph_staleness();
-        }
+        self.apply_commands_and_publish_graph_staleness();
         self.cycle_inner(n_frames);
     }
 
@@ -424,16 +419,25 @@ impl Engine {
         let _span = shoop_tracing::realtime_span!("engine.rt.pump");
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
             crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
-                {
-                    let _commands_span = shoop_tracing::realtime_span!("engine.rt.commands");
-                    self.apply_commands();
-                }
-                {
-                    let _graph_span = shoop_tracing::realtime_span!("engine.rt.graph_state");
-                    self.publish_graph_staleness();
-                }
+                self.apply_commands_and_publish_graph_staleness();
             });
         });
+    }
+
+    fn apply_commands_and_publish_graph_staleness(&mut self) {
+        let batch_in_flight = {
+            let _span = shoop_tracing::realtime_span!("engine.rt.commands");
+            self.apply_commands()
+        };
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.graph_state");
+            self.publish_graph_staleness();
+        }
+        if batch_in_flight {
+            self.stats
+                .command_batch_in_flight
+                .store(false, Ordering::Release);
+        }
     }
 
     /// Publishes whether the schedule has fallen behind the topology.
@@ -446,8 +450,14 @@ impl Engine {
             .store(!self.session.graph_up_to_date(), Ordering::Relaxed);
     }
 
-    fn apply_commands(&mut self) {
+    fn apply_commands(&mut self) -> bool {
         let accepted = self.commands.slots();
+        if accepted == 0 {
+            return false;
+        }
+        self.stats
+            .command_batch_in_flight
+            .store(true, Ordering::Release);
         let mut applied = 0u32;
         for _ in 0..accepted {
             let Ok(mut queued) = self.commands.pop() else {
@@ -469,6 +479,7 @@ impl Engine {
                 .commands_applied
                 .fetch_add(applied, Ordering::Relaxed);
         }
+        true
     }
 }
 
@@ -846,7 +857,7 @@ mod tests {
     use crate::loop_mode::LoopMode;
     use crate::port::PortDirection;
     use crate::session::Port;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn engine() -> (Engine, EngineHandle) {
         split(Session::default(), 16)
@@ -854,7 +865,8 @@ mod tests {
 
     /// A blocking read, which is how the control side gets at anything a snapshot does
     /// not carry. Driven from this thread here; a real driver's callback does it.
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn send_and_wait_returns_a_result_from_the_engine() {
         use std::sync::atomic::AtomicBool;
         use std::sync::Arc;
@@ -884,10 +896,11 @@ mod tests {
         stop.store(true, Ordering::Relaxed);
         let _engine = driver.join().expect("driver thread");
 
-        let_assert!(Ok(Some(42)) = got);
+        assert2::assert!(let Ok(Some(42)) = got);
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn send_and_wait_times_out_when_nothing_is_driving_the_engine() {
         let (_e, mut h) = engine();
 
@@ -898,7 +911,7 @@ mod tests {
         check!(got == Err(WaitError::Timeout(short)));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     /// DSP load is stored scaled, so check it survives the round trip and that a
     /// nonsense reading is clamped rather than wrapping.
     fn dsp_load_round_trips() {
@@ -917,7 +930,7 @@ mod tests {
     /// A driver spinning in controlled mode processes nothing until frames are requested, and
     /// an engine no driver has taken yet has no thread at all. Without this, a blocking call
     /// in either state waits out its whole timeout.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pump_applies_commands_without_advancing_anything() {
         let (mut e, mut h) = engine();
         let l = e.session_mut().create_loop();
@@ -927,7 +940,7 @@ mod tests {
             .expect("mode");
         e.session_mut().apply_graph_changes().expect("schedule");
 
-        let_assert!(
+        assert2::assert!(let
             Ok(_) = h.send(Box::new(|s: &mut Session| {
                 let _ = s.set_loop_mode(0, LoopMode::Stopped);
             }))
@@ -945,12 +958,29 @@ mod tests {
         check!(h.reclaim() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn command_batch_visibility_covers_execution_through_staleness_publication() {
+        let (mut e, mut h) = engine();
+        let stats = Arc::clone(h.stats());
+        let observed = Arc::clone(&stats);
+        h.send(Box::new(move |s: &mut Session| {
+            assert!(observed.command_batch_in_flight.load(Ordering::Acquire));
+            s.create_loop();
+        }))
+        .expect("queue command");
+
+        e.pump();
+
+        assert!(!stats.command_batch_in_flight.load(Ordering::Acquire));
+        assert!(stats.graph_stale.load(Ordering::Relaxed));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn a_command_is_applied_on_the_next_cycle() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
 
-        let_assert!(
+        assert2::assert!(let
             Ok(_) = h.send(Box::new(|s: &mut Session| {
                 s.create_loop();
             }))
@@ -965,13 +995,13 @@ mod tests {
         check!(e.stats().commands_applied.load(Ordering::Relaxed) == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn commands_are_applied_in_order() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
 
         for _ in 0..3 {
-            let_assert!(
+            assert2::assert!(let
                 Ok(_) = h.send(Box::new(|s: &mut Session| {
                     s.create_loop();
                 }))
@@ -981,7 +1011,7 @@ mod tests {
         check!(e.session().n_loops() == 3);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_full_queue_refuses_rather_than_growing() {
         let (mut e, mut h) = split(Session::default(), 2);
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -999,7 +1029,7 @@ mod tests {
         check!(e.stats().last_applied_command.load(Ordering::Acquire) == second.get());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_payload_can_be_retained_until_queue_capacity_is_reserved() {
         let (mut e, mut h) = split(Session::default(), 1);
         h.send(Box::new(|_: &mut Session| {})).expect("fill queue");
@@ -1025,7 +1055,8 @@ mod tests {
         check!(e.session().loop_(0).expect("loop").length() == 4);
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn command_fences_observe_applied_sequence() {
         let (mut e, mut h) = engine();
         let sequence = h.send(Box::new(|_: &mut Session| {})).expect("queue");
@@ -1039,20 +1070,20 @@ mod tests {
         let _ = driver.join().expect("engine");
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn sending_after_engine_drop_reports_disconnected() {
         let (e, mut h) = engine();
         drop(e);
         check!(h.send(Box::new(|_: &mut Session| {})) == Err(SendError::Disconnected));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn executed_commands_come_back_to_be_freed() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
 
         for _ in 0..3 {
-            let_assert!(Ok(_) = h.send(Box::new(|_: &mut Session| {})));
+            assert2::assert!(let Ok(_) = h.send(Box::new(|_: &mut Session| {})));
         }
         e.process(4);
 
@@ -1061,7 +1092,7 @@ mod tests {
         check!(h.reclaim() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cycles_and_frames_are_counted() {
         let (mut e, _h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -1074,7 +1105,7 @@ mod tests {
         check!(e.stats().stale_cycles.load(Ordering::Relaxed) == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_stale_graph_still_runs_and_is_counted() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
@@ -1082,7 +1113,7 @@ mod tests {
         // Adding a port leaves the schedule out of date. The cycle runs anyway, against
         // the last-applied schedule, so existing audio keeps flowing while the next
         // schedule is built; the staleness is counted rather than costing the cycle.
-        let_assert!(
+        assert2::assert!(let
             Ok(_) = h.send(Box::new(|s: &mut Session| {
                 s.add_port(Port::Dummy(DummyAudioPort::new(
                     PortId(1),
@@ -1099,13 +1130,13 @@ mod tests {
         check!(e.stats().cycles.load(Ordering::Relaxed) == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_command_can_reconfigure_and_reschedule() {
         let (mut e, mut h) = engine();
 
         // Structural work and the reschedule it needs go in one command, so the
         // graph is never left stale at a cycle boundary.
-        let_assert!(
+        assert2::assert!(let
             Ok(_) = h.send(Box::new(|s: &mut Session| {
                 let p = s.add_port(Port::Dummy(DummyAudioPort::new(
                     PortId(1),

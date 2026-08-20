@@ -6,6 +6,7 @@
 # Before committing
 
 - If rust changes were made: `cargo fmt --all`, and build with `RUSTFLAGS="-D warnings"`
+- If Rust tests changed, run `python3 scripts/check_shoop_test_usage.py`.
 
 # Before pushing
 

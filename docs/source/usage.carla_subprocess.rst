@@ -1,20 +1,27 @@
-Carla Process Isolation
+Carla process isolation
 -----------------------
 
-Carla Rack and Patchbay FX chains can run either inside ShoopDaLoop or in a separate worker process for each chain. Select the mode under **Settings > Carla > Hosting mode** (`in_process` or `subprocess`). The Carla LV2 bundle must be installed and discoverable through ``LV2_PATH`` in both modes. On Windows, the official Carla win64 archive contains ``Carla.lv2``; add the directory containing that bundle to ``LV2_PATH`` before starting ShoopDaLoop.
+Native builds with FX support can run Carla Rack and Patchbay chains in the
+application process or in one worker process per chain. Select the global mode
+under **Settings → Carla**. It takes effect on the next launch and is not stored
+in sessions.
 
-The setting is global and takes effect the next time ShoopDaLoop starts. Running FX chains are not migrated when the setting changes. Existing settings files default to **In application process**, which preserves earlier behavior. The setting is native machine configuration, is excluded from sessions, and is applied before the audio backend creates any FX chain.
+A subprocess authenticates its control connection and uses bounded shared
+memory for realtime audio and MIDI blocks. A late or failed worker produces a
+bounded failure for that wet block instead of delaying the audio callback.
+Other tracks continue. Recovery starts a new worker generation and restores the
+last confirmed state and desired active state.
 
-With **One subprocess per FX chain** selected:
+Processed-track controls expose lifecycle and recovery state. **Carla Process
+Logs...** shows bounded stdout and stderr records per generation, including any
+dropped-byte count. Closing a plugin UI or unloading a session is normal
+shutdown, not a crash.
 
-* each Carla chain has an independent worker process;
-* the Carla external UI runs in the same worker as its LV2 instance;
-* a failed or late worker produces silence for that chain's wet result while dry routing and other chains continue;
-* clicking the FX button after a crash starts a new process generation, restores the last confirmed state and desired active state, and opens the Carla UI;
-* session saves retain the last confirmed Carla state if a worker is unavailable.
-
-The track menu's **Carla Process Logs...** action shows separate bounded stdout and stderr captures. Generation headings distinguish restarts. A dropped-byte count greater than zero means older output was evicted. The window can refresh, copy, and clear both streams.
-
-The FX indicator is orange while a worker starts or restarts, red after a crash or startup failure, grey while bypassed, and uses the normal foreground color while active. Normal external-UI closure, session unload, and application shutdown are not treated as crashes.
-
-Process isolation adds one bounded bridge wait per audio block. On the Linux reference system, median subprocess completion ranged from about 35 microseconds for a 2-channel 32-frame block to 423 microseconds for a 16-channel 1024-frame block; no deadline misses occurred in 6,000 measured blocks per mode. Results vary with the operating-system scheduler, plugin graph, and machine. A missed deadline is observable in diagnostics and yields wet silence/MIDI drop for that block rather than delaying indefinitely. Release validation artifacts now record direct/subprocess percentile, worst-case, and deadline-miss measurements for Windows, Linux, macOS Intel, and macOS ARM; see ``CARLA_SUBPROCESS_BENCHMARK.md``.
+Release archives include a pinned Carla Native runtime, external UI, and plugin
+discovery/bridge helpers. ShoopDaLoop loads this runtime directly rather than
+hosting Carla through LV2. Source builds need no Carla SDK; when no runtime is
+present the Carla processors are shown as unavailable without affecting External
+or Tiny Synth/FX tracks. Developers can use the absolute-path overrides
+``SHOOP_CARLA_NATIVE_LIBRARY`` and ``SHOOP_CARLA_RESOURCE_DIR`` to select an
+exact runtime and ``--probe-carla-native`` to validate it. ``--probe-carla-native-ui`` additionally
+opens, idles, hides, and reopens every external Carla UI before exiting.

@@ -1,890 +1,959 @@
-name: Build and test
+name: Build and Test ShoopDaLoop
 
 on:
-    push:
-      branches: [ "master", "rust_backend_new" ]
-      tags: "v*.*.*"
-    pull_request:
-      branches: [ "master", "rust_backend_new" ]
-      types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    workflow_dispatch:
-      inputs:
-        windows:
-          description: 'build and test (Windows)'
-          type: boolean
-          default: true
-        linux:
-          description: 'build and test (Linux)'
-          type: boolean
-          default: true
-        macos:
-          description: 'build and test (macOS)'
-          type: boolean
-          default: true
-        test_enabled:
-          description: 'enable testing (disable to build only)'
-          type: boolean
-          default: true
-        release:
-          description: 'build release variant (all OS)'
-          type: boolean
-          default: true
-        debug:
-          description: 'build debug variant (all OS)'
-          type: boolean
-          default: true
-        coverage:
-          description: 'build coverage variant (all OS)'
-          type: boolean
-          default: true
-        vcpkg_force_rebuild:
-          description: 'Force vcpkg dependencies rebuild'
-          type: boolean
-          default: false
-        checkpoints:
-          description: 'Upterm checkpoints (manual debugging)'
-          type: boolean
-          default: false
-        pi_checkpoints:
-          description: 'Pi coding agent checkpoints (automatic debugging)'
-          type: boolean
-          default: false
-        pi_model:
-          description: 'Model for pi coding agent'
-          type: string
-          default: 'deepseek-v4-flash'
-        pi_timeout:
-          description: 'Timeout in seconds for pi coding agent'
-          type: number
-          default: 600
-        create_draft_release:
-          description: 'create draft release and upload build artifacts to it'
-          type: boolean
-          default: false
-        qml_trace_capture_all_variants:
-          description: 'Test-only: capture and upload QML traces for every non-coverage package variant'
-          type: boolean
-          default: false
-    schedule:
-      - cron: "0 1 * * *" # every day at 1am
+  push:
+    branches: ["master"]
+    tags: "v*.*.*"
+  pull_request:
+    branches: ["master"]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  workflow_dispatch:
+    inputs:
+      tracy_failure_canary:
+        description: Run the intentional nextest failure-capture canary
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "0 2 * * *"
 
 permissions:
-  contents: write
-  checks: write
-  packages: write
+  contents: read
+  pull-requests: read
 
-# Default values for boolean inputs when NOT workflow_dispatch
-# Used by the setup job to resolve inputs.
-# Keep in sync with workflow_dispatch defaults above.
+concurrency:
+  group: build-and-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref_type == 'branch' }}
+
 env:
-  checkpoints_enabled: false
-  # pi coding agent
-  pi_checkpoint_enabled: false
-  PI_MODEL: 'openrouter/openai/gpt-oss-20b:free'
-  PI_TIMEOUT: 600
-  OPENCODE_API_KEY: ''
-  OPENROUTER_API_KEY: ''
-  # Defaults for push / PR / schedule triggers
-  WINDOWS_DEFAULT: 'true'
-  LINUX_DEFAULT: 'true'
-  MACOS_DEFAULT: 'true'
-  TEST_ENABLED_DEFAULT: 'true'
-  RELEASE_DEFAULT: 'true'
-  DEBUG_DEFAULT: 'true'
-  COVERAGE_DEFAULT: 'true'
-  VCPKG_FORCE_REBUILD_DEFAULT: 'false'
-  CHECKPOINTS_DEFAULT: 'false'
-  PI_CHECKPOINTS_DEFAULT: 'false'
-  CREATE_DRAFT_RELEASE_DEFAULT: 'false'
-  QML_TRACE_CAPTURE_ALL_VARIANTS_DEFAULT: 'false'
-  CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
-  QT_QPA_PLATFORM: "offscreen"
-  NATIVE_SHELL_CMD: "bash -c"
-  BASH_FLAGS: ""
-  PIP_BREAK_SYSTEM_PACKAGES: 1
+  PIP_BREAK_SYSTEM_PACKAGES: "1"
+  # Enable coarse and detailed engine events in every native nextest capture.
+  SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
 jobs:
-
-  ##############################################################
-  ## Setup job: resolve build settings from workflow inputs
-  ##############################################################
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      windows: ${{ steps.resolve.outputs.windows }}
-      linux: ${{ steps.resolve.outputs.linux }}
-      macos: ${{ steps.resolve.outputs.macos }}
-      test_enabled: ${{ steps.resolve.outputs.test_enabled }}
-      release: ${{ steps.resolve.outputs.release }}
-      debug: ${{ steps.resolve.outputs.debug }}
-      coverage: ${{ steps.resolve.outputs.coverage }}
-      vcpkg_force_rebuild: ${{ steps.resolve.outputs.vcpkg_force_rebuild }}
-      checkpoints: ${{ steps.resolve.outputs.checkpoints }}
-      pi_checkpoints: ${{ steps.resolve.outputs.pi_checkpoints }}
-      create_draft_release: ${{ steps.resolve.outputs.create_draft_release }}
-      qml_trace_capture_all_variants: ${{ steps.resolve.outputs.qml_trace_capture_all_variants }}
+  rust_coverage:
+    name: Rust coverage (Linux)
+    runs-on: ubuntu-24.04
     steps:
-      - name: Resolve boolean inputs with fallback defaults
-        id: resolve
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust stable with coverage tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.116
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential libasound2-dev libfluidsynth-dev libgl1-mesa-dev libgtk-3-dev \
+            libgtk2.0-dev libjack-jackd2-dev liblo-dev libmagic-dev libpulse-dev \
+            libsndfile1-dev libx11-dev libxcb-icccm4-dev libxcb-image0-dev \
+            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
+            libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev
+
+      - name: Prepare prebuilt embedded Tracy native library
         shell: bash
         run: |
-          resolve_value() {
-            local default="$1"
-            local input_val="$2"
-            if [ -n "$input_val" ]; then
-              echo "$input_val"
-            else
-              echo "$default"
-            fi
+          asset=tracy-embedded-native-linux-x86_64.tar.gz
+          root="$RUNNER_TEMP/tracy-embedded-native"
+          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0
+          rm -rf "$root"
+          mkdir -p "$root/download" "$root/extracted"
+          curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
+          curl -L --fail --retry 3 "$base/SHA256SUMS" -o "$root/download/SHA256SUMS"
+          python3 - "$root/download" "$asset" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          asset = sys.argv[2]
+          matches = [
+              line.split()[0]
+              for line in (root / "SHA256SUMS").read_text().splitlines()
+              if line.endswith(f"  {asset}")
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one checksum for {asset}, found {len(matches)}")
+          actual = hashlib.sha256((root / asset).read_bytes()).hexdigest()
+          if actual != matches[0]:
+              raise SystemExit(f"SHA-256 mismatch for {asset}: {actual} != {matches[0]}")
+          PY
+          tar -xzf "$root/download/$asset" -C "$root/extracted"
+          test -f "$root/extracted/tracy-embedded-native/manifest.txt"
+          echo "TRACY_CLIENT_SYS_PREBUILT_DIR=$root/extracted/tracy-embedded-native" >> "$GITHUB_ENV"
+
+      - name: Generate Rust coverage
+        env:
+          SHOOP_ALLOW_MISSING_BACKENDS: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-rust-coverage
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo llvm-cov nextest --locked --workspace \
+            --features shoop_engine/app_backend --profile ci \
+            --lcov --output-path lcov.info
+
+      - name: Publish Rust coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          disable_search: true
+          fail_ci_if_error: true
+          flags: rust
+
+      - name: Upload Tracy failure captures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tracy-nextest-rust-coverage-${{ github.run_id }}
+          path: ${{ runner.temp }}/tracy-nextest-rust-coverage/*.tracy
+          if-no-files-found: ignore
+          retention-days: 14
+
+  build_and_test:
+    name: ${{ matrix.target }} ${{ matrix.arch }} ${{ matrix.profile }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux
+            os: ubuntu-24.04
+            arch: x86_64
+            profile: debug
+            cargo_args: ""
+            rust_targets: ""
+            binary: target/debug/shoopdaloop
+            artifact: shoopdaloop-linux-x86_64-debug.tar.gz
+          - target: linux
+            os: ubuntu-24.04
+            arch: x86_64
+            profile: release
+            cargo_args: --release
+            rust_targets: ""
+            binary: target/release/shoopdaloop
+            artifact: shoopdaloop-linux-x86_64-release.tar.gz
+          - target: windows
+            os: windows-2025
+            arch: x86_64
+            profile: debug
+            cargo_args: ""
+            rust_targets: x86_64-pc-windows-msvc
+            binary: target/debug/shoopdaloop.exe
+            artifact: shoopdaloop-windows-x86_64-debug.zip
+          - target: windows
+            os: windows-2025
+            arch: x86_64
+            profile: release
+            cargo_args: --release
+            rust_targets: x86_64-pc-windows-msvc
+            binary: target/release/shoopdaloop.exe
+            artifact: shoopdaloop-windows-x86_64-release.zip
+          - target: macos
+            os: macos-15
+            arch: arm64
+            profile: debug
+            cargo_args: ""
+            rust_targets: aarch64-apple-darwin
+            binary: target/debug/shoopdaloop
+            artifact: shoopdaloop-macos-arm64-debug.tar.gz
+          - target: macos
+            os: macos-15
+            arch: arm64
+            profile: release
+            cargo_args: --release
+            rust_targets: aarch64-apple-darwin
+            binary: target/release/shoopdaloop
+            artifact: shoopdaloop-macos-arm64-release.tar.gz
+          - target: web
+            os: ubuntu-24.04
+            arch: wasm32
+            profile: debug
+            cargo_args: --no-default-features
+            trunk_args: ""
+            rust_targets: wasm32-unknown-unknown
+            artifact: shoopdaloop-web-wasm32-debug.zip
+            html_artifact: shoopdaloop-web-wasm32-debug.html
+          - target: web
+            os: ubuntu-24.04
+            arch: wasm32
+            profile: release
+            cargo_args: --release --no-default-features
+            trunk_args: --release
+            rust_targets: wasm32-unknown-unknown
+            artifact: shoopdaloop-web-wasm32-release.zip
+            html_artifact: shoopdaloop-web-wasm32-release.html
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust stable
+        if: env.ACT != 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+          components: rustfmt
+
+      - name: Install pinned Node.js for Wasm tests
+        if: matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.22.2
+
+      - name: Install pinned Chrome and matching ChromeDriver
+        if: matrix.target == 'web' && env.ACT != 'true'
+        id: pinned-chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: 147.0.7727.117
+          install-chromedriver: true
+
+      - name: Select pinned Chrome
+        if: matrix.target == 'web' && env.ACT != 'true'
+        shell: bash
+        run: |
+          chrome='${{ steps.pinned-chrome.outputs.chrome-path }}'
+          driver='${{ steps.pinned-chrome.outputs.chromedriver-path }}'
+          "$chrome" --version | grep '147.0.7727.117'
+          "$driver" --version | grep '147.0.7727.117'
+          echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
+          dirname "$driver" >> "$GITHUB_PATH"
+
+      - name: Install pinned wasm-pack
+        if: matrix.target == 'web' && env.ACT != 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.15.0
+
+      - name: Detect browser-runtime changes
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        id: wasm-browser-policy
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            browser:
+              - '.github/workflows/build_and_test.yml'
+              - 'scripts/run_wasm_tests.py'
+              - 'scripts/wasm_test_report.py'
+              - 'scripts/check_shoop_test_usage.py'
+              - 'src/rust/shoop_test_macros/**'
+              - 'src/rust/shoop_wasm_test_support/**'
+              - 'src/rust/shoop_wasm_runtime_tests/**'
+              - 'src/rust/shoop_audio_worklet/**'
+              - 'src/rust/shoop_worklet_client/**'
+              - 'src/rust/shoopdaloop/Cargo.toml'
+              - 'src/rust/shoopdaloop/audio_worker.js'
+              - 'src/rust/shoopdaloop/audio_worklet.js'
+              - 'src/rust/shoopdaloop/raw_wasm_host.js'
+              - 'src/rust/shoopdaloop/build_worklet.py'
+              - 'src/rust/shoopdaloop/src/browser_*.rs'
+              - 'src/rust/shoopdaloop/worker_fixture_contract.js'
+              - 'tests/wasm/**'
+
+      - name: Cache Rust builds
+        if: env.ACT != 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: app-v1
+          shared-key: ${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}
+          cache-targets: "true"
+          cache-all-crates: "true"
+          cache-on-failure: "true"
+          cache-bin: ${{ matrix.target == 'web' }}
+
+      - name: Check local act prerequisites
+        if: env.ACT == 'true'
+        run: |
+          rustc --version
+          cargo --version
+          python3 --version
+          if [ "${{ matrix.target }}" = "web" ]; then trunk --version; fi
+
+      - name: Install cargo-nextest
+        if: env.ACT != 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.116
+
+      - name: Check local cargo-nextest prerequisite
+        if: env.ACT == 'true'
+        run: cargo nextest --version
+
+      - name: Install Linux build dependencies
+        if: matrix.target == 'linux' && env.ACT != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential libasound2-dev libfluidsynth-dev libgl1-mesa-dev libgtk-3-dev \
+            libgtk2.0-dev libjack-jackd2-dev liblo-dev libmagic-dev libpulse-dev \
+            libsndfile1-dev libx11-dev libxcb-icccm4-dev libxcb-image0-dev \
+            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render0-dev \
+            libxcb-render-util0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev libxcb-xkb-dev libxcursor-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev libwayland-dev \
+            patchelf python3-venv xvfb
+
+      - name: Install web build and test dependencies
+        if: matrix.target == 'web' && env.ACT != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev pulseaudio xvfb
+          if ! command -v trunk >/dev/null 2>&1; then
+            cargo install --locked trunk --version 0.21.14
+          fi
+          trunk --version
+
+      - name: Prepare prebuilt embedded Tracy native library on Unix
+        if: matrix.target != 'windows'
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            linux|web) asset=tracy-embedded-native-linux-x86_64.tar.gz ;;
+            macos) asset=tracy-embedded-native-macos-arm64.tar.gz ;;
+            *) exit 1 ;;
+          esac
+          root="$RUNNER_TEMP/tracy-embedded-native"
+          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0
+          rm -rf "$root"
+          mkdir -p "$root/download" "$root/extracted"
+          curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
+          curl -L --fail --retry 3 "$base/SHA256SUMS" -o "$root/download/SHA256SUMS"
+          python3 - "$root/download" "$asset" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          asset = sys.argv[2]
+          matches = [
+              line.split()[0]
+              for line in (root / "SHA256SUMS").read_text().splitlines()
+              if line.endswith(f"  {asset}")
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one checksum for {asset}, found {len(matches)}")
+          actual = hashlib.sha256((root / asset).read_bytes()).hexdigest()
+          if actual != matches[0]:
+              raise SystemExit(f"SHA-256 mismatch for {asset}: {actual} != {matches[0]}")
+          PY
+          tar -xzf "$root/download/$asset" -C "$root/extracted"
+          test -f "$root/extracted/tracy-embedded-native/manifest.txt"
+          echo "TRACY_CLIENT_SYS_PREBUILT_DIR=$root/extracted/tracy-embedded-native" >> "$GITHUB_ENV"
+
+      - name: Prepare prebuilt embedded Tracy native library on Windows
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $Asset = "tracy-embedded-native-windows-x86_64.zip"
+          $Root = Join-Path $env:RUNNER_TEMP "tracy-embedded-native"
+          $Download = Join-Path $Root "download"
+          $Extracted = Join-Path $Root "extracted"
+          $Base = "https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0"
+          Remove-Item $Root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $Download, $Extracted | Out-Null
+          curl.exe --fail --location --retry 3 "$Base/$Asset" --output (Join-Path $Download $Asset)
+          if ($LASTEXITCODE -ne 0) { throw "Embedded Tracy bundle download failed" }
+          curl.exe --fail --location --retry 3 "$Base/SHA256SUMS" --output (Join-Path $Download "SHA256SUMS")
+          if ($LASTEXITCODE -ne 0) { throw "Embedded Tracy checksum download failed" }
+          $Matches = @(Get-Content (Join-Path $Download "SHA256SUMS") | Where-Object { $_ -match "  $([regex]::Escape($Asset))$" })
+          if ($Matches.Count -ne 1) { throw "Expected one checksum for $Asset, found $($Matches.Count)" }
+          $Expected = ($Matches[0] -split " ")[0]
+          $Actual = (Get-FileHash (Join-Path $Download $Asset) -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($Actual -ne $Expected) { throw "SHA-256 mismatch for $Asset`: $Actual != $Expected" }
+          Expand-Archive (Join-Path $Download $Asset) $Extracted -Force
+          $Bundle = Join-Path $Extracted "tracy-embedded-native"
+          if (-not (Test-Path (Join-Path $Bundle "manifest.txt"))) { throw "Embedded Tracy manifest is missing" }
+          "TRACY_CLIENT_SYS_PREBUILT_DIR=$Bundle" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build pinned Linux Carla runtime
+        if: matrix.target == 'linux'
+        run: |
+          curl -L --fail --retry 3 -o carla-source.tar.gz https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz
+          echo "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661  carla-source.tar.gz" | sha256sum --check
+          mkdir .carla-source
+          tar -xzf carla-source.tar.gz -C .carla-source --strip-components=1
+          echo "c1b1a806a95ee2e4935eec9699c233e6a3ee27fcc8da37002bb0034c9d81854f  .carla-source/source/includes/CarlaNative.h" | sha256sum --check
+          cc -std=c11 -I .carla-source/source/includes third_party/carla/abi_probe.c -o .carla-abi-probe
+          ./.carla-abi-probe > .carla-abi.actual
+          diff -u third_party/carla/abi-x86_64.expected .carla-abi.actual
+          python3 -m venv .carla-venv
+          .carla-venv/bin/pip install --disable-pip-version-check 'cx-Freeze==7.2.7' 'PyQt5==5.15.11'
+          PATH="$PWD/.carla-venv/bin:$PATH" make -C .carla-source -j2 plugin frontend
+          .carla-venv/bin/python scripts/build_carla_linux_ui.py --source .carla-source --output .carla-frozen-ui
+          python3 scripts/carla_runtime.py normalize \
+            --platform linux \
+            --search-root .carla-source/bin \
+            --search-root .carla-frozen-ui \
+            --license .carla-source/doc/GPL.txt \
+            --output .carla-component
+          echo "SHOOP_CARLA_NATIVE_LIBRARY=$PWD/.carla-component/lib/libcarla_native-plugin.so" >> "$GITHUB_ENV"
+          echo "SHOOP_CARLA_RESOURCE_DIR=$PWD/.carla-component/resources" >> "$GITHUB_ENV"
+
+      - name: Prepare pinned Windows Carla runtime
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-win64.zip" -OutFile carla-win64.zip
+          $actual = (Get-FileHash carla-win64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "56264cd860b3e6e7b29221fb1e46d7d8a288fb001500f830bcd739ec7b115650") { throw "Carla archive checksum mismatch" }
+          Expand-Archive carla-win64.zip -DestinationPath .carla-upstream
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/falkTX/Carla/v2.5.10/doc/GPL.txt" -OutFile carla-GPL.txt
+          python scripts/carla_runtime.py normalize --platform windows --search-root .carla-upstream --license carla-GPL.txt --output .carla-component
+          "SHOOP_CARLA_NATIVE_LIBRARY=$PWD\.carla-component\lib\libcarla_native-plugin.dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SHOOP_CARLA_RESOURCE_DIR=$PWD\.carla-component\resources" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify pinned Windows Carla ABI
+        if: matrix.target == 'windows' && matrix.profile == 'debug'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz" -OutFile carla-source.tar.gz
+          $actual = (Get-FileHash carla-source.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661") { throw "Carla source checksum mismatch" }
+          New-Item -ItemType Directory .carla-source | Out-Null
+          tar -xzf carla-source.tar.gz -C .carla-source --strip-components=1
+          $header = (Get-FileHash .carla-source/source/includes/CarlaNative.h -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($header -ne "c1b1a806a95ee2e4935eec9699c233e6a3ee27fcc8da37002bb0034c9d81854f") { throw "Carla header checksum mismatch" }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $visualStudio = & $vswhere -latest -property installationPath
+          $developerShell = Join-Path $visualStudio "Common7\Tools\VsDevCmd.bat"
+          cmd /c "`"$developerShell`" -arch=x64 && cl /nologo /std:c11 /I.carla-source\source\includes third_party\carla\abi_probe.c /Fe:.carla-abi-probe.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Carla ABI probe build failed" }
+          python -c "import pathlib,subprocess; expected=pathlib.Path('third_party/carla/abi-x86_64.expected').read_text(); actual=subprocess.check_output([r'.carla-abi-probe.exe'],text=True).replace('\\r\\n','\\n'); assert actual == expected, (actual,expected)"
+
+      - name: Prepare pinned macOS Carla runtime
+        if: matrix.target == 'macos'
+        run: |
+          curl -L --fail --retry 3 -o carla.dmg https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-macOS-universal.dmg
+          echo "a30e98409974493ade18f598566628369fee67f179a84e1c2cc3ae46a71808b1  carla.dmg" | shasum -a 256 --check
+          mkdir .carla-volume
+          hdiutil attach carla.dmg -nobrowse -readonly -mountpoint .carla-volume
+          curl -L --fail --retry 3 -o carla-GPL.txt https://raw.githubusercontent.com/falkTX/Carla/v2.5.10/doc/GPL.txt
+          python3 scripts/carla_runtime.py normalize --platform macos --search-root .carla-volume --license carla-GPL.txt --output .carla-component
+          hdiutil detach .carla-volume
+          echo "SHOOP_CARLA_NATIVE_LIBRARY=$PWD/.carla-component/lib/libcarla_native-plugin.dylib" >> "$GITHUB_ENV"
+          echo "SHOOP_CARLA_RESOURCE_DIR=$PWD/.carla-component/resources" >> "$GITHUB_ENV"
+
+      - name: Verify pinned macOS Carla ABI
+        if: matrix.target == 'macos' && matrix.profile == 'debug'
+        run: |
+          curl -L --fail --retry 3 -o carla-source.tar.gz https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz
+          echo "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661  carla-source.tar.gz" | shasum -a 256 --check
+          mkdir .carla-source
+          tar -xzf carla-source.tar.gz -C .carla-source --strip-components=1
+          echo "c1b1a806a95ee2e4935eec9699c233e6a3ee27fcc8da37002bb0034c9d81854f  .carla-source/source/includes/CarlaNative.h" | shasum -a 256 --check
+          cc -std=c11 -I .carla-source/source/includes third_party/carla/abi_probe.c -o .carla-abi-probe
+          ./.carla-abi-probe > .carla-abi.actual
+          diff -u third_party/carla/abi-x86_64.expected .carla-abi.actual
+
+      - name: Audit Linux Carla runtime linkage
+        if: matrix.target == 'linux'
+        run: |
+          readelf -h .carla-component/lib/libcarla_native-plugin.so | grep 'Advanced Micro Devices X86-64'
+          nm -D --defined-only .carla-component/lib/libcarla_native-plugin.so | grep 'carla_get_native_rack_plugin'
+          nm -D --defined-only .carla-component/lib/libcarla_native-plugin.so | grep 'carla_get_native_patchbay_plugin'
+          nm -D --defined-only .carla-component/lib/libcarla_native-plugin.so | grep 'carla_get_native_patchbay16_plugin'
+          ! ldd .carla-component/lib/libcarla_native-plugin.so | grep 'not found'
+          ! ldd .carla-component/resources/lib/PyQt5/Qt5/plugins/platforms/libqxcb.so | grep 'not found'
+          test -n "$(patchelf --print-rpath .carla-component/lib/libcarla_native-plugin.so)"
+
+      - name: Audit Windows Carla runtime linkage
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $visualStudio = & $vswhere -latest -property installationPath
+          $developerShell = Join-Path $visualStudio "Common7\Tools\VsDevCmd.bat"
+          cmd /c "`"$developerShell`" -arch=x64 && dumpbin /headers .carla-component\lib\libcarla_native-plugin.dll && dumpbin /dependents .carla-component\lib\libcarla_native-plugin.dll && dumpbin /exports .carla-component\lib\libcarla_native-plugin.dll > .carla-exports.txt"
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin audit failed" }
+          foreach ($symbol in @('carla_get_native_rack_plugin', 'carla_get_native_patchbay_plugin', 'carla_get_native_patchbay16_plugin')) {
+            if (-not (Select-String -Quiet $symbol .carla-exports.txt)) { throw "Carla runtime is missing $symbol" }
           }
 
-          declare -A values
-          values[windows]="$(resolve_value "${{ env.WINDOWS_DEFAULT }}" "${{ github.event.inputs.windows }}")"
-          values[linux]="$(resolve_value "${{ env.LINUX_DEFAULT }}" "${{ github.event.inputs.linux }}")"
-          values[macos]="$(resolve_value "${{ env.MACOS_DEFAULT }}" "${{ github.event.inputs.macos }}")"
-          values[test_enabled]="$(resolve_value "${{ env.TEST_ENABLED_DEFAULT }}" "${{ github.event.inputs.test_enabled }}")"
-          values[release]="$(resolve_value "${{ env.RELEASE_DEFAULT }}" "${{ github.event.inputs.release }}")"
-          values[debug]="$(resolve_value "${{ env.DEBUG_DEFAULT }}" "${{ github.event.inputs.debug }}")"
-          values[coverage]="$(resolve_value "${{ env.COVERAGE_DEFAULT }}" "${{ github.event.inputs.coverage }}")"
-          values[vcpkg_force_rebuild]="$(resolve_value "${{ env.VCPKG_FORCE_REBUILD_DEFAULT }}" "${{ github.event.inputs.vcpkg_force_rebuild }}")"
-          values[checkpoints]="$(resolve_value "${{ env.CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.checkpoints }}")"
-          values[pi_checkpoints]="$(resolve_value "${{ env.PI_CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.pi_checkpoints }}")"
-          values[create_draft_release]="$(resolve_value "${{ env.CREATE_DRAFT_RELEASE_DEFAULT }}" "${{ github.event.inputs.create_draft_release }}")"
-          values[qml_trace_capture_all_variants]="$(resolve_value "${{ env.QML_TRACE_CAPTURE_ALL_VARIANTS_DEFAULT }}" "${{ github.event.inputs.qml_trace_capture_all_variants }}")"
+      - name: Audit macOS Carla runtime linkage
+        if: matrix.target == 'macos'
+        run: |
+          lipo .carla-component/lib/libcarla_native-plugin.dylib -verify_arch arm64
+          nm -gU .carla-component/lib/libcarla_native-plugin.dylib | grep '_carla_get_native_rack_plugin'
+          nm -gU .carla-component/lib/libcarla_native-plugin.dylib | grep '_carla_get_native_patchbay_plugin'
+          nm -gU .carla-component/lib/libcarla_native-plugin.dylib | grep '_carla_get_native_patchbay16_plugin'
+          otool -L .carla-component/lib/libcarla_native-plugin.dylib
 
-          # For draft PRs, only run debug builds and tests (no release/coverage).
-          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.draft }}" = "true" ]; then
-            values[release]=false
-            values[coverage]=false
+      - name: Build native application
+        if: matrix.target != 'web'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo build --locked -p shoopdaloop ${{ matrix.cargo_args }}
+
+      - name: Reject a fake Carla library with missing descriptors
+        if: (matrix.target == 'linux' || matrix.target == 'macos') && matrix.profile == 'debug'
+        shell: bash
+        run: |
+          extension=so
+          linker=(-shared -fPIC)
+          if [ "${{ matrix.target }}" = macos ]; then
+            extension=dylib
+            linker=(-dynamiclib)
           fi
+          cc "${linker[@]}" third_party/carla/fake_native_missing_descriptor.c -o "fake-null.$extension"
+          cc "${linker[@]}" -I .carla-source/source/includes -DOMIT_PATCHBAY16 third_party/carla/fake_native_bad_descriptor.c -o "fake-symbol.$extension"
+          cc "${linker[@]}" -I .carla-source/source/includes third_party/carla/fake_native_bad_descriptor.c -o "fake-descriptor.$extension"
+          reject() {
+            library=$1
+            expected=$2
+            shift 2
+            if env SHOOP_CARLA_NATIVE_LIBRARY="$library" "$@" ./${{ matrix.binary }} --probe-carla-native >fake-carla.log 2>&1; then
+              echo 'Invalid Carla runtime was unexpectedly accepted'
+              exit 1
+            fi
+            grep "$expected" fake-carla.log
+          }
+          reject "$PWD/fake-null.$extension" 'Carla descriptor is null'
+          reject "$PWD/fake-symbol.$extension" 'carla_get_native_patchbay16_plugin'
+          reject "$PWD/fake-descriptor.$extension" 'incompatible port layout'
+          reject "$SHOOP_CARLA_NATIVE_LIBRARY" 'must be an absolute path' SHOOP_CARLA_RESOURCE_DIR=relative
+          reject "$SHOOP_CARLA_NATIVE_LIBRARY" 'is not a directory' SHOOP_CARLA_RESOURCE_DIR="$PWD/missing-resource"
 
-          # The all-variant experiment deliberately exercises every active debug/release
-          # package test. Coverage still runs, but remains untraced.
-          if [ "${values[qml_trace_capture_all_variants]}" = "true" ]; then
-            values[windows]=true
-            values[linux]=true
-            values[macos]=true
-            values[test_enabled]=true
-            values[release]=true
-            values[debug]=true
+      - name: Reject a fake Carla library with missing descriptors on Windows
+        if: matrix.target == 'windows' && matrix.profile == 'debug'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $visualStudio = & $vswhere -latest -property installationPath
+          $developerShell = Join-Path $visualStudio "Common7\Tools\VsDevCmd.bat"
+          cmd /c "`"$developerShell`" -arch=x64 && cl /nologo /LD third_party\carla\fake_native_missing_descriptor.c /link /OUT:fake-null.dll && cl /nologo /std:c11 /LD /DOMIT_PATCHBAY16 /I.carla-source\source\includes third_party\carla\fake_native_bad_descriptor.c /link /OUT:fake-symbol.dll && cl /nologo /std:c11 /LD /I.carla-source\source\includes third_party\carla\fake_native_bad_descriptor.c /link /OUT:fake-descriptor.dll"
+          if ($LASTEXITCODE -ne 0) { throw "fake Carla build failed" }
+          @'
+          import os
+          import subprocess
+          from pathlib import Path
+          binary = r"${{ matrix.binary }}"
+          real = os.environ["SHOOP_CARLA_NATIVE_LIBRARY"]
+          cases = [
+              (str(Path("fake-null.dll").resolve()), None, "Carla descriptor is null"),
+              (str(Path("fake-symbol.dll").resolve()), None, "GetProcAddress failed"),
+              (str(Path("fake-descriptor.dll").resolve()), None, "incompatible port layout"),
+              (real, "relative", "must be an absolute path"),
+              (real, str(Path("missing-resource").resolve()), "is not a directory"),
+          ]
+          for library, resource, expected in cases:
+              environment = os.environ.copy()
+              environment["SHOOP_CARLA_NATIVE_LIBRARY"] = library
+              if resource is not None:
+                  environment["SHOOP_CARLA_RESOURCE_DIR"] = resource
+              process = subprocess.run([binary, "--probe-carla-native"], env=environment, capture_output=True, text=True)
+              output = process.stdout + process.stderr
+              assert process.returncode != 0, f"invalid Carla accepted: {library}"
+              assert expected in output, (expected, output)
+          '@ | python -
+
+      - name: Probe normalized Carla Native runtime
+        if: matrix.target != 'web' && matrix.target != 'windows'
+        shell: bash
+        run: ./${{ matrix.binary }} --probe-carla-native
+
+      - name: Probe normalized Carla Native runtime on Windows
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          & ".\\${{ matrix.binary }}" --probe-carla-native
+          if ($LASTEXITCODE -ne 0) { throw "Carla Native probe failed with exit code $LASTEXITCODE" }
+
+      - name: Build web application
+        if: matrix.target == 'web'
+        working-directory: src/rust/shoopdaloop
+        env:
+          RUSTFLAGS: -D warnings
+        run: trunk build ${{ matrix.trunk_args }}
+
+      - name: Package native application
+        if: matrix.target != 'web'
+        run: >-
+          python3 src/rust/shoopdaloop/package_artifacts.py native
+          --platform ${{ matrix.target }}
+          --arch ${{ matrix.arch }}
+          --profile ${{ matrix.profile }}
+          --binary ${{ matrix.binary }}
+          --carla-runtime .carla-component
+          --output-dir artifacts
+
+      - name: Package web application
+        if: matrix.target == 'web'
+        run: >-
+          python3 src/rust/shoopdaloop/package_artifacts.py web
+          --profile ${{ matrix.profile }}
+          --dist src/rust/shoopdaloop/dist
+          --output-dir artifacts
+
+      - name: Upload native application
+        if: matrix.target != 'web' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/${{ matrix.artifact }}
+          archive: false
+
+      - name: Upload hosted web bundle
+        if: matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/${{ matrix.artifact }}
+          archive: false
+
+      - name: Upload self-contained web application
+        if: matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/${{ matrix.html_artifact }}
+          archive: false
+
+      - name: Stage application artifacts for local act
+        if: env.ACT == 'true'
+        run: |
+          test -s "artifacts/${{ matrix.artifact }}"
+          if [ "${{ matrix.target }}" = "web" ]; then
+            test -s "artifacts/${{ matrix.html_artifact }}"
           fi
+          ls -lh artifacts
 
-          for name in windows linux macos test_enabled release debug coverage \
-            vcpkg_force_rebuild checkpoints pi_checkpoints create_draft_release \
-            qml_trace_capture_all_variants; do
-            echo "$name=${values[$name]}" | tee -a "$GITHUB_OUTPUT"
-          done
+      # Tests deliberately follow artifact upload so failed tests leave a build to inspect.
+      - name: Verify native application archive
+        if: matrix.target != 'web'
+        run: >-
+          python3 src/rust/shoopdaloop/package_artifacts.py verify
+          --platform ${{ matrix.target }}
+          --artifact artifacts/${{ matrix.artifact }}
 
-  ##############################################################
-  ## Release creation for tag pushes
-  ##############################################################
+      - name: Probe extracted Linux application archive
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          destination="$RUNNER_TEMP/Shoop Δ ${{ matrix.profile }}"
+          mkdir -p "$destination"
+          tar -xzf "artifacts/${{ matrix.artifact }}" -C "$destination"
+          app="$destination/shoopdaloop/shoopdaloop"
+          env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR \
+            "$app" --probe-carla-native \
+            | grep '/carla-runtime/lib/libcarla_native-plugin.so'
+          ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
+          xvfb-run -a env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR \
+            "$app" --probe-carla-native-ui
+          sleep 1
+          ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
 
-  maybe_create_release:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      if: startsWith(github.ref, 'refs/tags/')
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      id: create_release
-      with:
-        draft: true
-        generate_release_notes: true
-        append_body: true
-        body: |
-          This is a development release. Consider alpha / unstable until v1.0.0.
+      - name: Probe extracted macOS application archive
+        if: matrix.target == 'macos'
+        shell: bash
+        run: |
+          destination="$RUNNER_TEMP/Shoop Δ ${{ matrix.profile }}"
+          mkdir -p "$destination"
+          tar -xzf "artifacts/${{ matrix.artifact }}" -C "$destination"
+          app="$destination/shoopdaloop/ShoopDaLoop.app/Contents/MacOS/shoopdaloop"
+          env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR \
+            "$app" --probe-carla-native \
+            | grep '/Frameworks/carla-runtime/lib/libcarla_native-plugin.dylib'
+          env -u SHOOP_CARLA_NATIVE_LIBRARY -u SHOOP_CARLA_RESOURCE_DIR \
+            "$app" --probe-carla-native-ui
+          sleep 1
+          ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
 
-          ## Installation
-          Choose between Python wheels, portable folder archives and packages/installers per platform.
-          For details, refer to the [full installation instructions](https://github.com/SanderVocke/shoopdaloop/blob/master/INSTALL.md).
-    - name: Store asset upload URL
-      if: startsWith(github.ref, 'refs/tags/')
-      shell: bash
-      run: echo "${{ steps.create_release.outputs.upload_url }}" > release_upload_assets_url.txt
-    - name: Upload asset upload URL
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: actions/upload-artifact@v4
-      with:
-        name: release_upload_assets_url
-        path: release_upload_assets_url.txt
-    - uses: ./.github/actions/checkpoint
-      if: startsWith(github.ref, 'refs/tags/')
+      - name: Probe extracted Windows application archive
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP "Shoop Δ ${{ matrix.profile }}"
+          Expand-Archive "artifacts/${{ matrix.artifact }}" -DestinationPath $destination
+          $shortRoot = Join-Path $env:RUNNER_TEMP "shoop-carla-ui-${{ matrix.profile }}"
+          cmd /c "mklink /J `"$shortRoot`" `"$destination`""
+          if ($LASTEXITCODE -ne 0) { throw "Could not create ASCII Carla UI test junction" }
+          $application = "$shortRoot\shoopdaloop\shoopdaloop.exe"
+          Remove-Item Env:SHOOP_CARLA_NATIVE_LIBRARY
+          Remove-Item Env:SHOOP_CARLA_RESOURCE_DIR
+          $output = & $application --probe-carla-native
+          if ($LASTEXITCODE -ne 0) { throw "Extracted Carla probe failed with exit code $LASTEXITCODE" }
+          if ($output -notmatch 'carla-runtime\\lib\\libcarla_native-plugin.dll') { throw "Extracted probe did not load bundled Carla: $output" }
+          $env:SHOOP_CARLA_NATIVE_LIBRARY = "$shortRoot\shoopdaloop\carla-runtime\lib\libcarla_native-plugin.dll"
+          $env:SHOOP_CARLA_RESOURCE_DIR = "$shortRoot\shoopdaloop\carla-runtime\resources"
+          $uiHelper = "$env:SHOOP_CARLA_RESOURCE_DIR\carla-plugin.exe"
+          $helper = Start-Process -FilePath $uiHelper -PassThru
+          Start-Sleep -Seconds 2
+          if ($helper.HasExited) { throw "Extracted Carla UI helper exited immediately with $($helper.ExitCode)" }
+          Stop-Process -Id $helper.Id -Force
+          Start-Sleep -Seconds 1
+          $leaked = Get-Process | Where-Object { $_.ProcessName -like 'carla-plugin*' }
+          if ($leaked) { throw "Leaked Carla UI helpers: $($leaked.ProcessName -join ', ')" }
 
+      - name: Test native application path
+        if: matrix.target != 'web' && (matrix.target != 'linux' || matrix.profile != 'debug')
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_ALLOW_MISSING_BACKENDS: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        shell: bash
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo nextest run --locked ${{ matrix.cargo_args }} --profile ci \
+            -p shoop_app_api \
+            -p shoop_engine \
+            -p shoop_backend \
+            -p shoop_app \
+            -p shoop_egui \
+            -p shoopdaloop
 
-  #############################################################
-  ## Check format
-  #############################################################
+      - name: Test complete retained workspace
+        if: matrix.target == 'linux' && matrix.profile == 'debug'
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_ALLOW_MISSING_BACKENDS: 1
+          SHOOP_REQUIRE_CARLA_TESTS: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        run: |
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          cargo nextest run --locked --workspace --features shoop_engine/app_backend --profile ci
 
-  check_format:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-    - name: Check format
-      uses: ./.github/actions/check_format
+      - name: Smoke-test Carla benchmarks
+        if: matrix.target == 'linux' && matrix.profile == 'release'
+        env:
+          SHOOP_BENCHMARK_SMOKE: 1
+        run: |
+          cargo run --locked --release -p shoop_engine --features carla --example carla_inprocess_benchmark
+          cargo run --locked --release -p shoop_engine --features carla --example carla_bridge_benchmark -- "./${{ matrix.binary }}" all
+          cargo run --locked --release -p shoop_engine --features carla --example carla_bridge_benchmark -- "./${{ matrix.binary }}" reference
 
+      - name: Run real Carla runtime suite on macOS
+        if: matrix.target == 'macos' && matrix.profile == 'debug'
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_REQUIRE_CARLA_TESTS: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        run: >-
+          cargo nextest run --locked -p shoop_engine --features carla --profile ci
+          -E 'test(=carla_native::tests::probes_and_runs_installed_carla_when_available)'
 
+      - name: Run real Carla runtime and worker suites on Windows
+        if: matrix.target == 'windows' && matrix.profile == 'debug'
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_REQUIRE_CARLA_TESTS: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        shell: pwsh
+        run: |
+          cargo nextest run --locked -p shoop_engine --features carla --profile ci -E 'test(=carla_native::tests::probes_and_runs_installed_carla_when_available)'
+          if ($LASTEXITCODE -ne 0) { throw "real Carla engine suite failed" }
+          cargo nextest run --locked -p shoopdaloop --test carla_worker_entry --profile ci -E 'test(=application_worker_hosts_the_real_carla_native_runtime_when_available)'
+          if ($LASTEXITCODE -ne 0) { throw "real Carla worker suite failed" }
 
-  ##############################################################
-  ## Linux
-  ##############################################################
+      - name: Audit native feature and dependency isolation
+        if: matrix.target == 'linux' && matrix.profile == 'debug'
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          cargo check --locked -p shoop_engine --no-default-features
+          cargo check --locked -p shoop_engine --features carla
+          cargo check --locked -p shoop_engine
+          cargo check --locked -p shoopdaloop --no-default-features
+          cargo tree -p shoop_engine --no-default-features > /tmp/engine-minimal-tree.txt
+          cargo tree -p shoop_engine --features carla > /tmp/engine-carla-tree.txt
+          if grep -E '(^| )((lilv|lv2_raw) v)' /tmp/engine-carla-tree.txt; then exit 1; fi
+          if grep -E '(^| )((lilv|lv2_raw|libloading|rfd) v)' /tmp/engine-minimal-tree.txt; then exit 1; fi
+          if rg -i 'CarlaLv2Host|lv2_carla|feature = "lv2"|shoop_engine/lv2|LV2_PATH' Cargo.toml Cargo.lock src/rust INSTALL.md README.md docs scripts third_party/carla --glob '!src/rust/shoop_engine/test_data/**'; then exit 1; fi
 
-  build_linux:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          - name: linux_release
-            if: ${{ false }}
-            release_build: true
-            package_kind: portable_folder
-            second_package_kind: appimage
-            third_package_kind: test_binaries
-            upload_release_assets: true
-            platform: linux-x64
-          - name: linux_debug
-            if: ${{ needs.setup.outputs.debug == 'true' }}
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            upload_release_assets: true
-            platform: linux-x64
-          - name: linux_coverage
-            if: ${{ false }}
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            coverage: true
-            platform: linux-x64
-        container:
-          - image: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
-            volumes:
-              - /var/run/docker.sock:/var/run/docker.sock
-              - /tmp/container:/tmp/host
-            options: --privileged --pid=host --user root --workdir /
-        arch: [ x86_64 ]
-        manylinux_arch: [ x86_64 ]
-        exclude:
-          - kind:
-              if: false
-    runs-on: ubuntu-latest
-    container:
-      image: ${{ matrix.container.image }}
-      options: ${{ matrix.container.options }}
-      volumes: ${{ matrix.container.volumes }}
-    env:
-      PATH_SEPARATOR: ":"
-      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
-      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
-      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.linux == 'true' }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - uses: ./.github/actions/print_build_settings
-    - name: Free disk space on host
-      shell: bash
-      run: |
-        apt install util-linux
-        cp scripts/third_party/gha_ubuntu_free_disk_space.sh /tmp/host
-        nsenter -t 1 -m -u -n -i bash /tmp/container/gha_ubuntu_free_disk_space.sh
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: "bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"
-    - name: Build
-      if: ${{ always() && matrix.kind.if }}
-      uses: ./.github/actions/build_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        platform: ${{ matrix.kind.platform }}
-        release_build: ${{ matrix.kind.release_build }}
-        prepare_kind: 'linux'
-        python: python3.11
-        package_kind: ${{ matrix.kind.package_kind }}
-        second_package_kind: ${{ matrix.kind.second_package_kind }}
-        third_package_kind: ${{ matrix.kind.third_package_kind }}
-        coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (needs.setup.outputs.create_draft_release == 'true' && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        vcpkg_rebuild: ${{ needs.setup.outputs.vcpkg_force_rebuild }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-    - uses: ./.github/actions/checkpoint
-      if: ${{ always() && matrix.kind.if }}
-    - uses: ./.github/actions/upload_coding_agent_artifact
-      if: ${{ always() && matrix.kind.if }}
+      - name: Smoke-test bundled Carla external UI
+        if: matrix.target == 'linux' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+          SHOOP_TEST_CARLA_UI: 1
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-${{ matrix.target }}-${{ matrix.profile }}
+        run: |
+          ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
+          xvfb-run -a cargo nextest run --locked ${{ matrix.cargo_args }} -p shoop_engine --features carla --profile ci -E 'test(=carla_native::tests::shows_and_hides_carla_ui_when_opted_in)'
+          sleep 1
+          ! pgrep -f '[/]carla-plugin(-patchbay)?( |$)'
 
-  test_linux:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          - name: release_debian_stable
-            if: ${{ false }}
-            trace_capture: true
-            python: python3
-            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: shoopdaloop.*.release-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
-            sentry_build_type: release
-          - name: debug_debian_stable
-            if: ${{ needs.setup.outputs.debug == 'true' }}
-            trace_capture: true
-            python: python3
-            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
-            sentry_build_type: debug
-          - name: release_debian_appimage
-            if: ${{ false }}
-            trace_capture: true
-            python: python3
-            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: shoopdaloop.*.release-linux-x64.AppImage
-            sentry_build_type: release
-          - name: coverage_debian_bookworm
-            if: ${{ false }}
-            trace_capture: false
-            python: python3
-            container: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
-            coverage: true
-            package: shoopdaloop.*.coverage-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.coverage-linux-x64.test_binaries.tar.gz
-            run_cmd_prefix: >-
-              REPORTDIR=coverage_reports
-              SHOOP_LOG=QoverageCollectorFactory=debug
-              QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
-              scripts/run_and_generate_coverage.sh
-        exclude:
-          - kind:
-              if: false
-    runs-on: ubuntu-latest
-    needs: [build_linux, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.linux == 'true' }}
-    container:
-      image: ${{ matrix.kind.container }}
-      options: --user root --workdir / # Note: this gets disregarded if container is null
-    env:
-      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
-      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - uses: ./.github/actions/print_build_settings
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-    - uses: ./.github/actions/checkpoint
-      if: ${{ always() && matrix.kind.if }}
-    - name: Test
-      if: ${{ always() && matrix.kind.if }}
-      uses: ./.github/actions/test_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        package: ${{ matrix.kind.package }}
-        second_package: ${{ matrix.kind.second_package }}
-        asan: ${{ matrix.kind.asan }}
-        coverage: ${{ matrix.kind.coverage }}
-        python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        codecov_token: ${{ secrets.CODECOV_TOKEN }}
-        sentry_key: ${{ secrets.SENTRY_KEY }}
-        sentry_build_type: ${{ matrix.kind.sentry_build_type }}
-        capture_traces: ${{ needs.setup.outputs.qml_trace_capture_all_variants == 'true' && matrix.kind.trace_capture == true }}
-    - uses: ./.github/actions/checkpoint
-      if: ${{ always() && matrix.kind.if }}
-    - uses: ./.github/actions/upload_coding_agent_artifact
-      if: ${{ always() && matrix.kind.if }}
+      - name: Run intentional Tracy failure-capture canary
+        if: matrix.target == 'linux' && matrix.profile == 'debug' && inputs.tracy_failure_canary
+        env:
+          TRACY_NEXTEST_CAPTURE: failure
+          TRACY_NEXTEST_OUTPUT_DIR: ${{ runner.temp }}/tracy-nextest-canary
+        shell: bash
+        run: |
+          rm -rf "$TRACY_NEXTEST_OUTPUT_DIR"
+          mkdir -p "$TRACY_NEXTEST_OUTPUT_DIR"
+          set +e
+          cargo nextest run --locked -p shoop_common --test nextest_capture_smoke \
+            --profile ci --run-ignored ignored-only \
+            -E 'test(intentional_failure_publishes_trace)' \
+            > "$RUNNER_TEMP/tracy-nextest-canary.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/tracy-nextest-canary.log"
+          test "$status" -ne 0
+          grep 'intentional Tracy nextest capture smoke failure' "$RUNNER_TEMP/tracy-nextest-canary.log"
+          mapfile -t traces < <(find "$TRACY_NEXTEST_OUTPUT_DIR" -maxdepth 1 -name '*.tracy' -type f)
+          test "${#traces[@]}" -eq 1
+          ! find "$TRACY_NEXTEST_OUTPUT_DIR" -name '*.partial' -print -quit | grep -q .
+          curl -L --fail --retry 3 \
+            -o "$RUNNER_TEMP/tracy-query" \
+            https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0/tracy-query-linux-x86_64
+          chmod +x "$RUNNER_TEMP/tracy-query"
+          "$RUNNER_TEMP/tracy-query" check "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" range "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" info "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind message \
+            --filter 'message.text=shoop\.nextest_capture\.smoke\.failure' "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind cpu-zone \
+            --filter 'cpu-zone.name=^shoop\.nextest_capture\.smoke\.tracing_span$' "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind message \
+            --filter 'message.text=shoop\.nextest_capture\.smoke\.tracing_event' "${traces[0]}"
+          "$RUNNER_TEMP/tracy-query" query --kind message \
+            --filter 'message.text=shoop\.nextest_capture\.smoke\.log_event' "${traces[0]}"
 
+      - name: Check formatting, tracing, and test attributes
+        if: matrix.target == 'linux' && matrix.profile == 'debug'
+        run: |
+          cargo fmt --all -- --check
+          python3 scripts/check_tracing_coverage.py --require-closed
+          python3 scripts/check_shoop_test_usage.py
 
-  ##############################################################
-  ## MacOS
-  ##############################################################
+      - name: Verify web application artifacts
+        if: matrix.target == 'web'
+        run: >-
+          python3 src/rust/shoopdaloop/package_artifacts.py verify
+          --platform web
+          --artifact artifacts/${{ matrix.artifact }}
+          --html artifacts/${{ matrix.html_artifact }}
 
-  build_macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          - name: macos_release
-            if: ${{ needs.setup.outputs.release == 'true' }}
-            release_build: true
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            # third_package_kind: dmg
-            os: macos-15-intel
-            upload_release_assets: true
-            platform: macos-x64
-          # - name: macos_debug
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   # third_package_kind: dmg
-          #   os: macos-15-intel
-          #   upload_release_assets: true
-          #   platform: macos-x64
-          - name: macos_release_arm
-            if: ${{ needs.setup.outputs.release == 'true' }}
-            release_build: true
-            package_kind: portable_folder
-            # second_package_kind: dmg
-            third_package_kind: test_binaries
-            os: macos-15
-            upload_release_assets: true
-            platform: macos-arm
-          # - name: macos_debug_arm
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   os: macos-15
-          #   upload_release_assets: true
-          #   platform: macos-arm
-        exclude:
-          - kind:
-              if: false
-    runs-on: ${{ matrix.kind.os }}
-    needs: [maybe_create_release, setup]
-    if: ${{ false }}
-    env:
-       PATH_SEPARATOR: ":"
-       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
-       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-       pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
-       PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
-       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - uses: ./.github/actions/print_build_settings
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-    - name: Build
-      if: ${{ matrix.kind.if }}
-      uses: ./.github/actions/build_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        platform: ${{ matrix.kind.platform }}
-        cmake_build_type: ${{ matrix.kind.build_type }}
-        prepare_kind: 'macos'
-        python: python3
-        appbundle: ${{ matrix.kind.appbundle }}
-        package_kind: ${{ matrix.kind.package_kind }}
-        second_package_kind: ${{ matrix.kind.second_package_kind }}
-        third_package_kind: ${{ matrix.kind.third_package_kind }}
-        release_build: ${{ matrix.kind.release_build }}
-        coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (needs.setup.outputs.create_draft_release == 'true' && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        macos_target_version: ${{ matrix.kind.macos_target_version }}
-        vcpkg_rebuild: ${{ needs.setup.outputs.vcpkg_force_rebuild }}
-        sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-    - uses: ./.github/actions/checkpoint
-      if: ${{ always() && matrix.kind.if }}
-    - uses: ./.github/actions/upload_coding_agent_artifact
-      if: ${{ always() && matrix.kind.if }}
+      - name: Check WebAssembly packages
+        if: matrix.target == 'web'
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          cargo check --locked ${{ matrix.cargo_args }} -p shoopdaloop --target wasm32-unknown-unknown
+          cargo build --locked ${{ matrix.cargo_args }} -p shoop_audio_worklet --target wasm32-unknown-unknown
 
-  test_macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          - name: release_macos_arm
-            if: ${{ needs.setup.outputs.release == 'true' }}
-            trace_capture: true
-            python: python3
-            container: null
-            os: macos-15
-            package: shoopdaloop.*.release-macos-arm.portable.tar.gz
-            second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
-            sentry_build_type: release
-          # - name: debug_macos_arm
-          #   python: python3
-          #   container: null
-          #   os: macos-15
-          #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
-          - name: release_macos
-            if: ${{ needs.setup.outputs.release == 'true' }}
-            trace_capture: true
-            python: python3
-            container: null
-            os: macos-15-intel
-            package: shoopdaloop.*.release-macos-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
-            sentry_build_type: release
-          # - name: debug_macos
-          #   python: python3
-          #   container: null
-          #   os: macos-15-intel
-          #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
-        exclude:
-          - kind:
-              if: false
-    runs-on: ${{ matrix.kind.os }}
-    needs: [build_macos, setup]
-    if: ${{ false }}
-    container:
-      image: ${{ matrix.kind.container }}
-      options: --user root --workdir / # Note: this gets disregarded if container is null
-    env:
-      PATH_SEPARATOR: ":"
-      QML_TRACE_CAPTURE_ENABLED: ${{ needs.setup.outputs.qml_trace_capture_all_variants == 'true' && matrix.kind.trace_capture == true }}
-      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
-      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - uses: ./.github/actions/print_build_settings
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-    - name: Test
-      if: ${{ matrix.kind.if }}
-      uses: ./.github/actions/test_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        package: ${{ matrix.kind.package }}
-        second_package: ${{ matrix.kind.second_package }}
-        asan: ${{ matrix.kind.asan }}
-        coverage: ${{ matrix.kind.coverage }}
-        python: ${{ matrix.kind.python }}
-        codecov_token: ${{ secrets.CODECOV_TOKEN }}
-        sentry_build_type: ${{ matrix.kind.sentry_build_type }}
-    - uses: ./.github/actions/checkpoint
-      if: ${{ always() && matrix.kind.if }}
+      - name: Inspect browser dependency isolation
+        if: matrix.target == 'web'
+        run: |
+          cargo tree -p shoop_audio_worklet --target wasm32-unknown-unknown > /tmp/worklet-tree.txt
+          cargo tree -p shoopdaloop --target wasm32-unknown-unknown --no-default-features > /tmp/browser-tree.txt
+          python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown
+          if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/worklet-tree.txt; then exit 1; fi
+          if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
+          node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
+          node src/rust/shoopdaloop/raw_wasm_host_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm
 
+      - name: Audit Wasm harness policy and dependencies
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        run: |
+          python3 -m unittest scripts.tests.test_wasm_test_report
+          python3 scripts/check_wasm_smoke_budget.py
+          python3 scripts/check_wasm_test_dependencies.py \
+            --package shoop_app --package shoop_app_api \
+            --package shoop_audio_protocol --package shoop_audio_worklet \
+            --package shoop_backend --package shoop_egui --package shoop_engine \
+            --package shoop_plugin_protocol --package shoop_scripting \
+            --package shoop_session --package shoop_settings \
+            --package shoop_wasm_runtime_tests --package shoop_wasm_test_support \
+            --package shoop_worklet_client --package shoopdaloop
 
+      - name: Run required Node Wasm suite
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        env:
+          RUSTFLAGS: -D warnings
+        run: python3 scripts/run_wasm_tests.py --profile dev --runtime node
 
+      - name: Run policy-triggered Chromium Wasm suite
+        if: >-
+          matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+          steps.wasm-browser-policy.outputs.browser == 'true')
+        env:
+          RUSTFLAGS: -D warnings
+        run: python3 scripts/run_wasm_tests.py --profile dev --runtime chrome
 
+      - name: Run optimized nightly/manual Wasm suites
+        if: >-
+          matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true' &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          python3 scripts/run_wasm_tests.py --profile ci --runtime node
+          python3 scripts/run_wasm_tests.py --profile ci --runtime chrome
 
+      - name: Upload Wasm test reports
+        if: always() && matrix.target == 'web' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-test-reports-${{ matrix.profile }}-${{ github.run_id }}
+          path: target/wasm-tests/*/reports
+          if-no-files-found: ignore
+          retention-days: 14
 
+      - name: Run retained hosted Chrome AudioWorklet smoke
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        working-directory: src/rust/shoopdaloop
+        run: OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
+      - name: Run retained self-contained Chrome AudioWorklet smoke
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        working-directory: src/rust/shoopdaloop
+        env:
+          SELF_CONTAINED_PATH: ../../../artifacts/${{ matrix.html_artifact }}
+        run: SELF_CONTAINED=1 OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
+      - name: Start virtual Firefox audio output
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=shoop_ci
+          pactl set-default-sink shoop_ci
+          pactl info
 
+      - name: Install Firefox browser
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
+        uses: browser-actions/setup-firefox@v1
 
+      - name: Install geckodriver
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
+        uses: browser-actions/setup-geckodriver@latest
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Selenium
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
+        run: python3 -m pip install selenium
 
+      - name: Run Firefox Web Audio workflow
+        if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
+        working-directory: src/rust/shoopdaloop
+        run: xvfb-run -a python3 browser_firefox_smoke.py
 
-
-
-
-
-
-  ##############################################################
-  ## Windows
-  ##############################################################
-
-  build_windows:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          - name: windows_release
-            if: ${{ needs.setup.outputs.release == 'true' }}
-            os: windows-2022
-            python: python.exe
-            pip: python.exe -m pip
-            container_image: null
-            prepare: 'windows'
-            release_build: true
-            package_kind: portable_folder
-            second_package_kind: innosetup
-            third_package_kind: test_binaries
-            upload_release_assets: true
-            platform: windows-msvc-x64
-          - name: windows_debug
-            if: ${{ needs.setup.outputs.debug == 'true' }}
-            os: windows-2022
-            python: python.exe
-            pip: python.exe -m pip
-            container_image: null
-            prepare: 'windows'
-            release_build: false
-            package_kind: portable_folder
-            platform: windows-msvc-x64
-          # - name: windows_arm_debug
-          #   os: windows-11-arm
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   platform: windows-msvc-arm
-        exclude:
-          - kind:
-              if: false
-    runs-on: ${{ matrix.kind.os}}
-    needs: [maybe_create_release, setup]
-    if: ${{ false }}
-    env:
-      NATIVE_SHELL_CMD: "powershell -Command"
-      PATH_SEPARATOR: ";"
-      CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _
-      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
-      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
-      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    container:
-      image: ${{ matrix.kind.container_image }}
-      options: --user root --workdir /
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - uses: ./.github/actions/print_build_settings
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-    - name: Build
-      if: ${{ matrix.kind.if }}
-      uses: ./.github/actions/build_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        platform: ${{ matrix.kind.platform }}
-        cmake_build_type: ${{ matrix.kind.build_type }}
-        prepare_kind: ${{ matrix.kind.prepare }}
-        python: ${{ matrix.kind.python }}
-        package_kind: ${{ matrix.kind.package_kind }}
-        second_package_kind: ${{ matrix.kind.second_package_kind }}
-        third_package_kind: ${{ matrix.kind.third_package_kind }}
-        coverage: ${{ matrix.kind.coverage }}
-        release_build: ${{ matrix.kind.release_build }}
-        upload_release_assets: ${{ (needs.setup.outputs.create_draft_release == 'true' && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        vcpkg_rebuild: ${{ needs.setup.outputs.vcpkg_force_rebuild }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-    - uses: ./.github/actions/checkpoint
-      if: ${{ always() && matrix.kind.if }}
-    - uses: ./.github/actions/upload_coding_agent_artifact
-      if: ${{ always() && matrix.kind.if }}
-
-  test_windows:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          - name: release_windows
-            if: ${{ needs.setup.outputs.release == 'true' }}
-            trace_capture: true
-            python: python.exe
-            container: null
-            os: windows-2022
-            package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
-            pathconvert: "| cygpath -u -f -"
-            sentry_build_type: release
-          - name: release_windows_innosetup
-            if: ${{ needs.setup.outputs.release == 'true' }}
-            trace_capture: true
-            python: python.exe
-            container: null
-            os: windows-2022
-            package: ShoopDaLoop-Installer-*.exe
-            pathconvert: "| cygpath -u -f -"
-            sentry_build_type: release
-          - name: debug_windows
-            if: ${{ needs.setup.outputs.debug == 'true' && needs.setup.outputs.qml_trace_capture_all_variants == 'true' }}
-            trace_capture: true
-            python: python.exe
-            container: null
-            os: windows-2022
-            package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-            pathconvert: "| cygpath -u -f -"
-            sentry_build_type: debug
-        exclude:
-          - kind:
-              if: false
-    runs-on: ${{ matrix.kind.os }}
-    needs: [build_windows, setup]
-    if: ${{ false }}
-    env:
-      QML_TRACE_CAPTURE_ENABLED: ${{ needs.setup.outputs.qml_trace_capture_all_variants == 'true' && matrix.kind.trace_capture == true }}
-      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
-      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    container:
-      image: ${{ matrix.kind.container }}
-      options: --user root --workdir / # Note: this gets disregarded if container is null
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - uses: ./.github/actions/print_build_settings
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-    - name: Test
-      if: ${{ matrix.kind.if }}
-      uses: ./.github/actions/test_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        package: ${{ matrix.kind.package }}
-        second_package: ${{ matrix.kind.second_package }}
-        asan: ${{ matrix.kind.asan }}
-        coverage: ${{ matrix.kind.coverage }}
-        python: ${{ matrix.kind.python }}
-        codecov_token: ${{ secrets.CODECOV_TOKEN }}
-        sentry_build_type: ${{ matrix.kind.sentry_build_type }}
-    - uses: ./.github/actions/checkpoint
-      if: ${{ always() && matrix.kind.if }}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  # ##############################################################
-  # ## Crash collection
-  # ##############################################################
-
-  # collect_crashes:
-  #   runs-on: ubuntu-latest
-  #   needs:
-  #     - build_linux
-  #     - test_linux
-  #     - build_macos
-  #     - test_macos
-  #     - build_windows
-  #     - test_windows
-  #   if: always()
-  #   container:
-  #     image: archlinux:latest
-  #     options: --user root --workdir /
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc -eo pipefail
-  #   - name: Download artifacts
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       pattern: crashdumps_*_${{ github.run_number }}
-  #       path: crashdumps
-  #   - name: Count crash dumps
-  #     id: count
-  #     shell: wrap-shell {0}
-  #     run: |
-  #       mkdir -p crashdumps
-  #       echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
-  #       pacman --noconfirm -Syy
-  #       pacman --noconfirm -S --needed tree git
-  #   - name: Download debug information
-  #     uses: actions/download-artifact@v4
-  #     if: steps.count.outputs.crashdumps != 0
-  #     with:
-  #       path: debuginfo
-  #       pattern: debuginfo_*
-  #       merge-multiple: true
-  #   - name: Cache minidump-stackwalk
-  #     id: cache-minidump
-  #     uses: actions/cache@v4
-  #     with:
-  #       path: minidump-stackwalk
-  #       key: minidump-stackwalk-1
-  #   - name: Get minidump package sources
-  #     if: steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true'
-  #     shell: wrap-shell {0}
-  #     run: |
-  #       pacman --noconfirm -Syy
-  #       pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
-  #   - name: Makepkg Build
-  #     id: makepkg
-  #     if: steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true'
-  #     uses: edlanglois/pkgbuild-action@v1
-  #     with:
-  #       pkgdir: minidump-stackwalk
-  #   - name: Install minidump package
-  #     if: steps.count.outputs.crashdumps != 0
-  #     shell: wrap-shell {0}
-  #     run: |
-  #       pacman --noconfirm -U minidump-stackwalk/minidump-stackwalk*.pkg*
-  #   - name: Process dumps
-  #     if: steps.count.outputs.crashdumps != 0
-  #     shell: wrap-shell {0}
-  #     run: |
-  #       tree crashdumps
-  #       if [ -e debuginfo ]; then
-  #         cp -r debuginfo crashdumps/debuginfo
-  #         echo "found_debuginfo=true" | tee -a $GITHUB_ENV
-  #       fi
-  #       mkdir -p debuginfo/breakpad_symbols
-  #       mkdir -p crashdumps/debuginfo
-  #       for dump in $(find crashdumps -name "*.dmp"); do
-  #         echo ""
-  #         echo "================================================="
-  #         echo "Processing $dump..."
-  #         echo "================================================="
-  #         minidump-stackwalk $dump debuginfo/breakpad_symbols || true | tee $dump.stackwalk
-  #       done
-  #   - name: Upload crash dumps to Bugsplat
-  #     if: (success() || failure()) && steps.count.outputs.crashdumps != 0
-  #     shell: wrap-shell {0}
-  #     run: |
-  #       for dump in $(find crashdumps -name "*.dmp"); do
-  #         echo ""
-  #         echo "================================================="
-  #         echo "Uploading $dump..."
-  #         echo "================================================="
-  #         bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" ${dump}.moreinfo
-  #       done
-  #   - uses: actions/setup-node@v4
-  #     if: (success() || failure()) && steps.count.outputs.crashdumps != 0
-  #     with:
-  #       node-version: 19
-  #   - name: Upload BugSplat debug symbols
-  #     if: (success() || failure()) && steps.count.outputs.crashdumps != 0 && env.found_debuginfo == 'true'
-  #     uses: SanderVocke/symbol-upload@test_action
-  #     with:
-  #       clientId: "${{ secrets.BUGSPLAT_CLIENT_ID }}"
-  #       clientSecret: "${{ secrets.BUGSPLAT_CLIENT_SECRET }}"
-  #       database: shoopdaloop
-  #       application: shoopdaloop
-  #       version: git-${{ github.sha }}
-  #       files: "**/*.sym"
-  #       directory: crashdumps/debuginfo
-  #   - name: Upload crash dumps as artifact
-  #     if: (success() || failure()) && steps.count.outputs.crashdumps != 0
-  #     uses: actions/upload-artifact@v4
-  #     with:
-  #       name: crashdumps_summary
-  #       path: crashdumps
+      - name: Upload Tracy failure captures
+        if: always() && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tracy-nextest-${{ matrix.target }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/tracy-nextest-*/*.tracy
+          if-no-files-found: ignore
+          retention-days: 14

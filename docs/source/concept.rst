@@ -1,86 +1,54 @@
-Concept
-=======================================
+Concepts
+========
 
-Sync Loop
-------------
+Sync loop
+---------
 
-In **ShoopDaLoop**, the **sync loop** plays an important role in looping. Any new project starts with an empty **sync loop**.
+Every session has one **sync loop**. Synchronized loop transitions occur when
+that loop restarts; immediate mode applies transitions without waiting. The
+sync loop may contain audio or MIDI, but it can also be silent and serve only
+as the timing reference.
 
-Actions on **loops** are synchronized to **triggers** of the **sync loop**. A **trigger** is emitted when the **sync loop** restarts. Examples:
-
-* A requested **transition** (e.g. to recording, playing or stopped mode) will *usually* happen on the **sync loop**'s next **trigger**.
-* When a loop finishes playing, it will restart on the next **trigger** (which is usually instantly, as loops are typically multiples of the **sync loop**'s length).
-
-The sync loop may itself hold audio and/or MIDI data. A typical use is a click track. However, it is also perfectly fine to leave it empty and use it for synchronization only.
+The global record-cycle value controls fixed-length recording and retroactive
+grab duration. A value of zero means recording continues until another action
+stops it.
 
 .. figure:: resources/syncloop.gif
    :width: 400px
-   :alt: Synchronization to the sync loop.
+   :alt: Loop actions synchronized to a reference loop
 
-   Synchronization to the sync loop (note the picture needs updating, as at the time it was called "master loop").
+Tracks and loops
+----------------
 
-The global **n cycles** control determines how many sync loop cycles recording will be executed for.
-For example, with **n cycles** set to 4, if the sync loop represents one bar, recording on a loop will automatically progress to playback after recording 4 bars.
-The default setting for **n cycles** is 0 (infinite), meaning the loop will be recorded until manually stopped.
-If recording using the **always-on recording** feature, grabbing the always-on recording will also grab the specified amount of sync loop cycles.
+Loops are arranged in track columns. Loops in one track share ports, input and
+output controls, monitoring, and an optional processor. The separate sync track
+is the timing reference for the main grid.
 
-.. figure:: resources/n_cycles_control.png
-   :width: 150px
-   :alt: N cycles control
+Regular tracks route audio and optional MIDI directly. **Dry + Wet** tracks can
+record the source and processed audio together. Their dry recording can later
+be played through the shared processor or used to replace the wet recording.
 
-   The N cycles control.
+Processing
+----------
 
-Tracks
--------
+Native builds support external processing, built-in Tiny Synth/FX, and Carla
+Rack/Patchbay modes when native FX support is enabled. Browser builds support
+Tiny Synth/FX in the AudioWorklet. Available choices are capability-driven, so
+a session requiring an unavailable processor is rejected rather than loaded
+partially.
 
-.. figure:: resources/tracks.png
-   :width: 300px
-   :alt: tracks in ShoopDaLoop
+Connections
+-----------
 
-   Example of three tracks in ShoopDaLoop.
+The Connections window shows compatible application and host audio/MIDI ports.
+Native host ports come from JACK or CPAL+midir. Browser host ports come from
+Web Audio and permission-gated Web MIDI. Connection state is explicit and is
+kept separate from pending changes.
 
-**ShoopDaLoop**'s loops are divided over **tracks**. Loops in the same **track** share their input/output port connections, gain/balance and effects/synthesis. Therefore, typically a track per instrument/part is used.
+Recording and grabbing
+----------------------
 
-
-Composition and Sequencing
---------------------------
-
-Any loop slot in **ShoopDaLoop** can be used as a **composite loop**. This is **ShoopDaLoop**'s way of providing concepts that may be familiar from other software, including:
-
-* **scenes**;
-* **sequences** and **songs**;
-* **pre-scripted** recording and looping.
-
-Composite timelines share the engine's audio sample clock with their child loops. This keeps nested and coincident actions independent of GUI load and frontend refresh timing after configuration acceptance.
-
-For more information, see :ref:`Composite Loops <composite_loops>`.
-
-Effects / Synthesis
----------------------
-
-.. figure:: resources/fx_plugins.drawio.svg
-   :width: 800px
-   :alt: FX / Synthesis using plugins.
-
-   Signal flow when using internal FX/Synthesis in plugins.
-
-.. figure:: resources/external_fx.drawio.svg
-   :width: 800px
-   :alt: FX / Synthesis using external program.
-
-   Signal flow when using external FX/Synthesis.
-
-**ShoopDaLoop** supports two track port connection modes: **regular** and **dry/wet**.
-
-In **regular** mode, there is simply an input and an output.
-
-In **dry/wet** mode, an effects and/or synthesis chain can be inserted for the track. When recording loops, the dry and wet signals are simultaneously recorded. This enables tricks such as re-playing the dry loop through live effects, playing back the wet while disabling the effects for CPU savings and re-synthesizing with different virtual instruments.
-
-Note that the **dry** channel can be MIDI, audio or both. However, the **wet** channel can only be audio.
-
-**Dry/wet** mode can be configured in two ways: using external JACK **send** and **return** ports or hosting plugins directly inside **ShoopDaLoop** via **Carla**. 
-
-There are advantages to using plugins if possible:
-
-* Dry, fx/synthesis and wet are all processed in a single audio process iteration. This saves one period of latency w.r.t. external, where the back-end will usually take two cycles to pass the signal back into ShoopDaLoop and out again.
-* Internal plugin state can be remembered by ShoopDaLoop and saved with the session. With external FX/synthesis this would only be possible with e.g. NSM.
+Normal recording starts prospectively. **Grab** captures recently monitored
+input from bounded always-on buffers, aligned to the sync or targeted loop.
+Selection applies actions to groups of loops; targeting lets one loop act as an
+alternate synchronization source.

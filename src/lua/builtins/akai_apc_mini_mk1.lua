@@ -1,89 +1,74 @@
--- akai_apc_mini_mk1.lua: Deep integration for the Akai APC Mini MK1.
+-- # Akai APC Mini MK1 controls
 --
--- This script will automatically open MIDI ports and connect to the APC Mini.
+-- Deep ShoopDaLoop integration for the **Akai APC Mini MK1**. The script automatically opens MIDI ports and connects to the controller.
 --
--- In this description, buttons are referred to in capital letters, such as
--- CLIP STOP.
+-- ## Relabeled buttons
 --
--- There are some buttons that have new meanings compared to what is printed on
--- the device. You can put some stickers for them:
--- - REC ARM -> RECORD
--- - MUTE -> GRAB
--- - first blank soft-key -> SYNC
--- - second blank soft-key -> maps to the sync loop (loop button)
--- - SEND -> DRY
--- - DEVICE -> SET N CYCLES
+-- This guide uses capitalized ShoopDaLoop button names. These controls differ from the labels printed on the device:
 --
--- ---------------
--- ---- LOOPS ----
--- ---------------
+-- | Device label | ShoopDaLoop function |
+-- | --- | --- |
+-- | REC ARM | **RECORD** |
+-- | MUTE | **GRAB** |
+-- | First blank soft key | **SYNC** |
+-- | Second blank soft key | Sync-loop button |
+-- | SEND | **DRY** |
+-- | DEVICE | **SET N CYCLES** |
 --
--- - Grid buttons will light up to indicate the state of each loop.
--- - Clicking a grid button will perform the default loop action
---   (see generic ShoopDaLoop documentation) for that loop.
--- - Having the following buttons active while clicking a loop modifies
---   this behavior:
---      - DRY:       if transitioning to play, it will transtition to
---                   play dry through wet instead.
---        - + SHIFT: composition mode (details below).
---      - CLIP STOP: stops the clicked loop(s)
---        - + SHIFT: clears the clicked loop(s)
---      - RECORD:    records the clicked loop(s)
---        - + DRY:   re-records the clicked loop(s) dry into wet
---      - GRAB:      grabs the clicked loop(s)
---        - + SHIFT: toggles default recording action between record/grab
---      - SELECT:    toggles selection of clicked loop(s)
---        - + SHIFT: toggles targeting of clicked loop(s)
+-- ## Loops
 --
--- -------------------------
--- ---- GLOBAL CONTROLS ----
--- -------------------------
+-- Grid buttons light up to show loop state. Pressing a grid button performs that loop's default action. Hold a modifier to choose another action:
 --
--- - SOLO will toggle solo mode while held. If SHIFT is pressed, the toggle will be permanent.
--- - SYNC will toggle sync mode while held. If SHIFT is pressed, the toggle will be permanent.
--- - STOP ALL CLIPS will stop all loops, or:
---   - + SELECT: deselect all loops.
---   - + SHIFT: clear all loops.
--- - DEVICE allows to set the N cycles to record. Hold it and press a loop in the grid.
---   The number of cycles set is the loop location starting from the top left (left to right).
---   To reset to zero, use the bottom rightmost loop.
+-- | Held control | Grid-button action | With an additional modifier |
+-- | --- | --- | --- |
+-- | **DRY** | Play dry through wet when transitioning to play | **SHIFT** enters composition mode |
+-- | **CLIP STOP** | Stop the loop | **SHIFT** clears the loop |
+-- | **RECORD** | Record the loop | **DRY** re-records dry into wet |
+-- | **GRAB** | Grab the loop | **SHIFT** toggles the default recording action between record and grab |
+-- | **SELECT** | Toggle loop selection | **SHIFT** toggles loop targeting |
 --
--- ----------------------------------
--- ---- FADER AND TRACK CONTROLS ----
--- ----------------------------------
+-- ## Global controls
 --
--- Faders don't do anything by default. They only work while one or more of the following
--- buttons are held:
--- - VOLUME: sets the gain of the track.
--- - PAN: sets the balance of the track. Only works for stereo tracks.
+-- | Control | Action |
+-- | --- | --- |
+-- | **SOLO** | Toggle solo while held. Add **SHIFT** to make the toggle permanent. |
+-- | **SYNC** | Toggle synchronization while held. Add **SHIFT** to make the toggle permanent. |
+-- | **STOP ALL CLIPS** | Stop all loops. Add **SELECT** to deselect all loops, or **SHIFT** to clear all loops. |
+-- | **DEVICE** | Hold and press a grid button to set the number of recording cycles. Grid positions count from the top left, left to right; the bottom-right button resets to zero. |
 --
--- Note that the rightmost fader is reserved for the sync loop track.
+-- ## Faders and track controls
 --
--- Track muting can be done as follows:
--- - VOLUME + LOOP BUTTON will toggle mute on the track that the clicked loop is in.
--- - PAN + LOOP BUTTON will toggle input mute on the track that the clicked loop is in.
+-- Faders act only while a mode button is held:
 --
--- -----------------------
--- -- COMPOSITION MODE ---
--- -----------------------
+-- | Held control | Fader action |
+-- | --- | --- |
+-- | **VOLUME** | Set track gain. |
+-- | **PAN** | Set stereo track balance. |
 --
--- Composition mode lets you quickly create simple composite loops directly from the
--- AKAI device. The steps for this are as follows:
+-- The rightmost fader is reserved for the sync-loop track.
 --
--- - Press SHIFT + DRY and hold these buttons throughout the composition process.
--- - Click any loop. This loop becomes the target where the composition will be stored.
--- - Any subsequent loops clicked are added to the end of the composition immediately.
---   Note that if the target was already a composite loop, it is not cleared - the new
---   loops(s) get added to the end.
--- - Pressing multiple loops together will cause the additionally pressed loops to be
---   inserted parallel to the current composition.
+-- - **VOLUME + loop button** toggles output mute for the loop's track.
+-- - **PAN + grid button** toggles input mute for that column's track.
+-- - **PAN + sync-loop button** toggles input mute for the sync track.
+--
+-- Unmuting always respects the global auto-mute-other-inputs control.
+--
+-- ## Composition mode
+--
+-- Composition mode creates simple composite loops directly from the controller:
+--
+-- 1. Hold **SHIFT + DRY** throughout the composition process.
+-- 2. Press a loop to choose the composition target.
+-- 3. Press more loops to append them immediately. Existing composite content is retained.
+-- 4. Press several loops together to insert the additional loops in parallel.
+--
+-- ## Script example
+--
+-- This source also serves as an implementation example. Lua executes it from top to bottom when loaded; callbacks registered near the end provide its continuing behavior.
+if shoop_announce_api_version then
+    shoop_announce_api_version(1, 1)
+end
 
--- This file serves as an example for implementing similar scripts, so there
--- are many comments to help you understand the code.
-
--- Upon loading, this LUA script will be executed from top to bottom.
--- The continued behavior during the lifetime of the script is set up near
--- the bottom by registering callbacks.
 print_debug("Init akai_apc_mini_mk1.lua")
 
 -- Import the necessary modules from the ShoopDaLoop API
@@ -286,7 +271,7 @@ local handle_loop_pressed = function(coords)
     elseif STATE_pan_pressed then
         -- Pan => Input Mute
         print_debug("-> toggle track input muted")
-        shoop_helpers.track_toggle_input_muted(coords[1])
+        shoop_helpers.track_toggle_input_muted(coords[1], true)
     elseif STATE_dry_pressed and STATE_shift_pressed then
         -- Shift + Dry => Composition mode
         print_debug("-> enter composition mode with loop")
@@ -309,6 +294,19 @@ local handle_loop_released = function(coords)
     end
 end
 
+local loop_state_color = function(mode, length)
+    if mode == shoop_control.constants.LoopMode_Playing or
+       mode == shoop_control.constants.LoopMode_PlayingDryThroughWet then
+        return LED_green
+    elseif mode == shoop_control.constants.LoopMode_Recording or
+           mode == shoop_control.constants.LoopMode_RecordingDryIntoWet then
+        return LED_red
+    elseif length > 0 then
+        return LED_yellow
+    end
+    return LED_off
+end
+
 -- Based on a event that happened on a particular loop, update that loop's
 -- color and send it to the device.
 local push_loop_color = function(coords, event)
@@ -322,53 +320,36 @@ local push_loop_color = function(coords, event)
         prev_color = loop_colors[coords[1]][coords[2]]
     end
 
-    local color = LED_off
-    if event.mode == shoop_control.constants.LoopMode_Playing or
-       event.mode == shoop_control.constants.LoopMode_PlayingDryThroughWet then
-        color = LED_green
-    elseif event.mode == shoop_control.constants.LoopMode_Recording or
-           event.mode == shoop_control.constants.LoopMode_RecordingDryIntoWet then
-        color = LED_red
-    elseif event.length > 0 then
-        color = LED_yellow
-    end
-
+    local color = loop_state_color(event.mode, event.length)
     if prev_color ~= color then
         set_led_by_coords(coords, color)
         loop_colors[coords[1]][coords[2]] = color
     end
 end
 
--- Get the color of the loop, based on what we have sent in the
--- past. It is not actually queried from the device.
-local get_loop_color = function(coords)
-    if loop_colors[coords[1]] ~= nil then
-        if loop_colors[coords[2]] ~= nil then
-            return loop_colors[coords[1]][coords[2]]
-        end
+local push_current_loop_color = function(coords)
+    local modes = shoop_control.loop_get_mode(coords)
+    local lengths = shoop_control.loop_get_length(coords)
+    local color = LED_off
+    if #modes == 1 and #lengths == 1 then
+        color = loop_state_color(modes[1], lengths[1])
     end
-    return nil
+    if loop_colors[coords[1]] == nil then
+        loop_colors[coords[1]] = {}
+    end
+    loop_colors[coords[1]][coords[2]] = color
+    set_led_by_coords(coords, color)
 end
 
--- For all colors we are tracking, send them to the loop(s) again.
+-- Query and resend every loop color so reset also reflects changes which
+-- happened before this script started or while the controller was disconnected.
 local push_all_loop_colors = function()
     for i = 0, 7 do
         for j = 0, 7 do
-            local coords = {i,j}
-            local color = get_loop_color(coords)
-            if color == nil then
-                color = LED_off
-            end
-            set_led_by_coords(coords, color)
+            push_current_loop_color({i,j})
         end
     end
-    -- Sync loop
-    local sync_coords = {-1, 0}
-    local sync_color = get_loop_color(sync_coords)
-    if sync_color == nil then
-        sync_color = LED_off
-    end
-    set_led_by_coords(sync_coords, sync_color)
+    push_current_loop_color({-1, 0})
 end
 
 -- Check the state of global ShoopDaLoop controls and update the resp. buttons' colors

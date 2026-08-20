@@ -87,18 +87,45 @@ pub struct PianoPane {
     scroll_initialized: bool,
     #[cfg(test)]
     keyboard_rect: Option<Rect>,
+    #[cfg(test)]
+    indicator_centers: Vec<f32>,
 }
 
 impl PianoPane {
-    pub fn show(&mut self, ui: &mut egui::Ui, destinations: &[String]) -> Vec<PianoAction> {
-        if destinations.is_empty() {
-            ui.label("No input-monitored tracks with MIDI input ports.");
-        } else {
-            ui.label(format!(
-                "Sending to {}: {}",
-                destinations.len(),
-                destinations.join(", ")
-            ));
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        enabled: bool,
+        destination_centers: &[f32],
+    ) -> Vec<PianoAction> {
+        let mut actions = Vec::new();
+        #[cfg(test)]
+        self.indicator_centers.clear();
+        if !enabled {
+            if let Some(action) = self.release_all() {
+                actions.push(action);
+            }
+        }
+
+        let (indicator_rect, _) =
+            ui.allocate_exact_size(egui::vec2(ui.available_width(), 16.0), egui::Sense::hover());
+        let indicator_clip = indicator_rect.intersect(ui.clip_rect());
+        let painter = ui.painter().with_clip_rect(indicator_clip);
+        for center_x in destination_centers {
+            if indicator_clip.x_range().contains(*center_x) {
+                #[cfg(test)]
+                self.indicator_centers.push(*center_x);
+                let tip = egui::pos2(*center_x, indicator_rect.top() + 1.0);
+                painter.line_segment(
+                    [tip + egui::vec2(0.0, 12.0), tip + egui::vec2(0.0, 4.0)],
+                    Stroke::new(2.0, colors::MIDI_ACTIVITY),
+                );
+                painter.add(egui::Shape::convex_polygon(
+                    vec![tip, tip + egui::vec2(-4.0, 5.0), tip + egui::vec2(4.0, 5.0)],
+                    colors::MIDI_ACTIVITY,
+                    Stroke::NONE,
+                ));
+            }
         }
 
         let viewport_width = ui.available_width();
@@ -109,17 +136,23 @@ impl PianoPane {
         if !self.scroll_initialized {
             scroll = scroll.horizontal_scroll_offset(initial_offset);
         }
-        let mut actions = Vec::new();
         scroll.show(ui, |ui| {
             let size = PianoLayout::default().size();
-            let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+            let sense = if enabled {
+                egui::Sense::click_and_drag()
+            } else {
+                egui::Sense::hover()
+            };
+            let (rect, response) = ui.allocate_exact_size(size, sense);
             let layout = PianoLayout::new(rect.min);
             #[cfg(test)]
             {
                 self.keyboard_rect = Some(rect);
             }
-            self.handle_pointer(ui.ctx(), &response, layout, &mut actions);
-            self.paint(ui, layout);
+            if enabled {
+                self.handle_pointer(ui.ctx(), &response, layout, &mut actions);
+            }
+            self.paint(ui, layout, enabled);
         });
         self.scroll_initialized = true;
         actions
@@ -184,7 +217,7 @@ impl PianoPane {
         }
     }
 
-    fn paint(&self, ui: &egui::Ui, layout: PianoLayout) {
+    fn paint(&self, ui: &egui::Ui, layout: PianoLayout, enabled: bool) {
         let painter = ui.painter();
         for note in (0..MIDI_NOTE_COUNT).filter(|note| !is_black(*note)) {
             let rect = layout.key_rect(note).unwrap();
@@ -194,10 +227,19 @@ impl PianoPane {
                 0.0,
                 if held {
                     colors::COLORED_HIGHLIGHT
-                } else {
+                } else if enabled {
                     egui::Color32::WHITE
+                } else {
+                    egui::Color32::from_gray(105)
                 },
-                Stroke::new(1.0, egui::Color32::BLACK),
+                Stroke::new(
+                    1.0,
+                    if enabled {
+                        egui::Color32::BLACK
+                    } else {
+                        egui::Color32::from_gray(65)
+                    },
+                ),
                 StrokeKind::Inside,
             );
             if let Some(label) = c_label(note) {
@@ -206,7 +248,11 @@ impl PianoPane {
                     egui::Align2::CENTER_BOTTOM,
                     label,
                     egui::FontId::proportional(9.0),
-                    egui::Color32::BLACK,
+                    if enabled {
+                        egui::Color32::BLACK
+                    } else {
+                        egui::Color32::from_gray(60)
+                    },
                 );
             }
         }
@@ -218,10 +264,19 @@ impl PianoPane {
                 1.0,
                 if held {
                     colors::COLORED_HIGHLIGHT
-                } else {
+                } else if enabled {
                     egui::Color32::BLACK
+                } else {
+                    egui::Color32::from_gray(45)
                 },
-                Stroke::new(1.0, egui::Color32::from_gray(80)),
+                Stroke::new(
+                    1.0,
+                    if enabled {
+                        egui::Color32::from_gray(80)
+                    } else {
+                        egui::Color32::from_gray(65)
+                    },
+                ),
                 StrokeKind::Inside,
             );
         }
@@ -230,6 +285,11 @@ impl PianoPane {
     #[cfg(test)]
     pub(crate) fn keyboard_rect(&self) -> Option<Rect> {
         self.keyboard_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn indicator_centers(&self) -> &[f32] {
+        &self.indicator_centers
     }
 
     #[cfg(test)]
@@ -254,7 +314,7 @@ fn white_key_count() -> usize {
 mod tests {
     use super::*;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn geometry_covers_the_complete_midi_range() {
         let layout = PianoLayout::default();
         assert_eq!(layout.key_rect(0).unwrap().min, Pos2::ZERO);
@@ -263,7 +323,7 @@ mod tests {
         assert_eq!(layout.size().x, 75.0 * WHITE_KEY_WIDTH);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn every_c_uses_scientific_pitch_notation() {
         let labels: Vec<_> = (0..MIDI_NOTE_COUNT).filter_map(c_label).collect();
         assert_eq!(labels.first().map(String::as_str), Some("C-1"));
@@ -274,7 +334,7 @@ mod tests {
         assert_eq!(c_label(128), None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn black_keys_take_hit_test_precedence() {
         let layout = PianoLayout::default();
         let c_sharp = layout.key_rect(1).unwrap();
@@ -285,7 +345,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn hit_testing_finds_endpoint_keys_and_rejects_outside() {
         let layout = PianoLayout::new(pos2(5.0, 7.0));
         assert_eq!(
@@ -299,7 +359,7 @@ mod tests {
         assert_eq!(layout.note_at(pos2(4.0, 7.0)), None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn middle_c_centering_is_clamped_and_deterministic() {
         let layout = PianoLayout::default();
         let offset = layout.centered_offset(MIDDLE_C, 900.0);
@@ -315,18 +375,19 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> Vec<PianoAction> {
         let mut actions = Vec::new();
-        let _ = context.run_ui(
+        let mut ignored_output_0 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 200.0))),
                 events,
                 ..Default::default()
             },
-            |ui| actions = pane.show(ui, &["Track".to_owned()]),
+            |ui| actions = pane.show(ui, true, &[]),
         );
+        ignored_output_0.textures_delta.clear();
         actions
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pointer_press_release_and_focus_loss_have_paired_lifecycle() {
         let context = egui::Context::default();
         let mut pane = PianoPane::default();
@@ -364,26 +425,86 @@ mod tests {
         assert!(frame(&context, &mut pane, vec![egui::Event::PointerGone]).is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn piano_paints_with_horizontal_overflow_at_supported_sizes() {
         for size in [vec2(360.0, 200.0), vec2(900.0, 600.0)] {
             let context = egui::Context::default();
             let mut pane = PianoPane::default();
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
                     ..Default::default()
                 },
                 |ui| {
-                    pane.show(ui, &[]);
+                    pane.show(ui, false, &[]);
                 },
             );
+            output.textures_delta.clear();
             assert!(output.shapes.len() > usize::from(MIDI_NOTE_COUNT));
             assert!(pane.keyboard_rect().unwrap().width() > size.x);
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn disabled_keyboard_ignores_input_and_active_destinations_draw_indicators() {
+        let context = egui::Context::default();
+        let mut pane = PianoPane::default();
+        let mut actions = Vec::new();
+        let render = |pane: &mut PianoPane,
+                      enabled: bool,
+                      centers: &[f32],
+                      events: Vec<egui::Event>,
+                      actions: &mut Vec<PianoAction>| {
+            let mut ignored_output_1 = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 200.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| *actions = pane.show(ui, enabled, centers),
+            );
+            ignored_output_1.textures_delta.clear();
+        };
+
+        render(&mut pane, false, &[], Vec::new(), &mut actions);
+        let note = PianoLayout::new(pane.keyboard_rect().unwrap().min)
+            .key_rect(MIDDLE_C)
+            .unwrap()
+            .center();
+        render(
+            &mut pane,
+            false,
+            &[],
+            vec![
+                egui::Event::PointerMoved(note),
+                egui::Event::PointerButton {
+                    pos: note,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            &mut actions,
+        );
+        assert!(actions.is_empty());
+        render(
+            &mut pane,
+            false,
+            &[],
+            vec![egui::Event::PointerButton {
+                pos: note,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            &mut actions,
+        );
+
+        render(&mut pane, true, &[120.0, 360.0], Vec::new(), &mut actions);
+        assert_eq!(pane.indicator_centers(), &[120.0, 360.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn pointer_release_outside_still_releases_the_held_note() {
         let context = egui::Context::default();
         let mut pane = PianoPane::default();

@@ -8,7 +8,7 @@
 //! within a cycle hands back the same storage, which becomes a check that the slice
 //! has the requested length and keeps what was written to it.
 
-use assert2::{check, let_assert};
+use assert2::check;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
 use shoop_engine::port::PortDirection;
 
@@ -34,7 +34,7 @@ fn all_close(got: &[f32], want: &[f32]) -> bool {
     got.len() == want.len() && got.iter().zip(want).all(|(a, b)| close(*a, *b))
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_in_properties() {
     let p = in_port(4);
 
@@ -44,7 +44,7 @@ fn dummy_audio_in_properties() {
     check!(!p.has_implicit_output_sink());
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_in_buffers() {
     let mut p = in_port(4);
 
@@ -57,7 +57,7 @@ fn dummy_audio_in_buffers() {
     check!(p.buffer(10)[3] == 0.25);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_in_queue() {
     let mut p = in_port(4);
     let samples = [0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0];
@@ -78,7 +78,7 @@ fn dummy_audio_in_queue() {
     check!(all_close(p.buffer(3), &[0.0, 0.0, 0.0]));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_in_gain() {
     let mut p = in_port(4);
     p.queue_data(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -89,7 +89,7 @@ fn dummy_audio_in_gain() {
     check!(all_close(p.buffer(3), &[0.0, 0.5, 1.0]));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_in_mute() {
     let mut p = in_port(4);
     p.queue_data(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -100,7 +100,7 @@ fn dummy_audio_in_mute() {
     check!(all_close(p.buffer(3), &[0.0, 0.0, 0.0]));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_in_peak() {
     let mut p = in_port(4);
     p.queue_data(&[5.0, 4.0, 3.0, 2.0, 1.0, 0.0]);
@@ -125,7 +125,7 @@ fn dummy_audio_in_peak() {
     check!(close(p.audio().output_peak(), 2.0));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_in_get_ringbuffer_data() {
     let mut p = in_port(4);
 
@@ -139,7 +139,7 @@ fn dummy_audio_in_get_ringbuffer_data() {
     check!(last[..4] == [0.0, 0.1, 0.2, 0.3]);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_out_properties() {
     let p = out_port();
 
@@ -149,7 +149,7 @@ fn dummy_audio_out_properties() {
     check!(p.has_implicit_output_sink());
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_out_buffers() {
     let mut p = out_port();
 
@@ -160,7 +160,7 @@ fn dummy_audio_out_buffers() {
     check!(p.buffer(10)[3] == 0.25);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_out_queue() {
     let mut p = out_port();
     let samples = [0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0];
@@ -171,11 +171,11 @@ fn dummy_audio_out_queue() {
     p.buffer(6).copy_from_slice(&samples);
     p.process(6);
 
-    let_assert!(Ok(dequeued) = p.dequeue_data(6));
+    assert2::assert!(let Ok(dequeued) = p.dequeue_data(6));
     check!(dequeued == samples);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_out_gain() {
     let mut p = out_port();
     p.request_data(3);
@@ -185,11 +185,11 @@ fn dummy_audio_out_gain() {
     p.buffer(3).copy_from_slice(&[0.0, 1.0, 2.0]);
     p.process(3);
 
-    let_assert!(Ok(dequeued) = p.dequeue_data(3));
+    assert2::assert!(let Ok(dequeued) = p.dequeue_data(3));
     check!(all_close(&dequeued, &[0.0, 0.5, 1.0]));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_out_mute() {
     let mut p = out_port();
     p.request_data(3);
@@ -199,11 +199,11 @@ fn dummy_audio_out_mute() {
     p.buffer(3).copy_from_slice(&[0.0, 1.0, 2.0]);
     p.process(3);
 
-    let_assert!(Ok(dequeued) = p.dequeue_data(3));
+    assert2::assert!(let Ok(dequeued) = p.dequeue_data(3));
     check!(all_close(&dequeued, &[0.0, 0.0, 0.0]));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_out_peak() {
     let mut p = out_port();
 
@@ -227,7 +227,7 @@ fn dummy_audio_out_peak() {
     check!(close(p.audio().output_peak(), 0.0));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn dummy_audio_out_noop_zero() {
     let mut p = out_port();
     p.request_data(6);
@@ -236,13 +236,15 @@ fn dummy_audio_out_noop_zero() {
     p.buffer(3).copy_from_slice(&[0.0, 1.0, 2.0]);
     p.process(3);
 
-    let_assert!(Ok(dequeued) = p.dequeue_data(3));
+    assert2::assert!(let Ok(dequeued) = p.dequeue_data(3));
     check!(all_close(&dequeued, &[0.0, 1.0, 2.0]));
 
     // A cycle nobody wrote to captures silence rather than repeating the last one.
     p.prepare(3);
     p.process(3);
 
-    let_assert!(Ok(dequeued) = p.dequeue_data(3));
+    assert2::assert!(let Ok(dequeued) = p.dequeue_data(3));
     check!(all_close(&dequeued, &[0.0, 0.0, 0.0]));
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

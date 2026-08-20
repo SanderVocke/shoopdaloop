@@ -235,7 +235,7 @@ mod tests {
             .collect()
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn no_effect_passes_the_signal_through() {
         let mut c = chain(EffectKind::None);
         let input = sine(440.0, 256);
@@ -244,7 +244,7 @@ mod tests {
         check!(out == input);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bypass_passes_through_whatever_the_effect_is() {
         let mut c = chain(EffectKind::Delay);
         c.set_bypassed(true);
@@ -254,7 +254,7 @@ mod tests {
         check!(out == input);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_low_pass_attenuates_high_frequencies_more_than_low_ones() {
         let mut c = chain(EffectKind::LowPass);
         c.set_cutoff_hz(500.0);
@@ -272,7 +272,7 @@ mod tests {
         check!(low > high * 4.0, "low {low} was not far above high {high}");
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_higher_cutoff_passes_more() {
         let input = sine(4000.0, 4800);
 
@@ -289,7 +289,7 @@ mod tests {
         check!(peak(&b[2400..]) > peak(&a[2400..]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_delay_repeats_the_signal_after_its_time() {
         let mut c = chain(EffectKind::Delay);
         c.set_delay_seconds(0.01); // 480 samples
@@ -313,7 +313,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn feedback_produces_further_repeats_that_decay() {
         let mut c = chain(EffectKind::Delay);
         c.set_delay_seconds(0.01);
@@ -330,7 +330,7 @@ mod tests {
         check!(second < first, "the repeats did not decay");
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn feedback_cannot_be_set_to_run_away() {
         let mut c = chain(EffectKind::Delay);
         c.set_feedback(5.0);
@@ -338,7 +338,7 @@ mod tests {
         check!(c.feedback() <= 0.95);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_wet_mix_blends_against_the_untouched_input() {
         let mut c = chain(EffectKind::Delay);
         c.set_delay_seconds(0.01);
@@ -352,7 +352,7 @@ mod tests {
         check!(out == input);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_delay_longer_than_the_buffer_is_clamped() {
         let mut c = chain(EffectKind::Delay);
         c.set_delay_seconds(MAX_DELAY_SECONDS * 10.0);
@@ -362,7 +362,7 @@ mod tests {
         c.process(&vec![0.5; 128], &mut out);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_zero_delay_is_still_at_least_one_sample() {
         let mut c = chain(EffectKind::Delay);
         c.set_delay_seconds(0.0);
@@ -370,7 +370,7 @@ mod tests {
         check!(c.delay_seconds() > 0.0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn changing_effect_clears_the_previous_tail() {
         let mut c = chain(EffectKind::Delay);
         c.set_delay_seconds(0.01);
@@ -387,7 +387,7 @@ mod tests {
         check!(peak(&after) == 0.0, "a stale tail survived the change");
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cutoff_is_bounded_by_the_sample_rate() {
         let mut c = chain(EffectKind::LowPass);
         c.set_cutoff_hz(1_000_000.0);
@@ -397,7 +397,7 @@ mod tests {
         check!(c.cutoff_hz() >= 20.0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_shorter_output_than_input_is_not_overrun() {
         let mut c = chain(EffectKind::LowPass);
         let input = vec![0.5f32; 256];

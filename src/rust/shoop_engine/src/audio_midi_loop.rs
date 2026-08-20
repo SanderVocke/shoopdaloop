@@ -76,6 +76,20 @@ impl AudioMidiLoop {
         self.audio_channels.len() - 1
     }
 
+    pub fn add_audio_channel_with_bounded_capacity_unprepared(
+        &mut self,
+        chunk_size: usize,
+        capacity: usize,
+        mode: ChannelMode,
+    ) -> usize {
+        self.audio_channels
+            .push(AudioChannel::with_bounded_capacity_unprepared(
+                chunk_size, capacity, mode,
+            ));
+        self.resync_poi();
+        self.audio_channels.len() - 1
+    }
+
     pub fn add_audio_channel_with_state_and_snapshots(
         &mut self,
         chunk_size: usize,
@@ -396,7 +410,7 @@ impl AudioMidiLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     use ChannelMode as C;
     use LoopMode as L;
@@ -419,22 +433,22 @@ mod tests {
         let mut src = input.to_vec();
         src.resize(n, 0.0);
         let mut out = vec![0.0; n];
-        let_assert!(Ok(()) = l.process::<Vec<MidiStorageElem>>(n as u32, &[], &mut []));
+        assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(n as u32, &[], &mut []));
         l.finalize_process(&mut [(&src, &mut out)]);
         out
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn no_channels_behaves_like_a_bare_loop() {
         let mut l = AudioMidiLoop::default();
         check!(l.mode() == L::Stopped);
         check!(l.next_poi() == None);
-        let_assert!(Ok(()) = l.process::<Vec<MidiStorageElem>>(1000, &[], &mut []));
+        assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(1000, &[], &mut []));
         check!(l.length() == 0);
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn adding_and_removing_channels() {
         let mut l = AudioMidiLoop::default();
         check!(l.n_audio_channels() == 0);
@@ -450,17 +464,17 @@ mod tests {
         check!(l.delete_audio_channel(5) == false);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_drives_the_channel() {
         let mut l = loop_with_channel();
         l.set_mode(L::Recording);
         cycle(&mut l, 4, &[1.0, 2.0, 3.0, 4.0]);
         check!(l.length() == 4);
-        let_assert!(Some(ch) = l.audio_channel(0));
+        assert2::assert!(let Some(ch) = l.audio_channel(0));
         check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_reads_the_channel() {
         let mut l = loop_with_channel();
         l.audio_channel_mut(0)
@@ -474,7 +488,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_short_of_the_end_does_not_wrap() {
         let mut l = loop_with_channel();
         l.audio_channel_mut(0)
@@ -487,7 +501,7 @@ mod tests {
         check!(l.position() == 3);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_poi_constrains_the_loop() {
         let mut l = loop_with_channel();
         l.set_length(100);
@@ -505,7 +519,7 @@ mod tests {
         check!(l.next_poi() == Some(8));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_end_wins_when_it_is_earlier_than_the_channel() {
         let mut l = loop_with_channel();
         l.set_length(3);
@@ -515,7 +529,7 @@ mod tests {
         check!(l.next_poi() == Some(3));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_poi_survives_loop_state_changes() {
         let mut l = loop_with_channel();
         l.audio_channel_mut(0).unwrap().set_playback_buffer_size(5);
@@ -530,7 +544,7 @@ mod tests {
 
     /// channel is the one case where the loop can outrun a channel's input buffer.
     /// The channel reports it rather than overrunning, and the loop still advances.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bounded_audio_exhaustion_stops_recording_without_partial_growth() {
         let mut loop_ = AudioMidiLoop::default();
         loop_.add_audio_channel_with_bounded_capacity(4, 4, C::Direct);
@@ -550,7 +564,7 @@ mod tests {
         assert_eq!(loop_.audio_channel(0).unwrap().length(), 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn process_reports_channel_errors_without_stopping_the_loop() {
         let mut l = loop_with_channel();
         l.audio_channel_mut(0)
@@ -567,7 +581,7 @@ mod tests {
         check!(l.next_poi() == Some(8));
 
         let r = l.process::<Vec<MidiStorageElem>>(8, &[], &mut []);
-        let_assert!(
+        assert2::assert!(let
             Err(LoopError::Audio(
                 ChannelError::ReplaceInputOutOfBounds { .. }
             )) = r
@@ -576,7 +590,7 @@ mod tests {
         check!(l.position() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn multiple_channels_each_get_their_buffers() {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel(4, C::Direct);
@@ -588,7 +602,7 @@ mod tests {
             ch.set_playback_buffer_size(2);
         }
         l.resync_poi();
-        let_assert!(Ok(()) = l.process::<Vec<MidiStorageElem>>(2, &[], &mut []));
+        assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(2, &[], &mut []));
         let (a, b) = ([1.0f32, 2.0], [3.0f32, 4.0]);
         let (mut oa, mut ob) = (vec![0.0; 2], vec![0.0; 2]);
         l.finalize_process(&mut [(&a, &mut oa), (&b, &mut ob)]);
@@ -596,7 +610,7 @@ mod tests {
         check!(l.audio_channel(1).unwrap().data() == vec![3.0, 4.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn adding_and_removing_midi_channels() {
         let mut l = AudioMidiLoop::default();
         check!(l.n_midi_channels() == 0);
@@ -609,7 +623,7 @@ mod tests {
         check!(!l.delete_midi_channel(9));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_channel_records_and_plays_through_the_loop() {
         let mut l = AudioMidiLoop::default();
         l.add_midi_channel(64, C::Direct);
@@ -629,7 +643,7 @@ mod tests {
         // assigning them and before processing.
         l.resync_poi();
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) = l.process(
                 4,
                 std::slice::from_ref(&input.to_vec()),
@@ -646,7 +660,7 @@ mod tests {
         l.midi_channel_mut(0).unwrap().set_playback_buffer(4);
         l.resync_poi();
         let mut out = Vec::new();
-        let_assert!(
+        assert2::assert!(let
             Ok(()) =
                 l.process::<Vec<MidiStorageElem>>(4, &[Vec::new()], std::slice::from_mut(&mut out))
         );
@@ -655,7 +669,7 @@ mod tests {
         check!(out[1].data() == off.as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_channel_poi_constrains_the_loop() {
         let mut l = AudioMidiLoop::default();
         l.add_midi_channel(64, C::Direct);
@@ -666,7 +680,7 @@ mod tests {
         check!(l.next_poi() == Some(6));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn earliest_poi_across_audio_and_midi_wins() {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel(4, C::Direct);
@@ -688,7 +702,7 @@ mod tests {
     /// point of interest is respected: unlike audio, MIDI has no `Replace` path, so
     /// every mode it acts on is accounted for in `next_poi`. Its own unit tests
     /// cover those errors by calling the channel directly.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_midi_channel_is_never_asked_to_exceed_its_buffers() {
         let mut l = AudioMidiLoop::default();
         l.add_midi_channel(64, C::Direct);
@@ -701,11 +715,11 @@ mod tests {
 
         let mut out = Vec::new();
         let r = l.process::<Vec<MidiStorageElem>>(2, &[Vec::new()], std::slice::from_mut(&mut out));
-        let_assert!(Ok(()) = r);
+        assert2::assert!(let Ok(()) = r);
         check!(l.length() == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn planned_transition_still_works_with_channels() {
         let mut l = loop_with_channel();
         l.set_sync_source(Some(SyncSourceState::default()));

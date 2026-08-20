@@ -1,0 +1,15 @@
+[package]
+name = "shoop_test_macros"
+version.workspace = true
+edition = "2021"
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0"
+syn = { version = "3.0", features = ["full"] }
+
+[lints]
+workspace = true

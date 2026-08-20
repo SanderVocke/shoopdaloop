@@ -349,7 +349,7 @@ impl DummyAudioPort {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     use PortDataType as T;
     use PortDirection as D;
@@ -363,7 +363,7 @@ mod tests {
 
     // --- external connection registry ---
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn mock_ports_are_added_once() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
@@ -372,20 +372,20 @@ mod tests {
         check!(c.mock_ports()[0].direction == D::Input);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connecting_requires_an_existing_mock_port() {
         let mut c = DummyExternalConnections::default();
         let r = c.connect(PortId(1), "nope");
         check!(r == Err(DummyPortError::NoSuchExternalPort("nope".into())));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connection_status_reports_own_and_others_connections() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
         c.add_mock_port("b", D::Input, T::Audio);
-        let_assert!(Ok(()) = c.connect(PortId(1), "a"));
-        let_assert!(Ok(()) = c.connect(PortId(2), "b"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(1), "a"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(2), "b"));
 
         let s = c.connection_status_of(PortId(1));
         check!(s.get("a") == Some(&true));
@@ -393,85 +393,85 @@ mod tests {
         check!(s.get("b") == Some(&false));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn repeat_connections_are_ignored() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
-        let_assert!(Ok(()) = c.connect(PortId(1), "a"));
-        let_assert!(Ok(()) = c.connect(PortId(1), "a"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(1), "a"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(1), "a"));
         // The pair is stored once. Checking the status map alone would not show
         // this, since it keys by external name.
         check!(c.n_connections() == 1);
         check!(c.connection_status_of(PortId(1)).len() == 1);
 
         // A second port connecting to the same external port is a new pair.
-        let_assert!(Ok(()) = c.connect(PortId(2), "a"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(2), "a"));
         check!(c.n_connections() == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disconnecting_removes_the_connection() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
-        let_assert!(Ok(()) = c.connect(PortId(1), "a"));
-        let_assert!(Ok(()) = c.disconnect(PortId(1), "a"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(1), "a"));
+        assert2::assert!(let Ok(()) = c.disconnect(PortId(1), "a"));
         check!(c.connection_status_of(PortId(1)).is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_a_mock_port_drops_its_connections() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
-        let_assert!(Ok(()) = c.connect(PortId(1), "a"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(1), "a"));
         c.remove_mock_port("a");
         check!(c.mock_ports().is_empty());
         check!(c.connection_status_of(PortId(1)).is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_all_mock_ports_clears_everything() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("a", D::Input, T::Audio);
-        let_assert!(Ok(()) = c.connect(PortId(1), "a"));
+        assert2::assert!(let Ok(()) = c.connect(PortId(1), "a"));
         c.remove_all_mock_ports();
         check!(c.mock_ports().is_empty());
         check!(c.connection_status_of(PortId(1)).is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn find_filters_by_direction_and_data_type() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("ai", D::Input, T::Audio);
         c.add_mock_port("ao", D::Output, T::Audio);
         c.add_mock_port("mi", D::Input, T::Midi);
 
-        let_assert!(Ok(all) = c.find_external_ports(None, D::Any, T::Any));
+        assert2::assert!(let Ok(all) = c.find_external_ports(None, D::Any, T::Any));
         check!(all.len() == 3);
-        let_assert!(Ok(ins) = c.find_external_ports(None, D::Input, T::Any));
+        assert2::assert!(let Ok(ins) = c.find_external_ports(None, D::Input, T::Any));
         check!(ins.len() == 2);
-        let_assert!(Ok(audio_in) = c.find_external_ports(None, D::Input, T::Audio));
+        assert2::assert!(let Ok(audio_in) = c.find_external_ports(None, D::Input, T::Audio));
         check!(audio_in.len() == 1);
         check!(audio_in[0].name == "ai");
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn find_requires_a_full_name_match() {
         let mut c = DummyExternalConnections::default();
         c.add_mock_port("capture_1", D::Input, T::Audio);
         c.add_mock_port("system:capture_1", D::Input, T::Audio);
 
         // A partial pattern must not match, mirroring std::regex_match.
-        let_assert!(Ok(r) = c.find_external_ports(Some("capture"), D::Any, T::Any));
+        assert2::assert!(let Ok(r) = c.find_external_ports(Some("capture"), D::Any, T::Any));
         check!(r.is_empty());
         // The full name does.
-        let_assert!(Ok(r) = c.find_external_ports(Some("capture_1"), D::Any, T::Any));
+        assert2::assert!(let Ok(r) = c.find_external_ports(Some("capture_1"), D::Any, T::Any));
         check!(r.len() == 1);
         // And a wildcard reaches both.
-        let_assert!(Ok(r) = c.find_external_ports(Some(".*capture_1"), D::Any, T::Any));
+        assert2::assert!(let Ok(r) = c.find_external_ports(Some(".*capture_1"), D::Any, T::Any));
         check!(r.len() == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_bad_pattern_is_reported() {
         let c = DummyExternalConnections::default();
         let r = c.find_external_ports(Some("("), D::Any, T::Any);
@@ -480,7 +480,7 @@ mod tests {
 
     // --- dummy audio port ---
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn reports_its_identity_and_role() {
         let p = input_port();
         check!(p.id() == PortId(1));
@@ -495,7 +495,7 @@ mod tests {
         check!(p.output_connectability() == PortConnectability::INTERNAL);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_output_ports_roles_are_mirrored() {
         let p = output_port();
         check!(!p.has_internal_read_access());
@@ -506,7 +506,7 @@ mod tests {
         check!(p.output_connectability() == PortConnectability::EXTERNAL);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn queued_data_appears_in_the_buffer() {
         let mut p = input_port();
         check!(p.queue_empty());
@@ -517,7 +517,7 @@ mod tests {
         check!(p.queue_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_short_queue_is_zero_padded() {
         let mut p = input_port();
         p.queue_data(&[1.0, 2.0]);
@@ -525,14 +525,14 @@ mod tests {
         check!(p.buffer(4) == [1.0, 2.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_empty_queue_yields_silence() {
         let mut p = input_port();
         p.prepare(4);
         check!(p.buffer(4) == [0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_long_queued_block_spans_cycles() {
         let mut p = input_port();
         p.queue_data(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
@@ -545,7 +545,7 @@ mod tests {
         check!(p.queue_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn several_queued_blocks_fill_one_cycle() {
         let mut p = input_port();
         p.queue_data(&[1.0, 2.0]);
@@ -554,7 +554,7 @@ mod tests {
         check!(p.buffer(4) == [1.0, 2.0, 3.0, 4.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn nothing_is_retained_unless_requested() {
         let mut p = output_port();
         p.prepare(4);
@@ -570,7 +570,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn requested_output_is_retained_and_dequeued() {
         let mut p = output_port();
         p.request_data(4);
@@ -578,15 +578,15 @@ mod tests {
         p.buffer(4).copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
         p.process(4);
         check!(p.n_retained() == 4);
-        let_assert!(Ok(d) = p.dequeue_data(2));
+        assert2::assert!(let Ok(d) = p.dequeue_data(2));
         check!(d == vec![1.0, 2.0]);
         // Dequeueing consumes, oldest first.
         check!(p.n_retained() == 2);
-        let_assert!(Ok(d) = p.dequeue_data(2));
+        assert2::assert!(let Ok(d) = p.dequeue_data(2));
         check!(d == vec![3.0, 4.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_request_larger_than_one_cycle_spans_cycles() {
         let mut p = output_port();
         p.request_data(6);
@@ -599,11 +599,11 @@ mod tests {
         p.process(4);
         // Only the two still-requested samples were kept.
         check!(p.n_retained() == 6);
-        let_assert!(Ok(d) = p.dequeue_data(6));
+        assert2::assert!(let Ok(d) = p.dequeue_data(6));
         check!(d == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn retained_output_reflects_gain() {
         let mut p = output_port();
         p.audio_mut().set_gain(2.0);
@@ -611,23 +611,23 @@ mod tests {
         p.prepare(2);
         p.buffer(2).copy_from_slice(&[1.0, 2.0]);
         p.process(2);
-        let_assert!(Ok(d) = p.dequeue_data(2));
+        assert2::assert!(let Ok(d) = p.dequeue_data(2));
         check!(d == vec![2.0, 4.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_input_port_round_trips_queued_data_through_processing() {
         let mut p = input_port();
         p.request_data(4);
         p.queue_data(&[0.5, -0.5, 0.25, 0.0]);
         p.prepare(4);
         p.process(4);
-        let_assert!(Ok(d) = p.dequeue_data(4));
+        assert2::assert!(let Ok(d) = p.dequeue_data(4));
         check!(d == vec![0.5, -0.5, 0.25, 0.0]);
         check!(p.audio().input_peak() == 0.5);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn close_is_harmless() {
         let mut p = input_port();
         p.close();

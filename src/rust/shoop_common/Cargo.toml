@@ -1,0 +1,39 @@
+[package]
+name = "shoop_common"
+version.workspace = true
+edition = "2021"
+
+[lib]
+
+[dependencies]
+log = { workspace = true }
+colored = { workspace = true }
+humantime = { workspace = true }
+lazy_static = { workspace = true }
+anyhow = { workspace = true }
+ctor = { workspace = true }
+tracing = { workspace = true }
+tracing-log = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-tracy = { workspace = true }
+tracy-client = { workspace = true }
+tracy-client-sys = { workspace = true }
+shoop_tracing = { workspace = true, features = ["tracy"] }
+thiserror = { workspace = true }
+libc = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+tempfile = { workspace = true }
+tracy-nextest-capture = { workspace = true }
+
+[build-dependencies]
+toml = { workspace = true }
+
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []

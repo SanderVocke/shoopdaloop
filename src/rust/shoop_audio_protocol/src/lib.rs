@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 12;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
 pub const SESSION_TRANSFER_MAX_BYTES: usize = 256 * 1024 * 1024;
 pub const WAVEFORM_CHUNK_SAMPLES: usize = 512;
+pub const MIDI_DETAIL_CHUNK_EVENTS: usize = 16;
 pub const STATUS_INTERVAL_MS: u32 = 50;
 pub const MAX_DEVICE_AUDIO_CHANNELS: usize = 2;
 pub const MIDI_BATCH_CAPACITY: usize = 128;
@@ -56,9 +57,32 @@ pub enum Command {
         port_name_base: String,
         topology: WireTrackTopology,
     },
+    RemoveTrack {
+        track_id: u64,
+    },
     AddLoop {
         track_id: u64,
         expected_loop_id: u64,
+    },
+    CreateComposite {
+        expected_composite_id: u64,
+    },
+    ConfigureComposite {
+        composite_id: u64,
+        config: WireCompositeConfig,
+    },
+    TransitionComposite {
+        composite_id: u64,
+        mode: WireLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    },
+    SetCompositePlayAfterRecord {
+        composite_id: u64,
+        enabled: bool,
+    },
+    RemoveComposite {
+        composite_id: u64,
     },
     SetTrackControl {
         track_id: u64,
@@ -119,6 +143,13 @@ pub enum Command {
         channel: usize,
         offset: usize,
         max_samples: usize,
+    },
+    RequestMidiData {
+        loop_id: u64,
+        generation: u64,
+        channel: usize,
+        offset: usize,
+        max_events: usize,
     },
     BeginSessionCapture {
         generation: u64,
@@ -294,6 +325,9 @@ pub enum WireTrackFxControl {
     TinySetEqLowDb(f32),
     TinySetEqMidDb(f32),
     TinySetEqHighDb(f32),
+    TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment),
+    TinyRemoveMidiCc(WireTinySynthFxParameter),
+    TinyClearMidiCcAssignments,
     TinyPanic,
 }
 
@@ -317,6 +351,9 @@ impl WireTrackFxControl {
             | Self::TinySetDistortionEnabled(_)
             | Self::TinySetCompressorEnabled(_)
             | Self::TinySetEqEnabled(_)
+            | Self::TinyAssignMidiCc(_)
+            | Self::TinyRemoveMidiCc(_)
+            | Self::TinyClearMidiCcAssignments
             | Self::TinyPanic => return None,
         })
     }
@@ -333,6 +370,44 @@ pub enum WireLoopMode {
     Replacing,
     PlayingDryThroughWet,
     RecordingDryIntoWet,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireChannelMode {
+    #[default]
+    Direct,
+    Dry,
+    Wet,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireCompositeKind {
+    Regular,
+    Script,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+pub enum WireCompositeTarget {
+    Loop(u64),
+    Composite(u64),
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireCompositeEntry {
+    pub target: WireCompositeTarget,
+    pub delay: i64,
+    pub n_cycles: Option<i64>,
+    pub mode: Option<WireLoopMode>,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireCompositeConfig {
+    pub kind: WireCompositeKind,
+    pub sync_source: u64,
+    pub timelines: Vec<Vec<Vec<WireCompositeEntry>>>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -371,6 +446,7 @@ pub enum Event {
     },
     Snapshot(WireSnapshot),
     Waveform(WaveformChunk),
+    MidiData(MidiDataChunk),
     SessionCaptureReady {
         generation: u64,
         total_bytes: usize,
@@ -406,11 +482,13 @@ pub struct WireSnapshot {
     pub callback_budget_overruns: u32,
     pub render_discontinuities: u32,
     pub memory_growths: u32,
+    pub render_memory_growths: u32,
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
     pub tracks: Vec<WireTrackState>,
     pub loops: Vec<WireLoopState>,
+    pub composites: Vec<WireCompositeState>,
     pub application_ports: Vec<WireApplicationPort>,
     pub host_ports: Vec<WireHostPort>,
     pub confirmed_links: Vec<WireConfirmedLink>,
@@ -445,10 +523,18 @@ pub enum WirePortRole {
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireApplicationPort {
     pub id: u64,
+    pub owner: WireApplicationPortOwner,
     pub name: String,
     pub data_type: WirePortDataType,
     pub direction: WirePortDirection,
     pub role: WirePortRole,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireApplicationPortOwner {
+    Track,
+    GlobalFxControl,
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -463,6 +549,31 @@ pub struct WireHostPort {
 pub struct WireConfirmedLink {
     pub application_port_id: u64,
     pub host_port_id: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireTinySynthFxParameter {
+    MasterGain,
+    ReverbAmount,
+    DistortionDrive,
+    CompressorAmount,
+    EqLow,
+    EqMid,
+    EqHigh,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireTinySynthFxMidiCcAssignment {
+    pub parameter: WireTinySynthFxParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireLatestMidiMessage {
+    pub bytes: [u8; 4],
+    pub len: u8,
 }
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -494,6 +605,8 @@ pub struct WireTrackState {
     pub input_monitoring: bool,
     pub input_peaks: Vec<f32>,
     pub output_peaks: Vec<f32>,
+    #[serde(default)]
+    pub latest_input_midi_message: Option<WireLatestMidiMessage>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -517,6 +630,8 @@ pub struct WireTinySynthFxState {
     pub eq_low_db: f32,
     pub eq_mid_db: f32,
     pub eq_high_db: f32,
+    #[serde(default)]
+    pub midi_cc_assignments: Vec<WireTinySynthFxMidiCcAssignment>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -534,6 +649,28 @@ pub struct WireLoopState {
     pub midi_activity: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireActiveCompositeChild {
+    pub target: WireCompositeTarget,
+    pub mode: WireLoopMode,
+    pub cycle_offset: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireCompositeState {
+    pub id: u64,
+    pub mode: WireLoopMode,
+    pub next_mode: Option<WireLoopMode>,
+    pub next_transition_delay: Option<u32>,
+    pub iteration: u32,
+    pub cycle_count: u64,
+    pub length: u64,
+    pub position: u64,
+    pub active_plan_version: u64,
+    pub pending_plan_version: Option<u64>,
+    pub active_children: Vec<WireActiveCompositeChild>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct WaveformChunk {
     pub loop_id: u64,
@@ -546,11 +683,57 @@ pub struct WaveformChunk {
     pub samples: Vec<f32>,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct MidiDataChunk {
+    pub loop_id: u64,
+    pub generation: u64,
+    pub content_revision: u64,
+    pub mode: WireChannelMode,
+    pub channel: usize,
+    pub channel_count: usize,
+    pub offset: usize,
+    pub total_events: usize,
+    pub length: u32,
+    pub start_offset: i32,
+    pub preplay: u32,
+    pub final_chunk: bool,
+    pub events: Vec<WireMidiEvent>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
+    #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+    shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn composite_configuration_round_trips_without_losing_targets_or_modes() {
+        let command = CommandEnvelope::new(
+            41,
+            Command::ConfigureComposite {
+                composite_id: 7,
+                config: WireCompositeConfig {
+                    kind: WireCompositeKind::Script,
+                    sync_source: 1,
+                    timelines: vec![vec![vec![WireCompositeEntry {
+                        target: WireCompositeTarget::Composite(8),
+                        delay: 2,
+                        n_cycles: Some(3),
+                        mode: Some(WireLoopMode::Recording),
+                    }]]],
+                },
+            },
+        );
+        let encoded = serde_json::to_vec(&command).unwrap();
+        assert!(encoded.len() <= COMMAND_MAX_BYTES);
+        assert_eq!(
+            serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+            command
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn journal_coalesces_only_superseded_controls_for_the_same_entity() {
         let first = Command::SetTrackControl {
             track_id: 2,
@@ -641,7 +824,91 @@ mod tests {
         }));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_application_port_owner_round_trips_explicitly() {
+        let port = WireApplicationPort {
+            id: 99,
+            owner: WireApplicationPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: WirePortDataType::Midi,
+            direction: WirePortDirection::Input,
+            role: WirePortRole::MidiInput,
+        };
+        let encoded = serde_json::to_vec(&port).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<WireApplicationPort>(&encoded).unwrap(),
+            port
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_detail_chunks_round_trip_with_request_identity_and_metadata() {
+        let request = CommandEnvelope::new(
+            4,
+            Command::RequestMidiData {
+                loop_id: 8,
+                generation: 3,
+                channel: 1,
+                offset: 128,
+                max_events: MIDI_DETAIL_CHUNK_EVENTS,
+            },
+        );
+        let request_json = serde_json::to_vec(&request).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<CommandEnvelope>(&request_json).unwrap(),
+            request
+        );
+
+        let response = EventEnvelope {
+            version: PROTOCOL_VERSION,
+            sequence: 4,
+            event: Event::MidiData(MidiDataChunk {
+                loop_id: 8,
+                generation: 3,
+                content_revision: 12,
+                mode: WireChannelMode::Dry,
+                channel: 1,
+                channel_count: 2,
+                offset: 128,
+                total_events: 129,
+                length: 512,
+                start_offset: -7,
+                preplay: 9,
+                final_chunk: true,
+                events: vec![WireMidiEvent {
+                    frame: 400,
+                    data: vec![0x90, 60, 100],
+                }],
+            }),
+        };
+        let response_json = serde_json::to_vec(&response).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<EventEnvelope>(&response_json).unwrap(),
+            response
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn production_envelopes_have_stable_json_bytes() {
+        let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
+        assert_eq!(
+            command,
+            r#"{"version":12,"sequence":17,"command":{"kind":"poll"}}"#
+        );
+
+        let event = serde_json::to_string(&EventEnvelope {
+            version: PROTOCOL_VERSION,
+            sequence: 17,
+            event: Event::Ack,
+        })
+        .unwrap();
+        assert_eq!(
+            event,
+            r#"{"version":12,"sequence":17,"event":{"kind":"ack"}}"#
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn protocol_round_trip_preserves_sequence_and_stable_ids() {
         let command = CommandEnvelope::new(
             42,
@@ -732,6 +999,13 @@ mod tests {
             WireTrackFxControl::TinySetEqLowDb(3.0),
             WireTrackFxControl::TinySetEqMidDb(-2.0),
             WireTrackFxControl::TinySetEqHighDb(1.5),
+            WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
+                parameter: WireTinySynthFxParameter::EqHigh,
+                channel: 3,
+                controller: 74,
+            }),
+            WireTrackFxControl::TinyRemoveMidiCc(WireTinySynthFxParameter::EqHigh),
+            WireTrackFxControl::TinyClearMidiCcAssignments,
             WireTrackFxControl::TinyPanic,
         ]
         .into_iter()

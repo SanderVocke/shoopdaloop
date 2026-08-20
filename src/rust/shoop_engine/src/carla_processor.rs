@@ -101,6 +101,7 @@ pub trait CarlaProcessor: Send + Debug {
         Vec::new()
     }
     fn clear_logs(&mut self) {}
+    fn idle(&mut self) {}
     fn toggle_or_recover(&mut self) -> Result<()> {
         let visible = self.is_visible();
         self.set_visible(!visible)
@@ -182,6 +183,7 @@ mod bridge {
 
         fn publish_health(&self, host: &mut dyn CarlaProcessor) {
             self.ready.store(host.is_ready(), Ordering::Release);
+            self.visible.store(host.is_visible(), Ordering::Release);
             self.lifecycle
                 .store(host.lifecycle() as u8, Ordering::Release);
             self.generation.store(host.generation(), Ordering::Release);
@@ -349,8 +351,8 @@ mod bridge {
 
         pub fn set_active(&self, active: bool) {
             // Publish desired activity immediately, then apply it in FIFO order on
-            // the bridge thread. This keeps QML state deterministic without sharing
-            // the callback endpoint or making the callback consume control traffic.
+            // the bridge thread. This keeps application state deterministic without
+            // sharing the callback endpoint or making it consume control traffic.
             self.control
                 .snapshot
                 .active
@@ -746,6 +748,9 @@ mod bridge {
             if stopped {
                 break;
             }
+            if host.is_visible() {
+                host.idle();
+            }
             if processing_faulted {
                 std::thread::park_timeout(Duration::from_millis(10));
                 continue;
@@ -1038,7 +1043,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     use shoop_plugin_protocol::MAX_BLOCK_FRAMES;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_processor_round_trips_audio_midi_state_and_visibility() {
         let mut processor = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, 64);
         processor.set_active(true);
@@ -1063,7 +1068,7 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridge_realtime_endpoint_is_lock_free_allocation_free_and_bounded() {
         let fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 1_000, 100).unwrap();
@@ -1089,7 +1094,7 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridge_deadline_miss_returns_wet_silence() {
         let mut fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         fake.set_behavior(FakeProcessorBehavior {
@@ -1108,7 +1113,7 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridge_contains_processor_panics_and_publishes_failure() {
         let mut fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         fake.set_behavior(FakeProcessorBehavior {
@@ -1143,7 +1148,7 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridge_shutdown_soak_reclaims_threads_and_mappings() {
         for iteration in 0..100 {
             let fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
@@ -1161,7 +1166,8 @@ mod tests {
         }
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_processor_exposes_failures_and_delay() {
         let mut processor = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, 64);
         processor.set_behavior(FakeProcessorBehavior {

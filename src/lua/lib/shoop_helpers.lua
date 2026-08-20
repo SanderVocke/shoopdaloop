@@ -268,12 +268,20 @@ function shoop_helpers.track_toggle_muted(index)
 end
 
 --  @shoop_lua_fn_docstring.start
---  shoop_helpers.track_toggle_input_muted(index)
---  Toggle the input muted state of the given track. -1 is the sync track.
+--  shoop_helpers.track_toggle_input_muted(selector, respect_auto_mute)
+--  Toggle input mutedness for the selected tracks as a group. -1 is the sync track.
+--  When respect_auto_mute is true, unmuting respects the global auto-mute control.
 --  @shoop_lua_fn_docstring.end
-function shoop_helpers.track_toggle_input_muted(index)
-    local state = shoop_control.track_get_input_muted(index)[1]
-    shoop_control.track_set_input_muted(index, not state)
+function shoop_helpers.track_toggle_input_muted(selector, respect_auto_mute)
+    local states = shoop_control.track_get_input_muted(selector)
+    local all_unmuted = #states > 0
+    for _, muted in ipairs(states) do
+        if muted then
+            all_unmuted = false
+            break
+        end
+    end
+    shoop_control.track_set_input_muted(selector, all_unmuted, respect_auto_mute or false)
 end
 
 --  @shoop_lua_fn_docstring.start

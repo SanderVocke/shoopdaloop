@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,7 +15,7 @@ fn rust_sources(directory: &Path, output: &mut Vec<PathBuf>) {
     }
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn production_engine_mutexes_use_the_checked_abstraction() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let checked_mutex = source_root.join("realtime_lock_guard.rs");
@@ -43,24 +45,25 @@ fn production_engine_mutexes_use_the_checked_abstraction() {
         );
     }
     assert_eq!(
-        permission_count, 33,
+        permission_count, 28,
         "the explicit realtime lock permission baseline changed"
     );
 }
 
-#[test]
-fn carla_callback_owns_a_lock_free_endpoint() {
+#[shoop_wasm_test_support::shoop_test]
+fn processor_callback_owns_lock_free_endpoints() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let session = fs::read_to_string(source_root.join("session.rs")).expect("read session source");
     let callback = session
-        .split("fn process_carla_fx_chains")
+        .split("fn process_processor")
         .nth(1)
         .and_then(|tail| tail.split("fn synth_prerecorded_midi_playback").next())
-        .expect("Carla callback body");
+        .expect("processor callback body");
     assert!(!callback.contains(".lock("));
     assert!(!callback.contains("Arc::clone"));
     assert!(!callback.contains("format!("));
-    assert!(callback.contains("std::mem::take(&mut self.carla_fx_routes)"));
+    assert!(callback.contains("std::mem::take(&mut self.processors)"));
+    assert!(callback.contains("ProcessorBackend::Carla"));
 
     let processor = fs::read_to_string(source_root.join("carla_processor.rs"))
         .expect("read Carla processor source");
@@ -74,7 +77,7 @@ fn carla_callback_owns_a_lock_free_endpoint() {
     assert!(!realtime.contains("Command::"));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn engine_and_driver_realtime_boundaries_are_marked() {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let engine = fs::read_to_string(source_root.join("engine.rs")).expect("read engine source");
@@ -96,3 +99,5 @@ fn engine_and_driver_realtime_boundaries_are_marked() {
         );
     }
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

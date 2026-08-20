@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 mod archive;
 mod click_track;
 mod document;
@@ -134,6 +137,7 @@ mod tests {
                 play_after_record: true,
                 sync: true,
                 solo: true,
+                auto_mute_other_track_inputs: true,
                 apply_n_cycles: 4,
             },
             track_groups: vec![TrackGroupDocument {
@@ -173,6 +177,7 @@ mod tests {
                         chain_type: FxChainTypeDocument::CarlaPatchbay16x,
                         ports: Vec::new(),
                         internal_state: "{\"opaque\":\"å\\u0000state\"}".to_owned(),
+                        midi_cc_assignments: Vec::new(),
                     }),
                 }],
             }],
@@ -219,6 +224,11 @@ mod tests {
             chain_type: FxChainTypeDocument::TinySynthFx,
             ports: Vec::new(),
             internal_state: "shoop-tiny-synth-fx:1:c0c00000:VEFT".to_owned(),
+            midi_cc_assignments: vec![TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqMid,
+                channel: 4,
+                controller: 18,
+            }],
         });
         let midi = &mut track.loops[0].channels[0];
         midi.mode = ChannelModeDocument::Dry;
@@ -318,7 +328,7 @@ mod tests {
                     composite: Some(CompositeDocument {
                         kind: CompositeKindDocument::Script,
                         playlists: vec![vec![vec![CompositeEventDocument {
-                            delay_frames: 240,
+                            delay: 2,
                             loop_id: 10,
                             mode: Some("playing".to_owned()),
                             n_cycles: Some(2),
@@ -350,6 +360,7 @@ mod tests {
                     chain_type: FxChainTypeDocument::CarlaRack,
                     ports: Vec::new(),
                     internal_state: "opaque\0carla\nstate".to_owned(),
+                    midi_cc_assignments: Vec::new(),
                 }),
             },
         ]);
@@ -365,6 +376,7 @@ mod tests {
                 chain_type: FxChainTypeDocument::Test,
                 ports: Vec::new(),
                 internal_state: "bus-state".to_owned(),
+                midi_cc_assignments: Vec::new(),
             }),
         }];
         bundle.document.global_ports = vec![PortDocument {
@@ -403,7 +415,8 @@ mod tests {
         bundle
     }
 
-    fn rewrite_manifest_major(bytes: Vec<u8>, major: u16) -> Vec<u8> {
+    fn rewrite_manifest(bytes: Vec<u8>, rewrite: impl FnOnce(&mut serde_json::Value)) -> Vec<u8> {
+        let mut rewrite = Some(rewrite);
         let mut input = ZipArchive::new(Cursor::new(bytes)).unwrap();
         let mut output = ZipWriter::new(Cursor::new(Vec::new()));
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
@@ -414,7 +427,7 @@ mod tests {
             entry.read_to_end(&mut payload).unwrap();
             if name == "manifest.json" {
                 let mut manifest: serde_json::Value = serde_json::from_slice(&payload).unwrap();
-                manifest["format_version"]["major"] = serde_json::json!(major);
+                rewrite.take().unwrap()(&mut manifest);
                 payload = serde_json::to_vec(&manifest).unwrap();
             }
             output.start_file(name, options).unwrap();
@@ -423,23 +436,56 @@ mod tests {
         output.finish().unwrap().into_inner()
     }
 
-    #[test]
+    fn rewrite_manifest_major(bytes: Vec<u8>, major: u16) -> Vec<u8> {
+        rewrite_manifest(bytes, |manifest| {
+            manifest["format_version"]["major"] = serde_json::json!(major);
+        })
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_current_and_recorded_state_round_trip_and_validate_shape() {
         let bundle = tiny_synth_fx_bundle();
         let encoded = encode_session(&bundle, "tiny-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
         let mut mismatched = bundle.clone();
-        mismatched.document.track_groups[0].tracks[0]
+        let mismatched_chain = mismatched.document.track_groups[0].tracks[0]
             .fx_chain
             .as_mut()
-            .unwrap()
-            .chain_type = FxChainTypeDocument::CarlaRack;
+            .unwrap();
+        mismatched_chain.chain_type = FxChainTypeDocument::CarlaRack;
+        mismatched_chain.midi_cc_assignments.clear();
         assert!(matches!(
             validate_bundle(&mismatched),
             Err(SessionError::Validation(message))
                 if message.contains("chain type does not match")
         ));
+
+        let mut duplicate = bundle.clone();
+        duplicate.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .midi_cc_assignments
+            .push(TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqHigh,
+                channel: 4,
+                controller: 18,
+            });
+        assert!(matches!(
+            validate_bundle(&duplicate),
+            Err(SessionError::Validation(message))
+                if message.contains("invalid or duplicate MIDI CC assignments")
+        ));
+
+        let mut out_of_range = bundle.clone();
+        out_of_range.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .midi_cc_assignments[0]
+            .channel = 16;
+        assert!(validate_bundle(&out_of_range).is_err());
 
         let mut missing_midi = bundle;
         missing_midi.document.track_groups[0].tracks[0].loops[0]
@@ -452,14 +498,40 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn legacy_fx_chain_without_midi_assignments_defaults_to_empty() {
+        let chain = tiny_synth_fx_bundle().document.track_groups[0].tracks[0]
+            .fx_chain
+            .clone()
+            .unwrap();
+        let mut value = serde_json::to_value(chain).unwrap();
+        value.as_object_mut().unwrap().remove("midi_cc_assignments");
+        let decoded: FxChainDocument = serde_json::from_value(value).unwrap();
+        assert!(decoded.midi_cc_assignments.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn minimal_session_fixture_round_trips() {
         let bundle = SessionBundle::new(SessionDocument::empty(48_000));
         let encoded = encode_session(&bundle, "minimal-fixture").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn missing_auto_mute_other_track_inputs_defaults_off() {
+        let mut bundle = direct_bundle(1);
+        bundle.document.global.auto_mute_other_track_inputs = false;
+        let encoded = encode_session(&bundle, "legacy-global-fixture").unwrap();
+        let without_field = rewrite_manifest(encoded, |manifest| {
+            manifest["document"]["global"]
+                .as_object_mut()
+                .unwrap()
+                .remove("auto_mute_other_track_inputs");
+        });
+        assert_eq!(decode_session(&without_field).unwrap(), bundle);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn unsupported_older_and_future_major_archives_are_rejected() {
         let encoded = encode_session(
             &SessionBundle::new(SessionDocument::empty(48_000)),
@@ -478,7 +550,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn session_round_trip_is_exact_and_deterministic() {
         let bundle = direct_bundle(12);
         let first = encode_session(&bundle, "test").unwrap();
@@ -511,7 +583,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn deferred_feature_fixture_round_trips_without_field_loss() {
         let bundle = deferred_feature_bundle();
         let encoded = encode_session(&bundle, "deferred-fixture").unwrap();
@@ -532,8 +604,8 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .playlists[0][0][0]
-                .delay_frames,
-            240
+                .delay,
+            2
         );
         assert!(matches!(
             decoded.document.track_groups[0].tracks[3].topology,
@@ -546,7 +618,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn arbitrary_channel_loop_audio_round_trips() {
         let audio = LoopAudio {
             sample_rate: 96_000,
@@ -562,7 +634,7 @@ mod tests {
         assert_eq!(decode_loop_audio(&encoded).unwrap(), audio);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exact_and_standard_midi_preserve_order_and_bound_quantization() {
         let midi = ExactMidi {
             sample_rate: 48_000,
@@ -593,7 +665,7 @@ mod tests {
             .all(|events| events[0].frame <= events[1].frame));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn standard_midi_import_honors_tempo_maps_stable_tracks_and_sysex() {
         use midly::num::{u15, u24, u28, u4, u7};
         use midly::{
@@ -672,7 +744,7 @@ mod tests {
         assert!(imported.length_frames >= 72_001);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn float_wav_round_trip_is_exact() {
         let audio = LoopAudio {
             sample_rate: 44_100,
@@ -709,7 +781,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn resampling_converts_every_sample_domain_and_preserves_midi_order() {
         let bundle = direct_bundle(2);
         for rate in [44_100, 32_000, 96_000] {
@@ -737,9 +809,20 @@ mod tests {
         assert_eq!(midi.events[0].frame, 67);
         assert_eq!(midi.events[1].frame, 134);
         assert_eq!(midi.start_state, vec![vec![0xB0, 7, 100]]);
+
+        let deferred = resample_session(&deferred_feature_bundle(), 32_000).unwrap();
+        assert_eq!(
+            deferred.document.track_groups[0].tracks[2].loops[0]
+                .composite
+                .as_ref()
+                .unwrap()
+                .playlists[0][0][0]
+                .delay,
+            2
+        );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn payload_hash_mismatch_is_rejected() {
         let encoded = encode_session(&direct_bundle(2), "hash-test").unwrap();
         let mut input = ZipArchive::new(Cursor::new(encoded)).unwrap();
@@ -766,10 +849,10 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn old_non_zip_and_resource_limit_fail_without_decoding() {
         assert!(matches!(
-            decode_session(b"old qml tar bytes"),
+            decode_session(b"unsupported predecessor archive"),
             Err(SessionError::UnsupportedFormat)
         ));
         let bytes = encode_session(&direct_bundle(1), "test").unwrap();
@@ -785,7 +868,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn topology_channel_shapes_and_fx_state_references_are_validated() {
         let mut wrong_mode = direct_bundle(1);
         wrong_mode.document.track_groups[0].tracks[0].loops[0].channels[0].mode =
@@ -814,7 +897,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn stale_references_and_missing_media_are_rejected() {
         let mut bundle = direct_bundle(1);
         bundle.document.selected_loop_ids = vec![999_999];

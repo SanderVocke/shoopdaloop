@@ -4,7 +4,7 @@ use shoop_app_api::{
     TrackProcessorMidiPolicy,
 };
 use shoop_engine::app_backend::{
-    AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession,
+    AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession, CompositeLoop,
     CpalMidiAudioDriverSettings, DummyAudioDriverSettings, FXChain, JackAudioDriverSettings, Loop,
     MidiChannel, MidiPort,
 };
@@ -22,6 +22,21 @@ pub fn configure_carla_hosting_mode(mode: shoop_settings::CarlaHostingMode) {
 #[cfg(feature = "native-fx")]
 pub fn configured_carla_hosting_mode() -> shoop_settings::CarlaHostingMode {
     shoop_engine::app_backend::carla_hosting_mode()
+}
+
+#[cfg(feature = "native-fx")]
+pub fn smoke_test_carla_runtime() -> Result<()> {
+    shoop_engine::carla_native::smoke_test_carla_runtime()
+}
+
+#[cfg(feature = "native-fx")]
+pub fn smoke_test_carla_ui() -> Result<()> {
+    shoop_engine::carla_native::smoke_test_carla_ui()
+}
+
+#[cfg(feature = "native-fx")]
+pub fn carla_runtime_path() -> Result<std::path::PathBuf> {
+    shoop_engine::carla_native::carla_runtime_path()
 }
 
 #[cfg(feature = "native-fx")]
@@ -102,10 +117,13 @@ pub struct NativeBackend {
 
 struct NativeRuntime {
     tracks: BTreeMap<BackendTrackId, NativeTrack>,
+    global_fx_port: BackendPortId,
     loops: BTreeMap<BackendLoopId, NativeLoop>,
+    composites: BTreeMap<BackendCompositeId, NativeComposite>,
     ports: BTreeMap<BackendPortId, NativePort>,
     next_track_id: u64,
     next_loop_id: u64,
+    next_composite_id: u64,
     next_port_id: u64,
     connection_revision: u64,
     connection_failures: Vec<BackendConnectionFailure>,
@@ -138,6 +156,11 @@ struct NativeFx {
     last_confirmed_state: Option<String>,
 }
 
+struct NativeComposite {
+    handle: CompositeLoop,
+    config: Option<BackendCompositeConfig>,
+}
+
 struct NativeLoop {
     handle: Loop,
     audio: Vec<AudioChannel>,
@@ -163,6 +186,38 @@ impl NativePortHandle {
         match self {
             Self::Audio(port) => port.get_connections_state(),
             Self::Midi(port) => port.get_connections_state(),
+        }
+    }
+
+    fn connections_now(&self) -> std::collections::HashMap<String, bool> {
+        match self {
+            Self::Audio(port) => port.get_connections_state_now(),
+            Self::Midi(port) => port.get_connections_state_now(),
+        }
+    }
+
+    fn wait_ready(&self, session: &BackendSession) -> Result<()> {
+        let sequence = match self {
+            Self::Audio(port) => port.creation_sequence(),
+            Self::Midi(port) => port.creation_sequence(),
+        };
+        session.wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        let (lifecycle, error, kind) = match self {
+            Self::Audio(port) => (port.lifecycle(), port.creation_error(), "audio"),
+            Self::Midi(port) => (port.lifecycle(), port.creation_error(), "MIDI"),
+        };
+        match lifecycle {
+            shoop_engine::app_backend::ObjectLifecycle::Ready => Ok(()),
+            shoop_engine::app_backend::ObjectLifecycle::Failed => Err(anyhow!(
+                "{kind} port creation failed: {}",
+                error.unwrap_or_else(|| "unknown error".to_owned())
+            )),
+            shoop_engine::app_backend::ObjectLifecycle::Pending => {
+                Err(anyhow!("{kind} port is still pending creation"))
+            }
+            shoop_engine::app_backend::ObjectLifecycle::Closed => {
+                Err(anyhow!("{kind} port is closed"))
+            }
         }
     }
 
@@ -284,12 +339,38 @@ impl NativeRuntime {
             buffer_size: state.buffer_size.max(state.last_processed),
             instance_name: state.maybe_instance_name,
         };
+        let global_fx_midi = MidiPort::new_driver_port(
+            &session,
+            &driver,
+            "global_fx_control_midi_in",
+            &PortDirection::Input,
+            0,
+        )?;
+        session.set_global_fx_midi_input(&global_fx_midi)?;
+        let global_fx_port = BackendPortId::from_raw(9_007_199_254_740_991);
+        let global_descriptor = BackendPortDescriptor {
+            id: global_fx_port,
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        };
         Ok(Self {
             tracks: BTreeMap::new(),
+            global_fx_port,
             loops: BTreeMap::new(),
-            ports: BTreeMap::new(),
+            composites: BTreeMap::new(),
+            ports: BTreeMap::from([(
+                global_fx_port,
+                NativePort {
+                    descriptor: global_descriptor,
+                    handle: NativePortHandle::Midi(global_fx_midi),
+                },
+            )]),
             next_track_id: 1,
             next_loop_id: 1,
+            next_composite_id: 1,
             next_port_id: 1,
             connection_revision: 1,
             connection_failures: Vec::new(),
@@ -304,6 +385,154 @@ impl NativeRuntime {
         self.driver.wait_process();
     }
 
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        let Some(track) = self.tracks.remove(&track_id) else {
+            return Ok(());
+        };
+        for loop_id in &track.loops {
+            if let Some(loop_) = self.loops.remove(loop_id) {
+                self.session.remove_loop(&loop_.handle)?;
+            }
+        }
+        if let Some(fx) = &track.fx {
+            self.session.remove_fx_chain(&fx.chain)?;
+        } else {
+            self.session.remove_processor(&track.port_name_base)?;
+        }
+        for port_id in &track.ports {
+            let Some(port) = self.ports.remove(port_id) else {
+                continue;
+            };
+            match port.handle {
+                NativePortHandle::Audio(port) => {
+                    self.driver.unregister_audio_port(&port)?;
+                    self.session.remove_audio_port(&port)?;
+                }
+                NativePortHandle::Midi(port) => {
+                    self.driver.unregister_midi_port(&port)?;
+                    self.session.remove_midi_port(&port)?;
+                }
+            }
+        }
+        self.connection_failures
+            .retain(|failure| !track.ports.contains(&failure.port_id));
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        self.wait();
+        Ok(())
+    }
+
+    fn composite_target_identity(
+        &self,
+        target: BackendCompositeTarget,
+    ) -> Result<shoop_engine::LoopIdentity> {
+        match target {
+            BackendCompositeTarget::Loop(id) => self
+                .loops
+                .get(&id)
+                .map(|loop_| loop_.handle.identity())
+                .ok_or_else(|| anyhow!("stale composite loop target {id:?}")),
+            BackendCompositeTarget::Composite(id) => self
+                .composites
+                .get(&id)
+                .map(|composite| composite.handle.identity())
+                .ok_or_else(|| anyhow!("stale composite target {id:?}")),
+        }
+    }
+
+    fn backend_composite_target(
+        &self,
+        identity: shoop_engine::LoopIdentity,
+    ) -> Option<BackendCompositeTarget> {
+        match identity.kind {
+            shoop_engine::LoopTargetKind::Basic => self.loops.iter().find_map(|(id, loop_)| {
+                (loop_.handle.identity() == identity).then_some(BackendCompositeTarget::Loop(*id))
+            }),
+            shoop_engine::LoopTargetKind::Composite => {
+                self.composites.iter().find_map(|(id, composite)| {
+                    (composite.handle.identity() == identity)
+                        .then_some(BackendCompositeTarget::Composite(*id))
+                })
+            }
+        }
+    }
+
+    fn configure_composite(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        let composite = self
+            .composites
+            .get(&composite_id)
+            .ok_or_else(|| anyhow!("unknown native composite {composite_id:?}"))?;
+        let source = composite.handle.identity();
+        let sync = self
+            .loops
+            .get(&config.sync_source)
+            .ok_or_else(|| anyhow!("stale composite sync source"))?;
+        let sync_identity = sync.handle.identity();
+        let sync_length = u64::from(sync.handle.get_state()?.length).max(1);
+        let timelines = config
+            .timelines
+            .iter()
+            .map(|sections| {
+                Ok(shoop_engine::CompositeTimeline {
+                    sections: sections
+                        .iter()
+                        .map(|entries| {
+                            Ok(shoop_engine::CompositeSection {
+                                entries: entries
+                                    .iter()
+                                    .map(|entry| {
+                                        Ok(shoop_engine::CompositeEntry {
+                                            target: self.composite_target_identity(entry.target)?,
+                                            delay: entry.delay,
+                                            n_cycles: entry.n_cycles,
+                                            mode: entry.mode.map(to_native_mode),
+                                        })
+                                    })
+                                    .collect::<Result<Vec<_>>>()?,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let descriptor = shoop_engine::CompositePlanDescriptor {
+            source,
+            sync_length,
+            timelines,
+        };
+        let mut metadata = Vec::with_capacity(self.loops.len() + self.composites.len());
+        for loop_ in self.loops.values() {
+            let state = loop_.handle.get_state()?;
+            metadata.push(shoop_engine::LoopTargetMetadata {
+                identity: loop_.handle.identity(),
+                length_samples: u64::from(state.length),
+            });
+        }
+        for candidate in self.composites.values() {
+            metadata.push(shoop_engine::LoopTargetMetadata {
+                identity: candidate.handle.identity(),
+                length_samples: candidate
+                    .handle
+                    .poll_state()
+                    .map(|state| state.length)
+                    .unwrap_or(0),
+            });
+        }
+        let primitive_sync_sources = self.session.primitive_sync_sources();
+        self.session.configure_composite_loop(
+            &composite.handle,
+            descriptor,
+            sync_identity,
+            metadata,
+            &primitive_sync_sources,
+        )?;
+        self.composites.get_mut(&composite_id).unwrap().config = Some(config.clone());
+        Ok(())
+    }
+
     fn next_port(
         &mut self,
         name: String,
@@ -314,6 +543,7 @@ impl NativeRuntime {
     ) -> BackendPortDescriptor {
         let descriptor = BackendPortDescriptor {
             id: BackendPortId::from_raw(self.next_port_id),
+            owner: BackendPortOwner::Track,
             name,
             data_type,
             direction,
@@ -431,6 +661,14 @@ impl NativeRuntime {
     }
 
     fn connection_snapshot(&self) -> BackendConnectionSnapshot {
+        self.connection_snapshot_with(false)
+    }
+
+    fn connection_snapshot_now(&self) -> BackendConnectionSnapshot {
+        self.connection_snapshot_with(true)
+    }
+
+    fn connection_snapshot_with(&self, authoritative: bool) -> BackendConnectionSnapshot {
         let mut host_ports = self
             .driver
             .find_external_ports(
@@ -463,7 +701,12 @@ impl NativeRuntime {
             .collect::<BTreeMap<_, _>>();
         let mut confirmed_links = BTreeSet::new();
         for (id, port) in &self.ports {
-            for (endpoint, connected) in port.handle.connections() {
+            let connections = if authoritative {
+                port.handle.connections_now()
+            } else {
+                port.handle.connections()
+            };
+            for (endpoint, connected) in connections {
                 host_ports
                     .entry(endpoint.clone())
                     .or_insert_with(|| BackendHostPortDescriptor {
@@ -502,7 +745,7 @@ impl NativeRuntime {
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         self.wait();
-        let connections = self.connection_snapshot();
+        let connections = self.connection_snapshot_now();
         let mut tracks = Vec::with_capacity(self.tracks.len());
         for (track_id, track) in &mut self.tracks {
             let mut loops = Vec::with_capacity(track.loops.len());
@@ -607,6 +850,15 @@ impl NativeRuntime {
             } else {
                 None
             };
+            let tiny_synth_midi_cc_assignments = track
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.chain.tiny_editor_state())
+                .into_iter()
+                .flat_map(|editor| editor.midi_cc_assignments)
+                .map(app_midi_cc_assignment)
+                .map(backend_midi_cc_assignment)
+                .collect();
             tracks.push(BackendSessionTrack {
                 source_id: track_id.raw(),
                 port_name_base: track.port_name_base.clone(),
@@ -614,12 +866,24 @@ impl NativeRuntime {
                 state: track.state.clone(),
                 loops,
                 ports,
-                processor_state: processor_state,
+                processor_state,
+                tiny_synth_midi_cc_assignments,
             });
         }
+        let global_ports = vec![BackendSessionPort {
+            source_id: self.global_fx_port.raw(),
+            descriptor: self.ports[&self.global_fx_port].descriptor.clone(),
+            external_connections: connections
+                .confirmed_links
+                .iter()
+                .filter(|link| link.application_port_id == self.global_fx_port)
+                .map(|link| link.host_port_id.clone())
+                .collect(),
+        }];
         Ok(BackendSessionData {
             sample_rate: self.resolved.sample_rate,
             tracks,
+            global_ports,
             use_legacy_browser_default_routes: false,
         })
     }
@@ -628,7 +892,27 @@ impl NativeRuntime {
         if !self.tracks.is_empty() {
             return Err(anyhow!("target native session is not empty"));
         }
+        for track in &data.tracks {
+            validate_backend_midi_cc_assignments(track)?;
+        }
         let mut replacement = BackendSessionReplacement::default();
+        let source_global = data
+            .global_ports
+            .first()
+            .ok_or_else(|| anyhow!("prepared session has no global FX control port"))?;
+        if data.global_ports.len() != 1
+            || source_global.descriptor.owner != BackendPortOwner::GlobalFxControl
+            || source_global.descriptor.data_type != BackendPortDataType::Midi
+            || source_global.descriptor.direction != BackendPortDirection::Input
+        {
+            return Err(anyhow!("prepared global FX control port is invalid"));
+        }
+        replacement
+            .global_ports
+            .insert(source_global.source_id, self.global_fx_port);
+        for external in &source_global.external_connections {
+            self.set_port_connected(self.global_fx_port, external, true)?;
+        }
         for source_track in &data.tracks {
             if source_track.state.topology != source_track.topology {
                 return Err(anyhow!("prepared native topology state is inconsistent"));
@@ -667,6 +951,11 @@ impl NativeRuntime {
                         .and_then(|track| track.fx.as_mut())
                         .ok_or_else(|| anyhow!("restored track has no processor"))?;
                     fx.chain.try_restore_state(state)?;
+                    for assignment in &source_track.tiny_synth_midi_cc_assignments {
+                        fx.chain.tiny_assign_midi_cc(engine_midi_cc_assignment(
+                            app_backend_midi_cc_assignment(*assignment),
+                        ))?;
+                    }
                     fx.last_confirmed_state = Some(state.to_owned());
                 }
                 _ if source_track.processor_state.is_some() => {
@@ -784,7 +1073,8 @@ impl NativeRuntime {
         let ring = self
             .resolved
             .sample_rate
-            .saturating_mul(RECORDING_CAPACITY_SECONDS);
+            .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
+        let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
         for index in 0..request.audio_channels {
             let suffix = if request.audio_channels == 1 {
                 String::new()
@@ -798,7 +1088,7 @@ impl NativeRuntime {
                 &self.driver,
                 &input_name,
                 &PortDirection::Input,
-                ring,
+                capture_block_size,
             )?;
             input.set_passthrough_muted(true)?;
             input.set_ringbuffer_n_samples(ring)?;
@@ -917,7 +1207,8 @@ impl NativeRuntime {
         let ring = self
             .resolved
             .sample_rate
-            .saturating_mul(RECORDING_CAPACITY_SECONDS);
+            .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
+        let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
         let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
         let mut audio_sends = Vec::with_capacity(dry_audio_channels as usize);
         let mut audio_returns = Vec::with_capacity(wet_audio_channels as usize);
@@ -931,7 +1222,7 @@ impl NativeRuntime {
                 &self.driver,
                 &input_name,
                 &PortDirection::Input,
-                ring,
+                capture_block_size,
             )?;
             input.set_passthrough_muted(true)?;
             input.set_ringbuffer_n_samples(ring)?;
@@ -968,7 +1259,7 @@ impl NativeRuntime {
                 &self.driver,
                 &return_name,
                 &PortDirection::Input,
-                ring,
+                capture_block_size,
             )?;
             return_.set_passthrough_muted(true)?;
             return_.set_ringbuffer_n_samples(ring)?;
@@ -1035,6 +1326,15 @@ impl NativeRuntime {
         } else {
             (None, None)
         };
+        let processor_audio_sends = audio_sends.iter().flatten().cloned().collect::<Vec<_>>();
+        let processor_audio_returns = audio_returns.iter().flatten().cloned().collect::<Vec<_>>();
+        let processor_midi_sends = midi_output.iter().cloned().collect::<Vec<_>>();
+        self.session.register_external_processor(
+            &request.port_name_base,
+            &processor_audio_sends,
+            &processor_audio_returns,
+            &processor_midi_sends,
+        )?;
         let track_id = BackendTrackId::from_raw(self.next_track_id);
         self.next_track_id = self.next_track_id.saturating_add(1);
         self.tracks.insert(
@@ -1094,13 +1394,17 @@ impl NativeRuntime {
         let ring = self
             .resolved
             .sample_rate
-            .saturating_mul(RECORDING_CAPACITY_SECONDS);
+            .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
+        let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
         let chain = if chain_type == FXChainType::TinySynthFx {
-            self.session
-                .create_tiny_synth_fx_chain(&request.port_name_base, dry_audio_channels as usize)?
+            self.session.create_tiny_synth_fx_chain(
+                &request.port_name_base,
+                dry_audio_channels as usize,
+                ring,
+            )?
         } else {
             self.session
-                .create_fx_chain(chain_type, &request.port_name_base)?
+                .create_fx_chain(chain_type, &request.port_name_base, ring)?
         };
         let last_confirmed_state = chain.try_get_state_str().ok();
         let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
@@ -1115,7 +1419,7 @@ impl NativeRuntime {
                 &self.driver,
                 &input_name,
                 &PortDirection::Input,
-                ring,
+                capture_block_size,
             )?;
             input.set_passthrough_muted(true)?;
             input.set_ringbuffer_n_samples(ring)?;
@@ -1334,6 +1638,15 @@ impl NativeRuntime {
                     TinySynthFxControl::SetEqHighDb(value) => {
                         fx.chain.tiny_set_eq_high_db(value)?
                     }
+                    TinySynthFxControl::AssignMidiCc(assignment) => fx
+                        .chain
+                        .tiny_assign_midi_cc(engine_midi_cc_assignment(assignment))?,
+                    TinySynthFxControl::RemoveMidiCc(parameter) => fx
+                        .chain
+                        .tiny_remove_midi_cc(engine_tiny_synth_parameter(parameter))?,
+                    TinySynthFxControl::ClearMidiCcAssignments => {
+                        fx.chain.tiny_clear_midi_cc_assignments()?
+                    }
                     TinySynthFxControl::Panic => fx.chain.tiny_panic()?,
                 }
             }
@@ -1493,10 +1806,23 @@ impl NativeRuntime {
             .ports
             .get(&port_id)
             .ok_or_else(|| anyhow!("unknown native port {port_id:?}"))?;
+        port.handle.wait_ready(&self.session)?;
         if connected {
             port.handle.connect(endpoint);
         } else {
             port.handle.disconnect(endpoint);
+        }
+        self.wait();
+        let observed = port
+            .handle
+            .connections_now()
+            .get(endpoint)
+            .copied()
+            .unwrap_or(false);
+        if observed != connected {
+            return Err(anyhow!(
+                "external port {endpoint} did not reach requested connection state {connected}"
+            ));
         }
         self.connection_revision = self.connection_revision.wrapping_add(1);
         Ok(())
@@ -1504,6 +1830,10 @@ impl NativeRuntime {
 }
 
 impl Backend for NativeBackend {
+    fn supports_composite_loops(&self) -> bool {
+        true
+    }
+
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
         let active = self
             .runtime
@@ -1655,6 +1985,91 @@ impl Backend for NativeBackend {
         Ok(id)
     }
 
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        let runtime = self.runtime_mut()?;
+        let handle = runtime.session.create_composite_loop()?;
+        let id = BackendCompositeId::from_raw(runtime.next_composite_id);
+        runtime.next_composite_id = runtime.next_composite_id.saturating_add(1);
+        runtime.composites.insert(
+            id,
+            NativeComposite {
+                handle,
+                config: None,
+            },
+        );
+        runtime.wait();
+        Ok(id)
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        self.runtime_mut()?
+            .configure_composite(composite_id, config)
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        let composite = runtime
+            .composites
+            .get(&composite_id)
+            .ok_or_else(|| anyhow!("unknown native composite {composite_id:?}"))?;
+        if let Some(iteration) = align_to_iteration {
+            composite
+                .handle
+                .transition_immediate(to_native_mode(mode), iteration)?;
+        } else if let Some(delay) = cycles_delay {
+            composite.handle.transition(to_native_mode(mode), delay)?;
+        } else {
+            composite
+                .handle
+                .transition_immediate(to_native_mode(mode), 0)?;
+        }
+        runtime.wait();
+        Ok(())
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        enabled: bool,
+    ) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        runtime
+            .composites
+            .get(&composite_id)
+            .ok_or_else(|| anyhow!("unknown native composite {composite_id:?}"))?
+            .handle
+            .set_play_after_record(enabled)?;
+        runtime.wait();
+        Ok(())
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        let Some(composite) = runtime.composites.remove(&composite_id) else {
+            return Ok(());
+        };
+        let primitive_sync_sources = runtime.session.primitive_sync_sources();
+        if let Err(error) = runtime
+            .session
+            .remove_composite_loop(&composite.handle, &primitive_sync_sources)
+        {
+            runtime.composites.insert(composite_id, composite);
+            return Err(error);
+        }
+        runtime.wait();
+        Ok(())
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         let catalog = vec![
             TrackProcessorDescriptor {
@@ -1676,6 +2091,7 @@ impl Backend for NativeBackend {
         #[cfg(feature = "native-fx")]
         let catalog = {
             let mut catalog = catalog;
+            let carla_availability = shoop_engine::carla_native::carla_runtime_availability();
             for (id, label, max_channels) in [
                 (TrackProcessorTypeId::CARLA_RACK, "Carla Rack", 2),
                 (TrackProcessorTypeId::CARLA_PATCHBAY, "Carla Patchbay", 2),
@@ -1688,8 +2104,8 @@ impl Backend for NativeBackend {
                 catalog.push(TrackProcessorDescriptor {
                     id: TrackProcessorTypeId::new(id),
                     label: label.to_owned(),
-                    available: true,
-                    unavailable_reason: None,
+                    available: carla_availability.is_ok(),
+                    unavailable_reason: carla_availability.as_ref().err().cloned(),
                     constraints: TrackProcessorConstraints {
                         max_dry_audio_channels: Some(max_channels),
                         max_wet_audio_channels: Some(max_channels),
@@ -1733,6 +2149,10 @@ impl Backend for NativeBackend {
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
         self.runtime_mut()?.create_direct_track(request)
+    }
+
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        self.runtime_mut()?.remove_track(track_id)
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
@@ -1853,6 +2273,40 @@ impl Backend for NativeBackend {
                 .map(|channel| Arc::from(channel.get_data()))
                 .collect(),
         ))
+    }
+
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        let runtime = self.runtime()?;
+        let loop_ = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        let channels = loop_
+            .midi
+            .iter()
+            .zip(&loop_.midi_modes)
+            .map(|(channel, mode)| {
+                let state = channel.get_state()?;
+                let data = channel.get_all_midi_data();
+                let revision = channel.get_latest_data_snapshot().snapshot.revision.0;
+                Ok(BackendMidiChannelData {
+                    content_revision: revision,
+                    mode: *mode,
+                    length: state.length,
+                    events: data
+                        .into_iter()
+                        .filter(|event| event.time >= 0)
+                        .map(|event| BackendMidiEvent {
+                            time: event.time as u32,
+                            data: event.data,
+                        })
+                        .collect(),
+                    start_offset: state.start_offset,
+                    preplay: state.n_preplay_samples,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Some(BackendMidiData { channels }))
     }
 
     fn set_loop_sync_source(
@@ -2119,6 +2573,12 @@ impl Backend for NativeBackend {
                             eq_low_db: editor.eq_low_db,
                             eq_mid_db: editor.eq_mid_db,
                             eq_high_db: editor.eq_high_db,
+                            midi_cc_assignments: editor
+                                .midi_cc_assignments
+                                .into_iter()
+                                .map(app_midi_cc_assignment)
+                                .collect::<Vec<_>>()
+                                .into(),
                         })
                     }),
                 }
@@ -2141,11 +2601,13 @@ impl Backend for NativeBackend {
                         .unwrap_or(-200.0)
                 })
                 .collect();
-            state.input_midi_activity = track
-                .midi_input
+            let input_midi_state = track.midi_input.as_ref().and_then(MidiPort::poll_state);
+            state.input_midi_activity = input_midi_state
                 .as_ref()
-                .and_then(MidiPort::poll_state)
                 .is_some_and(|state| state.n_input_events > 0 || state.n_input_notes_active > 0);
+            state.latest_input_midi_message = input_midi_state
+                .and_then(|state| state.latest_input_message)
+                .map(Into::into);
             state.output_midi_activity = track
                 .midi_output
                 .as_ref()
@@ -2192,6 +2654,39 @@ impl Backend for NativeBackend {
                 },
             );
         }
+        let composites = runtime
+            .composites
+            .iter()
+            .filter_map(|(id, composite)| {
+                let state = composite.handle.poll_state()?;
+                let active_children = state
+                    .active_children
+                    .iter()
+                    .filter_map(|child| {
+                        Some(BackendActiveCompositeChild {
+                            target: runtime.backend_composite_target(child.identity)?,
+                            mode: from_native_mode(child.mode),
+                            cycle_offset: child.cycle_offset,
+                        })
+                    })
+                    .collect();
+                Some((
+                    *id,
+                    BackendCompositeState {
+                        mode: from_native_mode(state.mode),
+                        next_mode: state.maybe_next_mode.map(from_native_mode),
+                        next_transition_delay: state.maybe_next_mode_delay,
+                        iteration: state.iteration,
+                        cycle_count: state.cycle_count,
+                        length: state.length,
+                        position: state.position,
+                        active_plan_version: state.active_plan_version,
+                        pending_plan_version: state.pending_plan_version,
+                        active_children,
+                    },
+                ))
+            })
+            .collect();
         Ok(BackendSnapshot {
             status: BackendStatus {
                 dsp_load_percent: driver.dsp_load_percent,
@@ -2213,7 +2708,9 @@ impl Backend for NativeBackend {
             audio_drivers,
             tracks,
             loops,
+            composites,
             connections: runtime.take_connection_snapshot(),
+            mutation_failures: Vec::new(),
         })
     }
 
@@ -2502,7 +2999,83 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_dummy_exposes_engine_owned_composite_state_and_advancement() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 1_000,
+            buffer_size: 1,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        backend
+            .runtime_mut()
+            .unwrap()
+            .driver
+            .dummy_enter_controlled_mode();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "composite".to_owned(),
+                audio_channels: 0,
+                midi: false,
+                initial_loops: 4,
+            })
+            .unwrap();
+        let sync = created.loops[0];
+        let children = [created.loops[1], created.loops[2], created.loops[3]];
+        backend.set_loop_length(sync, 1).unwrap();
+        for child in children {
+            backend.set_loop_length(child, 4).unwrap();
+        }
+        let composite = backend.create_composite_loop().unwrap();
+        backend
+            .configure_composite_loop(
+                composite,
+                &BackendCompositeConfig {
+                    kind: BackendCompositeKind::Regular,
+                    sync_source: sync,
+                    timelines: vec![children
+                        .into_iter()
+                        .map(|child| {
+                            vec![BackendCompositeEntry {
+                                target: BackendCompositeTarget::Loop(child),
+                                delay: 0,
+                                n_cycles: None,
+                                mode: None,
+                            }]
+                        })
+                        .collect()],
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(sync, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let started = backend.poll().unwrap();
+        assert_eq!(
+            started.composites[&composite].active_children[0].target,
+            BackendCompositeTarget::Loop(children[0])
+        );
+
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_request_controlled_frames(4);
+            runtime.driver.dummy_run_requested_frames();
+        }
+        backend.wait_idle();
+        let advanced = backend.poll().unwrap();
+        assert_eq!(advanced.composites[&composite].iteration, 4);
+        assert_eq!(
+            advanced.composites[&composite].active_children[0].target,
+            BackendCompositeTarget::Loop(children[1])
+        );
+
+        backend.remove_composite_loop(composite).unwrap();
+        assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_satisfies_topology_capture_and_same_driver_switch() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -2524,6 +3097,15 @@ mod tests {
             .iter()
             .find(|port| port.role == BackendPortRole::AudioInput)
             .unwrap();
+        let global = backend
+            .poll()
+            .unwrap()
+            .connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
         assert!(backend
             .poll()
             .unwrap()
@@ -2533,7 +3115,14 @@ mod tests {
         backend
             .set_port_connected(input.id, "system:capture_1", true)
             .unwrap();
+        backend
+            .set_port_connected(global, "controller:midi_out", true)
+            .unwrap();
         let mut captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.global_ports[0].external_connections,
+            ["controller:midi_out"]
+        );
         captured.tracks[0].loops[0].length = 512;
         captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5, 0.75];
         captured.tracks[0].loops[0].midi[0] = BackendMidiContent {
@@ -2559,6 +3148,7 @@ mod tests {
             .unwrap();
         assert_eq!(mapping.tracks.len(), captured.tracks.len());
         assert_eq!(mapping.loops.len(), 2);
+        assert_eq!(mapping.global_ports.len(), 1);
         let restored = backend.capture_session().unwrap();
         assert_eq!(restored.sample_rate, 48_000);
         assert_eq!(restored.tracks.len(), captured.tracks.len());
@@ -2571,6 +3161,10 @@ mod tests {
         assert_eq!(restored.tracks[0].loops[0].midi[0].length, 512);
         assert_eq!(restored.tracks[0].loops[0].midi[0].events[0].time, 100);
         assert_eq!(restored.tracks[0].loops[0].midi[0].start_offset, -4);
+        assert_eq!(
+            restored.global_ports[0].external_connections,
+            ["controller:midi_out"]
+        );
         assert!(restored.tracks[0]
             .ports
             .iter()
@@ -2583,7 +3177,7 @@ mod tests {
         assert!(backend.poll().unwrap().connections.failures.is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_track_midi_injection_uses_the_driver_independent_input_port() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -2601,7 +3195,7 @@ mod tests {
         assert_injected_note_reaches_output(&mut backend, &created, 60);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn targeted_content_update_preserves_native_session_callbacks_sync_and_graph() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -2714,6 +3308,13 @@ mod tests {
             state.cycles
         };
 
+        let midi_details = backend.loop_midi_data(target).unwrap().unwrap();
+        assert_eq!(midi_details.channels.len(), 1);
+        assert_eq!(midi_details.channels[0].start_offset, -3);
+        assert_eq!(midi_details.channels[0].preplay, 4);
+        assert_eq!(midi_details.channels[0].events[0].data, [0x90, 64, 127]);
+        assert!(midi_details.channels[0].content_revision > 0);
+
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].loops[1].audio[0].samples,
@@ -2799,7 +3400,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_external_track_preserves_roles_media_and_routing() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -2909,7 +3510,7 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn worker_entry_ignores_gui_arguments_and_validates_hidden_identity() {
         assert!(!run_carla_worker_if_requested(["app", "--fullscreen"]).unwrap());
         let error =
@@ -2919,7 +3520,7 @@ mod tests {
     }
 
     #[cfg(feature = "native-fx")]
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_fx_catalog_advertises_carla_facets_and_constraints() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -2929,7 +3530,10 @@ mod tests {
         let catalog = backend.track_processor_catalog().unwrap();
         assert_eq!(catalog.len(), 5);
         assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::TINY_SYNTH_FX);
+        let runtime_available = shoop_engine::carla_native::carla_runtime_availability().is_ok();
         for descriptor in &catalog[2..] {
+            assert_eq!(descriptor.available, runtime_available);
+            assert_eq!(descriptor.unavailable_reason.is_none(), runtime_available);
             assert!(descriptor.features.state);
             assert!(descriptor.features.external_ui);
             assert!(descriptor.features.recovery);
@@ -2943,7 +3547,47 @@ mod tests {
         }
     }
 
-    #[test]
+    #[cfg(feature = "native-fx")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn missing_carla_runtime_disables_only_carla_catalog_entries() {
+        let original_library = std::env::var_os("SHOOP_CARLA_NATIVE_LIBRARY");
+        let original_resources = std::env::var_os("SHOOP_CARLA_RESOURCE_DIR");
+        unsafe {
+            std::env::set_var(
+                "SHOOP_CARLA_NATIVE_LIBRARY",
+                std::env::temp_dir().join("shoop-certainly-missing-carla.so"),
+            );
+            std::env::remove_var("SHOOP_CARLA_RESOURCE_DIR");
+        }
+        let result = (|| {
+            let mut backend =
+                NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: 48_000,
+                    buffer_size: 128,
+                }))?;
+            let catalog = backend.track_processor_catalog()?;
+            assert!(catalog[..2].iter().all(|descriptor| {
+                descriptor.available && !descriptor.id.as_str().starts_with("carla_")
+            }));
+            assert!(catalog[2..].iter().all(|descriptor| {
+                !descriptor.available && descriptor.unavailable_reason.is_some()
+            }));
+            Ok::<_, anyhow::Error>(())
+        })();
+        unsafe {
+            match original_library {
+                Some(value) => std::env::set_var("SHOOP_CARLA_NATIVE_LIBRARY", value),
+                None => std::env::remove_var("SHOOP_CARLA_NATIVE_LIBRARY"),
+            }
+            match original_resources {
+                Some(value) => std::env::set_var("SHOOP_CARLA_RESOURCE_DIR", value),
+                None => std::env::remove_var("SHOOP_CARLA_RESOURCE_DIR"),
+            }
+        }
+        result.unwrap();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_processed_track_wires_fake_fx_without_public_internal_ports() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -2995,17 +3639,56 @@ mod tests {
                 .visible
         );
 
-        let runtime = backend.runtime_mut().unwrap();
-        runtime.driver.dummy_enter_controlled_mode();
-        let input = runtime.tracks[&created.track_id].audio_inputs[0].clone();
-        let output = runtime.tracks[&created.track_id].audio_outputs[0].clone();
-        input.dummy_queue_data(&[1.0, -0.5, 0.25, 0.0]).unwrap();
-        output.dummy_request_data(4).unwrap();
-        runtime.driver.dummy_request_controlled_frames(4);
-        runtime.driver.dummy_run_requested_frames();
-        assert_eq!(output.dummy_dequeue_data(4), vec![0.5, -0.25, 0.125, 0.0]);
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            let input = runtime.tracks[&created.track_id].audio_inputs[0].clone();
+            let output = runtime.tracks[&created.track_id].audio_outputs[0].clone();
+            input.dummy_queue_data(&[1.0, -0.5, 0.25, 0.0]).unwrap();
+            output.dummy_request_data(4).unwrap();
+            runtime.driver.dummy_request_controlled_frames(4);
+            runtime.driver.dummy_run_requested_frames();
+            assert_eq!(output.dummy_dequeue_data(4), vec![0.5, -0.25, 0.125, 0.0]);
+        }
 
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.poll().unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            let input = runtime.tracks[&created.track_id].audio_inputs[0].clone();
+            input.dummy_queue_data(&[2.0, 4.0, 6.0, 8.0]).unwrap();
+            runtime.driver.dummy_request_controlled_frames(4);
+            runtime.driver.dummy_run_requested_frames();
+        }
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            let wet = runtime.loops[&created.loops[0]].audio[2].clone();
+            assert!(matches!(
+                wet.try_get_current_data_snapshot(),
+                Err(
+                    shoop_engine::content_snapshot::CurrentDataError::MutationActive(
+                        shoop_engine::content_snapshot::ContentMutation::Recording
+                    )
+                )
+            ));
+            runtime.driver.dummy_request_controlled_frames(1);
+            runtime.driver.dummy_run_requested_frames();
+            let deadline = std::time::Instant::now() + Duration::from_secs(1);
+            while wet.try_get_current_data_snapshot().is_err() {
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::yield_now();
+            }
+        }
         let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].loops[0].audio[2].samples,
+            vec![1.0, 2.0, 3.0, 4.0]
+        );
         assert_eq!(captured.tracks[0].processor_state.as_deref(), Some(""));
         let mut restored = NativeBackend::new(config).unwrap();
         restored.replace_session(&captured).unwrap();
@@ -3015,7 +3698,156 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_dummy_grab_captures_processed_dry_wet_audio_and_midi() {
+        const FRAMES: u32 = 128;
+        const NOTE_FRAME: usize = 16;
+        const NOTE_VELOCITY: u8 = 102;
+
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: FRAMES,
+        }))
+        .unwrap();
+        let sync = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "grab_sync".to_owned(),
+                audio_channels: 0,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let target = backend
+            .create_track(TrackRequest {
+                port_name_base: "grab_processed".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: "test_2x2x1".to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend.set_loop_length(sync.loops[0], FRAMES).unwrap();
+        backend
+            .transition_loop(sync.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .set_loop_sync_source(target.loops[0], Some(sync.loops[0]))
+            .unwrap();
+        backend
+            .set_track_control(target.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+
+        let dry_left = vec![0.25; FRAMES as usize];
+        let dry_right = vec![-0.5; FRAMES as usize];
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            let track = &runtime.tracks[&target.track_id];
+            for input in &track.audio_inputs {
+                input.set_ringbuffer_n_samples(FRAMES).unwrap();
+            }
+            track
+                .midi_input
+                .as_ref()
+                .unwrap()
+                .set_ringbuffer_n_samples(FRAMES)
+                .unwrap();
+            runtime.loops[&sync.loops[0]]
+                .handle
+                .set_position(0)
+                .unwrap();
+            runtime.wait();
+
+            let track = &runtime.tracks[&target.track_id];
+            let left_input = track.audio_inputs[0].clone();
+            let right_input = track.audio_inputs[1].clone();
+            let midi_input = track.midi_input.as_ref().unwrap().clone();
+            for sequence in [
+                left_input.dummy_queue_data(&dry_left).unwrap(),
+                right_input.dummy_queue_data(&dry_right).unwrap(),
+                midi_input
+                    .dummy_queue_msgs(vec![
+                        MidiEvent::new(NOTE_FRAME as i32, vec![0x90, 64, NOTE_VELOCITY]),
+                        MidiEvent::new(64, vec![0x80, 64, 0]),
+                    ])
+                    .unwrap(),
+            ] {
+                runtime
+                    .session
+                    .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)
+                    .unwrap();
+            }
+            runtime.driver.dummy_request_controlled_frames(FRAMES);
+            runtime.driver.dummy_run_requested_frames();
+        }
+
+        backend
+            .grab_loops(&[BackendGrabRequest {
+                loop_id: target.loops[0],
+                reverse_start_cycle: Some(1),
+                cycles_length: Some(1),
+                go_to_cycle: Some(0),
+                go_to_mode: BackendLoopMode::Playing,
+            }])
+            .unwrap();
+
+        let captured = backend.capture_session().unwrap();
+        let target_loop = &captured
+            .tracks
+            .iter()
+            .find(|track| track.source_id == target.track_id.raw())
+            .unwrap()
+            .loops[0];
+        assert_eq!(target_loop.length, FRAMES);
+        assert_eq!(target_loop.audio[0].samples, dry_left);
+        assert_eq!(target_loop.audio[1].samples, dry_right);
+        assert_eq!(
+            target_loop.midi[0].events,
+            vec![
+                BackendMidiEvent {
+                    time: NOTE_FRAME as u32,
+                    data: vec![0x90, 64, NOTE_VELOCITY],
+                },
+                BackendMidiEvent {
+                    time: 64,
+                    data: vec![0x80, 64, 0],
+                },
+            ]
+        );
+
+        let mut expected_left = vec![0.125; FRAMES as usize];
+        let mut expected_right = vec![-0.25; FRAMES as usize];
+        let note_impulse = f32::from(NOTE_VELOCITY) / 255.0;
+        expected_left[NOTE_FRAME] += note_impulse;
+        expected_right[NOTE_FRAME] += note_impulse;
+        for (frame, (actual, expected)) in target_loop.audio[2]
+            .samples
+            .iter()
+            .zip(&expected_left)
+            .enumerate()
+        {
+            assert!(
+                (*actual - *expected).abs() < 1.0e-6,
+                "left wet sample {frame}: expected {expected}, got {actual}"
+            );
+        }
+        for (frame, (actual, expected)) in target_loop.audio[3]
+            .samples
+            .iter()
+            .zip(&expected_right)
+            .enumerate()
+        {
+            assert!(
+                (*actual - *expected).abs() < 1.0e-6,
+                "right wet sample {frame}: expected {expected}, got {actual}"
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_tiny_synth_fx_processes_midi_and_round_trips_state() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 48_000,
@@ -3046,33 +3878,131 @@ mod tests {
             )
             .unwrap();
         let _ = backend.poll().unwrap();
-
-        let runtime = backend.runtime_mut().unwrap();
-        runtime.driver.dummy_enter_controlled_mode();
-        let track = &runtime.tracks[&created.track_id];
-        track
-            .midi_input
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                    TinySynthFxMidiCcAssignment {
+                        parameter: TinySynthFxParameter::ReverbAmount,
+                        channel: 3,
+                        controller: 21,
+                    },
+                )),
+            )
+            .unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            let midi = runtime.tracks[&created.track_id]
+                .midi_input
+                .as_ref()
+                .unwrap()
+                .clone();
+            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
+                time: 0,
+                data: vec![0xb3, 21, 127],
+            })
+            .unwrap();
+            runtime.driver.dummy_request_controlled_frames(128);
+            runtime.driver.dummy_run_requested_frames();
+        }
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.tracks[&created.track_id]
+                .latest_input_midi_message
+                .unwrap(),
+            BackendLatestMidiMessage {
+                bytes: [0xb3, 21, 127, 0],
+                len: 3,
+            }
+        );
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = snapshot.tracks
+            [&created.track_id]
+            .fx
             .as_ref()
-            .unwrap()
-            .dummy_queue_msg(&shoop_engine::MidiEvent {
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX editor state");
+        };
+        assert_eq!(editor.reverb_amount, 1.0);
+
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_enter_controlled_mode();
+            let track = &runtime.tracks[&created.track_id];
+            track
+                .midi_input
+                .as_ref()
+                .unwrap()
+                .dummy_queue_msg(&shoop_engine::MidiEvent {
+                    time: 0,
+                    data: vec![0x90, 69, 127],
+                })
+                .unwrap();
+            let output = track.audio_outputs[0].clone();
+            output.dummy_request_data(128).unwrap();
+            runtime.driver.dummy_request_controlled_frames(128);
+            runtime.driver.dummy_run_requested_frames();
+            assert!(output
+                .dummy_dequeue_data(128)
+                .iter()
+                .any(|sample| sample.abs() > 0.001));
+        }
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic),
+            )
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.poll().unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            let midi = runtime.tracks[&created.track_id]
+                .midi_input
+                .as_ref()
+                .unwrap()
+                .clone();
+            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
                 time: 0,
                 data: vec![0x90, 69, 127],
             })
             .unwrap();
-        let output = track.audio_outputs[0].clone();
-        output.dummy_request_data(128).unwrap();
-        runtime.driver.dummy_request_controlled_frames(128);
-        runtime.driver.dummy_run_requested_frames();
-        assert!(output
-            .dummy_dequeue_data(128)
-            .iter()
-            .any(|sample| sample.abs() > 0.001));
+            for _ in 0..8 {
+                runtime.driver.dummy_request_controlled_frames(128);
+                runtime.driver.dummy_run_requested_frames();
+            }
+            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
+                time: 0,
+                data: vec![0x80, 69, 0],
+            })
+            .unwrap();
+            for _ in 0..2 {
+                runtime.driver.dummy_request_controlled_frames(128);
+                runtime.driver.dummy_run_requested_frames();
+            }
+        }
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
 
         let captured = backend.capture_session().unwrap();
+        let wet = &captured.tracks[0].loops[0].audio[1].samples;
+        assert!(wet.iter().filter(|sample| sample.abs() > 1.0e-7).count() > wet.len() / 2);
         assert!(captured.tracks[0]
             .processor_state
             .as_deref()
             .is_some_and(|state| state.starts_with("shoop-tiny-synth-fx:1:")));
+        assert_eq!(
+            captured.tracks[0].tiny_synth_midi_cc_assignments,
+            [BackendTinySynthFxMidiCcAssignment {
+                parameter: BackendTinySynthFxParameter::ReverbAmount,
+                channel: 3,
+                controller: 21,
+            }]
+        );
         backend
             .switch_audio_driver(
                 &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
@@ -3083,9 +4013,14 @@ mod tests {
                 &captured,
             )
             .unwrap();
+        let switched = backend.capture_session().unwrap();
         assert_eq!(
-            backend.capture_session().unwrap().tracks[0].processor_state,
+            switched.tracks[0].processor_state,
             captured.tracks[0].processor_state
+        );
+        assert_eq!(
+            switched.tracks[0].tiny_synth_midi_cc_assignments,
+            captured.tracks[0].tiny_synth_midi_cc_assignments
         );
 
         let mut browser = EngineBackend::new_web_audio(48_000, 128).unwrap();
@@ -3099,9 +4034,14 @@ mod tests {
             browser_state.tracks[0].processor_state,
             captured.tracks[0].processor_state
         );
+        assert_eq!(
+            browser_state.tracks[0].tiny_synth_midi_cc_assignments,
+            captured.tracks[0].tiny_synth_midi_cc_assignments
+        );
 
         let mut restored = NativeBackend::new(config).unwrap();
-        restored.replace_session(&browser_state).unwrap();
+        let replacement = restored.replace_session(&browser_state).unwrap();
+        let restored_track = replacement.tracks[&captured.tracks[0].source_id].track_id;
         let restored_state = restored.capture_session().unwrap();
         assert_eq!(
             restored_state.tracks[0].topology,
@@ -3111,9 +4051,91 @@ mod tests {
             restored_state.tracks[0].processor_state,
             captured.tracks[0].processor_state
         );
+        assert_eq!(
+            restored_state.tracks[0].tiny_synth_midi_cc_assignments,
+            captured.tracks[0].tiny_synth_midi_cc_assignments
+        );
+        restored
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
+                    TinySynthFxParameter::ReverbAmount,
+                )),
+            )
+            .unwrap();
+        assert!(restored.capture_session().unwrap().tracks[0]
+            .tiny_synth_midi_cc_assignments
+            .is_empty());
+        restored
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                    TinySynthFxMidiCcAssignment {
+                        parameter: TinySynthFxParameter::EqLow,
+                        channel: 1,
+                        controller: 71,
+                    },
+                )),
+            )
+            .unwrap();
+        restored
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments),
+            )
+            .unwrap();
+        assert!(restored.capture_session().unwrap().tracks[0]
+            .tiny_synth_midi_cc_assignments
+            .is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_track_removal_releases_ports_for_same_name_recreation() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        let request = DirectTrackRequest {
+            port_name_base: "reusable_native".to_owned(),
+            audio_channels: 2,
+            midi: true,
+            initial_loops: 2,
+        };
+        let first = backend.create_direct_track(request.clone()).unwrap();
+        let first_names = first
+            .ports
+            .iter()
+            .map(|port| port.name.clone())
+            .collect::<Vec<_>>();
+        backend.remove_track(first.track_id).unwrap();
+        let removed = backend.poll().unwrap();
+        assert!(!removed.tracks.contains_key(&first.track_id));
+        assert!(first
+            .loops
+            .iter()
+            .all(|loop_id| !removed.loops.contains_key(loop_id)));
+        assert!(first
+            .ports
+            .iter()
+            .all(|port| !removed.connections.application_ports.contains_key(&port.id)));
+
+        let recreated = backend.create_direct_track(request).unwrap();
+        assert_eq!(
+            recreated
+                .ports
+                .iter()
+                .map(|port| port.name.clone())
+                .collect::<Vec<_>>(),
+            first_names
+        );
+        assert!(recreated
+            .ports
+            .iter()
+            .all(|port| first.ports.iter().all(|old| old.id != port.id)));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn native_jack_test_adapter_publishes_driver_ports() {
         let configured = AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
             client_name: "ShoopDaLoop-test".to_owned(),
@@ -3151,7 +4173,7 @@ mod tests {
             .any(|name| name.starts_with("test_client_1:")));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_cpal_test_adapter_satisfies_topology_and_status_contract() {
         let configured = AudioDriverConfig::Cpal(CpalAudioDriverConfig {
             sample_rate: 48_000,
@@ -3194,7 +4216,7 @@ mod tests {
         assert!(snapshot.tracks[&created.track_id].midi);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn repeated_same_driver_switches_release_each_previous_runtime() {
         let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
         backend
@@ -3218,7 +4240,7 @@ mod tests {
         assert_eq!(backend.capture_session().unwrap().tracks.len(), 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_rejects_changed_rate_without_converted_session() {
         let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
         let captured = backend.capture_session().unwrap();
@@ -3232,7 +4254,7 @@ mod tests {
         assert_eq!(backend.capture_session().unwrap().sample_rate, 48_000);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn optional_real_cpal_smoke_reports_environment_skip() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipped real CPAL smoke: set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -3257,7 +4279,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn optional_real_cross_driver_switch_reports_each_environment_skip() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipped real cross-driver switch: set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -3317,7 +4339,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn optional_real_jack_smoke_reports_environment_skip() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipped real JACK smoke: set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -3337,7 +4359,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn invalid_preferred_driver_falls_back_without_changing_the_preference_value() {
         let preferred = AudioDriverConfig::Jack(shoop_app_api::JackAudioDriverConfig {
             client_name: String::new(),
@@ -3357,7 +4379,7 @@ mod tests {
         assert_eq!(preferred.kind(), AudioDriverKind::Jack);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn production_catalog_never_exposes_test_drivers() {
         let backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
         assert_eq!(backend.catalog.len(), 3);

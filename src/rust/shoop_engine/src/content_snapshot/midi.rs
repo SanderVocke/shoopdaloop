@@ -593,7 +593,7 @@ mod tests {
         MidiStorageElem::new(time, data).expect("valid event")
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_publishes_ordered_complete_event_blocks() {
         let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 3);
@@ -626,7 +626,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exact_midi_requires_final_publication() {
         let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
@@ -648,7 +648,7 @@ mod tests {
         assert_eq!(snapshot.events().next().map(|event| event.time), Some(-1));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn prepared_generation_installs_with_explicit_duration() {
         let (mut writer, control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
@@ -670,7 +670,7 @@ mod tests {
         assert_eq!(snapshot.events().next().map(|event| event.time), Some(3));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_install_closes_the_cross_transport_preparation_race() {
         let (mut writer, control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
@@ -687,7 +687,7 @@ mod tests {
         assert_eq!(reader.try_current().expect("installed").events().count(), 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cancelled_midi_work_is_reset_before_the_next_generation() {
         let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 6);
@@ -718,7 +718,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn payload_boundaries_partial_publication_and_clear_are_deterministic() {
         let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 6);
@@ -758,7 +758,7 @@ mod tests {
         assert_eq!(current.events().count(), 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_saturation_is_sticky_until_a_full_clear_recovers() {
         let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 1, 1);
@@ -788,7 +788,7 @@ mod tests {
             .is_none());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn range_replacement_is_sorted_and_hidden_until_committed() {
         let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 5);
@@ -833,7 +833,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn hidden_replace_is_published_only_when_committed() {
         let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 3);

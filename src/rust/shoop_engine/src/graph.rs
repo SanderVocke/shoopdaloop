@@ -182,7 +182,7 @@ pub fn processing_order(nodes: &[NodeSpec]) -> Result<Vec<Vec<NodeIdx>>, GraphEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     /// Builds specs from (name, outgoing) pairs; indices are positional.
     fn specs(defs: &[(&str, &[usize])]) -> Vec<NodeSpec> {
@@ -214,7 +214,7 @@ mod tests {
     // Each audio port contributes two nodes (prepare, process_and_internal_
     // connections); each channel two (prepare_buffers, process); each loop one.
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn two_ports() {
         // p1 -> p2 internal connection.
         let nodes = specs(&[
@@ -223,7 +223,7 @@ mod tests {
             ("p1::process_and_internal_connections", &[3]),
             ("p2::process_and_internal_connections", &[]),
         ]);
-        let_assert!(Ok(schedule) = processing_order(&nodes));
+        assert2::assert!(let Ok(schedule) = processing_order(&nodes));
         check!(
             names(&nodes, &schedule)
                 == vec![
@@ -235,7 +235,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn direct_loop() {
         // 0 p1::prepare, 1 p2::prepare, 2 p1::process, 3 p2::process,
         // 4 channel::prepare_buffers, 5 channel::process, 6 loop::process
@@ -248,7 +248,7 @@ mod tests {
             ("channel::process", &[3]),
             ("loop::process", &[5]),
         ]);
-        let_assert!(Ok(schedule) = processing_order(&nodes));
+        assert2::assert!(let Ok(schedule) = processing_order(&nodes));
         check!(
             names(&nodes, &schedule)
                 == vec![
@@ -263,7 +263,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn two_direct_loops_co_processed() {
         // Two loops declared as co-process partners must land in one step.
         let mut nodes = specs(&[
@@ -281,7 +281,7 @@ mod tests {
         nodes[6].co_process = vec![NodeIdx(6), NodeIdx(9)];
         nodes[9].co_process = vec![NodeIdx(6), NodeIdx(9)];
 
-        let_assert!(Ok(schedule) = processing_order(&nodes));
+        assert2::assert!(let Ok(schedule) = processing_order(&nodes));
         check!(
             names(&nodes, &schedule)
                 == vec![
@@ -298,52 +298,52 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn incoming_edges_are_equivalent_to_outgoing() {
         let a = specs(&[("a", &[1]), ("b", &[])]);
         let mut b = specs(&[("a", &[]), ("b", &[])]);
         b[1].incoming = vec![NodeIdx(0)];
-        let_assert!(Ok(sa) = processing_order(&a));
-        let_assert!(Ok(sb) = processing_order(&b));
+        assert2::assert!(let Ok(sa) = processing_order(&a));
+        assert2::assert!(let Ok(sb) = processing_order(&b));
         check!(sa == sb);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn co_process_grouping_is_order_independent() {
         // Constraint declared on one side only still merges both.
         let mut nodes = specs(&[("a", &[]), ("b", &[]), ("c", &[])]);
         nodes[0].co_process = vec![NodeIdx(2)];
-        let_assert!(Ok(schedule) = processing_order(&nodes));
+        assert2::assert!(let Ok(schedule) = processing_order(&nodes));
         check!(schedule.len() == 2);
         check!(schedule.contains(&vec![NodeIdx(0), NodeIdx(2)]));
         check!(schedule.contains(&vec![NodeIdx(1)]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn detects_cycle() {
         let nodes = specs(&[("a", &[1]), ("b", &[0])]);
         check!(processing_order(&nodes) == Err(GraphError::Cycle));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn detects_co_process_cycle() {
         // a must precede b, but they are forced into the same step.
         let mut nodes = specs(&[("a", &[1]), ("b", &[])]);
         nodes[0].co_process = vec![NodeIdx(1)];
         // Edge is internal to the group, so it is dropped rather than deadlocking.
-        let_assert!(Ok(schedule) = processing_order(&nodes));
+        assert2::assert!(let Ok(schedule) = processing_order(&nodes));
         check!(schedule == vec![vec![NodeIdx(0), NodeIdx(1)]]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn rejects_out_of_range_index() {
         let nodes = specs(&[("a", &[5])]);
         check!(processing_order(&nodes) == Err(GraphError::BadIndex(5, 1)));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_graph() {
-        let_assert!(Ok(schedule) = processing_order(&[]));
+        assert2::assert!(let Ok(schedule) = processing_order(&[]));
         check!(schedule.is_empty());
     }
 }

@@ -1,24 +1,29 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use crate::{
-    click_track_dialog::ClickTrackDialog, colors, AppAction, AppState, AudioDriverConfig,
-    AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig, DetailsPane,
-    DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane, SettingsAction,
-    SettingsDialog, TrackProcessorDescriptor, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
-    TrackWidget, TracksWidget,
+    click_track_dialog::ClickTrackDialog, colors, ephemeral_script_display_name,
+    is_ephemeral_script_version, script_dialogs::ScriptDialogs, AppAction, AppState,
+    AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig,
+    DetailsPane, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, PianoPane,
+    SettingsAction, SettingsDialog, TracingStatus, TracingStopped, TrackProcessorDescriptor,
+    TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
-    SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
+    SettingDefinition, SettingEditor, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
     SettingsRegistryBuilder, SettingsRegistryError, SettingsSnapshot, SettingsViewState,
     StringToggleList,
 };
 use std::sync::Arc;
 
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
+const LOGO_AREA_HEIGHT: f32 = 112.0;
+const SYNC_TRACK_HEIGHT: f32 = 118.0;
+const SIDEBAR_SECTION_GAP: f32 = 8.0;
 
 pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
     SettingKey::new("tracks.new.default_audio_channels");
 pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
+pub const UI_SCALE_FACTOR: SettingKey<f64> = SettingKey::new("appearance.ui_scale_factor");
 pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.keyboard.enabled");
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
@@ -46,6 +51,13 @@ pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.mi
 pub fn register_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
+    register_settings_with_ui_scale_default(builder, 1.0)
+}
+
+pub fn register_settings_with_ui_scale_default(
+    builder: &mut SettingsRegistryBuilder,
+    ui_scale_default: f64,
+) -> Result<(), SettingsRegistryError> {
     builder.register(
         SettingDefinition::new(
             DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
@@ -69,6 +81,22 @@ pub fn register_settings(
         .category_order(10)
         .setting_order(20)
         .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            UI_SCALE_FACTOR,
+            ui_scale_default,
+            "Appearance",
+            "Pixels-per-point scale",
+            "Multiplier for egui's native pixels-per-point value, scaling the entire UI.",
+        )
+        .category_order(2)
+        .setting_order(10)
+        .effect(SettingEffect::ExplicitApply)
+        .editor(SettingEditor::Number {
+            min: 0.75,
+            max: 2.0,
+        }),
     )
 }
 
@@ -452,6 +480,7 @@ pub fn register_script_settings(
 enum AddTrackMode {
     #[default]
     Regular,
+    Trigger,
     DryWet,
 }
 
@@ -466,6 +495,13 @@ pub struct AppWidgetResponse {
     pub settings_actions: Vec<SettingsAction>,
 }
 
+#[derive(Clone)]
+struct PendingEphemeralScript {
+    name: String,
+    source: Arc<str>,
+    source_path: Option<String>,
+}
+
 pub struct AppWidget {
     tracks: TracksWidget,
     global_controls: GlobalControls,
@@ -475,28 +511,47 @@ pub struct AppWidget {
     connections: ConnectionDialog,
     click_track: ClickTrackDialog,
     settings: SettingsDialog,
+    script_dialogs: ScriptDialogs,
     bottom_pane: Option<BottomPane>,
     add_track_open: bool,
     add_track_name: String,
     add_track_mode: AddTrackMode,
     add_track_audio_channels: u32,
     add_track_midi: bool,
-    add_track_dry_audio_channels: u32,
-    add_track_wet_audio_channels: u32,
     add_track_dry_midi: bool,
     add_track_processor: Option<TrackProcessorTypeId>,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
     pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
+    script_control_pressed: bool,
+    pending_ephemeral_scripts: VecDeque<PendingEphemeralScript>,
+    tracing_status: TracingStatus,
+    tracing_stopped: Option<TracingStopped>,
+    last_callback_count: u64,
+    callbacks_active_until: f64,
+    #[cfg(test)]
+    tracing_save_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    tracing_discard_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    ephemeral_script_accept_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    ephemeral_script_cancel_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_cancel_rect: Option<egui::Rect>,
     #[cfg(test)]
+    add_track_midi_id: Option<egui::Id>,
+    #[cfg(test)]
     details_toggle_rect: Option<egui::Rect>,
     #[cfg(test)]
     piano_toggle_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    xrun_menu_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    reset_xruns_rect: Option<egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -520,28 +575,47 @@ impl AppWidget {
             connections: ConnectionDialog::default(),
             click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
+            script_dialogs: ScriptDialogs::default(),
             bottom_pane: None,
             add_track_open: false,
             add_track_name: String::new(),
             add_track_mode: AddTrackMode::Regular,
             add_track_audio_channels: 2,
             add_track_midi: false,
-            add_track_dry_audio_channels: 2,
-            add_track_wet_audio_channels: 2,
             add_track_dry_midi: false,
             add_track_processor: None,
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
             pressed_script_keys: BTreeMap::new(),
+            script_control_pressed: false,
+            pending_ephemeral_scripts: VecDeque::new(),
+            tracing_status: TracingStatus::default(),
+            tracing_stopped: None,
+            last_callback_count: 0,
+            callbacks_active_until: 0.0,
+            #[cfg(test)]
+            tracing_save_rect: None,
+            #[cfg(test)]
+            tracing_discard_rect: None,
+            #[cfg(test)]
+            ephemeral_script_accept_rect: None,
+            #[cfg(test)]
+            ephemeral_script_cancel_rect: None,
             #[cfg(test)]
             add_track_accept_rect: None,
             #[cfg(test)]
             add_track_cancel_rect: None,
             #[cfg(test)]
+            add_track_midi_id: None,
+            #[cfg(test)]
             details_toggle_rect: None,
             #[cfg(test)]
             piano_toggle_rect: None,
+            #[cfg(test)]
+            xrun_menu_rect: None,
+            #[cfg(test)]
+            reset_xruns_rect: None,
         }
     }
 
@@ -562,8 +636,35 @@ impl AppWidget {
         self.click_track.set_preview_available(available);
     }
 
+    pub fn set_tracing_status(&mut self, status: TracingStatus) {
+        self.tracing_status = status;
+        self.settings.set_tracing_status(status);
+    }
+
+    pub fn notify_tracing_stopped(&mut self, stopped: TracingStopped) {
+        self.tracing_stopped = Some(stopped);
+    }
+
     pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
         self.settings.add_user_script_path(path)
+    }
+
+    pub fn queue_ephemeral_script(&mut self, name: String, source: Arc<str>) {
+        self.queue_ephemeral_script_from_path(name, source, None);
+    }
+
+    pub fn queue_ephemeral_script_from_path(
+        &mut self,
+        name: String,
+        source: Arc<str>,
+        source_path: Option<String>,
+    ) {
+        self.pending_ephemeral_scripts
+            .push_back(PendingEphemeralScript {
+                name,
+                source,
+                source_path,
+            });
     }
 
     pub fn open_connection_scope(&self) -> Option<ConnectionScope> {
@@ -585,12 +686,16 @@ impl AppWidget {
         )
         .entered();
         self.ensure_logo(ui.ctx());
-        let events = ui.ctx().input(|input| input.events.clone());
+        let (events, modifiers) = ui
+            .ctx()
+            .input(|input| (input.events.clone(), input.modifiers));
         let text_entry_active = ui.ctx().egui_wants_keyboard_input();
         let mut actions = crate::key_input::translate_events(
             &events,
+            modifiers,
             text_entry_active,
             &mut self.pressed_script_keys,
+            &mut self.script_control_pressed,
         )
         .into_iter()
         .map(AppAction::KeyEvent)
@@ -608,30 +713,41 @@ impl AppWidget {
                     .id_salt("global_controls_scroll")
                     .scroll_source(crate::control_safe_scroll_source())
                     .show(ui, |ui| {
-                        actions.extend(
-                            self.global_controls
-                                .show(ui, &state.global_controls)
-                                .into_iter()
-                                .map(AppAction::Global),
-                        );
-                        if self.global_controls.take_connections_requested() {
-                            self.connections.open(ConnectionScope::AllTracks);
-                        }
-                        if self.global_controls.take_save_session_requested() {
-                            actions.push(AppAction::RequestSaveSession);
-                        }
-                        if self.global_controls.take_load_session_requested() {
-                            actions.push(AppAction::RequestLoadSessionPicker);
-                        }
-                        if self.global_controls.take_settings_requested() {
-                            self.settings.open(settings_state);
-                        }
+                        ui.horizontal(|ui| {
+                            actions.extend(
+                                self.global_controls
+                                    .show(ui, &state.global_controls)
+                                    .into_iter()
+                                    .map(AppAction::Global),
+                            );
+                            if self.global_controls.take_connections_requested() {
+                                self.connections.open(ConnectionScope::AllTracks);
+                            }
+                            if self.global_controls.take_save_session_requested() {
+                                actions.push(AppAction::RequestSaveSession);
+                            }
+                            if self.global_controls.take_load_session_requested() {
+                                actions.push(AppAction::RequestLoadSessionPicker);
+                            }
+                            if self.global_controls.take_settings_requested() {
+                                self.settings.open(settings_state);
+                            }
+                            ui.separator();
+                            self.script_dialogs
+                                .show_control(ui, &state.scripting.dialogs);
+                        });
                     });
             });
 
-        egui::Panel::bottom("bottom_pane_toggle")
+        egui::Panel::bottom("bottom_bar")
             .resizable(false)
+            .show_separator_line(false)
             .exact_size(24.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(colors::DARK_BACKGROUND)
+                    .inner_margin(egui::Margin::symmetric(6, 1)),
+            )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     for (pane, label) in [
@@ -649,7 +765,50 @@ impl AppWidget {
                             self.set_bottom_pane(next, &mut actions);
                         }
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.show_bottom_status(ui, state, &mut actions, &mut settings_actions)
+                    });
                 });
+            });
+
+        egui::Panel::right("logo_and_sync")
+            .resizable(false)
+            .show_separator_line(false)
+            .exact_size(150.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(colors::SIDEBAR_BACKGROUND)
+                    .inner_margin(egui::Margin::same(5)),
+            )
+            .show(ui, |ui| {
+                let sidebar = ui.max_rect();
+                let logo_rect = egui::Rect::from_min_size(
+                    egui::pos2(sidebar.left(), sidebar.bottom() - LOGO_AREA_HEIGHT),
+                    egui::vec2(sidebar.width(), LOGO_AREA_HEIGHT),
+                );
+                ui.scope_builder(
+                    egui::UiBuilder::new()
+                        .id_salt("logo_area")
+                        .max_rect(logo_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Center)),
+                    |ui| self.show_logo(ui, state),
+                );
+                if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
+                    let sync_rect = egui::Rect::from_min_size(
+                        egui::pos2(
+                            sidebar.left(),
+                            logo_rect.top() - SIDEBAR_SECTION_GAP - SYNC_TRACK_HEIGHT,
+                        ),
+                        egui::vec2(sidebar.width(), SYNC_TRACK_HEIGHT),
+                    );
+                    ui.scope_builder(
+                        egui::UiBuilder::new()
+                            .id_salt("sync_track_area")
+                            .max_rect(sync_rect)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                        |ui| self.show_sync_track(ui, sync, state, &mut actions),
+                    );
+                }
             });
 
         match self.bottom_pane {
@@ -664,10 +823,13 @@ impl AppWidget {
                             .fill(colors::RAISED_BACKGROUND)
                             .inner_margin(egui::Margin::same(6)),
                     )
-                    .show(ui, |ui| self.details.show(ui, state.details.as_ref()));
+                    .show(ui, |ui| {
+                        actions.extend(self.details.show(ui, state.details.as_ref()));
+                    });
             }
             Some(BottomPane::Piano) => {
-                let destinations = piano_destinations(state);
+                let destination_ids = piano_destinations(state);
+                let destination_centers = self.tracks.track_centers(&destination_ids);
                 egui::Panel::bottom("piano")
                     .resizable(true)
                     .default_size(165.0)
@@ -681,7 +843,7 @@ impl AppWidget {
                     .show(ui, |ui| {
                         actions.extend(
                             self.piano
-                                .show(ui, &destinations)
+                                .show(ui, !destination_ids.is_empty(), &destination_centers)
                                 .into_iter()
                                 .map(AppAction::Piano),
                         );
@@ -689,53 +851,6 @@ impl AppWidget {
             }
             None => {}
         }
-
-        egui::Panel::right("logo_status_and_sync")
-            .resizable(false)
-            .show_separator_line(false)
-            .exact_size(220.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(colors::SIDEBAR_BACKGROUND)
-                    .inner_margin(egui::Margin::same(5)),
-            )
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("status_and_sync_scroll")
-                    .scroll_source(crate::control_safe_scroll_source())
-                    .show(ui, |ui| {
-                        self.show_logo_and_status(ui, state);
-                        if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
-                            ui.add_space(8.0);
-                            ui.separator();
-                            let response = self.sync_track.show(ui, sync);
-                            actions.extend(response.io_intents.iter().cloned());
-                            actions.extend(response.loop_actions.into_iter().map(
-                                |(loop_id, action)| AppAction::Loop {
-                                    track_id: sync.id,
-                                    loop_id,
-                                    action,
-                                },
-                            ));
-                            if response.connections_requested {
-                                self.connections.open(ConnectionScope::Track(sync.id));
-                            }
-                            if let Some(loop_id) = response.click_track_requested {
-                                if let Some(loop_state) =
-                                    sync.loops.iter().find(|loop_| loop_.id == loop_id)
-                                {
-                                    self.click_track.open(loop_state, &state.click_track);
-                                }
-                            }
-                            actions.extend(response.actions.into_iter().map(|action| {
-                                AppAction::Track {
-                                    track_id: sync.id,
-                                    action,
-                                }
-                            }));
-                        }
-                    });
-            });
 
         egui::CentralPanel::default()
             .frame(
@@ -755,7 +870,12 @@ impl AppWidget {
                     .filter(|track| !track.is_sync)
                     .cloned()
                     .collect();
-                let response = self.tracks.show(ui, &main_tracks, &state.track_processors);
+                let response = self.tracks.show_with_global_controls(
+                    ui,
+                    &main_tracks,
+                    &state.track_processors,
+                    &state.global_controls,
+                );
                 if response.add_track_requested {
                     self.open_add_track_dialog(main_tracks.len(), settings_state);
                 }
@@ -778,6 +898,11 @@ impl AppWidget {
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
+        actions.extend(self.script_dialogs.show_windows(
+            ui.ctx(),
+            &state.scripting.dialogs,
+            script_paths,
+        ));
         let settings_response = self.settings.show(
             ui.ctx(),
             settings_state,
@@ -787,6 +912,8 @@ impl AppWidget {
         );
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
+        self.show_ephemeral_script_confirmation(ui.ctx(), state, &mut actions);
+        self.show_tracing_stopped(ui.ctx());
         if !actions.is_empty() || !settings_actions.is_empty() {
             tracing::debug!(
                 target: "Frontend.Egui",
@@ -810,6 +937,86 @@ impl AppWidget {
         }
     }
 
+    fn show_ephemeral_script_confirmation(
+        &mut self,
+        context: &egui::Context,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        let Some(pending) = self.pending_ephemeral_scripts.front().cloned() else {
+            return;
+        };
+        let matching = state
+            .scripting
+            .scripts
+            .iter()
+            .filter(|script| is_ephemeral_script_version(&script.name, &pending.name))
+            .collect::<Vec<_>>();
+        let display_name = ephemeral_script_display_name(
+            &pending.name,
+            state
+                .scripting
+                .scripts
+                .iter()
+                .map(|script| script.name.as_str()),
+        );
+        let mut accept = false;
+        let mut cancel = false;
+        egui::Window::new("Run Lua script?")
+            .id(egui::Id::new("ephemeral_script_confirmation"))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .collapsible(false)
+            .resizable(false)
+            .show(context, |ui| {
+                ui.label(format!("Load and run {:?}?", pending.name));
+                ui.label(
+                    "Run-once scripts stay in memory for restart, are independent of the session, and disappear when the app closes.",
+                );
+                if !matching.is_empty() {
+                    ui.add_space(4.0);
+                    ui.colored_label(
+                        colors::WARNING,
+                        "A same-named script is already listed. Loading this version will stop the current same-named script.",
+                    );
+                    ui.label(format!("The new version will appear as {:?}.", display_name));
+                }
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let run = ui.button("Run once");
+                    #[cfg(test)]
+                    {
+                        self.ephemeral_script_accept_rect = Some(run.rect);
+                    }
+                    if run.clicked() {
+                        accept = true;
+                    }
+                    let cancel_button = ui.button("Cancel");
+                    #[cfg(test)]
+                    {
+                        self.ephemeral_script_cancel_rect = Some(cancel_button.rect);
+                    }
+                    if cancel_button.clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if accept {
+            actions.push(self.accept_ephemeral_script().unwrap());
+        } else if cancel {
+            self.pending_ephemeral_scripts.pop_front();
+        }
+    }
+
+    fn accept_ephemeral_script(&mut self) -> Option<AppAction> {
+        self.pending_ephemeral_scripts
+            .pop_front()
+            .map(|pending| AppAction::AddEphemeralScript {
+                name: pending.name,
+                source: pending.source,
+                source_path: pending.source_path,
+            })
+    }
+
     fn open_add_track_dialog(
         &mut self,
         main_track_count: usize,
@@ -825,8 +1032,6 @@ impl AppWidget {
             .active
             .get(DEFAULT_NEW_TRACK_MIDI)
             .expect("registered MIDI setting must retain its type");
-        self.add_track_dry_audio_channels = self.add_track_audio_channels;
-        self.add_track_wet_audio_channels = self.add_track_audio_channels;
         self.add_track_dry_midi = self.add_track_midi;
         self.add_track_processor = None;
         self.add_track_open = true;
@@ -858,8 +1063,7 @@ impl AppWidget {
         self.add_track_mode = AddTrackMode::DryWet;
         self.add_track_open = true;
         self.add_track_processor = Some(processor.id.clone());
-        self.add_track_dry_audio_channels = 2;
-        self.add_track_wet_audio_channels = 2;
+        self.add_track_audio_channels = 2;
         self.add_track_dry_midi = true;
         self.add_track_open
             && processor.label == "Tiny Synth/FX"
@@ -882,6 +1086,39 @@ impl AppWidget {
     ) -> bool {
         self.settings
             .browser_test_open_category(settings_state, "Scripts")
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_lua_dialog_state(
+        &self,
+        id: crate::ScriptDialogId,
+    ) -> Option<(bool, usize)> {
+        self.script_dialogs.browser_test_state(id)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_close_lua_dialog(&mut self, id: crate::ScriptDialogId) {
+        self.script_dialogs.browser_test_close(id);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_open_lua_dialog_from_list(&mut self, id: crate::ScriptDialogId) {
+        self.script_dialogs.browser_test_open_from_list(id);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_set_lua_dialog_page(&mut self, id: crate::ScriptDialogId, page: usize) {
+        self.script_dialogs.browser_test_set_page(id, page);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_lua_dialog_count(&self) -> usize {
+        self.script_dialogs.browser_test_count()
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1124,7 +1361,6 @@ impl AppWidget {
             .resizable(false)
             .open(&mut open)
             .show(context, |ui| {
-                ui.label("Choose regular looping or separate dry and wet media.");
                 egui::Grid::new("add_track_fields")
                     .num_columns(2)
                     .spacing([10.0, 6.0])
@@ -1133,112 +1369,123 @@ impl AppWidget {
                         ui.text_edit_singleline(&mut self.add_track_name);
                         ui.end_row();
                         ui.label("Track type:");
-                        egui::ComboBox::from_id_salt("add_track_mode")
-                            .selected_text(match self.add_track_mode {
-                                AddTrackMode::Regular => "Regular",
-                                AddTrackMode::DryWet => "Dry + Wet",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.add_track_mode,
-                                    AddTrackMode::Regular,
-                                    "Regular",
-                                );
-                                ui.selectable_value(
-                                    &mut self.add_track_mode,
-                                    AddTrackMode::DryWet,
-                                    "Dry + Wet",
-                                );
-                            });
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::Regular,
+                                "Regular",
+                            );
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::Trigger,
+                                "Trigger",
+                            );
+                            ui.selectable_value(
+                                &mut self.add_track_mode,
+                                AddTrackMode::DryWet,
+                                "Dry + Wet",
+                            );
+                        });
                         ui.end_row();
-                        match self.add_track_mode {
-                            AddTrackMode::Regular => {
-                                ui.label("Audio:");
-                                show_audio_channel_count(
-                                    ui,
-                                    "add_track_audio",
-                                    &mut self.add_track_audio_channels,
-                                );
-                                ui.end_row();
-                                ui.label("MIDI:");
-                                ui.checkbox(&mut self.add_track_midi, "Enabled");
-                                ui.end_row();
-                            }
-                            AddTrackMode::DryWet => {
-                                let selected_processor =
-                                    self.add_track_processor.as_ref().and_then(|selected| {
-                                        processors
-                                            .iter()
-                                            .find(|processor| processor.id == *selected)
-                                    });
-                                ui.label("Dry audio:");
-                                show_audio_channel_count(
-                                    ui,
-                                    "add_track_dry_audio",
-                                    &mut self.add_track_dry_audio_channels,
-                                );
-                                ui.end_row();
-                                let matching_audio = selected_processor.is_some_and(|processor| {
-                                    processor.constraints.matching_audio_channels
-                                });
-                                if matching_audio {
-                                    self.add_track_wet_audio_channels =
-                                        self.add_track_dry_audio_channels;
+                        let selected_processor =
+                            self.add_track_processor.as_ref().and_then(|selected| {
+                                processors
+                                    .iter()
+                                    .find(|processor| processor.id == *selected)
+                            });
+                        let midi_policy = selected_processor
+                            .map(|processor| processor.constraints.midi)
+                            .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
+                        if self.add_track_mode == AddTrackMode::DryWet
+                            && selected_processor.is_some()
+                        {
+                            match midi_policy {
+                                crate::TrackProcessorMidiPolicy::Required => {
+                                    self.add_track_dry_midi = true;
                                 }
-                                ui.label("Wet audio:");
-                                ui.add_enabled_ui(!matching_audio, |ui| {
-                                    show_audio_channel_count(
-                                        ui,
-                                        "add_track_wet_audio",
-                                        &mut self.add_track_wet_audio_channels,
-                                    );
-                                });
-                                ui.end_row();
-                                let midi_policy = selected_processor
-                                    .map(|processor| processor.constraints.midi)
-                                    .unwrap_or(crate::TrackProcessorMidiPolicy::Unsupported);
-                                if selected_processor.is_some() {
-                                    match midi_policy {
-                                        crate::TrackProcessorMidiPolicy::Required => {
-                                            self.add_track_dry_midi = true;
-                                        }
-                                        crate::TrackProcessorMidiPolicy::Unsupported => {
-                                            self.add_track_dry_midi = false;
-                                        }
-                                        crate::TrackProcessorMidiPolicy::Optional => {}
-                                    }
+                                crate::TrackProcessorMidiPolicy::Unsupported => {
+                                    self.add_track_dry_midi = false;
                                 }
-                                ui.label("Dry MIDI:");
-                                ui.add_enabled_ui(
-                                    midi_policy == crate::TrackProcessorMidiPolicy::Optional,
-                                    |ui| {
-                                        ui.checkbox(&mut self.add_track_dry_midi, "Enabled");
-                                    },
-                                );
-                                ui.end_row();
-                                ui.label("Processing:");
-                                let selected = selected_processor
-                                    .map(|processor| processor.label.as_str())
-                                    .unwrap_or("No processors available");
-                                egui::ComboBox::from_id_salt("add_track_processor")
-                                    .selected_text(selected)
-                                    .show_ui(ui, |ui| {
-                                        for processor in processors {
-                                            ui.add_enabled_ui(processor.available, |ui| {
-                                                ui.selectable_value(
-                                                    &mut self.add_track_processor,
-                                                    Some(processor.id.clone()),
-                                                    &processor.label,
-                                                );
-                                            });
-                                            if let Some(reason) = &processor.unavailable_reason {
-                                                ui.small(reason);
-                                            }
-                                        }
-                                    });
-                                ui.end_row();
+                                crate::TrackProcessorMidiPolicy::Optional => {}
                             }
                         }
+
+                        let audio_enabled = self.add_track_mode != AddTrackMode::Trigger;
+                        ui.add_enabled(audio_enabled, egui::Label::new("Audio:"));
+                        ui.add_enabled_ui(audio_enabled, |ui| {
+                            show_audio_channel_count(
+                                ui,
+                                "add_track_audio",
+                                &mut self.add_track_audio_channels,
+                            );
+                        });
+                        ui.end_row();
+
+                        let midi_applicable = match self.add_track_mode {
+                            AddTrackMode::Regular => true,
+                            AddTrackMode::Trigger => false,
+                            AddTrackMode::DryWet => {
+                                midi_policy != crate::TrackProcessorMidiPolicy::Unsupported
+                            }
+                        };
+                        ui.add_enabled(midi_applicable, egui::Label::new("MIDI:"));
+                        let (mut displayed_midi, midi_editable) = match self.add_track_mode {
+                            AddTrackMode::Regular => (self.add_track_midi, true),
+                            AddTrackMode::Trigger => (false, false),
+                            AddTrackMode::DryWet => (
+                                self.add_track_dry_midi,
+                                midi_policy == crate::TrackProcessorMidiPolicy::Optional,
+                            ),
+                        };
+                        let midi = ui
+                            .push_id("add_track_midi", |ui| {
+                                ui.add_enabled(
+                                    midi_editable,
+                                    egui::Checkbox::new(&mut displayed_midi, "Enabled"),
+                                )
+                            })
+                            .inner;
+                        #[cfg(test)]
+                        {
+                            self.add_track_midi_id = Some(midi.id);
+                        }
+                        if midi.changed() {
+                            match self.add_track_mode {
+                                AddTrackMode::Regular => self.add_track_midi = displayed_midi,
+                                AddTrackMode::DryWet => self.add_track_dry_midi = displayed_midi,
+                                AddTrackMode::Trigger => {}
+                            }
+                        }
+                        ui.end_row();
+
+                        let processing_enabled = self.add_track_mode == AddTrackMode::DryWet;
+                        ui.add_enabled(processing_enabled, egui::Label::new("Processing:"));
+                        let selected = if processing_enabled {
+                            selected_processor
+                                .map(|processor| processor.label.as_str())
+                                .unwrap_or("No processors available")
+                        } else {
+                            "Not applicable"
+                        };
+                        ui.add_enabled_ui(processing_enabled, |ui| {
+                            egui::ComboBox::from_id_salt("add_track_processor")
+                                .selected_text(selected)
+                                .show_ui(ui, |ui| {
+                                    for processor in processors {
+                                        ui.add_enabled_ui(processor.available, |ui| {
+                                            ui.selectable_value(
+                                                &mut self.add_track_processor,
+                                                Some(processor.id.clone()),
+                                                &processor.label,
+                                            );
+                                        });
+                                        if let Some(reason) = &processor.unavailable_reason {
+                                            ui.small(reason);
+                                        }
+                                    }
+                                });
+                        });
+                        ui.end_row();
                     });
                 let spec = self.add_track_spec();
                 let validation = spec
@@ -1259,7 +1506,10 @@ impl AppWidget {
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
-                    let add = ui.add_enabled(validation.is_ok(), egui::Button::new("Add"));
+                    let add = ui.add_enabled(
+                        validation.is_ok(),
+                        egui::Button::new("Add").min_size(egui::vec2(64.0, 28.0)),
+                    );
                     #[cfg(test)]
                     {
                         self.add_track_accept_rect = Some(add.rect);
@@ -1267,7 +1517,8 @@ impl AppWidget {
                     if add.clicked() {
                         accepted = true;
                     }
-                    let cancel = ui.button("Cancel");
+                    let cancel =
+                        ui.add(egui::Button::new("Cancel").min_size(egui::vec2(72.0, 28.0)));
                     #[cfg(test)]
                     {
                         self.add_track_cancel_rect = Some(cancel.rect);
@@ -1296,9 +1547,13 @@ impl AppWidget {
                 audio_channels: self.add_track_audio_channels,
                 midi: self.add_track_midi,
             },
+            AddTrackMode::Trigger => TrackSpecTopology::Direct {
+                audio_channels: 0,
+                midi: false,
+            },
             AddTrackMode::DryWet => TrackSpecTopology::DryWet {
-                dry_audio_channels: self.add_track_dry_audio_channels,
-                wet_audio_channels: self.add_track_wet_audio_channels,
+                dry_audio_channels: self.add_track_audio_channels,
+                wet_audio_channels: self.add_track_audio_channels,
                 dry_midi: self.add_track_dry_midi,
                 processor_type: self.add_track_processor.clone()?,
             },
@@ -1333,62 +1588,261 @@ impl AppWidget {
         self.logo = Some(context.load_texture("shoopdaloop-logo", color_image, Default::default()));
     }
 
-    fn show_logo_and_status(&self, ui: &mut egui::Ui, state: &AppState) {
-        ui.vertical_centered(|ui| {
-            if let Some(logo) = &self.logo {
-                let size = logo.size_vec2();
-                let width = ui.available_width().min(145.0);
-                let height = width * size.y / size.x;
-                ui.add(egui::Image::new((logo.id(), egui::vec2(width, height))));
-            } else {
-                ui.heading("ShoopDaLoop");
-            }
-            if !state.status.version.is_empty() {
-                ui.label(format!("ShoopDaLoop v{}", state.status.version));
-            }
-        });
-
-        ui.add_space(12.0);
-        ui.label("DSP");
-        ui.add(
-            egui::ProgressBar::new((state.status.dsp_load_percent / 100.0).clamp(0.0, 1.0))
-                .text(format!("{:.1}%", state.status.dsp_load_percent)),
-        );
-        ui.label(format!("xruns: {}", state.status.xruns));
-        ui.label(format!("audio: {:?}", state.status.audio_driver));
-        if state.status.callback_count > 0 {
-            ui.label(format!("callbacks: {}", state.status.callback_count));
-            ui.label(format!(
-                "I/O peak: {:.3} / {:.3}",
-                state.status.input_peak, state.status.output_peak
-            ));
+    fn show_logo(&mut self, ui: &mut egui::Ui, state: &AppState) {
+        ui.add_space(6.0);
+        if let Some(logo) = &self.logo {
+            let size = logo.size_vec2();
+            let width = (ui.available_width() - 12.0).max(1.0).min(128.0);
+            let height = width * size.y / size.x;
+            ui.add(egui::Image::new((logo.id(), egui::vec2(width, height))));
+        } else {
+            ui.heading("ShoopDaLoop");
         }
-        if state.status.callback_budget_overruns > 0
-            || state.status.command_overflows > 0
-            || state.status.storage_low_channels > 0
-            || state.status.storage_exhaustions > 0
-        {
-            ui.colored_label(
-                colors::WARNING,
-                format!(
-                    "audio limits: budget {} / queue {} / storage low {} / exhausted {}",
-                    state.status.callback_budget_overruns,
-                    state.status.command_overflows,
-                    state.status.storage_low_channels,
-                    state.status.storage_exhaustions
-                ),
+        ui.add_space(3.0);
+        if !state.status.version.is_empty() {
+            ui.label(
+                egui::RichText::new(format!("ShoopDaLoop v{}", state.status.version))
+                    .size(10.0)
+                    .color(colors::MUTED_FOREGROUND),
             );
         }
-        ui.separator();
-        ui.label(format!("latency: {} frames", state.status.buffer_size));
-        match state.status.latency_ms() {
-            Some(latency) => {
-                ui.label(format!("{latency:.2} ms"));
+    }
+
+    fn show_bottom_status(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+        settings_actions: &mut Vec<SettingsAction>,
+    ) {
+        #[cfg(test)]
+        {
+            self.reset_xruns_rect = None;
+        }
+        let xruns = ui
+            .add(egui::Label::new(format!("({})", state.status.xruns)).sense(egui::Sense::click()))
+            .on_hover_text("Audio xruns; click to reset");
+        #[cfg(test)]
+        {
+            self.xrun_menu_rect = Some(xruns.rect);
+        }
+        egui::Popup::menu(&xruns).show(|ui| {
+            let reset = ui.button("Reset xruns to 0");
+            #[cfg(test)]
+            {
+                self.reset_xruns_rect = Some(reset.rect);
             }
-            None => {
-                ui.label("-- ms");
+            if reset.clicked() {
+                actions.push(AppAction::ResetXruns);
+                ui.close();
+            }
+        });
+        ui.add(
+            egui::ProgressBar::new((state.status.dsp_load_percent / 100.0).clamp(0.0, 1.0))
+                .desired_width(86.0)
+                .desired_height(4.0)
+                .fill(colors::COLORED_HIGHLIGHT)
+                .corner_radius(0),
+        );
+        ui.label("DSP");
+        ui.separator();
+        let milliseconds = state
+            .status
+            .latency_ms()
+            .map(|latency| format!("{latency:.2} ms"))
+            .unwrap_or_else(|| "-- ms".to_owned());
+        ui.label(format!(
+            "latency: {} frames | {milliseconds}",
+            state.status.buffer_size
+        ));
+        self.show_backend_status(ui, state);
+        if self.tracing_status.active {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Tracing active ({})",
+                    format_memory_usage(self.tracing_status.memory_usage_bytes)
+                ));
+                let save = ui.small_button("Save");
+                let discard = ui.small_button("Discard");
+                #[cfg(test)]
+                {
+                    self.tracing_save_rect = Some(save.rect);
+                    self.tracing_discard_rect = Some(discard.rect);
+                }
+                if save.clicked() {
+                    settings_actions.push(SettingsAction::StopTracing { save: true });
+                }
+                if discard.clicked() {
+                    settings_actions.push(SettingsAction::StopTracing { save: false });
+                }
+            });
+        } else {
+            #[cfg(test)]
+            {
+                self.tracing_save_rect = None;
+                self.tracing_discard_rect = None;
             }
         }
+    }
+
+    fn show_tracing_stopped(&mut self, context: &egui::Context) {
+        let Some(stopped) = self.tracing_stopped.clone() else {
+            return;
+        };
+        let mut open = true;
+        let mut acknowledged = false;
+        egui::Window::new("Tracing stopped")
+            .id(egui::Id::new("tracing_stopped"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(context, |ui| {
+                match &stopped {
+                    TracingStopped::Saved(path) => {
+                        ui.label("The trace was stopped and saved to:");
+                        ui.monospace(path);
+                    }
+                    TracingStopped::Discarded => {
+                        ui.label("The trace was stopped and discarded.");
+                    }
+                }
+                if ui.button("OK").clicked() {
+                    acknowledged = true;
+                }
+            });
+        if acknowledged || !open {
+            self.tracing_stopped = None;
+        }
+    }
+
+    fn show_backend_status(&mut self, ui: &mut egui::Ui, state: &AppState) {
+        let now = ui.input(|input| input.time);
+        if state.status.callback_count != self.last_callback_count {
+            self.last_callback_count = state.status.callback_count;
+            self.callbacks_active_until = now + 1.0;
+        }
+        let callbacks_active = state.status.callback_count > 0 && now < self.callbacks_active_until;
+        if callbacks_active {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(
+                    self.callbacks_active_until - now,
+                ));
+        }
+        let health = backend_health(state.status.audio_driver, callbacks_active);
+        let (rect, response) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+        ui.painter()
+            .circle_filled(rect.center(), 4.0, health.color());
+        response.on_hover_ui(|ui| {
+            let backend_type = state
+                .audio_drivers
+                .active
+                .as_ref()
+                .map(|active| active.configured.kind().label())
+                .unwrap_or("Unavailable");
+            ui.label(format!("Backend type: {backend_type}"));
+            ui.label(format!("Driver status: {:?}", state.status.audio_driver));
+            ui.label(if callbacks_active {
+                "Audio callbacks are active"
+            } else {
+                "Audio callbacks are not currently advancing"
+            });
+            ui.label(format!("Callbacks: {}", state.status.callback_count));
+            if state.audio_drivers.switch.status != crate::AudioDriverSwitchStatus::Idle {
+                ui.label(format!(
+                    "Driver switch: {:?}",
+                    state.audio_drivers.switch.status
+                ));
+            }
+            if !state.audio_drivers.switch.message.is_empty() {
+                ui.label(&state.audio_drivers.switch.message);
+            }
+            if let Some(error) = state
+                .notifications
+                .iter()
+                .rev()
+                .find(|notification| notification.level == crate::NotificationLevel::Error)
+            {
+                ui.colored_label(colors::ERROR, format!("Latest error: {}", error.message));
+            }
+        });
+    }
+
+    fn show_sync_track(
+        &mut self,
+        ui: &mut egui::Ui,
+        sync: &crate::TrackState,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        let response = self
+            .sync_track
+            .show_with_global_controls(ui, sync, &state.global_controls);
+        actions.extend(response.io_intents.iter().cloned());
+        actions.extend(response.loop_actions.into_iter().map(|(loop_id, action)| {
+            AppAction::Loop {
+                track_id: sync.id,
+                loop_id,
+                action,
+            }
+        }));
+        if response.connections_requested {
+            self.connections.open(ConnectionScope::Track(sync.id));
+        }
+        if let Some(loop_id) = response.click_track_requested {
+            if let Some(loop_state) = sync.loops.iter().find(|loop_| loop_.id == loop_id) {
+                self.click_track.open(loop_state, &state.click_track);
+            }
+        }
+        actions.extend(response.actions.into_iter().map(|action| AppAction::Track {
+            track_id: sync.id,
+            action,
+        }));
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BackendHealth {
+    Active,
+    Waiting,
+    Failed,
+}
+
+impl BackendHealth {
+    fn color(self) -> egui::Color32 {
+        match self {
+            Self::Active => colors::SUCCESS,
+            Self::Waiting => colors::WARNING,
+            Self::Failed => colors::STRONG_ERROR,
+        }
+    }
+}
+
+fn format_memory_usage(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * KIB;
+    const GIB: u64 = 1024 * MIB;
+    if bytes >= GIB {
+        format!("{:.1} GiB", bytes as f64 / GIB as f64)
+    } else if bytes >= MIB {
+        format!("{:.1} MiB", bytes as f64 / MIB as f64)
+    } else if bytes >= KIB {
+        format!("{:.1} KiB", bytes as f64 / KIB as f64)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+fn backend_health(driver: crate::AudioDriverState, callbacks_active: bool) -> BackendHealth {
+    use crate::AudioDriverState;
+    match driver {
+        AudioDriverState::Dummy | AudioDriverState::Running if callbacks_active => {
+            BackendHealth::Active
+        }
+        AudioDriverState::Denied | AudioDriverState::Unsupported | AudioDriverState::Failed => {
+            BackendHealth::Failed
+        }
+        _ => BackendHealth::Waiting,
     }
 }
 
@@ -1400,23 +1854,31 @@ fn audio_channel_selection_action(task_id: crate::TaskId, channels: &[u32]) -> A
 }
 
 fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
-    ui.horizontal(|ui| {
-        egui::ComboBox::from_id_salt(id)
-            .selected_text(audio_channel_label(*channels))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(channels, 0, "Disabled");
-                ui.selectable_value(channels, 1, "Mono");
-                ui.selectable_value(channels, 2, "Stereo");
-                for custom in 3..=10 {
-                    ui.selectable_value(channels, custom, format!("Custom ({custom})"));
-                }
-            });
-        ui.add(egui::DragValue::new(channels).range(0..=u32::MAX).speed(1))
-            .on_hover_text("Custom channel count");
+    ui.push_id(id, |ui| {
+        ui.horizontal(|ui| {
+            ui.selectable_value(channels, 0, "Disabled");
+            ui.selectable_value(channels, 1, "Mono");
+            ui.selectable_value(channels, 2, "Stereo");
+
+            let custom_selected = *channels > 2;
+            if ui.selectable_label(custom_selected, "Other").clicked() && !custom_selected {
+                *channels = 3;
+            }
+            let mut custom_channels = (*channels).max(3);
+            let custom = ui.add_enabled(
+                *channels > 2,
+                egui::DragValue::new(&mut custom_channels)
+                    .range(3..=u32::MAX)
+                    .speed(1),
+            );
+            if custom.changed() {
+                *channels = custom_channels;
+            }
+        });
     });
 }
 
-fn piano_destinations(state: &AppState) -> Vec<String> {
+fn piano_destinations(state: &AppState) -> Vec<crate::TrackId> {
     state
         .tracks
         .iter()
@@ -1436,35 +1898,141 @@ fn piano_destinations(state: &AppState) -> Vec<String> {
                     })
                 })
         })
-        .map(|track| track.name.clone())
+        .map(|track| track.id)
         .collect()
-}
-
-fn audio_channel_label(channels: u32) -> String {
-    match channels {
-        0 => "Disabled".to_owned(),
-        1 => "Mono".to_owned(),
-        2 => "Stereo".to_owned(),
-        channels => format!("Custom ({channels})"),
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::sync::Arc;
 
     use super::*;
-    use crate::{LoopDetailsState, TrackState, WaveformChannelState};
+    use crate::{
+        LoopDetailsState, MidiEventState, MidiSequenceChannelState, TrackState,
+        WaveformChannelState,
+    };
     use shoop_settings::{
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn backend_health_requires_live_callbacks_and_distinguishes_waiting_from_failure() {
+        assert_eq!(
+            backend_health(crate::AudioDriverState::Running, true),
+            BackendHealth::Active
+        );
+        assert_eq!(
+            backend_health(crate::AudioDriverState::Running, false),
+            BackendHealth::Waiting
+        );
+        assert_eq!(
+            backend_health(crate::AudioDriverState::AwaitingGesture, false),
+            BackendHealth::Waiting
+        );
+        assert_eq!(
+            backend_health(crate::AudioDriverState::Failed, false),
+            BackendHealth::Failed
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn tracing_memory_usage_uses_readable_binary_units() {
+        assert_eq!(format_memory_usage(0), "0 B");
+        assert_eq!(format_memory_usage(1536), "1.5 KiB");
+        assert_eq!(format_memory_usage(3 * 1024 * 1024), "3.0 MiB");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn active_tracing_status_offers_save_action() {
+        let context = egui::Context::default();
+        let mut widget = AppWidget::default();
+        widget.set_tracing_status(TracingStatus {
+            available: true,
+            active: true,
+            memory_usage_bytes: 3 * 1024 * 1024,
+        });
+        let state = AppState::default();
+        let frame = |widget: &mut AppWidget, events: Vec<egui::Event>| {
+            let mut settings_actions = Vec::new();
+            let mut ignored_output_0 = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 100.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| widget.show_bottom_status(ui, &state, &mut Vec::new(), &mut settings_actions),
+            );
+            ignored_output_0.textures_delta.clear();
+            settings_actions
+        };
+
+        frame(&mut widget, Vec::new());
+        let save = widget.tracing_save_rect.unwrap().center();
+        frame(
+            &mut widget,
+            vec![
+                egui::Event::PointerMoved(save),
+                egui::Event::PointerButton {
+                    pos: save,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let actions = frame(
+            &mut widget,
+            vec![
+                egui::Event::PointerMoved(save),
+                egui::Event::PointerButton {
+                    pos: save,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(actions
+            .iter()
+            .any(|action| matches!(action, SettingsAction::StopTracing { save: true })));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn bottom_panel_starts_closed() {
         assert_eq!(AppWidget::default().bottom_pane, None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn connection_open_api_applies_global_sync_and_main_track_presets() {
+        let mut widget = AppWidget::default();
+        assert_eq!(widget.open_connection_scope(), None);
+        widget.open_connections(ConnectionScope::AllTracks);
+        assert_eq!(
+            widget.open_connection_scope(),
+            Some(ConnectionScope::AllTracks)
+        );
+        assert_eq!(widget.connections.test_selected_tracks(), None);
+        assert_eq!(widget.connections.test_data_type_filters(), (true, true));
+
+        for track_id in [crate::TrackId::from_raw(1), crate::TrackId::from_raw(2)] {
+            widget.open_connections(ConnectionScope::Track(track_id));
+            assert_eq!(
+                widget.open_connection_scope(),
+                Some(ConnectionScope::Track(track_id))
+            );
+            assert_eq!(
+                widget.connections.test_selected_tracks(),
+                Some(BTreeSet::from([track_id]))
+            );
+            assert_eq!(widget.connections.test_data_type_filters(), (true, true));
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn carla_hosting_setting_validates_modes_and_preserves_unknown_keys() {
         let mut builder = SettingsRegistryBuilder::default();
         register_carla_settings(&mut builder).unwrap();
@@ -1479,7 +2047,7 @@ mod tests {
 
         let mut draft = SettingsDraft::from_snapshot(&defaults);
         draft.set(CARLA_HOSTING_MODE, "subprocess".to_owned());
-        let mut base = shoop_settings::EgSettingsDocument::empty("test");
+        let mut base = shoop_settings::SettingsDocument::empty("test");
         base.values.insert(
             "future.setting".to_owned(),
             serde_json::Value::String("preserved".to_owned()),
@@ -1532,7 +2100,7 @@ mod tests {
     ) -> Vec<AppAction> {
         let mut actions = Vec::new();
         let settings = settings_state();
-        let _ = context.run_ui(
+        let mut ignored_output_1 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1543,6 +2111,7 @@ mod tests {
             },
             |ui| actions = widget.show(ui, state, &settings, None).app_actions,
         );
+        ignored_output_1.textures_delta.clear();
         actions
     }
 
@@ -1582,7 +2151,100 @@ mod tests {
         )
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn ephemeral_script_load_waits_for_confirmation_and_emits_source() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState {
+            scripting: Arc::new(crate::ScriptingState {
+                supported: true,
+                scripts: Arc::from([crate::ScriptState {
+                    id: crate::ScriptId::from_raw(1),
+                    name: "controller.lua".to_owned(),
+                    kind: crate::ScriptKind::Bundled,
+                    enabled: true,
+                    lifecycle: crate::ScriptLifecycle::Listening,
+                    documentation: None,
+                    latest_error: None,
+                    activity: Default::default(),
+                    midi: Default::default(),
+                    logs: Arc::from([]),
+                }]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        widget.queue_ephemeral_script(
+            "controller.lua".to_owned(),
+            Arc::from("shoop_announce_api_version(1, 0); print('loaded')"),
+        );
+        assert!(frame(&context, &mut widget, &state, Vec::new()).is_empty());
+        assert!(frame(&context, &mut widget, &state, Vec::new()).is_empty());
+        let accept = widget.ephemeral_script_accept_rect.unwrap().center();
+        let mut actions = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(accept),
+                egui::Event::PointerButton {
+                    pos: accept,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        actions.extend(frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(accept),
+                egui::Event::PointerButton {
+                    pos: accept,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        ));
+        assert_eq!(
+            actions,
+            [AppAction::AddEphemeralScript {
+                name: "controller.lua".to_owned(),
+                source: Arc::from("shoop_announce_api_version(1, 0); print('loaded')"),
+                source_path: None,
+            }]
+        );
+        assert!(widget.pending_ephemeral_scripts.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn xrun_reset_button_emits_one_reset_action() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState {
+            status: crate::StatusState {
+                xruns: 4,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        frame(&context, &mut widget, &state, Vec::new());
+        let menu = widget.xrun_menu_rect.unwrap().center();
+        assert!(click(&context, &mut widget, &state, menu).is_empty());
+        frame(&context, &mut widget, &state, Vec::new());
+        let reset = widget.reset_xruns_rect.unwrap().center();
+        assert_eq!(
+            click(&context, &mut widget, &state, reset),
+            vec![AppAction::ResetXruns]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn details_and_piano_toggle_one_bottom_pane_without_stacking() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1600,7 +2262,7 @@ mod tests {
         assert_eq!(widget.bottom_pane, None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn switching_away_from_piano_releases_a_held_note() {
         let mut widget = AppWidget::default();
         widget.bottom_pane = Some(BottomPane::Piano);
@@ -1616,11 +2278,39 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn open_piano_routes_pointer_note_actions_as_application_intents() {
         let context = egui::Context::default();
         crate::initialize(&context);
-        let state = AppState::default();
+        let track_id = crate::TrackId::from_raw(1);
+        let port_id = crate::PortId::from_raw(1);
+        let state = AppState {
+            tracks: vec![TrackState {
+                id: track_id,
+                port_ids: Arc::from([port_id]),
+                controls: crate::TrackControlState {
+                    input_monitoring: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            connections: Arc::new(crate::ConnectionViewState {
+                application_ports: Arc::from([crate::ApplicationPortState {
+                    id: port_id,
+                    owner: crate::ApplicationPortOwner::Track {
+                        track_id,
+                        kind: crate::TrackPortOwnerKind::Main,
+                    },
+                    name: "midi_in".to_owned(),
+                    data_type: crate::PortDataType::Midi,
+                    direction: crate::PortDirection::Input,
+                    role: crate::PortRole::MidiInput,
+                    connection_policy: crate::ConnectionPolicy::UserManaged,
+                }]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
         let mut widget = AppWidget::default();
         frame(&context, &mut widget, &state, Vec::new());
         let piano_toggle = widget.piano_toggle_rect.unwrap().center();
@@ -1673,7 +2363,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn piano_destination_summary_uses_monitored_track_midi_input_roles() {
         let first_id = crate::TrackId::from_raw(1);
         let muted_id = crate::TrackId::from_raw(2);
@@ -1733,7 +2423,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert_eq!(piano_destinations(&state), ["Listening"]);
+        assert_eq!(piano_destinations(&state), [first_id]);
     }
 
     fn settings_frame(
@@ -1745,7 +2435,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> AppWidgetResponse {
         let mut response = None;
-        let _ = context.run_ui(
+        let mut ignored_output_2 = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1756,10 +2446,11 @@ mod tests {
             },
             |ui| response = Some(widget.show(ui, state, settings, Some(paths))),
         );
+        ignored_output_2.textures_delta.clear();
         response.unwrap()
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_settings_keep_independent_driver_configs_and_validate_mapping() {
         let mut builder = SettingsRegistryBuilder::default();
         register_audio_settings(&mut builder).unwrap();
@@ -1794,7 +2485,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn add_track_accept_emits_validated_spec() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1819,16 +2510,54 @@ mod tests {
         assert!(!widget.add_track_open);
     }
 
-    #[test]
-    fn dry_wet_dialog_uses_empty_and_synthetic_processor_catalogs() {
+    #[shoop_wasm_test_support::shoop_test]
+    fn add_track_midi_widget_keeps_its_id_across_track_types() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState::default();
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Track".to_owned();
+
+        frame(&context, &mut widget, &state, Vec::new());
+        let id = widget.add_track_midi_id.unwrap();
+        for mode in [AddTrackMode::Trigger, AddTrackMode::DryWet] {
+            widget.add_track_mode = mode;
+            frame(&context, &mut widget, &state, Vec::new());
+            assert_eq!(widget.add_track_midi_id, Some(id));
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn trigger_track_has_no_audio_or_midi() {
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Trigger".to_owned();
+        widget.add_track_mode = AddTrackMode::Trigger;
+        widget.add_track_audio_channels = 4;
+        widget.add_track_midi = true;
+
+        assert_eq!(
+            widget.accept_add_track(&[]),
+            Some(AppAction::AddTrackWithTopology(TrackSpec {
+                name: "Trigger".to_owned(),
+                topology: TrackSpecTopology::Direct {
+                    audio_channels: 0,
+                    midi: false,
+                },
+            }))
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_wet_dialog_uses_matching_audio_and_processor_catalogs() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut widget = AppWidget::default();
         widget.add_track_open = true;
         widget.add_track_name = "Processed".to_owned();
         widget.add_track_mode = AddTrackMode::DryWet;
-        widget.add_track_dry_audio_channels = 2;
-        widget.add_track_wet_audio_channels = 1;
+        widget.add_track_audio_channels = 2;
         widget.add_track_dry_midi = true;
         frame(&context, &mut widget, &AppState::default(), Vec::new());
         assert!(widget.add_track_processor.is_none());
@@ -1867,7 +2596,7 @@ mod tests {
                 name: "Processed".to_owned(),
                 topology: TrackSpecTopology::DryWet {
                     dry_audio_channels: 2,
-                    wet_audio_channels: 1,
+                    wet_audio_channels: 2,
                     dry_midi: true,
                     processor_type: processor.id,
                 },
@@ -1875,7 +2604,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cancelling_add_track_has_no_action() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1889,7 +2618,7 @@ mod tests {
         assert!(!widget.add_track_open);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn ordered_audio_export_selection_emits_the_task_scoped_confirmation() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -1912,7 +2641,7 @@ mod tests {
         };
         let mut widget = AppWidget::default();
         let settings = settings_state();
-        let output = context.run_ui(
+        let mut output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -1924,6 +2653,7 @@ mod tests {
                 widget.show(ui, &state, &settings, None);
             },
         );
+        output.textures_delta.clear();
         assert!(!output.shapes.is_empty());
         assert_eq!(
             audio_channel_selection_action(task_id, &[1, 0]),
@@ -1934,8 +2664,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn scripts_tab_renders_lifecycle_errors_logs_and_midi_diagnostics() {
+    #[shoop_wasm_test_support::shoop_test]
+    fn scripts_tab_renders_grouped_controls_for_runtime_diagnostics() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut builder = SettingsRegistryBuilder::default();
@@ -1993,6 +2723,7 @@ mod tests {
                         message: "warning log".to_owned(),
                     }]),
                 }]),
+                ..Default::default()
             }
             .into(),
             ..Default::default()
@@ -2002,10 +2733,13 @@ mod tests {
         assert!(widget.settings.is_open());
 
         assert!(widget.settings.restart_rect(script_id).is_some());
+        assert!(widget.settings.log_rect(script_id).is_some());
+        assert!(widget.settings.documentation_rect(script_id).is_some());
+        assert!(widget.settings.status_rect(script_id).is_some());
         assert!(widget.settings.reload_rect(script_id).is_some());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn complete_application_state_produces_paint_commands() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -2024,6 +2758,22 @@ mod tests {
                     samples: Arc::from([-0.5, 0.25, 0.75, -0.1]),
                     ..Default::default()
                 }],
+                midi_channels: vec![MidiSequenceChannelState {
+                    id: crate::ChannelId::from_raw(2),
+                    label: "MIDI 1".to_owned(),
+                    events: Arc::from([
+                        MidiEventState {
+                            frame: 1,
+                            data: Arc::from([0x90, 60, 100]),
+                        },
+                        MidiEventState {
+                            frame: 8,
+                            data: Arc::from([0x80, 60, 0]),
+                        },
+                    ]),
+                    loop_length: 16,
+                    ..Default::default()
+                }],
                 ..Default::default()
             }),
             ..Default::default()
@@ -2032,7 +2782,7 @@ mod tests {
         let settings = settings_state();
         let mut uploaded_logo = false;
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
-            let output = context.run_ui(
+            let mut output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                     ..Default::default()
@@ -2041,14 +2791,14 @@ mod tests {
                     widget.show(ui, &state, &settings, None);
                 },
             );
-
             assert!(output.shapes.len() > 10);
             uploaded_logo |= !output.textures_delta.set.is_empty();
+            output.textures_delta.clear();
         }
         assert!(uploaded_logo);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bundled_script_registry_excludes_native_user_path_workflow() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -2062,7 +2812,7 @@ mod tests {
         assert!(!defaults.get(APC_MINI_SCRIPT_ENABLED).unwrap());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn add_track_defaults_are_registered_and_read_only_when_a_new_draft_opens() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
@@ -2073,7 +2823,7 @@ mod tests {
         draft.set(DEFAULT_NEW_TRACK_MIDI, true);
         let document = registry
             .document_from_draft(
-                &shoop_settings::EgSettingsDocument::empty("test"),
+                &shoop_settings::SettingsDocument::empty("test"),
                 &draft,
                 "test",
             )

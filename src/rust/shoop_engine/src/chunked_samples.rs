@@ -57,11 +57,30 @@ impl<T: Copy + Default> ChunkedSamples<T> {
 
     /// Preallocates a hard-bounded store that never grows beyond `capacity` samples.
     pub fn with_bounded_capacity(chunk_size: usize, capacity: usize) -> Self {
+        let mut result = Self::with_bounded_capacity_unprepared(chunk_size, capacity);
+        result.prepare_bounded_capacity();
+        result
+    }
+
+    /// Creates a hard-bounded store while deferring its sample reserve.
+    pub fn with_bounded_capacity_unprepared(chunk_size: usize, capacity: usize) -> Self {
         let chunk_size = chunk_size.max(1);
         let n_chunks = capacity.max(1).div_ceil(chunk_size);
-        let mut result = Self::with_reserve(chunk_size, n_chunks.saturating_sub(1));
+        let mut result = Self::with_reserve(chunk_size, 0);
+        result.chunks.reserve(n_chunks.saturating_sub(1));
+        result.spare.reserve(n_chunks.saturating_sub(1));
         result.max_chunks = Some(n_chunks);
         result
+    }
+
+    /// Allocates every chunk permitted by a bounded store.
+    pub fn prepare_bounded_capacity(&mut self) {
+        let Some(max_chunks) = self.max_chunks else {
+            return;
+        };
+        let missing = max_chunks.saturating_sub(self.chunks.len() + self.spare.len());
+        self.spare
+            .extend((0..missing).map(|_| vec![T::default(); self.chunk_size]));
     }
 
     pub fn chunk_size(&self) -> usize {
@@ -217,9 +236,9 @@ impl<T: Copy + Default> ChunkedSamples<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn starts_with_one_chunk() {
         let s = ChunkedSamples::<f32>::with_chunk_size(4);
         check!(s.n_chunks() == 1);
@@ -230,7 +249,7 @@ mod tests {
         check!(s.get(4) == None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn ensure_available_grows_by_chunk() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         check!(s.ensure_available(3) == false); // already addressable
@@ -244,12 +263,12 @@ mod tests {
         check!(s.n_chunks() == 6);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn indexing_spans_chunks() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.ensure_available(9);
         for i in 0..12 {
-            let_assert!(Some(v) = s.get_mut(i));
+            assert2::assert!(let Some(v) = s.get_mut(i));
             *v = i as f32;
         }
         for i in 0..12 {
@@ -257,7 +276,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn space_for_sample_is_distance_to_chunk_end() {
         let s = ChunkedSamples::<f32>::with_chunk_size(4);
         check!(s.space_for_sample(0) == 4);
@@ -267,18 +286,18 @@ mod tests {
         check!(s.space_for_sample(5) == 3);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn chunk_slice_stops_at_chunk_boundary() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.ensure_available(7);
-        let_assert!(Some(sl) = s.chunk_slice(2));
+        assert2::assert!(let Some(sl) = s.chunk_slice(2));
         check!(sl.len() == 2);
-        let_assert!(Some(sl) = s.chunk_slice(4));
+        assert2::assert!(let Some(sl) = s.chunk_slice(4));
         check!(sl.len() == 4);
         check!(s.chunk_slice(8) == None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn contiguous_copy_respects_max_length() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.set_contents(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
@@ -290,7 +309,7 @@ mod tests {
         check!(s.contiguous_copy(100) == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn set_contents_then_reset() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.set_contents(&[1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -302,14 +321,14 @@ mod tests {
         check!(s.get(0) == Some(&0.0));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn set_contents_empty_keeps_one_chunk() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.set_contents(&[]);
         check!(s.n_chunks() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exact_multiple_does_not_over_allocate() {
         let mut s = ChunkedSamples::<f32>::with_chunk_size(4);
         s.set_contents(&[1.0, 2.0, 3.0, 4.0]);
@@ -317,7 +336,7 @@ mod tests {
         check!(s.n_samples() == 4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn growth_takes_from_the_reserve_without_allocating() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 3);
         // One chunk in use, the requested three still in reserve.
@@ -330,7 +349,7 @@ mod tests {
         check!(s.n_allocations() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn growth_past_the_reserve_allocates_and_says_so() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 1);
         check!(s.n_spare() == 1);
@@ -340,7 +359,7 @@ mod tests {
         check!(s.n_allocations() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn bounded_capacity_refuses_growth_without_allocating() {
         let mut samples = ChunkedSamples::<f32>::with_bounded_capacity(4, 8);
         assert!(samples.can_ensure_available(7));
@@ -352,7 +371,20 @@ mod tests {
         assert_eq!(samples.n_allocations(), allocations);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn bounded_capacity_can_be_prepared_on_demand() {
+        let mut samples = ChunkedSamples::<f32>::with_bounded_capacity_unprepared(4, 12);
+        assert_eq!(samples.n_chunks(), 1);
+        assert_eq!(samples.n_spare(), 0);
+
+        samples.prepare_bounded_capacity();
+        assert_eq!(samples.n_spare(), 2);
+        samples.ensure_available(11);
+        assert_eq!(samples.n_chunks(), 3);
+        assert_eq!(samples.n_allocations(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn reset_recycles_chunks_instead_of_freeing_them() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 3);
         s.ensure_available(11);
@@ -369,7 +401,7 @@ mod tests {
         check!(s.n_allocations() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recycled_chunks_are_cleared_before_reuse() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 3);
         s.ensure_available(7);
@@ -384,7 +416,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn set_contents_reuses_the_reserve() {
         let mut s = ChunkedSamples::<f32>::with_reserve(4, 4);
         s.set_contents(&[1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -400,13 +432,13 @@ mod tests {
         check!(s.get(1) == Some(&0.0));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     #[should_panic(expected = "chunk size must be non-zero")]
     fn zero_chunk_size_rejected() {
         ChunkedSamples::<f32>::with_chunk_size(0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fill_overwrites_across_chunk_boundaries() {
         let mut c: ChunkedSamples<f32> = ChunkedSamples::with_chunk_size(4);
         c.set_contents(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]);
@@ -417,14 +449,14 @@ mod tests {
         check!(c.contiguous_copy(10) == vec![0.0; 9].into_iter().chain([10.0]).collect::<Vec<_>>());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fill_grows_to_the_length_asked_for() {
         let mut c: ChunkedSamples<f32> = ChunkedSamples::with_chunk_size(4);
         c.fill(6, 0.5);
         check!(c.contiguous_copy(6) == vec![0.5; 6]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn filling_nothing_leaves_the_contents_alone() {
         let mut c: ChunkedSamples<f32> = ChunkedSamples::with_chunk_size(4);
         c.set_contents(&[1.0, 2.0]);

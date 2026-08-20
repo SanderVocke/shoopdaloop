@@ -7,6 +7,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
+pub const SESSION_DOCUMENT_VERSION: u16 = 2;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -83,6 +84,8 @@ pub struct GlobalControlsDocument {
     pub play_after_record: bool,
     pub sync: bool,
     pub solo: bool,
+    #[serde(default)]
+    pub auto_mute_other_track_inputs: bool,
     pub apply_n_cycles: u32,
 }
 
@@ -254,6 +257,27 @@ pub struct FxChainDocument {
     pub chain_type: FxChainTypeDocument,
     pub ports: Vec<PortDocument>,
     pub internal_state: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub midi_cc_assignments: Vec<TinySynthFxMidiCcAssignmentDocument>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct TinySynthFxMidiCcAssignmentDocument {
+    pub parameter: TinySynthFxParameterDocument,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum TinySynthFxParameterDocument {
+    MasterGain,
+    ReverbAmount,
+    DistortionDrive,
+    CompressorAmount,
+    EqLow,
+    EqMid,
+    EqHigh,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -288,7 +312,9 @@ pub enum CompositeKindDocument {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CompositeEventDocument {
-    pub delay_frames: u64,
+    /// Sync-loop iterations after the containing section begins.
+    #[serde(alias = "delay_frames")]
+    pub delay: u64,
     pub loop_id: u64,
     pub mode: Option<String>,
     pub n_cycles: Option<u32>,

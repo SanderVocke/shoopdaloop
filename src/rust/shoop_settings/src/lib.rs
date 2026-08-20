@@ -1,14 +1,13 @@
-mod egui_settings;
-#[cfg(all(not(target_arch = "wasm32"), feature = "legacy"))]
-mod legacy_settings;
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "native-store"))]
 mod native_store;
+mod settings;
 
-pub use egui_settings::*;
-#[cfg(all(not(target_arch = "wasm32"), feature = "legacy"))]
-pub use legacy_settings::*;
 #[cfg(all(not(target_arch = "wasm32"), feature = "native-store"))]
 pub use native_store::*;
+pub use settings::*;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -74,7 +73,7 @@ impl TryFrom<&str> for CarlaHostingMode {
 mod tests {
     use super::*;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn carla_hosting_modes_have_stable_validated_strings() {
         for mode in [CarlaHostingMode::InProcess, CarlaHostingMode::Subprocess] {
             assert_eq!(mode.as_str().parse::<CarlaHostingMode>().unwrap(), mode);

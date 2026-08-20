@@ -1,7 +1,8 @@
 use crate::document::{
     AudioPayload, ChannelModeDocument, DataTypeDocument, FormatVersion, FxChainTypeDocument,
     MediaPayload, SessionBundle, SessionDocument, TrackDocument, TrackTopologyDocument,
-    AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_FORMAT,
+    AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
+    SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -139,7 +140,7 @@ pub fn encode_session(
     let manifest = SessionManifest {
         format: SESSION_FORMAT.to_owned(),
         format_version: FormatVersion::default(),
-        document_version: DOCUMENT_VERSION,
+        document_version: SESSION_DOCUMENT_VERSION,
         writer_app_version: writer_app_version.to_owned(),
         sample_rate: bundle.document.sample_rate,
         document: bundle.document.clone(),
@@ -169,6 +170,7 @@ pub fn decode_session_with_limits(
         &manifest.format,
         manifest.format_version,
         manifest.document_version,
+        SESSION_DOCUMENT_VERSION,
     )?;
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
@@ -413,10 +415,11 @@ fn check_version(
     format: &str,
     version: FormatVersion,
     document_version: u16,
+    expected_document_version: u16,
 ) -> Result<(), SessionError> {
     if version.major != FORMAT_MAJOR
         || version.minor > FORMAT_MINOR
-        || document_version != DOCUMENT_VERSION
+        || document_version != expected_document_version
     {
         return Err(SessionError::UnsupportedVersion {
             format: format.to_owned(),
@@ -622,6 +625,30 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
 }
 
 fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
+    if let Some(chain) = &track.fx_chain {
+        if chain.chain_type != FxChainTypeDocument::TinySynthFx
+            && !chain.midi_cc_assignments.is_empty()
+        {
+            return Err(SessionError::Validation(format!(
+                "non-Tiny FX chain {} contains MIDI CC assignments",
+                chain.id
+            )));
+        }
+        let mut parameters = BTreeSet::new();
+        let mut sources = BTreeSet::new();
+        for assignment in &chain.midi_cc_assignments {
+            if assignment.channel > 15
+                || assignment.controller > 127
+                || !parameters.insert(assignment.parameter)
+                || !sources.insert((assignment.channel, assignment.controller))
+            {
+                return Err(SessionError::Validation(format!(
+                    "FX chain {} contains invalid or duplicate MIDI CC assignments",
+                    chain.id
+                )));
+            }
+        }
+    }
     match (&track.topology, &track.fx_chain) {
         (TrackTopologyDocument::DryWetExternal { .. }, Some(_)) => {
             Err(SessionError::Validation(format!(
@@ -835,7 +862,7 @@ pub(crate) fn check_standalone_version(
     if format != expected {
         return Err(SessionError::UnsupportedFormat);
     }
-    check_version(format, version, document_version)
+    check_version(format, version, document_version, DOCUMENT_VERSION)
 }
 
 pub(crate) fn inspect_standalone_archive(
@@ -878,7 +905,7 @@ pub(crate) const STANDALONE_MIDI_FORMAT: &str = MIDI_FORMAT;
 mod tests {
     use super::*;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn version_dispatch_accepts_current_and_rejects_other_major_or_minor() {
         assert!(check_version(
             SESSION_FORMAT,
@@ -886,7 +913,8 @@ mod tests {
                 major: FORMAT_MAJOR,
                 minor: FORMAT_MINOR,
             },
-            DOCUMENT_VERSION,
+            SESSION_DOCUMENT_VERSION,
+            SESSION_DOCUMENT_VERSION,
         )
         .is_ok());
         for version in [
@@ -898,13 +926,18 @@ mod tests {
             },
         ] {
             assert!(matches!(
-                check_version(SESSION_FORMAT, version, DOCUMENT_VERSION),
+                check_version(
+                    SESSION_FORMAT,
+                    version,
+                    SESSION_DOCUMENT_VERSION,
+                    SESSION_DOCUMENT_VERSION,
+                ),
                 Err(SessionError::UnsupportedVersion { .. })
             ));
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn unsafe_archive_paths_are_rejected() {
         let cursor = Cursor::new(Vec::new());
         let mut writer = ZipWriter::new(cursor);
@@ -923,7 +956,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn duplicate_archive_paths_are_rejected() {
         let cursor = Cursor::new(Vec::new());
         let mut writer = ZipWriter::new(cursor);

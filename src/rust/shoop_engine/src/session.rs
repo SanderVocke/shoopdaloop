@@ -11,8 +11,9 @@
 //!
 //! Audio only for now: MIDI channels are not yet routed through the session.
 
-#[cfg(feature = "lv2")]
+#[cfg(feature = "carla")]
 use crate::carla_processor::CarlaProcessor;
+use crate::pending_midi_control::PendingMidiControlState;
 use shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -32,7 +33,9 @@ use crate::dummy_port::DummyAudioPort;
 use crate::external_audio_port::ExternalAudioPort;
 use crate::external_midi_port::ExternalMidiPort;
 use crate::graph::{processing_order, GraphError, NodeIdx, NodeSpec};
-use crate::graph_build::{ChannelDesc, GraphDesc, LoopDesc, LoopIdx, NodeMap, PortDesc, PortIdx};
+use crate::graph_build::{
+    ChannelDesc, GraphDesc, LoopDesc, LoopIdx, NodeMap, PortDesc, PortIdx, ProcessorDesc,
+};
 use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
@@ -111,6 +114,8 @@ pub enum SessionError {
     NoSuchPort(usize),
     #[error("no such loop: {0}")]
     NoSuchLoop(usize),
+    #[error("no such processor")]
+    NoSuchProcessor,
     #[error("loop {0} cannot be its own sync source")]
     SelfSync(usize),
     #[error("no channel at index {0}, or it is not of the expected kind")]
@@ -376,13 +381,9 @@ pub struct Session {
     boundary_triggers: Vec<LoopIdentity>,
     boundary_delivered_triggers: Vec<LoopIdentity>,
     boundary_natural_intents: Vec<BoundaryIntent>,
-    /// Active state for the temporary test2x2x1 FX-chain shim, keyed by chain title.
-    test_fx_active: HashMap<String, bool>,
-    /// Stable, callback-owned Tiny Synth/FX processors with topology-time routes.
-    tiny_fx_routes: Vec<TinyFxRoute>,
-    /// Stable, callback-owned Carla endpoints with topology-time port routes.
-    #[cfg(feature = "lv2")]
-    carla_fx_routes: Vec<CarlaFxRoute>,
+    /// Stable, callback-owned processors and their explicit graph routes.
+    processors: Vec<ProcessorRoute>,
+    global_fx_midi_input: Option<usize>,
     /// Cycles that hit [`MAX_SUB_BLOCKS`] without finishing.
     n_stuck_cycles: u32,
     /// Cycles run against a schedule older than the current topology.
@@ -402,25 +403,30 @@ pub struct Session {
 }
 
 #[derive(Debug)]
-struct TinyFxRoute {
-    title: String,
-    processor: TinySynthFxProcessor,
-    active: bool,
-    audio_inputs: Vec<Option<usize>>,
-    audio_outputs: Vec<(Option<usize>, Option<usize>)>,
-    midi_input: Option<usize>,
-    midi_staging: Vec<MidiStorageElem>,
+enum ProcessorBackend {
+    External,
+    Test2x2x1,
+    Tiny(TinySynthFxProcessor),
+    #[cfg(feature = "carla")]
+    Carla(Box<dyn CarlaProcessor>),
 }
 
-#[cfg(feature = "lv2")]
 #[derive(Debug)]
-struct CarlaFxRoute {
+struct ProcessorRoute {
     title: String,
-    host: Box<dyn CarlaProcessor>,
-    audio_inputs: Vec<Option<usize>>,
-    audio_outputs: Vec<(Option<usize>, Option<usize>)>,
-    midi_inputs: Vec<Option<usize>>,
-    midi_staging: Vec<Vec<crate::midi_storage::MidiStorageElem>>,
+    backend: ProcessorBackend,
+    active: bool,
+    audio_inputs: Vec<usize>,
+    audio_outputs: Vec<usize>,
+    midi_inputs: Vec<usize>,
+    midi_staging: Vec<Vec<MidiStorageElem>>,
+    global_pending: PendingMidiControlState,
+    global_current: Vec<MidiStorageElem>,
+    combined_midi: Vec<MidiStorageElem>,
+    global_rejected: u64,
+    global_pending_overwrites: u64,
+    global_pending_drained: u64,
+    global_capacity_deferrals: u64,
 }
 
 /// A topology snapshot: everything [`build_schedule`] needs, borrowing nothing.
@@ -487,6 +493,9 @@ pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionErr
     for (i, &n) in node_map.port_process.iter().enumerate() {
         node_actions[n.0] = NodeAction::PortProcess(i);
     }
+    for (i, &n) in node_map.processor_process.iter().enumerate() {
+        node_actions[n.0] = NodeAction::ProcessorProcess(i);
+    }
     for (i, &n) in node_map.loop_process.iter().enumerate() {
         node_actions[n.0] = NodeAction::LoopProcess(i);
     }
@@ -500,7 +509,7 @@ pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionErr
     // Scratch sized for the widest loop, so a cycle neither searches nor grows a buffer.
     // Room inside each buffer as well as for the buffers themselves: a cycle pushing its
     // first message into a zero-capacity vector would allocate on the audio thread, and a
-    // loop wrap alone emits All Sound Off, so even an idle playing loop needs room.
+    // playback interruption may emit targeted note-offs.
     let widest = midi_by_loop.iter().map(|v| v.len()).max().unwrap_or(0);
     let mut midi_in_scratch: Vec<Vec<MidiStorageElem>> = Vec::with_capacity(widest);
     let mut midi_out_scratch: Vec<Vec<MidiStorageElem>> = Vec::with_capacity(widest);
@@ -538,6 +547,7 @@ const _: fn() = || {
 enum NodeAction {
     PortPrepare(usize),
     PortProcess(usize),
+    ProcessorProcess(usize),
     LoopProcess(usize),
     ChannelPrepare(usize),
     ChannelProcess(usize),
@@ -721,6 +731,10 @@ impl Session {
 
     pub fn composite_timeline_version(&self) -> u64 {
         self.composite_timeline_version
+    }
+
+    pub fn primitive_sync_sources(&self) -> &[Option<usize>] {
+        &self.sync_sources
     }
 
     pub fn accept_composite_transition(
@@ -1107,6 +1121,30 @@ impl Session {
         Ok(self.channels.len() - 1)
     }
 
+    pub fn add_audio_channel_with_bounded_capacity_unprepared(
+        &mut self,
+        loop_idx: usize,
+        chunk_size: usize,
+        capacity: usize,
+        mode: ChannelMode,
+    ) -> Result<usize, SessionError> {
+        let loop_ = self
+            .loops
+            .get_mut(loop_idx)
+            .ok_or(SessionError::NoSuchLoop(loop_idx))?;
+        let channel_idx =
+            loop_.add_audio_channel_with_bounded_capacity_unprepared(chunk_size, capacity, mode);
+        self.channels.push(ChannelMapping {
+            loop_idx,
+            kind: ChannelKind::Audio,
+            channel_idx,
+            input_port: None,
+            output_port: None,
+        });
+        self.note_graph_change();
+        Ok(self.channels.len() - 1)
+    }
+
     pub fn add_audio_channel_with_state_and_snapshots(
         &mut self,
         loop_idx: usize,
@@ -1356,6 +1394,28 @@ impl Session {
                 m.output_port = None;
             }
         }
+        if self.global_fx_midi_input == Some(port) {
+            self.global_fx_midi_input = None;
+            for processor in &mut self.processors {
+                processor.global_pending = PendingMidiControlState::default();
+            }
+        }
+        for processor in &mut self.processors {
+            processor
+                .audio_inputs
+                .retain(|&candidate| candidate != port);
+            processor
+                .audio_outputs
+                .retain(|&candidate| candidate != port);
+            if let Some(index) = processor
+                .midi_inputs
+                .iter()
+                .position(|&candidate| candidate == port)
+            {
+                processor.midi_inputs.remove(index);
+                processor.midi_staging.remove(index);
+            }
+        }
         self.note_graph_change();
         Ok(())
     }
@@ -1415,7 +1475,106 @@ impl Session {
     }
 
     pub fn set_test_fx_active(&mut self, title: impl Into<String>, active: bool) {
-        self.test_fx_active.insert(title.into(), active);
+        let title = title.into();
+        if let Some(route) = self
+            .processors
+            .iter_mut()
+            .find(|route| route.title == title)
+        {
+            route.active = active;
+        } else {
+            self.processors.push(ProcessorRoute {
+                title,
+                backend: ProcessorBackend::Test2x2x1,
+                active,
+                audio_inputs: Vec::new(),
+                audio_outputs: Vec::new(),
+                midi_inputs: Vec::new(),
+                midi_staging: Vec::new(),
+                global_pending: PendingMidiControlState::default(),
+                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                global_rejected: 0,
+                global_pending_overwrites: 0,
+                global_pending_drained: 0,
+                global_capacity_deferrals: 0,
+            });
+            self.note_graph_change();
+        }
+    }
+
+    pub fn set_external_processor(&mut self, title: impl Into<String>) {
+        let title = title.into();
+        if self.processors.iter().any(|route| route.title == title) {
+            return;
+        }
+        self.processors.push(ProcessorRoute {
+            title,
+            backend: ProcessorBackend::External,
+            active: true,
+            audio_inputs: Vec::new(),
+            audio_outputs: Vec::new(),
+            midi_inputs: Vec::new(),
+            midi_staging: Vec::new(),
+            global_pending: PendingMidiControlState::default(),
+            global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+            combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+            global_rejected: 0,
+            global_pending_overwrites: 0,
+            global_pending_drained: 0,
+            global_capacity_deferrals: 0,
+        });
+        self.note_graph_change();
+    }
+
+    pub fn set_global_fx_midi_input(&mut self, port: usize) -> Result<(), SessionError> {
+        if !self
+            .ports
+            .get(port)
+            .is_some_and(|candidate| candidate.midi().is_some())
+        {
+            return Err(SessionError::NoSuchPort(port));
+        }
+        self.global_fx_midi_input = Some(port);
+        self.note_graph_change();
+        Ok(())
+    }
+
+    pub fn set_processor_ports(
+        &mut self,
+        title: &str,
+        audio_inputs: Vec<usize>,
+        audio_outputs: Vec<usize>,
+        midi_inputs: Vec<usize>,
+    ) -> Result<(), SessionError> {
+        for &port in audio_inputs.iter().chain(&audio_outputs) {
+            if !self.ports.get(port).is_some_and(Port::is_audio) {
+                return Err(SessionError::NoSuchPort(port));
+            }
+        }
+        for &port in &midi_inputs {
+            if !self
+                .ports
+                .get(port)
+                .is_some_and(|port| port.midi().is_some())
+            {
+                return Err(SessionError::NoSuchPort(port));
+            }
+        }
+        let route = self
+            .processors
+            .iter_mut()
+            .find(|route| route.title == title)
+            .ok_or(SessionError::NoSuchProcessor)?;
+        route.audio_inputs = audio_inputs;
+        route.audio_outputs = audio_outputs;
+        route.midi_inputs = midi_inputs;
+        route.midi_staging.clear();
+        route.midi_staging.resize_with(route.midi_inputs.len(), || {
+            Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK)
+        });
+        self.note_graph_change();
+        Ok(())
     }
 
     pub fn set_tiny_synth_fx_processor(
@@ -1425,20 +1584,30 @@ impl Session {
     ) -> Option<TinySynthFxProcessor> {
         let title = title.into();
         let displaced = if let Some(route) = self
-            .tiny_fx_routes
+            .processors
             .iter_mut()
             .find(|route| route.title == title)
         {
-            Some(std::mem::replace(&mut route.processor, processor))
+            match std::mem::replace(&mut route.backend, ProcessorBackend::Tiny(processor)) {
+                ProcessorBackend::Tiny(previous) => Some(previous),
+                _ => None,
+            }
         } else {
-            self.tiny_fx_routes.push(TinyFxRoute {
+            self.processors.push(ProcessorRoute {
                 title,
-                processor,
+                backend: ProcessorBackend::Tiny(processor),
                 active: false,
                 audio_inputs: Vec::new(),
                 audio_outputs: Vec::new(),
-                midi_input: None,
-                midi_staging: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                midi_inputs: Vec::new(),
+                midi_staging: Vec::new(),
+                global_pending: PendingMidiControlState::default(),
+                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                global_rejected: 0,
+                global_pending_overwrites: 0,
+                global_pending_drained: 0,
+                global_capacity_deferrals: 0,
             });
             None
         };
@@ -1448,7 +1617,7 @@ impl Session {
 
     pub fn set_tiny_synth_fx_active(&mut self, title: &str, active: bool) {
         if let Some(route) = self
-            .tiny_fx_routes
+            .processors
             .iter_mut()
             .find(|route| route.title == title)
         {
@@ -1456,33 +1625,49 @@ impl Session {
         }
     }
 
+    pub fn remove_processor(&mut self, title: &str) {
+        self.processors.retain(|route| route.title != title);
+        self.note_graph_change();
+    }
+
     pub fn tiny_synth_fx_processor_mut(
         &mut self,
         title: &str,
     ) -> Option<&mut TinySynthFxProcessor> {
-        self.tiny_fx_routes
+        self.processors
             .iter_mut()
             .find(|route| route.title == title)
-            .map(|route| &mut route.processor)
+            .and_then(|route| match &mut route.backend {
+                ProcessorBackend::Tiny(processor) => Some(processor),
+                _ => None,
+            })
     }
 
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     pub fn set_carla_fx_host(&mut self, title: impl Into<String>, host: Box<dyn CarlaProcessor>) {
         let title = title.into();
         if let Some(route) = self
-            .carla_fx_routes
+            .processors
             .iter_mut()
             .find(|route| route.title == title)
         {
-            route.host = host;
+            route.backend = ProcessorBackend::Carla(host);
         } else {
-            self.carla_fx_routes.push(CarlaFxRoute {
+            self.processors.push(ProcessorRoute {
                 title,
-                host,
+                backend: ProcessorBackend::Carla(host),
+                active: true,
                 audio_inputs: Vec::new(),
                 audio_outputs: Vec::new(),
                 midi_inputs: Vec::new(),
                 midi_staging: Vec::new(),
+                global_pending: PendingMidiControlState::default(),
+                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                global_rejected: 0,
+                global_pending_overwrites: 0,
+                global_pending_drained: 0,
+                global_capacity_deferrals: 0,
             });
         }
         self.note_graph_change();
@@ -1848,6 +2033,39 @@ impl Session {
             // callback. That is what makes sync work: all loops advance to the
             // same position before any trigger is resolved, so a dependent sees
             // its source's trigger in the same sub-block.
+            processors: self
+                .processors
+                .iter()
+                .map(|processor| ProcessorDesc {
+                    name: processor.title.clone(),
+                    input_ports: processor
+                        .audio_inputs
+                        .iter()
+                        .chain(
+                            processor.midi_inputs.iter().filter(|_| {
+                                !matches!(processor.backend, ProcessorBackend::External)
+                            }),
+                        )
+                        .copied()
+                        .chain(
+                            self.global_fx_midi_input
+                                .filter(|_| !processor.midi_inputs.is_empty()),
+                        )
+                        .map(PortIdx)
+                        .collect(),
+                    output_ports: processor
+                        .audio_outputs
+                        .iter()
+                        .copied()
+                        .chain(
+                            processor.midi_inputs.iter().copied().filter(|_| {
+                                matches!(processor.backend, ProcessorBackend::External)
+                            }),
+                        )
+                        .map(PortIdx)
+                        .collect(),
+                })
+                .collect(),
             loops: (0..self.loops.len())
                 .map(|_| LoopDesc {
                     co_process_with: (0..self.loops.len()).map(LoopIdx).collect(),
@@ -1924,9 +2142,6 @@ impl Session {
         }
         self.scratch.resize(self.buffer_size as usize, 0.0);
         self.out_scratch.resize(self.buffer_size as usize, 0.0);
-        self.rebuild_tiny_fx_routes();
-        #[cfg(feature = "lv2")]
-        self.rebuild_carla_fx_routes();
 
         std::mem::swap(&mut self.specs, &mut prepared.specs);
         std::mem::swap(&mut self.node_map, &mut prepared.node_map);
@@ -2043,8 +2258,12 @@ impl Session {
                             );
                             self.propagate_port(i, n_frames);
                         }
-                        self.process_test2x2x1_fx_port(i, n_frames);
                         self.profiler.finish(Stage::PortProcess, began);
+                    }
+                    NodeAction::ProcessorProcess(i) => {
+                        let began = self.profiler.begin();
+                        self.process_processor(i, n_frames);
+                        self.profiler.finish(Stage::ProcessorProcess, began);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
                     NodeAction::ChannelPrepare(i) => {
@@ -2085,13 +2304,6 @@ impl Session {
             }
         }
         {
-            let _span = shoop_tracing::realtime_span!("engine.rt.fx");
-            self.apply_test2x2x1_fx_outputs(n_frames);
-            self.process_tiny_fx_chains(n_frames);
-            #[cfg(feature = "lv2")]
-            self.process_carla_fx_chains(n_frames);
-        }
-        {
             let _span = shoop_tracing::realtime_span!("engine.rt.state_publication");
             self.publish_composite_anticipated_transitions();
         }
@@ -2099,352 +2311,235 @@ impl Session {
         self.schedule = steps;
     }
 
-    /// the synthetic FX outputs directly to the track's wet output ports. This is
-    /// intentionally narrow: the Rust backend shim does not yet model GraphFXChain,
-    /// but the QML self-tests rely on this built-in two-channel passthrough/synth.
-    fn apply_test2x2x1_fx_outputs(&mut self, n_frames: usize) {
-        let titles: Vec<String> = self
-            .ports
-            .iter()
-            .filter_map(|p| {
-                p.name().split_once(":audio_in_0").and_then(|(title, _)| {
-                    self.test_fx_active
-                        .contains_key(title)
-                        .then(|| title.to_string())
-                })
-            })
-            .collect();
-        for title in titles {
-            if !self.test_fx_active.get(&title).copied().unwrap_or(true) {
+    /// Runs one processor after its routed inputs and before its output ports.
+    fn process_processor(&mut self, processor_index: usize, n_frames: usize) {
+        let _span =
+            shoop_tracing::realtime_span!("engine.rt.fx.processor", value = processor_index);
+        let mut processors = std::mem::take(&mut self.processors);
+        let Some(route) = processors.get_mut(processor_index) else {
+            self.processors = processors;
+            return;
+        };
+
+        for (staging, &port_index) in route.midi_staging.iter_mut().zip(&route.midi_inputs) {
+            staging.clear();
+            if matches!(route.backend, ProcessorBackend::External) {
                 continue;
             }
-            for idx in 0..2usize {
-                let in_name = format!("{title}:audio_in_{idx}");
-                let fx_out_name = format!("{title}:audio_out_{idx}");
-                let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
-                let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) else {
-                    continue;
-                };
-                let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name)
-                else {
-                    continue;
-                };
-                let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
-                    continue;
-                };
-                if self.scratch.len() < n_frames {
-                    self.scratch.resize(n_frames, 0.0);
-                }
-                {
-                    let input = self.ports[in_idx].buffer(n_frames);
-                    for i in 0..n_frames {
-                        self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5;
-                    }
-                }
-                let target = self.ports[out_idx]
-                    .audio()
-                    .map(|a| (a.gain(), a.muted()))
-                    .unwrap_or((1.0, false));
-                let fx_passthrough_muted = self.ports[fx_out_idx]
-                    .audio()
-                    .map(|a| a.passthrough_muted())
-                    .unwrap_or(false);
-                let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                for sample in &mut self.scratch[..n_frames] {
-                    *sample = if muted { 0.0 } else { *sample * gain };
-                }
-                if let Some(output) = self.ports[out_idx].as_external_mut() {
-                    output.add_late_output(&self.scratch[..n_frames]);
-                } else {
-                    let output = self.ports[out_idx].buffer(n_frames);
-                    for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
-                        *output += *sample;
-                    }
-                }
+            staging.extend(
+                self.ports[port_index]
+                    .midi_events()
+                    .iter()
+                    .take(MAX_MIDI_EVENTS_PER_BLOCK)
+                    .copied(),
+            );
+            if let Some(port) = self.ports[port_index].as_external_midi() {
+                let remaining = MAX_MIDI_EVENTS_PER_BLOCK.saturating_sub(staging.len());
+                staging.extend(port.outgoing().iter().take(remaining).copied());
             }
+        }
 
-            let rerecording = self
-                .loops
-                .iter()
-                .any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
-            let mut events = if rerecording {
-                self.recent_loop_midi_events(n_frames)
-            } else {
-                Vec::new()
-            };
-            if !rerecording {
-                let fx_midi_name = format!("{title}:midi_in_0");
-                if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == fx_midi_name) {
-                    events.extend_from_slice(self.ports[midi_idx].midi_events());
-                    if let Some(p) = self.ports[midi_idx].as_external_midi() {
-                        events.extend_from_slice(p.outgoing());
-                    }
-                }
-            }
-            if !events.is_empty() {
-                for idx in 0..2usize {
-                    let fx_out_name = format!("{title}:audio_out_{idx}");
-                    let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
-                    let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name)
-                    else {
-                        continue;
-                    };
-                    let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
-                        continue;
-                    };
-                    let target = self.ports[out_idx]
-                        .audio()
-                        .map(|a| (a.gain(), a.muted()))
-                        .unwrap_or((1.0, false));
-                    let fx_passthrough_muted = self.ports[fx_out_idx]
-                        .audio()
-                        .map(|a| a.passthrough_muted())
-                        .unwrap_or(false);
-                    let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                    if self.scratch.len() < n_frames {
-                        self.scratch.resize(n_frames, 0.0);
-                    }
-                    self.scratch[..n_frames].fill(0.0);
-                    for e in events.iter() {
-                        let t = e.time as usize;
-                        if t < n_frames
-                            && e.data().len() >= 3
-                            && (e.data()[0] & 0xf0) == 0x90
-                            && e.data()[2] > 0
-                        {
-                            self.scratch[t] += if muted {
-                                0.0
-                            } else {
-                                (e.data()[2] as f32 / 255.0) * gain
-                            };
+        route.global_current.clear();
+        if !route.midi_inputs.is_empty() {
+            if let Some(port) = self
+                .global_fx_midi_input
+                .and_then(|port| self.ports.get(port))
+            {
+                for event in port.midi_events() {
+                    if PendingMidiControlState::supports(event.data()) {
+                        if route.global_current.len() < MAX_MIDI_EVENTS_PER_BLOCK {
+                            route.global_current.push(*event);
+                        } else {
+                            route.global_capacity_deferrals =
+                                route.global_capacity_deferrals.saturating_add(1);
                         }
-                    }
-                    if let Some(output) = self.ports[out_idx].as_external_mut() {
-                        output.add_late_output(&self.scratch[..n_frames]);
                     } else {
-                        let output = self.ports[out_idx].buffer(n_frames);
-                        for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
-                            *output += *sample;
+                        route.global_rejected = route.global_rejected.saturating_add(1);
+                    }
+                }
+            }
+        }
+        let processor_available = match &route.backend {
+            #[cfg(feature = "carla")]
+            ProcessorBackend::Carla(host) => matches!(
+                host.lifecycle(),
+                crate::carla_processor::CarlaProcessorLifecycle::Running
+                    | crate::carla_processor::CarlaProcessorLifecycle::Stopped
+            ),
+            _ => true,
+        };
+        if !processor_available {
+            route.global_pending = PendingMidiControlState::default();
+            self.processors = processors;
+            return;
+        }
+        let processor_active = route.active
+            && match &route.backend {
+                #[cfg(feature = "carla")]
+                ProcessorBackend::Carla(host) => host.is_active(),
+                _ => true,
+            };
+        if !processor_active {
+            for event in &route.global_current {
+                if route.global_pending.process_with_status(event.data()) == Some(true) {
+                    route.global_pending_overwrites =
+                        route.global_pending_overwrites.saturating_add(1);
+                }
+            }
+            // Tiny Synth's control-only path updates its explicit track MIDI CC
+            // mappings without running DSP. Global controls remain deferred above
+            // so they never wake or silently process an inactive FX processor.
+            if let ProcessorBackend::Tiny(processor) = &mut route.backend {
+                let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
+                processor.process_midi_controls_only(events);
+            }
+            self.processors = processors;
+            return;
+        }
+
+        for event in &route.global_current {
+            route.global_pending.clear_message(event.data());
+        }
+        route.combined_midi.clear();
+        let ordinary = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
+        let current_count = route
+            .global_current
+            .len()
+            .min(MAX_MIDI_EVENTS_PER_BLOCK.saturating_sub(ordinary.len()));
+        let pending_capacity = MAX_MIDI_EVENTS_PER_BLOCK
+            .saturating_sub(ordinary.len())
+            .saturating_sub(current_count);
+        route
+            .global_pending
+            .append_messages(&mut route.combined_midi, pending_capacity);
+        let pending_count = route.combined_midi.len();
+        route.combined_midi.extend(ordinary.iter().copied());
+        route
+            .combined_midi
+            .extend(route.global_current.iter().take(current_count).copied());
+        for index in 0..pending_count {
+            route
+                .global_pending
+                .clear_message(route.combined_midi[index].data());
+        }
+        route.global_pending_drained = route
+            .global_pending_drained
+            .saturating_add(pending_count as u64);
+        if !route.global_pending.is_empty() {
+            route.global_capacity_deferrals = route.global_capacity_deferrals.saturating_add(1);
+        }
+        for event in route.global_current.iter().skip(current_count) {
+            if route.global_pending.process_with_status(event.data()) == Some(true) {
+                route.global_pending_overwrites = route.global_pending_overwrites.saturating_add(1);
+            }
+            route.global_capacity_deferrals = route.global_capacity_deferrals.saturating_add(1);
+        }
+        // Callback-owned cumulative counters: bounded diagnostics without per-message logging.
+        shoop_tracing::realtime_plot_detail!(
+            "engine.fx.global_midi.rejected",
+            route.global_rejected
+        );
+        shoop_tracing::realtime_plot_detail!(
+            "engine.fx.global_midi.pending_overwrites",
+            route.global_pending_overwrites
+        );
+        shoop_tracing::realtime_plot_detail!(
+            "engine.fx.global_midi.pending_drained",
+            route.global_pending_drained
+        );
+        shoop_tracing::realtime_plot_detail!(
+            "engine.fx.global_midi.capacity_deferrals",
+            route.global_capacity_deferrals
+        );
+
+        match &mut route.backend {
+            ProcessorBackend::External => {
+                for &port in &route.midi_inputs {
+                    for event in &route.combined_midi {
+                        self.ports[port].write_midi(*event);
+                    }
+                }
+            }
+            ProcessorBackend::Test2x2x1 => {
+                for output_index in 0..route.audio_outputs.len() {
+                    self.scratch[..n_frames].fill(0.0);
+                    if let Some(&input) = route.audio_inputs.get(output_index) {
+                        let input = self.ports[input].buffer(n_frames);
+                        for (output, input) in self.scratch[..n_frames].iter_mut().zip(input) {
+                            *output = *input * 0.5;
                         }
                     }
-                }
-            }
-        }
-    }
-
-    fn rebuild_tiny_fx_routes(&mut self) {
-        for route in &mut self.tiny_fx_routes {
-            let title = &route.title;
-            let find_port = |name: &str| self.ports.iter().position(|port| port.name() == name);
-            route.audio_inputs = (0..route.processor.logical_channel_count())
-                .map(|index| find_port(&format!("{title}:audio_in_{index}")))
-                .collect();
-            route.audio_outputs = (0..route.processor.logical_channel_count())
-                .map(|index| {
-                    (
-                        find_port(&format!("{title}:audio_out_{index}")),
-                        find_port(&format!("{title}_audio_wet_out_{}", index + 1)),
-                    )
-                })
-                .collect();
-            route.midi_input = find_port(&format!("{title}:midi_in_0"));
-            route.midi_staging.clear();
-            route
-                .midi_staging
-                .reserve(MAX_MIDI_EVENTS_PER_BLOCK.saturating_sub(route.midi_staging.capacity()));
-        }
-    }
-
-    fn process_tiny_fx_chains(&mut self, n_frames: usize) {
-        let rerecording = self
-            .loops
-            .iter()
-            .any(|loop_| loop_.mode() == LoopMode::RecordingDryIntoWet);
-        let mut routes = std::mem::take(&mut self.tiny_fx_routes);
-        for route in &mut routes {
-            if !route.active || n_frames > route.processor.max_frames() {
-                continue;
-            }
-            for index in 0..route.processor.logical_channel_count() {
-                let Some(destination) = route.processor.plane_mut(index, n_frames) else {
-                    continue;
-                };
-                if let Some(port_index) = route.audio_inputs.get(index).copied().flatten() {
-                    destination.copy_from_slice(self.ports[port_index].buffer(n_frames));
-                } else {
-                    destination.fill(0.0);
-                }
-            }
-            route.processor.clear_silent_plane(n_frames);
-            route.midi_staging.clear();
-            if rerecording {
-                self.append_recent_loop_midi_events(n_frames, &mut route.midi_staging);
-            } else if let Some(port_index) = route.midi_input {
-                route.midi_staging.extend(
-                    self.ports[port_index]
-                        .midi_events()
-                        .iter()
-                        .take(MAX_MIDI_EVENTS_PER_BLOCK)
-                        .copied(),
-                );
-                if let Some(port) = self.ports[port_index].as_external_midi() {
-                    let remaining =
-                        MAX_MIDI_EVENTS_PER_BLOCK.saturating_sub(route.midi_staging.len());
-                    route
-                        .midi_staging
-                        .extend(port.outgoing().iter().take(remaining).copied());
-                }
-            }
-            route.midi_staging.truncate(MAX_MIDI_EVENTS_PER_BLOCK);
-            route.processor.process(n_frames, &route.midi_staging);
-            for index in 0..route.audio_outputs.len() {
-                let (Some(fx_output_index), Some(wet_output_index)) = route.audio_outputs[index]
-                else {
-                    continue;
-                };
-                let target = self.ports[wet_output_index]
-                    .audio()
-                    .map(|audio| (audio.gain(), audio.muted()))
-                    .unwrap_or((1.0, false));
-                let fx_passthrough_muted = self.ports[fx_output_index]
-                    .audio()
-                    .map(|audio| audio.passthrough_muted())
-                    .unwrap_or(false);
-                let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                let Some(source) = route.processor.plane(index, n_frames) else {
-                    continue;
-                };
-                for (output, sample) in self.scratch[..n_frames]
-                    .iter_mut()
-                    .zip(source.iter().copied())
-                {
-                    *output = if muted { 0.0 } else { sample * gain };
-                }
-                if let Some(output) = self.ports[wet_output_index].as_external_mut() {
-                    output.add_late_output(&self.scratch[..n_frames]);
-                } else {
-                    let output = self.ports[wet_output_index].buffer(n_frames);
-                    for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
-                        *output += *sample;
+                    for event in &route.combined_midi {
+                        let time = event.time as usize;
+                        if time < n_frames
+                            && event.data().len() >= 3
+                            && (event.data()[0] & 0xf0) == 0x90
+                            && event.data()[2] > 0
+                        {
+                            self.scratch[time] += event.data()[2] as f32 / 255.0;
+                        }
                     }
+                    self.ports[route.audio_outputs[output_index]]
+                        .buffer(n_frames)
+                        .copy_from_slice(&self.scratch[..n_frames]);
                 }
             }
-        }
-        self.tiny_fx_routes = routes;
-    }
-
-    #[cfg(feature = "lv2")]
-    fn rebuild_carla_fx_routes(&mut self) {
-        for route in &mut self.carla_fx_routes {
-            let info = route.host.info();
-            let title = &route.title;
-            let find_port = |name: &str| self.ports.iter().position(|port| port.name() == name);
-            route.audio_inputs = (0..info.audio_inputs)
-                .map(|index| find_port(&format!("{title}:audio_in_{index}")))
-                .collect();
-            route.audio_outputs = (0..info.audio_outputs)
-                .map(|index| {
-                    (
-                        find_port(&format!("{title}:audio_out_{index}")),
-                        find_port(&format!("{title}_audio_wet_out_{}", index + 1)),
-                    )
-                })
-                .collect();
-            route.midi_inputs = (0..info.midi_inputs)
-                .map(|index| find_port(&format!("{title}:midi_in_{index}")))
-                .collect();
-            route.midi_staging.resize_with(info.midi_inputs, || {
-                Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK)
-            });
-        }
-    }
-
-    #[cfg(feature = "lv2")]
-    fn process_carla_fx_chains(&mut self, n_frames: usize) {
-        let rerecording = self
-            .loops
-            .iter()
-            .any(|loop_| loop_.mode() == LoopMode::RecordingDryIntoWet);
-        let mut routes = std::mem::take(&mut self.carla_fx_routes);
-        for route in &mut routes {
-            let host = &mut route.host;
-            if !host.is_active() {
-                continue;
-            }
-            for index in 0..route.audio_inputs.len() {
-                let Some(port_index) = route.audio_inputs[index] else {
-                    continue;
-                };
-                let input = self.ports[port_index].buffer(n_frames);
-                if let Some(destination) = host.audio_input_mut(index) {
-                    destination[..n_frames].copy_from_slice(input);
-                }
-            }
-            for midi_index in 0..route.midi_inputs.len() {
-                let port_index = route.midi_inputs[midi_index];
-                let staging = &mut route.midi_staging[midi_index];
-                staging.clear();
-                if rerecording {
-                    self.append_recent_loop_midi_events(n_frames, staging);
-                } else if let Some(port_index) = port_index {
-                    staging.extend(
+            ProcessorBackend::Tiny(processor) => {
+                if n_frames <= processor.max_frames() {
+                    for input_index in 0..processor.logical_channel_count() {
+                        let Some(destination) = processor.plane_mut(input_index, n_frames) else {
+                            continue;
+                        };
+                        if let Some(&port_index) = route.audio_inputs.get(input_index) {
+                            destination.copy_from_slice(self.ports[port_index].buffer(n_frames));
+                        } else {
+                            destination.fill(0.0);
+                        }
+                    }
+                    processor.clear_silent_plane(n_frames);
+                    processor.process(n_frames, &route.combined_midi);
+                    for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
+                        let Some(source) = processor.plane(output_index, n_frames) else {
+                            continue;
+                        };
                         self.ports[port_index]
-                            .midi_events()
-                            .iter()
-                            .take(MAX_MIDI_EVENTS_PER_BLOCK)
-                            .copied(),
-                    );
-                    if let Some(port) = self.ports[port_index].as_external_midi() {
-                        let remaining = MAX_MIDI_EVENTS_PER_BLOCK.saturating_sub(staging.len());
-                        staging.extend(port.outgoing().iter().take(remaining).copied());
+                            .buffer(n_frames)
+                            .copy_from_slice(source);
                     }
                 }
-                staging.truncate(MAX_MIDI_EVENTS_PER_BLOCK);
-                let mut events = [(0_u32, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
-                for (destination, event) in events.iter_mut().zip(staging.iter()) {
-                    *destination = (
-                        event.time.min(n_frames.saturating_sub(1) as u32),
-                        event.data(),
+            }
+            #[cfg(feature = "carla")]
+            ProcessorBackend::Carla(host) => {
+                for (input_index, &port_index) in route.audio_inputs.iter().enumerate() {
+                    if let Some(destination) = host.audio_input_mut(input_index) {
+                        destination[..n_frames]
+                            .copy_from_slice(self.ports[port_index].buffer(n_frames));
+                    }
+                }
+                for midi_index in 0..route.midi_staging.len() {
+                    let mut events = [(0_u32, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
+                    for (destination, event) in events.iter_mut().zip(&route.combined_midi) {
+                        *destination = (
+                            event.time.min(n_frames.saturating_sub(1) as u32),
+                            event.data(),
+                        );
+                    }
+                    let _ = host.set_midi_input_events(
+                        midi_index,
+                        &events[..route.combined_midi.len().min(MAX_MIDI_EVENTS_PER_BLOCK)],
                     );
                 }
-                let _ = host.set_midi_input_events(midi_index, &events[..staging.len()]);
-            }
-            let _ = host.process(n_frames);
-            for index in 0..route.audio_outputs.len() {
-                let (Some(fx_output_index), Some(wet_output_index)) = route.audio_outputs[index]
-                else {
-                    continue;
-                };
-                let target = self.ports[wet_output_index]
-                    .audio()
-                    .map(|audio| (audio.gain(), audio.muted()))
-                    .unwrap_or((1.0, false));
-                let fx_passthrough_muted = self.ports[fx_output_index]
-                    .audio()
-                    .map(|audio| audio.passthrough_muted())
-                    .unwrap_or(false);
-                let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                let Some(source) = host.audio_output(index) else {
-                    continue;
-                };
-                self.scratch[..n_frames].fill(0.0);
-                for (output, sample) in self.scratch[..n_frames]
-                    .iter_mut()
-                    .zip(source.iter().copied())
-                {
-                    *output = if muted { 0.0 } else { sample * gain };
-                }
-                if let Some(output) = self.ports[wet_output_index].as_external_mut() {
-                    output.add_late_output(&self.scratch[..n_frames]);
-                } else {
-                    let output = self.ports[wet_output_index].buffer(n_frames);
-                    for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
-                        *output += *sample;
+                let _ = host.process(n_frames);
+                for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
+                    if let Some(source) = host.audio_output(output_index) {
+                        self.ports[port_index]
+                            .buffer(n_frames)
+                            .copy_from_slice(&source[..n_frames]);
                     }
                 }
             }
         }
-        self.carla_fx_routes = routes;
+        self.processors = processors;
     }
 
     fn synth_prerecorded_midi_playback(&mut self, n_frames: usize) {
@@ -2569,205 +2664,6 @@ impl Session {
         for (port, e) in to_write {
             self.ports[port].write_midi(e);
         }
-    }
-
-    fn recent_loop_midi_events(
-        &self,
-        n_frames: usize,
-    ) -> Vec<crate::midi_storage::MidiStorageElem> {
-        let mut out = Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK);
-        self.append_recent_loop_midi_events(n_frames, &mut out);
-        out
-    }
-
-    fn append_recent_loop_midi_events(
-        &self,
-        n_frames: usize,
-        out: &mut Vec<crate::midi_storage::MidiStorageElem>,
-    ) {
-        for l in self.loops.iter() {
-            let len = l.length();
-            if len == 0 {
-                continue;
-            }
-            let end = l.position() % len;
-            let start = (end + len - (n_frames as u32 % len)) % len;
-            for ch_idx in 0..16usize {
-                let Some(ch) = l.midi_channel(ch_idx) else {
-                    break;
-                };
-                for mut e in ch.contents() {
-                    let t = e.time % len;
-                    let in_block = if start <= end {
-                        t >= start && t < end
-                    } else {
-                        t >= start || t < end
-                    };
-                    if in_block {
-                        e.time = if t >= start {
-                            t - start
-                        } else {
-                            len - start + t
-                        };
-                        if out.len() < MAX_MIDI_EVENTS_PER_BLOCK {
-                            out.push(e);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn fill_test2x2x1_fx_output(&mut self, port_idx: usize, n_frames: usize) {
-        if !self.ports[port_idx].name().contains(':') {
-            return;
-        }
-        crate::realtime_allow_alloc_once!("Session::fill_test2x2x1_fx_output", || {
-            let name = self.ports[port_idx].name().to_string();
-            let Some((title, suffix)) = name.split_once(':') else {
-                return;
-            };
-            let Some(idx) = suffix
-                .strip_prefix("audio_out_")
-                .and_then(|s| s.parse::<usize>().ok())
-            else {
-                return;
-            };
-            if !self.test_fx_active.get(title).copied().unwrap_or(true) {
-                return;
-            }
-
-            if self.scratch.len() < n_frames {
-                self.scratch.resize(n_frames, 0.0);
-            }
-            self.scratch[..n_frames].fill(0.0);
-            let in_name = format!("{title}:audio_in_{idx}");
-            if let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) {
-                let input = self.ports[in_idx].buffer(n_frames);
-                for i in 0..n_frames {
-                    self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
-                }
-            }
-            // Recording dry into a wet channel must still feed the test FX when
-            // monitoring has muted the ordinary dry-to-FX passthrough route.
-            if self.scratch[..n_frames].iter().all(|sample| *sample == 0.0) {
-                let dry_name = format!("{title}_audio_dry_in_{}", idx + 1);
-                if let Some(dry_idx) = self.ports.iter().position(|p| p.name() == dry_name) {
-                    let input = self.ports[dry_idx].buffer(n_frames);
-                    for i in 0..n_frames {
-                        self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
-                    }
-                }
-            }
-            let rerecording = self
-                .loops
-                .iter()
-                .any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
-            let mut midi_events = if rerecording {
-                self.recent_loop_midi_events(n_frames)
-            } else {
-                Vec::new()
-            };
-            if !rerecording {
-                let midi_name = format!("{title}:midi_in_0");
-                if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == midi_name) {
-                    midi_events.extend_from_slice(self.ports[midi_idx].midi_events());
-                    if let Some(p) = self.ports[midi_idx].as_external_midi() {
-                        midi_events.extend_from_slice(p.outgoing());
-                    }
-                }
-                for p in self
-                    .ports
-                    .iter()
-                    .filter(|p| p.name().contains("_dry_midi_in"))
-                {
-                    midi_events.extend_from_slice(p.midi_events());
-                }
-            }
-            for e in midi_events.iter() {
-                let t = e.time as usize;
-                if t < n_frames
-                    && e.data().len() >= 3
-                    && (e.data()[0] & 0xf0) == 0x90
-                    && e.data()[2] > 0
-                {
-                    self.scratch[t] += e.data()[2] as f32 / 255.0;
-                }
-            }
-            self.ports[port_idx]
-                .buffer(n_frames)
-                .copy_from_slice(&self.scratch[..n_frames]);
-        });
-    }
-
-    /// QML tests: two audio inputs pass through to the matching audio outputs at
-    /// half gain, and MIDI note velocity is synthesized to both audio outputs.
-    /// FX-chain ports as ordinary internal ports, so this reproduces that behavior
-    /// when those synthetic port names are processed.
-    fn process_test2x2x1_fx_port(&mut self, port_idx: usize, n_frames: usize) {
-        let Some((title, _)) = self.ports[port_idx].name().split_once(':') else {
-            return;
-        };
-        if !self.test_fx_active.contains_key(title) {
-            return;
-        }
-        crate::realtime_allow_alloc_once!("Session::process_test2x2x1_fx_port", || {
-            let name = self.ports[port_idx].name().to_string();
-            let Some((title, suffix)) = name.split_once(':') else {
-                return;
-            };
-
-            if let Some(idx) = suffix
-                .strip_prefix("audio_in_")
-                .and_then(|s| s.parse::<usize>().ok())
-            {
-                let out_name = format!("{title}:audio_out_{idx}");
-                let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
-                    return;
-                };
-                if self.scratch.len() < n_frames {
-                    self.scratch.resize(n_frames, 0.0);
-                }
-                {
-                    let input = self.ports[port_idx].buffer(n_frames);
-                    for i in 0..n_frames {
-                        self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5;
-                    }
-                }
-                let output = self.ports[out_idx].buffer(n_frames);
-                for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
-                    *o += *s;
-                }
-            } else if suffix.starts_with("midi_in_") {
-                let events = self.ports[port_idx].midi_events().to_vec();
-                if events.is_empty() {
-                    return;
-                }
-                let out_indices: Vec<_> = self
-                    .ports
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, p)| {
-                        p.name()
-                            .starts_with(&format!("{title}:audio_out_"))
-                            .then_some(i)
-                    })
-                    .collect();
-                for out_idx in out_indices {
-                    let output = self.ports[out_idx].buffer(n_frames);
-                    for e in events.iter() {
-                        let t = e.time as usize;
-                        if t < output.len()
-                            && e.data().len() >= 3
-                            && (e.data()[0] & 0xf0) == 0x90
-                            && e.data()[2] > 0
-                        {
-                            output[t] += e.data()[2] as f32 / 255.0;
-                        }
-                    }
-                }
-            }
-        });
     }
 
     /// Copies a port's samples into whatever it feeds internally.
@@ -3201,7 +3097,6 @@ impl Session {
         }
         match m.input_port {
             Some(p) => {
-                self.fill_test2x2x1_fx_output(p, n_frames);
                 let src = self.ports[p].buffer(n_frames);
                 self.scratch[..n_frames].copy_from_slice(src);
             }
@@ -3262,8 +3157,9 @@ impl Session {
 mod tests {
     use super::*;
     use crate::dummy_port::PortId;
+    use crate::midi;
     use crate::port::{PortConnectability, PortDirection};
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn internal(name: &str, n: usize) -> Port {
         Port::Internal(InternalAudioPort::new(
@@ -3279,7 +3175,7 @@ mod tests {
         Port::Dummy(DummyAudioPort::new(PortId(id), name, dir, 4))
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_new_session_is_up_to_date_and_empty() {
         let mut s = Session::default();
         check!(s.graph_up_to_date());
@@ -3287,7 +3183,7 @@ mod tests {
         s.process(4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn adding_entities_invalidates_the_graph() {
         let mut s = Session::default();
         s.add_port(internal("p", 4));
@@ -3296,28 +3192,28 @@ mod tests {
         s.process(4);
         check!(s.n_stale_cycles() == 1);
 
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         check!(s.graph_up_to_date());
         s.process(4);
         check!(s.n_stale_cycles() == 1);
     }
 
     /// The property that lets a stale cycle run safely: existing work keeps happening.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_stale_graph_keeps_running_the_previous_schedule() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .audio_channel_mut(0)
             .unwrap()
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         s.process(4);
         check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
@@ -3341,16 +3237,16 @@ mod tests {
     /// breaks: the change made below is absent from the schedule, yet the session reports
     /// itself current, so nothing ever arms another rebuild and the new port stays unrouted
     /// forever -- silence with no stale-cycle count to point at it.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_change_arriving_during_a_build_leaves_the_graph_stale() {
         let mut s = Session::default();
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         let topology = s.describe_topology();
         // After the description was taken, so no schedule built from it can contain it.
         let _added = s.add_port(internal("added-mid-build", 4));
 
-        let_assert!(Ok(prepared) = build_schedule(topology));
+        assert2::assert!(let Ok(prepared) = build_schedule(topology));
         let displaced = s.install_schedule(prepared);
         drop(displaced);
 
@@ -3359,17 +3255,17 @@ mod tests {
             "a schedule that predates the change must not mark the graph current"
         );
         // And the follow-up rebuild does bring it current.
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         check!(s.graph_up_to_date());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn installing_a_schedule_built_from_the_current_topology_marks_it_current() {
         let mut s = Session::default();
         s.add_port(internal("p", 4));
         check!(!s.graph_up_to_date());
 
-        let_assert!(Ok(prepared) = build_schedule(s.describe_topology()));
+        assert2::assert!(let Ok(prepared) = build_schedule(s.describe_topology()));
         drop(s.install_schedule(prepared));
 
         check!(s.graph_up_to_date());
@@ -3382,29 +3278,29 @@ mod tests {
     /// disconnect and disable but never shrink an arena -- so every index the older schedule
     /// holds still names the same object. Were any removal to compact its arena, this would
     /// index past the end or, worse, drive the wrong loop.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_schedule_built_before_a_removal_still_installs_and_runs() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
         let doomed = s.add_port(internal("doomed", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .audio_channel_mut(0)
             .unwrap()
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         // Describe first, then tear things out behind the build's back.
         let topology = s.describe_topology();
-        let_assert!(Ok(()) = s.remove_port(doomed));
-        let_assert!(Ok(()) = s.remove_loop(l));
+        assert2::assert!(let Ok(()) = s.remove_port(doomed));
+        assert2::assert!(let Ok(()) = s.remove_loop(l));
 
-        let_assert!(Ok(prepared) = build_schedule(topology));
+        assert2::assert!(let Ok(prepared) = build_schedule(topology));
         drop(s.install_schedule(prepared));
 
         // Runs against a schedule describing entities that have since been disabled, and
@@ -3420,22 +3316,22 @@ mod tests {
     /// own node -- its `prepare` (which clears the buffer each cycle) and its `process`
     /// (gain, muting, metering). So the routing lands early and the port-level processing
     /// lands on apply; neither state is broken, which is what makes deferral safe.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_port_added_mid_stream_is_fed_but_not_yet_processed() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .audio_channel_mut(0)
             .unwrap()
             .load_data(&[2.0, 2.0, 2.0, 2.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         let late = s.add_port(internal("late", 4));
-        let_assert!(Ok(()) = s.connect_channel_output(c, late));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, late));
         s.port_mut(late).unwrap().audio_mut().unwrap().set_gain(0.5);
 
         s.process(4);
@@ -3443,7 +3339,7 @@ mod tests {
         check!(s.port_mut(late).unwrap().buffer(4).to_vec() == vec![2.0; 4]);
         check!(s.n_stale_cycles() == 1);
 
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.process(4);
         // Now the port is scheduled: cleared at the top of the cycle, gained at the end.
         check!(s.port_mut(late).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
@@ -3451,23 +3347,23 @@ mod tests {
     }
 
     /// Pass-through routing is read live, so a disconnect does not wait for a reschedule.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_disconnect_takes_effect_before_the_graph_is_reapplied() {
         let mut s = Session::default();
         let from = s.add_port(internal("from", 4));
         let to = s.add_port(internal("to", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, from));
-        let_assert!(Ok(()) = s.connect_ports_internal(from, to));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, from));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(from, to));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .audio_channel_mut(0)
             .unwrap()
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         s.process(4);
         check!(s.port_mut(to).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
@@ -3482,28 +3378,28 @@ mod tests {
     }
 
     /// Indices held by an older schedule must stay valid, which is why removal keeps slots.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removal_never_shrinks_the_arenas() {
         let mut s = Session::default();
         let p = s.add_port(internal("p", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
         let (ports, loops, channels) = (s.n_ports(), s.n_loops(), s.n_channels());
 
-        let_assert!(Ok(()) = s.remove_channel(c, ChannelKind::Audio));
-        let_assert!(Ok(()) = s.remove_port(p));
-        let_assert!(Ok(()) = s.remove_loop(l));
+        assert2::assert!(let Ok(()) = s.remove_channel(c, ChannelKind::Audio));
+        assert2::assert!(let Ok(()) = s.remove_port(p));
+        assert2::assert!(let Ok(()) = s.remove_loop(l));
 
         check!(s.n_ports() == ports);
         check!(s.n_loops() == loops);
         check!(s.n_channels() == channels);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn wiring_rejects_unknown_indices() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
         check!(s.connect_channel_input(c, 9) == Err(SessionError::NoSuchPort(9)));
         check!(s.connect_ports_internal(0, 0) == Err(SessionError::NoSuchPort(0)));
         check!(s.add_audio_channel(9, 4, ChannelMode::Direct) == Err(SessionError::NoSuchLoop(9)));
@@ -3512,17 +3408,17 @@ mod tests {
         check!(s.set_loop_sync_source(l, Some(l)) == Err(SessionError::SelfSync(l)));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn the_schedule_matches_the_direct_loop_topology() {
         let mut s = Session::default();
         let p1 = s.add_port(internal("p1", 4));
         let p2 = s.add_port(internal("p2", 4));
-        let_assert!(Ok(()) = s.connect_ports_internal(p1, p2));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(p1, p2));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, p1));
-        let_assert!(Ok(()) = s.connect_channel_output(c, p2));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, p1));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, p2));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         check!(
             s.schedule_names()
@@ -3539,16 +3435,16 @@ mod tests {
     }
 
     /// Records from a dummy input, then plays back into a dummy output.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn records_then_plays_back_end_to_end() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let output = s.add_port(dummy(2, "out", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // Feed four samples and record them.
         s.port_mut(input)
@@ -3556,7 +3452,7 @@ mod tests {
             .as_dummy_mut()
             .unwrap()
             .queue_data(&[1.0, 2.0, 3.0, 4.0]);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().length() == 4);
@@ -3568,7 +3464,7 @@ mod tests {
             .as_dummy_mut()
             .unwrap()
             .request_data(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         s.process(4);
 
         let got = s
@@ -3577,32 +3473,335 @@ mod tests {
             .as_dummy_mut()
             .unwrap()
             .dequeue_data(4);
-        let_assert!(Ok(samples) = got);
+        assert2::assert!(let Ok(samples) = got);
         check!(samples == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
-    #[test]
+    fn test_processor_session(monitored: bool) -> (Session, usize, usize) {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        let input = session.add_port(dummy(10, "dry-input", PortDirection::Input));
+        let send = session.add_port(internal("test:audio_in_0", 4));
+        let return_ = session.add_port(internal("test:audio_out_0", 4));
+        let output = session.add_port(dummy(11, "wet-output", PortDirection::Output));
+        session.connect_ports_internal(input, send).unwrap();
+        session.connect_ports_internal(return_, output).unwrap();
+        session
+            .port_mut(return_)
+            .unwrap()
+            .audio_mut()
+            .unwrap()
+            .set_passthrough_muted(!monitored);
+        let loop_ = session.create_loop();
+        let dry = session
+            .add_audio_channel(loop_, 4, ChannelMode::Dry)
+            .unwrap();
+        let wet = session
+            .add_audio_channel(loop_, 4, ChannelMode::Wet)
+            .unwrap();
+        session.connect_channel_input(dry, input).unwrap();
+        session.connect_channel_output(dry, send).unwrap();
+        session.connect_channel_input(wet, return_).unwrap();
+        session.connect_channel_output(wet, output).unwrap();
+        session.set_test_fx_active("test", true);
+        session
+            .set_processor_ports("test", vec![send], vec![return_], vec![])
+            .unwrap();
+        session.apply_graph_changes().unwrap();
+        (session, loop_, output)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn external_processor_node_records_the_staged_return_it_monitors() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        let dry_source = session.add_port(dummy(40, "dry-source", PortDirection::Input));
+        let dry_send = session.add_port(dummy(41, "dry-send", PortDirection::Output));
+        let wet_return = session.add_port(Port::External(ExternalAudioPort::new(
+            "wet-return",
+            PortDirection::Input,
+            4,
+        )));
+        let wet_output = session.add_port(dummy(42, "wet-output", PortDirection::Output));
+        session
+            .connect_ports_internal(dry_source, dry_send)
+            .unwrap();
+        session
+            .connect_ports_internal(wet_return, wet_output)
+            .unwrap();
+        let loop_ = session.create_loop();
+        let wet = session
+            .add_audio_channel(loop_, 4, ChannelMode::Wet)
+            .unwrap();
+        session.connect_channel_input(wet, wet_return).unwrap();
+        session.connect_channel_output(wet, wet_output).unwrap();
+        session.set_external_processor("external");
+        session
+            .set_processor_ports("external", vec![dry_send], vec![wet_return], vec![])
+            .unwrap();
+        session.apply_graph_changes().unwrap();
+        session
+            .port_mut(dry_source)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&[1.0, 2.0, 3.0, 4.0]);
+        session
+            .port_mut(wet_return)
+            .unwrap()
+            .as_external_mut()
+            .unwrap()
+            .stage_input(&[5.0, 6.0, 7.0, 8.0]);
+        session
+            .port_mut(wet_output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        session.set_loop_mode(loop_, LoopMode::Recording).unwrap();
+        session.process(4);
+        check!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(0)
+                .unwrap()
+                .data()
+                == vec![5.0, 6.0, 7.0, 8.0]
+        );
+        let monitored = session
+            .port_mut(wet_output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(4)
+            .unwrap();
+        check!(monitored == vec![5.0, 6.0, 7.0, 8.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn test_processor_mode_matrix_routes_exact_wet_samples() {
+        let (mut session, loop_, output) = test_processor_session(true);
+        session
+            .port_mut(0)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&[2.0, 4.0, 6.0, 8.0]);
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        session.set_loop_mode(loop_, LoopMode::Recording).unwrap();
+        session.process(4);
+        check!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(0)
+                .unwrap()
+                .data()
+                == vec![2.0, 4.0, 6.0, 8.0]
+        );
+        check!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(1)
+                .unwrap()
+                .data()
+                == vec![1.0, 2.0, 3.0, 4.0]
+        );
+        let monitored = session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(4)
+            .unwrap();
+        check!(monitored == vec![1.0, 2.0, 3.0, 4.0]);
+
+        session.set_test_fx_active("test", false);
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        session.set_loop_mode(loop_, LoopMode::Playing).unwrap();
+        session.process(4);
+        let wet_playback = session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(4)
+            .unwrap();
+        check!(wet_playback == vec![1.0, 2.0, 3.0, 4.0]);
+
+        session.set_test_fx_active("test", true);
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        session
+            .set_loop_mode(loop_, LoopMode::PlayingDryThroughWet)
+            .unwrap();
+        session.process(4);
+        let dry_through_wet = session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(4)
+            .unwrap();
+        check!(dry_through_wet == vec![1.0, 2.0, 3.0, 4.0]);
+
+        session
+            .loop_mut(loop_)
+            .unwrap()
+            .audio_channel_mut(1)
+            .unwrap()
+            .load_data(&[9.0, 9.0, 9.0, 9.0]);
+        session
+            .set_loop_mode(loop_, LoopMode::RecordingDryIntoWet)
+            .unwrap();
+        session.process(4);
+        check!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(1)
+                .unwrap()
+                .data()
+                == vec![1.0, 2.0, 3.0, 4.0]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn test_processor_maps_timestamped_midi_to_both_outputs() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        let midi = session.add_port(dummy_midi(20, "test:midi_in_0", PortDirection::Input));
+        let left = session.add_port(internal("test:audio_out_0", 4));
+        let right = session.add_port(internal("test:audio_out_1", 4));
+        session.set_test_fx_active("test", true);
+        session
+            .set_processor_ports("test", vec![], vec![left, right], vec![midi])
+            .unwrap();
+        session.apply_graph_changes().unwrap();
+        session
+            .port_mut(midi)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(2, &[0x90, 60, 127]);
+        session.process(4);
+        for output in [left, right] {
+            check!(session.port_mut(output).unwrap().buffer(4) == [0.0, 0.0, 127.0 / 255.0, 0.0]);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn parallel_test_processors_do_not_share_routes() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        let source_a = session.add_port(dummy(30, "source-a", PortDirection::Input));
+        let source_b = session.add_port(dummy(31, "source-b", PortDirection::Input));
+        let input_a = session.add_port(internal("a:audio_in_0", 4));
+        let input_b = session.add_port(internal("b:audio_in_0", 4));
+        let output_a = session.add_port(internal("a:audio_out_0", 4));
+        let output_b = session.add_port(internal("b:audio_out_0", 4));
+        session.connect_ports_internal(source_a, input_a).unwrap();
+        session.connect_ports_internal(source_b, input_b).unwrap();
+        session.set_test_fx_active("a", true);
+        session.set_test_fx_active("b", true);
+        session
+            .set_processor_ports("a", vec![input_a], vec![output_a], vec![])
+            .unwrap();
+        session
+            .set_processor_ports("b", vec![input_b], vec![output_b], vec![])
+            .unwrap();
+        session.apply_graph_changes().unwrap();
+        session
+            .port_mut(source_a)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&[2.0; 4]);
+        session
+            .port_mut(source_b)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&[10.0; 4]);
+        session.process(4);
+        check!(session.port_mut(output_a).unwrap().buffer(4) == [1.0; 4]);
+        check!(session.port_mut(output_b).unwrap().buffer(4) == [5.0; 4]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn test_processor_unmonitored_recording_captures_wet_without_output() {
+        let (mut session, loop_, output) = test_processor_session(false);
+        session
+            .port_mut(0)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&[2.0, 4.0, 6.0, 8.0]);
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        session.set_loop_mode(loop_, LoopMode::Recording).unwrap();
+        session.process(4);
+        check!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(1)
+                .unwrap()
+                .data()
+                == vec![1.0, 2.0, 3.0, 4.0]
+        );
+        let output = session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(4)
+            .unwrap();
+        check!(output == vec![0.0; 4]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn a_channel_without_an_input_records_silence() {
         let mut s = Session::default();
         let output = s.add_port(dummy(1, "out", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![0.0, 0.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_is_additive_onto_the_output_port() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -3610,7 +3809,7 @@ mod tests {
             .unwrap()
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         s.process(4);
 
         // The port started silent (prepare clears it), so playback is what is there.
@@ -3618,16 +3817,16 @@ mod tests {
         check!(buf == vec![1.0, 1.0, 1.0, 1.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn two_channels_mix_into_one_output_port() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c1) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(c2) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c1, output));
-        let_assert!(Ok(()) = s.connect_channel_output(c2, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c1) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(c2) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c1, output));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c2, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -3640,7 +3839,7 @@ mod tests {
             .unwrap()
             .load_data(&[10.0, 10.0, 10.0, 10.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         s.process(4);
 
         // Both channels contribute: the second must add onto the first, not
@@ -3649,17 +3848,17 @@ mod tests {
         check!(buf == vec![11.0, 11.0, 11.0, 11.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channels_on_different_output_ports_do_not_bleed_into_each_other() {
         let mut s = Session::default();
         let out_a = s.add_port(internal("outA", 4));
         let out_b = s.add_port(internal("outB", 4));
         let l = s.create_loop();
-        let_assert!(Ok(c1) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(c2) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c1, out_a));
-        let_assert!(Ok(()) = s.connect_channel_output(c2, out_b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c1) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(c2) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c1, out_a));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c2, out_b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -3672,7 +3871,7 @@ mod tests {
             .unwrap()
             .load_data(&[10.0, 10.0, 10.0, 10.0]);
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         s.process(4);
 
         // Each port gets only its own channel. Reusing routing scratch across
@@ -3681,22 +3880,22 @@ mod tests {
         check!(s.port_mut(out_b).unwrap().buffer(4).to_vec() == vec![10.0, 10.0, 10.0, 10.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_input_less_channel_does_not_pick_up_another_channels_input() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(with_input) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(_without) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(with_input, input));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(with_input) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(_without) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(with_input, input));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(input)
             .unwrap()
             .as_dummy_mut()
             .unwrap()
             .queue_data(&[5.0, 6.0, 7.0, 8.0]);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![5.0, 6.0, 7.0, 8.0]);
@@ -3714,24 +3913,24 @@ mod tests {
     }
 
     /// Records MIDI from a dummy input, then plays it back to a dummy output.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_a_channel_disconnects_and_silences_it() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let output = s.add_port(dummy(2, "out", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
         s.loop_mut(l)
             .expect("loop")
             .audio_channel_mut(0)
             .expect("channel")
             .load_data(&[1.0; 64]);
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-        let_assert!(Ok(()) = s.remove_audio_channel(c));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.remove_audio_channel(c));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         let ch = s.loop_(l).expect("loop").audio_channel(0).expect("channel");
         check!(ch.mode() == ChannelMode::Disabled);
@@ -3740,35 +3939,35 @@ mod tests {
         s.process(4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_a_loop_detaches_anything_syncing_to_it() {
         let mut s = Session::default();
         let source = s.create_loop();
         let follower = s.create_loop();
         s.loop_mut(source).expect("loop").set_length(64);
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, Some(source)));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, Some(source)));
         check!(s.sync_source_of(follower) == Some(source));
 
-        let_assert!(Ok(()) = s.remove_loop(source));
+        assert2::assert!(let Ok(()) = s.remove_loop(source));
 
         // The trap: a follower left syncing to a removed loop waits for triggers that never come,
         // so its planned transitions never land and it looks simply broken.
         check!(s.sync_source_of(follower) == None);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_a_loop_empties_and_stops_it() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
         s.loop_mut(l).expect("loop").set_length(64);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-        let_assert!(Ok(()) = s.remove_loop(l));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.remove_loop(l));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         check!(s.loop_(l).expect("loop").mode() == LoopMode::Stopped);
         check!(s.loop_(l).expect("loop").length() == 0);
@@ -3776,29 +3975,29 @@ mod tests {
         s.process(4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_a_port_disconnects_both_directions_and_its_channels() {
         let mut s = Session::default();
         let a = s.add_port(internal("a", 4));
         let b = s.add_port(internal("b", 4));
         let c_port = s.add_port(internal("c", 4));
-        let_assert!(Ok(()) = s.connect_ports_internal(a, b));
-        let_assert!(Ok(()) = s.connect_ports_internal(b, c_port));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(a, b));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(b, c_port));
 
         let l = s.create_loop();
-        let_assert!(Ok(ch) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(ch, b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(ch) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(ch, b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
-        let_assert!(Ok(()) = s.remove_port(b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.remove_port(b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // Neither what b fed nor what fed b remains, and the channel no longer reads it.
         s.process(4);
         check!(s.n_ports() == 3);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_something_that_is_not_there_is_an_error() {
         let mut s = Session::default();
         check!(s.remove_loop(3).is_err());
@@ -3806,27 +4005,27 @@ mod tests {
         check!(s.remove_audio_channel(0).is_err());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn removing_a_midi_channel_as_audio_is_refused() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
         // Asking for the wrong kind should fail rather than silently disabling the wrong thing.
         check!(s.remove_audio_channel(c).is_err());
-        let_assert!(Ok(()) = s.remove_midi_channel(c));
+        assert2::assert!(let Ok(()) = s.remove_midi_channel(c));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn records_then_plays_back_midi_end_to_end() {
         use crate::midi;
         let mut s = Session::default();
         let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
         let output = s.add_port(dummy_midi(2, "mout", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(input)
             .unwrap()
@@ -3838,16 +4037,16 @@ mod tests {
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(2, &midi::note_off(0, 60, 64));
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 2);
 
         // Play it back and capture what leaves the output port.
         s.loop_mut(l).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         let d = s.port_mut(output).unwrap().as_dummy_midi_mut().unwrap();
-        let_assert!(Ok(()) = d.request_data(4));
+        assert2::assert!(let Ok(()) = d.request_data(4));
         s.process(4);
 
         let got = s
@@ -3861,15 +4060,15 @@ mod tests {
         check!(got[1].data() == midi::note_off(0, 60, 64).as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn replacing_midi_through_a_session_overwrites_loaded_events() {
         use crate::midi;
         let mut s = Session::default();
         let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l)
             .unwrap()
             .midi_channel_mut(0)
@@ -3894,7 +4093,7 @@ mod tests {
             .unwrap()
             .queue_msg(3, &midi::note_off(0, 64, 0));
 
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Replacing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Replacing));
         s.process(4);
 
         let contents = s.loop_(l).unwrap().midi_channel(0).unwrap().contents();
@@ -3905,14 +4104,14 @@ mod tests {
         check!(contents[1].data() == midi::note_off(0, 64, 0).as_slice());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn muting_midi_passthrough_cleans_forwarded_notes_exactly_once() {
         use crate::midi;
         let mut s = Session::default();
         let source = s.add_port(dummy_midi(1, "source", PortDirection::Input));
         let target = s.add_port(dummy_midi(2, "target", PortDirection::Output));
-        let_assert!(Ok(()) = s.connect_ports_internal(source, target));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(source, target));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(source)
             .unwrap()
@@ -3977,29 +4176,29 @@ mod tests {
             .is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_midi_channel_without_ports_still_advances_the_loop() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(_) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.apply_graph_changes());
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(_) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
         check!(s.loop_(l).unwrap().length() == 4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_and_midi_channels_coexist_on_one_loop() {
         use crate::midi;
         let mut s = Session::default();
         let audio_in = s.add_port(dummy(1, "ain", PortDirection::Input));
         let midi_in = s.add_port(dummy_midi(2, "min", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(ac) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(mc) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(ac, audio_in));
-        let_assert!(Ok(()) = s.connect_channel_input(mc, midi_in));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(ac) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(mc) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(ac, audio_in));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(mc, midi_in));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(audio_in)
             .unwrap()
@@ -4012,25 +4211,25 @@ mod tests {
             .unwrap()
             .queue_msg(2, &midi::note_on(0, 64, 1));
 
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![1.0, 2.0, 3.0, 4.0]);
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn two_midi_channels_are_routed_to_their_own_ports() {
         use crate::midi;
         let mut s = Session::default();
         let in_a = s.add_port(dummy_midi(1, "inA", PortDirection::Input));
         let in_b = s.add_port(dummy_midi(2, "inB", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(ca) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(cb) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(ca, in_a));
-        let_assert!(Ok(()) = s.connect_channel_input(cb, in_b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(ca) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(cb) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(ca, in_a));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(cb, in_b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // Only port A carries a message; channel B must not pick it up.
         s.port_mut(in_a)
@@ -4038,32 +4237,32 @@ mod tests {
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(1, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
         check!(s.loop_(l).unwrap().midi_channel(1).unwrap().n_events() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_channels_on_different_loops_do_not_share_input() {
         use crate::midi;
         let mut s = Session::default();
         let in_a = s.add_port(dummy_midi(1, "inA", PortDirection::Input));
         let l1 = s.create_loop();
         let l2 = s.create_loop();
-        let_assert!(Ok(c1) = s.add_midi_channel(l1, 64, ChannelMode::Direct));
-        let_assert!(Ok(_c2) = s.add_midi_channel(l2, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c1, in_a));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c1) = s.add_midi_channel(l1, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_c2) = s.add_midi_channel(l2, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c1, in_a));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(in_a)
             .unwrap()
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(1, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = s.set_loop_mode(l1, LoopMode::Recording));
-        let_assert!(Ok(()) = s.set_loop_mode(l2, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l1, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l2, LoopMode::Recording));
         s.process(4);
 
         check!(s.loop_(l1).unwrap().midi_channel(0).unwrap().n_events() == 1);
@@ -4071,39 +4270,39 @@ mod tests {
         check!(s.loop_(l2).unwrap().midi_channel(0).unwrap().n_events() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_midi_over_two_cycles_does_not_duplicate() {
         use crate::midi;
         let mut s = Session::default();
         let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(input)
             .unwrap()
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(1, &midi::note_on(0, 60, 1));
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
         // A second cycle with no new arrivals must not re-record the first one.
         s.process(4);
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn playing_midi_over_two_cycles_does_not_resend() {
         use crate::midi;
         let mut s = Session::default();
         let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
         let output = s.add_port(dummy_midi(2, "mout", PortDirection::Output));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.port_mut(input)
             .unwrap()
@@ -4115,14 +4314,14 @@ mod tests {
             .as_dummy_midi_mut()
             .unwrap()
             .queue_msg(2, &midi::note_off(0, 60, 64));
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(4);
 
         // Play twice over a length of 8, so the message sounds exactly once.
         s.loop_mut(l).unwrap().set_length(8);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         let d = s.port_mut(output).unwrap().as_dummy_midi_mut().unwrap();
-        let_assert!(Ok(()) = d.request_data(8));
+        assert2::assert!(let Ok(()) = d.request_data(8));
         s.process(4);
         s.process(4);
 
@@ -4139,14 +4338,14 @@ mod tests {
 
     /// A loop whose end falls inside the buffer must be advanced in two pieces.
     /// Processing it in one go would overrun its point of interest.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_loop_ending_mid_buffer_is_split_into_sub_blocks() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 8));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -4156,7 +4355,7 @@ mod tests {
         // Length 6, buffer 4: the first cycle ends 2 frames short of the wrap and
         // the second must split 2 + 2.
         s.loop_mut(l).unwrap().set_length(6);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         s.process(4);
         check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![1.0, 2.0, 3.0, 4.0]);
@@ -4173,14 +4372,14 @@ mod tests {
         check!(s.n_stuck_cycles() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_loop_shorter_than_the_buffer_wraps_repeatedly_in_one_cycle() {
         let mut s = Session::default();
         let output = s.add_port(internal("out", 8));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c, output));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c, output));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(l)
             .unwrap()
@@ -4188,7 +4387,7 @@ mod tests {
             .unwrap()
             .load_data(&[1.0, 2.0]);
         s.loop_mut(l).unwrap().set_length(2);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         // Two-frame loop across a six-frame buffer: three passes in one cycle.
         s.process(6);
@@ -4199,18 +4398,18 @@ mod tests {
         check!(s.n_stuck_cycles() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn co_processed_loops_stay_aligned_across_a_wrap() {
         let mut s = Session::default();
         let out_a = s.add_port(internal("outA", 8));
         let out_b = s.add_port(internal("outB", 8));
         let l1 = s.create_loop();
         let l2 = s.create_loop();
-        let_assert!(Ok(c1) = s.add_audio_channel(l1, 64, ChannelMode::Direct));
-        let_assert!(Ok(c2) = s.add_audio_channel(l2, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_output(c1, out_a));
-        let_assert!(Ok(()) = s.connect_channel_output(c2, out_b));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c1) = s.add_audio_channel(l1, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(c2) = s.add_audio_channel(l2, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c1, out_a));
+        assert2::assert!(let Ok(()) = s.connect_channel_output(c2, out_b));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // Different lengths, so their wraps fall at different points and the
         // sub-block split has to accommodate both.
@@ -4226,8 +4425,8 @@ mod tests {
             .unwrap()
             .load_data(&[10.0, 20.0]);
         s.loop_mut(l2).unwrap().set_length(2);
-        let_assert!(Ok(()) = s.set_loop_mode(l1, LoopMode::Playing));
-        let_assert!(Ok(()) = s.set_loop_mode(l2, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l1, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l2, LoopMode::Playing));
 
         s.process(6);
         // Each loop repeats on its own length, sample-aligned throughout.
@@ -4239,29 +4438,29 @@ mod tests {
         check!(s.n_stuck_cycles() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn co_processed_loops_share_a_step() {
         let mut s = Session::default();
         let l1 = s.create_loop();
         let l2 = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(l1, 4, ChannelMode::Direct));
-        let_assert!(Ok(_) = s.add_audio_channel(l2, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(_) = s.add_audio_channel(l1, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(l2, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         let loop_step = s
             .schedule_names()
             .into_iter()
             .find(|step| step.iter().any(|n| n == "loop::process"));
-        let_assert!(Some(step) = loop_step);
+        assert2::assert!(let Some(step) = loop_step);
         check!(step.len() == 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_loop_with_no_sync_source_transitions_immediately() {
         let mut s = Session::default();
         let l = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         s.loop_mut(l).unwrap().set_length(4);
 
         // No sync source: a planned transition takes effect at once.
@@ -4271,15 +4470,15 @@ mod tests {
         check!(s.loop_(l).unwrap().mode() == LoopMode::Recording);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_synced_loop_waits_for_its_sources_trigger() {
         let mut s = Session::default();
         let sync = s.create_loop();
         let follower = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(sync, 64, ChannelMode::Direct));
-        let_assert!(Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(_) = s.add_audio_channel(sync, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         check!(s.sync_source_of(follower) == Some(sync));
 
         // A two-frame sync loop playing, so it triggers every two frames.
@@ -4289,7 +4488,7 @@ mod tests {
             .unwrap()
             .load_data(&[1.0, 1.0]);
         s.loop_mut(sync).unwrap().set_length(2);
-        let_assert!(Ok(()) = s.set_loop_mode(sync, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(sync, LoopMode::Playing));
 
         s.loop_mut(follower).unwrap().set_length(8);
         // Having a sync source, the transition is queued rather than immediate.
@@ -4303,15 +4502,15 @@ mod tests {
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Playing);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_follower_is_not_triggered_without_its_source_wrapping() {
         let mut s = Session::default();
         let sync = s.create_loop();
         let follower = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(sync, 64, ChannelMode::Direct));
-        let_assert!(Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(_) = s.add_audio_channel(sync, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         // The sync loop is stopped, so it never triggers.
         s.loop_mut(sync).unwrap().set_length(100);
@@ -4325,18 +4524,18 @@ mod tests {
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Stopped);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn clearing_a_sync_source_restores_immediate_transitions() {
         let mut s = Session::default();
         let sync = s.create_loop();
         let follower = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(follower, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, Some(sync)));
         check!(s.sync_source_of(follower) == Some(sync));
 
-        let_assert!(Ok(()) = s.set_loop_sync_source(follower, None));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(follower, None));
         check!(s.sync_source_of(follower) == None);
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(follower).unwrap().set_length(4);
         s.loop_mut(follower)
@@ -4345,63 +4544,63 @@ mod tests {
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Recording);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_sync_cycle_does_not_recurse() {
         let mut s = Session::default();
         let a = s.create_loop();
         let b = s.create_loop();
-        let_assert!(Ok(_) = s.add_audio_channel(a, 64, ChannelMode::Direct));
-        let_assert!(Ok(_) = s.add_audio_channel(b, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(a, 64, ChannelMode::Direct));
+        assert2::assert!(let Ok(_) = s.add_audio_channel(b, 64, ChannelMode::Direct));
         // Mutual sync. Snapshots make this survivable; querying the source live,
-        let_assert!(Ok(()) = s.set_loop_sync_source(a, Some(b)));
-        let_assert!(Ok(()) = s.set_loop_sync_source(b, Some(a)));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(a, Some(b)));
+        assert2::assert!(let Ok(()) = s.set_loop_sync_source(b, Some(a)));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         s.loop_mut(a).unwrap().set_length(4);
         s.loop_mut(b).unwrap().set_length(4);
-        let_assert!(Ok(()) = s.set_loop_mode(a, LoopMode::Playing));
-        let_assert!(Ok(()) = s.set_loop_mode(b, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(a, LoopMode::Playing));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(b, LoopMode::Playing));
         s.process(4);
         check!(s.n_stuck_cycles() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn all_loops_are_co_processed() {
         let mut s = Session::default();
         for _ in 0..3 {
             let l = s.create_loop();
-            let_assert!(Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
+            assert2::assert!(let Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
         }
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
         // loop node to every loop's co-process callback.
         let step = s
             .schedule_names()
             .into_iter()
             .find(|st| st.iter().any(|n| n == "loop::process"));
-        let_assert!(Some(step) = step);
+        assert2::assert!(let Some(step) = step);
         check!(step.len() == 3);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_passthrough_cycle_is_reported() {
         let mut s = Session::default();
         let a = s.add_port(internal("a", 4));
         let b = s.add_port(internal("b", 4));
-        let_assert!(Ok(()) = s.connect_ports_internal(a, b));
-        let_assert!(Ok(()) = s.connect_ports_internal(b, a));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(a, b));
+        assert2::assert!(let Ok(()) = s.connect_ports_internal(b, a));
         check!(s.apply_graph_changes() == Err(SessionError::Graph(GraphError::Cycle)));
     }
 
-    #[cfg(feature = "lv2")]
-    #[test]
+    #[cfg(feature = "carla")]
+    #[shoop_wasm_test_support::shoop_test]
     fn inactive_carla_fx_chain_bypasses_processing_and_tails() {
-        let _exclusive = crate::lv2_carla::lock_carla_test();
-        let Ok(host) =
-            crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
-        else {
-            eprintln!(
-                "skipping Carla inactive routing test; Carla Rack is not installed in LV2_PATH"
-            );
+        let _exclusive = crate::carla_native::lock_carla_test();
+        let Ok(host) = crate::carla_native::CarlaNativeHost::instantiate(
+            crate::FXChainType::CarlaRack,
+            48_000,
+            64,
+        ) else {
+            eprintln!("skipping Carla inactive routing test; Carla Native runtime is unavailable");
             return;
         };
         let host: Box<dyn CarlaProcessor> = Box::new(host);
@@ -4409,22 +4608,67 @@ mod tests {
         s.set_sample_rate(48_000);
         s.set_buffer_size(64);
         s.set_carla_fx_host("carla", host);
+        let source = s.add_port(dummy(75, "source", PortDirection::Input));
         let audio_in = s.add_port(internal("carla:audio_in_0", 64));
-        let _fx_out = s.add_port(internal("carla:audio_out_0", 64));
-        let wet_out = s.add_port(internal("carla_audio_wet_out_1", 64));
-        for sample in s.port_mut(audio_in).unwrap().buffer(64).iter_mut() {
-            *sample = 1.0;
-        }
+        let fx_out = s.add_port(internal("carla:audio_out_0", 64));
+        s.connect_ports_internal(source, audio_in).unwrap();
+        s.set_processor_ports("carla", vec![audio_in], vec![fx_out], vec![])
+            .unwrap();
+        s.port_mut(source)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&vec![1.0; 64]);
         s.apply_graph_changes().unwrap();
+        s.process(64);
 
-        s.process_carla_fx_chains(64);
-
-        let wet = s.port_mut(wet_out).unwrap().buffer(64).to_vec();
+        let wet = s.port_mut(fx_out).unwrap().buffer(64).to_vec();
         assert!(wet.iter().all(|s| *s == 0.0));
     }
 
-    #[cfg(feature = "lv2")]
-    #[test]
+    #[cfg(feature = "carla")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_carla_processor_node_records_its_wet_output() {
+        let mut host =
+            crate::carla_processor::FakeCarlaProcessor::new(crate::FXChainType::CarlaRack, 1, 4);
+        host.set_active(true);
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_carla_fx_host("carla", Box::new(host));
+        let source = session.add_port(dummy(77, "source", PortDirection::Input));
+        let input = session.add_port(internal("carla:audio_in_0", 4));
+        let output = session.add_port(internal("carla:audio_out_0", 4));
+        session.connect_ports_internal(source, input).unwrap();
+        session
+            .set_processor_ports("carla", vec![input], vec![output], vec![])
+            .unwrap();
+        let loop_ = session.create_loop();
+        let wet = session
+            .add_audio_channel(loop_, 4, ChannelMode::Wet)
+            .unwrap();
+        session.connect_channel_input(wet, output).unwrap();
+        session
+            .port_mut(source)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&[1.0, 2.0, 3.0, 4.0]);
+        session.set_loop_mode(loop_, LoopMode::Recording).unwrap();
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+        assert_eq!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(0)
+                .unwrap()
+                .data(),
+            vec![1.0, 2.0, 3.0, 4.0]
+        );
+    }
+
+    #[cfg(feature = "carla")]
+    #[shoop_wasm_test_support::shoop_test]
     fn bridged_carla_session_path_has_no_allocation_or_mutex() {
         let fake = crate::carla_processor::FakeCarlaProcessor::new(
             crate::FXChainType::CarlaRack,
@@ -4438,31 +4682,40 @@ mod tests {
         s.set_sample_rate(1_000);
         s.set_buffer_size(100);
         s.set_carla_fx_host("carla", endpoint);
+        let source = s.add_port(dummy(78, "source", PortDirection::Input));
         let audio_in = s.add_port(internal("carla:audio_in_0", 100));
-        let _fx_out = s.add_port(internal("carla:audio_out_0", 100));
-        let _wet_out = s.add_port(internal("carla_audio_wet_out_1", 100));
-        let _midi_in = s.add_port(dummy_midi(79, "carla:midi_in_0", PortDirection::Input));
-        s.port_mut(audio_in).unwrap().buffer(100).fill(0.25);
+        let fx_out = s.add_port(internal("carla:audio_out_0", 100));
+        let midi_in = s.add_port(dummy_midi(79, "carla:midi_in_0", PortDirection::Input));
+        s.connect_ports_internal(source, audio_in).unwrap();
+        s.set_processor_ports("carla", vec![audio_in], vec![fx_out], vec![midi_in])
+            .unwrap();
+        s.port_mut(source)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&vec![0.25; 200]);
         s.apply_graph_changes().unwrap();
-        s.process_carla_fx_chains(100);
+        s.process(100);
 
         crate::realtime_lock_guard::set_enabled(true);
         assert_no_alloc::assert_no_alloc(|| {
             crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
-                s.process_carla_fx_chains(100);
+                s.process(100);
             });
         });
         crate::realtime_lock_guard::set_enabled(false);
     }
 
-    #[cfg(feature = "lv2")]
-    #[test]
+    #[cfg(feature = "carla")]
+    #[shoop_wasm_test_support::shoop_test]
     fn carla_fx_chain_audio_route_runs_from_session_ports_to_wet_output() {
-        let _exclusive = crate::lv2_carla::lock_carla_test();
-        let Ok(mut host) =
-            crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
-        else {
-            eprintln!("skipping Carla routing test; Carla Rack is not installed in LV2_PATH");
+        let _exclusive = crate::carla_native::lock_carla_test();
+        let Ok(mut host) = crate::carla_native::CarlaNativeHost::instantiate(
+            crate::FXChainType::CarlaRack,
+            48_000,
+            64,
+        ) else {
+            eprintln!("skipping Carla routing test; Carla Native runtime is unavailable");
             return;
         };
         host.set_active(true);
@@ -4471,33 +4724,424 @@ mod tests {
         s.set_sample_rate(48_000);
         s.set_buffer_size(64);
         s.set_carla_fx_host("carla", host);
+        let source = s.add_port(dummy(76, "source", PortDirection::Input));
         let audio_in = s.add_port(internal("carla:audio_in_0", 64));
-        let _fx_out = s.add_port(internal("carla:audio_out_0", 64));
-        let wet_out = s.add_port(internal("carla_audio_wet_out_1", 64));
+        let fx_out = s.add_port(internal("carla:audio_out_0", 64));
         let midi_in = s.add_port(dummy_midi(77, "carla:midi_in_0", PortDirection::Input));
-        for (i, sample) in s
-            .port_mut(audio_in)
+        s.connect_ports_internal(source, audio_in).unwrap();
+        s.set_processor_ports("carla", vec![audio_in], vec![fx_out], vec![midi_in])
+            .unwrap();
+        let mut impulse = vec![0.0; 64];
+        impulse[0] = 1.0;
+        s.port_mut(source)
             .unwrap()
-            .buffer(64)
-            .iter_mut()
-            .enumerate()
-        {
-            *sample = if i == 0 { 1.0 } else { 0.0 };
-        }
-        let midi = s.port_mut(midi_in).unwrap().as_dummy_midi_mut().unwrap();
-        assert!(midi.queue_msg(3, &[0x90, 60, 100]));
-        midi.prepare(64);
-        midi.process(64);
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&impulse);
+        assert!(s
+            .port_mut(midi_in)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(3, &[0x90, 60, 100]));
         s.apply_graph_changes().unwrap();
+        s.process(64);
 
-        s.process_carla_fx_chains(64);
-
-        let wet = s.port_mut(wet_out).unwrap().buffer(64).to_vec();
+        let wet = s.port_mut(fx_out).unwrap().buffer(64).to_vec();
         assert_eq!(wet.len(), 64);
         assert!(wet.iter().all(|s| s.is_finite()));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_fx_controls_filter_and_feed_active_processors_without_recording() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_test_fx_active("fx", true);
+        let audio_in = session.add_port(internal("fx:audio_in", 4));
+        let audio_out = session.add_port(internal("fx:audio_out", 4));
+        let midi_in = session.add_port(dummy_midi(80, "fx:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(81, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("fx", vec![audio_in], vec![audio_out], vec![midi_in])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(1, &midi::cc(0, 7, 100));
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(2, &midi::note_on(0, 60, 127));
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+
+        assert_eq!(session.port_mut(audio_out).unwrap().buffer(4), [0.0; 4]);
+        assert_eq!(
+            session.processors[0]
+                .combined_midi
+                .iter()
+                .map(|event| event.data().to_vec())
+                .collect::<Vec<_>>(),
+            vec![midi::cc(0, 7, 100).to_vec()]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_fx_control_drives_tiny_synth_cc_mapping_while_track_lane_stays_additive() {
+        use crate::tiny_synth_fx::{
+            TinySynthFxControlState, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
+        };
+
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_buffer_size(4);
+        let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
+        assert!(control.assign_midi_cc(TinySynthFxMidiCcAssignment {
+            parameter: TinySynthFxParameter::ReverbAmount,
+            channel: 2,
+            controller: 17,
+        }));
+        let processor = control.prepare_processor(48_000.0, 0, 4).unwrap();
+        session.set_tiny_synth_fx_processor("tiny", processor);
+        session.set_tiny_synth_fx_active("tiny", true);
+        let track_midi = session.add_port(dummy_midi(88, "tiny:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(89, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("tiny", vec![], vec![], vec![track_midi])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(track_midi)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(1, &[0xb2, 17, 32]);
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(2, &[0xb2, 17, 127]);
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+
+        assert_eq!(control.editor_state().reverb_amount, 1.0);
+        assert_eq!(
+            session.processors[0]
+                .combined_midi
+                .iter()
+                .map(|event| (event.time, event.data().to_vec()))
+                .collect::<Vec<_>>(),
+            vec![(1, vec![0xb2, 17, 32]), (2, vec![0xb2, 17, 127])]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_fx_fanout_is_additive_and_preserves_lane_order() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        let global = session.add_port(dummy_midi(90, "global:fx", PortDirection::Input));
+        session.set_global_fx_midi_input(global).unwrap();
+        for title in ["a", "b"] {
+            session.set_test_fx_active(title, true);
+            let input = session.add_port(dummy_midi(
+                91 + session.processors.len() as u64,
+                &format!("{title}:midi_in"),
+                PortDirection::Input,
+            ));
+            session
+                .set_processor_ports(title, vec![], vec![], vec![input])
+                .unwrap();
+        }
+        let ordinary = session.processors[0].midi_inputs[0];
+        session
+            .port_mut(ordinary)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(2, &midi::cc(0, 7, 44));
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(3, &midi::cc(0, 7, 44));
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+
+        assert_eq!(
+            session.processors[0]
+                .combined_midi
+                .iter()
+                .map(|event| (event.time, event.data().to_vec()))
+                .collect::<Vec<_>>(),
+            vec![
+                (2, midi::cc(0, 7, 44).to_vec()),
+                (3, midi::cc(0, 7, 44).to_vec())
+            ]
+        );
+        assert_eq!(
+            session.processors[1]
+                .combined_midi
+                .iter()
+                .map(|event| event.data().to_vec())
+                .collect::<Vec<_>>(),
+            vec![midi::cc(0, 7, 44).to_vec()]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn inactive_processor_keeps_latest_global_control_until_real_activation() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_test_fx_active("fx", false);
+        let audio_in = session.add_port(internal("fx:audio_in", 4));
+        let audio_out = session.add_port(internal("fx:audio_out", 4));
+        let midi_in = session.add_port(dummy_midi(82, "fx:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(83, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("fx", vec![audio_in], vec![audio_out], vec![midi_in])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::cc(0, 7, 1));
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(1, &midi::cc(0, 7, 2));
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+        assert_eq!(session.port_mut(audio_out).unwrap().buffer(4), [0.0; 4]);
+        assert!(!session.processors[0].global_pending.is_empty());
+        assert!(session.processors[0].combined_midi.is_empty());
+
+        session.set_test_fx_active("fx", true);
+        session.process(4);
+        assert_eq!(session.port_mut(audio_out).unwrap().buffer(4), [0.0; 4]);
+        assert_eq!(
+            session.processors[0]
+                .combined_midi
+                .iter()
+                .map(|event| event.data().to_vec())
+                .collect::<Vec<_>>(),
+            vec![midi::cc(0, 7, 2).to_vec()]
+        );
+        assert!(session.processors[0].global_pending.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn full_pending_state_drains_over_bounded_active_blocks_after_ordinary_midi() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_test_fx_active("fx", false);
+        let midi_in = session.add_port(dummy_midi(94, "fx:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(95, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("fx", vec![], vec![], vec![midi_in])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        for index in 0..MAX_MIDI_EVENTS_PER_BLOCK {
+            let channel = (index / 120) as u8;
+            let controller = (index % 120) as u8;
+            session
+                .port_mut(global)
+                .unwrap()
+                .as_dummy_midi_mut()
+                .unwrap()
+                .queue_msg(0, &midi::cc(channel, controller, controller));
+        }
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+        assert_eq!(
+            session.processors[0].global_pending.len(),
+            MAX_MIDI_EVENTS_PER_BLOCK
+        );
+
+        session.set_test_fx_active("fx", true);
+        session
+            .port_mut(midi_in)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg_next_cycle(0, &midi::note_on(0, 60, 100));
+        session.process(4);
+        assert_eq!(
+            session.processors[0].combined_midi.len(),
+            MAX_MIDI_EVENTS_PER_BLOCK
+        );
+        assert_eq!(
+            session.processors[0].combined_midi[0].data(),
+            midi::cc(0, 0, 0)
+        );
+        assert_eq!(
+            session.processors[0].combined_midi.last().unwrap().data(),
+            midi::note_on(0, 60, 100)
+        );
+        assert_eq!(session.processors[0].global_pending.len(), 1);
+
+        session.process(4);
+        assert_eq!(session.processors[0].combined_midi.len(), 1);
+        assert_eq!(session.processors[0].combined_midi[0].time, 0);
+        assert!(session.processors[0].global_pending.is_empty());
+        assert!(session.processors[0].global_capacity_deferrals > 0);
+        assert_eq!(
+            session.processors[0].global_pending_drained,
+            MAX_MIDI_EVENTS_PER_BLOCK as u64
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn external_global_control_is_written_before_the_send_port_processes() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_external_processor("external");
+        let send = session.add_port(Port::ExternalMidi(
+            crate::external_midi_port::ExternalMidiPort::new(
+                "external:send",
+                PortDirection::Output,
+            ),
+        ));
+        let global = session.add_port(dummy_midi(96, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("external", vec![], vec![], vec![send])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(2, &midi::pitch_wheel(3, 2_000));
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+
+        let outgoing = session
+            .port_mut(send)
+            .unwrap()
+            .as_external_midi()
+            .unwrap()
+            .outgoing();
+        assert_eq!(outgoing.len(), 1);
+        assert_eq!(outgoing[0].time, 2);
+        assert_eq!(outgoing[0].data(), midi::pitch_wheel(3, 2_000));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn removing_global_input_clears_deferred_state_and_stops_replay() {
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_test_fx_active("fx", false);
+        let midi_in = session.add_port(dummy_midi(97, "fx:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(98, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("fx", vec![], vec![], vec![midi_in])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::channel_pressure(5, 88));
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+        assert!(!session.processors[0].global_pending.is_empty());
+
+        session.remove_port(global).unwrap();
+        assert!(session.processors[0].global_pending.is_empty());
+        session.set_test_fx_active("fx", true);
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+        assert!(session.processors[0].combined_midi.is_empty());
+    }
+
+    #[cfg(feature = "carla")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn unavailable_carla_processor_does_not_retain_global_controls() {
+        #[derive(Debug)]
+        struct UnavailableCarla(crate::carla_processor::FakeCarlaProcessor);
+        impl CarlaProcessor for UnavailableCarla {
+            fn info(&self) -> crate::carla_processor::CarlaProcessorInfo {
+                self.0.info()
+            }
+            fn lifecycle(&self) -> crate::carla_processor::CarlaProcessorLifecycle {
+                crate::carla_processor::CarlaProcessorLifecycle::Crashed
+            }
+            fn set_active(&mut self, active: bool) {
+                self.0.set_active(active);
+            }
+            fn is_active(&self) -> bool {
+                self.0.is_active()
+            }
+            fn set_visible(&mut self, visible: bool) -> anyhow::Result<()> {
+                self.0.set_visible(visible)
+            }
+            fn is_visible(&mut self) -> bool {
+                self.0.is_visible()
+            }
+            fn save_state(&mut self) -> anyhow::Result<String> {
+                self.0.save_state()
+            }
+            fn restore_state(&mut self, state: &str) -> anyhow::Result<()> {
+                self.0.restore_state(state)
+            }
+            fn audio_input_mut(&mut self, index: usize) -> Option<&mut [f32]> {
+                self.0.audio_input_mut(index)
+            }
+            fn audio_output(&self, index: usize) -> Option<&[f32]> {
+                self.0.audio_output(index)
+            }
+            fn set_midi_input_events(
+                &mut self,
+                index: usize,
+                events: &[(u32, &[u8])],
+            ) -> anyhow::Result<()> {
+                self.0.set_midi_input_events(index, events)
+            }
+            fn midi_output_events(&mut self, index: usize) -> anyhow::Result<Vec<(u32, Vec<u8>)>> {
+                self.0.midi_output_events(index)
+            }
+            fn process(&mut self, frames: usize) -> anyhow::Result<()> {
+                self.0.process(frames)
+            }
+        }
+
+        let mut host =
+            crate::carla_processor::FakeCarlaProcessor::new(crate::FXChainType::CarlaRack, 0, 4);
+        host.set_active(true);
+        let mut session = Session::default();
+        session.set_buffer_size(4);
+        session.set_carla_fx_host("carla", Box::new(UnavailableCarla(host)));
+        let midi_in = session.add_port(dummy_midi(99, "carla:midi_in", PortDirection::Input));
+        let global = session.add_port(dummy_midi(100, "global:fx", PortDirection::Input));
+        session
+            .set_processor_ports("carla", vec![], vec![], vec![midi_in])
+            .unwrap();
+        session.set_global_fx_midi_input(global).unwrap();
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::cc(1, 9, 7));
+        session.apply_graph_changes().unwrap();
+        session.process(4);
+        assert!(session.processors[0].combined_midi.is_empty());
+        assert!(session.processors[0].global_pending.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn sample_rate_and_buffer_size_round_trip() {
         let mut s = Session::default();
         s.set_sample_rate(48000);
@@ -4506,19 +5150,19 @@ mod tests {
         check!(s.buffer_size() == 256);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn several_cycles_accumulate_a_recording() {
         let mut s = Session::default();
         let input = s.add_port(dummy(1, "in", PortDirection::Input));
         let l = s.create_loop();
-        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
-        let_assert!(Ok(()) = s.connect_channel_input(c, input));
-        let_assert!(Ok(()) = s.apply_graph_changes());
+        assert2::assert!(let Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        assert2::assert!(let Ok(()) = s.connect_channel_input(c, input));
+        assert2::assert!(let Ok(()) = s.apply_graph_changes());
 
         let d = s.port_mut(input).unwrap().as_dummy_mut().unwrap();
         d.queue_data(&[1.0, 2.0]);
         d.queue_data(&[3.0, 4.0]);
-        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
+        assert2::assert!(let Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
         s.process(2);
         s.process(2);
 

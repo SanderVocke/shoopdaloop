@@ -1,23 +1,18 @@
-# Development mode
+# Run the application
 
-When the app is built with `cargo build`, there is a development mode script in the target folder which can be used to run the built binaries against the in-source resources and QML code:
-
-- linux/macos: `shoopdaloop_dev.sh`
-- windows: `shoopdaloop_dev.bat`
-
-# Pure egui application
-
-The consolidated egui application uses the real application/backend/engine path. Native builds start the persisted JACK, CPAL+midir, or dummy/offline configuration; first run defaults to dummy. Hosted browser builds use Web Audio:
+Native development:
 
 ```sh
-cargo run -p shoopdaloop_egui
+cargo run -p shoopdaloop
 ```
 
-For browser development:
+The first launch uses the dummy/offline driver. Configure JACK or CPAL+midir under **Settings → Audio**.
+
+Browser development:
 
 ```sh
-cd src/rust/shoopdaloop_egui
+cd src/rust/shoopdaloop
 trunk serve --open
 ```
 
-Open the native **Settings → Audio** tab to discover drivers/devices and perform a confirmation-gated runtime switch. The dummy driver advances engine state but provides no physical audio or MIDI I/O.
+Use HTTPS or localhost for portable browser audio/MIDI permission behavior.

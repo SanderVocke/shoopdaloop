@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -441,7 +444,7 @@ pub fn read_frame<T: DeserializeOwned>(reader: &mut impl Read) -> Result<T, Wire
 mod tests {
     use super::*;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn handshake_rejects_wrong_version_nonce_generation_and_capacity() {
         let nonce = [7; 32];
         let generation = ProcessGeneration(4);
@@ -476,7 +479,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn prototype_block_preserves_midi_bytes_and_offsets() {
         let block = PrototypeBlock {
             sequence: BlockSequence(2),
@@ -500,7 +503,7 @@ mod tests {
         assert_eq!(decoded, block);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn prototype_block_rejects_every_capacity_boundary_violation() {
         let base = PrototypeBlock {
             sequence: BlockSequence(1),
@@ -543,7 +546,7 @@ mod tests {
         assert_eq!(invalid.validate(), Err(ValidationError::TooManyMidiBytes));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn control_messages_reject_zero_identity_and_oversized_payloads() {
         let mut request = ControlRequest {
             request_id: RequestId(1),
@@ -560,7 +563,7 @@ mod tests {
         assert_eq!(request.validate(), Err(ValidationError::StateTooLarge));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn framed_wire_round_trip_and_rejects_oversized_or_malformed_input() {
         let request = ControlRequest {
             request_id: RequestId(1),

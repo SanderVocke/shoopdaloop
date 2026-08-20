@@ -215,7 +215,7 @@ fn connect_checked(client: &jack::Client, source: &str, destination: &str) {
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn registered_ports_are_visible_to_jack_with_direction_flags() {
     let suffix = std::process::id();
     let name = format!("shoop-app-flags-{suffix}");
@@ -251,7 +251,7 @@ fn registered_ports_are_visible_to_jack_with_direction_flags() {
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn jack_audio_input_reaches_a_recording_channel() {
     let suffix = std::process::id();
     let Some(producer_client) = peer_client(&format!("shoop-app-producer-{suffix}")) else {
@@ -307,7 +307,7 @@ fn jack_audio_input_reaches_a_recording_channel() {
 }
 
 /// The one that matters: this is the path that was silently producing nothing.
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn session_output_reaches_a_jack_consumer() {
     let suffix = std::process::id();
     let Some(consumer_client) = peer_client(&format!("shoop-app-consumer-{suffix}")) else {
@@ -364,7 +364,7 @@ fn session_output_reaches_a_jack_consumer() {
 /// Before the graph work this was the actual failure: connecting a channel to a port left
 /// the schedule stale, `Session::process` refused every subsequent cycle, and the session
 /// went permanently quiet with nothing logged. Audio must survive a live rewire.
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
     let suffix = std::process::id();
     let Some(consumer_client) = peer_client(&format!("shoop-app-rewire-peer-{suffix}")) else {
@@ -444,7 +444,7 @@ fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
 
 // Purpose: Exercise the complete JACK dry-send to processor to wet-return audio graph.
 // Use case: A user connects an external effects client and hears transformed input at wet out.
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn external_dry_wet_audio_round_trip_reaches_jack_output() {
     let suffix = std::process::id();
     let Some(source_client) = peer_client(&format!("shoop-dry-source-{suffix}")) else {
@@ -603,7 +603,7 @@ fn external_dry_wet_audio_round_trip_reaches_jack_output() {
 
 // Purpose: Verify one JACK MIDI source reaches only the external track with passthrough enabled.
 // Use case: A shared controller feeds several external synth tracks but only the monitored one sounds.
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
     let suffix = std::process::id();
     let Some(source_client) = peer_client(&format!("shoop-midi-source-{suffix}")) else {
@@ -733,3 +733,5 @@ fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
         "passthrough-muted JACK track emitted {muted_count} MIDI events"
     );
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

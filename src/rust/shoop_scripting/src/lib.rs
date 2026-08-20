@@ -1,3 +1,6 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt::Display;
@@ -6,22 +9,30 @@ use std::rc::Rc;
 use anyhow::{anyhow, bail};
 use omnilua::{Function, Lua, Value};
 use shoop_app_api::{
-    ScriptActivityDiagnostics as ApiScriptActivityDiagnostics, ScriptId, ScriptKind,
-    ScriptLifecycle, ScriptLogLevel as ApiScriptLogLevel, ScriptLogState, ScriptMidiDiagnostics,
+    ephemeral_script_display_name, is_ephemeral_script_version,
+    ScriptActivityDiagnostics as ApiScriptActivityDiagnostics, ScriptDialogButtonId,
+    ScriptDialogId, ScriptDialogState, ScriptId, ScriptKind, ScriptLifecycle,
+    ScriptLogLevel as ApiScriptLogLevel, ScriptLogState, ScriptMidiDiagnostics,
     ScriptMidiEndpointDiagnostics, ScriptMidiRuleDiagnostics, ScriptMidiRuleDirection, ScriptState,
 };
 
+mod api_version;
 mod control;
-mod legacy_key_constants;
+mod dialog;
+mod file;
+mod key_constants;
 mod midi;
 
+use api_version::{install_api_version_announcement, ApiVersionState};
 use control::{install_control_api, MidiRuleRuntimeDirection, ScriptCallbacks};
 pub use control::{
     ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack,
     MidiRuntimeDiagnostics, ScriptActivityDiagnostics, ScriptKeyEvent, ScriptLoopEvent,
     SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
-use legacy_key_constants::{LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
+use dialog::{install_dialog_api, DialogIdSource, DialogRegistry};
+use file::{install_file_api, ScriptFileReader};
+use key_constants::{KEY_CONSTANTS, MODIFIER_CONSTANTS};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi::NativeMidiService;
 pub use midi::{
@@ -33,6 +44,7 @@ pub use midi::{
 pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");
 pub const AKAI_APC_MINI_MK1_SCRIPT: &str =
     include_str!("../../../lua/builtins/akai_apc_mini_mk1.lua");
+pub const DIALOG_EXAMPLE_SCRIPT: &str = include_str!("../../../lua/examples/dialogs.lua");
 const SANDBOX_SOURCE: &str = include_str!("../../../lua/system/sandbox.lua");
 const MAX_LOG_ENTRIES: usize = 100;
 
@@ -40,6 +52,14 @@ pub const BUILTIN_LIBRARIES: &[(&str, &str)] = &[
     (
         "shoop_control",
         include_str!("../../../lua/lib/shoop_control.lua"),
+    ),
+    (
+        "shoop_dialog",
+        include_str!("../../../lua/lib/shoop_dialog.lua"),
+    ),
+    (
+        "shoop_file",
+        include_str!("../../../lua/lib/shoop_file.lua"),
     ),
     (
         "shoop_coords",
@@ -97,14 +117,27 @@ pub struct LuaRuntime {
     logs: Rc<RefCell<VecDeque<ScriptLogEntry>>>,
     listening: Rc<Cell<bool>>,
     callbacks: ScriptCallbacks,
+    api_version: Rc<ApiVersionState>,
+    dialogs: Rc<DialogRegistry>,
+    files: Rc<ScriptFileReader>,
 }
 
 impl LuaRuntime {
     pub fn new() -> anyhow::Result<Self> {
-        Self::new_with_control(Rc::new(RefCell::new(ControlBridge::default())))
+        Self::new_with_services(
+            Rc::new(RefCell::new(ControlBridge::default())),
+            Rc::new(DialogIdSource::default()),
+        )
     }
 
     pub fn new_with_control(bridge: SharedControlBridge) -> anyhow::Result<Self> {
+        Self::new_with_services(bridge, Rc::new(DialogIdSource::default()))
+    }
+
+    fn new_with_services(
+        bridge: SharedControlBridge,
+        dialog_ids: Rc<DialogIdSource>,
+    ) -> anyhow::Result<Self> {
         let lua = Lua::new();
         let logs = Rc::new(RefCell::new(VecDeque::with_capacity(MAX_LOG_ENTRIES)));
         let print_logs = Rc::clone(&logs);
@@ -126,23 +159,47 @@ impl LuaRuntime {
             }),
         )?;
         let run_sandboxed = prepare_compatibility_environment(&lua)?;
+        let api_version = Rc::new(ApiVersionState::default());
+        install_api_version_announcement(&lua, &run_sandboxed, Rc::clone(&api_version))?;
         let listening = Rc::new(Cell::new(false));
         let mark_listening_state = Rc::clone(&listening);
         let callbacks = ScriptCallbacks::new();
+        let mark_listening: Rc<dyn Fn()> = Rc::new(move || mark_listening_state.set(true));
         install_control_api(
             &lua,
             &run_sandboxed,
             bridge,
             &callbacks,
-            Rc::new(move || mark_listening_state.set(true)),
+            Rc::clone(&mark_listening),
+            Rc::clone(&api_version),
         )?;
-        install_require(&lua, &run_sandboxed)?;
+        let files = Rc::new(ScriptFileReader::default());
+        install_file_api(
+            &lua,
+            &run_sandboxed,
+            Rc::clone(&api_version),
+            Rc::clone(&files),
+        )?;
+        let dialogs = Rc::new(DialogRegistry::default());
+        install_dialog_api(
+            &lua,
+            &run_sandboxed,
+            Rc::clone(&api_version),
+            dialog_ids,
+            Rc::clone(&dialogs),
+            mark_listening,
+            Rc::clone(&files),
+        )?;
+        install_require(&lua, &run_sandboxed, Rc::clone(&api_version))?;
         Ok(Self {
             lua,
             run_sandboxed,
             logs,
             listening,
             callbacks,
+            api_version,
+            dialogs,
+            files,
         })
     }
 
@@ -151,9 +208,19 @@ impl LuaRuntime {
     }
 
     pub fn execute(&self, name: &str, source: &str) -> anyhow::Result<()> {
+        self.files.set_script_path(name);
         self.run_sandboxed
             .call::<_, ()>(source)
-            .map_err(|error| anyhow!("could not execute Lua source {name}: {error}"))
+            .map_err(|error| anyhow!("could not execute Lua source {name}: {error}"))?;
+        self.api_version
+            .require_announced()
+            .map_err(|error| anyhow!("could not execute Lua source {name}: {error}"))?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn execute_announced(&self, name: &str, source: &str) -> anyhow::Result<()> {
+        self.execute(name, &format!("shoop_announce_api_version(1, 0)\n{source}"))
     }
 
     pub fn evaluate_integer(&self, source: &str) -> anyhow::Result<i64> {
@@ -171,12 +238,16 @@ impl LuaRuntime {
         Ok(())
     }
 
+    fn incompatible_api_version(&self) -> Option<shoop_app_api::LuaApiVersion> {
+        self.api_version.incompatible_version()
+    }
+
     pub fn mark_listening(&self) {
         self.listening.set(true);
     }
 
     pub fn is_listening(&self) -> bool {
-        self.listening.get() || self.callbacks.has_activity()
+        self.listening.get() || self.callbacks.has_activity() || self.dialogs.has_dialogs()
     }
 
     pub fn logs(&self) -> Vec<ScriptLogEntry> {
@@ -225,6 +296,18 @@ impl LuaRuntime {
 
     fn midi_diagnostics(&self) -> MidiRuntimeDiagnostics {
         self.callbacks.midi_diagnostics()
+    }
+
+    fn dialog_states(&self, script_id: ScriptId, script_name: &str) -> Vec<ScriptDialogState> {
+        self.dialogs.states(script_id, script_name)
+    }
+
+    fn invoke_dialog_button(
+        &self,
+        dialog_id: ScriptDialogId,
+        button_id: ScriptDialogButtonId,
+    ) -> anyhow::Result<()> {
+        self.dialogs.invoke(dialog_id, button_id)
     }
 }
 
@@ -281,7 +364,11 @@ fn runtime_error(message: impl Display) -> omnilua::Error {
     omnilua::LuaError::runtime(format_args!("{message}")).into()
 }
 
-fn install_require(lua: &Lua, run_sandboxed: &Function) -> anyhow::Result<()> {
+fn install_require(
+    lua: &Lua,
+    run_sandboxed: &Function,
+    api_version: Rc<ApiVersionState>,
+) -> anyhow::Result<()> {
     let libraries: HashMap<String, String> = BUILTIN_LIBRARIES
         .iter()
         .map(|(name, source)| ((*name).to_owned(), (*source).to_owned()))
@@ -289,6 +376,7 @@ fn install_require(lua: &Lua, run_sandboxed: &Function) -> anyhow::Result<()> {
     let runner = run_sandboxed.clone();
     let require = lua
         .create_function(move |_, name: String| {
+            api_version.require_announced()?;
             let Some(source) = libraries.get(&name) else {
                 return Err(runtime_error(format!(
                     "cannot require unloaded library: {name}"
@@ -305,6 +393,7 @@ struct ScriptRecord {
     id: ScriptId,
     name: String,
     source: String,
+    source_path: Option<String>,
     kind: ScriptKind,
     enabled: bool,
     lifecycle: ScriptLifecycle,
@@ -318,6 +407,7 @@ struct ScriptRecord {
 pub struct ScriptManager {
     next_id: u64,
     scripts: BTreeMap<ScriptId, ScriptRecord>,
+    dialog_ids: Rc<DialogIdSource>,
     control: SharedControlBridge,
     midi: Box<dyn MidiControlService>,
     midi_endpoints: Vec<MidiEndpoint>,
@@ -334,6 +424,7 @@ impl ScriptManager {
         Self {
             next_id: 1,
             scripts: BTreeMap::new(),
+            dialog_ids: Rc::new(DialogIdSource::default()),
             control: Rc::new(RefCell::new(ControlBridge::default())),
             midi,
             midi_endpoints: Vec::new(),
@@ -451,6 +542,17 @@ impl ScriptManager {
         kind: ScriptKind,
         enabled: bool,
     ) -> anyhow::Result<ScriptId> {
+        self.add_with_source_path(name, source, kind, enabled, None)
+    }
+
+    pub fn add_with_source_path(
+        &mut self,
+        name: impl Into<String>,
+        source: impl Into<String>,
+        kind: ScriptKind,
+        enabled: bool,
+        source_path: Option<String>,
+    ) -> anyhow::Result<ScriptId> {
         let name = name.into();
         let source = source.into();
         LuaRuntime::new()?.check_syntax(&name, &source)?;
@@ -463,6 +565,7 @@ impl ScriptManager {
                 documentation: extract_documentation(&source),
                 name,
                 source,
+                source_path,
                 kind,
                 enabled,
                 lifecycle: ScriptLifecycle::Inactive,
@@ -476,6 +579,67 @@ impl ScriptManager {
             let _ = self.start(id);
         }
         Ok(id)
+    }
+
+    pub fn add_ephemeral(
+        &mut self,
+        source_name: impl Into<String>,
+        source: impl Into<String>,
+    ) -> anyhow::Result<ScriptId> {
+        self.add_ephemeral_with_source_path(source_name, source, None)
+    }
+
+    pub fn add_ephemeral_with_source_path(
+        &mut self,
+        source_name: impl Into<String>,
+        source: impl Into<String>,
+        source_path: Option<String>,
+    ) -> anyhow::Result<ScriptId> {
+        let source_name = source_name.into();
+        let source = source.into();
+        LuaRuntime::new()?.check_syntax(&source_name, &source)?;
+        let display_name = ephemeral_script_display_name(
+            &source_name,
+            self.scripts.values().map(|record| record.name.as_str()),
+        );
+        let active_versions = self
+            .scripts
+            .values()
+            .filter(|record| {
+                is_ephemeral_script_version(&record.name, &source_name)
+                    && matches!(
+                        record.lifecycle,
+                        ScriptLifecycle::Running | ScriptLifecycle::Listening
+                    )
+            })
+            .map(|record| record.id)
+            .collect::<Vec<_>>();
+        for id in active_versions {
+            self.stop(id)?;
+        }
+        self.add_with_source_path(
+            display_name,
+            source,
+            ScriptKind::Ephemeral,
+            true,
+            source_path,
+        )
+    }
+
+    #[cfg(test)]
+    fn add_announced(
+        &mut self,
+        name: impl Into<String>,
+        source: impl Into<String>,
+        kind: ScriptKind,
+        enabled: bool,
+    ) -> anyhow::Result<ScriptId> {
+        self.add(
+            name,
+            format!("shoop_announce_api_version(1, 0)\n{}", source.into()),
+            kind,
+            enabled,
+        )
     }
 
     pub fn validate_session_scripts(scripts: &[SessionScriptSource]) -> anyhow::Result<()> {
@@ -540,11 +704,22 @@ impl ScriptManager {
         let record = self.scripts.get_mut(&id).unwrap();
         record.documentation = extract_documentation(&source);
         record.source = source;
+        record.lifecycle = ScriptLifecycle::Inactive;
+        record.latest_error = None;
         if enabled {
             self.start(id)
         } else {
             Ok(())
         }
+    }
+
+    #[cfg(test)]
+    fn replace_user_source_announced(
+        &mut self,
+        id: ScriptId,
+        source: String,
+    ) -> anyhow::Result<()> {
+        self.replace_user_source(id, format!("shoop_announce_api_version(1, 0)\n{source}"))
     }
 
     pub fn set_enabled(&mut self, id: ScriptId, enabled: bool) -> anyhow::Result<()> {
@@ -561,14 +736,25 @@ impl ScriptManager {
 
     pub fn start(&mut self, id: ScriptId) -> anyhow::Result<()> {
         let record = self.scripts.get_mut(&id).ok_or_else(|| stale_script(id))?;
+        if record.lifecycle == ScriptLifecycle::Incompatible {
+            bail!(
+                "{}",
+                record
+                    .latest_error
+                    .as_deref()
+                    .unwrap_or("script uses an incompatible Shoop Lua API")
+            )
+        }
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
         }
         record.lifecycle = ScriptLifecycle::Running;
         record.latest_error = None;
         record.archived_logs.clear();
-        let runtime = LuaRuntime::new_with_control(Rc::clone(&self.control))?;
-        match runtime.execute(&record.name, &record.source) {
+        let runtime =
+            LuaRuntime::new_with_services(Rc::clone(&self.control), Rc::clone(&self.dialog_ids))?;
+        let execution_name = record.source_path.as_deref().unwrap_or(&record.name);
+        match runtime.execute(execution_name, &record.source) {
             Ok(()) => {
                 if runtime.is_listening() {
                     record.lifecycle = ScriptLifecycle::Listening;
@@ -581,7 +767,11 @@ impl ScriptManager {
             }
             Err(error) => {
                 let message = error.to_string();
-                record.lifecycle = ScriptLifecycle::Error;
+                record.lifecycle = if runtime.incompatible_api_version().is_some() {
+                    ScriptLifecycle::Incompatible
+                } else {
+                    ScriptLifecycle::Error
+                };
                 record.latest_error = Some(message.clone());
                 Err(anyhow!(message))
             }
@@ -594,8 +784,10 @@ impl ScriptManager {
             runtime.disconnect_midi(self.midi.as_mut());
             record.archived_logs = runtime.logs();
         }
-        record.lifecycle = ScriptLifecycle::Inactive;
-        record.latest_error = None;
+        if record.lifecycle != ScriptLifecycle::Incompatible {
+            record.lifecycle = ScriptLifecycle::Inactive;
+            record.latest_error = None;
+        }
         Ok(())
     }
 
@@ -607,6 +799,46 @@ impl ScriptManager {
         self.stop(id)?;
         self.scripts.remove(&id);
         Ok(())
+    }
+
+    pub fn convert_kind(&mut self, id: ScriptId, kind: ScriptKind) -> anyhow::Result<()> {
+        let current = self.require(id)?.kind;
+        let allowed = matches!(kind, ScriptKind::Session) && current != ScriptKind::Session
+            || current == ScriptKind::Session && kind == ScriptKind::Ephemeral;
+        if !allowed {
+            bail!("script kind can only be converted into session or from session to run-once")
+        }
+        self.stop(id)?;
+        let session_document_id = if kind == ScriptKind::Session {
+            let next = self
+                .scripts
+                .values()
+                .filter_map(|record| record.session_document_id)
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
+            Some(next)
+        } else {
+            None
+        };
+        let record = self.scripts.get_mut(&id).unwrap();
+        record.kind = kind;
+        record.session_document_id = session_document_id;
+        Ok(())
+    }
+
+    pub fn remove_session_script(&mut self, id: ScriptId) -> anyhow::Result<()> {
+        if self.require(id)?.kind != ScriptKind::Session {
+            bail!("only session scripts can be removed from the session")
+        }
+        self.stop(id)?;
+        self.scripts.remove(&id);
+        Ok(())
+    }
+
+    pub fn source(&self, id: ScriptId) -> anyhow::Result<(&str, &str)> {
+        let record = self.require(id)?;
+        Ok((&record.name, &record.source))
     }
 
     pub fn states(&self) -> Vec<ScriptState> {
@@ -695,6 +927,42 @@ impl ScriptManager {
             .collect()
     }
 
+    pub fn dialogs(&self) -> Vec<ScriptDialogState> {
+        self.scripts
+            .values()
+            .flat_map(|record| {
+                record
+                    .runtime
+                    .as_ref()
+                    .map(|runtime| runtime.dialog_states(record.id, &record.name))
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    pub fn invoke_dialog_button(
+        &mut self,
+        script_id: ScriptId,
+        dialog_id: ScriptDialogId,
+        button_id: ScriptDialogButtonId,
+    ) -> anyhow::Result<()> {
+        let record = self
+            .scripts
+            .get_mut(&script_id)
+            .ok_or_else(|| stale_script(script_id))?;
+        let runtime = record
+            .runtime
+            .as_ref()
+            .ok_or_else(|| anyhow!("script {script_id} is not running"))?;
+        match runtime.invoke_dialog_button(dialog_id, button_id) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                record.latest_error = Some(error.to_string());
+                Err(error)
+            }
+        }
+    }
+
     pub fn logs(&self, id: ScriptId) -> anyhow::Result<Vec<ScriptLogEntry>> {
         let record = self.scripts.get(&id).ok_or_else(|| stale_script(id))?;
         Ok(record
@@ -754,10 +1022,12 @@ pub fn extract_documentation(source: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use shoop_app_api::{LoopId, LoopMode, TrackId};
+    use shoop_app_api::{ScriptDialogElement, ScriptDialogKind};
 
     use super::*;
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn runtime_is_constructed_and_used_on_its_actor_thread() {
         let value = std::thread::spawn(|| {
             let runtime = LuaRuntime::new().unwrap();
@@ -769,7 +1039,55 @@ mod tests {
         assert_eq!(value, 42);
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn file_module_and_markdown_file_load_below_the_script() {
+        let root = std::env::temp_dir().join(format!(
+            "shoop-file-api-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("content")).unwrap();
+        std::fs::write(root.join("content/data.bin"), [0, 255, 42]).unwrap();
+        std::fs::write(root.join("content/help.md"), "# Loaded help").unwrap();
+        let script_path = root.join("controller.lua");
+        std::fs::write(&script_path, "").unwrap();
+        let mut manager = ScriptManager::new();
+        let script_id = manager
+            .add_with_source_path(
+                "controller.lua",
+                r#"
+shoop_announce_api_version(1, 3)
+local file = require('shoop_file')
+local dialog = require('shoop_dialog')
+local bytes = file.load('content/data.bin')
+if #bytes ~= 3 or string.byte(bytes, 2) ~= 255 then error('bad bytes') end
+dialog.simple('Help', {dialog.markdown_file('content/help.md')})
+"#,
+                ScriptKind::User,
+                true,
+                Some(script_path.to_string_lossy().into_owned()),
+            )
+            .unwrap();
+
+        assert_eq!(manager.states()[0].name, "controller.lua");
+        let dialogs = manager.dialogs();
+        assert_eq!(dialogs[0].owner_script_id, script_id);
+        let ScriptDialogKind::Simple(elements) = &dialogs[0].kind else {
+            panic!("expected simple dialog");
+        };
+        let ScriptDialogElement::Markdown { text, .. } = &elements.elements[0] else {
+            panic!("expected markdown");
+        };
+        assert_eq!(text, "# Loaded help");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn production_lua_sources_are_embedded_and_syntactically_valid() {
         let runtime = LuaRuntime::new().unwrap();
         runtime
@@ -778,22 +1096,27 @@ mod tests {
         runtime
             .check_syntax("akai_apc_mini_mk1.lua", AKAI_APC_MINI_MK1_SCRIPT)
             .unwrap();
+        runtime
+            .check_syntax("dialogs.lua", DIALOG_EXAMPLE_SCRIPT)
+            .unwrap();
         for (name, source) in BUILTIN_LIBRARIES {
             runtime.check_syntax(name, source).unwrap();
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn compatibility_require_and_print_are_isolated_per_runtime() {
         let first = LuaRuntime::new().unwrap();
         first
-            .execute(
+            .execute_announced(
                 "first",
                 "local midi = require('shoop_midi'); print_debug('first'); if midi.NoteOn ~= 0x90 then error('bad module') end",
             )
             .unwrap();
         let second = LuaRuntime::new().unwrap();
-        second.execute("second", "print_error('second')").unwrap();
+        second
+            .execute_announced("second", "print_error('second')")
+            .unwrap();
         assert_eq!(
             first.logs(),
             vec![ScriptLogEntry {
@@ -804,9 +1127,257 @@ mod tests {
         assert_eq!(second.logs()[0].message, "second");
     }
 
-    #[test]
-    fn complete_control_surface_is_installed_with_legacy_constants() {
+    #[shoop_wasm_test_support::shoop_test]
+    fn api_version_announcement_is_mandatory_stable_and_side_effect_free() {
+        for (source, expected) in [
+            ("return", "must be the first Shoop API call"),
+            (
+                "shoop_announce_api_version(2, 0)",
+                "script requests 2.0, host supports 1.3",
+            ),
+            (
+                "shoop_announce_api_version(0, 0)",
+                "script requests 0.0, host supports 1.3",
+            ),
+            (
+                "shoop_announce_api_version(1, 4)",
+                "script requests 1.4, host supports 1.3",
+            ),
+            (
+                "shoop_announce_api_version(-1, 0)",
+                "major version must be a non-negative integer",
+            ),
+            (
+                "shoop_announce_api_version(1.0, 0)",
+                "major version must be a non-negative integer",
+            ),
+            (
+                "shoop_announce_api_version(1)",
+                "minor version must be a non-negative integer",
+            ),
+        ] {
+            let runtime = LuaRuntime::new().unwrap();
+            let error = runtime.execute("version", source).unwrap_err().to_string();
+            assert!(error.contains(expected), "{error:?}");
+        }
+
         let runtime = LuaRuntime::new().unwrap();
+        let error = runtime
+            .execute(
+                "repeated",
+                "shoop_announce_api_version(1, 0); shoop_announce_api_version(1, 0)",
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("may only be called once"));
+
+        let runtime = LuaRuntime::new().unwrap();
+        let error = runtime
+            .execute(
+                "caught rejection",
+                "pcall(function() shoop_announce_api_version(2, 0) end); pcall(function() shoop_announce_api_version(1, 0) end)",
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("announcement was rejected"));
+
+        let bridge = Rc::new(RefCell::new(ControlBridge::default()));
+        let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
+        let error = runtime
+            .execute("unannounced", "__shoop_control.set_solo(true)")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("must be the first Shoop API call"));
+        assert!(!bridge.borrow().snapshot.solo);
+        assert!(bridge.borrow().operations.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dialogs_preserve_order_styles_opening_callbacks_and_runtime_ownership() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add_announced(
+                "owner.lua",
+                r#"
+local c = require('shoop_control')
+local d = require('shoop_dialog')
+d.simple('Simple', {
+    d.rich_text('first', {strong=true, italics=true, monospace=true, underline=true, strikethrough=true}),
+    d.button('No action'),
+    d.button('Run', function() c.set_solo(true); d.open('Paged') end),
+    d.markdown('Choose [Clear solo](clear-solo).', {
+        ['clear-solo'] = function() c.set_solo(false) end,
+    }),
+})
+d.paged('Paged', {
+    {d.rich_text('page one')},
+    {d.rich_text('page two'), d.button('Fail', function() error('dialog callback failed') end)},
+})
+d.open('Simple')
+"#,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Listening);
+        let dialogs = manager.dialogs();
+        assert_eq!(
+            dialogs
+                .iter()
+                .map(|dialog| dialog.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Simple", "Paged"]
+        );
+        assert_eq!(dialogs[0].owner_script_id, id);
+        assert_eq!(dialogs[0].owner_script_name, "owner.lua");
+        assert_eq!(dialogs[0].open_request, 1);
+        let ScriptDialogKind::Simple(simple) = &dialogs[0].kind else {
+            panic!("expected simple dialog");
+        };
+        let ScriptDialogElement::RichText { text, style } = &simple.elements[0] else {
+            panic!("expected rich text");
+        };
+        assert_eq!(text, "first");
+        assert!(style.strong && style.italics && style.monospace);
+        assert!(style.underline && style.strikethrough);
+        let ScriptDialogElement::Button { id: None, label } = &simple.elements[1] else {
+            panic!("expected callback-free button");
+        };
+        assert_eq!(label, "No action");
+        let ScriptDialogElement::Button {
+            id: Some(run_button),
+            ..
+        } = &simple.elements[2]
+        else {
+            panic!("expected callback button");
+        };
+        manager
+            .invoke_dialog_button(id, dialogs[0].id, *run_button)
+            .unwrap();
+        assert_eq!(manager.dialogs()[1].open_request, 1);
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSolo(true)]
+        );
+        let ScriptDialogElement::Markdown { text, links } = &simple.elements[3] else {
+            panic!("expected markdown");
+        };
+        assert_eq!(text, "Choose [Clear solo](clear-solo).");
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].destination, "clear-solo");
+        manager
+            .invoke_dialog_button(id, dialogs[0].id, links[0].callback_id)
+            .unwrap();
+        assert_eq!(
+            manager.take_control_operations(),
+            [ControlOperation::SetSolo(false)]
+        );
+
+        let ScriptDialogKind::Paged(pages) = &dialogs[1].kind else {
+            panic!("expected paged dialog");
+        };
+        assert_eq!(pages.len(), 2);
+        let ScriptDialogElement::Button {
+            id: Some(fail_button),
+            ..
+        } = &pages[1].elements[1]
+        else {
+            panic!("expected callback button");
+        };
+        let error = manager
+            .invoke_dialog_button(id, dialogs[1].id, *fail_button)
+            .unwrap_err();
+        assert!(error.to_string().contains("dialog callback failed"));
+        assert!(manager.states()[0]
+            .latest_error
+            .as_deref()
+            .unwrap()
+            .contains("dialog callback failed"));
+
+        let first_generation = dialogs[0].id;
+        manager.start(id).unwrap();
+        let restarted = manager.dialogs();
+        assert_ne!(restarted[0].id, first_generation);
+        assert!(manager
+            .invoke_dialog_button(id, first_generation, *run_button)
+            .is_err());
+        manager.stop(id).unwrap();
+        assert!(manager.dialogs().is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dialog_definition_validation_and_failed_startup_leave_no_runtime_state() {
+        for (body, expected) in [
+            (
+                "local d=require('shoop_dialog'); d.simple('', {d.rich_text('x')})",
+                "dialog name must not be empty",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.simple('x', {})",
+                "at least one element",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.paged('x', {})",
+                "at least one page",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.rich_text('x', {color=true})",
+                "unknown dialog rich-text style",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.button('   ')",
+                "button label must not be empty",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.simple('x', {d.markdown('[x](go)', {[1]=function() end})})",
+                "markdown link destinations must be strings",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.simple('x', {d.markdown('[x](go)', {go=true})})",
+                "markdown link \"go\" callback must be a function",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.simple('x', {d.markdown('x', {['']=function() end})})",
+                "markdown link destination must not be empty",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.open('missing')",
+                "unknown script dialog",
+            ),
+            (
+                "local d=require('shoop_dialog'); d.simple('x',{d.rich_text('a')}); d.simple('x',{d.rich_text('b')})",
+                "already defined",
+            ),
+        ] {
+            let runtime = LuaRuntime::new().unwrap();
+            let error = runtime
+                .execute_announced("invalid dialog", body)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(expected), "{error:?}");
+        }
+
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add_announced(
+                "partial",
+                "local d=require('shoop_dialog'); d.simple('temporary',{d.rich_text('x')}); error('later failure')",
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        assert!(manager.dialogs().is_empty());
+        assert_eq!(manager.states()[0].id, id);
+        assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Error);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn complete_control_surface_is_installed_with_stable_constants() {
+        let runtime = LuaRuntime::new().unwrap();
+        runtime
+            .run_sandboxed
+            .call::<_, ()>("shoop_announce_api_version(1, 0)")
+            .unwrap();
         let module: omnilua::Table = runtime
             .run_sandboxed
             .call("return require('shoop_control')")
@@ -826,10 +1397,7 @@ mod tests {
             67_108_864
         );
         assert_eq!(constants.get::<_, i64>("LoopMode_Playing").unwrap(), 2);
-        for &(name, expected) in LEGACY_KEY_CONSTANTS
-            .iter()
-            .chain(LEGACY_MODIFIER_CONSTANTS.iter())
-        {
+        for &(name, expected) in KEY_CONSTANTS.iter().chain(MODIFIER_CONSTANTS.iter()) {
             assert_eq!(constants.get::<_, i64>(name).unwrap(), expected, "{name}");
         }
         for (name, expected) in [
@@ -855,11 +1423,11 @@ mod tests {
         }
         assert_eq!(
             constants.clone().pairs().unwrap().count(),
-            LEGACY_KEY_CONSTANTS.len() + LEGACY_MODIFIER_CONSTANTS.len() + 17
+            KEY_CONSTANTS.len() + MODIFIER_CONSTANTS.len() + 17
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn every_control_function_is_invoked_with_retained_shapes_and_selectors() {
         let bridge = Rc::new(RefCell::new(ControlBridge {
             snapshot: ControlSnapshot {
@@ -934,13 +1502,14 @@ mod tests {
                 solo: false,
                 sync_active: true,
                 play_after_record: true,
+                auto_mute_other_track_inputs: false,
                 default_recording_action: shoop_app_api::DefaultRecordingAction::Record,
             },
             operations: Vec::new(),
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime
-            .execute(
+            .execute_announced(
                 "complete control table",
                 r#"
 local c = require('shoop_control')
@@ -1017,6 +1586,8 @@ eq(c.get_sync_active(), true, 'sync')
 c.set_sync_active(false)
 eq(c.get_play_after_record(), true, 'play after record')
 c.set_play_after_record(false)
+eq(c.get_auto_mute_other_track_inputs(), false, 'auto mute inputs')
+c.set_auto_mute_other_track_inputs(true)
 eq(c.get_default_recording_action(), 'record', 'record action')
 c.set_default_recording_action('grab')
 
@@ -1040,10 +1611,10 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
             .map(|name| (*name).to_owned())
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(called, expected);
-        assert_eq!(bridge.borrow().operations.len(), 30);
+        assert_eq!(bridge.borrow().operations.len(), 31);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn control_queries_follow_track_and_loop_coordinate_reordering() {
         let bridge = Rc::new(RefCell::new(ControlBridge {
             snapshot: ControlSnapshot {
@@ -1079,7 +1650,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime
-            .execute(
+            .execute_announced(
                 "before reorder",
                 "local c=require('shoop_control'); if c.loop_get_mode({0,0})[1] ~= c.constants.LoopMode_Stopped then error('mode before reorder') end",
             )
@@ -1104,7 +1675,7 @@ if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('t
             .unwrap();
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn control_argument_validation_is_observable_and_non_mutating() {
         let first_loop = LoopId::from_raw(10);
         let bridge = Rc::new(RefCell::new(ControlBridge {
@@ -1136,7 +1707,7 @@ if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('t
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime
-            .execute(
+            .execute_announced(
                 "invalid arguments",
                 r#"
 local c=require('shoop_control')
@@ -1150,6 +1721,10 @@ fails('loop coordinate', function() c.loop_count({{0}}) end)
 fails('invalid loop mode', function() c.loop_trigger({0,0}, 99) end)
 fails('non-negative', function() c.loop_transition({0,0}, c.constants.LoopMode_Playing, -2, -1) end)
 fails('track selector', function() c.track_get_gain('bad') end)
+fails('2 or 3 arguments', function() c.track_set_input_muted(0) end)
+fails('muted must be boolean', function() c.track_set_input_muted(0, 'false') end)
+fails('respect_auto_mute must be boolean', function() c.track_set_input_muted(0, false, 1) end)
+fails('2 or 3 arguments', function() c.track_set_input_muted(0, false, true, false) end)
 fails('timer delay', function() c.register_one_shot_timer_cb(-1, function() end) end)
 fails('rate limit', function() c.auto_open_device_specific_midi_control_output('', function() end, function() end, -1) end)
 fails('invalid MIDI autoconnect regex', function() c.auto_open_device_specific_midi_control_input('[', function() end) end)
@@ -1173,7 +1748,90 @@ c.track_set_muted(99, true)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn input_mute_control_and_helper_preserve_legacy_and_exclusive_semantics() {
+        let sync = TrackId::from_raw(1);
+        let first = TrackId::from_raw(2);
+        let second = TrackId::from_raw(3);
+        let third = TrackId::from_raw(4);
+        let track = |id, index, input_muted| ControlTrack {
+            id,
+            index,
+            output_gain_db: 0.0,
+            output_balance: 0.0,
+            output_muted: false,
+            input_gain_db: 0.0,
+            input_muted,
+        };
+        let bridge = Rc::new(RefCell::new(ControlBridge {
+            snapshot: ControlSnapshot {
+                tracks: vec![
+                    track(sync, -1, false),
+                    track(first, 0, false),
+                    track(second, 1, true),
+                    track(third, 2, false),
+                ],
+                auto_mute_other_track_inputs: true,
+                ..Default::default()
+            },
+            operations: Vec::new(),
+        }));
+        let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
+        runtime
+            .execute_announced(
+                "input mutedness",
+                r#"
+local c = require('shoop_control')
+local h = require('shoop_helpers')
+local function states(expected)
+    local actual = c.track_get_input_muted({-1, 0, 1, 2})
+    for i, value in ipairs(expected) do
+        if actual[i] ~= value then error('state ' .. i) end
+    end
+end
+if not c.get_auto_mute_other_track_inputs() then error('global getter') end
+h.track_toggle_input_muted(0)
+states({false, true, true, false})
+h.track_toggle_input_muted({0, 1}, true)
+states({true, false, false, true})
+h.track_toggle_input_muted({0, 1}, true)
+states({true, true, true, true})
+c.track_set_input_muted(2, false)
+states({true, true, true, false})
+c.set_auto_mute_other_track_inputs(false)
+if c.get_auto_mute_other_track_inputs() then error('global setter') end
+"#,
+            )
+            .unwrap();
+        assert_eq!(
+            bridge.borrow().operations,
+            [
+                ControlOperation::SetTrackInputMuted {
+                    tracks: vec![first],
+                    muted: true,
+                    respect_auto_mute: false,
+                },
+                ControlOperation::SetTrackInputMuted {
+                    tracks: vec![first, second],
+                    muted: false,
+                    respect_auto_mute: true,
+                },
+                ControlOperation::SetTrackInputMuted {
+                    tracks: vec![first, second],
+                    muted: true,
+                    respect_auto_mute: true,
+                },
+                ControlOperation::SetTrackInputMuted {
+                    tracks: vec![third],
+                    muted: false,
+                    respect_auto_mute: false,
+                },
+                ControlOperation::SetAutoMuteOtherTrackInputs(false),
+            ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn control_queries_and_mutations_have_ordered_read_your_writes_behavior() {
         let first_loop = LoopId::from_raw(10);
         let second_loop = LoopId::from_raw(11);
@@ -1220,7 +1878,7 @@ c.track_set_muted(99, true)
         }));
         let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
         runtime
-            .execute(
+            .execute_announced(
                 "control",
                 r#"
 local c = require('shoop_control')
@@ -1267,11 +1925,11 @@ if not c.get_solo() then error('solo') end
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn manager_tracks_lifecycle_errors_restart_and_teardown() {
         let mut manager = ScriptManager::new();
         let finished = manager
-            .add("finished", "print('done')", ScriptKind::User, true)
+            .add_announced("finished", "print('done')", ScriptKind::User, true)
             .unwrap();
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Finished);
         manager.stop(finished).unwrap();
@@ -1280,12 +1938,12 @@ if not c.get_solo() then error('solo') end
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Finished);
 
         let same_name = manager
-            .add("finished", "return", ScriptKind::User, false)
+            .add_announced("finished", "return", ScriptKind::User, false)
             .unwrap();
         assert_ne!(finished, same_name);
 
         let failed = manager
-            .add("failed", "error('broken')", ScriptKind::User, true)
+            .add_announced("failed", "error('broken')", ScriptKind::User, true)
             .unwrap();
         let failed_state = manager
             .states()
@@ -1307,11 +1965,132 @@ if not c.get_solo() then error('solo') end
         assert_eq!(manager.states().len(), 2);
     }
 
-    #[test]
-    fn callbacks_and_monotonic_timers_are_ordered_and_script_owned() {
+    #[shoop_wasm_test_support::shoop_test]
+    fn manager_retains_incompatible_scripts_and_refuses_to_start_them() {
         let mut manager = ScriptManager::new();
         let id = manager
             .add(
+                "future.lua",
+                "shoop_announce_api_version(1, 4)",
+                ScriptKind::Ephemeral,
+                true,
+            )
+            .unwrap();
+
+        let state = &manager.states()[0];
+        assert_eq!(state.id, id);
+        assert_eq!(state.lifecycle, ScriptLifecycle::Incompatible);
+        assert!(state
+            .latest_error
+            .as_deref()
+            .unwrap()
+            .contains("script requests 1.4, host supports 1.3"));
+
+        assert!(manager.start(id).is_err());
+        assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Incompatible);
+
+        let disabled = manager
+            .add(
+                "disabled-future.lua",
+                "shoop_announce_api_version(2, 0)",
+                ScriptKind::Session,
+                false,
+            )
+            .unwrap();
+        let state = manager
+            .states()
+            .into_iter()
+            .find(|state| state.id == disabled)
+            .unwrap();
+        assert_eq!(state.lifecycle, ScriptLifecycle::Inactive);
+        assert!(state.latest_error.is_none());
+        assert!(manager.start(disabled).is_err());
+        let state = manager
+            .states()
+            .into_iter()
+            .find(|state| state.id == disabled)
+            .unwrap();
+        assert_eq!(state.lifecycle, ScriptLifecycle::Incompatible);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn manager_converts_session_ownership_and_preserves_source() {
+        let mut manager = ScriptManager::new();
+        let source = "shoop_announce_api_version(1, 0)\nprint('portable')";
+        let id = manager
+            .add("portable.lua", source, ScriptKind::Bundled, true)
+            .unwrap();
+
+        manager.convert_kind(id, ScriptKind::Session).unwrap();
+        assert_eq!(manager.states()[0].kind, ScriptKind::Session);
+        assert_eq!(manager.source(id).unwrap(), ("portable.lua", source));
+        assert_eq!(manager.session_scripts()[0].source, source);
+
+        manager.convert_kind(id, ScriptKind::Ephemeral).unwrap();
+        assert_eq!(manager.states()[0].kind, ScriptKind::Ephemeral);
+        assert!(manager.session_scripts().is_empty());
+        assert_eq!(manager.source(id).unwrap(), ("portable.lua", source));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn manager_removes_only_session_scripts() {
+        let mut manager = ScriptManager::new();
+        let user = manager
+            .add_announced("user.lua", "return", ScriptKind::User, false)
+            .unwrap();
+        assert!(manager.remove_session_script(user).is_err());
+        manager.convert_kind(user, ScriptKind::Session).unwrap();
+        manager.remove_session_script(user).unwrap();
+        assert!(manager.states().is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn ephemeral_versions_stop_active_names_and_retain_restartable_sources() {
+        let mut manager = ScriptManager::new();
+        let listener =
+            "local c=require('shoop_control'); c.register_global_event_cb(function() end)";
+        let builtin = manager
+            .add_announced("controller.lua", listener, ScriptKind::Bundled, true)
+            .unwrap();
+        let second = manager
+            .add_ephemeral(
+                "controller.lua",
+                format!("shoop_announce_api_version(1, 0)\n{listener}"),
+            )
+            .unwrap();
+        let states = manager.states();
+        assert_eq!(states[0].id, builtin);
+        assert_eq!(states[0].lifecycle, ScriptLifecycle::Inactive);
+        assert_eq!(states[1].id, second);
+        assert_eq!(states[1].name, "controller.lua (run once 2)");
+        assert_eq!(states[1].kind, ScriptKind::Ephemeral);
+        assert_eq!(states[1].lifecycle, ScriptLifecycle::Listening);
+
+        assert!(manager
+            .add_ephemeral("controller.lua", "function(")
+            .is_err());
+        assert_eq!(manager.states()[1].lifecycle, ScriptLifecycle::Listening);
+
+        let third = manager
+            .add_ephemeral(
+                "controller.lua",
+                "shoop_announce_api_version(1, 0); print('new')",
+            )
+            .unwrap();
+        let states = manager.states();
+        assert_eq!(states[1].lifecycle, ScriptLifecycle::Inactive);
+        assert_eq!(states[2].id, third);
+        assert_eq!(states[2].name, "controller.lua (run once 3)");
+        assert_eq!(states[2].lifecycle, ScriptLifecycle::Finished);
+        manager.start(second).unwrap();
+        assert_eq!(manager.states()[1].lifecycle, ScriptLifecycle::Listening);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn callbacks_and_monotonic_timers_are_ordered_and_script_owned() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add_announced(
                 "listener",
                 r#"
 local c = require('shoop_control')
@@ -1358,11 +2137,11 @@ c.register_one_shot_timer_cb(10, function() print_info('timer') end)
         assert_eq!(manager.logs(id).unwrap().len(), 4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn callbacks_expose_complete_payloads_and_are_non_reentrant() {
         let mut manager = ScriptManager::new();
         let id = manager
-            .add(
+            .add_announced(
                 "payloads",
                 r#"
 local c = require('shoop_control')
@@ -1435,11 +2214,11 @@ end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn timers_are_due_ordered_non_reentrant_capped_and_cancelled_on_stop() {
         let mut manager = ScriptManager::new();
         let id = manager
-            .add(
+            .add_announced(
                 "timers",
                 r#"
 local c = require('shoop_control')
@@ -1478,7 +2257,7 @@ c.register_one_shot_timer_cb(5, function() print_info('five-b') end)
             .collect::<Vec<_>>()
             .join("\n");
         let capped = manager
-            .add(
+            .add_announced(
                 "timer cap",
                 format!("local c=require('shoop_control')\n{registrations}"),
                 ScriptKind::User,
@@ -1505,11 +2284,11 @@ c.register_one_shot_timer_cb(5, function() print_info('five-b') end)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn callback_failure_is_observable_without_stopping_other_scripts() {
         let mut manager = ScriptManager::new();
         let failing = manager
-            .add(
+            .add_announced(
                 "failing",
                 "local c=require('shoop_control'); c.register_global_event_cb(function() error('callback failed') end)",
                 ScriptKind::User,
@@ -1517,7 +2296,7 @@ c.register_one_shot_timer_cb(5, function() print_info('five-b') end)
             )
             .unwrap();
         let healthy = manager
-            .add(
+            .add_announced(
                 "healthy",
                 "local c=require('shoop_control'); c.register_global_event_cb(function() print('healthy') end)",
                 ScriptKind::User,
@@ -1534,7 +2313,7 @@ c.register_one_shot_timer_cb(5, function() print_info('five-b') end)
         assert_eq!(manager.logs(healthy).unwrap()[0].message, "healthy");
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_service_autoconnects_hotplugs_delivers_exact_bytes_and_throttles_output() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![
@@ -1561,7 +2340,7 @@ c.register_one_shot_timer_cb(5, function() print_info('five-b') end)
         ]);
         let mut manager = ScriptManager::new_with_midi(Box::new(midi));
         let id = manager
-            .add(
+            .add_announced(
                 "midi",
                 r#"
 local c=require('shoop_control')
@@ -1636,7 +2415,7 @@ end, 100)
         assert_eq!(control.active_connections(), 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn positive_midi_rate_limit_never_catches_up_with_a_same_pump_burst() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![
@@ -1653,7 +2432,7 @@ end, 100)
         ]);
         let mut manager = ScriptManager::new_with_midi(Box::new(midi));
         manager
-            .add(
+            .add_announced(
                 "paced broadcast",
                 r#"
 local c=require('shoop_control')
@@ -1702,7 +2481,7 @@ end, function() end, 10)
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_connection_failures_back_off_and_recover() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![MidiEndpoint {
@@ -1713,7 +2492,7 @@ end, function() end, 10)
         control.set_fail_connections(true);
         let mut manager = ScriptManager::new_with_midi(Box::new(midi));
         manager
-            .add(
+            .add_announced(
                 "retry",
                 "require('shoop_control').auto_open_device_specific_midi_control_input('device', function() end)",
                 ScriptKind::User,
@@ -1736,7 +2515,7 @@ end, function() end, 10)
         assert_eq!(manager.states()[0].midi.connections, 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn invalid_midi_rules_and_messages_are_observable() {
         let (midi, control) = FakeMidiService::new();
         control.set_endpoints(vec![MidiEndpoint {
@@ -1746,7 +2525,7 @@ end, function() end, 10)
         }]);
         let mut manager = ScriptManager::new_with_midi(Box::new(midi));
         assert!(manager
-            .add(
+            .add_announced(
                 "bad regex",
                 "require('shoop_control').auto_open_device_specific_midi_control_input('[', function() end)",
                 ScriptKind::User,
@@ -1755,7 +2534,7 @@ end, function() end, 10)
             .is_ok());
         assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Error);
         let id = manager
-            .add(
+            .add_announced(
                 "bad byte",
                 "local c=require('shoop_control'); c.auto_open_device_specific_midi_control_output('device', function(port) port.send({256}) end, function() end, 0)",
                 ScriptKind::User,
@@ -1772,7 +2551,7 @@ end, function() end, 10)
             ScriptLifecycle::Error
         );
         let overflow = manager
-            .add(
+            .add_announced(
                 "overflow",
                 "local c=require('shoop_control'); c.auto_open_device_specific_midi_control_output('', function(port) for i=1,1025 do port.send({1}) end end, function() end, 0)",
                 ScriptKind::User,
@@ -1793,7 +2572,7 @@ end, function() end, 10)
     }
 
     #[cfg(target_os = "linux")]
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn native_virtual_midi_round_trip_when_host_facilities_are_available() {
         use midir::os::unix::{VirtualInput, VirtualOutput};
 
@@ -1835,7 +2614,7 @@ end, function() end, 10)
         };
         let mut manager = ScriptManager::new_with_midi(Box::new(NativeMidiService::new()));
         let id = manager
-            .add(
+            .add_announced(
                 "native midi",
                 format!(
                     "local c=require('shoop_control'); c.auto_open_device_specific_midi_control_input('.*{token}-source.*', function(message) print_info(message[1]) end); c.auto_open_device_specific_midi_control_output('.*{token}-sink.*', function(port) port.send({{9,8,7}}) end, function() end, 0)"
@@ -1867,11 +2646,11 @@ end, function() end, 10)
         drop(sink);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn user_source_reload_is_syntax_checked_and_preserves_identity() {
         let mut manager = ScriptManager::new();
         let id = manager
-            .add(
+            .add_announced(
                 "user.lua",
                 "local c=require('shoop_control'); c.register_global_event_cb(function() print('old') end)",
                 ScriptKind::User,
@@ -1879,12 +2658,12 @@ end, function() end, 10)
             )
             .unwrap();
         assert!(manager
-            .replace_user_source(id, "function(".to_owned())
+            .replace_user_source_announced(id, "function(".to_owned())
             .is_err());
         manager.dispatch_global_event();
         assert_eq!(manager.logs(id).unwrap()[0].message, "old");
         manager
-            .replace_user_source(
+            .replace_user_source_announced(
                 id,
                 "local c=require('shoop_control'); c.register_global_event_cb(function() print('new') end)"
                     .to_owned(),
@@ -1895,25 +2674,59 @@ end, function() end, 10)
         assert_eq!(manager.states()[0].id, id);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn manager_rejects_bad_source_and_protects_non_user_records() {
         let mut manager = ScriptManager::new();
         assert!(manager
-            .add("bad", "this is not lua", ScriptKind::User, false)
+            .add_announced("bad", "this is not lua", ScriptKind::User, false)
             .is_err());
         assert!(manager.states().is_empty());
         let bundled = manager
-            .add("builtin", "return", ScriptKind::Bundled, false)
+            .add_announced("builtin", "return", ScriptKind::Bundled, false)
             .unwrap();
         assert!(manager.forget(bundled).is_err());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn dialog_example_is_available_and_runs_on_demand() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add(
+                "dialogs.lua",
+                DIALOG_EXAMPLE_SCRIPT,
+                ScriptKind::Example,
+                false,
+            )
+            .unwrap();
+        let initial = manager.states();
+        assert_eq!(initial[0].id, id);
+        assert_eq!(initial[0].kind, ScriptKind::Example);
+        assert_eq!(initial[0].lifecycle, ScriptLifecycle::Inactive);
+        assert!(initial[0].documentation.is_some());
+
+        manager.start(id).unwrap();
+        assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Listening);
+        assert!(manager
+            .dialogs()
+            .iter()
+            .any(|dialog| dialog.name == "Lua dialog example"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn documentation_is_extracted_from_the_leading_comment_block() {
         assert_eq!(
-            extract_documentation("-- First\n-- second\n\nprint('x')\n-- later"),
-            Some("First\nsecond\n".to_owned())
+            extract_documentation("-- # First\n-- | A | B |\n\nprint('x')\n-- later"),
+            Some("# First\n| A | B |\n".to_owned())
         );
         assert_eq!(extract_documentation("print('x')"), None);
+
+        let keyboard = extract_documentation(KEYBOARD_SCRIPT).unwrap();
+        assert!(keyboard.starts_with("# Keyboard controls\n"));
+        assert!(keyboard.contains("| Key | Action |"));
+        let apc = extract_documentation(AKAI_APC_MINI_MK1_SCRIPT).unwrap();
+        assert!(apc.starts_with("# Akai APC Mini MK1 controls\n"));
+        assert!(apc.contains("| Device label | ShoopDaLoop function |"));
+        let example = extract_documentation(DIALOG_EXAMPLE_SCRIPT).unwrap();
+        assert!(example.starts_with("# Script dialog example\n"));
     }
 }

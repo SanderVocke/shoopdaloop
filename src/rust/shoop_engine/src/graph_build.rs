@@ -17,6 +17,9 @@ use crate::graph::{NodeIdx, NodeSpec};
 /// Index into the described ports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PortIdx(pub usize);
+/// Index into the described processors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProcessorIdx(pub usize);
 /// Index into the described loops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LoopIdx(pub usize);
@@ -29,6 +32,13 @@ pub struct PortDesc {
     pub name: String,
     /// Ports this one passes its output through to.
     pub internal_connections: Vec<PortIdx>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessorDesc {
+    pub name: String,
+    pub input_ports: Vec<PortIdx>,
+    pub output_ports: Vec<PortIdx>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -49,6 +59,7 @@ pub struct ChannelDesc {
 pub struct NodeMap {
     pub port_prepare: Vec<NodeIdx>,
     pub port_process: Vec<NodeIdx>,
+    pub processor_process: Vec<NodeIdx>,
     pub loop_process: Vec<NodeIdx>,
     pub channel_prepare: Vec<NodeIdx>,
     pub channel_process: Vec<NodeIdx>,
@@ -57,6 +68,7 @@ pub struct NodeMap {
 #[derive(Debug, Clone, Default)]
 pub struct GraphDesc {
     pub ports: Vec<PortDesc>,
+    pub processors: Vec<ProcessorDesc>,
     pub loops: Vec<LoopDesc>,
     pub channels: Vec<ChannelDesc>,
 }
@@ -79,6 +91,9 @@ impl GraphDesc {
         for _ in &self.ports {
             map.port_prepare.push(alloc());
             map.port_process.push(alloc());
+        }
+        for _ in &self.processors {
+            map.processor_process.push(alloc());
         }
         for _ in &self.loops {
             map.loop_process.push(alloc());
@@ -103,6 +118,18 @@ impl GraphDesc {
                 // into them, and its processing must follow ours.
                 specs[process.0].incoming.push(map.port_prepare[target.0]);
                 specs[process.0].outgoing.push(map.port_process[target.0]);
+            }
+        }
+
+        for (i, processor) in self.processors.iter().enumerate() {
+            let node = map.processor_process[i];
+            specs[node.0].name = format!("processor::{}", processor.name);
+            for input in &processor.input_ports {
+                specs[node.0].incoming.push(map.port_process[input.0]);
+            }
+            for output in &processor.output_ports {
+                specs[node.0].incoming.push(map.port_prepare[output.0]);
+                specs[node.0].outgoing.push(map.port_process[output.0]);
             }
         }
 
@@ -149,12 +176,20 @@ impl GraphDesc {
 mod tests {
     use super::*;
     use crate::graph::processing_order;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn port(name: &str, connections: &[usize]) -> PortDesc {
         PortDesc {
             name: name.to_string(),
             internal_connections: connections.iter().map(|&i| PortIdx(i)).collect(),
+        }
+    }
+
+    fn processor(name: &str, inputs: &[usize], outputs: &[usize]) -> ProcessorDesc {
+        ProcessorDesc {
+            name: name.to_string(),
+            input_ports: inputs.iter().copied().map(PortIdx).collect(),
+            output_ports: outputs.iter().copied().map(PortIdx).collect(),
         }
     }
 
@@ -172,14 +207,14 @@ mod tests {
     // The three cases below are the expected schedules asserted in
     // describing the same topology rather than hand-stating edges.
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn two_ports() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
             ..Default::default()
         };
         let (specs, _) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         check!(
             names(&specs, &schedule)
                 == vec![
@@ -191,10 +226,11 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn direct_loop() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -203,7 +239,7 @@ mod tests {
             }],
         };
         let (specs, _) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         check!(
             names(&specs, &schedule)
                 == vec![
@@ -218,10 +254,11 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn two_direct_loops_co_processed() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
+            processors: vec![],
             loops: vec![
                 LoopDesc {
                     co_process_with: vec![LoopIdx(0), LoopIdx(1)],
@@ -244,7 +281,7 @@ mod tests {
             ],
         };
         let (specs, _) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         check!(
             names(&specs, &schedule)
                 == vec![
@@ -289,7 +326,7 @@ mod tests {
         n
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_port_declares_its_own_prepare_as_a_dependency() {
         let desc = GraphDesc {
             ports: vec![port("solo", &[])],
@@ -299,7 +336,7 @@ mod tests {
         check!(incoming_names(&specs, map.port_process[0]) == vec!["solo::prepare".to_string()]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_passthrough_source_waits_for_its_targets_buffers() {
         let desc = GraphDesc {
             ports: vec![port("p1", &[1]), port("p2", &[])],
@@ -319,10 +356,11 @@ mod tests {
         check!(incoming_names(&specs, map.port_process[1]) == vec!["p2::prepare".to_string()]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_channel_declares_its_full_edge_set() {
         let desc = GraphDesc {
             ports: vec![port("in", &[]), port("out", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -355,10 +393,75 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn a_processor_orders_dry_playback_before_wet_recording() {
+        let desc = GraphDesc {
+            ports: vec![port("dry-send", &[]), port("wet-return", &[])],
+            processors: vec![processor("fx", &[0], &[1])],
+            loops: vec![LoopDesc::default()],
+            channels: vec![
+                ChannelDesc {
+                    loop_idx: LoopIdx(0),
+                    input_port: None,
+                    output_port: Some(PortIdx(0)),
+                },
+                ChannelDesc {
+                    loop_idx: LoopIdx(0),
+                    input_port: Some(PortIdx(1)),
+                    output_port: None,
+                },
+            ],
+        };
+        let (specs, map) = desc.build();
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
+        let pos = |node: NodeIdx| {
+            schedule
+                .iter()
+                .position(|step| step.contains(&node))
+                .unwrap()
+        };
+        check!(pos(map.channel_process[0]) < pos(map.port_process[0]));
+        check!(pos(map.port_process[0]) < pos(map.processor_process[0]));
+        check!(pos(map.processor_process[0]) < pos(map.port_process[1]));
+        check!(pos(map.port_process[1]) < pos(map.channel_process[1]));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn a_processor_waits_for_all_inputs_and_prepares_all_outputs() {
+        let desc = GraphDesc {
+            ports: vec![
+                port("audio-in", &[]),
+                port("midi-in", &[]),
+                port("left-out", &[]),
+                port("right-out", &[]),
+            ],
+            processors: vec![processor("fx", &[0, 1], &[2, 3])],
+            ..Default::default()
+        };
+        let (specs, map) = desc.build();
+        check!(
+            incoming_names(&specs, map.processor_process[0])
+                == vec![
+                    "audio-in::process_and_internal_connections".to_string(),
+                    "left-out::prepare".to_string(),
+                    "midi-in::process_and_internal_connections".to_string(),
+                    "right-out::prepare".to_string(),
+                ]
+        );
+        check!(
+            outgoing_names(&specs, map.processor_process[0])
+                == vec![
+                    "left-out::process_and_internal_connections".to_string(),
+                    "right-out::process_and_internal_connections".to_string(),
+                ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn a_loop_declares_no_edges_of_its_own() {
         let desc = GraphDesc {
             ports: vec![],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![],
         };
@@ -370,17 +473,18 @@ mod tests {
 
     // --- structural properties ---
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn an_empty_description_yields_no_nodes() {
         let (specs, map) = GraphDesc::default().build();
         check!(specs.is_empty());
         check!(map.port_prepare.is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn node_map_covers_every_entity() {
         let desc = GraphDesc {
             ports: vec![port("a", &[]), port("b", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -398,22 +502,23 @@ mod tests {
         check!(specs.len() == 2 * 2 + 1 + 2);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_port_always_prepares_before_it_processes() {
         let desc = GraphDesc {
             ports: vec![port("solo", &[])],
             ..Default::default()
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         check!(pos(map.port_prepare[0]) < pos(map.port_process[0]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_channel_without_ports_still_orders_around_its_loop() {
         let desc = GraphDesc {
             ports: vec![],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -422,13 +527,13 @@ mod tests {
             }],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         check!(pos(map.channel_prepare[0]) < pos(map.loop_process[0]));
         check!(pos(map.loop_process[0]) < pos(map.channel_process[0]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_chain_of_internal_connections_is_ordered() {
         // a -> b -> c passthrough chain.
         let desc = GraphDesc {
@@ -436,13 +541,13 @@ mod tests {
             ..Default::default()
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         check!(pos(map.port_process[0]) < pos(map.port_process[1]));
         check!(pos(map.port_process[1]) < pos(map.port_process[2]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_passthrough_cycle_is_rejected() {
         // a -> b -> a cannot be ordered.
         let desc = GraphDesc {
@@ -453,10 +558,11 @@ mod tests {
         check!(processing_order(&specs).is_err());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_recording_channel_follows_its_input_ports_processing() {
         let desc = GraphDesc {
             ports: vec![port("in", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -465,16 +571,17 @@ mod tests {
             }],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         // The channel can only capture the input once the port has applied gain.
         check!(pos(map.port_process[0]) < pos(map.channel_process[0]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_playing_channel_precedes_its_output_ports_processing() {
         let desc = GraphDesc {
             ports: vec![port("out", &[])],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![ChannelDesc {
                 loop_idx: LoopIdx(0),
@@ -483,15 +590,16 @@ mod tests {
             }],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         check!(pos(map.channel_process[0]) < pos(map.port_process[0]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn co_processed_loops_share_one_step() {
         let desc = GraphDesc {
             ports: vec![],
+            processors: vec![],
             loops: vec![
                 LoopDesc {
                     co_process_with: vec![LoopIdx(1)],
@@ -502,7 +610,7 @@ mod tests {
             channels: vec![],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         // Loops 0 and 1 together, loop 2 alone.
         check!(schedule.len() == 2);
         let step_of = |n: NodeIdx| schedule.iter().find(|s| s.contains(&n)).unwrap();
@@ -510,10 +618,11 @@ mod tests {
         check!(step_of(map.loop_process[2]).len() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn several_channels_on_one_loop_all_gate_it() {
         let desc = GraphDesc {
             ports: vec![],
+            processors: vec![],
             loops: vec![LoopDesc::default()],
             channels: vec![
                 ChannelDesc {
@@ -529,7 +638,7 @@ mod tests {
             ],
         };
         let (specs, map) = desc.build();
-        let_assert!(Ok(schedule) = processing_order(&specs));
+        assert2::assert!(let Ok(schedule) = processing_order(&specs));
         let pos = |n: NodeIdx| schedule.iter().position(|s| s.contains(&n)).unwrap();
         // Both channels prepare before the loop runs, and settle after it.
         for i in 0..2 {

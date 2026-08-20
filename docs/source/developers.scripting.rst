@@ -1,62 +1,106 @@
-Lua Scripting
------------------
+Lua scripting
+-------------
 .. _lua_scripting:
 
-Introduction
-^^^^^^^^^^^^^^^^^^^^^^^^
+Runtime and ownership
+~~~~~~~~~~~~~~~~~~~~~
 
-**ShoopDaLoop** supports embedded **Lua scripts** for querying and controlling the application. For example, these are used to define how **ShoopDaLoop** reacts to control MIDI events.
-Lua scripts can be provided by the user and don't require a re-installation of the software. Native egui builds run the same bundled libraries, ``keyboard.lua``, and APC Mini script as the retained QML frontend. Each script has an isolated Lua state owned by the application actor; stopping or restarting it removes its callbacks, timers, MIDI rules, connections, and queued output.
+ShoopDaLoop embeds pinned omniLua with Lua 5.4 semantics. Native and browser
+builds run the same bundled libraries, ``keyboard.lua``, and APC Mini script.
+Each script has an isolated state owned by the application runtime. Stopping or
+restarting a script removes its callbacks, timers, logical MIDI ports,
+connections, queued output, and script-owned dialogs.
 
-**Lua** inside **ShoopDaLoop** is sandboxed for compatibility and to keep scripts isolated, making a large part of the standard library unavailable. Only a whitelisted list of functions can be used. See **sandbox.lua** for details. Most notably, arbitrary modules cannot be imported through **require**; only **ShoopDaLoop**-provided modules can be used. Scripts should nevertheless be treated as trusted local code rather than as a hardened security boundary.
+Every script must make ``shoop_announce_api_version(major, minor)`` its first
+Shoop API call. The current version is ``1.3``. A script runs only when its major
+equals the host major and its minor is no newer than the host minor. Missing,
+malformed, repeated, or incompatible announcements cancel initial execution
+before versioned side effects. The global two-integer signature is independent
+of modules and reserved to remain stable across future API versions. See
+``docs/lua_dialog_api.md`` for the compatibility and migration contract.
+Lua API compatibility is independent of the ``.shoop`` session format version.
+An incompatible source remains inspectable and exportable, but cannot be
+started.
 
-Native egui script management
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The sandbox exposes selected standard-library functions and ShoopDaLoop modules.
+It prevents ordinary module access and restricts file access to paths below each
+script, but should still be treated as a compatibility boundary for trusted local scripts, not as a hardened security
+boundary.
 
-Open **Settings** and select the **Scripts** tab to inspect lifecycle state, errors, help text, callback/timer activity, logs, and MIDI diagnostics. This is the only script-management surface: it can enable, stop, restart, add, reload, and remove user scripts. Bundled startup toggles and the ordered user path/enabled list are stored in the native ``shoop-egui-settings`` document. Persistent edits apply only after **Save**; **Stop**, **Restart**, and **Reload** affect the runtime without changing the draft. Only ``keyboard.lua`` is enabled on first run. The egui app does not import retained QML ``script_settings.1``. Source-bearing scripts inside a ``.shoop`` session are syntax-checked before session commit and are saved back with that session; machine paths are never embedded implicitly.
+Script management
+~~~~~~~~~~~~~~~~~
 
-Native MIDI autoconnect uses an anchored full-name regular expression. Logical inputs connect to matching external outputs, and logical outputs connect to matching external inputs. Discovery is hotplug-aware, queues are bounded, and positive output-rate limits are enforced per logical output without delayed-pump catch-up bursts. Per-rule patterns, matched and connected endpoint names, and latest failures are published alongside aggregate connection, error, and drop counters. Connection, send, regex, queue-drop, and callback failures remain visible in script status. Stopping a script closes everything it owns.
+Open **Settings → Scripts** to inspect lifecycle, errors, help, activity, logs,
+and MIDI diagnostics. Native builds can add, reload, and remove user script
+files. Browser builds manage bundled scripts and sources embedded in sessions,
+without machine path actions. Both targets can load a UTF-8 ``.lua`` file from
+the run-once picker or by OS drag and drop after confirmation. Run-once sources
+remain restartable in memory, are independent of session replacement and
+serialization, and disappear when the app closes. Loading a same-named version
+stops the active version and retains both entries under unique display names.
+Every listed script can be exported as its exact ``.lua`` source. A built-in,
+example, user, or run-once script can be included in the session; this transfers
+the current source to session ownership. A session script can instead be
+converted to run once or removed from the session.
 
-Browser builds target ``wasm32-unknown-unknown`` and intentionally do not link ``mlua``, native MIDI, or ``shoop_scripting``. Their Settings dialog omits the **Scripts** tab, and script-bearing sessions are capability-rejected rather than partially executed.
+``keyboard.lua`` is enabled on first run. The APC Mini script is available but
+disabled by default. Persistent changes apply after **Save**; runtime Stop,
+Restart, and Reload do not alter the settings draft. Source-bearing scripts in a
+``.shoop`` session are syntax-checked before transactional session commit and
+round-trip without machine paths.
 
-API and Libraries
-^^^^^^^^^^^^^^^^^
+Browser builds target ``wasm32-unknown-unknown`` and run the same pure-Rust
+omniLua scripting manager cooperatively. Version checks, script-owned dialogs,
+keyboard callbacks, session scripts, and permission-gated Web MIDI control use
+the shared cross-target contracts.
 
-The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the `require` function. Check `src/lua/builtins/keyboard.lua` for an example.
+MIDI rules
+~~~~~~~~~~
 
-Globally available APIs
-"""""""""""""""""""""""
+Scripts create logical input/output ports with full-name regular expressions.
+Discovery is hotplug-aware, queues are bounded, and positive output rates are
+paced without catch-up bursts. Native services use JACK or midir. Browser
+services use explicitly enabled Web MIDI. Per-rule endpoint and failure state is
+published to the Scripts tab.
 
-* **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
+Global APIs
+~~~~~~~~~~~
 
-module: shoop_control
-"""""""""""""""""""""
+``shoop_announce_api_version(major, minor)``
+  Mandatory first Shoop API call. Announces the non-negative integer major and
+  minor version for which the script was designed.
 
-Provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
+``print(msg)``, ``print_debug(msg)``, ``print_error(msg)``, ``print_info(msg)``
+  Add a message at the corresponding level to the script log.
 
-.. shoop_function_docstrings::
-   src/rust/frontend/src/cxx_qt_shoop/rust/qobj_session_control_handler.rs
+Built-in modules
+~~~~~~~~~~~~~~~~
 
-module: shoop_coords
-""""""""""""""""""""
+``shoop_dialog``
+  Script-owned simple and paged dialogs. Contents are ordered portable rich text
+  and labeled buttons, and buttons may retain script callbacks. Scripts may
+  request opening at startup or from callbacks; users retain window visibility
+  and current-page control. Dialogs are destroyed with their owning runtime.
+  See ``docs/lua_dialog_api.md`` for constructors, style fields, examples,
+  errors, and lifecycle behavior.
 
-Provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
+``shoop_control``
+  Synchronous queries and typed mutations for loops, tracks, global controls,
+  callbacks, timers, and logical MIDI ports. Stable ``Key_*``,
+  ``KeyModifier_*``, loop-mode, event-type, and sentinel constants are exposed
+  for bundled and user scripts.
+
+``shoop_coords``
 
 .. shoop_function_docstrings::
    src/lua/lib/shoop_coords.lua
 
-module: shoop_helpers
-"""""""""""""""""""""
-
-Provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
+``shoop_helpers``
 
 .. shoop_function_docstrings::
    src/lua/lib/shoop_helpers.lua
 
-module: shoop_format
-""""""""""""""""""""
-
-Provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
+``shoop_format``
 
 .. shoop_function_docstrings::
    src/lua/lib/shoop_format.lua

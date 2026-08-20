@@ -225,11 +225,12 @@ impl Drop for GraphScheduler {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use assert2::check;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::mpsc;
 
     fn counter() -> (Arc<AtomicU32>, Box<dyn Fn() + Send>) {
         let n = Arc::new(AtomicU32::new(0));
@@ -242,7 +243,7 @@ mod tests {
         )
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn nothing_is_applied_until_something_changes() {
         let (n, apply) = counter();
         let s = GraphScheduler::start(Duration::from_millis(5), apply);
@@ -251,17 +252,27 @@ mod tests {
         drop(s);
     }
 
-    #[test]
-    fn one_change_is_applied_within_the_window() {
-        let (n, apply) = counter();
+    #[shoop_wasm_test_support::shoop_test]
+    fn one_change_is_applied_automatically() {
+        let n = Arc::new(AtomicU32::new(0));
+        let n2 = Arc::clone(&n);
+        let (applied_tx, applied_rx) = mpsc::channel();
+        let apply: Box<dyn Fn() + Send> = Box::new(move || {
+            n2.fetch_add(1, Ordering::Relaxed);
+            applied_tx.send(()).unwrap();
+        });
         let s = GraphScheduler::start(Duration::from_millis(5), apply);
+
         s.arm();
-        thread::sleep(Duration::from_millis(60));
+        applied_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("graph change was not applied");
+
         check!(n.load(Ordering::Relaxed) == 1);
         drop(s);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn many_changes_inside_one_window_produce_one_apply() {
         let (n, apply) = counter();
         let window = Duration::from_millis(50);
@@ -278,7 +289,7 @@ mod tests {
 
     /// The property that makes this starvation-free: continued churn must not push the
     /// deadline out. An idle-debounce would replace the first deadline on every arm.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn continuous_churn_does_not_postpone_the_deadline() {
         let (n, apply) = counter();
         let s = GraphScheduler::start(Duration::from_secs(30), apply);
@@ -306,7 +317,7 @@ mod tests {
         drop(s);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn flush_applies_immediately_and_waits_for_it() {
         let (n, apply) = counter();
         // A window long enough that only the flush can explain the apply.
@@ -328,7 +339,7 @@ mod tests {
     /// apply is already running is satisfied by *that* apply -- which started before the
     /// change existed and cannot have seen it. Here the first apply blocks long enough for
     /// a change to be armed behind it.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn flush_waits_for_an_apply_that_saw_the_change() {
         let started = Arc::new(AtomicU32::new(0));
         let finished = Arc::new(AtomicU32::new(0));
@@ -358,7 +369,7 @@ mod tests {
         drop(s);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn flush_with_nothing_pending_is_a_no_op() {
         let (n, apply) = counter();
         let s = GraphScheduler::start(Duration::from_millis(5), apply);
@@ -367,7 +378,7 @@ mod tests {
         drop(s);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_pending_batch_is_not_lost_when_the_scheduler_is_dropped() {
         let (n, apply) = counter();
         let window = Duration::from_millis(5);

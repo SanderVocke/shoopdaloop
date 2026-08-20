@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
+use shoop_engine::carla_native::CarlaNativeHost;
 use shoop_engine::carla_processor::{spawn_processor_bridge, CarlaProcessor, CarlaProcessorInfo};
 use shoop_engine::carla_subprocess::{SubprocessCarlaProcessor, SupervisedCarlaProcessor};
-use shoop_engine::lv2_carla::CarlaLv2Host;
 use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration};
 use std::path::Path;
@@ -10,6 +10,14 @@ use std::time::Instant;
 const SAMPLE_RATE: u32 = 48_000;
 const WARMUP: usize = 100;
 const ITERATIONS: usize = 500;
+
+fn benchmark_iterations(default: usize) -> usize {
+    if std::env::var_os("SHOOP_BENCHMARK_SMOKE").is_some() {
+        default.min(3)
+    } else {
+        default
+    }
+}
 
 fn percentile(sorted: &[f64], percentile: f64) -> f64 {
     let index = ((sorted.len() - 1) as f64 * percentile).round() as usize;
@@ -30,13 +38,14 @@ fn measure(
             .context("missing benchmark audio input")?[..frames]
             .fill(0.125);
     }
-    for _ in 0..WARMUP {
+    for _ in 0..benchmark_iterations(WARMUP) {
         endpoint.process(frames)?;
     }
     let misses_before = control.deadline_misses();
-    let mut elapsed = Vec::with_capacity(ITERATIONS);
+    let iterations = benchmark_iterations(ITERATIONS);
+    let mut elapsed = Vec::with_capacity(iterations);
     let period = std::time::Duration::from_secs_f64(frames as f64 / SAMPLE_RATE as f64);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations {
         let started = Instant::now();
         endpoint.process(frames)?;
         let processing = started.elapsed();
@@ -82,8 +91,9 @@ fn main() -> Result<()> {
     ] {
         for frames in [32, 64, 128, 256, 512, 1024] {
             if matches!(selected_mode.as_str(), "all" | "direct") {
-                let direct = CarlaLv2Host::instantiate(chain_type, SAMPLE_RATE, frames as u32)
-                    .with_context(|| format!("could not instantiate direct {chain_name}"))?;
+                let direct =
+                    CarlaNativeHost::instantiate(chain_type, SAMPLE_RATE, frames as u32)
+                        .with_context(|| format!("could not instantiate direct {chain_name}"))?;
                 let (_, values, misses) = measure("direct", Box::new(direct), frames)?;
                 print_row("direct", chain_name, frames, &values, misses);
             }

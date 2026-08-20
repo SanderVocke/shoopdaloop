@@ -258,7 +258,7 @@ mod tests {
         d
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn is_inactive_until_started() {
         let mut d = DummyDriver::default();
         check!(!d.active());
@@ -271,7 +271,7 @@ mod tests {
         check!(d.buffer_size() == 256);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn automatic_mode_hands_out_full_buffers() {
         let mut d = started();
         check!(d.mode() == DriverMode::Automatic);
@@ -279,14 +279,14 @@ mod tests {
         check!(d.next_chunk() == 4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn controlled_mode_hands_out_nothing_unrequested() {
         let mut d = started();
         d.enter_mode(DriverMode::Controlled);
         check!(d.next_chunk() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_request_is_handed_out_in_buffer_sized_chunks() {
         let mut d = started();
         d.enter_mode(DriverMode::Controlled);
@@ -301,7 +301,7 @@ mod tests {
         check!(d.samples_to_process() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_request_smaller_than_a_buffer_is_handed_out_exactly() {
         let mut d = started();
         d.enter_mode(DriverMode::Controlled);
@@ -310,7 +310,7 @@ mod tests {
         check!(d.next_chunk() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn requests_accumulate() {
         let mut d = started();
         d.enter_mode(DriverMode::Controlled);
@@ -320,7 +320,7 @@ mod tests {
         check!(d.planned_chunks() == vec![4, 1]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn switching_mode_discards_an_outstanding_request() {
         let mut d = started();
         d.enter_mode(DriverMode::Controlled);
@@ -332,7 +332,7 @@ mod tests {
         check!(d.next_chunk() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn re_entering_the_same_mode_keeps_the_request() {
         let mut d = started();
         d.enter_mode(DriverMode::Controlled);
@@ -341,7 +341,7 @@ mod tests {
         check!(d.samples_to_process() == 8);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pausing_stops_handing_out_work() {
         let mut d = started();
         d.enter_mode(DriverMode::Controlled);
@@ -355,7 +355,7 @@ mod tests {
         check!(d.next_chunk() == 4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn closing_deactivates_and_drops_the_request() {
         let mut d = started();
         d.enter_mode(DriverMode::Controlled);
@@ -366,7 +366,7 @@ mod tests {
         check!(d.next_chunk() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn xruns_are_counted_and_resettable() {
         let mut d = started();
         check!(d.xruns() == 0);
@@ -377,7 +377,8 @@ mod tests {
         check!(d.xruns() == 0);
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn mock_external_ports_are_exposed_and_filterable() {
         let mut d = started();
         d.add_external_mock_port("sys:in_1", PortDirection::Input, PortDataType::Audio);
@@ -412,7 +413,8 @@ mod tests {
             .is_empty());
     }
 
-    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
     fn connecting_to_a_missing_external_port_fails() {
         let mut d = started();
         check!(!d.connect_external(PortId(1), "nope"));
@@ -421,7 +423,7 @@ mod tests {
         check!(d.disconnect_external(PortId(1), "sys:in_1"));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn planned_chunks_is_empty_in_automatic_mode() {
         let mut d = started();
         d.request_samples(10);

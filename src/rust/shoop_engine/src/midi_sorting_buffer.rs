@@ -124,7 +124,7 @@ impl MidiSortingBuffer {
 mod tests {
     use super::*;
     use crate::midi;
-    use assert2::{check, let_assert};
+    use assert2::check;
 
     fn buf() -> MidiSortingBuffer {
         MidiSortingBuffer::with_capacity(8)
@@ -134,7 +134,7 @@ mod tests {
         b.events().unwrap().iter().map(|e| e.time).collect()
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn starts_empty_and_sorted() {
         let b = buf();
         check!(b.n_events() == 0);
@@ -142,7 +142,7 @@ mod tests {
         check!(b.events() == Some(&[][..]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn writing_marks_unsorted_until_sorted() {
         let mut b = buf();
         b.write(5, &midi::note_on(0, 60, 1));
@@ -153,11 +153,11 @@ mod tests {
         b.sort();
         check!(b.is_sorted());
         check!(times(&b) == vec![5]);
-        let_assert!(Some(e) = b.event(0));
+        assert2::assert!(let Some(e) = b.event(0));
         check!(e.time == 5);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn sorts_by_time() {
         let mut b = buf();
         for t in [9u32, 2, 7, 0] {
@@ -167,7 +167,7 @@ mod tests {
         check!(times(&b) == vec![0, 2, 7, 9]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     /// A burst well past the standard stable sort's insertion-sort threshold: this
     /// is the size at which `sort_by_key` would have allocated a scratch buffer.
     fn sorting_a_large_burst_stays_ordered_and_stable() {
@@ -188,7 +188,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn sorting_is_stable_for_equal_times() {
         let mut b = buf();
         // Same timestamp: a note-off must stay ahead of the note-on written after
@@ -203,7 +203,7 @@ mod tests {
         check!(midi::is_cc(evs[2].data()));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn sorting_twice_is_a_no_op() {
         let mut b = buf();
         b.write(3, &midi::note_on(0, 60, 1));
@@ -214,7 +214,7 @@ mod tests {
         check!(times(&b) == first);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn oversized_messages_are_refused() {
         let mut b = buf();
         check!(!b.write(0, &[1, 2, 3, 4, 5]));
@@ -226,7 +226,7 @@ mod tests {
         check!(b.n_events() == 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exceeding_the_reservation_is_counted() {
         let mut b = MidiSortingBuffer::with_capacity(2);
         b.write(0, &midi::note_on(0, 60, 1));
@@ -239,7 +239,7 @@ mod tests {
         check!(b.n_events() == 3);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn prepare_clears_for_the_next_cycle() {
         let mut b = buf();
         b.write(1, &midi::note_on(0, 60, 1));
@@ -249,7 +249,7 @@ mod tests {
         check!(b.events() == Some(&[][..]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn process_sorts_at_end_of_cycle() {
         let mut b = buf();
         b.write(8, &midi::note_on(0, 60, 1));
@@ -259,7 +259,7 @@ mod tests {
         check!(times(&b) == vec![2, 8]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_full_cycle_round_trip() {
         let mut b = buf();
         b.prepare();
@@ -272,7 +272,7 @@ mod tests {
         check!(b.n_events() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn write_elem_accepts_a_prebuilt_message() {
         let mut b = buf();
         let e = MidiStorageElem::new(7, &midi::note_on(0, 60, 1)).unwrap();

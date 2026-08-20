@@ -1,11 +1,17 @@
 [package]
 name = "shoop_backend"
+version.workspace = true
 edition = "2021"
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
 
 [features]
 default = []
 native-drivers = ["shoop_engine/native_audio_backend"]
-native-fx = ["native-drivers", "shoop_engine/lv2", "dep:shoop_plugin_protocol"]
+native-fx = ["native-drivers", "shoop_engine/carla", "dep:shoop_plugin_protocol"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -17,6 +23,13 @@ shoop_settings = { path = "../shoop_settings" }
 
 [dev-dependencies]
 assert_no_alloc = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tracy-nextest-capture.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"
 
 [lints]
 workspace = true

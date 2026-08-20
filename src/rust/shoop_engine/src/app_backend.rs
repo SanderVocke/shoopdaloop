@@ -1,11 +1,8 @@
-//! Application-facing backend handles used by the QML/frontend layer.
+//! Application-facing backend handles used by the native application runtime.
 //!
-//! This module is the compatibility boundary between the CXX-Qt frontend objects and
-//! the Rust engine.  It owns driver/session handles, port/channel/loop handles and
-//! the small amount of JACK/CPAL/midir routing glue the GUI expects, while all actual
-//! loop, graph, port, MIDI and FX processing stays in the core engine modules.
-
-#![allow(dead_code)]
+//! This module owns driver/session handles, port/channel/loop handles, and the
+//! JACK/CPAL/midir routing glue used by the application. All loop, graph, port,
+//! MIDI, and FX processing stays in the core engine modules.
 
 use crate as engine;
 use crate::graph_scheduler::{GraphScheduler, DEFAULT_WINDOW};
@@ -40,6 +37,7 @@ pub use engine::{CommandSequence, SendError};
 const COMMAND_QUEUE_CAPACITY: usize = 4096;
 const INVALID_OBJECT_INDEX: usize = usize::MAX;
 static NEXT_BACKEND_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+#[cfg(feature = "carla")]
 static NEXT_CARLA_CHAIN_ID: AtomicU64 = AtomicU64::new(1);
 static CARLA_HOSTING_MODE: AtomicU8 = AtomicU8::new(0);
 
@@ -246,11 +244,6 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
 
     fn acknowledged_data_sequence(&self) -> u64 {
         self.acknowledged_data_sequence.load(Ordering::Relaxed)
-    }
-
-    fn acknowledge_data_sequence(&self, sequence: u64) {
-        self.acknowledged_data_sequence
-            .store(sequence, Ordering::Relaxed);
     }
 
     fn error(&self) -> Option<String> {
@@ -514,14 +507,6 @@ struct CpalBackend {
     _input: Option<cpal::Stream>,
     sample_rate: u32,
     configured_buffer_size: u32,
-    input_ring: Option<Arc<Mutex<VecDeque<f32>>>>,
-    input_channels: usize,
-    output_channels: usize,
-    playback_names: Vec<String>,
-    capture_names: Vec<String>,
-    midi_inputs: Arc<Mutex<Vec<CpalMidiInputEndpoint>>>,
-    midi_outputs: Arc<Mutex<Vec<CpalMidiOutputEndpoint>>>,
-    decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
     last_processed: Arc<AtomicU32>,
     xruns: Arc<AtomicU32>,
 }
@@ -957,8 +942,6 @@ impl CpalBackend {
         let midi_inputs_cb = Arc::new(Mutex::new(midi_inputs));
         let midi_outputs_cb = Arc::new(Mutex::new(midi_outputs));
         let decoupled_cb = decoupled_midi_ports.clone();
-        let midi_inputs_ret = midi_inputs_cb.clone();
-        let midi_outputs_ret = midi_outputs_cb.clone();
         let external_cb = external.clone();
         let capture_underruns_cb = capture_underruns.clone();
         let capture_overruns_cb = capture_overruns.clone();
@@ -1141,14 +1124,6 @@ impl CpalBackend {
             _input: input_stream,
             sample_rate,
             configured_buffer_size: settings.buffer_size,
-            input_ring,
-            input_channels,
-            output_channels,
-            playback_names,
-            capture_names,
-            midi_inputs: midi_inputs_ret,
-            midi_outputs: midi_outputs_ret,
-            decoupled_midi_ports,
             last_processed,
             xruns,
         })
@@ -1160,7 +1135,7 @@ impl CpalBackend {
     fn start_with_mock(
         settings: &CpalMidiAudioDriverSettings,
         external: Arc<Mutex<engine::DummyExternalConnections>>,
-        decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
+        _decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
         _maybe_process_callback: Option<ProcessCallback>,
     ) -> Result<Self> {
         use crate::cpal_mock::MockHost;
@@ -1178,19 +1153,17 @@ impl CpalBackend {
             .map(|c| format!("cpal:{output_device_name}:playback_{}", c + 1))
             .collect();
 
-        let (input_channels, capture_names) = if settings.input_device == "none" {
-            (0, Vec::new())
+        let capture_names = if settings.input_device == "none" {
+            Vec::new()
         } else {
             let input_device = host.default_input_device().expect("mock input device");
-            let input_config = input_device.default_input_config()?;
-            let input_channels = input_config.channels() as usize;
+            let input_channels = input_device.default_input_config()?.channels() as usize;
             let input_device_name = input_device
                 .name()
                 .unwrap_or_else(|_| "mock-input".to_string());
-            let capture_names = (0..input_channels)
+            (0..input_channels)
                 .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
-                .collect();
-            (input_channels, capture_names)
+                .collect()
         };
 
         {
@@ -1218,16 +1191,8 @@ impl CpalBackend {
             stale_graph_cycles: Arc::new(AtomicU32::new(0)),
             _output: None,
             _input: None,
-            input_ring: None,
-            input_channels,
             sample_rate,
             configured_buffer_size: 0,
-            output_channels,
-            playback_names,
-            capture_names,
-            midi_inputs: Arc::new(Mutex::new(vec![])),
-            midi_outputs: Arc::new(Mutex::new(vec![])),
-            decoupled_midi_ports,
             last_processed,
             xruns,
         })
@@ -1631,24 +1596,24 @@ impl SharedSession {
     /// ~90 times a second kept the command queue permanently busy with questions whose answer
     /// was almost always "nothing to do" -- which starved every other control operation.
     ///
-    /// A published `true` is trusted at once. A published `false` is only trusted when the
-    /// queue is empty as well: a mutation that is queued but not yet applied has not dirtied
-    /// the graph *yet*, and taking `false` at face value there would drop the rebuild on the
-    /// floor with nothing left to arm another window. So a non-empty queue re-arms and looks
-    /// again, which is bounded by the queue draining.
+    /// A published `true` is trusted at once. A published `false` is only trusted when no
+    /// command is queued or being applied: a mutation does not publish graph staleness until
+    /// its complete command batch has finished. Pending work re-arms another bounded window.
     fn graph_may_need_rebuild(&self) -> bool {
         let handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
-        if handle.stats().graph_stale.load(Ordering::Relaxed) {
-            return true;
-        }
-        if handle.n_pending() > 0 {
+        let pending = handle.n_pending() > 0;
+        let command_batch_in_flight = handle
+            .stats()
+            .command_batch_in_flight
+            .load(Ordering::Acquire);
+        if pending || command_batch_in_flight {
             drop(handle);
             if let Some(s) = self.scheduler.get() {
                 s.arm();
             }
             return false;
         }
-        false
+        handle.stats().graph_stale.load(Ordering::Relaxed)
     }
 
     /// Hands the engine to a driver that is about to start cycling it.
@@ -1663,7 +1628,7 @@ impl SharedSession {
     /// Two reasons this is not optional. A driver that stops without returning it leaves the
     /// session unreachable, so every control call afterwards waits out its timeout. And the
     /// session would then be *destroyed on the driver's thread* -- which for a session holding
-    /// Carla LV2 hosts means tearing down plugin instances on a thread that did not create
+    /// Carla Native hosts means tearing down plugin instances on a thread that did not create
     /// them, and those do not survive it.
     fn return_engine(&self, engine: engine::Engine) {
         *self.parked.lock().unwrap_or_else(|e| e.into_inner()) = Some(engine);
@@ -1725,10 +1690,6 @@ impl SharedSession {
     fn jack(&self) -> Option<Arc<Mutex<JackBackend>>> {
         self.jack.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
-    fn cpal(&self) -> Option<Arc<Mutex<CpalBackend>>> {
-        self.cpal.lock().unwrap_or_else(|e| e.into_inner()).clone()
-    }
-
     fn connections_state(
         &self,
         name: &str,
@@ -1771,6 +1732,41 @@ impl SharedSession {
                 .expect("spawn engine connection cache worker");
         }
         cached
+    }
+
+    fn connections_state_now(
+        &self,
+        name: &str,
+        direction: PortDirection,
+        data_type: PortDataType,
+        session_index: Option<usize>,
+    ) -> HashMap<String, bool> {
+        let key = (name.to_string(), direction as u32, data_type as u32);
+        let request = ConnectionCacheRequest {
+            name: name.to_string(),
+            direction,
+            data_type,
+            session_index,
+        };
+        let state = if let Some(jack) = self.jack() {
+            let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
+            jack_connections_state_locked(&jack, name, direction, data_type)
+        } else if let Some(external) = self.external() {
+            let external = external.lock().unwrap_or_else(|e| e.into_inner());
+            dummy_connections_state_locked(&external, &request)
+        } else {
+            HashMap::new()
+        };
+        let mut cache = self
+            .connection_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        cache.requests.insert(key.clone(), request);
+        cache.states.insert(key, state.clone());
+        cache.last_refresh = Instant::now();
+        cache.refresh_in_flight = false;
+        cache.generation = cache.generation.wrapping_add(1);
+        state
     }
 
     fn invalidate_connection_cache(&self) {
@@ -1868,6 +1864,30 @@ fn jack_connections_state_locked(
         .collect()
 }
 
+fn dummy_connections_state_locked(
+    external: &engine::DummyExternalConnections,
+    request: &ConnectionCacheRequest,
+) -> HashMap<String, bool> {
+    let connected = request
+        .session_index
+        .map(|idx| external.connection_status_of(compat_port_id(idx)))
+        .unwrap_or_default();
+    let mut state = HashMap::new();
+    if let Ok(ports) = external.find_external_ports(
+        None,
+        opposite_direction(request.direction).into(),
+        request.data_type.into(),
+    ) {
+        for port in ports {
+            state.insert(
+                port.name.clone(),
+                *connected.get(&port.name).unwrap_or(&false),
+            );
+        }
+    }
+    state
+}
+
 fn refresh_connection_cache(
     cache: Arc<Mutex<ConnectionCache>>,
     jack: Option<Arc<Mutex<JackBackend>>>,
@@ -1904,24 +1924,10 @@ fn refresh_connection_cache(
     } else if let Some(external) = external {
         let external = external.lock().unwrap_or_else(|e| e.into_inner());
         for (key, request) in &requests {
-            let connected = request
-                .session_index
-                .map(|idx| external.connection_status_of(compat_port_id(idx)))
-                .unwrap_or_default();
-            let mut state = HashMap::new();
-            if let Ok(ports) = external.find_external_ports(
-                None,
-                opposite_direction(request.direction).into(),
-                request.data_type.into(),
-            ) {
-                for port in ports {
-                    state.insert(
-                        port.name.clone(),
-                        *connected.get(&port.name).unwrap_or(&false),
-                    );
-                }
-            }
-            states.insert(key.clone(), state);
+            states.insert(
+                key.clone(),
+                dummy_connections_state_locked(&external, request),
+            );
         }
     }
     let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
@@ -2226,6 +2232,86 @@ impl BackendSession {
             desired_play_after_record: Arc::new(AtomicBool::new(false)),
         })
     }
+    pub fn remove_loop(&self, loop_: &Loop) -> Result<CommandSequence> {
+        if !Arc::ptr_eq(&self.shared, &loop_.shared) {
+            return Err(anyhow!("loop belongs to another session"));
+        }
+        let control = Arc::clone(&loop_.control);
+        Ok(self.shared.send_topology(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = session.remove_loop(index);
+            }
+            control.mark_closed();
+        })?)
+    }
+
+    pub fn remove_audio_port(&self, port: &AudioPort) -> Result<CommandSequence> {
+        if !Arc::ptr_eq(&self.shared, &port.shared) {
+            return Err(anyhow!("audio port belongs to another session"));
+        }
+        let control = Arc::clone(&port.control);
+        Ok(self.shared.send_topology(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = session.remove_port(index);
+            }
+            control.mark_closed();
+        })?)
+    }
+
+    pub fn remove_midi_port(&self, port: &MidiPort) -> Result<CommandSequence> {
+        if !Arc::ptr_eq(&self.shared, &port.shared) {
+            return Err(anyhow!("MIDI port belongs to another session"));
+        }
+        let control = Arc::clone(&port.control);
+        Ok(self.shared.send_topology(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = session.remove_port(index);
+            }
+            control.mark_closed();
+        })?)
+    }
+
+    pub fn remove_processor(&self, title: &str) -> Result<CommandSequence> {
+        let title = title.to_owned();
+        Ok(self.shared.send_topology(move |session| {
+            session.remove_processor(&title);
+        })?)
+    }
+
+    pub fn remove_fx_chain(&self, chain: &FXChain) -> Result<CommandSequence> {
+        if !Arc::ptr_eq(&self.shared, &chain.shared) {
+            return Err(anyhow!("FX chain belongs to another session"));
+        }
+        let title = chain.title.clone();
+        let audio = chain
+            .audio_inputs
+            .iter()
+            .chain(&chain.audio_outputs)
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let midi = chain
+            .midi_inputs
+            .iter()
+            .chain(&chain.midi_outputs)
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        Ok(self.shared.send_topology(move |session| {
+            session.remove_processor(&title);
+            for control in &audio {
+                if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                    let _ = session.remove_port(index);
+                }
+                control.mark_closed();
+            }
+            for control in &midi {
+                if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                    let _ = session.remove_port(index);
+                }
+                control.mark_closed();
+            }
+        })?)
+    }
+
     pub fn primitive_sync_sources(&self) -> Vec<Option<usize>> {
         self.primitive_sync_sources_if_ready().unwrap_or_else(|| {
             self.shared
@@ -2668,17 +2754,79 @@ impl BackendSession {
         Ok(version)
     }
 
+    pub fn set_global_fx_midi_input(&self, port: &MidiPort) -> Result<CommandSequence> {
+        let control = Arc::clone(&port.control);
+        Ok(self.shared.send_topology(move |session| {
+            if let Some(port) = control.ready_id() {
+                let _ = session.set_global_fx_midi_input(port.index());
+            }
+        })?)
+    }
+
+    pub fn register_external_processor(
+        &self,
+        title: &str,
+        audio_sends: &[AudioPort],
+        audio_returns: &[AudioPort],
+        midi_sends: &[MidiPort],
+    ) -> Result<CommandSequence> {
+        let title = title.to_owned();
+        let audio_sends = audio_sends
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let audio_returns = audio_returns
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let midi_sends = midi_sends
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        Ok(self.shared.send_topology(move |session| {
+            session.set_external_processor(title.clone());
+            let audio_inputs = audio_sends
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let audio_outputs = audio_returns
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let midi_inputs = midi_sends
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let _ = session.set_processor_ports(&title, audio_inputs, audio_outputs, midi_inputs);
+        })?)
+    }
+
     #[tracing::instrument(
         name = "engine.control.create_fx",
         skip_all,
         fields(session_id = self.session_id(), chain_type = chain_type as u32)
     )]
-    pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
-        self.create_fx_chain_with_channels(chain_type, title, None)
+    pub fn create_fx_chain(
+        &self,
+        chain_type: FXChainType,
+        title: &str,
+        output_ringbuffer_n_samples: u32,
+    ) -> Result<FXChain> {
+        self.create_fx_chain_with_channels(chain_type, title, None, output_ringbuffer_n_samples)
     }
 
-    pub fn create_tiny_synth_fx_chain(&self, title: &str, channel_count: usize) -> Result<FXChain> {
-        self.create_fx_chain_with_channels(FXChainType::TinySynthFx, title, Some(channel_count))
+    pub fn create_tiny_synth_fx_chain(
+        &self,
+        title: &str,
+        channel_count: usize,
+        output_ringbuffer_n_samples: u32,
+    ) -> Result<FXChain> {
+        self.create_fx_chain_with_channels(
+            FXChainType::TinySynthFx,
+            title,
+            Some(channel_count),
+            output_ringbuffer_n_samples,
+        )
     }
 
     fn create_fx_chain_with_channels(
@@ -2686,6 +2834,7 @@ impl BackendSession {
         chain_type: FXChainType,
         title: &str,
         tiny_channels: Option<usize>,
+        output_ringbuffer_n_samples: u32,
     ) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
@@ -2711,14 +2860,14 @@ impl BackendSession {
                 FXChainBackendKind::Tiny(Mutex::new(control))
             }
             FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
-                #[cfg(feature = "lv2")]
+                #[cfg(feature = "carla")]
                 {
                     let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
                     let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
                     let host: Result<Box<dyn engine::carla_processor::CarlaProcessor>> =
                         match carla_hosting_mode() {
                             CarlaHostingMode::InProcess => {
-                                engine::lv2_carla::CarlaLv2Host::instantiate(
+                                engine::carla_native::CarlaNativeHost::instantiate(
                                     chain_type,
                                     sample_rate,
                                     buffer_size,
@@ -2781,27 +2930,34 @@ impl BackendSession {
                         }
                     }
                 }
-                #[cfg(not(feature = "lv2"))]
+                #[cfg(not(feature = "carla"))]
                 {
                     FXChainBackendKind::Unavailable {
-                        reason: "shoop_engine was built without LV2 support".to_string(),
+                        reason: "shoop_engine was built without Carla Native support".to_string(),
                     }
                 }
             }
         };
+        if matches!(backend, FXChainBackendKind::Test2x2x1) {
+            let title = title.to_owned();
+            self.shared.send_topology(move |session| {
+                session.set_test_fx_active(title.clone(), false);
+            })?;
+        }
         let mut chain = FXChain {
             shared: self.shared.clone(),
             title: title.to_string(),
-            chain_type,
             backend,
             state: Arc::new(Mutex::new(FXChainState::default())),
             tiny_channels: tiny_channels.unwrap_or(0),
+            output_ringbuffer_n_samples: output_ringbuffer_n_samples as usize,
             audio_inputs: Vec::new(),
             audio_outputs: Vec::new(),
             midi_inputs: Vec::new(),
             midi_outputs: Vec::new(),
         };
         chain.create_ports_once();
+        chain.bind_processor_ports()?;
         Ok(chain)
     }
     pub fn get_profiling_report(&self) -> ProfilingReport {
@@ -3236,10 +3392,8 @@ impl AudioDriver {
                             let interval = Duration::from_micros(micros);
 
                             // Sleep in slices, draining control work between cycles rather than
-                            // through them. A blocking read from the GUI thread would otherwise wait
-                            // out the whole cycle interval, and the QML suite makes thousands of them:
-                            // sleeping the interval in one go made the suite several times slower for
-                            // no reason other than latency. Only pumps when something is actually
+                            // through them. A blocking read from the application thread would otherwise
+                            // wait out the whole cycle interval. Only pump when something is actually
                             // queued, so an idle driver still sleeps.
                             const SLICE: Duration = Duration::from_micros(100);
                             while started.elapsed() < interval {
@@ -3257,7 +3411,7 @@ impl AudioDriver {
                         }
 
                         // Hand the engine back before this thread ends. Dropping it here would destroy
-                        // the session on this thread, and a session holding Carla LV2 hosts does not
+                        // the session on this thread, and a session holding Carla Native hosts does not
                         // survive being torn down off the thread that created its plugins. It would
                         // also leave the session unreachable for whatever outlives this driver.
                         if let Some(e) = engine.take() {
@@ -3314,6 +3468,66 @@ impl AudioDriver {
         }
         Ok(())
     }
+    pub fn unregister_audio_port(&self, port: &AudioPort) -> Result<()> {
+        let Some(jack) = self.jack() else {
+            return Ok(());
+        };
+        let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
+        let registered = {
+            let mut ports = jack.ports.lock().unwrap_or_else(|error| error.into_inner());
+            ports
+                .iter()
+                .position(|registered| match registered {
+                    JackRegisteredPort::AudioIn { control, .. }
+                    | JackRegisteredPort::AudioOut { control, .. } => {
+                        Arc::ptr_eq(control, &port.control)
+                    }
+                    _ => false,
+                })
+                .map(|index| ports.remove(index))
+        };
+        match registered {
+            Some(JackRegisteredPort::AudioIn { jack: port, .. }) => {
+                jack.client().unregister_port(port)?;
+            }
+            Some(JackRegisteredPort::AudioOut { jack: port, .. }) => {
+                jack.client().unregister_port(port)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn unregister_midi_port(&self, port: &MidiPort) -> Result<()> {
+        let Some(jack) = self.jack() else {
+            return Ok(());
+        };
+        let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
+        let registered = {
+            let mut ports = jack.ports.lock().unwrap_or_else(|error| error.into_inner());
+            ports
+                .iter()
+                .position(|registered| match registered {
+                    JackRegisteredPort::MidiIn { control, .. }
+                    | JackRegisteredPort::MidiOut { control, .. } => {
+                        Arc::ptr_eq(control, &port.control)
+                    }
+                    _ => false,
+                })
+                .map(|index| ports.remove(index))
+        };
+        match registered {
+            Some(JackRegisteredPort::MidiIn { jack: port, .. }) => {
+                jack.client().unregister_port(port)?;
+            }
+            Some(JackRegisteredPort::MidiOut { jack: port, .. }) => {
+                jack.client().unregister_port(port)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn register_midi_port(
         &self,
         name: &str,
@@ -3485,10 +3699,8 @@ impl AudioDriver {
         self.inner.lock().unwrap().dummy.mode() == engine::DriverMode::Controlled
     }
     pub fn dummy_wait_controlled_mode(&self) {
-        // Synchronously drain all pending controlled frames.
-        // Unlike the QML wait_controlled_mode which relies on the async
-        // update pipeline (UpdatedOnGuiThread signal), this directly polls
-        // the driver state, which is reliable across test-file reloads.
+        // Synchronously drain all pending controlled frames by polling the
+        // driver state directly.
         self.wait_process();
         while {
             let i = self.inner.lock().unwrap();
@@ -5266,6 +5478,14 @@ impl AudioPort {
             self.control.ready_id().map(ObjectIdentity::index),
         )
     }
+    pub fn get_connections_state_now(&self) -> HashMap<String, bool> {
+        self.shared.connections_state_now(
+            &self.name,
+            self.direction,
+            PortDataType::Audio,
+            self.control.ready_id().map(ObjectIdentity::index),
+        )
+    }
     pub fn connect_external_port(&self, name: &str) {
         self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
@@ -5595,6 +5815,14 @@ impl MidiPort {
             self.control.ready_id().map(ObjectIdentity::index),
         )
     }
+    pub fn get_connections_state_now(&self) -> HashMap<String, bool> {
+        self.shared.connections_state_now(
+            &self.name,
+            self.direction,
+            PortDataType::Midi,
+            self.control.ready_id().map(ObjectIdentity::index),
+        )
+    }
     pub fn connect_external_port(&self, name: &str) {
         self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
@@ -5836,7 +6064,7 @@ pub type FXChainState = engine::FXChainState;
 enum FXChainBackendKind {
     Test2x2x1,
     Tiny(Mutex<engine::tiny_synth_fx::TinySynthFxControlState>),
-    #[cfg(feature = "lv2")]
+    #[cfg(feature = "carla")]
     Carla(engine::carla_processor::CarlaControlHandle),
     Unavailable {
         reason: String,
@@ -5846,10 +6074,10 @@ enum FXChainBackendKind {
 pub struct FXChain {
     shared: Arc<SharedSession>,
     title: String,
-    chain_type: FXChainType,
     backend: FXChainBackendKind,
     state: Arc<Mutex<FXChainState>>,
     tiny_channels: usize,
+    output_ringbuffer_n_samples: usize,
     audio_inputs: Vec<AudioPort>,
     audio_outputs: Vec<AudioPort>,
     midi_inputs: Vec<MidiPort>,
@@ -5861,7 +6089,7 @@ impl FXChain {
     }
     pub fn set_visible(&self, visible: bool) {
         self.state.lock().unwrap().visible = visible as u32;
-        #[cfg(feature = "lv2")]
+        #[cfg(feature = "carla")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
             let ok = host.set_visible(visible).is_ok();
             self.state.lock().unwrap().visible = (visible && ok) as u32;
@@ -5888,7 +6116,7 @@ impl FXChain {
                     log::error!("could not queue Tiny Synth/FX active state: {error}");
                 }
             }
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.set_active(active),
             FXChainBackendKind::Unavailable { .. } => {}
         }
@@ -5896,7 +6124,7 @@ impl FXChain {
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();
         s.ready = self.available() as u32;
-        #[cfg(feature = "lv2")]
+        #[cfg(feature = "carla")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
             s.ready = host.is_ready() as u32;
             s.active = host.is_active() as u32;
@@ -5907,7 +6135,7 @@ impl FXChain {
     }
     pub fn toggle_or_recover(&self) -> Result<()> {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.toggle_or_recover(),
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => {
                 self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
@@ -5919,7 +6147,7 @@ impl FXChain {
 
     pub fn lifecycle(&self) -> engine::carla_processor::CarlaProcessorLifecycle {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.lifecycle(),
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => {
                 engine::carla_processor::CarlaProcessorLifecycle::Running
@@ -5932,7 +6160,7 @@ impl FXChain {
 
     pub fn generation(&self) -> u64 {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.generation(),
             _ => 0,
         }
@@ -5940,7 +6168,7 @@ impl FXChain {
 
     pub fn crash_summary(&self) -> Option<String> {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.crash_summary(),
             FXChainBackendKind::Unavailable { reason } => Some(reason.clone()),
             _ => None,
@@ -5949,14 +6177,14 @@ impl FXChain {
 
     pub fn generation_logs(&self) -> Vec<engine::carla_processor::CarlaGenerationLog> {
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.generation_logs(),
             _ => Vec::new(),
         }
     }
 
     pub fn clear_logs(&self) {
-        #[cfg(feature = "lv2")]
+        #[cfg(feature = "carla")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
             host.clear_logs();
         }
@@ -5966,7 +6194,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
             FXChainBackendKind::Tiny(control) => Ok(control.lock().unwrap().encode()),
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.save_state(),
             _ => Ok(String::new()),
         }
@@ -5977,17 +6205,19 @@ impl FXChain {
     }
 
     pub fn try_restore_state(&self, state: &str) -> Result<()> {
-        #[cfg(not(feature = "lv2"))]
+        #[cfg(not(feature = "carla"))]
         let _ = state;
         match &self.backend {
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.restore_state(state),
             FXChainBackendKind::Tiny(control) => {
                 let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
-                let replacement = engine::tiny_synth_fx::TinySynthFxControlState::from_encoded(
+                let assignments = control.lock().unwrap().midi_cc_assignments();
+                let mut replacement = engine::tiny_synth_fx::TinySynthFxControlState::from_encoded(
                     sample_rate as f32,
                     state,
                 )?;
+                replacement.set_midi_cc_assignments(assignments);
                 let processor = replacement.prepare_processor(
                     sample_rate as f32,
                     self.tiny_channels,
@@ -6218,6 +6448,57 @@ impl FXChain {
         Ok(())
     }
 
+    pub fn tiny_assign_midi_cc(
+        &self,
+        assignment: engine::tiny_synth_fx::TinySynthFxMidiCcAssignment,
+    ) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        if assignment.channel > 15 || assignment.controller > 127 {
+            return Err(anyhow!("invalid Tiny Synth/FX MIDI CC assignment"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.assign_midi_cc(assignment);
+            }
+        })?;
+        control.lock().unwrap().assign_midi_cc(assignment);
+        Ok(())
+    }
+
+    pub fn tiny_remove_midi_cc(
+        &self,
+        parameter: engine::tiny_synth_fx::TinySynthFxParameter,
+    ) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.remove_midi_cc(parameter);
+            }
+        })?;
+        control.lock().unwrap().remove_midi_cc(parameter);
+        Ok(())
+    }
+
+    pub fn tiny_clear_midi_cc_assignments(&self) -> Result<()> {
+        let FXChainBackendKind::Tiny(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+                processor.clear_midi_cc_assignments();
+            }
+        })?;
+        control.lock().unwrap().clear_midi_cc_assignments();
+        Ok(())
+    }
+
     pub fn tiny_panic(&self) -> Result<()> {
         if !matches!(&self.backend, FXChainBackendKind::Tiny(_)) {
             return Err(anyhow!("FX chain is not Tiny Synth/FX"));
@@ -6235,7 +6516,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -6245,7 +6526,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -6253,7 +6534,7 @@ impl FXChain {
     fn n_midi_input_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => 1,
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -6262,13 +6543,18 @@ impl FXChain {
     fn n_midi_output_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 | FXChainBackendKind::Tiny(_) => 0,
-            #[cfg(feature = "lv2")]
+            #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
     /// Queues an internal chain port and immediately returns its pending handle.
-    fn make_audio_port(&self, name: String, direction: PortDirection) -> Option<AudioPort> {
+    fn make_audio_port(
+        &self,
+        name: String,
+        direction: PortDirection,
+        ringbuffer_n_samples: usize,
+    ) -> Option<AudioPort> {
         let control = Arc::new(
             ObjectControl::<AudioPortId, engine::AudioPortStateMirror>::pending(
                 self.shared.session_id,
@@ -6284,13 +6570,21 @@ impl FXChain {
                 };
                 let Some(owned) = owned.take() else { return };
                 let n_frames = s.buffer_size().max(1) as usize;
-                let port = engine::session::Port::Internal(engine::InternalAudioPort::new(
+                let ringbuffer_buffer_size = if ringbuffer_n_samples == 0 {
+                    0
+                } else {
+                    ringbuffer_n_samples.div_ceil(32).max(n_frames)
+                };
+                let mut port = engine::InternalAudioPort::new(
                     owned,
                     n_frames,
                     engine::PortConnectability::INTERNAL,
                     engine::PortConnectability::INTERNAL,
-                    0,
-                ));
+                    ringbuffer_buffer_size,
+                );
+                port.audio_mut()
+                    .set_ringbuffer_n_samples(ringbuffer_n_samples);
+                let port = engine::session::Port::Internal(port);
                 match s.add_audio_port_with_state(port, Arc::clone(&control.mirror)) {
                     Ok(idx) => control.mark_ready(AudioPortId(idx)),
                     Err(error) => control.mark_failed(error.to_string()),
@@ -6343,11 +6637,50 @@ impl FXChain {
             name,
         })
     }
+    fn bind_processor_ports(&self) -> Result<()> {
+        if matches!(self.backend, FXChainBackendKind::Unavailable { .. }) {
+            return Ok(());
+        }
+        let title = self.title.clone();
+        let audio_inputs = self
+            .audio_inputs
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let audio_outputs = self
+            .audio_outputs
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        let midi_inputs = self
+            .midi_inputs
+            .iter()
+            .map(|port| Arc::clone(&port.control))
+            .collect::<Vec<_>>();
+        self.shared.send_topology(move |session| {
+            let audio_inputs = audio_inputs
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let audio_outputs = audio_outputs
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let midi_inputs = midi_inputs
+                .iter()
+                .filter_map(|control| control.ready_id().map(|id| id.index()))
+                .collect();
+            let _ = session.set_processor_ports(&title, audio_inputs, audio_outputs, midi_inputs);
+        })?;
+        Ok(())
+    }
+
     fn create_ports_once(&mut self) {
         for idx in 0..self.n_audio_input_ports() {
             if let Some(port) = self.make_audio_port(
                 format!("{}:audio_in_{}", self.title, idx),
                 PortDirection::Output,
+                0,
             ) {
                 self.audio_inputs.push(port);
             }
@@ -6356,6 +6689,7 @@ impl FXChain {
             if let Some(port) = self.make_audio_port(
                 format!("{}:audio_out_{}", self.title, idx),
                 PortDirection::Input,
+                self.output_ringbuffer_n_samples,
             ) {
                 self.audio_outputs.push(port);
             }
@@ -6407,13 +6741,36 @@ mod tests {
             .expect("engine answered")
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn a_command_batch_removed_from_the_queue_keeps_the_graph_scheduler_armed() {
+        let sess = BackendSession::new().expect("session");
+        let scheduler = sess.shared.scheduler.get().expect("scheduler");
+        let before = scheduler.n_arms();
+        {
+            let handle = sess.shared.handle.lock().unwrap_or_else(|e| e.into_inner());
+            handle
+                .stats()
+                .command_batch_in_flight
+                .store(true, Ordering::Release);
+        }
+
+        assert!(!sess.shared.graph_may_need_rebuild());
+        assert!(scheduler.n_arms() > before);
+
+        let handle = sess.shared.handle.lock().unwrap_or_else(|e| e.into_inner());
+        handle
+            .stats()
+            .command_batch_in_flight
+            .store(false, Ordering::Release);
+    }
+
     /// The invariant `ControlGuard` exists to enforce.
     ///
     /// Connecting a channel to a port used to leave the graph dirty with nothing scheduled
     /// to rebuild it, because only three of the mutation sites remembered to call
     /// `apply_graph_changes`. Now the guard cannot be dropped without at least arming the
     /// rebuild, so no mutation site has to remember.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_connection_leaves_the_graph_scheduled_for_rebuild() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6468,7 +6825,7 @@ mod tests {
     }
 
     /// Many mutations in a burst must not each pay for a rebuild.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_burst_of_changes_coalesces_into_one_rebuild() {
         let sess = BackendSession::new().expect("session");
         let before = sess.shared.scheduler.get().expect("scheduler").n_applies();
@@ -6490,7 +6847,7 @@ mod tests {
         assert!(graph_up_to_date(&sess));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn scalar_control_commands_do_not_arm_graph_rebuilds() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6506,7 +6863,7 @@ mod tests {
         assert_eq!(scheduler.n_arms(), before);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_content_commits_atomically_without_rebuilding_the_graph() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6631,7 +6988,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn prepared_content_commit_allocates_and_locks_only_off_realtime() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6706,7 +7063,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn length_only_update_preserves_content_and_playback_with_modulo_position() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6741,7 +7098,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_full_parked_queue_is_drained_and_retried_without_loss() {
         let sess = BackendSession::create_with_capacity(1).expect("session");
         {
@@ -6778,7 +7135,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_creation_and_followup_commands_do_not_wait_for_a_cycle() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -6803,7 +7160,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_channels_resolve_after_their_parent_and_apply_followups() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -6828,12 +7185,19 @@ mod tests {
         assert_eq!(audio.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(midi.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(audio.get_state().expect("audio state").gain, 0.25);
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err()
+            || midi.try_get_current_data_snapshot().is_err()
+        {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
         assert_eq!(audio.get_data(), vec![1.0, 2.0]);
         assert_eq!(midi.get_all_midi_data().len(), 1);
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_replacement_snapshot_matches_engine_storage() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -6890,15 +7254,24 @@ mod tests {
             )
             .unwrap();
 
-        std::thread::sleep(Duration::from_millis(10));
-        let actual = midi.get_all_midi_data();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let actual = loop {
+            if let Ok(snapshot) = midi.try_get_current_data_snapshot() {
+                break snapshot.contiguous();
+            }
+            assert!(
+                Instant::now() < deadline,
+                "MIDI snapshot publication timed out"
+            );
+            std::thread::yield_now();
+        };
         assert_eq!(actual.len(), 2);
         assert_eq!(actual[0], MidiEvent::new(0, vec![0x90, 64, 100]));
         assert_eq!(actual[1], MidiEvent::new(3, vec![0x80, 64, 0]));
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_creation_cancels_on_drop_and_fails_with_its_parent() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -6928,7 +7301,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_channel_commands_survive_a_saturated_queue() {
         let sess = BackendSession::create_with_capacity(1).expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -6944,7 +7317,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_ports_accept_configuration_and_connections_before_readiness() {
         let sess = BackendSession::new().expect("session");
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
@@ -6968,7 +7341,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn port_state_reads_and_dummy_dequeues_do_not_queue_queries() {
         let sess = BackendSession::new().expect("session");
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
@@ -6993,7 +7366,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn connection_polling_uses_the_cache_without_engine_commands() {
         let sess = BackendSession::new().expect("session");
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
@@ -7019,7 +7392,57 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn authoritative_connection_state_bypasses_and_replaces_stale_cache() {
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        driver
+            .start(&AudioDriverSettings::Dummy(DummyAudioDriverSettings {
+                client_name: "authoritative-connections".to_string(),
+                sample_rate: 48_000,
+                buffer_size: 128,
+            }))
+            .expect("start driver");
+        driver.dummy_add_external_mock_port(
+            "system:playback",
+            PortDirection::Input as u32,
+            PortDataType::Audio as u32,
+        );
+        let sess = BackendSession::new().expect("session");
+        sess.set_audio_driver(&driver).expect("attach driver");
+        let port = AudioPort::new_driver_port(
+            &sess,
+            &driver,
+            "authoritative-output",
+            &PortDirection::Output,
+            0,
+        )
+        .expect("port");
+        sess.wait_for_command(port.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("port creation");
+        port.connect_external_port("system:playback");
+        port.shared.set_cached_connection(
+            &port.name,
+            port.direction,
+            PortDataType::Audio,
+            "system:playback",
+            false,
+        );
+
+        assert_eq!(
+            port.get_connections_state().get("system:playback"),
+            Some(&false)
+        );
+        assert_eq!(
+            port.get_connections_state_now().get("system:playback"),
+            Some(&true)
+        );
+        assert_eq!(
+            port.get_connections_state().get("system:playback"),
+            Some(&true)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn many_pending_objects_and_repeated_handle_clones_resolve_without_aliasing() {
         let sess = BackendSession::new().expect("session");
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
@@ -7066,7 +7489,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn concurrent_producers_and_shutdown_with_pending_work_are_safe() {
         let sess = BackendSession::create_with_capacity(8).expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7109,7 +7532,7 @@ mod tests {
             .contains("engine is gone"));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn exact_and_stale_channel_snapshots_report_pending_and_recording_states() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7255,7 +7678,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_data_dirty_is_acknowledged_on_the_frontend() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7285,7 +7708,7 @@ mod tests {
         assert!(audio.get_state().expect("dirty again").data_dirty);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn channel_state_reads_do_not_queue_engine_queries() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7306,7 +7729,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_reads_return_the_immediate_desired_mirror_without_queueing_a_query() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -7329,7 +7752,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_loop_relationships_resolve_in_fifo_order() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7349,7 +7772,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn primitive_topology_survives_dropped_ready_controls() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7372,7 +7795,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_relationships_reject_cross_session_handles() {
         let first = BackendSession::new().expect("first session");
         let second = BackendSession::new().expect("second session");
@@ -7386,7 +7809,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dropping_a_pending_loop_cancels_creation() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7399,7 +7822,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pending_composite_retains_desired_play_after_record() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7419,7 +7842,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dropping_a_pending_composite_releases_its_control() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
@@ -7434,7 +7857,7 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn failed_and_closed_loop_controls_ignore_commands() {
         let sess = BackendSession::new().expect("session");
         let failed_control = Arc::new(ObjectControl::<LoopId, engine::LoopStateMirror>::pending(
@@ -7478,7 +7901,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn object_controls_publish_failed_and_closed_without_aliasing_an_index() {
         let failed = ObjectControl::<LoopId, engine::LoopStateMirror>::pending(1);
         failed.mark_failed("creation failed");
@@ -7494,7 +7917,7 @@ mod tests {
         assert!(ready.ready_id().is_none());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn real_jack_is_not_advanced_by_state_polling() {
         assert!(!driver_uses_dummy_processing(AudioDriverType::Jack));
         assert!(driver_uses_dummy_processing(AudioDriverType::JackTest));
@@ -7502,7 +7925,7 @@ mod tests {
         assert!(!driver_uses_dummy_processing(AudioDriverType::Cpal));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_virtual_audio_input_routes_capture_channel_into_session_port() {
         let mut s = engine::Session::default();
         let input = s.add_port(engine::session::Port::External(
@@ -7538,7 +7961,7 @@ mod tests {
         assert_eq!(&data[..4], &[20.0, 21.0, 22.0, 23.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_virtual_audio_output_routes_session_port_to_playback_channel() {
         let mut s = engine::Session::default();
         let output = s.add_port(engine::session::Port::External(
@@ -7574,7 +7997,7 @@ mod tests {
         assert_eq!(interleaved, [0.0, 1.0, 0.0, 2.0, 0.0, 3.0, 0.0, 4.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_virtual_midi_input_fans_out_to_session_and_decoupled_ports() {
         let mut s = engine::Session::default();
         let input = s.add_port(engine::session::Port::ExternalMidi(
@@ -7612,7 +8035,7 @@ mod tests {
         assert_eq!(queue[1].data, vec![0x80, 60, 0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_virtual_midi_output_drains_decoupled_queue_for_connected_output() {
         let output_name = "midir:test:input".to_string();
         let decoupled_id = engine::PortId(100_456);
@@ -7635,7 +8058,7 @@ mod tests {
         assert!(queue.lock().unwrap_or_else(|e| e.into_inner()).is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_test_backend_publishes_mock_virtual_audio_ports() {
         let driver = AudioDriver::new(AudioDriverType::CpalTest, None).expect("driver");
         let settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
@@ -7669,7 +8092,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cpal_backend_exposes_virtual_audio_ports_through_app_api_when_device_available() {
         if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
             eprintln!("skipping optional real CPAL smoke; set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
@@ -7746,12 +8169,12 @@ mod tests {
         assert!(state.sample_rate > 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fx_port_getters_return_stable_pending_handles_without_duplicate_topology() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
         let chain = sess
-            .create_fx_chain(FXChainType::Test2x2x1, "stable-fx")
+            .create_fx_chain(FXChainType::Test2x2x1, "stable-fx", 0)
             .expect("chain");
         let first = chain.get_audio_input_port(0).expect("first handle");
         let again = chain.get_audio_input_port(0).expect("same handle");
@@ -7776,12 +8199,122 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn fx_output_capture_uses_bounded_chunks() {
+        const CAPTURE_SAMPLES: u32 = 480_000;
+
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let chain = sess
+            .create_fx_chain(FXChainType::Test2x2x1, "capturing-fx", CAPTURE_SAMPLES)
+            .expect("chain");
+        engine.pump();
+        let input = chain
+            .get_audio_input_port(0)
+            .unwrap()
+            .control
+            .ready_id()
+            .unwrap()
+            .index();
+        let output = chain
+            .get_audio_output_port(0)
+            .unwrap()
+            .control
+            .ready_id()
+            .unwrap()
+            .index();
+        let input = engine.session().port(input).unwrap().audio().unwrap();
+        let output = engine.session().port(output).unwrap().audio().unwrap();
+        let chunk_size = output.ringbuffer_contents().buffer_size;
+
+        assert_eq!(input.ringbuffer_capacity(), 0);
+        assert!(chunk_size >= (CAPTURE_SAMPLES as usize).div_ceil(32));
+        assert!(output.ringbuffer_capacity() >= CAPTURE_SAMPLES as usize);
+        assert!(output.ringbuffer_capacity() < CAPTURE_SAMPLES as usize + chunk_size);
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn test_fx_chain_runs_as_a_scheduled_processor_node() {
+        let sess = BackendSession::new().expect("session");
+        let chain = sess
+            .create_fx_chain(FXChainType::Test2x2x1, "scheduled-fx", 0)
+            .expect("chain");
+        chain.set_active(true);
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        engine.pump();
+        let input = chain
+            .get_audio_input_port(0)
+            .unwrap()
+            .control
+            .ready_id()
+            .unwrap()
+            .index();
+        let output = chain
+            .get_audio_output_port(0)
+            .unwrap()
+            .control
+            .ready_id()
+            .unwrap()
+            .index();
+        let source = engine.session_mut().add_port(engine::session::Port::Dummy(
+            engine::DummyAudioPort::new(
+                engine::PortId(800),
+                "source",
+                engine::PortDirection::Input,
+                4,
+            ),
+        ));
+        let sink = engine.session_mut().add_port(engine::session::Port::Dummy(
+            engine::DummyAudioPort::new(
+                engine::PortId(801),
+                "sink",
+                engine::PortDirection::Output,
+                4,
+            ),
+        ));
+        engine
+            .session_mut()
+            .connect_ports_internal(source, input)
+            .unwrap();
+        engine
+            .session_mut()
+            .connect_ports_internal(output, sink)
+            .unwrap();
+        engine.session_mut().apply_graph_changes().unwrap();
+        engine
+            .session_mut()
+            .port_mut(source)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&[2.0, 4.0, 6.0, 8.0]);
+        engine
+            .session_mut()
+            .port_mut(sink)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(4);
+        engine.session_mut().process(4);
+        let output = engine
+            .session_mut()
+            .port_mut(sink)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(4)
+            .unwrap();
+        assert_eq!(output, vec![1.0, 2.0, 3.0, 4.0]);
+        sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn internal_fx_midi_capture_observes_routed_host_input() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
         let chain = sess
-            .create_fx_chain(FXChainType::Test2x2x1, "captured-fx")
+            .create_fx_chain(FXChainType::Test2x2x1, "captured-fx", 0)
             .expect("chain");
         let midi_input = chain.get_midi_input_port(0).expect("MIDI input");
         engine.pump();
@@ -7870,11 +8403,11 @@ mod tests {
         sess.shared.return_engine(engine);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn current_fx_chain_handle_controls_visibility_activity_and_ports() {
         let sess = BackendSession::new().expect("session");
         let chain = sess
-            .create_fx_chain(FXChainType::Test2x2x1, "test_fx")
+            .create_fx_chain(FXChainType::Test2x2x1, "test_fx", 0)
             .expect("fx chain");
 
         assert!(chain.available());
@@ -7913,13 +8446,13 @@ mod tests {
         assert!(graph_up_to_date(&sess));
     }
 
-    #[cfg(feature = "lv2")]
-    #[test]
+    #[cfg(feature = "carla")]
+    #[shoop_wasm_test_support::shoop_test]
     fn carla_fx_chain_handle_instantiates_when_plugin_is_available() {
-        let _exclusive = engine::lv2_carla::lock_carla_test();
+        let _exclusive = engine::carla_native::lock_carla_test();
         let sess = BackendSession::new().expect("session");
         let chain = sess
-            .create_fx_chain(FXChainType::CarlaRack, "carla")
+            .create_fx_chain(FXChainType::CarlaRack, "carla", 0)
             .expect("chain handle");
         if !chain.available() {
             eprintln!(
@@ -7940,13 +8473,13 @@ mod tests {
         assert_eq!(chain.get_state().expect("state").active, 1);
         let state = chain.get_state_str().expect("state string");
         assert!(
-            state.starts_with('{'),
-            "Carla state should be JSON: {state}"
+            state.starts_with("shoop-carla-native-state:2:rack:"),
+            "Carla state should use the native envelope: {state}"
         );
         chain.restore_state(&state);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn audio_port_peak_state_is_per_poll_cycle() {
         const BUFFER: u32 = 4;
 
@@ -8009,7 +8542,7 @@ mod tests {
         assert_eq!(third.output_peak, 0.1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn current_audio_driver_handle_reports_dummy_lifecycle_state() {
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
         driver
@@ -8037,7 +8570,7 @@ mod tests {
     /// deliberately not a multiple of the buffer, so the final short cycle is exercised:
     /// 160 frames at a buffer of 64 is 64 + 64 + 32, and a driver that dropped the
     /// remainder or rounded up to a whole buffer would land on a different position.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_controlled_request_advances_the_session_by_exactly_that_many_frames() {
         const BUFFER: u32 = 64;
         const REQUEST: u32 = 160;
@@ -8079,7 +8612,7 @@ mod tests {
         assert_eq!(loop_.get_state().expect("state").position, REQUEST);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dummy_iteration_uses_only_explicit_realtime_lock_permissions() {
         struct DisableGuard;
         impl Drop for DisableGuard {
@@ -8122,7 +8655,7 @@ mod tests {
         assert_eq!(state.last_processed, 64);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn get_state_does_not_advance_dummy_time() {
         // Built by hand, with no dummy thread, so nothing but `get_state` can advance it.
         let mut dummy = engine::DummyDriver::default();

@@ -1,0 +1,528 @@
+# Worklet backend and driver refactoring plan
+
+## Status and execution contract
+
+This document is an implementation plan for the production refactoring required to separate application behavior, remote worklet communication, audio-driver lifecycle, engine processing, and browser presentation. It establishes the architecture assumed by the WebAssembly testing project, including a production-supported Worker dummy driver and migration of browser offline mode.
+
+During implementation:
+
+- Keep this plan updated and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not change without explicit user approval.
+
+## Goals
+
+- Keep the application model dependent on one backend/domain interface while hiding worklet transport and concrete audio drivers below that boundary.
+- Extract the remote worklet backend from browser application composition into a reusable, platform-neutral crate.
+- Separate message transport state, driver lifecycle, remote engine state, browser presentation, and host MIDI responsibilities.
+- Make backend snapshots authoritative while preserving immediate UI response through explicit application-owned desired state and widget interaction optimism.
+- Separate engine processing from the scheduler or driver that decides when process quanta run.
+- Support physical AudioWorklet processing and a production Worker-hosted dummy driver through the same application command/event protocol.
+- Support deterministic explicit processing, cooperatively free-running processing, and realtime-paced dummy processing.
+- Migrate browser offline mode to the Worker-hosted dummy backend.
+- Provide stable lifecycle, readiness, restart, replay, failure, quiescence, and teardown contracts suitable for production and later Wasm test fixtures.
+- Preserve existing native driver and Carla architecture unless a change is required by the shared backend contract.
+
+## Scope
+
+Included:
+
+- A new platform-neutral remote-worklet backend client crate.
+- Extraction of transport sequencing, journal replay, wire conversion, remote snapshot assembly, and chunked transfers.
+- Restricted control handles for driver/transport attachment and lifecycle publication.
+- Browser physical audio-driver and presentation separation.
+- Browser host-MIDI injection behind an interface.
+- Engine runtime and processing-scheduler separation.
+- Reusable JavaScript host logic for raw worklet Wasm interaction.
+- Browser Worker dummy driver with explicit, cooperative free-running, and realtime-paced modes.
+- Production browser offline-mode migration.
+- Typed asynchronous backend progress, mutation failure, and pending desired state.
+- Multi-instance isolation and fixture-control seams required by the downstream testing project.
+- Production documentation, compatibility checks, and migration tests.
+
+Excluded:
+
+- Forcing JACK, CPAL, midir, Carla, or native plugin processing through Worker or MessagePort architecture.
+- Changing the bounded JSON application/worklet protocol to a binary encoding.
+- Making one application runtime control multiple engines or worklets.
+- Treating Worker scheduling as evidence of AudioWorklet realtime behavior.
+- Sending production audio sample streams over the application command MessagePort.
+- Implementing the complete Wasm-pack test-suite migration, JUnit orchestration, or smoke-suite reduction described by the separate testing plan.
+- Adding test-only branches to application domain behavior.
+
+## Current architecture and pressure points
+
+The application core already receives a `Backend` implementation, which is the correct high-level boundary. The browser path currently concentrates several lower-level concerns in one browser module:
+
+- the remote backend implementation,
+- durable and ephemeral command transport,
+- MessagePort ownership,
+- physical Web Audio lifecycle,
+- browser permission and DOM presentation,
+- browser track-MIDI bridging,
+- optimistic remote snapshots,
+- smoke-test event hooks.
+
+The physical browser path runs the engine behind an AudioWorklet and protocol boundary. Browser offline mode instead instantiates an elapsed-time dummy backend directly in the application realm. The two browser modes therefore exercise different ownership, communication, lifecycle, and scheduling paths.
+
+Normal asynchronous backend progress is also represented in several places as error strings, and the application recognizes selected strings as a pending state. Remote command failures are not fully separated from transport or polling failure. The remote backend publishes some requested values as if they were committed before the worklet has acknowledged or reported them.
+
+## Target architecture
+
+### Component boundaries
+
+```text
+Application and UI
+  ├─ application desired-state overlay
+  ├─ widget interaction optimism
+  └─ dyn Backend
+       └─ RemoteWorkletBackend
+            ├─ authoritative remote snapshot
+            ├─ command journal and in-flight operations
+            ├─ protocol conversion and transfer assembly
+            ├─ HostMidiBridge
+            └─ RemoteBackendControl
+                 └─ MessageEndpoint
+                      ├─ AudioWorklet MessagePort
+                      └─ Worker MessagePort
+
+Physical browser driver
+  ├─ AudioContext and MediaStream
+  ├─ AudioWorkletNode
+  ├─ driver lifecycle
+  └─ RemoteBackendControl
+
+Worker dummy driver
+  ├─ Worker lifecycle
+  ├─ engine Wasm instance
+  ├─ production application MessagePort
+  ├─ production realtime-paced scheduler
+  └─ optional fixture-control MessagePort
+
+Remote engine host
+  ├─ protocol command host
+  ├─ engine runtime
+  └─ explicit process-quantum entry
+```
+
+### Crate boundary
+
+Add a `shoop_worklet_client` workspace crate. It depends on backend domain types and the audio protocol, but not on browser, DOM, Web Audio, Web MIDI, or UI crates.
+
+It owns:
+
+- `RemoteWorkletBackend`, implementing `Backend`;
+- transport and replay state;
+- sequence and generation validation;
+- authoritative remote snapshots;
+- requested operation state and typed outcomes;
+- wire/backend conversions;
+- waveform, MIDI, loop-content, and session-transfer assembly;
+- a restricted `RemoteBackendControl` handle;
+- runtime-independent message endpoint and host-MIDI interfaces.
+
+Browser-specific adapters remain in the browser application composition crate unless later evidence justifies a dedicated web adapter crate.
+
+### State model
+
+Use three explicit layers:
+
+1. **Authoritative backend state**: the latest state observed from the engine or worklet. `BackendSnapshot` never labels a merely queued mutation as committed.
+2. **Application desired state**: accepted user intent waiting for backend confirmation. The effective application snapshot overlays desired values on authoritative values where optimism is allowed.
+3. **Widget interaction state**: short-lived values used during direct manipulation until the application publishes its desired state.
+
+State policy:
+
+- Continuous and idempotent controls are optimistic and last-write-wins.
+- Structural and transactional operations are explicitly provisional or pending.
+- Metering, positions, callback counts, driver lifecycle, route confirmation, recording completion, and realtime diagnostics are authoritative only.
+- Rejection removes the relevant desired state, rolls effective state back to the authoritative value, and publishes a typed error.
+
+### Driver and connection state
+
+Keep distinct state authorities for:
+
+- driver lifecycle;
+- MessagePort connection and generation;
+- protocol initialization and replay;
+- remote engine status.
+
+Readiness milestones are ordered and observable:
+
+1. driver created;
+2. driver running or able to process;
+3. MessagePort attached;
+4. protocol initialized;
+5. negotiated channel/device configuration accepted;
+6. durable journal replay completed;
+7. backend ready.
+
+The application-facing backend must not claim full readiness before the required milestones complete.
+
+### Protocol decisions
+
+- Retain bounded JSON envelopes and existing production commands/events during this refactor.
+- Retain stable expected IDs initially, but distinguish reserved/provisional resources from confirmed resources.
+- Make sequence correlation, stale-generation rejection, replay completion, and delayed mutation failure explicit.
+- Application commands use one production MessagePort and unchanged production envelopes.
+- Tests and deterministic driver control use a second fixture-control MessagePort. Explicit stepping and fixture audio inspection do not enter the production application protocol.
+- AudioWorklet sample buffers continue to cross the JavaScript/Wasm linear-memory boundary, not the application command port.
+
+### Processing modes
+
+The Worker dummy driver supports:
+
+- **Explicit**: process only when fixture control requests an exact quantum.
+- **Cooperative free-running**: process bounded batches as quickly as practical, yielding regularly so commands, shutdown, and diagnostics remain responsive.
+- **Realtime-paced**: process according to sample rate and quantum duration, with bounded catch-up and observable discontinuity/xrun accounting.
+
+Production browser offline mode uses realtime-paced processing. Explicit and cooperative free-running modes are available through fixture control and internal verification surfaces, not ordinary application commands.
+
+### Multi-instance decision
+
+Support multiple independent app/backend/worklet compositions in one process or browser page. Each has isolated engine state, application MessagePort, generations, scheduler, diagnostics, and teardown.
+
+One application controlling multiple engines is not part of this project.
+
+## Design rules and constraints
+
+- Preserve the existing `Backend` boundary at the application model; improve its semantics rather than exposing transport or driver types to the application.
+- Keep native direct-driver implementations direct. Do not generalize native realtime paths merely to resemble the browser path.
+- The protocol-data crate remains data-focused and does not own runtime transport state.
+- The remote backend client has no `web_sys`, DOM, audio-device, or Web MIDI dependency.
+- Browser presentation may observe driver state but may not mutate transport internals.
+- Physical and dummy drivers interact with remote backend state only through the restricted control handle.
+- Driver callbacks and MessagePort handlers must reject stale generations.
+- Durable replay order is deterministic and documented. Ephemeral input, poll, transfer, and fixture-control messages are never journaled accidentally.
+- Sequence IDs identify one command response. Unknown, duplicate, missing, and stale responses are observable failures.
+- Continuous control coalescing must retain the newest desired value and must not let a stale acknowledgement clear or overwrite it.
+- Structural mutations must have a documented confirmation or rollback path.
+- Backend polling failure means the backend itself is unavailable; ordinary command rejection is a typed mutation outcome, not a generic poll failure.
+- No asynchronous control flow depends on matching error-message text.
+- Logical elapsed time drives deterministic backend polling. Wall-clock deadlines are confined to driver pacing, startup timeout, and bounded external waits.
+- Worker loops yield and honor shutdown. No free-running mode may monopolize an event loop.
+- Every owned Worker, port, stream, node, timer, callback, and Wasm host has an explicit teardown owner.
+- Production application and worklet messages remain compatible during staged rollout unless a deliberate protocol version change is documented and tested.
+- The physical AudioWorklet remains authoritative for browser realtime timing evidence.
+
+## Immutable acceptance criteria
+
+- `shoop_worklet_client` contains the platform-neutral remote `Backend` implementation and compiles without browser, DOM, native audio/MIDI, Carla, or native Tracy dependencies.
+- The application model receives only backend/domain state and never handles MessagePort, Worker, AudioContext, or AudioWorklet objects.
+- Physical Web Audio and Worker dummy drivers attach through the same restricted remote-backend control interface.
+- Physical and dummy drivers use the same production application command/event envelopes over their production MessagePorts.
+- Browser MIDI is injected through a host-service interface rather than owned concretely by the remote backend.
+- `BackendSnapshot` contains authoritative observed state. Optimistic continuous controls are represented by application desired state and widget interaction state.
+- Rapid continuous control changes are responsive, last-write-wins, survive stale snapshots, and converge to authoritative state after confirmation.
+- Rejected optimistic mutations roll back and publish typed, correlated errors.
+- Structural mutations are visibly provisional or pending until confirmed and have tested rejection/recovery behavior.
+- Session capture, session replacement, and loop-content replacement use typed pending/progress states rather than error-string control flow.
+- Driver, connection, protocol, replay, and backend readiness states are distinct and transition in the documented order.
+- Response sequence and generation validation reject duplicates, unknown responses, stale messages, and superseded driver instances.
+- Engine processing no longer depends on an internal dummy-versus-physical mode switch; scheduling is owned by driver/scheduler adapters.
+- A reusable raw Wasm host bridge serves both the production AudioWorklet adapter and Worker dummy adapter.
+- The Worker dummy supports explicit, cooperative free-running, and realtime-paced processing with bounded diagnostics and shutdown.
+- Production browser offline mode uses the Worker dummy and no longer runs its engine directly in the application realm.
+- Multiple independent app/backend/worklet compositions can coexist without state, message, timer, or teardown leakage.
+- Native backend behavior, native driver switching, Carla support, session compatibility, and application-visible browser behavior remain intact.
+- The complete native and browser validation gates pass with warning-denying builds and dependency isolation.
+
+## Implementation stages
+
+Stages are sequential unless explicitly noted. Each stage must preserve a buildable, testable repository and should be committed independently.
+
+### Stage 0 — Baseline behavior and contracts
+
+- [x] Record current browser physical-audio and browser offline ownership diagrams.
+- [x] Inventory remote backend commands, events, durable journal rules, ephemeral commands, transfer state, optimistic mutations, and error paths.
+- [x] Inventory all direct sharing between browser driver code and transport internals.
+- [x] Record current startup, restart, shutdown, permission, offline pacing, session transfer, track MIDI, and presentation behavior.
+- [x] Add or strengthen characterization tests for protocol ordering, journal replay, stable IDs, chunk transfers, rapid controls, driver restart, stale generations, and offline processing.
+- [x] Record current native, web build, package, and smoke gates and representative timing.
+- [x] Decide and document the initial public types that move into the new crate without changing behavior.
+
+Verification:
+
+- [x] Characterization tests pass before extraction begins.
+- [x] Every current browser transport responsibility has a destination component in the target architecture.
+- [x] No known behavior is left dependent on an undocumented shared mutable field.
+
+Evidence: [`worklet_backend_baseline.md`](worklet_backend_baseline.md) records the diagrams, complete responsibility/protocol/state/lifecycle inventory, destination map, gates, timings, and extraction surface. The protocol, backend, and worklet characterization suites pass, including an exact production-envelope byte contract added before extraction.
+
+### Stage 1 — Create the platform-neutral remote client crate
+
+- [x] Add `shoop_worklet_client` to the workspace.
+- [x] Move wire/backend conversion helpers into the new crate.
+- [x] Move remote track/loop/composite resource bookkeeping and snapshot assembly.
+- [x] Move waveform, MIDI-detail, session-capture, session-replacement, and loop-content transfer assembly.
+- [x] Move the remote `Backend` implementation with behavior-preserving names and APIs.
+- [x] Keep a temporary narrow adapter to the existing browser transport while extraction is incomplete.
+- [x] Replace browser/UI type imports with domain types from backend and application API crates.
+- [x] Add dependency-tree checks for browser, native driver, Carla, and native Tracy isolation.
+
+Verification:
+
+- [x] Native checks and existing browser builds pass without behavior changes.
+- [x] Remote backend characterization tests pass from the new crate.
+- [x] The new crate builds for native and `wasm32-unknown-unknown` with forbidden dependencies absent.
+
+Evidence: `shoop_worklet_client` owns the remote backend, conversion, resource, snapshot, transfer, transport, and host-MIDI client code. Its native tests cover stable IDs, replay, response validation, readiness, snapshot assembly, and deterministic MIDI. Warning-denying browser compilation passes for `wasm32-unknown-unknown`, and `scripts/check_worklet_client_dependencies.py` verifies the normal dependency tree.
+
+### Stage 2 — Extract transport core and restricted control handle
+
+- [x] Split pure transport state from concrete `web_sys::MessagePort` ownership.
+- [x] Introduce the runtime-independent message endpoint interface.
+- [x] Introduce `RemoteBackendControl` with attach, detach, receive, driver-state, and failure operations only.
+- [x] Remove external access to journal, sequence, inbound queue, error slot, and in-flight counters.
+- [x] Track individual in-flight sequence IDs rather than only a count.
+- [x] Validate response version, sequence, generation, duplication, and ordering.
+- [x] Define and implement durable replay completion.
+- [x] Separate transport failure from command rejection and remote engine failure.
+- [x] Add an in-memory endpoint adapter for native contract tests.
+
+Verification:
+
+- [x] Browser physical audio still attaches and communicates through a temporary MessagePort adapter.
+- [x] Duplicate, unknown, stale-generation, malformed, and out-of-order response tests fail observably.
+- [x] Replay tests prove exact durable order and exclusion of ephemeral commands.
+- [x] No browser driver or presentation code can mutate transport internals directly.
+
+Evidence: `shoop_worklet_client::transport` owns private sequence-indexed pending state and exposes only `MessageEndpoint` and `RemoteBackendControl`. Native contract tests cover every invalid response class, capacity, replay order/completion, restart generations, and ephemeral exclusion. The warning-denying browser build uses the MessagePort endpoint adapter.
+
+### Stage 3 — Formalize readiness, quiescence, and logical polling
+
+- [x] Add distinct driver, connection, protocol, replay, and remote-engine state models.
+- [x] Implement the ordered readiness milestones.
+- [x] Delay application-facing ready state until initialization, negotiation, and replay complete.
+- [x] Replace remote wall-clock poll scheduling with elapsed time supplied through `Backend::advance`.
+- [x] Define remote quiescence in terms of pending commands, replay, transfer work, inbound messages, and driver activity.
+- [x] Implement meaningful remote idle/quiescence observation instead of a no-op.
+- [x] Retain bounded wall-clock startup and external wait timeouts outside deterministic backend progression.
+
+Verification:
+
+- [x] Readiness cannot be observed early under delayed acknowledgement tests.
+- [x] Logical-time tests produce identical polling behavior independent of host speed.
+- [x] Idle waits complete only after all specified work is settled and fail on bounded timeout.
+- [x] Driver restart resets only the intended milestones and generations.
+
+Evidence: typed readiness state and effective driver state are tested under delayed acknowledgement, snapshot observation, replay, and restart. Polling consumes only `Backend::advance` duration. Backend and control quiescence include transport, inbound, replay, waveform, MIDI, and transfer state; bounded external waits test both timeout and settlement.
+
+### Stage 4 — Introduce typed asynchronous progress and mutation outcomes
+
+- [x] Define typed pending/ready progress for session capture, session replacement, and loop-content replacement.
+- [x] Remove application string matching for pending backend operations.
+- [x] Define typed delayed mutation failures with stable operation keys and messages.
+- [x] Deliver ordinary command rejection through backend snapshots or a dedicated typed outcome surface rather than failing the entire backend poll.
+- [x] Define immediate submission failure separately from delayed remote rejection.
+- [x] Add explicit completion and cancellation behavior for transfers interrupted by detach, restart, replacement, or shutdown.
+- [x] Preserve native synchronous behavior through immediate ready/applied results.
+
+Verification:
+
+- [x] No application control flow recognizes pending work through error text.
+- [x] Native and remote backends satisfy the same typed operation contracts.
+- [x] Transfer cancellation and rejection leave no retained bytes, stale generations, or false completion.
+- [x] A rejected command does not mark the entire connection backend unavailable.
+
+Evidence: `BackendAsyncResult`, operation progress, and correlated mutation failures are domain types used by application I/O. Native backends use immediate-ready defaults; remote tests cover pending progress, delayed rejection without poll failure, one-shot typed outcomes, retained-byte release, and generation-change cancellation.
+
+### Stage 5 — Move optimism into explicit application desired state
+
+- [x] Inventory all optimistic control and structural mutations in UI, application model, remote backend, and native backend paths.
+- [x] Add application desired-state records keyed by logical control or operation.
+- [x] Publish effective control values by overlaying desired state on authoritative backend state.
+- [x] Retain widget-level interaction optimism for direct manipulation and stale application publication.
+- [x] Remove remote-backend mutation of authoritative snapshots for continuous controls.
+- [x] Implement last-write-wins behavior for rapid gain, balance, mute, monitoring, loop-control, and Tiny Synth/FX changes.
+- [x] Clear desired values only when authoritative state confirms the latest desired value.
+- [x] Roll back and notify on typed rejection without allowing stale outcomes to affect newer desired values.
+- [x] Represent structural creation, removal, connection, driver switch, processor creation, and session replacement as explicit provisional/pending state where applicable.
+- [x] Keep meters, positions, driver state, route confirmation, recording completion, and realtime diagnostics authoritative.
+
+Verification:
+
+- [x] Dial and continuous-control tests remain visually immediate under delayed backend snapshots.
+- [x] Rapid changes converge to the newest value under reordered delays and stale snapshots.
+- [x] Rejection rolls back exactly the affected desired value and retains newer values.
+- [x] Native and remote backends produce the same application-visible optimistic behavior.
+- [x] Authoritative backend snapshots never contain values merely because submission succeeded.
+
+Evidence: the application owns keyed desired track, loop, and Tiny Synth/FX controls and overlays them after every authoritative snapshot. Correlated rejection details protect newer values from stale failures. `StructuralState` exposes creating/removing resources and recovery. Tests cover stale snapshots, last-write-wins rejection, confirmation convergence, structural pending/recovery, and remote snapshot authority.
+
+### Stage 6 — Extract host MIDI from the remote backend
+
+- [x] Define the platform-neutral host-MIDI bridge interface.
+- [x] Move browser endpoint discovery, track-input draining, and output sending behind the interface.
+- [x] Add null and deterministic in-memory implementations.
+- [x] Inject the bridge when constructing `RemoteWorkletBackend`.
+- [x] Keep scripting MIDI service ownership separate unless concrete evidence supports unification.
+- [x] Preserve canonical endpoint identity, direction, limits, drops, refusal counters, and hotplug semantics.
+
+Verification:
+
+- [x] The remote client crate has no concrete browser MIDI dependency.
+- [x] Browser MIDI behavior and diagnostics remain unchanged.
+- [x] Null and deterministic bridges permit remote backend construction outside a browser.
+- [x] Track and scripting MIDI continue to share physical endpoint truth without duplicated identities.
+
+Evidence: `HostMidiBridge` has null and deterministic native implementations; `BrowserMidiHub` implements it while continuing to back the separately owned scripting service. Existing browser MIDI lifecycle, hotplug, direction, fanout, capacity, and identity tests pass, and dependency isolation excludes browser APIs from the client crate.
+
+### Stage 7 — Split physical browser driver from presentation
+
+- [x] Refactor physical Web Audio ownership into `BrowserAudioDriver`.
+- [x] Limit it to permissions, AudioContext, MediaStream, module loading, AudioWorkletNode, MessagePort attachment, lifecycle, and cleanup.
+- [x] Refactor DOM buttons, labels, status attributes, and user-facing permission presentation into a separate presentation adapter.
+- [x] Replace shared transport mutation with `RemoteBackendControl` operations.
+- [x] Replace broad test window events with narrow production diagnostics needed by packaged smoke verification.
+- [x] Ensure driver callbacks carry and validate generations.
+- [x] Make graph shutdown idempotent across denial, failure, retry, stream end, context close, application drop, and superseded startup.
+- [x] Keep application composition responsible only for constructing backend, driver, presentation, MIDI, and application runtime.
+
+Verification:
+
+- [x] Physical microphone and output-only startup still work.
+- [x] Permission denial, retry, upgrade, suspend, resume, track end, processor failure, and shutdown retain truthful states.
+- [x] Presentation removal or failure cannot corrupt transport or driver state.
+- [x] No DOM type enters the remote backend or physical driver core state.
+
+Evidence: `BrowserAudioDriver` contains only physical graph state and restricted control; `BrowserAudioPresentation` owns DOM and diagnostic closures. Generation checks guard every asynchronous callback and graph teardown is idempotent. The broad window-event pump is gone in favor of the narrow `shoopAudioDiagnostics` object. Hosted physical Chrome smoke passed locally after the split, and the existing output-only, denial/retry, lifecycle, stress, and Firefox matrices exercise the remaining lifecycle cases.
+
+### Stage 8 — Separate engine processing from scheduling
+
+- [x] Identify engine fields and branches used only to distinguish dummy elapsed-time mode from physical callback mode.
+- [x] Extract a mode-independent engine runtime with explicit process-quantum entry.
+- [x] Move elapsed-time accumulation, bounded catch-up, and dummy xrun accounting into a local elapsed scheduler/driver.
+- [x] Keep physical AudioWorklet scheduling outside the engine runtime.
+- [x] Provide a local dummy backend wrapper for native and transitional uses.
+- [x] Remove internal dummy-versus-physical mode switches from engine domain behavior.
+- [x] Preserve sample rate, quantum limits, routing, storage preparation, MIDI timing, callback counts, and realtime allocation constraints.
+
+Verification:
+
+- [x] Existing engine behavior tests pass against the mode-independent runtime.
+- [x] Local elapsed dummy behavior matches the recorded baseline.
+- [x] Explicit quantum processing matches physical-mode behavior for equivalent inputs.
+- [x] Realtime no-allocation and lock-safety tests remain valid.
+
+Evidence: `EngineBackend` is now the explicit-quantum runtime; `LocalDummyBackend` and `LocalElapsedScheduler` own fractional elapsed time, bounded eight-quantum catch-up, and xrun accounting. `EnginePortModel` selects concrete session port adapters only and is not a scheduler mode. The 38-test backend suite covers runtime-only progression, fractional/bounded local pacing, explicit physical quanta, routing/MIDI/storage, and existing realtime constraints; application tests pass through the local wrapper.
+
+### Stage 9 — Extract the reusable raw Wasm host bridge
+
+- [x] Separate raw module instantiation, UTF-8 command transfer, response decoding, memory-view refresh, and process invocation from `AudioWorkletProcessor` registration.
+- [x] Keep the worklet Wasm import-free.
+- [x] Make the physical AudioWorklet adapter use the extracted host bridge.
+- [x] Preserve memory-growth detection, render-growth diagnostics, pointer validation, capacity checks, and fatal-error handling.
+- [x] Define an adapter-neutral host lifecycle with create, command, process, diagnostics, and destroy operations.
+- [x] Add host-bridge contract tests using the actual worklet Wasm artifact.
+
+Verification:
+
+- [x] Production AudioWorklet behavior is unchanged after adopting the shared bridge.
+- [x] The actual worklet artifact has no unexpected imports.
+- [x] Command and process ABI tests cover malformed data, capacity, memory growth, traps, and shutdown.
+
+Evidence: `raw_wasm_host.js` is an explicit ES module used by both adapters and owns create/command/process/diagnostics/idempotent destroy. `raw_wasm_host_contract.mjs` loads the actual import-free artifact and covers protocol bytes, malformed input, capacity, explicit processing, forced growth/rebinding, Wasm traps, and shutdown. Hosted physical Chrome smoke passed with the shared bridge.
+
+### Stage 10 — Implement the production Worker dummy driver
+
+- [x] Add a Worker adapter using the reusable raw Wasm host bridge.
+- [x] Give it one production application MessagePort and an optional second fixture-control MessagePort.
+- [x] Instantiate isolated engine and scheduler state per Worker.
+- [x] Implement explicit process-quantum control through fixture control.
+- [x] Implement cooperative free-running processing with bounded batches and mandatory event-loop yields.
+- [x] Implement realtime-paced processing with bounded catch-up, discontinuity/xrun reporting, pause, resume, and stop.
+- [x] Add readiness, state, diagnostics, and shutdown messages on the appropriate control surface without changing application envelopes.
+- [x] Add bounded fixture audio staging and output capture outside the production application protocol.
+- [x] Ensure production configuration cannot accidentally enable fixture-only control without an explicitly supplied fixture port.
+- [x] Add Worker asset loading for hosted and self-contained builds.
+
+Verification:
+
+- [x] All three processing modes pass lifecycle and processing tests.
+- [x] Production application commands are byte-compatible between AudioWorklet and Worker dummy paths.
+- [x] Fixture control cannot be received on the application port.
+- [x] Free-running modes remain responsive to commands and shutdown under load.
+- [x] Worker failures, traps, and termination become typed driver/backend failures.
+
+Evidence: `BrowserWorkerDriver`, `audio_worker.js`, and `worker_fixture_contract.js` use a transferred production port plus an optional separately transferred fixture port. Fixture contracts pass locally for explicit audio staging/capture, bounded cooperative batches, realtime pacing, pause/resume, ordinary protocol polling, production and fixture shutdown, restarts, and isolation. Application traffic remains unchanged protocol JSON; uncorrelated terminal errors are reported as remote-engine failure instead of command rejection.
+
+### Stage 11 — Migrate production browser offline mode
+
+- [x] Replace direct application-realm `EngineBackend::new_dummy` construction with `RemoteWorkletBackend` plus Worker dummy driver.
+- [x] Use realtime-paced mode for ordinary offline operation.
+- [x] Preserve offline defaults, sample rate, quantum, external-port presentation, scripting, MIDI injection, preview behavior, session behavior, and status messaging.
+- [x] Preserve explicit user selection of offline mode and ensure it requests no physical audio or microphone permission.
+- [x] Route offline startup, readiness, failure, restart, and shutdown through the same remote lifecycle contracts.
+- [x] Remove transitional direct browser dummy code after equivalence evidence passes.
+
+Verification:
+
+- [x] Browser offline behavior matches the Stage 0 baseline at the application boundary.
+- [x] Offline mode runs engine code only in the Worker realm.
+- [x] Offline mode uses the same production protocol client and journal replay as physical Web Audio.
+- [x] Offline mode starts and stops without AudioContext, MediaStream, or physical permission access.
+- [x] Hosted and self-contained offline artifacts both load Worker and worklet assets successfully.
+
+Evidence: browser `?offline=1` and `?worker=1` both construct `RemoteWorkletBackend` plus `BrowserWorkerDriver`; no browser application-realm `EngineBackend::new_dummy` remains. Production uses 48 kHz, 128-frame realtime mode and dummy identity. Local hosted and 164 MiB self-contained Worker application workflows passed complete session self-tests with no media ownership; package verification includes raw host, Worker, fixture, worklet, and Wasm assets.
+
+### Stage 12 — Harden restart, replay, and multi-instance isolation
+
+- [x] Test and harden physical-driver restart with retained durable state.
+- [x] Test and harden Worker dummy restart in every processing mode.
+- [x] Define behavior for restart during each transfer and structural mutation phase.
+- [x] Verify stable/provisional ID handling across rejected creation and replay.
+- [x] Ensure stale messages and callbacks cannot mutate a replacement instance.
+- [x] Run multiple independent application/backend/worklet compositions concurrently.
+- [x] Verify independent ports, sequences, generations, MIDI bridges, engine state, timers, diagnostics, assets, and teardown.
+- [x] Add leak detection for Workers, MessagePorts, AudioContexts, MediaStreams, nodes, callbacks, timers, and Wasm hosts.
+
+Verification:
+
+- [x] Restart tests converge without duplicate resources or replaying ephemeral input.
+- [x] Multi-instance tests show no cross-instance messages or state.
+- [x] Repeated create/destroy cycles leave no observable owned resources.
+- [x] Failure of one instance does not stop or corrupt another.
+
+Evidence: native client tests cover durable replay order, ephemeral exclusion, stale generations, rejected provisional IDs, capture/session-replace/loop-replace cancellation and byte release, and two simultaneous isolated clients. Worker fixture tests restart all three modes, run two independent hosts with identical sequence spaces, isolate progression/failure, and assert the owned-Worker count returns to zero over repeated cycles. Physical packaged lifecycle tests cover fail/retry generations and resource attributes; callback generation guards and idempotent teardown prevent stale mutation.
+
+### Stage 13 — Remove transitional architecture and close documentation
+
+- [x] Remove temporary browser transport adapters and old shared mutable transport access.
+- [x] Remove old browser direct-dummy mode and obsolete mode branches.
+- [x] Remove error-string pending detection and obsolete test event hooks.
+- [x] Remove duplicate conversion, host bridge, lifecycle, and presentation logic.
+- [x] Update architecture, browser audio, offline mode, port model, lifecycle, and troubleshooting documentation.
+- [x] Update dependency-isolation and tracing inventory metadata.
+- [x] Review public names so physical Web Audio terminology is not used for generic remote-worklet components.
+- [x] Confirm the downstream Wasm testing plan's prerequisite assumptions against the completed architecture and revise its implementation details where evidence warrants.
+
+Verification:
+
+- [x] Repository searches find no obsolete pending strings, direct browser dummy construction, or external transport-field mutation.
+- [x] Documentation names one authority and owner for every driver, transport, remote state, scheduler, and presentation responsibility.
+- [x] The downstream testing project can construct Node.js and browser dummy-worklet fixtures without additional production seams.
+
+Evidence: source searches find no old browser backend alias, browser direct-dummy branch, shared transport fields, broad test events, or pending error-string control flow; typed `BackendIoStepError::Pending` is retained intentionally. Historical names remain only in the explicitly pre-refactoring portion of `worklet_backend_baseline.md`. Final ownership is documented there and in the browser README. Dependency isolation and the 125-module tracing inventory pass. `wasm_test_architecture_plan.md` now records the actual raw-host, browser fixture-port, Node adapter, reset, and timing prerequisites.
+
+### Stage 14 — Final end-to-end validation
+
+- [x] Run formatting checks.
+- [x] Run warning-denying native workspace builds.
+- [x] Build application and worklet packages for `wasm32-unknown-unknown` in debug and release.
+- [x] Run the complete native Rust suite with required features and backend policy.
+- [x] Run remote client, transport, mutation, desired-state, engine, raw host bridge, physical driver, Worker driver, offline, restart, and multi-instance suites.
+- [x] Run native driver switching and Carla verification.
+- [x] Verify hosted and self-contained physical Web Audio artifacts.
+- [x] Verify hosted and self-contained Worker offline artifacts.
+- [x] Verify microphone, output-only, permission denial/retry, actual AudioWorklet callbacks, offline realtime pacing, explicit dummy processing, cooperative free-running processing, Web MIDI, session replacement, and clean shutdown.
+- [x] Inspect application, remote client, physical driver, Worker, and worklet dependency trees.
+- [x] Run tracing inventory checks and realtime allocation/lock gates.
+- [x] Re-run restart and multi-instance stress from a clean checkout.
+- [x] Compare application-visible behavior and runtime diagnostics with the Stage 0 baseline and document deliberate differences.
+
+Final evidence: formatting and warning-denying target checks pass. Native validation runs the complete nextest workspace suite plus all 13 `shoop_audio_worklet` library tests; driver switching, JACK/Carla, no-allocation, and lock gates are included. Warning-denying Trunk debug and release builds pass for the application and import-free worklet. The actual-artifact raw-host contract and package verifier pass. Local Chrome passes hosted microphone, output-only, denial/retry, lifecycle, Web MIDI/restart, Worker all-mode/multi-instance contracts, and hosted/self-contained physical and Worker artifacts. Dependency isolation and the 125-module tracing inventory pass. Clean GitHub Linux, macOS, Windows, WebAssembly, coverage, docs, browser, Firefox, and CodeQL jobs provide the authoritative platform matrix. Deliberate baseline differences are documented in `worklet_backend_baseline.md`.
+
+Final evidence must demonstrate every immutable acceptance criterion, account for any deliberate compatibility change, and show that no transitional implementation remains.

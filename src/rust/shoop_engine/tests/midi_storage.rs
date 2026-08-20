@@ -42,7 +42,7 @@ fn same(got: &[MidiStorageElem], want: &[MidiStorageElem]) -> bool {
             .all(|(a, b)| a.time == b.time && a.data() == b.data())
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_storage_round_trip() {
     let input = [msg(0, &[0, 1, 2]), msg(1, &[3, 4, 5]), msg(10, &[10])];
     let mut s = MidiStorage::with_capacity_elems(input.len());
@@ -57,7 +57,7 @@ fn midi_storage_round_trip() {
     check!(same(&drain(&s), &input));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_storage_prepend() {
     let input = [msg(10, &[0, 1, 2]), msg(11, &[3, 4, 5])];
     let prepend = [msg(9, &[10]), msg(8, &[10])];
@@ -83,7 +83,7 @@ fn midi_storage_prepend() {
     check!(same(&drain(&s), &expected));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_storage_replace_append() {
     let input = [msg(0, &[0, 1, 2]), msg(1, &[3, 4, 5]), msg(10, &[10])];
     let append = msg(11, &[4, 5, 6]);
@@ -107,7 +107,7 @@ fn midi_storage_replace_append() {
     check!(same(&drain(&s), &expected));
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test]
 fn midi_storage_wrap_around() {
     let mut s = MidiStorage::with_capacity_elems(3);
 
@@ -127,3 +127,5 @@ fn midi_storage_wrap_around() {
     let expected = [msg(2, &[2, 2, 2]), msg(3, &[3, 3, 3]), msg(4, &[4, 4, 4])];
     check!(same(&drain(&s), &expected));
 }
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);

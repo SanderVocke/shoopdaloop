@@ -1,12 +1,19 @@
 [package]
 name = "shoop_tracing"
+version.workspace = true
 edition = "2021"
 
 [lib]
 
 [dependencies]
 assert_no_alloc = { workspace = true }
+ctor = { workspace = true }
 tracy-client = { workspace = true, optional = true }
+tracy-client-sys = { workspace = true, optional = true }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+tracy-nextest-capture = { workspace = true }
 
 [lints]
 workspace = true
@@ -14,4 +21,4 @@ workspace = true
 [features]
 default = ["tracy"]
 prebuild = []
-tracy = ["dep:tracy-client"]
+tracy = ["dep:tracy-client", "dep:tracy-client-sys"]

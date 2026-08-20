@@ -149,13 +149,13 @@ impl WaveformPyramid {
 mod tests {
     use super::*;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_input_or_zero_width_has_no_bins() {
         assert!(waveform_bins(&[], 10).is_empty());
         assert!(waveform_bins(&[1.0], 0).is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn short_input_is_not_upsampled() {
         assert_eq!(
             waveform_bins(&[-0.5, 0.25], 20),
@@ -172,7 +172,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn long_input_preserves_extrema_per_bin() {
         assert_eq!(
             waveform_bins(&[-0.2, 0.5, -0.8, 0.1, 0.4, -0.3], 2),
@@ -189,7 +189,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn output_size_is_bounded_for_large_recordings() {
         let samples = vec![0.5; 1_000_000];
         let bins = waveform_bins(&samples, 800);
@@ -200,7 +200,7 @@ mod tests {
             .all(|bin| *bin == WaveformBin { min: 0.0, max: 0.5 }));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn non_finite_values_are_ignored() {
         assert_eq!(
             waveform_bins(&[f32::NAN, -0.4, f32::INFINITY], 1),
@@ -211,7 +211,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pyramid_queries_match_direct_binning() {
         let mut samples: Vec<_> = (0..1_037)
             .map(|index| ((index as f32 * 0.17).sin() * 1.2).clamp(-1.0, 1.0))
@@ -232,7 +232,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn pyramid_matches_only_the_source_allocation() {
         let samples: Arc<[f32]> = Arc::from([0.1, -0.2, 0.3]);
         let same_values: Arc<[f32]> = Arc::from([0.1, -0.2, 0.3]);

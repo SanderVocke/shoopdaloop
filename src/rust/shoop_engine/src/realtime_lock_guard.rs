@@ -69,7 +69,7 @@ pub fn first_violation() -> Option<&'static Location<'static>> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 fn clear_first_violation() {
     FIRST_VIOLATION.store(std::ptr::null_mut(), Ordering::Release);
 }
@@ -169,12 +169,12 @@ macro_rules! realtime_allow_lock {
     }};
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use std::sync::Arc;
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn realtime_detection_contract() {
         clear_first_violation();
         set_enabled(false);
@@ -225,7 +225,7 @@ mod tests {
         set_enabled(false);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn wrapper_preserves_poisoning_and_mutable_access() {
         let mut mutex = Mutex::new(1_u32);
         *mutex.get_mut().unwrap() = 2;
@@ -243,7 +243,7 @@ mod tests {
         assert!(!mutex.is_poisoned());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn checked_guard_interoperates_with_condvar() {
         let pair = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
         let worker = Arc::clone(&pair);

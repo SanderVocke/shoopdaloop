@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "version": "2.5.10",
+  "git_revision": "ad09259060a4e660a5033024406a1c3cc9f9c198",
+  "source": {
+    "url": "https://github.com/falkTX/Carla/archive/refs/tags/v2.5.10.tar.gz",
+    "sha256": "ae2835b12081f7271a6b0b25d34b87d36b022c40370028ca4a10f90fcedfa661",
+    "native_header_sha256": "c1b1a806a95ee2e4935eec9699c233e6a3ee27fcc8da37002bb0034c9d81854f"
+  },
+  "upstream_binaries": {
+    "windows-x86_64": {
+      "url": "https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-win64.zip",
+      "sha256": "56264cd860b3e6e7b29221fb1e46d7d8a288fb001500f830bcd739ec7b115650"
+    },
+    "macos-universal": {
+      "url": "https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-macOS-universal.dmg",
+      "sha256": "a30e98409974493ade18f598566628369fee67f179a84e1c2cc3ae46a71808b1"
+    }
+  },
+  "targets": {
+    "linux-x86_64": {
+      "source": "pinned source archive",
+      "build": "make -j2 plugin frontend; freeze Carla plugin UIs with cx-Freeze 7.2.7 and PyQt5 5.15.11",
+      "runner": "ubuntu-24.04",
+      "architecture": "x86_64",
+      "glibc_baseline": "ubuntu-24.04 runner (glibc 2.39)",
+      "loader_policy": "$ORIGIN-relative RPATH with recorded non-platform dependency closure"
+    },
+    "windows-x86_64": {
+      "source": "checksummed upstream win64 archive",
+      "architecture": "x86_64",
+      "build": "verified upstream win64 release payload, normalized by scripts/carla_runtime.py",
+      "loader_policy": "application-relative component paths; no PATH lookup"
+    },
+    "macos-arm64": {
+      "source": "checksummed upstream universal archive",
+      "architecture": "arm64 slice required",
+      "build": "verified upstream universal release payload, normalized by scripts/carla_runtime.py",
+      "minimum_os": "11.0",
+      "signing": "unsigned application archive; no signing identity or installer is introduced"
+    }
+  },
+  "required_exports": [
+    "carla_get_native_rack_plugin",
+    "carla_get_native_patchbay_plugin",
+    "carla_get_native_patchbay16_plugin"
+  ],
+  "descriptors": {
+    "carlarack": { "audio_inputs": 2, "audio_outputs": 2, "midi_inputs": 1, "midi_outputs": 1 },
+    "carlapatchbay": { "audio_inputs": 2, "audio_outputs": 2, "midi_inputs": 1, "midi_outputs": 1 },
+    "carlapatchbay16": { "audio_inputs": 16, "audio_outputs": 16, "midi_inputs": 1, "midi_outputs": 1 }
+  },
+  "component": {
+    "required_library_stems": ["libcarla_native-plugin"],
+    "required_helpers": ["carla-plugin", "carla-plugin-patchbay", "carla-discovery-native", "carla-bridge-native"],
+    "optional_helper_prefixes": ["carla-bridge-", "carla-discovery-"],
+    "excluded_prefixes": ["carla.lv2", "carla.vst", "CarlaRack", "CarlaPatchbay", "libcarla_host-plugin", "libcarla_standalone"],
+    "linux_platform_libraries": ["ld-linux-x86-64.so.2", "libc.so.6", "libdl.so.2", "libgcc_s.so.1", "libm.so.6", "libmvec.so.1", "libpthread.so.0", "librt.so.1", "libstdc++.so.6", "libGL.so.1", "libGLX.so.0", "libGLdispatch.so.0"]
+  },
+  "license": {
+    "carla": "GPL-2.0-or-later",
+    "project_compatibility": "ShoopDaLoop is GPL-3.0; bundled Carla GPL-2.0-or-later is compatible.",
+    "corresponding_source": "The exact source URL and checksum above are shipped in every normalized runtime component."
+  }
+}

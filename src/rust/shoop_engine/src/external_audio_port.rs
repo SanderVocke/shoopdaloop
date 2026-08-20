@@ -177,35 +177,6 @@ impl ExternalAudioPort {
         self.processed_len = 0;
     }
 
-    /// Adds output generated after this port's scheduled process step.
-    ///
-    /// The synthetic test FX shim runs after graph processing so its input ports already
-    /// contain routed data. Keep the current-cycle dummy capture coherent by adding the
-    /// same contribution to the samples that `process` captured earlier in the cycle.
-    pub fn add_late_output(&mut self, samples: &[f32]) {
-        if self.buffer.len() < samples.len() {
-            crate::realtime_allow_alloc_once!("ExternalAudioPort::add_late_output resize", || {
-                self.buffer.resize(samples.len(), 0.0)
-            });
-        }
-        for (output, sample) in self.buffer.iter_mut().zip(samples) {
-            *output += *sample;
-        }
-        if self.capture_output && self.direction == PortDirection::Output {
-            let mut outgoing = crate::realtime_allow_lock!(
-                "external audio late output capture",
-                self.outgoing.lock()
-            )
-            .unwrap_or_else(|e| e.into_inner());
-            if outgoing.len() >= samples.len() {
-                let start = outgoing.len() - samples.len();
-                for (output, sample) in outgoing[start..].iter_mut().zip(samples) {
-                    *output += *sample;
-                }
-            }
-        }
-    }
-
     // --- port interface ---
 
     /// The port's buffer, grown if this cycle needs more room.
@@ -298,7 +269,7 @@ mod tests {
         ExternalAudioPort::new("out", PortDirection::Output, 4)
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn access_follows_direction() {
         let i = in_port();
         check!(i.has_internal_read_access());
@@ -309,7 +280,7 @@ mod tests {
         check!(o.has_internal_write_access());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn staged_input_arrives_for_one_cycle_only() {
         let mut p = in_port();
 
@@ -323,7 +294,7 @@ mod tests {
         check!(p.buffer(4) == [0.0; 4]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_strided_stage_takes_one_channel_out_of_an_interleaved_buffer() {
         let mut p = in_port();
         // Two channels interleaved: 1.0 on the left, 2.0 on the right.
@@ -338,7 +309,7 @@ mod tests {
         check!(p.buffer(3) == [2.0, 2.0, 2.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_nonsense_stride_stages_nothing() {
         let mut p = in_port();
         // An offset outside the stride would read the wrong channel, so refuse.
@@ -348,7 +319,7 @@ mod tests {
         check!(p.buffer(2) == [0.0, 0.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_short_stage_is_padded_with_silence() {
         let mut p = in_port();
 
@@ -357,7 +328,7 @@ mod tests {
         check!(p.buffer(4) == [1.0, 1.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn gain_and_muting_apply_on_the_way_out() {
         let mut p = out_port();
         p.audio_mut().set_gain(0.5);
@@ -374,20 +345,7 @@ mod tests {
         check!(p.output(3) == [0.0, 0.0, 0.0]);
     }
 
-    #[test]
-    fn late_output_updates_the_current_dummy_capture() {
-        let mut p = out_port();
-        p.clear_output_queue();
-        p.prepare(3);
-        p.process(3);
-
-        p.add_late_output(&[0.25, 0.5, 0.75]);
-
-        check!(p.output(3) == [0.25, 0.5, 0.75]);
-        check!(p.dequeue_output(3) == [0.25, 0.5, 0.75]);
-    }
-
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn what_arrived_is_metered_even_when_muted() {
         let mut p = in_port();
         p.audio_mut().set_muted(true);
@@ -400,7 +358,7 @@ mod tests {
         check!(p.audio().output_peak() == 0.0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn jack_audio_input_gain_and_mute_equivalent() {
         let mut p = in_port();
         p.audio_mut().set_gain(0.5);
@@ -416,7 +374,7 @@ mod tests {
         check!(p.buffer(3) == [0.0, 0.0, 0.0]);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn jack_audio_input_ringbuffer_snapshot_equivalent() {
         let mut p = in_port();
         p.audio_mut().set_ringbuffer_n_samples(4);
@@ -430,7 +388,7 @@ mod tests {
         check!(data.ends_with(&[0.0, 0.1, 0.2, 0.3]));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn jack_audio_output_starts_next_cycle_silent_equivalent() {
         let mut p = out_port();
         p.prepare(5);
@@ -445,7 +403,7 @@ mod tests {
 
     /// The regression that mattered in production: with no capture consumer, every real
     /// driver grew this forever and reallocated on the audio thread each cycle.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn output_is_not_retained_when_nobody_is_capturing() {
         let mut p = out_port();
         for _ in 0..10_000 {
@@ -458,7 +416,7 @@ mod tests {
         check!(outgoing.capacity() == 0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_capturing_port_still_yields_what_it_produced() {
         let mut p = out_port();
         p.clear_output_queue();
@@ -473,7 +431,7 @@ mod tests {
     }
 
     /// A consumer that stops reading must not grow the queue without bound.
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn a_capturing_port_that_is_never_drained_stays_bounded() {
         let mut p = out_port();
         p.clear_output_queue();
@@ -486,7 +444,7 @@ mod tests {
         check!(p.outgoing.lock().unwrap().len() <= MAX_CAPTURED_SAMPLES);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn restaging_the_same_size_does_not_grow_the_buffer() {
         let mut p = in_port();
         p.stage_input(&[1.0, 2.0, 3.0, 4.0]);

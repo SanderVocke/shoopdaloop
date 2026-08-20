@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! Proves the process path does not allocate.
 //!
 //! This is the strongest argument for the Rust port: "is this realtime-safe?"
@@ -13,6 +15,8 @@ use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::content_snapshot::ContentSnapshotRuntime;
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
+use shoop_engine::external_audio_port::ExternalAudioPort;
+use shoop_engine::external_midi_port::ExternalMidiPort;
 use shoop_engine::internal_audio_port::InternalAudioPort;
 use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi;
@@ -31,7 +35,10 @@ use shoop_engine::{
 #[global_allocator]
 static A: AllocDisabler = AllocDisabler;
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
     realtime_alloc_guard::set_enabled(true);
     realtime_alloc_guard::forbid_alloc_if_enabled(|| {
@@ -42,7 +49,10 @@ fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
     realtime_alloc_guard::set_enabled(false);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn realtime_lock_guard_is_allocation_free() {
     use shoop_engine::realtime_lock_guard;
 
@@ -62,7 +72,10 @@ fn realtime_lock_guard_is_allocation_free() {
     assert_eq!(*mutex.lock().unwrap(), 1);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn snapshot_process_publication_is_allocation_free() {
     let runtime = ContentSnapshotRuntime::new();
     let (mut audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);
@@ -101,7 +114,10 @@ fn snapshot_process_publication_is_allocation_free() {
     });
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn midi_replacement_is_allocation_free() {
     let mut channel =
         shoop_engine::midi_channel::MidiChannel::with_capacity_elems(64, ChannelMode::Direct);
@@ -139,7 +155,59 @@ fn midi_replacement_is_allocation_free() {
     });
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
+fn interrupting_midi_playback_is_allocation_free() {
+    let mut channel =
+        shoop_engine::midi_channel::MidiChannel::with_capacity_elems(1, ChannelMode::Direct);
+    channel.set_contents(
+        &[MidiStorageElem::new(0, &midi::note_on(0, 60, 100)).unwrap()],
+        4,
+        None,
+    );
+    let mut output = Vec::with_capacity(2);
+    channel.set_playback_buffer(4);
+    channel
+        .process(
+            LoopMode::Playing,
+            LoopMode::Unknown,
+            None,
+            None,
+            4,
+            0,
+            4,
+            4,
+            &[],
+            &mut output,
+        )
+        .unwrap();
+    output.clear();
+    channel.set_playback_buffer(4);
+
+    assert_no_alloc(|| {
+        channel
+            .process(
+                LoopMode::Playing,
+                LoopMode::Unknown,
+                None,
+                None,
+                4,
+                0,
+                4,
+                4,
+                &[],
+                &mut output,
+            )
+            .unwrap();
+    });
+}
+
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn midi_passthrough_cleanup_is_allocation_free() {
     let mut session = Session::default();
     let source = session.add_port(midi_port(1, "source", PortDirection::Input));
@@ -165,7 +233,10 @@ fn midi_passthrough_cleanup_is_allocation_free() {
     });
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn snapshot_process_endpoint_retirement_defers_pooled_destruction() {
     let runtime = ContentSnapshotRuntime::new();
     let (audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);
@@ -211,20 +282,30 @@ fn assert_steady_state_is_alloc_free(mut s: Session, n_frames: usize, cycles: us
     });
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
     let mut session = Session::default();
     session.set_sample_rate(48_000);
     session.set_buffer_size(4);
-    let _input = session.add_port(internal("tiny:audio_in_0", 4));
-    let _processor_output = session.add_port(internal("tiny:audio_out_0", 4));
-    let _wet_output = session.add_port(internal("tiny_audio_wet_out_1", 4));
+    let input = session.add_port(internal("tiny:audio_in_0", 4));
+    let processor_output = session.add_port(internal("tiny:audio_out_0", 4));
     let midi_input = session.add_port(midi_port(4, "tiny:midi_in_0", PortDirection::Input));
     let control = shoop_engine::tiny_synth_fx::TinySynthFxControlState::new(48_000.0).unwrap();
     let processor = control.prepare_processor(48_000.0, 1, 4).unwrap();
     assert!(session
         .set_tiny_synth_fx_processor("tiny".to_owned(), processor)
         .is_none());
+    session
+        .set_processor_ports(
+            "tiny",
+            vec![input],
+            vec![processor_output],
+            vec![midi_input],
+        )
+        .unwrap();
     session.apply_graph_changes().unwrap();
     // Warm the session's target-specific tracing/runtime machinery while the new
     // processor is still inactive; the first active Tiny block remains guarded.
@@ -235,9 +316,14 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         .unwrap()
         .as_dummy_midi_mut()
         .unwrap()
-        .queue_msg(0, &midi::note_on(0, 69, 127));
+        .queue_msg(0, &midi::cc(0, 17, 127));
     assert_no_alloc(|| {
         let processor = session.tiny_synth_fx_processor_mut("tiny").unwrap();
+        processor.assign_midi_cc(shoop_engine::tiny_synth_fx::TinySynthFxMidiCcAssignment {
+            parameter: shoop_engine::tiny_synth_fx::TinySynthFxParameter::ReverbAmount,
+            channel: 0,
+            controller: 17,
+        });
         processor.set_master_gain_db(-12.0);
         processor.set_reverb_enabled(true);
         processor.set_reverb_amount(0.5);
@@ -252,10 +338,109 @@ fn tiny_synth_fx_first_block_and_controls_are_allocation_free() {
         processor.select_preset("percussion-kit");
         processor.panic();
         session.process(4);
+        let processor = session.tiny_synth_fx_processor_mut("tiny").unwrap();
+        processor.remove_midi_cc(shoop_engine::tiny_synth_fx::TinySynthFxParameter::ReverbAmount);
+        processor.clear_midi_cc_assignments();
     });
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
+fn global_fx_active_inactive_full_restore_and_external_send_are_allocation_free() {
+    let mut session = Session::default();
+    session.set_buffer_size(4);
+    session.set_test_fx_active("fx", false);
+    let processor_midi = session.add_port(midi_port(40, "fx:midi_in", PortDirection::Input));
+    let global = session.add_port(midi_port(41, "global:fx", PortDirection::Input));
+    session
+        .set_processor_ports("fx", vec![], vec![], vec![processor_midi])
+        .unwrap();
+    session.set_global_fx_midi_input(global).unwrap();
+    for index in 0..shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK {
+        let channel = (index / 120) as u8;
+        let controller = (index % 120) as u8;
+        session
+            .port_mut(global)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::cc(channel, controller, controller));
+    }
+    session.apply_graph_changes().unwrap();
+    assert_no_alloc(|| session.process(4));
+    session.set_test_fx_active("fx", true);
+    assert_no_alloc(|| {
+        session.process(4);
+        session.process(4);
+    });
+
+    let mut external = Session::default();
+    external.set_buffer_size(4);
+    external.set_external_processor("external");
+    let send = external.add_port(Port::ExternalMidi(ExternalMidiPort::new(
+        "external:send",
+        PortDirection::Output,
+    )));
+    let global = external.add_port(midi_port(42, "global:fx", PortDirection::Input));
+    external
+        .set_processor_ports("external", vec![], vec![], vec![send])
+        .unwrap();
+    external.set_global_fx_midi_input(global).unwrap();
+    external
+        .port_mut(global)
+        .unwrap()
+        .as_dummy_midi_mut()
+        .unwrap()
+        .queue_msg(0, &midi::pitch_wheel(0, 4_096));
+    external.apply_graph_changes().unwrap();
+    assert_no_alloc(|| external.process(4));
+}
+
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
+fn test_and_external_processor_nodes_are_allocation_free() {
+    let mut test = Session::default();
+    test.set_buffer_size(4);
+    let input = test.add_port(internal("test:audio_in_0", 4));
+    let output = test.add_port(internal("test:audio_out_0", 4));
+    test.set_test_fx_active("test", false);
+    test.set_processor_ports("test", vec![input], vec![output], vec![])
+        .unwrap();
+    test.apply_graph_changes().unwrap();
+    test.process(4);
+    test.set_test_fx_active("test", true);
+    assert_no_alloc(|| test.process(4));
+
+    let mut external = Session::default();
+    external.set_buffer_size(4);
+    let return_ = external.add_port(Port::External(ExternalAudioPort::new(
+        "return",
+        PortDirection::Input,
+        4,
+    )));
+    external.set_external_processor("external");
+    external
+        .set_processor_ports("external", vec![], vec![return_], vec![])
+        .unwrap();
+    external.apply_graph_changes().unwrap();
+    external.process(4);
+    external
+        .port_mut(return_)
+        .unwrap()
+        .as_external_mut()
+        .unwrap()
+        .stage_input(&[1.0; 4]);
+    assert_no_alloc(|| external.process(4));
+}
+
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn composite_state_machine_does_not_allocate_or_free() {
     let source = LoopIdentity {
         slot: 10,
@@ -360,7 +545,10 @@ fn composite_state_machine_does_not_allocate_or_free() {
     });
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn composite_timeline_processing_does_not_allocate_or_free() {
     let mut session = Session::default();
     let sync = session.create_loop();
@@ -542,7 +730,10 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
     assert_eq!(engine.session().composite_timeline().n_composites(), 0);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn dense_composite_events_and_fail_closed_overflow_do_not_allocate() {
     let source = LoopIdentity {
         slot: 100,
@@ -642,7 +833,10 @@ fn dense_composite_events_and_fail_closed_overflow_do_not_allocate() {
     assert_eq!(overflow.runtime(source).unwrap().mode(), LoopMode::Stopped);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn composite_callback_state_sources_are_structurally_lock_free() {
     for source in [
         include_str!("../src/composite_plan.rs"),
@@ -658,7 +852,10 @@ fn composite_callback_state_sources_are_structurally_lock_free() {
     }
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply() {
     let mut session = Session::default();
     let input = session.add_port(audio_port(1, "in", PortDirection::Input));
@@ -746,12 +943,18 @@ fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply(
     );
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn an_empty_session_does_not_allocate() {
     assert_steady_state_is_alloc_free(Session::default(), 4, 8);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn recording_audio_does_not_allocate() {
     let mut s = Session::default();
     let input = s.add_port(audio_port(1, "in", PortDirection::Input));
@@ -765,7 +968,10 @@ fn recording_audio_does_not_allocate() {
     assert_steady_state_is_alloc_free(s, 4, 8);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn playing_audio_does_not_allocate() {
     let mut s = Session::default();
     let output = s.add_port(audio_port(1, "out", PortDirection::Output));
@@ -783,7 +989,10 @@ fn playing_audio_does_not_allocate() {
     assert_steady_state_is_alloc_free(s, 4, 8);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn a_full_audio_chain_does_not_allocate() {
     let mut s = Session::default();
     let input = s.add_port(audio_port(1, "in", PortDirection::Input));
@@ -802,7 +1011,10 @@ fn a_full_audio_chain_does_not_allocate() {
     assert_steady_state_is_alloc_free(s, 4, 8);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn midi_routing_does_not_allocate() {
     let mut s = Session::default();
     let input = s.add_port(midi_port(1, "min", PortDirection::Input));
@@ -817,7 +1029,10 @@ fn midi_routing_does_not_allocate() {
     assert_steady_state_is_alloc_free(s, 4, 8);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn several_loops_and_channels_do_not_allocate() {
     let mut s = Session::default();
     let ain = s.add_port(audio_port(1, "ain", PortDirection::Input));
@@ -838,7 +1053,10 @@ fn several_loops_and_channels_do_not_allocate() {
     assert_steady_state_is_alloc_free(s, 4, 8);
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn feeding_queued_input_does_not_allocate_while_processing() {
     let mut s = Session::default();
     let input = s.add_port(audio_port(1, "in", PortDirection::Input));
@@ -866,7 +1084,10 @@ fn feeding_queued_input_does_not_allocate_while_processing() {
     });
 }
 
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn queued_midi_is_consumed_without_allocating() {
     let mut s = Session::default();
     let input = s.add_port(midi_port(1, "min", PortDirection::Input));
@@ -891,7 +1112,10 @@ fn queued_midi_is_consumed_without_allocating() {
 }
 
 /// Recording long enough to grow past its first chunk, which used to allocate.
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn recording_past_a_chunk_boundary_does_not_allocate() {
     let mut s = Session::default();
     let input = s.add_port(audio_port(1, "in", PortDirection::Input));
@@ -918,7 +1142,10 @@ fn recording_past_a_chunk_boundary_does_not_allocate() {
 
 /// Playback state restoration emits a burst of messages in one cycle, so its
 /// scratch buffer is the obvious place for a hidden reallocation.
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn restoring_drifted_state_on_playback_does_not_allocate() {
     let mut s = Session::default();
     let input = s.add_port(midi_port(1, "min", PortDirection::Input));
@@ -978,7 +1205,10 @@ fn restoring_drifted_state_on_playback_does_not_allocate() {
 /// This is what the engine's return queue is for: running a boxed closure and then
 /// dropping the box would free here, which `assert_no_alloc` treats exactly like an
 /// allocation. Reverting the return queue to a plain drop fails this test.
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn applying_commands_does_not_allocate() {
     use shoop_engine::engine::split;
     use shoop_engine::loop_mode::LoopMode;
@@ -1035,7 +1265,10 @@ fn applying_commands_does_not_allocate() {
 /// `send_and_wait` itself blocks, so it cannot be called from inside the guard. What
 /// is checked here is the part that runs on the audio thread -- applying the closure
 /// and handing the result over -- which is all the audio thread ever does for it.
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn returning_a_result_from_a_command_does_not_allocate() {
     use shoop_engine::engine::split;
 
@@ -1074,7 +1307,10 @@ fn returning_a_result_from_a_command_does_not_allocate() {
 /// channel's storage to hold the new bar. That growth has to come from the refilling pool rather
 /// than the allocator, which is exactly what this asserts: shrink and re-grow inside the guard,
 /// having first taken the chunks so the pool is what supplies them.
-#[test]
+#[shoop_wasm_test_support::shoop_test(
+    no_wasm = "requires native allocation instrumentation",
+    no_tracy = "measures allocation behavior without an outer capture"
+)]
 fn resizing_a_loop_from_the_audio_thread_does_not_allocate() {
     use shoop_engine::channel_mode::ChannelMode;
     use shoop_engine::engine::split;

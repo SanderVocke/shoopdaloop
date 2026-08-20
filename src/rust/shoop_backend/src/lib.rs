@@ -1,13 +1,18 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 mod native;
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 pub use native::NativeBackend;
 #[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
 pub use native::{
-    configure_carla_hosting_mode, configured_carla_hosting_mode, run_carla_worker_if_requested,
+    carla_runtime_path, configure_carla_hosting_mode, configured_carla_hosting_mode,
+    run_carla_worker_if_requested, smoke_test_carla_runtime, smoke_test_carla_ui,
 };
 pub use shoop_app_api::{
-    TinySynthFxControl, TinySynthFxState, TrackProcessorEditorState, TrackProcessorTypeId,
+    TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter, TinySynthFxState,
+    TrackProcessorEditorState, TrackProcessorTypeId,
 };
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -35,6 +40,19 @@ use shoop_engine::{
 pub struct BackendLoopId(u64);
 
 impl BackendLoopId {
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn raw(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct BackendCompositeId(u64);
+
+impl BackendCompositeId {
     pub const fn from_raw(value: u64) -> Self {
         Self(value)
     }
@@ -83,6 +101,12 @@ pub enum BackendPortDirection {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum BackendPortOwner {
+    Track,
+    GlobalFxControl,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum BackendPortRole {
     AudioInput,
     AudioOutput,
@@ -96,6 +120,7 @@ pub enum BackendPortRole {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendPortDescriptor {
     pub id: BackendPortId,
+    pub owner: BackendPortOwner,
     pub name: String,
     pub data_type: BackendPortDataType,
     pub direction: BackendPortDirection,
@@ -272,6 +297,7 @@ pub struct BackendTrackState {
     pub output_peaks: Vec<f32>,
     pub input_midi_activity: bool,
     pub output_midi_activity: bool,
+    pub latest_input_midi_message: Option<BackendLatestMidiMessage>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -303,12 +329,13 @@ pub struct BackendStatus {
     pub callback_budget_overruns: u32,
     pub render_discontinuities: u32,
     pub memory_growths: u32,
+    pub render_memory_growths: u32,
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum BackendLoopMode {
     #[default]
     Unknown,
@@ -406,6 +433,54 @@ pub struct BackendLoopState {
     pub midi_activity: bool,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendCompositeKind {
+    Regular,
+    Script,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BackendCompositeTarget {
+    Loop(BackendLoopId),
+    Composite(BackendCompositeId),
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendCompositeEntry {
+    pub target: BackendCompositeTarget,
+    pub delay: i64,
+    pub n_cycles: Option<i64>,
+    pub mode: Option<BackendLoopMode>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendCompositeConfig {
+    pub kind: BackendCompositeKind,
+    pub sync_source: BackendLoopId,
+    pub timelines: Vec<Vec<Vec<BackendCompositeEntry>>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackendActiveCompositeChild {
+    pub target: BackendCompositeTarget,
+    pub mode: BackendLoopMode,
+    pub cycle_offset: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct BackendCompositeState {
+    pub mode: BackendLoopMode,
+    pub next_mode: Option<BackendLoopMode>,
+    pub next_transition_delay: Option<u32>,
+    pub iteration: u32,
+    pub cycle_count: u64,
+    pub length: u64,
+    pub position: u64,
+    pub active_plan_version: u64,
+    pub pending_plan_version: Option<u64>,
+    pub active_children: Vec<BackendActiveCompositeChild>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BackendGrabRequest {
     pub loop_id: BackendLoopId,
@@ -431,6 +506,39 @@ pub struct BackendAudioContent {
     pub preplay: u32,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendLatestMidiMessage {
+    pub bytes: [u8; 4],
+    pub len: u8,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendTinySynthFxMidiCcAssignment {
+    pub parameter: BackendTinySynthFxParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum BackendTinySynthFxParameter {
+    MasterGain,
+    ReverbAmount,
+    DistortionDrive,
+    CompressorAmount,
+    EqLow,
+    EqMid,
+    EqHigh,
+}
+
+impl From<shoop_engine::LatestMidiMessage> for BackendLatestMidiMessage {
+    fn from(value: shoop_engine::LatestMidiMessage) -> Self {
+        Self {
+            bytes: value.bytes,
+            len: value.len,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendMidiEvent {
     pub time: u32,
@@ -445,6 +553,21 @@ pub struct BackendMidiContent {
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: i32,
     pub preplay: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackendMidiChannelData {
+    pub content_revision: u64,
+    pub mode: BackendChannelMode,
+    pub length: u32,
+    pub events: Vec<BackendMidiEvent>,
+    pub start_offset: i32,
+    pub preplay: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct BackendMidiData {
+    pub channels: Vec<BackendMidiChannelData>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -498,12 +621,16 @@ pub struct BackendSessionTrack {
     pub loops: Vec<BackendLoopContent>,
     pub ports: Vec<BackendSessionPort>,
     pub processor_state: Option<String>,
+    #[serde(default)]
+    pub tiny_synth_midi_cc_assignments: Vec<BackendTinySynthFxMidiCcAssignment>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BackendSessionData {
     pub sample_rate: u32,
     pub tracks: Vec<BackendSessionTrack>,
+    #[serde(default)]
+    pub global_ports: Vec<BackendSessionPort>,
     #[serde(default)]
     pub use_legacy_browser_default_routes: bool,
 }
@@ -513,6 +640,7 @@ pub struct BackendSessionReplacement {
     pub tracks: BTreeMap<u64, BackendTrackCreation>,
     pub loops: BTreeMap<u64, BackendLoopId>,
     pub ports: BTreeMap<u64, BackendPortId>,
+    pub global_ports: BTreeMap<u64, BackendPortId>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -525,16 +653,79 @@ pub struct BackendAudioDataChunk {
     pub samples: Vec<f32>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BackendOperationKind {
+    SessionCapture,
+    SessionReplacement,
+    LoopContentReplacement,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackendOperationProgress {
+    pub key: u64,
+    pub kind: BackendOperationKind,
+    pub completed: usize,
+    pub total: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BackendAsyncResult<T> {
+    Pending(BackendOperationProgress),
+    Ready(T),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BackendMutationKind {
+    DriverConfiguration,
+    TrackStructure,
+    CompositeStructure,
+    TrackControl,
+    TrackFxControl,
+    MidiInput,
+    LoopControl,
+    LoopContent,
+    SessionTransfer,
+    Connection,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BackendMutationDetail {
+    TrackCreation,
+    TrackRemoval,
+    LoopCreation { loop_id: BackendLoopId },
+    TrackControl(BackendTrackControl),
+    TrackFxControl(BackendTrackFxControl),
+    LoopGain(f32),
+    LoopBalance(f32),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BackendMutationFailure {
+    pub driver_generation: u64,
+    pub sequence: u64,
+    pub operation_key: Option<u64>,
+    pub kind: BackendMutationKind,
+    pub entity: Option<u64>,
+    pub detail: Option<BackendMutationDetail>,
+    pub message: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
     pub status: BackendStatus,
     pub audio_drivers: AudioDriverRuntimeState,
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
+    pub composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
     pub connections: BackendConnectionSnapshot,
+    pub mutation_failures: Vec<BackendMutationFailure>,
 }
 
 pub trait Backend {
+    fn supports_composite_loops(&self) -> bool {
+        false
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(Arc::from([]))
     }
@@ -563,6 +754,35 @@ pub trait Backend {
         Err(anyhow!("audio-driver switching is unavailable"))
     }
     fn create_loop(&mut self) -> Result<BackendLoopId>;
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
+    fn configure_composite_loop(
+        &mut self,
+        _composite_id: BackendCompositeId,
+        _config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
+    fn transition_composite_loop(
+        &mut self,
+        _composite_id: BackendCompositeId,
+        _mode: BackendLoopMode,
+        _cycles_delay: Option<u32>,
+        _align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
+    fn set_composite_play_after_record(
+        &mut self,
+        _composite_id: BackendCompositeId,
+        _enabled: bool,
+    ) -> Result<()> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
+    fn remove_composite_loop(&mut self, _composite_id: BackendCompositeId) -> Result<()> {
+        Err(anyhow!("composite loops are unavailable"))
+    }
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
         match request.topology {
             BackendTrackTopology::Direct {
@@ -583,6 +803,7 @@ pub trait Backend {
         }
     }
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation>;
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()>;
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId>;
     fn set_track_control(
         &mut self,
@@ -610,6 +831,7 @@ pub trait Backend {
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()>;
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>>;
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>>;
     fn loop_audio_data_chunk(
         &mut self,
         loop_id: BackendLoopId,
@@ -673,12 +895,29 @@ pub trait Backend {
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         Err(anyhow!("session capture is unavailable"))
     }
+    fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+        self.capture_session().map(BackendAsyncResult::Ready)
+    }
     fn replace_session(
         &mut self,
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let _ = session;
         Err(anyhow!("session replacement is unavailable"))
+    }
+    fn replace_session_async(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendAsyncResult<BackendSessionReplacement>> {
+        self.replace_session(session).map(BackendAsyncResult::Ready)
+    }
+    fn replace_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.replace_loop_content(loop_id, update)
+            .map(BackendAsyncResult::Ready)
     }
     fn set_port_connected(
         &mut self,
@@ -711,8 +950,123 @@ fn validate_midi_input_events(events: &[BackendMidiEvent]) -> Result<()> {
     Ok(())
 }
 pub const MAX_WEB_AUDIO_QUANTUM: u32 = 2048;
-pub const RECORDING_CAPACITY_SECONDS: u32 = 10;
+pub const RECORDING_CAPACITY_SECONDS: u32 = 120;
+pub const INPUT_CAPTURE_CAPACITY_SECONDS: u32 = 30;
 pub const WEB_MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
+
+fn engine_tiny_synth_parameter(
+    parameter: TinySynthFxParameter,
+) -> shoop_engine::tiny_synth_fx::TinySynthFxParameter {
+    use shoop_engine::tiny_synth_fx::TinySynthFxParameter as EngineParameter;
+    match parameter {
+        TinySynthFxParameter::MasterGain => EngineParameter::MasterGain,
+        TinySynthFxParameter::ReverbAmount => EngineParameter::ReverbAmount,
+        TinySynthFxParameter::DistortionDrive => EngineParameter::DistortionDrive,
+        TinySynthFxParameter::CompressorAmount => EngineParameter::CompressorAmount,
+        TinySynthFxParameter::EqLow => EngineParameter::EqLow,
+        TinySynthFxParameter::EqMid => EngineParameter::EqMid,
+        TinySynthFxParameter::EqHigh => EngineParameter::EqHigh,
+    }
+}
+
+fn app_tiny_synth_parameter(
+    parameter: shoop_engine::tiny_synth_fx::TinySynthFxParameter,
+) -> TinySynthFxParameter {
+    use shoop_engine::tiny_synth_fx::TinySynthFxParameter as EngineParameter;
+    match parameter {
+        EngineParameter::MasterGain => TinySynthFxParameter::MasterGain,
+        EngineParameter::ReverbAmount => TinySynthFxParameter::ReverbAmount,
+        EngineParameter::DistortionDrive => TinySynthFxParameter::DistortionDrive,
+        EngineParameter::CompressorAmount => TinySynthFxParameter::CompressorAmount,
+        EngineParameter::EqLow => TinySynthFxParameter::EqLow,
+        EngineParameter::EqMid => TinySynthFxParameter::EqMid,
+        EngineParameter::EqHigh => TinySynthFxParameter::EqHigh,
+    }
+}
+
+fn engine_midi_cc_assignment(
+    assignment: TinySynthFxMidiCcAssignment,
+) -> shoop_engine::tiny_synth_fx::TinySynthFxMidiCcAssignment {
+    shoop_engine::tiny_synth_fx::TinySynthFxMidiCcAssignment {
+        parameter: engine_tiny_synth_parameter(assignment.parameter),
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn app_midi_cc_assignment(
+    assignment: shoop_engine::tiny_synth_fx::TinySynthFxMidiCcAssignment,
+) -> TinySynthFxMidiCcAssignment {
+    TinySynthFxMidiCcAssignment {
+        parameter: app_tiny_synth_parameter(assignment.parameter),
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn backend_midi_cc_assignment(
+    assignment: TinySynthFxMidiCcAssignment,
+) -> BackendTinySynthFxMidiCcAssignment {
+    let parameter = match assignment.parameter {
+        TinySynthFxParameter::MasterGain => BackendTinySynthFxParameter::MasterGain,
+        TinySynthFxParameter::ReverbAmount => BackendTinySynthFxParameter::ReverbAmount,
+        TinySynthFxParameter::DistortionDrive => BackendTinySynthFxParameter::DistortionDrive,
+        TinySynthFxParameter::CompressorAmount => BackendTinySynthFxParameter::CompressorAmount,
+        TinySynthFxParameter::EqLow => BackendTinySynthFxParameter::EqLow,
+        TinySynthFxParameter::EqMid => BackendTinySynthFxParameter::EqMid,
+        TinySynthFxParameter::EqHigh => BackendTinySynthFxParameter::EqHigh,
+    };
+    BackendTinySynthFxMidiCcAssignment {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn app_backend_midi_cc_assignment(
+    assignment: BackendTinySynthFxMidiCcAssignment,
+) -> TinySynthFxMidiCcAssignment {
+    let parameter = match assignment.parameter {
+        BackendTinySynthFxParameter::MasterGain => TinySynthFxParameter::MasterGain,
+        BackendTinySynthFxParameter::ReverbAmount => TinySynthFxParameter::ReverbAmount,
+        BackendTinySynthFxParameter::DistortionDrive => TinySynthFxParameter::DistortionDrive,
+        BackendTinySynthFxParameter::CompressorAmount => TinySynthFxParameter::CompressorAmount,
+        BackendTinySynthFxParameter::EqLow => TinySynthFxParameter::EqLow,
+        BackendTinySynthFxParameter::EqMid => TinySynthFxParameter::EqMid,
+        BackendTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
+    };
+    TinySynthFxMidiCcAssignment {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn validate_backend_midi_cc_assignments(track: &BackendSessionTrack) -> Result<()> {
+    if !track.tiny_synth_midi_cc_assignments.is_empty()
+        && !matches!(
+            &track.topology,
+            BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                if processor_type == TrackProcessorTypeId::TINY_SYNTH_FX
+        )
+    {
+        return Err(anyhow!(
+            "MIDI CC assignments belong to a non-Tiny processor"
+        ));
+    }
+    let mut parameters = BTreeSet::new();
+    let mut sources = BTreeSet::new();
+    for assignment in &track.tiny_synth_midi_cc_assignments {
+        if assignment.channel > 15
+            || assignment.controller > 127
+            || !parameters.insert(assignment.parameter)
+            || !sources.insert((assignment.channel, assignment.controller))
+        {
+            return Err(anyhow!("invalid or duplicate MIDI CC assignments"));
+        }
+    }
+    Ok(())
+}
 
 pub fn tiny_synth_fx_descriptor() -> TrackProcessorDescriptor {
     TrackProcessorDescriptor {
@@ -765,7 +1119,7 @@ pub fn encode_tiny_synth_fx_state(sample_rate: f32, state: &TinySynthFxState) ->
 }
 
 pub fn default_tiny_synth_fx_state() -> TrackFxState {
-    let control = shoop_engine::tiny_synth_fx::TinySynthFxControlState::new(48_000.0)
+    let mut control = shoop_engine::tiny_synth_fx::TinySynthFxControlState::new(48_000.0)
         .expect("fixed Tiny Synth/FX defaults are valid");
     let editor = control.editor_state();
     TrackFxState {
@@ -789,6 +1143,12 @@ pub fn default_tiny_synth_fx_state() -> TrackFxState {
             eq_low_db: editor.eq_low_db,
             eq_mid_db: editor.eq_mid_db,
             eq_high_db: editor.eq_high_db,
+            midi_cc_assignments: editor
+                .midi_cc_assignments
+                .into_iter()
+                .map(app_midi_cc_assignment)
+                .collect::<Vec<_>>()
+                .into(),
         })),
     }
 }
@@ -804,23 +1164,54 @@ pub struct BackendWebMidiOutputEvent {
     pub data: Vec<u8>,
 }
 
+/// Selects concrete session port implementations only; scheduling policy is
+/// owned by the surrounding driver and never branches on this value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum EngineBackendMode {
+enum EnginePortModel {
     Dummy,
     Physical,
 }
 
+/// Local elapsed-time policy. The engine runtime itself advances only through
+/// explicit process quanta supplied by a driver.
+#[derive(Clone, Copy, Default)]
+struct LocalElapsedScheduler {
+    frame_numerator: u128,
+}
+
+impl LocalElapsedScheduler {
+    fn frames_due(&mut self, elapsed: Duration, sample_rate: u32, buffer_size: u32) -> (u32, bool) {
+        self.frame_numerator = self
+            .frame_numerator
+            .saturating_add(elapsed.as_nanos().saturating_mul(sample_rate as u128));
+        let due = self.frame_numerator / NANOSECONDS_PER_SECOND;
+        let max_frames = buffer_size.saturating_mul(MAX_CYCLES_PER_ADVANCE) as u128;
+        let processed = due.min(max_frames) as u32;
+        self.frame_numerator -= processed as u128 * NANOSECONDS_PER_SECOND;
+        let overrun = due > max_frames;
+        if overrun {
+            self.frame_numerator = 0;
+        }
+        (processed, overrun)
+    }
+}
+
 pub struct EngineBackend {
     session: Session,
+    global_fx_midi: usize,
+    global_fx_port: BackendPortId,
     sample_rate: u32,
     buffer_size: u32,
-    elapsed_frame_numerator: u128,
     processed_frames: u64,
     xruns: u32,
     loops: BTreeMap<BackendLoopId, usize>,
     loop_channels: BTreeMap<BackendLoopId, EngineLoopChannels>,
+    composites: BTreeMap<BackendCompositeId, EngineComposite>,
     tracks: BTreeMap<BackendTrackId, EngineTrack>,
     next_loop_id: u64,
+    next_composite_id: u64,
+    next_composite_slot: u32,
+    next_composite_version: u64,
     next_track_id: u64,
     next_port_id: u64,
     next_backend_port_id: u64,
@@ -829,7 +1220,7 @@ pub struct EngineBackend {
     external_connections: DummyExternalConnections,
     web_midi_hosts: BTreeMap<String, BackendHostPortDescriptor>,
     desired_web_midi_connections: BTreeSet<(BackendPortId, String)>,
-    mode: EngineBackendMode,
+    port_model: EnginePortModel,
     callback_count: u64,
     input_peak: f32,
     output_peak: f32,
@@ -839,6 +1230,34 @@ pub struct EngineBackend {
     web_midi_output_pending: VecDeque<BackendWebMidiOutputEvent>,
     web_midi_output_dropped: u32,
     web_midi_input_refused: u32,
+}
+
+/// Local deterministic driver wrapper. It owns elapsed-time policy while the
+/// enclosed engine runtime exposes only explicit quantum progression.
+pub struct LocalDummyBackend {
+    runtime: EngineBackend,
+    scheduler: LocalElapsedScheduler,
+}
+
+impl std::ops::Deref for LocalDummyBackend {
+    type Target = EngineBackend;
+
+    fn deref(&self) -> &Self::Target {
+        &self.runtime
+    }
+}
+
+impl std::ops::DerefMut for LocalDummyBackend {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.runtime
+    }
+}
+
+struct EngineComposite {
+    identity: shoop_engine::LoopIdentity,
+    config: Option<BackendCompositeConfig>,
+    state: Arc<shoop_engine::state_mirror::CompositeStateMirror>,
+    play_after_record: bool,
 }
 
 struct EngineLoopChannels {
@@ -884,7 +1303,14 @@ struct EngineTinyFx {
 }
 
 impl EngineBackend {
-    pub fn new_dummy(sample_rate: u32, buffer_size: u32) -> Result<Self> {
+    pub fn new_dummy(sample_rate: u32, buffer_size: u32) -> Result<LocalDummyBackend> {
+        Ok(LocalDummyBackend {
+            runtime: Self::new_dummy_runtime(sample_rate, buffer_size)?,
+            scheduler: LocalElapsedScheduler::default(),
+        })
+    }
+
+    fn new_dummy_runtime(sample_rate: u32, buffer_size: u32) -> Result<Self> {
         if sample_rate == 0 || buffer_size == 0 {
             return Err(anyhow!(
                 "dummy sample rate and buffer size must be non-zero"
@@ -893,26 +1319,53 @@ impl EngineBackend {
         let mut session = Session::default();
         session.set_sample_rate(sample_rate);
         session.set_buffer_size(buffer_size);
+        let global_registry = PortId(1);
+        let global_fx_midi = session.add_port(Port::DummyMidi(DummyMidiPort::new(
+            global_registry,
+            "global_fx_control_midi_in",
+            PortDirection::Input,
+        )));
+        session.set_global_fx_midi_input(global_fx_midi)?;
+        let global_fx_port = BackendPortId::from_raw(9_007_199_254_740_991);
+        let global_descriptor = BackendPortDescriptor {
+            id: global_fx_port,
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        };
         Ok(Self {
             session,
+            global_fx_midi,
+            global_fx_port,
             sample_rate,
             buffer_size,
-            elapsed_frame_numerator: 0,
             processed_frames: 0,
             xruns: 0,
             loops: BTreeMap::new(),
             loop_channels: BTreeMap::new(),
+            composites: BTreeMap::new(),
             tracks: BTreeMap::new(),
             next_loop_id: 1,
+            next_composite_id: 1,
+            next_composite_slot: 0x8000_0000,
+            next_composite_version: 1,
             next_track_id: 1,
-            next_port_id: 1,
+            next_port_id: 2,
             next_backend_port_id: 1,
             connection_revision: 1,
-            connection_ports: BTreeMap::new(),
+            connection_ports: BTreeMap::from([(
+                global_fx_port,
+                EngineConnectionPort {
+                    descriptor: global_descriptor,
+                    registry_id: global_registry,
+                },
+            )]),
             external_connections: representative_external_connections(),
             web_midi_hosts: BTreeMap::new(),
             desired_web_midi_connections: BTreeSet::new(),
-            mode: EngineBackendMode::Dummy,
+            port_model: EnginePortModel::Dummy,
             callback_count: 0,
             input_peak: 0.0,
             output_peak: 0.0,
@@ -931,10 +1384,278 @@ impl EngineBackend {
                 "Web Audio sample rate must be non-zero and quantum must be in 1..={MAX_WEB_AUDIO_QUANTUM}"
             ));
         }
-        let mut backend = Self::new_dummy(sample_rate, max_quantum)?;
-        backend.mode = EngineBackendMode::Physical;
+        let mut backend = Self::new_dummy_runtime(sample_rate, max_quantum)?;
+        backend.port_model = EnginePortModel::Physical;
         backend.external_connections.remove_all_mock_ports();
+        let global = ExternalMidiPort::new("global_fx_control_midi_in", PortDirection::Input);
+        backend.session.remove_port(backend.global_fx_midi)?;
+        backend.global_fx_midi = backend.session.add_port(Port::ExternalMidi(global));
+        backend
+            .session
+            .set_global_fx_midi_input(backend.global_fx_midi)?;
+        backend
+            .connection_ports
+            .get_mut(&backend.global_fx_port)
+            .unwrap()
+            .registry_id = PortId(backend.global_fx_midi as u64);
         Ok(backend)
+    }
+
+    fn composite_target_identity(
+        &self,
+        target: BackendCompositeTarget,
+    ) -> Result<shoop_engine::LoopIdentity> {
+        match target {
+            BackendCompositeTarget::Loop(id) => {
+                let index = self.engine_loop_index(id)?;
+                self.session
+                    .loop_identity(index)
+                    .ok_or_else(|| anyhow!("stale composite loop target {id:?}"))
+            }
+            BackendCompositeTarget::Composite(id) => self
+                .composites
+                .get(&id)
+                .map(|composite| composite.identity)
+                .ok_or_else(|| anyhow!("stale composite target {id:?}")),
+        }
+    }
+
+    fn backend_composite_target(
+        &self,
+        identity: shoop_engine::LoopIdentity,
+    ) -> Option<BackendCompositeTarget> {
+        match identity.kind {
+            shoop_engine::LoopTargetKind::Basic => self.loops.iter().find_map(|(id, index)| {
+                (*index == identity.slot as usize).then_some(BackendCompositeTarget::Loop(*id))
+            }),
+            shoop_engine::LoopTargetKind::Composite => {
+                self.composites.iter().find_map(|(id, composite)| {
+                    (composite.identity == identity)
+                        .then_some(BackendCompositeTarget::Composite(*id))
+                })
+            }
+        }
+    }
+
+    fn composite_primitive_targets(
+        &self,
+        composite_id: BackendCompositeId,
+        visited: &mut BTreeSet<BackendCompositeId>,
+        targets: &mut BTreeSet<BackendLoopId>,
+    ) -> Result<()> {
+        if !visited.insert(composite_id) {
+            return Err(anyhow!("composite dependency cycle"));
+        }
+        let config = self
+            .composites
+            .get(&composite_id)
+            .and_then(|composite| composite.config.as_ref())
+            .ok_or_else(|| anyhow!("composite is not configured"))?;
+        for entry in config.timelines.iter().flatten().flatten() {
+            match entry.target {
+                BackendCompositeTarget::Loop(id) => {
+                    targets.insert(id);
+                }
+                BackendCompositeTarget::Composite(id) => {
+                    self.composite_primitive_targets(id, visited, targets)?;
+                }
+            }
+        }
+        visited.remove(&composite_id);
+        Ok(())
+    }
+
+    fn compile_composite_timeline(
+        &self,
+        configs: &BTreeMap<BackendCompositeId, BackendCompositeConfig>,
+    ) -> Result<shoop_engine::CompositeBoundaryTimeline> {
+        let mut metadata = BTreeMap::new();
+        for (id, index) in &self.loops {
+            let identity = self
+                .session
+                .loop_identity(*index)
+                .ok_or_else(|| anyhow!("stale primitive loop {id:?}"))?;
+            let length = self
+                .session
+                .loop_(*index)
+                .map(|loop_| u64::from(loop_.length()))
+                .unwrap_or(0);
+            metadata.insert(
+                identity,
+                shoop_engine::LoopTargetMetadata {
+                    identity,
+                    length_samples: length,
+                },
+            );
+        }
+        for id in configs.keys() {
+            let identity = self
+                .composites
+                .get(id)
+                .ok_or_else(|| anyhow!("unknown composite {id:?}"))?
+                .identity;
+            metadata.insert(
+                identity,
+                shoop_engine::LoopTargetMetadata {
+                    identity,
+                    length_samples: 0,
+                },
+            );
+        }
+
+        let dependencies = configs
+            .iter()
+            .map(|(id, config)| {
+                let source = self.composites[id].identity;
+                let composite_children = config
+                    .timelines
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .filter_map(|entry| match entry.target {
+                        BackendCompositeTarget::Composite(child) => {
+                            self.composites.get(&child).map(|child| child.identity)
+                        }
+                        BackendCompositeTarget::Loop(_) => None,
+                    })
+                    .collect();
+                shoop_engine::CompositeDependency {
+                    source,
+                    composite_children,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut pending = configs.keys().copied().collect::<BTreeSet<_>>();
+        let mut compiled = BTreeMap::new();
+        while !pending.is_empty() {
+            let ready = pending.iter().copied().find(|id| {
+                configs[id]
+                    .timelines
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .all(|entry| match entry.target {
+                        BackendCompositeTarget::Loop(_) => true,
+                        BackendCompositeTarget::Composite(child) => compiled.contains_key(&child),
+                    })
+            });
+            let id = ready.ok_or_else(|| anyhow!("composite dependency cycle"))?;
+            let config = &configs[&id];
+            let source = self.composites[&id].identity;
+            let sync_index = self.engine_loop_index(config.sync_source)?;
+            let sync_identity = self
+                .session
+                .loop_identity(sync_index)
+                .ok_or_else(|| anyhow!("stale composite sync source"))?;
+            let sync_length = self
+                .session
+                .loop_(sync_index)
+                .map(|loop_| u64::from(loop_.length()))
+                .unwrap_or(0)
+                .max(1);
+            let timelines = config
+                .timelines
+                .iter()
+                .map(|sections| {
+                    Ok(shoop_engine::CompositeTimeline {
+                        sections: sections
+                            .iter()
+                            .map(|entries| {
+                                Ok(shoop_engine::CompositeSection {
+                                    entries: entries
+                                        .iter()
+                                        .map(|entry| {
+                                            Ok(shoop_engine::CompositeEntry {
+                                                target: self
+                                                    .composite_target_identity(entry.target)?,
+                                                delay: entry.delay,
+                                                n_cycles: entry.n_cycles,
+                                                mode: entry.mode.map(to_engine_mode),
+                                            })
+                                        })
+                                        .collect::<Result<Vec<_>>>()?,
+                                })
+                            })
+                            .collect::<Result<Vec<_>>>()?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let descriptor = shoop_engine::CompositePlanDescriptor {
+                source,
+                sync_length,
+                timelines,
+            };
+            let catalog =
+                shoop_engine::LoopTargetCatalog::new(metadata.values().copied().collect())
+                    .map_err(|error| anyhow!("invalid composite target catalog: {error}"))?;
+            let plan = shoop_engine::compile_composite_plan(
+                &descriptor,
+                &catalog,
+                &dependencies,
+                shoop_engine::CompositePlanLimits::default(),
+            )
+            .map_err(|error| anyhow!("composite plan validation failed: {error}"))?;
+            let actual_kind = match plan.kind() {
+                shoop_engine::CompiledCompositeKind::Regular => BackendCompositeKind::Regular,
+                shoop_engine::CompiledCompositeKind::Script => BackendCompositeKind::Script,
+            };
+            if actual_kind != config.kind {
+                return Err(anyhow!("composite kind does not match its entry modes"));
+            }
+            metadata.get_mut(&source).unwrap().length_samples =
+                u64::from(plan.n_iterations()).saturating_mul(sync_length);
+            compiled.insert(id, (plan, sync_identity));
+            pending.remove(&id);
+        }
+
+        let mut timeline = shoop_engine::CompositeBoundaryTimeline::new(
+            compiled
+                .into_values()
+                .map(|(plan, sync_source)| shoop_engine::CompositeTimelineNode {
+                    plan,
+                    sync_source,
+                })
+                .collect(),
+            shoop_engine::CompositeTimelineLimits::default(),
+        )
+        .map_err(|error| anyhow!("composite timeline validation failed: {error}"))?;
+        for (id, composite) in &self.composites {
+            if configs.contains_key(id)
+                && !timeline.set_state_mirror(composite.identity, Arc::clone(&composite.state))
+            {
+                return Err(anyhow!("compiled composite is missing from the timeline"));
+            }
+        }
+        Ok(timeline)
+    }
+
+    fn install_composite_configs(
+        &mut self,
+        configs: BTreeMap<BackendCompositeId, BackendCompositeConfig>,
+    ) -> Result<()> {
+        let mut timeline = self.compile_composite_timeline(&configs)?;
+        let version = self.next_composite_version;
+        self.next_composite_version = self.next_composite_version.saturating_add(1);
+        timeline
+            .prepare_install(version, self.session.primitive_sync_sources())
+            .map_err(|error| anyhow!("could not prepare composite timeline: {error}"))?;
+        let reclaimed = self
+            .session
+            .install_prepared_composite_timeline(timeline)
+            .map_err(|rejected| {
+                anyhow!("could not install composite timeline: {}", rejected.error)
+            })?;
+        drop(reclaimed);
+        for (id, config) in configs {
+            if let Some(composite) = self.composites.get_mut(&id) {
+                composite.config = Some(config);
+                self.session.accept_composite_play_after_record(
+                    composite.identity,
+                    composite.play_after_record,
+                )?;
+            }
+        }
+        Ok(())
     }
 
     pub fn configure_web_audio_channels(
@@ -942,7 +1663,7 @@ impl EngineBackend {
         input_channels: u32,
         output_channels: u32,
     ) -> Result<()> {
-        if self.mode != EngineBackendMode::Physical {
+        if self.port_model != EnginePortModel::Physical {
             return Err(anyhow!(
                 "device channels supplied to a non-physical backend"
             ));
@@ -987,7 +1708,7 @@ impl EngineBackend {
         &mut self,
         endpoints: Vec<BackendHostPortDescriptor>,
     ) -> Result<()> {
-        if self.mode != EngineBackendMode::Physical {
+        if self.port_model != EnginePortModel::Physical {
             return Err(anyhow!(
                 "Web MIDI endpoints supplied to a non-physical backend"
             ));
@@ -1050,7 +1771,7 @@ impl EngineBackend {
         if host.direction != BackendPortDirection::Output {
             return Err(anyhow!("Web MIDI endpoint is not an input source"));
         }
-        let destinations = self
+        let mut destinations = self
             .tracks
             .values()
             .filter_map(|track| {
@@ -1068,6 +1789,13 @@ impl EngineBackend {
             })
             .map(|(session_port, application_port_id, _)| (session_port, application_port_id))
             .collect::<Vec<_>>();
+        let global_registry = self.connection_ports[&self.global_fx_port].registry_id;
+        if self
+            .external_connections
+            .is_connected(global_registry, host_port_id)
+        {
+            destinations.push((self.global_fx_midi, self.global_fx_port));
+        }
         let mut staged = 0;
         for (session_port, _) in destinations {
             let accepted = self
@@ -1138,8 +1866,8 @@ impl EngineBackend {
         output_channels: usize,
         n_frames: usize,
     ) -> Result<()> {
-        if self.mode != EngineBackendMode::Physical {
-            return Err(anyhow!("audio quantum supplied to a non-physical backend"));
+        if self.port_model != EnginePortModel::Physical {
+            return Err(anyhow!("audio quantum supplied to a non-physical runtime"));
         }
         if n_frames == 0
             || n_frames > self.buffer_size as usize
@@ -1256,8 +1984,8 @@ impl EngineBackend {
     }
 
     fn audio_driver_runtime_state(&self) -> AudioDriverRuntimeState {
-        let (supported, configured, kind, instance_name) = match self.mode {
-            EngineBackendMode::Dummy => (
+        let (supported, configured, kind, instance_name) = match self.port_model {
+            EnginePortModel::Dummy => (
                 true,
                 AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                     sample_rate: self.sample_rate,
@@ -1266,7 +1994,7 @@ impl EngineBackend {
                 AudioDriverKind::Dummy,
                 "dummy".to_owned(),
             ),
-            EngineBackendMode::Physical => (
+            EnginePortModel::Physical => (
                 false,
                 AudioDriverConfig::WebAudio,
                 AudioDriverKind::WebAudio,
@@ -1308,6 +2036,7 @@ impl EngineBackend {
         self.next_backend_port_id = self.next_backend_port_id.saturating_add(1);
         let descriptor = BackendPortDescriptor {
             id,
+            owner: BackendPortOwner::Track,
             name: name.clone(),
             data_type,
             direction,
@@ -1320,7 +2049,7 @@ impl EngineBackend {
                 registry_id,
             },
         );
-        if self.mode == EngineBackendMode::Dummy {
+        if self.port_model == EnginePortModel::Dummy {
             self.external_connections.add_mock_port(
                 format!("shoop:{name}"),
                 engine_direction(direction),
@@ -1478,13 +2207,14 @@ impl EngineBackend {
                 BackendChannelMode::Dry => ChannelMode::Dry,
                 BackendChannelMode::Wet => ChannelMode::Wet,
             };
-            let channel = if self.mode == EngineBackendMode::Physical {
-                self.session.add_audio_channel_with_bounded_capacity(
-                    engine_loop,
-                    RECORDING_CHUNK_SIZE,
-                    self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize,
-                    engine_mode,
-                )?
+            let channel = if self.port_model == EnginePortModel::Physical {
+                self.session
+                    .add_audio_channel_with_bounded_capacity_unprepared(
+                        engine_loop,
+                        RECORDING_CHUNK_SIZE,
+                        self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize,
+                        engine_mode,
+                    )?
             } else {
                 self.session
                     .add_audio_channel(engine_loop, 64, engine_mode)?
@@ -1551,7 +2281,7 @@ impl EngineBackend {
             ));
         }
         let channel_count = dry_audio_channels as usize;
-        let capture_samples = self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize;
+        let capture_samples = self.sample_rate as usize * INPUT_CAPTURE_CAPACITY_SECONDS as usize;
         let capture_block_size = capture_samples.div_ceil(32).max(self.buffer_size as usize);
         let mut audio_inputs = Vec::with_capacity(channel_count);
         let mut audio_outputs = Vec::with_capacity(channel_count);
@@ -1563,7 +2293,7 @@ impl EngineBackend {
             let output_name = format!("{}_audio_wet_out_{}", request.port_name_base, index + 1);
             let input_registry_id = self.next_port_id();
             let output_registry_id = self.next_port_id();
-            let (input, output) = if self.mode == EngineBackendMode::Physical {
+            let (input, output) = if self.port_model == EnginePortModel::Physical {
                 let mut input = ExternalAudioPort::new(
                     input_name.clone(),
                     PortDirection::Input,
@@ -1603,13 +2333,17 @@ impl EngineBackend {
                 shoop_engine::PortConnectability::INTERNAL,
                 0,
             )));
-            let receive = self.session.add_port(Port::Internal(InternalAudioPort::new(
+            let mut receive = InternalAudioPort::new(
                 format!("{}:audio_out_{index}", request.port_name_base),
                 self.buffer_size as usize,
                 shoop_engine::PortConnectability::INTERNAL,
                 shoop_engine::PortConnectability::INTERNAL,
-                0,
-            )));
+                capture_block_size,
+            );
+            receive
+                .audio_mut()
+                .set_ringbuffer_n_samples(capture_samples);
+            let receive = self.session.add_port(Port::Internal(receive));
             self.session.connect_ports_internal(input, send)?;
             self.session.connect_ports_internal(receive, output)?;
             ports.push(self.register_connection_port(
@@ -1633,7 +2367,7 @@ impl EngineBackend {
         }
         let midi_name = format!("{}_dry_midi_in", request.port_name_base);
         let midi_registry_id = self.next_port_id();
-        let midi_input = if self.mode == EngineBackendMode::Physical {
+        let midi_input = if self.port_model == EnginePortModel::Physical {
             let mut input = ExternalMidiPort::new(midi_name.clone(), PortDirection::Input);
             input.midi_mut().set_passthrough_muted(true);
             input
@@ -1667,7 +2401,7 @@ impl EngineBackend {
         let midi_input_port = Some(midi_descriptor.id);
         ports.push(midi_descriptor);
 
-        if self.mode == EngineBackendMode::Physical {
+        if self.port_model == EnginePortModel::Physical {
             let input_channels = WEB_AUDIO_CAPTURE_PORTS
                 .iter()
                 .filter(|host| {
@@ -1719,6 +2453,12 @@ impl EngineBackend {
         let _ = self
             .session
             .set_tiny_synth_fx_processor(request.port_name_base.clone(), processor);
+        self.session.set_processor_ports(
+            &request.port_name_base,
+            audio_sends.clone(),
+            audio_returns.clone(),
+            vec![midi_target],
+        )?;
         let track_id = BackendTrackId::from_raw(self.next_track_id);
         self.next_track_id = self.next_track_id.saturating_add(1);
         self.tracks.insert(
@@ -1841,13 +2581,13 @@ impl EngineBackend {
         Ok(())
     }
 
-    fn capture_session_data(&self) -> Result<BackendSessionData> {
+    fn capture_session_data(&mut self) -> Result<BackendSessionData> {
         let connections = self.connection_snapshot();
         let mut tracks = Vec::with_capacity(self.tracks.len());
-        for (track_id, track) in &self.tracks {
+        for (track_id, track) in &mut self.tracks {
             let state = BackendTrackState {
                 topology: track.topology.clone(),
-                fx: track.fx.as_ref().map(engine_tiny_fx_state),
+                fx: track.fx.as_mut().map(engine_tiny_fx_state),
                 audio_channels: track.audio_outputs.len() as u32,
                 midi: track.midi_input.is_some(),
                 output_gain_db: track.output_gain_db,
@@ -1860,7 +2600,10 @@ impl EngineBackend {
             };
             let mut loops = Vec::with_capacity(track.loops.len());
             for loop_id in &track.loops {
-                let engine_loop = self.engine_loop_index(*loop_id)?;
+                let engine_loop = *self
+                    .loops
+                    .get(loop_id)
+                    .ok_or_else(|| anyhow!("unknown backend loop {loop_id:?}"))?;
                 let loop_state = self
                     .session
                     .loop_(engine_loop)
@@ -1942,7 +2685,7 @@ impl EngineBackend {
                         .filter(|link| link.application_port_id == *port_id)
                         .map(|link| link.host_port_id.clone())
                         .collect::<BTreeSet<_>>();
-                    if self.mode == EngineBackendMode::Physical
+                    if self.port_model == EnginePortModel::Physical
                         && descriptor.data_type == BackendPortDataType::Midi
                     {
                         external_connections.extend(
@@ -1966,12 +2709,43 @@ impl EngineBackend {
                 state,
                 loops,
                 ports,
-                processor_state: track.fx.as_ref().map(|fx| fx.control.encode()),
+                tiny_synth_midi_cc_assignments: track
+                    .fx
+                    .as_ref()
+                    .map(|fx| fx.control.midi_cc_assignments())
+                    .into_iter()
+                    .flat_map(|assignments| assignments.iter().collect::<Vec<_>>())
+                    .map(app_midi_cc_assignment)
+                    .map(backend_midi_cc_assignment)
+                    .collect(),
+                processor_state: track.fx.as_mut().map(|fx| fx.control.encode()),
             });
         }
+        let mut global_connections = connections
+            .confirmed_links
+            .iter()
+            .filter(|link| link.application_port_id == self.global_fx_port)
+            .map(|link| link.host_port_id.clone())
+            .collect::<BTreeSet<_>>();
+        if self.port_model == EnginePortModel::Physical {
+            global_connections.extend(
+                self.desired_web_midi_connections
+                    .iter()
+                    .filter(|(desired_port, _)| *desired_port == self.global_fx_port)
+                    .map(|(_, host_id)| host_id.clone()),
+            );
+        }
+        let global_ports = vec![BackendSessionPort {
+            source_id: self.global_fx_port.raw(),
+            descriptor: self.connection_ports[&self.global_fx_port]
+                .descriptor
+                .clone(),
+            external_connections: global_connections.into_iter().collect(),
+        }];
         Ok(BackendSessionData {
             sample_rate: self.sample_rate,
             tracks,
+            global_ports,
             use_legacy_browser_default_routes: false,
         })
     }
@@ -1986,6 +2760,9 @@ impl EngineBackend {
                 data.sample_rate,
                 self.sample_rate
             ));
+        }
+        for track in &data.tracks {
+            validate_backend_midi_cc_assignments(track)?;
         }
         if data.tracks.iter().any(|track| {
             let processor_state_valid = match &track.topology {
@@ -2003,10 +2780,25 @@ impl EngineBackend {
                 "session requires a track processor unavailable in this backend"
             ));
         }
-        let mut staged = match self.mode {
-            EngineBackendMode::Dummy => Self::new_dummy(self.sample_rate, self.buffer_size)?,
-            EngineBackendMode::Physical => Self::new_web_audio(self.sample_rate, self.buffer_size)?,
+        let mut replacement = BackendSessionReplacement::default();
+        let mut staged = match self.port_model {
+            EnginePortModel::Dummy => Self::new_dummy_runtime(self.sample_rate, self.buffer_size)?,
+            EnginePortModel::Physical => Self::new_web_audio(self.sample_rate, self.buffer_size)?,
         };
+        let source_global = data
+            .global_ports
+            .first()
+            .ok_or_else(|| anyhow!("session has no global FX control port"))?;
+        if data.global_ports.len() != 1
+            || source_global.descriptor.owner != BackendPortOwner::GlobalFxControl
+            || source_global.descriptor.data_type != BackendPortDataType::Midi
+            || source_global.descriptor.direction != BackendPortDirection::Input
+        {
+            return Err(anyhow!("session global FX control port is invalid"));
+        }
+        replacement
+            .global_ports
+            .insert(source_global.source_id, staged.global_fx_port);
         staged.external_connections = DummyExternalConnections::default();
         for descriptor in self.external_connections.mock_ports() {
             staged.external_connections.add_mock_port(
@@ -2016,7 +2808,9 @@ impl EngineBackend {
             );
         }
         staged.web_midi_hosts = self.web_midi_hosts.clone();
-        let mut replacement = BackendSessionReplacement::default();
+        for external in &source_global.external_connections {
+            staged.set_port_connected(staged.global_fx_port, external, true)?;
+        }
         for source_track in &data.tracks {
             let created = staged.create_track(TrackRequest {
                 port_name_base: source_track.port_name_base.clone(),
@@ -2027,6 +2821,14 @@ impl EngineBackend {
                 staged.set_track_fx_control(
                     created.track_id,
                     BackendTrackFxControl::RestoreState(state.clone()),
+                )?;
+            }
+            for assignment in &source_track.tiny_synth_midi_cc_assignments {
+                staged.set_track_fx_control(
+                    created.track_id,
+                    BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                        app_backend_midi_cc_assignment(*assignment),
+                    )),
                 )?;
             }
             for control in [
@@ -2097,7 +2899,7 @@ impl EngineBackend {
                 replacement
                     .ports
                     .insert(source_port.source_id, created_port.id);
-                if !(staged.mode == EngineBackendMode::Physical
+                if !(staged.port_model == EnginePortModel::Physical
                     && data.use_legacy_browser_default_routes)
                 {
                     let registry_id = staged
@@ -2121,6 +2923,25 @@ impl EngineBackend {
         }
         staged.apply_graph_changes()?;
         Ok((staged, replacement))
+    }
+
+    fn prepare_recording_storage(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        if self.port_model != EnginePortModel::Physical {
+            return Ok(());
+        }
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing loop channels"))?
+            .audio
+            .clone();
+        for channel in channels {
+            self.session
+                .audio_channel_mut(channel)
+                .ok_or_else(|| anyhow!("missing audio loop channel"))?
+                .prepare_bounded_capacity();
+        }
+        Ok(())
     }
 
     fn apply_graph_changes(&mut self) -> Result<()> {
@@ -2290,7 +3111,7 @@ fn amplitude_db(amplitude: f32) -> f32 {
     }
 }
 
-fn engine_tiny_fx_state(fx: &EngineTinyFx) -> TrackFxState {
+fn engine_tiny_fx_state(fx: &mut EngineTinyFx) -> TrackFxState {
     let editor = fx.control.editor_state();
     TrackFxState {
         processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::TINY_SYNTH_FX),
@@ -2313,11 +3134,21 @@ fn engine_tiny_fx_state(fx: &EngineTinyFx) -> TrackFxState {
             eq_low_db: editor.eq_low_db,
             eq_mid_db: editor.eq_mid_db,
             eq_high_db: editor.eq_high_db,
+            midi_cc_assignments: editor
+                .midi_cc_assignments
+                .into_iter()
+                .map(app_midi_cc_assignment)
+                .collect::<Vec<_>>()
+                .into(),
         })),
     }
 }
 
 impl Backend for EngineBackend {
+    fn supports_composite_loops(&self) -> bool {
+        true
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![tiny_synth_fx_descriptor()].into())
     }
@@ -2333,7 +3164,7 @@ impl Backend for EngineBackend {
         let AudioDriverConfig::Dummy(config) = config else {
             return Err(anyhow!("this backend supports only dummy-driver switching"));
         };
-        if self.mode != EngineBackendMode::Dummy {
+        if self.port_model != EnginePortModel::Dummy {
             return Err(anyhow!("Web Audio is selected automatically"));
         }
         if config.sample_rate == 0 || config.buffer_size == 0 {
@@ -2369,10 +3200,10 @@ impl Backend for EngineBackend {
                 resolved.sample_rate
             ));
         }
-        let mut target = EngineBackend::new_dummy(resolved.sample_rate, resolved.buffer_size)?;
+        let mut target =
+            EngineBackend::new_dummy_runtime(resolved.sample_rate, resolved.buffer_size)?;
         target.external_connections = self.external_connections.clone();
         let (mut replacement, mapping) = target.build_replacement(session)?;
-        replacement.elapsed_frame_numerator = self.elapsed_frame_numerator;
         replacement.processed_frames = self.processed_frames;
         replacement.xruns = self.xruns;
         *self = replacement;
@@ -2407,6 +3238,129 @@ impl Backend for EngineBackend {
         Ok(id)
     }
 
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        if self.next_composite_slot == u32::MAX {
+            return Err(anyhow!("composite identity capacity exhausted"));
+        }
+        let id = BackendCompositeId::from_raw(self.next_composite_id);
+        self.next_composite_id = self.next_composite_id.saturating_add(1);
+        let identity = shoop_engine::LoopIdentity {
+            slot: self.next_composite_slot,
+            generation: 1,
+            kind: shoop_engine::LoopTargetKind::Composite,
+        };
+        self.next_composite_slot += 1;
+        self.composites.insert(
+            id,
+            EngineComposite {
+                identity,
+                config: None,
+                state: Arc::new(shoop_engine::state_mirror::CompositeStateMirror::new(
+                    identity,
+                )),
+                play_after_record: false,
+            },
+        );
+        Ok(id)
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        if !self.composites.contains_key(&composite_id) {
+            return Err(anyhow!("unknown composite {composite_id:?}"));
+        }
+        let mut configs = self
+            .composites
+            .iter()
+            .filter_map(|(id, composite)| composite.config.clone().map(|config| (*id, config)))
+            .collect::<BTreeMap<_, _>>();
+        configs.insert(composite_id, config.clone());
+        self.install_composite_configs(configs)
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        let (identity, empty) = {
+            let composite = self
+                .composites
+                .get(&composite_id)
+                .ok_or_else(|| anyhow!("unknown composite {composite_id:?}"))?;
+            (composite.identity, composite.state.read().length == 0)
+        };
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            let mut targets = BTreeSet::new();
+            self.composite_primitive_targets(composite_id, &mut BTreeSet::new(), &mut targets)?;
+            for target in targets {
+                self.prepare_recording_storage(target)?;
+            }
+        }
+        if mode != BackendLoopMode::Stopped && empty {
+            return Ok(());
+        }
+        if let Some(iteration) = align_to_iteration {
+            self.session.accept_composite_immediate_transition(
+                identity,
+                to_engine_mode(mode),
+                iteration,
+            )?;
+        } else if let Some(delay) = cycles_delay {
+            self.session
+                .accept_composite_transition(identity, to_engine_mode(mode), delay)?;
+        } else {
+            self.session.accept_composite_immediate_transition(
+                identity,
+                to_engine_mode(mode),
+                0,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        enabled: bool,
+    ) -> Result<()> {
+        let composite = self
+            .composites
+            .get_mut(&composite_id)
+            .ok_or_else(|| anyhow!("unknown composite {composite_id:?}"))?;
+        composite.play_after_record = enabled;
+        if composite.config.is_some() {
+            self.session
+                .accept_composite_play_after_record(composite.identity, enabled)?;
+        }
+        Ok(())
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        if !self.composites.contains_key(&composite_id) {
+            return Ok(());
+        }
+        let configs = self
+            .composites
+            .iter()
+            .filter(|(id, _)| **id != composite_id)
+            .filter_map(|(id, composite)| composite.config.clone().map(|config| (*id, config)))
+            .collect::<BTreeMap<_, _>>();
+        self.install_composite_configs(configs)?;
+        self.composites.remove(&composite_id);
+        Ok(())
+    }
+
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
         let audio_channels = usize::try_from(request.audio_channels)
             .map_err(|_| anyhow!("direct track audio channel count does not fit this target"))?;
@@ -2417,7 +3371,7 @@ impl Backend for EngineBackend {
         let mut audio_inputs = Vec::with_capacity(audio_channels);
         let mut audio_outputs = Vec::with_capacity(audio_channels);
         let mut ports = Vec::with_capacity(port_capacity);
-        let capture_samples = self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize;
+        let capture_samples = self.sample_rate as usize * INPUT_CAPTURE_CAPACITY_SECONDS as usize;
         let capture_block_size = capture_samples.div_ceil(32).max(self.buffer_size as usize);
         for index in 0..request.audio_channels {
             let suffix = if request.audio_channels == 1 {
@@ -2429,7 +3383,7 @@ impl Backend for EngineBackend {
             let output_name = format!("{}_direct_out{suffix}", request.port_name_base);
             let input_registry_id = self.next_port_id();
             let output_registry_id = self.next_port_id();
-            let (input, output) = if self.mode == EngineBackendMode::Physical {
+            let (input, output) = if self.port_model == EnginePortModel::Physical {
                 let mut input = ExternalAudioPort::new(
                     input_name.clone(),
                     PortDirection::Input,
@@ -2485,7 +3439,7 @@ impl Backend for EngineBackend {
             let output_name = format!("{}_direct_midi_out", request.port_name_base);
             let input_registry_id = self.next_port_id();
             let output_registry_id = self.next_port_id();
-            let (input, output) = if self.mode == EngineBackendMode::Physical {
+            let (input, output) = if self.port_model == EnginePortModel::Physical {
                 let mut input = ExternalMidiPort::new(input_name.clone(), PortDirection::Input);
                 input.midi_mut().set_passthrough_muted(true);
                 input
@@ -2540,7 +3494,7 @@ impl Backend for EngineBackend {
         } else {
             (None, None, None, None)
         };
-        if self.mode == EngineBackendMode::Physical {
+        if self.port_model == EnginePortModel::Physical {
             let input_channels = WEB_AUDIO_CAPTURE_PORTS
                 .iter()
                 .take_while(|host| {
@@ -2620,6 +3574,49 @@ impl Backend for EngineBackend {
             loops,
             ports,
         })
+    }
+
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        let Some(track) = self.tracks.remove(&track_id) else {
+            return Ok(());
+        };
+        for loop_id in &track.loops {
+            if let Some(engine_loop) = self.loops.remove(loop_id) {
+                self.session.remove_loop(engine_loop)?;
+            }
+            self.loop_channels.remove(loop_id);
+        }
+        for port in track
+            .audio_inputs
+            .iter()
+            .chain(&track.audio_outputs)
+            .chain(&track.audio_sends)
+            .chain(&track.audio_returns)
+            .copied()
+            .chain(track.midi_input)
+            .chain(track.midi_output)
+        {
+            self.session.remove_port(port)?;
+        }
+        self.session.remove_processor(&track.port_name_base);
+        for port_id in &track.ports {
+            self.desired_web_midi_connections
+                .retain(|(candidate, _)| candidate != port_id);
+            if let Some(port) = self.connection_ports.remove(port_id) {
+                for endpoint in self
+                    .external_connections
+                    .connection_status_of(port.registry_id)
+                    .keys()
+                {
+                    let _ = self
+                        .external_connections
+                        .disconnect(port.registry_id, endpoint);
+                }
+            }
+        }
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        self.apply_graph_changes()?;
+        Ok(())
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
@@ -2773,11 +3770,13 @@ impl Backend for EngineBackend {
             BackendTrackFxControl::SetVisible(visible) => fx.visible = visible,
             BackendTrackFxControl::ToggleOrRecover => fx.visible = !fx.visible,
             BackendTrackFxControl::RestoreState(state) => {
-                let replacement =
+                let assignments = fx.control.midi_cc_assignments();
+                let mut replacement =
                     shoop_engine::tiny_synth_fx::TinySynthFxControlState::from_encoded(
                         self.sample_rate as f32,
                         &state,
                     )?;
+                replacement.set_midi_cc_assignments(assignments);
                 let processor = replacement.prepare_processor(
                     self.sample_rate as f32,
                     track.audio_inputs.len(),
@@ -2861,6 +3860,28 @@ impl Backend for EngineBackend {
                         processor.set_eq_high_db(value);
                     }
                 }
+                TinySynthFxControl::AssignMidiCc(assignment) => {
+                    let assignment = engine_midi_cc_assignment(assignment);
+                    if !fx.control.assign_midi_cc(assignment) {
+                        return Err(anyhow!("invalid Tiny Synth/FX MIDI CC assignment"));
+                    }
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.assign_midi_cc(assignment);
+                    }
+                }
+                TinySynthFxControl::RemoveMidiCc(parameter) => {
+                    let parameter = engine_tiny_synth_parameter(parameter);
+                    fx.control.remove_midi_cc(parameter);
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.remove_midi_cc(parameter);
+                    }
+                }
+                TinySynthFxControl::ClearMidiCcAssignments => {
+                    fx.control.clear_midi_cc_assignments();
+                    if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
+                        processor.clear_midi_cc_assignments();
+                    }
+                }
                 TinySynthFxControl::Panic => {
                     if let Some(processor) = self.session.tiny_synth_fx_processor_mut(&title) {
                         processor.panic();
@@ -2874,9 +3895,9 @@ impl Backend for EngineBackend {
     fn track_fx_state_string(&mut self, track_id: BackendTrackId) -> Result<Option<String>> {
         let track = self
             .tracks
-            .get(&track_id)
+            .get_mut(&track_id)
             .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?;
-        Ok(track.fx.as_ref().map(|fx| fx.control.encode()))
+        Ok(track.fx.as_mut().map(|fx| fx.control.encode()))
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
@@ -2901,6 +3922,7 @@ impl Backend for EngineBackend {
         let mut audio_requests = Vec::with_capacity(requests.len());
         let mut midi_captures = Vec::new();
         for request in requests {
+            self.prepare_recording_storage(request.loop_id)?;
             let engine_loop = self.engine_loop_index(request.loop_id)?;
             audio_requests.push(shoop_engine::session::AudioRingbufferAdoption {
                 loop_idx: engine_loop,
@@ -2979,6 +4001,40 @@ impl Backend for EngineBackend {
             .map(Some)
     }
 
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
+        let channels = channels
+            .midi
+            .iter()
+            .zip(&channels.midi_modes)
+            .map(|(channel, mode)| {
+                let channel = self
+                    .session
+                    .midi_channel(*channel)
+                    .ok_or_else(|| anyhow!("missing MIDI loop channel"))?;
+                Ok(BackendMidiChannelData {
+                    content_revision: u64::from(channel.data_seq_nr()),
+                    mode: *mode,
+                    length: channel.length(),
+                    events: channel
+                        .contents()
+                        .into_iter()
+                        .map(|event| BackendMidiEvent {
+                            time: event.time,
+                            data: event.data().to_vec(),
+                        })
+                        .collect(),
+                    start_offset: channel.start_offset(),
+                    preplay: channel.pre_play_samples(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Some(BackendMidiData { channels }))
+    }
+
     fn loop_audio_data_chunk(
         &mut self,
         loop_id: BackendLoopId,
@@ -3037,6 +4093,14 @@ impl Backend for EngineBackend {
         cycles_delay: Option<u32>,
     ) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            self.prepare_recording_storage(loop_id)?;
+        }
         if let Some(delay) = cycles_delay {
             self.session
                 .loop_mut(engine_loop)
@@ -3057,6 +4121,14 @@ impl Backend for EngineBackend {
         align_to_sync_at: Option<u32>,
     ) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            self.prepare_recording_storage(loop_id)?;
+        }
         self.session
             .loop_mut(engine_loop)
             .ok_or_else(|| anyhow!("missing engine loop"))?
@@ -3192,7 +4264,6 @@ impl Backend for EngineBackend {
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let (mut replacement, mapping) = self.build_replacement(session)?;
-        replacement.elapsed_frame_numerator = self.elapsed_frame_numerator;
         replacement.processed_frames = self.processed_frames;
         replacement.xruns = self.xruns;
         replacement.callback_count = self.callback_count;
@@ -3216,7 +4287,7 @@ impl Backend for EngineBackend {
         let local_direction = local.descriptor.direction;
         let local_data_type = local.descriptor.data_type;
         let registry_id = local.registry_id;
-        let is_web_midi = self.mode == EngineBackendMode::Physical
+        let is_web_midi = self.port_model == EnginePortModel::Physical
             && local_data_type == BackendPortDataType::Midi
             && external_port.starts_with("webmidi:");
         let candidate = self
@@ -3269,22 +4340,9 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
-    fn advance(&mut self, elapsed: Duration) {
-        if self.mode == EngineBackendMode::Physical {
-            return;
-        }
-        self.elapsed_frame_numerator = self
-            .elapsed_frame_numerator
-            .saturating_add(elapsed.as_nanos().saturating_mul(self.sample_rate as u128));
-        let due = self.elapsed_frame_numerator / NANOSECONDS_PER_SECOND;
-        let max_frames = self.buffer_size.saturating_mul(MAX_CYCLES_PER_ADVANCE) as u128;
-        let processed = due.min(max_frames) as u32;
-        self.elapsed_frame_numerator -= processed as u128 * NANOSECONDS_PER_SECOND;
-        if due > max_frames {
-            self.elapsed_frame_numerator = 0;
-            self.xruns = self.xruns.saturating_add(1);
-        }
-        self.advance_frames(processed);
+    fn advance(&mut self, _elapsed: Duration) {
+        // Runtime progression is supplied explicitly by a driver. Local
+        // elapsed-time behavior lives in LocalDummyBackend.
     }
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -3293,15 +4351,19 @@ impl Backend for EngineBackend {
             self.apply_engine_track_routing(track_id)?;
         }
         let mut tracks = BTreeMap::new();
-        for (id, track) in &self.tracks {
+        for (id, track) in &mut self.tracks {
             let input_peaks = track
                 .audio_inputs
                 .iter()
                 .map(|port| {
                     self.session
-                        .port(*port)
-                        .and_then(Port::audio)
-                        .map(|port| amplitude_db(port.input_peak()))
+                        .port_mut(*port)
+                        .and_then(Port::audio_mut)
+                        .map(|port| {
+                            let peak = amplitude_db(port.input_peak());
+                            port.reset_input_peak();
+                            peak
+                        })
                         .unwrap_or(-200.0)
                 })
                 .collect();
@@ -3310,9 +4372,13 @@ impl Backend for EngineBackend {
                 .iter()
                 .map(|port| {
                     self.session
-                        .port(*port)
-                        .and_then(Port::audio)
-                        .map(|port| amplitude_db(port.output_peak()))
+                        .port_mut(*port)
+                        .and_then(Port::audio_mut)
+                        .map(|port| {
+                            let peak = amplitude_db(port.output_peak());
+                            port.reset_output_peak();
+                            peak
+                        })
                         .unwrap_or(-200.0)
                 })
                 .collect();
@@ -3332,7 +4398,7 @@ impl Backend for EngineBackend {
                 *id,
                 BackendTrackState {
                     topology: track.topology.clone(),
-                    fx: track.fx.as_ref().map(engine_tiny_fx_state),
+                    fx: track.fx.as_mut().map(engine_tiny_fx_state),
                     audio_channels: track.audio_outputs.len() as u32,
                     midi: track.midi_input.is_some(),
                     output_gain_db: track.output_gain_db,
@@ -3345,19 +4411,42 @@ impl Backend for EngineBackend {
                     output_peaks,
                     input_midi_activity,
                     output_midi_activity,
+                    latest_input_midi_message: track
+                        .midi_input
+                        .and_then(|port| self.session.port(port))
+                        .and_then(Port::midi)
+                        .and_then(|port| port.latest_input_message())
+                        .map(Into::into),
                 },
             );
         }
         let mut loops = BTreeMap::new();
         for (id, engine_loop) in &self.loops {
-            let Some(state) = self.session.loop_(*engine_loop) else {
+            let Some((mode, length, position, next_mode, next_transition_delay)) =
+                self.session.loop_(*engine_loop).map(|state| {
+                    (
+                        from_engine_mode(state.mode()),
+                        state.length(),
+                        state.position(),
+                        state
+                            .first_planned_transition()
+                            .map(|(mode, _)| from_engine_mode(mode)),
+                        state.first_planned_transition().map(|(_, delay)| delay),
+                    )
+                })
+            else {
                 continue;
             };
             let channels = self.loop_channels.get(id);
-            let audio: Vec<_> = channels
+            let audio_peaks = channels
                 .into_iter()
                 .flat_map(|channels| &channels.audio)
-                .filter_map(|channel| self.session.audio_channel(*channel))
+                .filter_map(|channel| {
+                    let channel = self.session.audio_channel_mut(*channel)?;
+                    let peak = amplitude_db(channel.output_peak());
+                    channel.reset_output_peak();
+                    Some(peak)
+                })
                 .collect();
             let midi_activity = channels
                 .into_iter()
@@ -3367,13 +4456,11 @@ impl Backend for EngineBackend {
             loops.insert(
                 *id,
                 BackendLoopState {
-                    mode: from_engine_mode(state.mode()),
-                    length: state.length(),
-                    position: state.position(),
-                    next_mode: state
-                        .first_planned_transition()
-                        .map(|(mode, _)| from_engine_mode(mode)),
-                    next_transition_delay: state.first_planned_transition().map(|(_, delay)| delay),
+                    mode,
+                    length,
+                    position,
+                    next_mode,
+                    next_transition_delay,
                     stereo: channels.is_some_and(|channels| {
                         channels
                             .audio_modes
@@ -3386,25 +4473,56 @@ impl Backend for EngineBackend {
                     }),
                     gain: channels.map(|channels| channels.gain).unwrap_or(1.0),
                     balance: channels.map(|channels| channels.balance).unwrap_or(0.0),
-                    audio_peaks: audio
-                        .iter()
-                        .map(|channel| amplitude_db(channel.output_peak()))
-                        .collect(),
+                    audio_peaks,
                     midi_activity,
                 },
             );
         }
+        let composites = self
+            .composites
+            .iter()
+            .filter_map(|(id, composite)| {
+                let state = composite.state.read();
+                state.installed.then(|| {
+                    let active_children = state
+                        .active_children()
+                        .filter_map(|child| {
+                            Some(BackendActiveCompositeChild {
+                                target: self.backend_composite_target(child.identity)?,
+                                mode: from_engine_mode(child.mode),
+                                cycle_offset: child.cycle_offset,
+                            })
+                        })
+                        .collect();
+                    (
+                        *id,
+                        BackendCompositeState {
+                            mode: from_engine_mode(state.mode),
+                            next_mode: state.next_mode.map(from_engine_mode),
+                            next_transition_delay: state.next_mode_delay,
+                            iteration: state.iteration,
+                            cycle_count: state.cycle_count,
+                            length: state.length,
+                            position: state.position,
+                            active_plan_version: state.active_plan_version,
+                            pending_plan_version: state.pending_plan_version,
+                            active_children,
+                        },
+                    )
+                })
+            })
+            .collect();
         Ok(BackendSnapshot {
             status: BackendStatus {
                 dsp_load_percent: 0.0,
                 xruns: self.xruns,
-                buffer_size: if self.mode == EngineBackendMode::Physical {
+                buffer_size: if self.port_model == EnginePortModel::Physical {
                     self.last_quantum
                 } else {
                     self.buffer_size
                 },
                 sample_rate: self.sample_rate,
-                driver_state: if self.mode == EngineBackendMode::Physical {
+                driver_state: if self.port_model == EnginePortModel::Physical {
                     BackendDriverState::Running
                 } else {
                     BackendDriverState::Dummy
@@ -3416,6 +4534,7 @@ impl Backend for EngineBackend {
                 callback_budget_overruns: 0,
                 render_discontinuities: 0,
                 memory_growths: 0,
+                render_memory_growths: 0,
                 command_overflows: 0,
                 storage_low_channels: self
                     .loop_channels
@@ -3440,12 +4559,246 @@ impl Backend for EngineBackend {
             audio_drivers: self.audio_driver_runtime_state(),
             tracks,
             loops,
+            composites,
             connections: self.connection_snapshot(),
+            mutation_failures: Vec::new(),
         })
     }
 
     fn wait_idle(&mut self) {
         let _ = self.apply_graph_changes();
+    }
+}
+
+impl Backend for LocalDummyBackend {
+    fn supports_composite_loops(&self) -> bool {
+        self.runtime.supports_composite_loops()
+    }
+
+    fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        self.runtime.track_processor_catalog()
+    }
+
+    fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
+        self.runtime.audio_driver_state()
+    }
+
+    fn preflight_audio_driver(
+        &mut self,
+        config: &AudioDriverConfig,
+    ) -> Result<ResolvedAudioDriverConfig> {
+        self.runtime.preflight_audio_driver(config)
+    }
+
+    fn switch_audio_driver(
+        &mut self,
+        config: &AudioDriverConfig,
+        confirmed_sample_rate: u32,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        let replacement =
+            self.runtime
+                .switch_audio_driver(config, confirmed_sample_rate, session)?;
+        self.scheduler = LocalElapsedScheduler::default();
+        Ok(replacement)
+    }
+
+    fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
+        self.runtime.create_track(request)
+    }
+
+    fn create_loop(&mut self) -> Result<BackendLoopId> {
+        self.runtime.create_loop()
+    }
+
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        self.runtime.create_composite_loop()
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        self.runtime.configure_composite_loop(composite_id, config)
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        self.runtime
+            .transition_composite_loop(composite_id, mode, cycles_delay, align_to_iteration)
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        enabled: bool,
+    ) -> Result<()> {
+        self.runtime
+            .set_composite_play_after_record(composite_id, enabled)
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        self.runtime.remove_composite_loop(composite_id)
+    }
+
+    fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
+        self.runtime.create_direct_track(request)
+    }
+
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        self.runtime.remove_track(track_id)
+    }
+
+    fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
+        self.runtime.add_loop_to_track(track_id)
+    }
+
+    fn set_track_control(
+        &mut self,
+        track_id: BackendTrackId,
+        control: BackendTrackControl,
+    ) -> Result<()> {
+        self.runtime.set_track_control(track_id, control)
+    }
+
+    fn inject_midi_input(
+        &mut self,
+        track_id: BackendTrackId,
+        events: &[BackendMidiEvent],
+    ) -> Result<()> {
+        self.runtime.inject_midi_input(track_id, events)
+    }
+
+    fn set_track_fx_control(
+        &mut self,
+        track_id: BackendTrackId,
+        control: BackendTrackFxControl,
+    ) -> Result<()> {
+        self.runtime.set_track_fx_control(track_id, control)
+    }
+
+    fn track_fx_state_string(&mut self, track_id: BackendTrackId) -> Result<Option<String>> {
+        self.runtime.track_fx_state_string(track_id)
+    }
+
+    fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
+        self.runtime.set_loop_gain(loop_id, gain)
+    }
+
+    fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()> {
+        self.runtime.set_loop_balance(loop_id, balance)
+    }
+
+    fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        self.runtime.grab_loops(requests)
+    }
+
+    fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
+        self.runtime.loop_audio_data(loop_id)
+    }
+
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        self.runtime.loop_midi_data(loop_id)
+    }
+
+    fn loop_audio_data_chunk(
+        &mut self,
+        loop_id: BackendLoopId,
+        channel: usize,
+        offset: usize,
+        max_samples: usize,
+    ) -> Result<BackendAudioDataChunk> {
+        self.runtime
+            .loop_audio_data_chunk(loop_id, channel, offset, max_samples)
+    }
+
+    fn set_loop_sync_source(
+        &mut self,
+        loop_id: BackendLoopId,
+        source: Option<BackendLoopId>,
+    ) -> Result<()> {
+        self.runtime.set_loop_sync_source(loop_id, source)
+    }
+
+    fn transition_loop(
+        &mut self,
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+    ) -> Result<()> {
+        self.runtime.transition_loop(loop_id, mode, cycles_delay)
+    }
+
+    fn transition_loop_aligned(
+        &mut self,
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_sync_at: Option<u32>,
+    ) -> Result<()> {
+        self.runtime
+            .transition_loop_aligned(loop_id, mode, cycles_delay, align_to_sync_at)
+    }
+
+    fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        self.runtime.clear_loop(loop_id)
+    }
+
+    fn replace_loop_content(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<()> {
+        self.runtime.replace_loop_content(loop_id, update)
+    }
+
+    fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
+        self.runtime.set_loop_length(loop_id, length)
+    }
+
+    fn capture_session(&mut self) -> Result<BackendSessionData> {
+        self.runtime.capture_session()
+    }
+
+    fn replace_session(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        self.runtime.replace_session(session)
+    }
+
+    fn set_port_connected(
+        &mut self,
+        port_id: BackendPortId,
+        external_port: &str,
+        connected: bool,
+    ) -> Result<()> {
+        self.runtime
+            .set_port_connected(port_id, external_port, connected)
+    }
+
+    fn advance(&mut self, elapsed: Duration) {
+        let (processed, overrun) =
+            self.scheduler
+                .frames_due(elapsed, self.runtime.sample_rate, self.runtime.buffer_size);
+        if overrun {
+            self.runtime.xruns = self.runtime.xruns.saturating_add(1);
+        }
+        self.runtime.advance_frames(processed);
+    }
+
+    fn poll(&mut self) -> Result<BackendSnapshot> {
+        self.runtime.poll()
+    }
+
+    fn wait_idle(&mut self) {
+        self.runtime.wait_idle();
     }
 }
 
@@ -3715,12 +5068,19 @@ pub struct FakeBackend {
     tracks: BTreeMap<BackendTrackId, FakeTrack>,
     loops: BTreeMap<BackendLoopId, BackendLoopState>,
     sync_sources: BTreeMap<BackendLoopId, Option<BackendLoopId>>,
+    composites: BTreeMap<BackendCompositeId, BackendCompositeState>,
+    composite_configs: BTreeMap<BackendCompositeId, BackendCompositeConfig>,
+    composite_loops_supported: bool,
+    fail_next_composite_configuration: Option<String>,
     next_loop_id: u64,
+    next_composite_id: u64,
     next_track_id: u64,
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
     fail_next_session_replace: Option<String>,
     fail_next_loop_content_replace: Option<String>,
+    pending_session_captures: usize,
+    pending_loop_content_replacements: usize,
     failed_midi_input_tracks: BTreeSet<BackendTrackId>,
     processor_catalog: Arc<[TrackProcessorDescriptor]>,
     default_fx_state_string: String,
@@ -3743,7 +5103,17 @@ struct FakeTrack {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FakeOperation {
     CreateLoop(BackendLoopId),
+    CreateComposite(BackendCompositeId),
+    ConfigureComposite(BackendCompositeId, BackendCompositeConfig),
+    TransitionComposite(
+        BackendCompositeId,
+        BackendLoopMode,
+        Option<u32>,
+        Option<i64>,
+    ),
+    RemoveComposite(BackendCompositeId),
     CreateTrack(BackendTrackId),
+    RemoveTrack(BackendTrackId),
     AddTrackLoop(BackendTrackId, BackendLoopId),
     SetTrackControl(BackendTrackId, BackendTrackControl),
     SetLoopGain(BackendLoopId, f32),
@@ -3760,6 +5130,20 @@ pub enum FakeOperation {
 
 impl Default for FakeBackend {
     fn default() -> Self {
+        let connections = FakeConnectionControl {
+            state: Arc::new(Mutex::new(FakeConnectionState::default())),
+        };
+        let global_fx_port = BackendPortDescriptor {
+            id: BackendPortId::from_raw(9_007_199_254_740_991),
+            owner: BackendPortOwner::GlobalFxControl,
+            name: "Global FX Control MIDI In".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::MidiInput,
+        };
+        connections.with_state(|state| {
+            state.ports.insert(global_fx_port.id, global_fx_port);
+        });
         Self {
             status: BackendStatus {
                 buffer_size: 256,
@@ -3775,21 +5159,26 @@ impl Default for FakeBackend {
             tracks: BTreeMap::new(),
             loops: BTreeMap::new(),
             sync_sources: BTreeMap::new(),
+            composites: BTreeMap::new(),
+            composite_configs: BTreeMap::new(),
+            composite_loops_supported: false,
+            fail_next_composite_configuration: None,
             next_loop_id: 1,
+            next_composite_id: 1,
             next_track_id: 1,
             next_port_id: 1,
             fail_track_creation_after: None,
             fail_next_session_replace: None,
             fail_next_loop_content_replace: None,
+            pending_session_captures: 0,
+            pending_loop_content_replacements: 0,
             failed_midi_input_tracks: BTreeSet::new(),
             processor_catalog: Arc::from([]),
             default_fx_state_string: "{}".to_owned(),
             fail_fx_state_restore: false,
             audio_driver_control: FakeAudioDriverControl::default(),
             operations: Vec::new(),
-            connections: FakeConnectionControl {
-                state: Arc::new(Mutex::new(FakeConnectionState::default())),
-            },
+            connections,
             loop_content: BTreeMap::new(),
         }
     }
@@ -3798,6 +5187,18 @@ impl Default for FakeBackend {
 impl FakeBackend {
     pub fn operations(&self) -> &[FakeOperation] {
         &self.operations
+    }
+
+    pub fn loop_sync_source(&self, loop_id: BackendLoopId) -> Option<BackendLoopId> {
+        self.sync_sources.get(&loop_id).copied().flatten()
+    }
+
+    pub fn enable_composite_loops(&mut self) {
+        self.composite_loops_supported = true;
+    }
+
+    pub fn fail_next_composite_configuration(&mut self, message: impl Into<String>) {
+        self.fail_next_composite_configuration = Some(message.into());
     }
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
@@ -3847,6 +5248,11 @@ impl FakeBackend {
         self.fail_next_loop_content_replace = Some(message.into());
     }
 
+    pub fn delay_next_async_loop_copy(&mut self) {
+        self.pending_session_captures = 1;
+        self.pending_loop_content_replacements = 1;
+    }
+
     pub fn set_preflight_sample_rate_override(&mut self, sample_rate: Option<u32>) {
         self.audio_driver_control
             .set_preflight_sample_rate_override(sample_rate);
@@ -3869,6 +5275,7 @@ impl FakeBackend {
     ) -> BackendPortDescriptor {
         let descriptor = BackendPortDescriptor {
             id: BackendPortId::from_raw(self.next_port_id),
+            owner: BackendPortOwner::Track,
             name,
             data_type,
             direction,
@@ -4097,6 +5504,10 @@ impl FakeBackend {
 }
 
 impl Backend for FakeBackend {
+    fn supports_composite_loops(&self) -> bool {
+        self.composite_loops_supported
+    }
+
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(Arc::clone(&self.processor_catalog))
     }
@@ -4240,6 +5651,7 @@ impl Backend for FakeBackend {
                 };
                 if corrupt {
                     replacement.tracks.clear();
+                    replacement.global_ports.clear();
                 }
                 Ok(replacement)
             }
@@ -4276,6 +5688,143 @@ impl Backend for FakeBackend {
         );
         self.operations.push(FakeOperation::CreateLoop(id));
         Ok(id)
+    }
+
+    fn create_composite_loop(&mut self) -> Result<BackendCompositeId> {
+        let id = BackendCompositeId::from_raw(self.next_composite_id);
+        self.next_composite_id = self.next_composite_id.saturating_add(1);
+        self.composites.insert(id, BackendCompositeState::default());
+        self.operations.push(FakeOperation::CreateComposite(id));
+        Ok(id)
+    }
+
+    fn configure_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        config: &BackendCompositeConfig,
+    ) -> Result<()> {
+        if !self.composites.contains_key(&composite_id) {
+            return Err(anyhow!("unknown fake composite {composite_id:?}"));
+        }
+        if let Some(message) = self.fail_next_composite_configuration.take() {
+            return Err(anyhow!(message));
+        }
+        let sync_length = self
+            .loops
+            .get(&config.sync_source)
+            .map(|state| u64::from(state.length))
+            .ok_or_else(|| anyhow!("unknown fake composite sync source"))?;
+        if sync_length == 0 && config.timelines.iter().flatten().flatten().next().is_some() {
+            return Err(anyhow!("composite synchronization length is zero"));
+        }
+        let mut length_cycles = 0u64;
+        for timeline in &config.timelines {
+            let mut timeline_cycles = 0u64;
+            for section in timeline {
+                let mut section_cycles = 0u64;
+                for entry in section {
+                    let delay = u64::try_from(entry.delay)
+                        .map_err(|_| anyhow!("composite entry delay is negative"))?;
+                    let child_length = match entry.target {
+                        BackendCompositeTarget::Loop(id) => self
+                            .loops
+                            .get(&id)
+                            .map(|state| u64::from(state.length))
+                            .ok_or_else(|| anyhow!("unknown fake composite loop target {id:?}"))?,
+                        BackendCompositeTarget::Composite(id) if id == composite_id => {
+                            return Err(anyhow!("composite dependency cycle"));
+                        }
+                        BackendCompositeTarget::Composite(id) => self
+                            .composites
+                            .get(&id)
+                            .map(|state| state.length)
+                            .ok_or_else(|| anyhow!("unknown fake composite target {id:?}"))?,
+                    };
+                    let duration = match entry.n_cycles {
+                        Some(cycles) if cycles <= 0 => {
+                            return Err(anyhow!("composite cycle count is not positive"));
+                        }
+                        Some(cycles) => u64::try_from(cycles)
+                            .map_err(|_| anyhow!("composite cycle count is out of range"))?,
+                        None => child_length.div_ceil(sync_length).max(1),
+                    };
+                    section_cycles = section_cycles.max(
+                        delay
+                            .checked_add(duration)
+                            .ok_or_else(|| anyhow!("composite duration overflow"))?,
+                    );
+                }
+                timeline_cycles = timeline_cycles
+                    .checked_add(section_cycles)
+                    .ok_or_else(|| anyhow!("composite timeline overflow"))?;
+            }
+            length_cycles = length_cycles.max(timeline_cycles);
+        }
+        let length = length_cycles
+            .checked_mul(sync_length)
+            .ok_or_else(|| anyhow!("composite length overflow"))?;
+        let state = self.composites.get_mut(&composite_id).unwrap();
+        state.length = length;
+        state.active_plan_version = state.active_plan_version.saturating_add(1);
+        self.composite_configs.insert(composite_id, config.clone());
+        self.operations.push(FakeOperation::ConfigureComposite(
+            composite_id,
+            config.clone(),
+        ));
+        Ok(())
+    }
+
+    fn transition_composite_loop(
+        &mut self,
+        composite_id: BackendCompositeId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_iteration: Option<i64>,
+    ) -> Result<()> {
+        let state = self
+            .composites
+            .get_mut(&composite_id)
+            .ok_or_else(|| anyhow!("unknown fake composite {composite_id:?}"))?;
+        if cycles_delay.is_some() && align_to_iteration.is_none() {
+            state.next_mode = Some(mode);
+            state.next_transition_delay = cycles_delay;
+        } else {
+            state.mode = if state.length == 0 {
+                BackendLoopMode::Stopped
+            } else {
+                mode
+            };
+            state.next_mode = None;
+            state.next_transition_delay = None;
+            state.iteration = align_to_iteration.unwrap_or(0).max(0) as u32;
+            state.position = u64::from(state.iteration).min(state.length);
+        }
+        self.operations.push(FakeOperation::TransitionComposite(
+            composite_id,
+            mode,
+            cycles_delay,
+            align_to_iteration,
+        ));
+        Ok(())
+    }
+
+    fn set_composite_play_after_record(
+        &mut self,
+        composite_id: BackendCompositeId,
+        _enabled: bool,
+    ) -> Result<()> {
+        if !self.composites.contains_key(&composite_id) {
+            return Err(anyhow!("unknown fake composite {composite_id:?}"));
+        }
+        Ok(())
+    }
+
+    fn remove_composite_loop(&mut self, composite_id: BackendCompositeId) -> Result<()> {
+        self.composites.remove(&composite_id);
+        self.composite_configs.remove(&composite_id);
+        self.operations
+            .push(FakeOperation::RemoveComposite(composite_id));
+        Ok(())
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -4372,6 +5921,38 @@ impl Backend for FakeBackend {
             loops,
             ports,
         })
+    }
+
+    fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
+        let Some(track) = self.tracks.remove(&track_id) else {
+            return Ok(());
+        };
+        for loop_id in track.loops {
+            self.loops.remove(&loop_id);
+            self.loop_content.remove(&loop_id);
+            self.sync_sources.remove(&loop_id);
+            for source in self.sync_sources.values_mut() {
+                if *source == Some(loop_id) {
+                    *source = None;
+                }
+            }
+        }
+        self.failed_midi_input_tracks.remove(&track_id);
+        self.connections.with_state(|state| {
+            for port_id in track.ports {
+                state.ports.remove(&port_id);
+                state
+                    .connected
+                    .retain(|(candidate, _)| *candidate != port_id);
+                state
+                    .pending
+                    .retain(|(candidate, _, _)| *candidate != port_id);
+                state.failures.retain(|failure| failure.port_id != port_id);
+            }
+            state.revision = state.revision.wrapping_add(1);
+        });
+        self.operations.push(FakeOperation::RemoveTrack(track_id));
+        Ok(())
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
@@ -4587,6 +6168,26 @@ impl Backend for FakeBackend {
         ))
     }
 
+    fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        self.require_loop(loop_id)?;
+        let channels = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?
+            .midi
+            .iter()
+            .map(|channel| BackendMidiChannelData {
+                content_revision: 0,
+                mode: channel.mode,
+                length: channel.length,
+                events: channel.events.clone(),
+                start_offset: channel.start_offset,
+                preplay: channel.preplay,
+            })
+            .collect();
+        Ok(Some(BackendMidiData { channels }))
+    }
+
     fn set_loop_sync_source(
         &mut self,
         loop_id: BackendLoopId,
@@ -4765,6 +6366,24 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
+    fn replace_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        update: &BackendLoopContentUpdate,
+    ) -> Result<BackendAsyncResult<()>> {
+        if self.pending_loop_content_replacements > 0 {
+            self.pending_loop_content_replacements -= 1;
+            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+                key: 1,
+                kind: BackendOperationKind::LoopContentReplacement,
+                completed: 0,
+                total: Some(1),
+            }));
+        }
+        self.replace_loop_content(loop_id, update)
+            .map(BackendAsyncResult::Ready)
+    }
+
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
         let state = self
             .loops
@@ -4841,14 +6460,45 @@ impl Backend for FakeBackend {
                     loops,
                     ports,
                     processor_state: track.fx_state_string.clone(),
+                    tiny_synth_midi_cc_assignments: Vec::new(),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        let global_descriptor = connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .cloned()
+            .ok_or_else(|| anyhow!("missing fake global FX control port"))?;
+        let global_ports = vec![BackendSessionPort {
+            source_id: global_descriptor.id.raw(),
+            external_connections: connections
+                .confirmed_links
+                .iter()
+                .filter(|link| link.application_port_id == global_descriptor.id)
+                .map(|link| link.host_port_id.clone())
+                .collect(),
+            descriptor: global_descriptor,
+        }];
         Ok(BackendSessionData {
             sample_rate: self.status.sample_rate,
             tracks,
+            global_ports,
             use_legacy_browser_default_routes: false,
         })
+    }
+
+    fn capture_session_async(&mut self) -> Result<BackendAsyncResult<BackendSessionData>> {
+        if self.pending_session_captures > 0 {
+            self.pending_session_captures -= 1;
+            return Ok(BackendAsyncResult::Pending(BackendOperationProgress {
+                key: 1,
+                kind: BackendOperationKind::SessionCapture,
+                completed: 0,
+                total: Some(1),
+            }));
+        }
+        self.capture_session().map(BackendAsyncResult::Ready)
     }
 
     fn replace_session(
@@ -4867,6 +6517,15 @@ impl Backend for FakeBackend {
             .connections
             .with_state(|state| state.external_ports.clone());
         let mut staged = FakeBackend::default();
+        let source_global = session
+            .global_ports
+            .first()
+            .ok_or_else(|| anyhow!("session has no global FX control port"))?;
+        if session.global_ports.len() != 1
+            || source_global.descriptor.owner != BackendPortOwner::GlobalFxControl
+        {
+            return Err(anyhow!("session global FX control port is invalid"));
+        }
         staged.status = self.status;
         staged.active_audio_driver = self.active_audio_driver.clone();
         staged.audio_driver_control = self.audio_driver_control.clone();
@@ -4879,6 +6538,19 @@ impl Backend for FakeBackend {
             state.external_ports = external_ports;
         });
         let mut replacement = BackendSessionReplacement::default();
+        let staged_global = staged
+            .connections
+            .with_state(|state| {
+                state
+                    .ports
+                    .values()
+                    .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+                    .map(|port| port.id)
+            })
+            .ok_or_else(|| anyhow!("staged backend has no global FX control port"))?;
+        replacement
+            .global_ports
+            .insert(source_global.source_id, staged_global);
         for source_track in &session.tracks {
             if source_track.state.topology != source_track.topology {
                 return Err(anyhow!("prepared session topology state is inconsistent"));
@@ -5043,7 +6715,9 @@ impl Backend for FakeBackend {
                 .map(|(id, track)| (*id, track.state.clone()))
                 .collect(),
             loops: self.loops.clone(),
+            composites: self.composites.clone(),
             connections: self.connection_snapshot(),
+            mutation_failures: Vec::new(),
         })
     }
 
@@ -5054,7 +6728,248 @@ impl Backend for FakeBackend {
 mod tests {
     use super::*;
 
-    #[test]
+    fn backend_composite_lifecycle_contract(backend: &mut dyn Backend) {
+        let sync = backend.create_loop().unwrap();
+        let child = backend.create_loop().unwrap();
+        backend.set_loop_length(sync, 1).unwrap();
+        backend.set_loop_length(child, 4).unwrap();
+        let composite = backend.create_composite_loop().unwrap();
+        let config = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Loop(child),
+                delay: 0,
+                n_cycles: None,
+                mode: None,
+            }]]],
+        };
+        backend
+            .configure_composite_loop(composite, &config)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let configured = backend.poll().unwrap().composites[&composite].clone();
+        assert_eq!(configured.mode, BackendLoopMode::Playing);
+        assert_eq!(configured.length, 4);
+
+        let stale = BackendCompositeConfig {
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Loop(BackendLoopId::from_raw(u64::MAX)),
+                delay: 0,
+                n_cycles: None,
+                mode: None,
+            }]]],
+            ..config
+        };
+        assert!(backend.configure_composite_loop(composite, &stale).is_err());
+        assert_eq!(backend.poll().unwrap().composites[&composite], configured);
+
+        backend.remove_composite_loop(composite).unwrap();
+        assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_backend_satisfies_shared_composite_lifecycle_contract() {
+        backend_composite_lifecycle_contract(&mut FakeBackend::default());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_satisfies_shared_composite_lifecycle_contract() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        backend_composite_lifecycle_contract(&mut backend);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_composite_contract_is_independent_and_transactional() {
+        let mut backend = EngineBackend::new_dummy(1_000, 1).unwrap();
+        let sync = backend.create_loop().unwrap();
+        let children = [
+            backend.create_loop().unwrap(),
+            backend.create_loop().unwrap(),
+            backend.create_loop().unwrap(),
+        ];
+        backend.set_loop_length(sync, 1).unwrap();
+        for child in children {
+            backend.set_loop_length(child, 4).unwrap();
+        }
+        backend.apply_graph_changes().unwrap();
+        let empty = backend.create_composite_loop().unwrap();
+        backend
+            .configure_composite_loop(
+                empty,
+                &BackendCompositeConfig {
+                    kind: BackendCompositeKind::Regular,
+                    sync_source: sync,
+                    timelines: Vec::new(),
+                },
+            )
+            .unwrap();
+        backend
+            .transition_composite_loop(empty, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        assert_eq!(
+            backend.poll().unwrap().composites[&empty].mode,
+            BackendLoopMode::Stopped
+        );
+
+        let composite = backend.create_composite_loop().unwrap();
+        let config = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![children
+                .into_iter()
+                .map(|target| {
+                    vec![BackendCompositeEntry {
+                        target: BackendCompositeTarget::Loop(target),
+                        delay: 0,
+                        n_cycles: None,
+                        mode: None,
+                    }]
+                })
+                .collect()],
+        };
+        backend
+            .configure_composite_loop(composite, &config)
+            .unwrap();
+        backend
+            .transition_loop(sync, BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .transition_composite_loop(composite, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let started = backend.poll().unwrap();
+        assert_eq!(
+            started.composites[&composite].mode,
+            BackendLoopMode::Playing
+        );
+        assert_eq!(
+            started.composites[&composite].active_children[0].target,
+            BackendCompositeTarget::Loop(children[0])
+        );
+
+        backend.advance_frames(4);
+        let advanced = backend.poll().unwrap();
+        assert_eq!(advanced.composites[&composite].iteration, 4);
+        assert_eq!(
+            advanced.composites[&composite].active_children[0].target,
+            BackendCompositeTarget::Loop(children[1])
+        );
+
+        let aligned = backend.create_composite_loop().unwrap();
+        backend.configure_composite_loop(aligned, &config).unwrap();
+        backend
+            .transition_composite_loop(aligned, BackendLoopMode::Playing, None, Some(5))
+            .unwrap();
+        let aligned_state = backend.poll().unwrap().composites[&aligned].clone();
+        assert_eq!(aligned_state.iteration, 5);
+        assert_eq!(aligned_state.position, 5);
+        assert_eq!(
+            aligned_state.active_children[0].target,
+            BackendCompositeTarget::Loop(children[1])
+        );
+
+        let stopped = backend.create_composite_loop().unwrap();
+        backend.configure_composite_loop(stopped, &config).unwrap();
+        backend
+            .transition_composite_loop(stopped, BackendLoopMode::Playing, Some(2), None)
+            .unwrap();
+        let pending = backend.poll().unwrap().composites[&stopped].clone();
+        assert_eq!(pending.mode, BackendLoopMode::Stopped);
+        assert_eq!(pending.next_mode, Some(BackendLoopMode::Playing));
+        assert_eq!(pending.next_transition_delay, Some(2));
+        backend
+            .transition_loop(children[2], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend.advance_frames(1);
+        assert_eq!(
+            backend.poll().unwrap().composites[&stopped].mode,
+            BackendLoopMode::Stopped
+        );
+
+        let reconfigured = backend.create_composite_loop().unwrap();
+        backend
+            .configure_composite_loop(reconfigured, &config)
+            .unwrap();
+        let parallel = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![
+                children[..2]
+                    .iter()
+                    .map(|target| BackendCompositeEntry {
+                        target: BackendCompositeTarget::Loop(*target),
+                        delay: 0,
+                        n_cycles: None,
+                        mode: None,
+                    })
+                    .collect(),
+                vec![BackendCompositeEntry {
+                    target: BackendCompositeTarget::Loop(children[2]),
+                    delay: 0,
+                    n_cycles: None,
+                    mode: None,
+                }],
+            ]],
+        };
+        backend
+            .configure_composite_loop(reconfigured, &parallel)
+            .unwrap();
+        backend
+            .transition_composite_loop(reconfigured, BackendLoopMode::Playing, None, None)
+            .unwrap();
+        let parallel_state = backend.poll().unwrap().composites[&reconfigured].clone();
+        assert_eq!(parallel_state.length, 8);
+        assert_eq!(parallel_state.active_children.len(), 2);
+        backend.remove_composite_loop(reconfigured).unwrap();
+        assert!(!backend
+            .poll()
+            .unwrap()
+            .composites
+            .contains_key(&reconfigured));
+        assert!(backend
+            .transition_composite_loop(reconfigured, BackendLoopMode::Playing, None, None,)
+            .is_err());
+
+        let stale = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Loop(BackendLoopId::from_raw(u64::MAX)),
+                delay: 0,
+                n_cycles: None,
+                mode: None,
+            }]]],
+        };
+        let before_stale = backend.poll().unwrap().composites[&composite].clone();
+        assert!(backend.configure_composite_loop(composite, &stale).is_err());
+        assert_eq!(backend.poll().unwrap().composites[&composite], before_stale);
+
+        let invalid = BackendCompositeConfig {
+            kind: BackendCompositeKind::Regular,
+            sync_source: sync,
+            timelines: vec![vec![vec![BackendCompositeEntry {
+                target: BackendCompositeTarget::Composite(composite),
+                delay: 0,
+                n_cycles: Some(1),
+                mode: None,
+            }]]],
+        };
+        assert!(backend
+            .configure_composite_loop(composite, &invalid)
+            .unwrap_err()
+            .to_string()
+            .contains("cycle"));
+        assert_eq!(backend.poll().unwrap().composites[&composite], before_stale);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn default_input_capture_is_thirty_seconds() {
+        assert_eq!(INPUT_CAPTURE_CAPACITY_SECONDS, 30);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn dry_wet_processor_mapping_is_ordered_and_clamps_unequal_shapes() {
         assert_eq!(
             dry_wet_processor_mapping(4, 1, true, 2, 16, true),
@@ -5074,7 +6989,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn dry_wet_routing_matches_monitor_and_transition_truth_table() {
         let cases = [
             (
@@ -5160,7 +7075,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_publishes_empty_and_future_processor_catalogs() {
         let mut backend = FakeBackend::default();
         assert!(backend.track_processor_catalog().unwrap().is_empty());
@@ -5191,7 +7106,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_creates_and_round_trips_external_dry_wet_tracks() {
         let mut backend = FakeBackend::default();
         let created = backend
@@ -5282,7 +7197,7 @@ mod tests {
         assert_eq!(restored.capture_session().unwrap(), captured);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_backend_rejects_processed_sessions_before_replacement() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 1).unwrap();
@@ -5691,7 +7606,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_backend_satisfies_contracts() {
         let mut backend = FakeBackend::default();
         backend_contract(&mut backend);
@@ -5699,7 +7614,7 @@ mod tests {
         connection_contract(&mut backend);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_dummy_backend_satisfies_contracts() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         backend_contract(&mut backend);
@@ -5707,19 +7622,19 @@ mod tests {
         connection_contract(&mut backend);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_and_engine_backends_satisfy_transactional_session_io_contract() {
         session_io_contract(&mut FakeBackend::default());
         session_io_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_and_engine_backends_update_loop_content_without_session_replacement() {
         loop_content_contract(&mut FakeBackend::default());
         loop_content_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn driver_catalog_and_switch_contracts_are_typed_and_transactional() {
         let mut backend = FakeBackend::default();
         let catalog = backend.audio_driver_state().unwrap();
@@ -5770,7 +7685,7 @@ mod tests {
         assert_eq!(active.buffer_size, 128);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn engine_dummy_preflight_rejects_unconfirmed_rate_changes() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
@@ -5788,7 +7703,7 @@ mod tests {
         assert_eq!(backend.poll().unwrap().status.sample_rate, 48_000);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_connection_control_covers_churn_external_change_and_deferred_failure() {
         let mut backend = FakeBackend::default();
         let control = backend.connection_control();
@@ -5836,7 +7751,7 @@ mod tests {
         assert_eq!(failures[0].port_id, input);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn cooperative_dummy_records_and_plays_real_engine_frames() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         let track = backend
@@ -5869,7 +7784,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn empty_web_audio_host_inventory_preserves_application_ports() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -5895,10 +7810,18 @@ mod tests {
         assert!(connections.available);
         assert!(connections.host_ports.is_empty());
         assert!(connections.confirmed_links.is_empty());
-        assert_eq!(connections.application_ports.len(), created.ports.len());
+        assert_eq!(connections.application_ports.len(), created.ports.len() + 1);
+        assert_eq!(
+            connections
+                .application_ports
+                .values()
+                .filter(|port| port.owner == BackendPortOwner::GlobalFxControl)
+                .count(),
+            1
+        );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_midi_injection_records_without_host_endpoints_or_links() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -5974,7 +7897,7 @@ mod tests {
             .is_err());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_routes_record_monitor_and_playback_with_bounded_render_work() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -6138,7 +8061,130 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn web_midi_dual_route_is_additive_but_only_track_copy_records() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        let endpoint = BackendHostPortDescriptor {
+            id: "webmidi:source:dual".to_owned(),
+            name: "Dual route".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Output,
+        };
+        backend
+            .configure_web_midi_endpoints(vec![endpoint.clone()])
+            .unwrap();
+        let track = backend
+            .create_track(TrackRequest {
+                port_name_base: "dual_tiny".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                    dry_audio_channels: 0,
+                    wet_audio_channels: 0,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let input = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::MidiInput)
+            .unwrap();
+        let global = backend
+            .poll()
+            .unwrap()
+            .connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
+        backend
+            .set_port_connected(input.id, &endpoint.id, true)
+            .unwrap();
+        backend
+            .set_port_connected(global, &endpoint.id, true)
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        assert_eq!(
+            backend
+                .stage_web_midi_input(&endpoint.id, &[0xb0, 7, 99])
+                .unwrap(),
+            2
+        );
+        assert_no_alloc::assert_no_alloc(|| {
+            backend
+                .process_audio_quantum(&[], 0, &mut [], 0, 128)
+                .unwrap();
+        });
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(
+            captured.tracks[0].loops[0].midi[0]
+                .events
+                .iter()
+                .filter(|event| event.data == [0xb0, 7, 99])
+                .count(),
+            1
+        );
+        assert_eq!(
+            captured.global_ports[0].external_connections,
+            vec![endpoint.id]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn missing_desired_global_web_midi_identity_survives_replace_and_reconnects() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        let endpoint = BackendHostPortDescriptor {
+            id: "webmidi:source:global-hotplug".to_owned(),
+            name: "Global hotplug".to_owned(),
+            data_type: BackendPortDataType::Midi,
+            direction: BackendPortDirection::Output,
+        };
+        backend
+            .configure_web_midi_endpoints(vec![endpoint.clone()])
+            .unwrap();
+        let global = backend
+            .poll()
+            .unwrap()
+            .connections
+            .application_ports
+            .values()
+            .find(|port| port.owner == BackendPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
+        backend
+            .set_port_connected(global, &endpoint.id, true)
+            .unwrap();
+        backend.configure_web_midi_endpoints(Vec::new()).unwrap();
+        let saved = backend.capture_session().unwrap();
+        assert_eq!(
+            saved.global_ports[0].external_connections,
+            vec![endpoint.id.clone()]
+        );
+        backend.replace_session(&saved).unwrap();
+        backend
+            .configure_web_midi_endpoints(vec![endpoint.clone()])
+            .unwrap();
+        assert!(backend
+            .poll()
+            .unwrap()
+            .connections
+            .confirmed_links
+            .contains(&BackendConfirmedLink {
+                application_port_id: backend.global_fx_port,
+                host_port_id: endpoint.id,
+            }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_input_fans_out_once_to_every_connected_track() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -6201,7 +8247,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_output_fanout_survives_bounded_drains_without_duplicates() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -6277,7 +8323,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn saturated_web_midi_render_is_allocation_free_and_counts_refusal() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 0).unwrap();
@@ -6329,7 +8375,7 @@ mod tests {
         });
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_processes_audio_midi_controls_and_session_state() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -6382,13 +8428,55 @@ mod tests {
             .all(|(left, right)| (*left - *right).abs() < 1.0e-6));
 
         backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                    TinySynthFxMidiCcAssignment {
+                        parameter: TinySynthFxParameter::ReverbAmount,
+                        channel: 2,
+                        controller: 17,
+                    },
+                )),
+            )
+            .unwrap();
+        backend
             .set_track_fx_control(created.track_id, BackendTrackFxControl::SetActive(false))
+            .unwrap();
+        backend
+            .stage_web_midi_input("webmidi:source:tiny", &[0xb2, 17, 127])
             .unwrap();
         output.fill(1.0);
         backend
             .process_audio_quantum(&input, 1, &mut output, 2, 128)
             .unwrap();
         assert!(output.iter().all(|sample| sample.abs() < 1.0e-7));
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(
+            snapshot.tracks[&created.track_id]
+                .latest_input_midi_message
+                .unwrap(),
+            BackendLatestMidiMessage {
+                bytes: [0xb2, 17, 127, 0],
+                len: 3,
+            }
+        );
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = snapshot.tracks
+            [&created.track_id]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX editor state");
+        };
+        assert_eq!(editor.reverb_amount, 1.0);
+        assert_eq!(
+            editor.midi_cc_assignments.as_ref(),
+            [TinySynthFxMidiCcAssignment {
+                parameter: TinySynthFxParameter::ReverbAmount,
+                channel: 2,
+                controller: 17,
+            }]
+        );
         backend
             .set_track_fx_control(created.track_id, BackendTrackFxControl::SetActive(true))
             .unwrap();
@@ -6426,10 +8514,36 @@ mod tests {
             .track_fx_state_string(created.track_id)
             .unwrap()
             .unwrap();
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                    TinySynthFxMidiCcAssignment {
+                        parameter: TinySynthFxParameter::ReverbAmount,
+                        channel: 2,
+                        controller: 18,
+                    },
+                )),
+            )
+            .unwrap();
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::RestoreState(state.clone()),
+            )
+            .unwrap();
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].processor_state.as_deref(),
             Some(state.as_str())
+        );
+        assert_eq!(
+            captured.tracks[0].tiny_synth_midi_cc_assignments,
+            [BackendTinySynthFxMidiCcAssignment {
+                parameter: BackendTinySynthFxParameter::ReverbAmount,
+                channel: 2,
+                controller: 18,
+            }]
         );
         assert!(backend
             .set_track_fx_control(
@@ -6444,6 +8558,16 @@ mod tests {
         let mut malformed_session = captured.clone();
         malformed_session.tracks[0].processor_state = Some("malformed".to_owned());
         assert!(backend.replace_session(&malformed_session).is_err());
+        assert_eq!(backend.capture_session().unwrap(), captured);
+        let mut invalid_assignments = captured.clone();
+        invalid_assignments.tracks[0]
+            .tiny_synth_midi_cc_assignments
+            .push(BackendTinySynthFxMidiCcAssignment {
+                parameter: BackendTinySynthFxParameter::EqHigh,
+                channel: 2,
+                controller: 18,
+            });
+        assert!(backend.replace_session(&invalid_assignments).is_err());
         assert_eq!(backend.capture_session().unwrap(), captured);
 
         let source_track = captured.tracks[0].source_id;
@@ -6466,9 +8590,186 @@ mod tests {
         assert_eq!(editor.eq_low_db, 3.0);
         assert_eq!(editor.eq_mid_db, -2.0);
         assert_eq!(editor.eq_high_db, 1.5);
+        assert_eq!(
+            editor.midi_cc_assignments.as_ref(),
+            [TinySynthFxMidiCcAssignment {
+                parameter: TinySynthFxParameter::ReverbAmount,
+                channel: 2,
+                controller: 18,
+            }]
+        );
+        backend
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
+                    TinySynthFxParameter::ReverbAmount,
+                )),
+            )
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = snapshot.tracks[&restored_track]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX editor state");
+        };
+        assert!(editor.midi_cc_assignments.is_empty());
+        backend
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
+                    TinySynthFxMidiCcAssignment {
+                        parameter: TinySynthFxParameter::EqLow,
+                        channel: 1,
+                        controller: 74,
+                    },
+                )),
+            )
+            .unwrap();
+        backend
+            .set_track_fx_control(
+                restored_track,
+                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments),
+            )
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = snapshot.tracks[&restored_track]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing Tiny Synth/FX editor state");
+        };
+        assert!(editor.midi_cc_assignments.is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn tiny_synth_fx_records_the_same_sustained_wet_signal_that_is_monitored() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 1).unwrap();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "tiny_recording".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.poll().unwrap();
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x90, 69, 127],
+                }],
+            )
+            .unwrap();
+
+        let mut monitored = Vec::new();
+        for _ in 0..16 {
+            let mut output = vec![0.0; 128];
+            backend
+                .process_audio_quantum(&[], 0, &mut output, 1, 128)
+                .unwrap();
+            monitored.extend(output);
+        }
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0x80, 69, 0],
+                }],
+            )
+            .unwrap();
+        for _ in 0..4 {
+            let mut output = vec![0.0; 128];
+            backend
+                .process_audio_quantum(&[], 0, &mut output, 1, 128)
+                .unwrap();
+            monitored.extend(output);
+        }
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+
+        let channels = backend.loop_audio_data(created.loops[0]).unwrap().unwrap();
+        let wet = &channels[1];
+        assert_eq!(wet.len(), monitored.len());
+        assert!(wet.iter().filter(|sample| sample.abs() > 1.0e-7).count() > wet.len() / 2);
+        assert!(wet
+            .iter()
+            .zip(&monitored)
+            .all(|(recorded, heard)| (*recorded - *heard).abs() < 1.0e-6));
+
+        backend
+            .set_track_control(
+                created.track_id,
+                BackendTrackControl::InputMonitoring(false),
+            )
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend.poll().unwrap();
+        let mut wet_playback = vec![0.0; 128];
+        backend
+            .process_audio_quantum(&[], 0, &mut wet_playback, 1, 128)
+            .unwrap();
+        assert!(wet_playback
+            .iter()
+            .zip(&wet[..128])
+            .all(|(played, recorded)| (*played - *recorded).abs() < 1.0e-6));
+
+        backend
+            .transition_loop(
+                created.loops[0],
+                BackendLoopMode::PlayingDryThroughWet,
+                None,
+            )
+            .unwrap();
+        backend.poll().unwrap();
+        let mut dry_through_wet = vec![0.0; 128];
+        backend
+            .process_audio_quantum(&[], 0, &mut dry_through_wet, 1, 128)
+            .unwrap();
+        assert!(dry_through_wet.iter().any(|sample| sample.abs() > 1.0e-7));
+
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::RecordingDryIntoWet, None)
+            .unwrap();
+        backend.poll().unwrap();
+        for _ in 0..20 {
+            backend
+                .process_audio_quantum(&[], 0, &mut vec![0.0; 128], 1, 128)
+                .unwrap();
+        }
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let rerecorded = backend.loop_audio_data(created.loops[0]).unwrap().unwrap();
+        assert!(
+            rerecorded[1]
+                .iter()
+                .filter(|sample| sample.abs() > 1.0e-7)
+                .count()
+                > rerecorded[1].len() / 2
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_accepts_zero_mono_stereo_and_arbitrary_matched_channels() {
         for channels in [0, 1, 2, 7] {
             let mut backend = EngineBackend::new_dummy(48_000, 128).unwrap();
@@ -6541,7 +8842,7 @@ mod tests {
         assert!(backend.capture_session().unwrap().tracks.is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn disconnected_web_audio_input_records_silence() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 1).unwrap();
@@ -6579,7 +8880,7 @@ mod tests {
         assert!(recorded[0].iter().all(|sample| *sample == 0.0));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_backend_records_monitors_and_plays_non_zero_full_duplex_audio() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -6625,7 +8926,7 @@ mod tests {
         assert!(output.iter().any(|sample| *sample != 0.0));
         let snapshot = backend.poll().unwrap();
         assert!(snapshot.connections.available);
-        assert_eq!(snapshot.connections.application_ports.len(), 2);
+        assert_eq!(snapshot.connections.application_ports.len(), 3);
         let status = snapshot.status;
         assert_eq!(status.callback_count, 2);
         assert_eq!(status.processed_frames, 256);
@@ -6633,7 +8934,47 @@ mod tests {
         assert!(status.output_peak > 0.0);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_peak_publication_resets_measurement_window() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(1, 1).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "peak_window".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        let mut output = vec![0.0; 128];
+        backend
+            .process_audio_quantum(&vec![0.5; 128], 1, &mut output, 1, 128)
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let _ = backend.poll().unwrap();
+
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        output.fill(0.0);
+        backend
+            .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 1, 128)
+            .unwrap();
+        let loud = backend.poll().unwrap();
+        assert!(loud.tracks[&track.track_id].output_peaks[0] > -100.0);
+        assert!(loud.loops[&track.loops[0]].audio_peaks[0] > -100.0);
+
+        let silent = backend.poll().unwrap();
+        assert!(silent.tracks[&track.track_id].output_peaks[0] <= -100.0);
+        assert!(silent.loops[&track.loops[0]].audio_peaks[0] <= -100.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_session_replacement_preserves_user_route_changes_over_defaults() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -6684,7 +9025,7 @@ mod tests {
         }));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_playback_deterministically_mixes_more_loop_channels_than_device_channels() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         backend.configure_web_audio_channels(0, 2).unwrap();
@@ -6721,7 +9062,7 @@ mod tests {
             .all(|sample| (*sample - 0.9).abs() < 1.0e-6));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_audio_and_midi_grab_adopt_recent_input_without_growing_in_the_callback() {
         let mut backend = EngineBackend::new_web_audio(128, 128).unwrap();
         backend.configure_web_audio_channels(1, 2).unwrap();
@@ -6761,7 +9102,7 @@ mod tests {
             .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
             .unwrap();
         let mut output = vec![0.0; 256];
-        for _ in 0..8 {
+        for _ in 0..INPUT_CAPTURE_CAPACITY_SECONDS - 2 {
             backend
                 .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 2, 128)
                 .unwrap();
@@ -6830,7 +9171,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn fake_grab_preflights_every_target() {
         let mut backend = FakeBackend::default();
         let track = backend
@@ -6867,7 +9208,67 @@ mod tests {
         );
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn targeted_midi_data_preserves_channel_metadata_events_and_content() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "midi_details".to_owned(),
+                audio_channels: 0,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = track.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 32,
+                        start_state: Vec::new(),
+                        events: vec![
+                            BackendMidiEvent {
+                                time: 3,
+                                data: vec![0x90, 64, 100],
+                            },
+                            BackendMidiEvent {
+                                time: 19,
+                                data: vec![0x80, 64, 0],
+                            },
+                        ],
+                        start_offset: Some(-4),
+                        preplay: Some(7),
+                    }],
+                    length: Some(32),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let before = backend.capture_session().unwrap();
+        let data = backend.loop_midi_data(loop_id).unwrap().unwrap();
+        let channel = &data.channels[0];
+        assert_eq!(channel.mode, BackendChannelMode::Direct);
+        assert_eq!(channel.length, 32);
+        assert_eq!(channel.start_offset, -4);
+        assert_eq!(channel.preplay, 7);
+        assert_eq!(channel.events[0].data, [0x90, 64, 100]);
+        assert_eq!(channel.events[1].time, 19);
+        assert!(channel.content_revision > 0);
+        assert_eq!(backend.capture_session().unwrap(), before);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_runtime_progresses_only_from_explicit_quanta() {
+        let mut runtime = EngineBackend::new_dummy_runtime(48_000, 128).unwrap();
+        runtime.advance(Duration::from_secs(1));
+        assert_eq!(runtime.processed_frames(), 0);
+        runtime.advance_frames(128);
+        assert_eq!(runtime.processed_frames(), 128);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn elapsed_time_preserves_fractional_frame_remainders() {
         let mut backend = EngineBackend::new_dummy(1_000, 64).unwrap();
         backend.advance(Duration::from_micros(500));
@@ -6876,7 +9277,7 @@ mod tests {
         assert_eq!(backend.processed_frames(), 1);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn elapsed_time_processing_is_bounded_and_reports_dropped_time() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         backend.advance(Duration::from_secs(10));

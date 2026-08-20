@@ -1,18 +1,27 @@
+#[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 use shoop_audio_protocol::{
-    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireApplicationPort,
-    WireConfirmedLink, WireHostPort, WireLoopMode, WireLoopState, WireMidiOutputEvent,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxState,
+    Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
+    WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
+    WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
+    WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
+    WireMidiOutputEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
+    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
     WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
-    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, PROTOCOL_VERSION,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
-    WAVEFORM_CHUNK_SAMPLES,
+    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
+    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiEvent, BackendPortDataType, BackendPortDirection,
-    BackendPortId, BackendPortRole, BackendSessionData, BackendSnapshot, BackendTrackControl,
-    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
-    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
+    BackendCompositeKind, BackendCompositeTarget, BackendGrabRequest, BackendHostPortDescriptor,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
+    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
+    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
+    BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
+    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorEditorState,
+    TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -264,6 +273,12 @@ impl WorkletHost {
                 }
                 Ok(Event::Ack)
             }
+            Command::RemoveTrack { track_id } => {
+                self.backend
+                    .remove_track(BackendTrackId::from_raw(track_id))
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::AddLoop {
                 track_id,
                 expected_loop_id,
@@ -275,6 +290,64 @@ impl WorkletHost {
                 if actual.raw() != expected_loop_id {
                     return Err("stable-ID mismatch while creating a loop".to_owned());
                 }
+                Ok(Event::Ack)
+            }
+            Command::CreateComposite {
+                expected_composite_id,
+            } => {
+                let actual = self
+                    .backend
+                    .create_composite_loop()
+                    .map_err(|error| error.to_string())?;
+                if actual.raw() != expected_composite_id {
+                    return Err("stable-ID mismatch while creating a composite".to_owned());
+                }
+                Ok(Event::Ack)
+            }
+            Command::ConfigureComposite {
+                composite_id,
+                config,
+            } => {
+                self.backend
+                    .configure_composite_loop(
+                        BackendCompositeId::from_raw(composite_id),
+                        &from_wire_composite_config(config),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::TransitionComposite {
+                composite_id,
+                mode,
+                cycles_delay,
+                align_to_iteration,
+            } => {
+                self.backend
+                    .transition_composite_loop(
+                        BackendCompositeId::from_raw(composite_id),
+                        from_wire_loop_mode(mode),
+                        cycles_delay,
+                        align_to_iteration,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetCompositePlayAfterRecord {
+                composite_id,
+                enabled,
+            } => {
+                self.backend
+                    .set_composite_play_after_record(
+                        BackendCompositeId::from_raw(composite_id),
+                        enabled,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::RemoveComposite { composite_id } => {
+                self.backend
+                    .remove_composite_loop(BackendCompositeId::from_raw(composite_id))
+                    .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
             Command::SetTrackControl { track_id, control } => {
@@ -458,6 +531,66 @@ impl WorkletHost {
                     samples: chunk.samples,
                 }))
             }
+            Command::RequestMidiData {
+                loop_id,
+                generation,
+                channel,
+                offset,
+                max_events,
+            } => {
+                if generation == 0 || max_events == 0 {
+                    return Err("invalid MIDI detail request".to_owned());
+                }
+                let data = self
+                    .backend
+                    .loop_midi_data(BackendLoopId::from_raw(loop_id))
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "MIDI detail data is not ready".to_owned())?;
+                let channel_count = data.channels.len();
+                if channel_count == 0 {
+                    return Ok(Event::MidiData(MidiDataChunk {
+                        loop_id,
+                        generation,
+                        final_chunk: true,
+                        ..Default::default()
+                    }));
+                }
+                let channel_data = data
+                    .channels
+                    .get(channel)
+                    .ok_or_else(|| "unknown MIDI detail channel".to_owned())?;
+                if offset > channel_data.events.len() {
+                    return Err("invalid MIDI detail event offset".to_owned());
+                }
+                let end = offset
+                    .saturating_add(max_events.min(MIDI_DETAIL_CHUNK_EVENTS))
+                    .min(channel_data.events.len());
+                Ok(Event::MidiData(MidiDataChunk {
+                    loop_id,
+                    generation,
+                    content_revision: channel_data.content_revision,
+                    mode: match channel_data.mode {
+                        shoop_backend::BackendChannelMode::Direct => WireChannelMode::Direct,
+                        shoop_backend::BackendChannelMode::Dry => WireChannelMode::Dry,
+                        shoop_backend::BackendChannelMode::Wet => WireChannelMode::Wet,
+                    },
+                    channel,
+                    channel_count,
+                    offset,
+                    total_events: channel_data.events.len(),
+                    length: channel_data.length,
+                    start_offset: channel_data.start_offset,
+                    preplay: channel_data.preplay,
+                    final_chunk: end >= channel_data.events.len(),
+                    events: channel_data.events[offset..end]
+                        .iter()
+                        .map(|event| shoop_audio_protocol::WireMidiEvent {
+                            frame: event.time,
+                            data: event.data.clone(),
+                        })
+                        .collect(),
+                }))
+            }
             Command::BeginSessionCapture { generation } => {
                 if generation == 0 {
                     return Err("session capture generation must be non-zero".to_owned());
@@ -622,6 +755,30 @@ fn from_wire_track_topology(topology: WireTrackTopology) -> BackendTrackTopology
     }
 }
 
+fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxParameter {
+    match parameter {
+        WireTinySynthFxParameter::MasterGain => TinySynthFxParameter::MasterGain,
+        WireTinySynthFxParameter::ReverbAmount => TinySynthFxParameter::ReverbAmount,
+        WireTinySynthFxParameter::DistortionDrive => TinySynthFxParameter::DistortionDrive,
+        WireTinySynthFxParameter::CompressorAmount => TinySynthFxParameter::CompressorAmount,
+        WireTinySynthFxParameter::EqLow => TinySynthFxParameter::EqLow,
+        WireTinySynthFxParameter::EqMid => TinySynthFxParameter::EqMid,
+        WireTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
+    }
+}
+
+fn to_wire_tiny_parameter(parameter: TinySynthFxParameter) -> WireTinySynthFxParameter {
+    match parameter {
+        TinySynthFxParameter::MasterGain => WireTinySynthFxParameter::MasterGain,
+        TinySynthFxParameter::ReverbAmount => WireTinySynthFxParameter::ReverbAmount,
+        TinySynthFxParameter::DistortionDrive => WireTinySynthFxParameter::DistortionDrive,
+        TinySynthFxParameter::CompressorAmount => WireTinySynthFxParameter::CompressorAmount,
+        TinySynthFxParameter::EqLow => WireTinySynthFxParameter::EqLow,
+        TinySynthFxParameter::EqMid => WireTinySynthFxParameter::EqMid,
+        TinySynthFxParameter::EqHigh => WireTinySynthFxParameter::EqHigh,
+    }
+}
+
 fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxControl {
     match control {
         WireTrackFxControl::SetActive(value) => BackendTrackFxControl::SetActive(value),
@@ -665,6 +822,19 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         WireTrackFxControl::TinySetEqHighDb(value) => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SetEqHighDb(value))
         }
+        WireTrackFxControl::TinyAssignMidiCc(assignment) => BackendTrackFxControl::TinySynthFx(
+            TinySynthFxControl::AssignMidiCc(TinySynthFxMidiCcAssignment {
+                parameter: from_wire_tiny_parameter(assignment.parameter),
+                channel: assignment.channel,
+                controller: assignment.controller,
+            }),
+        ),
+        WireTrackFxControl::TinyRemoveMidiCc(parameter) => BackendTrackFxControl::TinySynthFx(
+            TinySynthFxControl::RemoveMidiCc(from_wire_tiny_parameter(parameter)),
+        ),
+        WireTrackFxControl::TinyClearMidiCcAssignments => {
+            BackendTrackFxControl::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments)
+        }
         WireTrackFxControl::TinyPanic => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
         }
@@ -680,6 +850,45 @@ fn from_wire_loop_mode(mode: WireLoopMode) -> BackendLoopMode {
         WireLoopMode::Replacing => BackendLoopMode::Replacing,
         WireLoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
         WireLoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
+    }
+}
+
+fn from_wire_composite_config(config: WireCompositeConfig) -> BackendCompositeConfig {
+    BackendCompositeConfig {
+        kind: match config.kind {
+            WireCompositeKind::Regular => BackendCompositeKind::Regular,
+            WireCompositeKind::Script => BackendCompositeKind::Script,
+        },
+        sync_source: BackendLoopId::from_raw(config.sync_source),
+        timelines: config
+            .timelines
+            .into_iter()
+            .map(|timeline| {
+                timeline
+                    .into_iter()
+                    .map(|section| {
+                        section
+                            .into_iter()
+                            .map(|entry| BackendCompositeEntry {
+                                target: match entry.target {
+                                    WireCompositeTarget::Loop(id) => {
+                                        BackendCompositeTarget::Loop(BackendLoopId::from_raw(id))
+                                    }
+                                    WireCompositeTarget::Composite(id) => {
+                                        BackendCompositeTarget::Composite(
+                                            BackendCompositeId::from_raw(id),
+                                        )
+                                    }
+                                },
+                                delay: entry.delay,
+                                n_cycles: entry.n_cycles,
+                                mode: entry.mode.map(from_wire_loop_mode),
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect(),
     }
 }
 
@@ -771,6 +980,10 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         .into_values()
         .map(|port| WireApplicationPort {
             id: port.id.raw(),
+            owner: match port.owner {
+                BackendPortOwner::Track => WireApplicationPortOwner::Track,
+                BackendPortOwner::GlobalFxControl => WireApplicationPortOwner::GlobalFxControl,
+            },
             name: port.name,
             data_type: to_wire_data_type(port.data_type),
             direction: to_wire_direction(port.direction),
@@ -808,6 +1021,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         callback_budget_overruns: snapshot.status.callback_budget_overruns,
         render_discontinuities: snapshot.status.render_discontinuities,
         memory_growths: snapshot.status.memory_growths,
+        render_memory_growths: snapshot.status.render_memory_growths,
         command_overflows: snapshot.status.command_overflows,
         storage_low_channels: snapshot.status.storage_low_channels,
         storage_exhaustions: snapshot.status.storage_exhaustions,
@@ -835,6 +1049,15 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                             eq_low_db: editor.eq_low_db,
                             eq_mid_db: editor.eq_mid_db,
                             eq_high_db: editor.eq_high_db,
+                            midi_cc_assignments: editor
+                                .midi_cc_assignments
+                                .iter()
+                                .map(|assignment| WireTinySynthFxMidiCcAssignment {
+                                    parameter: to_wire_tiny_parameter(assignment.parameter),
+                                    channel: assignment.channel,
+                                    controller: assignment.controller,
+                                })
+                                .collect(),
                         },
                     })
                 }),
@@ -848,6 +1071,12 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 input_monitoring: track.input_monitoring,
                 input_peaks: track.input_peaks,
                 output_peaks: track.output_peaks,
+                latest_input_midi_message: track.latest_input_midi_message.map(|message| {
+                    WireLatestMidiMessage {
+                        bytes: message.bytes,
+                        len: message.len,
+                    }
+                }),
             })
             .collect(),
         loops: snapshot
@@ -865,6 +1094,36 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 balance: loop_.balance,
                 audio_peaks: loop_.audio_peaks,
                 midi_activity: loop_.midi_activity,
+            })
+            .collect(),
+        composites: snapshot
+            .composites
+            .into_iter()
+            .map(|(id, composite)| WireCompositeState {
+                id: id.raw(),
+                mode: to_wire_loop_mode(composite.mode),
+                next_mode: composite.next_mode.map(to_wire_loop_mode),
+                next_transition_delay: composite.next_transition_delay,
+                iteration: composite.iteration,
+                cycle_count: composite.cycle_count,
+                length: composite.length,
+                position: composite.position,
+                active_plan_version: composite.active_plan_version,
+                pending_plan_version: composite.pending_plan_version,
+                active_children: composite
+                    .active_children
+                    .into_iter()
+                    .map(|child| WireActiveCompositeChild {
+                        target: match child.target {
+                            BackendCompositeTarget::Loop(id) => WireCompositeTarget::Loop(id.raw()),
+                            BackendCompositeTarget::Composite(id) => {
+                                WireCompositeTarget::Composite(id.raw())
+                            }
+                        },
+                        mode: to_wire_loop_mode(child.mode),
+                        cycle_offset: child.cycle_offset,
+                    })
+                    .collect(),
             })
             .collect(),
         application_ports,
@@ -955,7 +1214,241 @@ mod tests {
         serde_json::from_str(host.handle_json(&json)).unwrap()
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_removes_and_recreates_same_named_track_ports() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let create = |expected_track_id, expected_loop_id| Command::CreateTrack {
+            expected_track_id,
+            expected_loop_ids: vec![expected_loop_id],
+            port_name_base: "reusable".to_owned(),
+            topology: WireTrackTopology::Direct {
+                audio_channels: 1,
+                midi: true,
+            },
+        };
+        assert!(matches!(
+            command(&mut host, 1, create(1, 1)).event,
+            Event::Ack
+        ));
+        let Event::Snapshot(first) = command(&mut host, 2, Command::Poll).event else {
+            panic!("expected first snapshot");
+        };
+        let first_ports = first
+            .application_ports
+            .iter()
+            .filter(|port| matches!(port.owner, WireApplicationPortOwner::Track))
+            .map(|port| (port.id, port.name.clone()))
+            .collect::<Vec<_>>();
+
+        assert!(matches!(
+            command(&mut host, 3, Command::RemoveTrack { track_id: 1 }).event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(&mut host, 4, create(2, 2)).event,
+            Event::Ack
+        ));
+        let Event::Snapshot(recreated) = command(&mut host, 5, Command::Poll).event else {
+            panic!("expected recreated snapshot");
+        };
+        assert_eq!(
+            recreated
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            [2]
+        );
+        assert_eq!(
+            recreated
+                .loops
+                .iter()
+                .map(|loop_| loop_.id)
+                .collect::<Vec<_>>(),
+            [2]
+        );
+        let recreated_ports = recreated
+            .application_ports
+            .iter()
+            .filter(|port| matches!(port.owner, WireApplicationPortOwner::Track))
+            .map(|port| (port.id, port.name.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            recreated_ports
+                .iter()
+                .map(|(_, name)| name)
+                .collect::<Vec<_>>(),
+            first_ports.iter().map(|(_, name)| name).collect::<Vec<_>>()
+        );
+        assert!(recreated_ports
+            .iter()
+            .all(|(id, _)| first_ports.iter().all(|(old_id, _)| old_id != id)));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_composite_contract_controls_and_publishes_independent_parent_state() {
+        let mut host = WorkletHost::new(1_000, 8).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1, 2, 3, 4],
+                    port_name_base: "composite".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 0,
+                        midi: false,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        for (sequence, loop_id, length) in [(2, 1, 1), (3, 2, 4), (4, 3, 4), (5, 4, 4)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetLoopLength { loop_id, length },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        let config = WireCompositeConfig {
+            kind: WireCompositeKind::Regular,
+            sync_source: 1,
+            timelines: vec![vec![2, 3, 4]
+                .into_iter()
+                .map(|id| {
+                    vec![shoop_audio_protocol::WireCompositeEntry {
+                        target: WireCompositeTarget::Loop(id),
+                        delay: 0,
+                        n_cycles: None,
+                        mode: None,
+                    }]
+                })
+                .collect()],
+        };
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::CreateComposite {
+                    expected_composite_id: 1,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::ConfigureComposite {
+                    composite_id: 1,
+                    config: config.clone(),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                8,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Playing,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                9,
+                Command::TransitionComposite {
+                    composite_id: 1,
+                    mode: WireLoopMode::Playing,
+                    cycles_delay: None,
+                    align_to_iteration: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(started) = command(&mut host, 10, Command::Poll).event else {
+            panic!("expected composite snapshot");
+        };
+        assert_eq!(started.composites[0].mode, WireLoopMode::Playing);
+        assert_eq!(
+            started.composites[0].active_children[0].target,
+            WireCompositeTarget::Loop(2)
+        );
+
+        for _ in 0..4 {
+            assert!(host.process(0, 0, 1));
+        }
+        let Event::Snapshot(advanced) = command(&mut host, 11, Command::Poll).event else {
+            panic!("expected composite snapshot");
+        };
+        assert_eq!(advanced.composites[0].iteration, 4);
+        assert_eq!(advanced.composites[0].position, 4);
+        assert_eq!(
+            advanced.composites[0].active_children[0].target,
+            WireCompositeTarget::Loop(3)
+        );
+
+        assert!(matches!(
+            command(
+                &mut host,
+                12,
+                Command::CreateComposite {
+                    expected_composite_id: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                13,
+                Command::ConfigureComposite {
+                    composite_id: 2,
+                    config,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                14,
+                Command::TransitionLoop {
+                    loop_id: 4,
+                    mode: WireLoopMode::Playing,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(host.process(0, 0, 1));
+        let Event::Snapshot(isolated) = command(&mut host, 15, Command::Poll).event else {
+            panic!("expected composite snapshot");
+        };
+        assert_eq!(isolated.composites[1].mode, WireLoopMode::Stopped);
+        assert_eq!(isolated.composites[1].position, 0);
+        assert!(isolated.composites[1].active_children.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn protocol_orders_commands_and_runs_non_silent_full_duplex_cycles() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1068,7 +1561,106 @@ mod tests {
         assert_eq!(snapshot.loops[0].balance, 0.5);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_details_are_bounded_and_chunked_without_session_capture() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "midi_details".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 0,
+                        midi: true,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let events = (0..200)
+            .map(|index| BackendMidiEvent {
+                time: index,
+                data: vec![0x90, (index % 128) as u8, 100],
+            })
+            .collect::<Vec<_>>();
+        host.backend
+            .replace_loop_content(
+                BackendLoopId::from_raw(1),
+                &BackendLoopContentUpdate {
+                    midi: vec![shoop_backend::BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 256,
+                        start_state: Vec::new(),
+                        events,
+                        start_offset: Some(-2),
+                        preplay: Some(3),
+                    }],
+                    length: Some(256),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let Event::MidiData(first) = command(
+            &mut host,
+            2,
+            Command::RequestMidiData {
+                loop_id: 1,
+                generation: 7,
+                channel: 0,
+                offset: 0,
+                max_events: usize::MAX,
+            },
+        )
+        .event
+        else {
+            panic!("expected MIDI data");
+        };
+        assert_eq!(first.events.len(), MIDI_DETAIL_CHUNK_EVENTS);
+        assert_eq!(first.total_events, 200);
+        assert!(!first.final_chunk);
+        assert_eq!(first.start_offset, -2);
+        let Event::MidiData(second) = command(
+            &mut host,
+            3,
+            Command::RequestMidiData {
+                loop_id: 1,
+                generation: 7,
+                channel: 0,
+                offset: first.events.len(),
+                max_events: MIDI_DETAIL_CHUNK_EVENTS,
+            },
+        )
+        .event
+        else {
+            panic!("expected MIDI data");
+        };
+        assert_eq!(second.events.len(), MIDI_DETAIL_CHUNK_EVENTS);
+        assert!(!second.final_chunk);
+        let Event::MidiData(last) = command(
+            &mut host,
+            4,
+            Command::RequestMidiData {
+                loop_id: 1,
+                generation: 7,
+                channel: 0,
+                offset: 192,
+                max_events: MIDI_DETAIL_CHUNK_EVENTS,
+            },
+        )
+        .event
+        else {
+            panic!("expected MIDI data");
+        };
+        assert_eq!(last.events.len(), 8);
+        assert!(last.final_chunk);
+        assert!(host.capture_bytes.is_empty());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_runs_all_shapes_and_controls_in_the_worklet() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1179,6 +1771,11 @@ mod tests {
             WireTrackFxControl::TinySetEqLowDb(3.0),
             WireTrackFxControl::TinySetEqMidDb(-2.0),
             WireTrackFxControl::TinySetEqHighDb(1.5),
+            WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
+                parameter: WireTinySynthFxParameter::ReverbAmount,
+                channel: 2,
+                controller: 17,
+            }),
             WireTrackFxControl::SetVisible(true),
             WireTrackFxControl::TinyPanic,
         ]
@@ -1198,7 +1795,23 @@ mod tests {
                 Event::Ack
             ));
         }
-        let Event::Snapshot(snapshot) = command(&mut host, 25, Command::Poll).event else {
+        assert!(matches!(
+            command(
+                &mut host,
+                26,
+                Command::PushMidiInput {
+                    host_port_id: "webmidi:source:tiny".to_owned(),
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0xb2, 17, 127],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+        let Event::Snapshot(snapshot) = command(&mut host, 27, Command::Poll).event else {
             panic!("missing worklet snapshot");
         };
         assert_eq!(
@@ -1216,10 +1829,25 @@ mod tests {
         );
         let fx = snapshot.tracks[0].fx.as_ref().unwrap();
         assert!(fx.visible);
-        assert_eq!(fx.tiny.selected_preset_id.as_deref(), Some("pad"));
+        assert_eq!(fx.tiny.selected_preset_id, None);
         assert_eq!(fx.tiny.master_gain_db, -12.0);
         assert!(fx.tiny.reverb_enabled);
-        assert_eq!(fx.tiny.reverb_amount, 0.4);
+        assert_eq!(fx.tiny.reverb_amount, 1.0);
+        assert_eq!(
+            fx.tiny.midi_cc_assignments,
+            [WireTinySynthFxMidiCcAssignment {
+                parameter: WireTinySynthFxParameter::ReverbAmount,
+                channel: 2,
+                controller: 17,
+            }]
+        );
+        assert_eq!(
+            snapshot.tracks[0].latest_input_midi_message,
+            Some(WireLatestMidiMessage {
+                bytes: [0xb2, 17, 127, 0],
+                len: 3,
+            })
+        );
         assert!(fx.tiny.distortion_enabled);
         assert_eq!(fx.tiny.distortion_drive, 7.0);
         assert!(fx.tiny.compressor_enabled);
@@ -1241,7 +1869,7 @@ mod tests {
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn normalized_routes_mutate_authoritatively_without_stopping_audio() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1288,7 +1916,7 @@ mod tests {
         let Event::Snapshot(snapshot) = command(&mut host, 4, Command::Poll).event else {
             panic!("expected snapshot");
         };
-        assert_eq!(snapshot.application_ports.len(), 4);
+        assert_eq!(snapshot.application_ports.len(), 5);
         assert_eq!(snapshot.host_ports.len(), 4);
         assert_eq!(snapshot.confirmed_links.len(), 4);
 
@@ -1346,7 +1974,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn track_midi_injection_needs_no_web_midi_endpoint() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         assert!(matches!(
@@ -1430,7 +2058,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn web_midi_commands_route_record_monitor_and_playback() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let endpoints = vec![
@@ -1637,7 +2265,139 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_web_midi_dual_route_survives_capture_replace_and_stays_allocation_free() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let endpoint = "webmidi:source:global-dual";
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureMidiEndpoints {
+                    endpoints: vec![WireHostPort {
+                        id: endpoint.to_owned(),
+                        name: "Global dual".to_owned(),
+                        data_type: WirePortDataType::Midi,
+                        direction: WirePortDirection::Output,
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "global_tiny".to_owned(),
+                    topology: WireTrackTopology::TinySynthFx { audio_channels: 0 },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 3, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        let global = snapshot
+            .application_ports
+            .iter()
+            .find(|port| port.owner == WireApplicationPortOwner::GlobalFxControl)
+            .unwrap()
+            .id;
+        let track_input = snapshot
+            .application_ports
+            .iter()
+            .find(|port| {
+                port.owner == WireApplicationPortOwner::Track
+                    && port.role == WirePortRole::MidiInput
+            })
+            .unwrap()
+            .id;
+        for (sequence, port) in [(4, track_input), (5, global)] {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::SetPortConnected {
+                        application_port_id: port,
+                        host_port_id: endpoint.to_owned(),
+                        connected: true,
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+        }
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Recording,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::PushMidiInput {
+                    host_port_id: endpoint.to_owned(),
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0xb0, 7, 101],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 0, 128)));
+        assert!(matches!(
+            command(
+                &mut host,
+                8,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Stopped,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let session = host.backend.capture_session().unwrap();
+        assert_eq!(session.global_ports[0].external_connections, vec![endpoint]);
+        assert_eq!(
+            session.tracks[0].loops[0].midi[0]
+                .events
+                .iter()
+                .filter(|event| event.data == [0xb0, 7, 101])
+                .count(),
+            1
+        );
+        host.backend.replace_session(&session).unwrap();
+        let snapshot = host.backend.poll().unwrap();
+        assert!(snapshot.connections.confirmed_links.iter().any(|link| {
+            snapshot
+                .connections
+                .application_ports
+                .get(&link.application_port_id)
+                .is_some_and(|port| port.owner == BackendPortOwner::GlobalFxControl)
+                && link.host_port_id == endpoint
+        }));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 0, 128)));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn session_capture_and_replacement_use_bounded_chunks_and_keep_processing() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let mut sequence = 1_u64;
@@ -1761,7 +2521,7 @@ mod tests {
         assert_eq!(snapshot.loops[0].length, 4);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn targeted_loop_content_transfer_commits_once_without_stopping_callbacks() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let mut sequence = 1_u64;
@@ -1931,7 +2691,7 @@ mod tests {
         assert_eq!(after.loops[0].length, 2048);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn command_capacity_and_shutdown_fail_visibly() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
         let oversized = vec![b'x'; COMMAND_MAX_BYTES + 1];
@@ -1948,9 +2708,17 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn stale_duplicate_and_malformed_commands_are_rejected_observably() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let mismatched = serde_json::to_vec(&CommandEnvelope {
+            version: PROTOCOL_VERSION.saturating_sub(1),
+            sequence: 1,
+            command: Command::Poll,
+        })
+        .unwrap();
+        let response: EventEnvelope = serde_json::from_str(host.handle_json(&mismatched)).unwrap();
+        assert!(matches!(response.event, Event::Error { .. }));
         assert!(matches!(
             command(&mut host, 2, Command::Poll).event,
             Event::Error { .. }

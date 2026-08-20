@@ -1,16 +1,21 @@
 [package]
 name = "shoop_engine"
+version.workspace = true
 edition = "2021"
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
 
 [lib]
 
 [[example]]
 name = "carla_inprocess_benchmark"
-required-features = ["lv2"]
+required-features = ["carla"]
 
 [[example]]
 name = "carla_bridge_benchmark"
-required-features = ["lv2"]
+required-features = ["carla"]
 
 [dependencies]
 thiserror = { workspace = true }
@@ -26,11 +31,10 @@ jack = { workspace = true, optional = true }
 cpal = { workspace = true, optional = true }
 # MIDI for hosts without JACK. Optional for the same reason.
 midir = { workspace = true, optional = true }
-lilv = { workspace = true, optional = true }
-lv2_raw = { workspace = true, optional = true }
 base64 = { workspace = true }
 serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
+libc = { workspace = true, optional = true }
 memmap2 = { workspace = true }
 tempfile = { workspace = true }
 assert_no_alloc = { workspace = true }
@@ -44,6 +48,7 @@ tinyviolin = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_tracing = { workspace = true, features = ["tracy"] }
 uuid = { workspace = true }
+rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 shoop_tracing = { workspace = true, default-features = false }
@@ -56,11 +61,19 @@ prebuild = []
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
-lv2 = ["dep:lilv", "dep:lv2_raw", "dep:serde_json", "dep:libloading"]
+carla = ["dep:serde_json", "dep:libloading", "dep:libc", "dep:rfd"]
 native_audio_backend = ["jack", "cpal", "midir"]
 app_backend = ["native_audio_backend"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dev-dependencies]
 assert2 = { workspace = true }
 rtrb = { workspace = true }
-tracy-client = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tracy-client.workspace = true
+tracy-nextest-capture.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"
