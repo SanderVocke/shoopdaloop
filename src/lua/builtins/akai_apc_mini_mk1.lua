@@ -11,7 +11,7 @@
 -- | REC ARM | **RECORD** |
 -- | MUTE | **GRAB** |
 -- | First blank soft key | **SYNC** |
--- | Second blank soft key | Sync-loop button |
+-- | Bottom-right grid button | Sync-loop button |
 -- | SEND | **DRY** |
 -- | DEVICE | **SET N CYCLES** |
 --

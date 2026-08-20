@@ -60,10 +60,10 @@ Out of scope: changing grid-pad actions, ordinary modifiers, controller mappings
 
 ### 4. End-to-end validation
 
-- [ ] Run formatting, Lua syntax, scripting API, and relevant controller/helper tests.
+- [x] Run formatting, Lua syntax, scripting API, and relevant controller/helper tests.
 - [ ] Manually verify on MK1: click and hold behavior for SOLO and SYNC.
 - [ ] Manually verify on MK2: click and hold behavior for SOLO, SYNC (DRUM), and AUTO-MUTE (NOTE), with no yellow/red firmware mode grid takeover.
-- [ ] Confirm both scripts' extracted Markdown documentation matches actual behavior.
+- [x] Confirm both scripts' extracted Markdown documentation matches actual behavior.
 
 ## Execution contract
 
