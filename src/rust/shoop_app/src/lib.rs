@@ -15864,12 +15864,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let temporary = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(temporary.path().join("help/images")).unwrap();
         let script_path = temporary.path().join("portable.lua");
-        let source = "shoop_announce_api_version(1, 0); local f=require('shoop_file'); assert(f.load('help/readme.md') == 'portable')";
+        let markdown = "portable\n\n![icon](images/icon.png)";
+        let source = "shoop_announce_api_version(1, 0); local f=require('shoop_file'); local loaded=f.load('help/readme.md'); local d=require('shoop_dialog'); d.simple('Help', {d.markdown_file('help/readme.md')})";
         std::fs::write(&script_path, source).unwrap();
-        std::fs::write(temporary.path().join("help/readme.md"), "portable").unwrap();
+        std::fs::write(temporary.path().join("help/readme.md"), markdown).unwrap();
         std::fs::write(
             temporary.path().join("help/images/icon.png"),
-            [0, 1, 2, 255],
+            include_bytes!("../../../../resources/logo-small.png"),
         )
         .unwrap();
 
@@ -15903,7 +15904,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
 
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
         runtime.tick(Duration::ZERO);
-        let saved = decode_session(&runtime.take_file_output().unwrap().bytes).unwrap();
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
         let script = &saved.document.scripts[0];
         let resources = &saved.scripts[&script.id];
         assert_eq!(
@@ -15919,7 +15921,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .unwrap()
                 .bytes
                 .as_ref(),
-            b"portable"
+            markdown.as_bytes()
         );
         assert!(resources
             .get(
@@ -15927,6 +15929,39 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                     .unwrap()
             )
             .is_some());
+
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "portable.shoop".to_owned(),
+                bytes: Arc::clone(&output.bytes),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        let dialog = snapshot
+            .scripting
+            .dialogs
+            .iter()
+            .find(|dialog| dialog.name == "Help")
+            .unwrap_or_else(|| panic!("missing Help dialog: {:?}", snapshot.scripting.scripts));
+        let shoop_app_api::ScriptDialogKind::Simple(content) = &dialog.kind else {
+            panic!("expected simple dialog")
+        };
+        let shoop_app_api::ScriptDialogElement::Markdown {
+            resource_base_uri: Some(base_uri),
+            ..
+        } = &content.elements[0]
+        else {
+            panic!("expected provider-backed Markdown")
+        };
+        let image =
+            shoop_script_resources::read_resource_uri(&format!("{base_uri}images/icon.png"))
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            image.as_ref(),
+            include_bytes!("../../../../resources/logo-small.png")
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

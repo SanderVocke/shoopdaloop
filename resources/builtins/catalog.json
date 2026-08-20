@@ -13,10 +13,22 @@
       "sha256": "00ab7e10eb2a15c23afc1ac29cf70d4e90ee373c89249eb860dff53485eb2ce1"
     },
     {
-      "bytes": 1606,
+      "bytes": 1656,
       "kind": "lua",
       "path": "examples/dialogs.lua",
-      "sha256": "355d250c17cb3b17df54da26f70449625c46f643732d191402fae50646c88d7f"
+      "sha256": "c361b82e2cfa36ad94a0f2ff3798ad53e441117b8500594f47c8996c991d0fe2"
+    },
+    {
+      "bytes": 18096,
+      "kind": "image",
+      "path": "examples/help/dialog.png",
+      "sha256": "f36d21dbbcbc8193059dbd4f40e8cf5281100abed8d06cc773e1ca2b299396ba"
+    },
+    {
+      "bytes": 140,
+      "kind": "markdown",
+      "path": "examples/help/readme.md",
+      "sha256": "25541194188967e66577abaf3da3dbac33a7fb5a3a41360bd3a5d50feba754f7"
     },
     {
       "bytes": 9108,

@@ -63,7 +63,7 @@ mod browser_worker;
 mod native_preview;
 mod settings;
 use app_args::AppArgs;
-#[cfg(any(not(target_arch = "wasm32"), test))]
+#[cfg(not(target_arch = "wasm32"))]
 use shoop_app::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_app::{ApplicationHandle, ApplicationRuntime};
@@ -1073,9 +1073,9 @@ impl eframe::App for UnifiedApp {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 const TEST_KEYBOARD_SCRIPT: &str = include_str!("../../../../resources/builtins/keyboard.lua");
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 const TEST_DIALOG_SCRIPT: &str =
     include_str!("../../../../resources/builtins/examples/dialogs.lua");
 

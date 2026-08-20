@@ -157,7 +157,7 @@ mod tests {
 }
 
 impl ScriptFileReader {
-    #[cfg(test)]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     pub fn set_script_path(&self, script_path: &str) {
         let provider = std::path::Path::new(script_path)
             .parent()
