@@ -67,6 +67,12 @@ use shoop_session::{
 const COMMAND_CAPACITY: usize = 1024;
 const MAX_COOPERATIVE_COMMANDS_PER_TICK: usize = 64;
 const POLL_INTERVAL: Duration = Duration::from_millis(16);
+#[cfg(test)]
+const TEST_KEYBOARD_SCRIPT: &str = include_str!("../../../../resources/builtins/keyboard.lua");
+#[cfg(test)]
+const TEST_APC_MINI_SCRIPT: &str =
+    include_str!("../../../../resources/builtins/akai_apc_mini_mk1.lua");
+
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(2);
 const PREVIEW_OUTPUT_CAPACITY: usize = 1;
 
@@ -193,6 +199,7 @@ impl From<TrySendError<ApplicationMessage>> for DispatchError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartupScript {
     pub name: String,
+    pub identity: Option<String>,
     pub source: String,
     pub source_path: Option<String>,
     pub kind: ScriptKind,
@@ -1217,13 +1224,25 @@ impl ApplicationModel {
     fn install_startup_scripts(&mut self, scripts: Vec<StartupScript>) -> Vec<Option<ScriptId>> {
         let mut ids = Vec::with_capacity(scripts.len());
         for script in scripts {
-            match self.script_manager.add_with_source_path(
-                script.name,
-                script.source,
-                script.kind,
-                script.enabled,
-                script.source_path,
-            ) {
+            let result = if let Some(identity) = script.identity {
+                self.script_manager.add_catalog_script(
+                    identity,
+                    script.source,
+                    script.kind,
+                    script.enabled,
+                    script.source_path,
+                    None,
+                )
+            } else {
+                self.script_manager.add_with_source_path(
+                    script.name,
+                    script.source,
+                    script.kind,
+                    script.enabled,
+                    script.source_path,
+                )
+            };
+            match result {
                 Ok(id) => ids.push(Some(id)),
                 Err(error) => {
                     ids.push(None);
@@ -1309,6 +1328,9 @@ impl ApplicationModel {
                 source,
                 source_path,
             } => self.add_ephemeral_script(backend, name, source, source_path),
+            AppIntent::ReconcileCatalogScripts { scripts } => {
+                self.reconcile_catalog_scripts(backend, &scripts)
+            }
             AppIntent::SetScriptEnabled { script_id, enabled } => {
                 self.set_script_enabled(backend, script_id, enabled)
             }
@@ -1555,6 +1577,21 @@ impl ApplicationModel {
             .script_manager
             .add(name, source.to_string(), kind, enabled)
             .map(|_| ())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
+    }
+
+    fn reconcile_catalog_scripts(
+        &mut self,
+        backend: &mut dyn Backend,
+        scripts: &[shoop_app_api::CatalogScriptSource],
+    ) -> Result<(), String> {
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .reconcile_catalog_scripts(scripts)
             .map_err(|error| error.to_string())
             .and_then(|()| self.apply_script_operations(backend));
         self.refresh_scripting_view();
@@ -10199,7 +10236,8 @@ mod tests {
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
-                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                identity: None,
+                source: TEST_KEYBOARD_SCRIPT.to_owned(),
                 source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
@@ -10223,6 +10261,7 @@ mod tests {
             vec![
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
+                    identity: None,
                     source: "local =".to_owned(),
                     source_path: None,
                     kind: ScriptKind::User,
@@ -10230,6 +10269,7 @@ mod tests {
                 },
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
+                    identity: None,
                     source: "print('second')".to_owned(),
                     source_path: None,
                     kind: ScriptKind::User,
@@ -10237,6 +10277,7 @@ mod tests {
                 },
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
+                    identity: None,
                     source: "print('third')".to_owned(),
                     source_path: None,
                     kind: ScriptKind::User,
@@ -10263,7 +10304,8 @@ mod tests {
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
-                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                identity: None,
+                source: TEST_KEYBOARD_SCRIPT.to_owned(),
                 source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
@@ -10307,7 +10349,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -10450,7 +10492,7 @@ c.auto_open_device_specific_midi_control_input('Controller', function() d.open('
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -10559,6 +10601,7 @@ c.auto_open_device_specific_midi_control_input('Controller', function() d.open('
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "actor-dialog.lua".to_owned(),
+                identity: None,
                 source: r#"
 shoop_announce_api_version(1, 0)
 local c=require('shoop_control')
@@ -10980,7 +11023,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "keyboard.lua".to_owned(),
-                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                source: Arc::from(TEST_KEYBOARD_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -11213,7 +11256,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "keyboard.lua".to_owned(),
-                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                source: Arc::from(TEST_KEYBOARD_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -11264,7 +11307,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "keyboard.lua".to_owned(),
-                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                source: Arc::from(TEST_KEYBOARD_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -11445,7 +11488,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Box::new(backend),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
-                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                identity: None,
+                source: TEST_KEYBOARD_SCRIPT.to_owned(),
                 source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
@@ -13000,7 +13044,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -13534,7 +13578,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -13678,7 +13722,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -14912,7 +14956,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
-                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                identity: None,
+                source: TEST_KEYBOARD_SCRIPT.to_owned(),
                 source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,

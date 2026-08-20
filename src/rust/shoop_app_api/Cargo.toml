@@ -11,6 +11,9 @@ browser-feature = "wasm-test-browser"
 default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
+[dependencies]
+shoop_script_resources = { path = "../shoop_script_resources" }
+
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 

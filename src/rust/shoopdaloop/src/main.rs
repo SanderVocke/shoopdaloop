@@ -63,6 +63,7 @@ mod browser_worker;
 mod native_preview;
 mod settings;
 use app_args::AppArgs;
+#[cfg(any(not(target_arch = "wasm32"), test))]
 use shoop_app::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_app::{ApplicationHandle, ApplicationRuntime};
@@ -445,6 +446,10 @@ impl UnifiedApp {
                         .map_err(anyhow::Error::msg)
                 })
             }
+            SettingsAction::RescanBuiltinScripts => {
+                self.runtime.request_builtin_rescan(&self.settings.active());
+                Ok(())
+            }
             SettingsAction::RequestEphemeralScriptPicker => {
                 let Some(path) = rfd::FileDialog::new()
                     .add_filter("Lua script", &["lua"])
@@ -503,6 +508,10 @@ impl UnifiedApp {
                         });
                     }
                 });
+                return;
+            }
+            SettingsAction::RescanBuiltinScripts => {
+                self.runtime.request_builtin_rescan(&self.settings.active());
                 return;
             }
             SettingsAction::RequestAddUserScript
@@ -1064,49 +1073,101 @@ impl eframe::App for UnifiedApp {
     }
 }
 
+#[cfg(test)]
+const TEST_KEYBOARD_SCRIPT: &str = include_str!("../../../../resources/builtins/keyboard.lua");
+#[cfg(test)]
+const TEST_DIALOG_SCRIPT: &str =
+    include_str!("../../../../resources/builtins/examples/dialogs.lua");
+
+#[cfg(any(test, target_arch = "wasm32"))]
 const KEYBOARD_SCRIPT_FILENAME: &str = "keyboard.lua";
+#[cfg(any(test, target_arch = "wasm32"))]
 const APC_MINI_SCRIPT_FILENAME: &str = "akai_apc_mini_mk1.lua";
-const DIALOG_EXAMPLE_SCRIPT_FILENAME: &str = "dialogs.lua";
+
+#[cfg(not(target_arch = "wasm32"))]
+fn configured_catalog_scripts(
+    settings: &shoop_settings::SettingsSnapshot,
+    generation: u64,
+) -> Result<(Vec<StartupScript>, Vec<String>), String> {
+    let root = settings
+        .get(shoop_egui::BUILTINS_LOCATION)
+        .map_err(|error| error.to_string())?;
+    let enabled = settings
+        .get(shoop_egui::BUILTIN_SCRIPTS)
+        .map_err(|error| error.to_string())?
+        .0
+        .into_iter()
+        .map(|entry| (entry.value, entry.enabled))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let catalog = shoop_script_resources::scan_builtin_directory(
+        std::path::Path::new(&root),
+        generation,
+        shoop_script_resources::ResourceLimits::default(),
+    )
+    .map_err(|error| error.to_string())?;
+    let syntax = shoop_scripting::LuaRuntime::new().map_err(|error| error.to_string())?;
+    let mut warnings = catalog
+        .diagnostics
+        .into_iter()
+        .map(|diagnostic| match diagnostic.path {
+            Some(path) => format!("{path}: {}", diagnostic.message),
+            None => diagnostic.message,
+        })
+        .collect::<Vec<_>>();
+    let mut scripts = Vec::new();
+    for entry in catalog.entries {
+        let identity = entry.identity.to_string();
+        let name = entry.identity.file_name().to_owned();
+        if let Err(error) = syntax.check_syntax(&name, &entry.source) {
+            warnings.push(format!("{identity}: {error}"));
+            continue;
+        }
+        let kind = if identity.starts_with("examples/") {
+            ScriptKind::Example
+        } else {
+            ScriptKind::Bundled
+        };
+        let enabled =
+            kind == ScriptKind::Bundled && enabled.get(&identity).copied().unwrap_or(false);
+        scripts.push(StartupScript {
+            name,
+            identity: Some(identity.clone()),
+            source: entry.source.to_string(),
+            source_path: Some(
+                std::path::Path::new(&root)
+                    .join(entry.identity.as_str())
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            kind,
+            enabled,
+        });
+    }
+    Ok((scripts, warnings))
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 fn configured_startup_scripts(
     settings: &shoop_settings::SettingsSnapshot,
 ) -> anyhow::Result<(Vec<StartupScript>, Vec<String>, Vec<String>)> {
-    let mut scripts = vec![
-        StartupScript {
-            name: KEYBOARD_SCRIPT_FILENAME.to_owned(),
-            source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
-            source_path: None,
-            kind: ScriptKind::Bundled,
-            enabled: settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
-        },
-        StartupScript {
-            name: APC_MINI_SCRIPT_FILENAME.to_owned(),
-            source: shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
-            source_path: None,
-            kind: ScriptKind::Bundled,
-            enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
-        },
-        StartupScript {
-            name: DIALOG_EXAMPLE_SCRIPT_FILENAME.to_owned(),
-            source: shoop_scripting::DIALOG_EXAMPLE_SCRIPT.to_owned(),
-            source_path: None,
-            kind: ScriptKind::Example,
-            enabled: false,
-        },
-    ];
-    let mut identities = vec![
-        KEYBOARD_SCRIPT_FILENAME.to_owned(),
-        APC_MINI_SCRIPT_FILENAME.to_owned(),
-        "examples/dialogs.lua".to_owned(),
-    ];
-    let mut warnings = Vec::new();
+    let (mut scripts, mut warnings) = match configured_catalog_scripts(settings, 1) {
+        Ok(result) => result,
+        Err(error) => (
+            Vec::new(),
+            vec![format!("could not scan built-in scripts: {error}")],
+        ),
+    };
+    let mut identities = scripts
+        .iter()
+        .filter_map(|script| script.identity.clone())
+        .collect::<Vec<_>>();
     for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
         match read_user_script(&configured.value) {
             Ok((name, source)) => {
                 identities.push(configured.value.clone());
                 scripts.push(StartupScript {
                     name,
+                    identity: None,
                     source,
                     source_path: Some(configured.value.clone()),
                     kind: ScriptKind::User,
@@ -1173,9 +1234,16 @@ struct Runtime {
     handle: ApplicationHandle,
     script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
     pending_script_paths: std::collections::VecDeque<(String, ScriptKind, String)>,
+    catalog_identities: std::collections::BTreeSet<String>,
+    catalog_scan_generation: u64,
+    catalog_scan_tx: std::sync::mpsc::Sender<CatalogScanCompletion>,
+    catalog_scan_rx: std::sync::mpsc::Receiver<CatalogScanCompletion>,
     preview_player: native_preview::NativePreviewPlayer,
     applied_settings_revision: u64,
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+type CatalogScanCompletion = (u64, Result<(Vec<StartupScript>, Vec<String>), String>);
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
@@ -1224,17 +1292,88 @@ impl Runtime {
         }
         let script_paths =
             associate_startup_script_paths(runtime.startup_script_ids(), script_paths);
+        let catalog_identities = handle
+            .snapshot()
+            .scripting
+            .scripts
+            .iter()
+            .filter_map(|script| script.identity.as_deref().map(str::to_owned))
+            .collect();
+        let (catalog_scan_tx, catalog_scan_rx) = std::sync::mpsc::channel();
         Ok(Self {
             _runtime: runtime,
             handle,
             script_paths,
             pending_script_paths: std::collections::VecDeque::new(),
+            catalog_identities,
+            catalog_scan_generation: 1,
+            catalog_scan_tx,
+            catalog_scan_rx,
             preview_player,
             applied_settings_revision: settings.revision(),
         })
     }
 
     fn tick(&mut self, _elapsed: Duration) {
+        while let Ok((generation, result)) = self.catalog_scan_rx.try_recv() {
+            if generation != self.catalog_scan_generation {
+                continue;
+            }
+            match result {
+                Ok((scripts, warnings)) => {
+                    for warning in warnings {
+                        let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
+                            task_id: None,
+                            message: warning,
+                        });
+                    }
+                    let desired = scripts
+                        .iter()
+                        .filter_map(|script| script.identity.clone())
+                        .collect::<std::collections::BTreeSet<_>>();
+                    let descriptors = scripts
+                        .iter()
+                        .filter_map(|script| {
+                            script.identity.clone().map(|identity| {
+                                shoop_egui::CatalogScriptSource {
+                                    identity,
+                                    name: script.name.clone(),
+                                    source: std::sync::Arc::from(script.source.as_str()),
+                                    source_path: script.source_path.clone(),
+                                    resource_bundle: None,
+                                    kind: script.kind,
+                                    enabled: script.enabled,
+                                }
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    if self
+                        .handle
+                        .dispatch(AppIntent::ReconcileCatalogScripts {
+                            scripts: descriptors.into(),
+                        })
+                        .is_ok()
+                    {
+                        for script in scripts {
+                            if let Some(identity) = script.identity {
+                                self.pending_script_paths.push_back((
+                                    script.name,
+                                    script.kind,
+                                    identity,
+                                ));
+                            }
+                        }
+                        self.catalog_identities = desired;
+                    }
+                }
+                Err(error) => {
+                    let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
+                        task_id: None,
+                        message: format!("could not rescan built-in scripts: {error}"),
+                    });
+                }
+            }
+        }
         let snapshot = self.handle.snapshot();
         self.script_paths.retain(|script_id, _| {
             snapshot
@@ -1269,26 +1408,51 @@ impl Runtime {
         if settings.revision() == self.applied_settings_revision {
             return Ok(());
         }
-        let (scripts, identities, warnings) = configured_startup_scripts(settings)?;
+        self.request_builtin_rescan(settings);
+        let mut desired = std::collections::BTreeMap::new();
+        let mut warnings = Vec::new();
+        for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
+            match read_user_script(&configured.value) {
+                Ok((name, source)) => {
+                    desired.insert(
+                        configured.value.clone(),
+                        StartupScript {
+                            name,
+                            identity: None,
+                            source,
+                            source_path: Some(configured.value),
+                            kind: ScriptKind::User,
+                            enabled: configured.enabled,
+                        },
+                    );
+                }
+                Err(error) => warnings.push(error.to_string()),
+            }
+        }
         for warning in warnings {
             self.handle.dispatch(AppIntent::ReportFileIoError {
                 task_id: None,
                 message: warning,
             })?;
         }
-        let desired = identities
-            .into_iter()
-            .zip(scripts)
-            .collect::<std::collections::BTreeMap<_, _>>();
-        let current = self.script_paths.clone();
-        for (script_id, identity) in current {
-            if !desired.contains_key(&identity) {
-                self.handle
-                    .dispatch(AppIntent::ForgetScript { script_id })?;
-                self.script_paths.remove(&script_id);
+        let snapshot = self.handle.snapshot();
+        for script in snapshot
+            .scripting
+            .scripts
+            .iter()
+            .filter(|script| script.kind == ScriptKind::User)
+        {
+            if self
+                .script_paths
+                .get(&script.id)
+                .is_some_and(|path| !desired.contains_key(path))
+            {
+                self.handle.dispatch(AppIntent::ForgetScript {
+                    script_id: script.id,
+                })?;
+                self.script_paths.remove(&script.id);
             }
         }
-        let snapshot = self.handle.snapshot();
         for (identity, script) in desired {
             if let Some(script_id) = self
                 .script_paths
@@ -1320,6 +1484,25 @@ impl Runtime {
         }
         self.applied_settings_revision = settings.revision();
         Ok(())
+    }
+
+    fn request_builtin_rescan(&mut self, settings: &shoop_settings::SettingsSnapshot) {
+        self.catalog_scan_generation = self.catalog_scan_generation.saturating_add(1);
+        let generation = self.catalog_scan_generation;
+        let settings = settings.clone();
+        let sender = self.catalog_scan_tx.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name("shoop-builtins-scan".to_owned())
+            .spawn(move || {
+                let result = configured_catalog_scripts(&settings, generation);
+                let _ = sender.send((generation, result));
+            })
+        {
+            let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
+                task_id: None,
+                message: format!("could not start built-in scan: {error}"),
+            });
+        }
     }
 
     fn reload_user_script(&mut self, script_id: shoop_egui::ScriptId) -> anyhow::Result<()> {
@@ -1363,32 +1546,159 @@ impl Runtime {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn browser_startup_scripts(
-    settings: &shoop_settings::SettingsSnapshot,
-) -> anyhow::Result<Vec<StartupScript>> {
-    Ok(vec![
-        StartupScript {
-            name: KEYBOARD_SCRIPT_FILENAME.to_owned(),
-            source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+#[derive(serde::Deserialize)]
+struct BrowserBuiltinCatalog {
+    format: String,
+    version: u16,
+    files: Vec<BrowserBuiltinFile>,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(serde::Deserialize)]
+struct BrowserBuiltinFile {
+    path: String,
+    kind: shoop_script_resources::ResourceKind,
+    bytes: u64,
+    sha256: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_browser_bytes(url: &str) -> Result<Vec<u8>, String> {
+    use wasm_bindgen::JsCast as _;
+    use wasm_bindgen_futures::JsFuture;
+
+    let window = web_sys::window().ok_or_else(|| "browser window is unavailable".to_owned())?;
+    let response = JsFuture::from(window.fetch_with_str(url))
+        .await
+        .map_err(|error| format!("could not fetch {url}: {error:?}"))?
+        .dyn_into::<web_sys::Response>()
+        .map_err(|_| format!("fetch for {url} returned no response"))?;
+    if !response.ok() {
+        return Err(format!(
+            "fetch for {url} returned HTTP {}",
+            response.status()
+        ));
+    }
+    let buffer = JsFuture::from(
+        response
+            .array_buffer()
+            .map_err(|error| format!("could not read {url}: {error:?}"))?,
+    )
+    .await
+    .map_err(|error| format!("could not read {url}: {error:?}"))?;
+    Ok(js_sys::Uint8Array::new(&buffer).to_vec())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_browser_catalog(
+    root: String,
+    enabled: std::collections::BTreeMap<String, bool>,
+) -> Result<(Vec<shoop_egui::CatalogScriptSource>, Vec<String>), String> {
+    use shoop_script_resources::{
+        classify_resource, NormalizedRelativePath, ResourceKind, ResourceLimits, ScriptResource,
+        ScriptResourceBundle,
+    };
+
+    let root = root.trim_end_matches('/');
+    let catalog_bytes = fetch_browser_bytes(&format!("{root}/catalog.json")).await?;
+    let catalog: BrowserBuiltinCatalog = serde_json::from_slice(&catalog_bytes)
+        .map_err(|error| format!("built-ins catalog is malformed: {error}"))?;
+    if catalog.format != "shoop-builtins-catalog" || catalog.version != 1 {
+        return Err("built-ins catalog has an unsupported format or version".to_owned());
+    }
+    let limits = ResourceLimits::default();
+    let mut declarations = Vec::with_capacity(catalog.files.len());
+    let mut identities = std::collections::BTreeSet::new();
+    let mut total = 0_u64;
+    for file in catalog.files {
+        let path = NormalizedRelativePath::parse(file.path).map_err(|error| error.to_string())?;
+        if classify_resource(&path) != Some(file.kind) {
+            return Err(format!("catalog kind does not match {path}"));
+        }
+        if !identities.insert(path.case_folded()) {
+            return Err(format!(
+                "catalog has a duplicate/case-colliding path {path}"
+            ));
+        }
+        if file.bytes > limits.max_file_bytes {
+            return Err(format!("catalog file {path} exceeds the per-file limit"));
+        }
+        total = total.saturating_add(file.bytes);
+        if total > limits.max_aggregate_bytes {
+            return Err("built-ins catalog exceeds the aggregate resource limit".to_owned());
+        }
+        declarations.push((path, file.kind, file.bytes, file.sha256));
+    }
+    let mut fetched = std::collections::BTreeMap::new();
+    for (path, kind, declared_bytes, declared_hash) in declarations {
+        let bytes = fetch_browser_bytes(&format!("{root}/{}", path.as_str())).await?;
+        if bytes.len() as u64 != declared_bytes
+            || shoop_script_resources::sha256(&bytes) != declared_hash
+        {
+            return Err(format!("catalog checksum/size mismatch for {path}"));
+        }
+        fetched.insert(
+            path,
+            ScriptResource::new(kind, std::sync::Arc::<[u8]>::from(bytes)),
+        );
+    }
+
+    let syntax = shoop_scripting::LuaRuntime::new().map_err(|error| error.to_string())?;
+    let mut scripts = Vec::new();
+    let mut warnings = Vec::new();
+    for (identity, source_resource) in fetched.iter().filter(|(path, resource)| {
+        classify_resource(path) == Some(ResourceKind::Lua) && resource.kind == ResourceKind::Lua
+    }) {
+        let source = match std::str::from_utf8(&source_resource.bytes) {
+            Ok(source) => source,
+            Err(error) => {
+                warnings.push(format!("{identity}: script is not UTF-8: {error}"));
+                continue;
+            }
+        };
+        if let Err(error) = syntax.check_syntax(identity.file_name(), source) {
+            warnings.push(format!("{identity}: {error}"));
+            continue;
+        }
+        let prefix = identity
+            .parent()
+            .map(|parent| format!("{parent}/"))
+            .unwrap_or_default();
+        let entrypoint = NormalizedRelativePath::parse(identity.file_name())
+            .map_err(|error| error.to_string())?;
+        let mut resources = std::collections::BTreeMap::new();
+        resources.insert(entrypoint.clone(), source_resource.clone());
+        for (path, resource) in &fetched {
+            if resource.kind == ResourceKind::Lua {
+                continue;
+            }
+            let Some(relative) = path.as_str().strip_prefix(&prefix) else {
+                continue;
+            };
+            let relative = NormalizedRelativePath::parse(relative)
+                .map_err(|error| format!("{path}: {error}"))?;
+            resources.insert(relative, resource.clone());
+        }
+        let bundle = ScriptResourceBundle::new(entrypoint, resources, limits)
+            .map_err(|error| format!("{identity}: {error}"))?;
+        let identity_text = identity.to_string();
+        let kind = if identity_text.starts_with("examples/") {
+            ScriptKind::Example
+        } else {
+            ScriptKind::Bundled
+        };
+        scripts.push(shoop_egui::CatalogScriptSource {
+            identity: identity_text.clone(),
+            name: identity.file_name().to_owned(),
+            source: std::sync::Arc::from(source),
             source_path: None,
-            kind: ScriptKind::Bundled,
-            enabled: settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
-        },
-        StartupScript {
-            name: APC_MINI_SCRIPT_FILENAME.to_owned(),
-            source: shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
-            source_path: None,
-            kind: ScriptKind::Bundled,
-            enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
-        },
-        StartupScript {
-            name: DIALOG_EXAMPLE_SCRIPT_FILENAME.to_owned(),
-            source: shoop_scripting::DIALOG_EXAMPLE_SCRIPT.to_owned(),
-            source_path: None,
-            kind: ScriptKind::Example,
-            enabled: false,
-        },
-    ])
+            resource_bundle: Some(std::sync::Arc::new(bundle)),
+            kind,
+            enabled: kind == ScriptKind::Bundled
+                && enabled.get(&identity_text).copied().unwrap_or(false),
+        });
+    }
+    Ok((scripts, warnings))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1403,15 +1713,22 @@ struct Runtime {
     mode: BrowserRuntimeMode,
     midi: browser_midi::BrowserMidiController,
     preview_player: browser_preview::BrowserPreviewPlayer,
+    catalog_scan_generation: u64,
+    catalog_completions: Rc<RefCell<VecDeque<BrowserCatalogCompletion>>>,
     applied_settings_revision: u64,
 }
+
+#[cfg(target_arch = "wasm32")]
+type BrowserCatalogCompletion = (
+    u64,
+    Result<(Vec<shoop_egui::CatalogScriptSource>, Vec<String>), String>,
+);
 
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
         let offline = args.offline;
         let worker = args.worker;
-        let startup_scripts = browser_startup_scripts(settings)?;
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
         let (backend, transport) = shoop_worklet_client::RemoteWorkletBackend::new(midi.hub());
         let mode = if worker || offline {
@@ -1420,17 +1737,21 @@ impl Runtime {
         } else {
             BrowserRuntimeMode::WebAudio(browser_audio::BrowserAudioController::new(transport)?)
         };
-        Ok(Self {
+        let mut runtime = Self {
             runtime: CooperativeApplicationRuntime::start_with_scripts_and_midi(
                 Box::new(backend),
-                startup_scripts,
+                Vec::new(),
                 midi_service,
             )?,
             mode,
             midi,
             preview_player: browser_preview::BrowserPreviewPlayer::default(),
+            catalog_scan_generation: 0,
+            catalog_completions: Rc::new(RefCell::new(VecDeque::new())),
             applied_settings_revision: settings.revision(),
-        })
+        };
+        runtime.request_builtin_rescan(settings);
+        Ok(runtime)
     }
 
     fn set_repaint_context(&self, context: egui::Context) {
@@ -1443,6 +1764,35 @@ impl Runtime {
     }
 
     fn tick(&mut self, elapsed: Duration) {
+        let completions = self
+            .catalog_completions
+            .borrow_mut()
+            .drain(..)
+            .collect::<Vec<_>>();
+        for (generation, result) in completions {
+            if generation != self.catalog_scan_generation {
+                continue;
+            }
+            match result {
+                Ok((scripts, warnings)) => {
+                    for warning in warnings {
+                        let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
+                            task_id: None,
+                            message: warning,
+                        });
+                    }
+                    let _ = self.runtime.dispatch(AppIntent::ReconcileCatalogScripts {
+                        scripts: scripts.into(),
+                    });
+                }
+                Err(error) => {
+                    let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
+                        task_id: None,
+                        message: format!("could not rescan built-in scripts: {error}"),
+                    });
+                }
+            }
+        }
         self.runtime.tick(elapsed);
         self.midi.update_presentation();
         let snapshot = self.runtime.snapshot();
@@ -1485,33 +1835,29 @@ impl Runtime {
         if settings.revision() == self.applied_settings_revision {
             return Ok(());
         }
-        let desired = [
-            (
-                KEYBOARD_SCRIPT_FILENAME,
-                settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
-            ),
-            (
-                APC_MINI_SCRIPT_FILENAME,
-                settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
-            ),
-        ];
-        let snapshot = self.runtime.snapshot();
-        for (name, enabled) in desired {
-            let script = snapshot
-                .scripting
-                .scripts
-                .iter()
-                .find(|script| script.kind == ScriptKind::Bundled && script.name == name)
-                .ok_or_else(|| anyhow::anyhow!("bundled browser script is missing: {name}"))?;
-            if script.enabled != enabled {
-                self.runtime.dispatch(AppIntent::SetScriptEnabled {
-                    script_id: script.id,
-                    enabled,
-                })?;
-            }
-        }
+        self.request_builtin_rescan(settings);
         self.applied_settings_revision = settings.revision();
         Ok(())
+    }
+
+    fn request_builtin_rescan(&mut self, settings: &shoop_settings::SettingsSnapshot) {
+        self.catalog_scan_generation = self.catalog_scan_generation.saturating_add(1);
+        let generation = self.catalog_scan_generation;
+        let root = settings
+            .get(shoop_egui::BUILTINS_LOCATION)
+            .unwrap_or_else(|_| "builtins".to_owned());
+        let enabled = settings
+            .get(shoop_egui::BUILTIN_SCRIPTS)
+            .unwrap_or_default()
+            .0
+            .into_iter()
+            .map(|entry| (entry.value, entry.enabled))
+            .collect();
+        let completions = Rc::clone(&self.catalog_completions);
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = fetch_browser_catalog(root, enabled).await;
+            completions.borrow_mut().push_back((generation, result));
+        });
     }
 
     fn snapshot(&self) -> std::sync::Arc<AppSnapshot> {
@@ -1743,8 +2089,19 @@ impl BrowserSettingsSelfTest {
                 let mut draft = shoop_egui::SettingsDraft::from_snapshot(&active);
                 draft.set(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
                 draft.set(shoop_egui::DEFAULT_NEW_TRACK_MIDI, true);
-                draft.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, false);
-                draft.set(shoop_egui::APC_MINI_SCRIPT_ENABLED, true);
+                draft.set(
+                    shoop_egui::BUILTIN_SCRIPTS,
+                    shoop_settings::StringToggleList(vec![
+                        shoop_settings::StringToggle {
+                            value: KEYBOARD_SCRIPT_FILENAME.to_owned(),
+                            enabled: false,
+                        },
+                        shoop_settings::StringToggle {
+                            value: APC_MINI_SCRIPT_FILENAME.to_owned(),
+                            enabled: true,
+                        },
+                    ]),
+                );
                 settings.request_save(draft).map(|()| "written")
             }
             Self::Verify => {
@@ -1758,7 +2115,7 @@ impl BrowserSettingsSelfTest {
                         "rejected settings did not require recovery".to_owned(),
                     ))
                 } else {
-                    verify_browser_settings(settings, widget, runtime, 2, false, true, false)
+                    verify_browser_settings(settings, widget, runtime, 2, false, false, false)
                         .map(|()| "rejected")
                 }
             }
@@ -1769,7 +2126,7 @@ impl BrowserSettingsSelfTest {
                         "invalid known value did not fall back with a diagnostic".to_owned(),
                     ))
                 } else {
-                    verify_browser_settings(settings, widget, runtime, 2, false, true, false)
+                    verify_browser_settings(settings, widget, runtime, 2, false, false, false)
                         .map(|()| "invalid")
                 }
             }
@@ -1777,8 +2134,19 @@ impl BrowserSettingsSelfTest {
                 let active = settings.view().active;
                 let mut draft = shoop_egui::SettingsDraft::from_snapshot(&active);
                 draft.set(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 8);
-                draft.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, false);
-                draft.set(shoop_egui::APC_MINI_SCRIPT_ENABLED, true);
+                draft.set(
+                    shoop_egui::BUILTIN_SCRIPTS,
+                    shoop_settings::StringToggleList(vec![
+                        shoop_settings::StringToggle {
+                            value: KEYBOARD_SCRIPT_FILENAME.to_owned(),
+                            enabled: false,
+                        },
+                        shoop_settings::StringToggle {
+                            value: APC_MINI_SCRIPT_FILENAME.to_owned(),
+                            enabled: true,
+                        },
+                    ]),
+                );
                 match settings.request_save(draft) {
                     Err(settings::SettingsManagerError::Storage(_)) => {
                         let view = settings.view();
@@ -1805,7 +2173,7 @@ impl BrowserSettingsSelfTest {
                         "unavailable browser storage was not observable".to_owned(),
                     ))
                 } else {
-                    verify_browser_settings(settings, widget, runtime, 2, false, true, false)
+                    verify_browser_settings(settings, widget, runtime, 2, false, false, false)
                         .map(|()| "unavailable")
                 }
             }
@@ -1852,14 +2220,19 @@ fn verify_browser_settings(
         .active
         .get(shoop_egui::DEFAULT_NEW_TRACK_MIDI)
         .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
-    let keyboard = view
+    let scripts = view
         .active
-        .get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)
+        .get(shoop_egui::BUILTIN_SCRIPTS)
         .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
-    let apc = view
-        .active
-        .get(shoop_egui::APC_MINI_SCRIPT_ENABLED)
-        .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
+    let enabled = |identity: &str| {
+        scripts
+            .0
+            .iter()
+            .find(|entry| entry.value == identity)
+            .is_some_and(|entry| entry.enabled)
+    };
+    let keyboard = enabled(KEYBOARD_SCRIPT_FILENAME);
+    let apc = enabled(APC_MINI_SCRIPT_FILENAME);
     let snapshot = runtime.snapshot();
     let runtime_keyboard = snapshot
         .scripting
@@ -3764,7 +4137,9 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::AddScriptSource {
                         name: "dialogs.lua".to_owned(),
-                        source: std::sync::Arc::from(shoop_scripting::DIALOG_EXAMPLE_SCRIPT),
+                        source: std::sync::Arc::from(
+                            "shoop_announce_api_version(1, 0); local d=require('shoop_dialog'); d.simple('Simple example', {d.rich_text('Browser dialog self-test')})",
+                        ),
                         kind: ScriptKind::User,
                         enabled: true,
                     })
@@ -4605,6 +4980,20 @@ mod tests {
         let registry = builder.finish();
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
         draft.set(
+            shoop_egui::BUILTINS_LOCATION,
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../resources/builtins")
+                .to_string_lossy()
+                .into_owned(),
+        );
+        draft.set(
+            shoop_egui::BUILTIN_SCRIPTS,
+            shoop_settings::StringToggleList(vec![shoop_settings::StringToggle {
+                value: "keyboard.lua".to_owned(),
+                enabled: true,
+            }]),
+        );
+        draft.set(
             shoop_egui::USER_SCRIPTS,
             shoop_settings::StringToggleList(vec![
                 shoop_settings::StringToggle {
@@ -4626,22 +5015,31 @@ mod tests {
             .unwrap();
         let settings = registry.resolve(&document, 2).snapshot;
         let (scripts, paths, warnings) = configured_startup_scripts(&settings).unwrap();
-        assert_eq!(scripts.len(), 4);
-        assert_eq!(paths.len(), 4);
-        assert_eq!(scripts[0].kind, ScriptKind::Bundled);
-        assert_eq!(scripts[0].source, shoop_scripting::KEYBOARD_SCRIPT);
-        assert!(scripts[0].enabled);
-        assert_eq!(scripts[1].kind, ScriptKind::Bundled);
-        assert!(!scripts[1].enabled);
-        assert_eq!(scripts[2].kind, ScriptKind::Example);
-        assert_eq!(scripts[2].source, shoop_scripting::DIALOG_EXAMPLE_SCRIPT);
-        assert!(!scripts[2].enabled);
-        assert_eq!(scripts[3].kind, ScriptKind::User);
+        assert_eq!(scripts.len(), 5);
+        assert_eq!(paths.len(), 5);
+        let keyboard = scripts
+            .iter()
+            .find(|script| script.identity.as_deref() == Some("keyboard.lua"))
+            .unwrap();
+        assert_eq!(keyboard.kind, ScriptKind::Bundled);
+        assert_eq!(keyboard.source, TEST_KEYBOARD_SCRIPT);
+        assert!(keyboard.enabled);
+        let dialogs = scripts
+            .iter()
+            .find(|script| script.identity.as_deref() == Some("examples/dialogs.lua"))
+            .unwrap();
+        assert_eq!(dialogs.kind, ScriptKind::Example);
+        assert_eq!(dialogs.source, TEST_DIALOG_SCRIPT);
+        assert!(!dialogs.enabled);
+        let user = scripts
+            .iter()
+            .find(|script| script.kind == ScriptKind::User)
+            .unwrap();
         assert_eq!(
-            scripts[3].source_path.as_deref(),
+            user.source_path.as_deref(),
             Some(user_script.to_str().unwrap())
         );
-        assert!(!scripts[3].enabled);
+        assert!(!user.enabled);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing.lua"));
         assert!(validate_script_draft(&draft).is_err());
@@ -4667,8 +5065,26 @@ mod tests {
         let mut runtime = Runtime::new(&manager.active()).unwrap();
 
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
-        draft.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, false);
-        draft.set(shoop_egui::APC_MINI_SCRIPT_ENABLED, true);
+        draft.set(
+            shoop_egui::BUILTINS_LOCATION,
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../resources/builtins")
+                .to_string_lossy()
+                .into_owned(),
+        );
+        draft.set(
+            shoop_egui::BUILTIN_SCRIPTS,
+            shoop_settings::StringToggleList(vec![
+                shoop_settings::StringToggle {
+                    value: "keyboard.lua".to_owned(),
+                    enabled: false,
+                },
+                shoop_settings::StringToggle {
+                    value: "akai_apc_mini_mk1.lua".to_owned(),
+                    enabled: true,
+                },
+            ]),
+        );
         draft.set(
             shoop_egui::USER_SCRIPTS,
             shoop_settings::StringToggleList(vec![shoop_settings::StringToggle {
@@ -4683,7 +5099,7 @@ mod tests {
             .reconcile_script_settings(&manager.active())
             .unwrap();
         let snapshot = wait_for_script_configuration(&mut runtime);
-        assert_eq!(snapshot.scripting.scripts.len(), 4);
+        assert_eq!(snapshot.scripting.scripts.len(), 5);
 
         let mut removal = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
         removal.set(
@@ -4695,7 +5111,7 @@ mod tests {
         runtime
             .reconcile_script_settings(&manager.active())
             .unwrap();
-        let after_removal = wait_for_script_count(&mut runtime, 3);
+        let after_removal = wait_for_script_count(&mut runtime, 4);
         assert!(!after_removal
             .scripting
             .scripts
@@ -4707,7 +5123,14 @@ mod tests {
         std::fs::remove_dir(&settings_directory).unwrap();
         std::fs::write(&settings_directory, b"not a directory").unwrap();
         let mut failing = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
-        failing.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, true);
+        let mut toggles = failing.get(shoop_egui::BUILTIN_SCRIPTS).unwrap();
+        toggles
+            .0
+            .iter_mut()
+            .find(|entry| entry.value == "keyboard.lua")
+            .unwrap()
+            .enabled = true;
+        failing.set(shoop_egui::BUILTIN_SCRIPTS, toggles);
         manager.request_save(failing).unwrap();
         wait_for_settings_save(&mut manager);
         assert_eq!(manager.active().revision(), committed_revision);
@@ -4776,7 +5199,7 @@ mod tests {
                 .scripts
                 .iter()
                 .any(|script| script.name == "controller.lua" && script.enabled);
-            if snapshot.scripting.scripts.len() == 4
+            if snapshot.scripting.scripts.len() == 5
                 && keyboard_disabled
                 && apc_enabled
                 && user_enabled
@@ -4916,7 +5339,7 @@ mod tests {
         app.runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "dialogs.lua".to_owned(),
-                source: std::sync::Arc::from(shoop_scripting::DIALOG_EXAMPLE_SCRIPT),
+                source: std::sync::Arc::from(TEST_DIALOG_SCRIPT),
                 kind: ScriptKind::User,
                 enabled: true,
             })

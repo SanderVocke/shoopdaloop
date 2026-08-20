@@ -21,6 +21,9 @@ shoop_app = { path = "../shoop_app" }
 shoop_backend = { path = "../shoop_backend" }
 shoop_egui = { path = "../shoop_egui" }
 shoop_scripting = { path = "../shoop_scripting" }
+shoop_script_resources = { path = "../shoop_script_resources" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -35,7 +38,6 @@ shoop_settings = { path = "../shoop_settings" }
 rfd = { workspace = true, features = ["xdg-portal", "async-std"] }
 js-sys = "0.3"
 log = { workspace = true }
-serde_json = { workspace = true }
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
 shoop_session = { path = "../shoop_session" }
 shoop_worklet_client = { path = "../shoop_worklet_client" }

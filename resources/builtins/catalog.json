@@ -1,0 +1,30 @@
+{
+  "files": [
+    {
+      "bytes": 21594,
+      "kind": "lua",
+      "path": "akai_apc_mini_mk1.lua",
+      "sha256": "88def0faaf1255313ef684ce6c286b58f075cdbf581e05d4582dd104022ea6a8"
+    },
+    {
+      "bytes": 19982,
+      "kind": "lua",
+      "path": "akai_apc_mini_mk2_v3.lua",
+      "sha256": "00ab7e10eb2a15c23afc1ac29cf70d4e90ee373c89249eb860dff53485eb2ce1"
+    },
+    {
+      "bytes": 1606,
+      "kind": "lua",
+      "path": "examples/dialogs.lua",
+      "sha256": "355d250c17cb3b17df54da26f70449625c46f643732d191402fae50646c88d7f"
+    },
+    {
+      "bytes": 9108,
+      "kind": "lua",
+      "path": "keyboard.lua",
+      "sha256": "869d18b6a79fa74a96fbab7aa432a0af896d0f23b46cacb8f0977d62f4560f4e"
+    }
+  ],
+  "format": "shoop-builtins-catalog",
+  "version": 1
+}

@@ -3921,6 +3921,7 @@ dependencies = [
 name = "shoop_app_api"
 version = "0.3.0"
 dependencies = [
+ "shoop_script_resources",
  "shoop_wasm_test_support",
  "tracy-nextest-capture",
  "wasm-bindgen-test",
@@ -4189,6 +4190,7 @@ dependencies = [
  "log",
  "rfd",
  "rodio",
+ "serde",
  "serde_json",
  "shoop_app",
  "shoop_audio_protocol",
@@ -4197,6 +4199,7 @@ dependencies = [
  "shoop_egui",
  "shoop_engine",
  "shoop_plugin_protocol",
+ "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",
  "shoop_settings",

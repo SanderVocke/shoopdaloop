@@ -25,6 +25,7 @@ ARCHIVE_ROOT = "shoopdaloop"
 PROFILES = ("debug", "release")
 NATIVE_PLATFORMS = ("linux", "windows", "macos")
 APPLICATION_ICON = ROOT / "resources" / "iconset" / "icon.png"
+BUILTINS = ROOT / "resources" / "builtins"
 sys.path.insert(0, str(ROOT / "scripts"))
 from carla_runtime import verify_component  # noqa: E402
 ROBOTO_FILES = (
@@ -85,6 +86,7 @@ def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage:
         shutil.copy2(binary, target)
         target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         shutil.copy2(ROOT / "resources" / "iconset" / "icon.icns", resources / "icon.icns")
+        shutil.copytree(BUILTINS, resources / "builtins")
         plist = {
             "CFBundleDisplayName": "ShoopDaLoop",
             "CFBundleExecutable": executable_name(platform),
@@ -103,6 +105,7 @@ def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage:
         shutil.copy2(binary, target)
         if platform == "linux":
             target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        shutil.copytree(BUILTINS, root / "builtins")
     stage_carla_runtime(platform, carla_runtime, root)
 
 
@@ -162,7 +165,11 @@ def package_web(args: argparse.Namespace) -> list[Path]:
             raise RuntimeError(f"hosted web bundle is missing {relative}")
     glue = find_one(dist, "shoopdaloop-*.js")
     wasm = find_one(dist, "shoopdaloop-*_bg.wasm")
-    allowed = [dist / relative for relative in WEB_REQUIRED_FILES] + [glue, wasm]
+    builtins = sorted((dist / "builtins").rglob("*"))
+    builtins = [path for path in builtins if path.is_file()]
+    if not builtins or not (dist / "builtins" / "catalog.json").is_file():
+        raise RuntimeError("hosted web bundle is missing the external built-ins tree")
+    allowed = [dist / relative for relative in WEB_REQUIRED_FILES] + [glue, wasm] + builtins
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     stem = artifact_stem("web", "wasm32", args.profile)
@@ -234,6 +241,52 @@ def archive_payloads(path: Path) -> dict[str, bytes]:
                 raise RuntimeError(f"archive entry is unavailable: {member.name}")
             result[member.name] = extracted.read()
         return result
+
+
+def builtin_payloads(prefix: str) -> dict[str, bytes]:
+    return {
+        f"{prefix}{PurePosixPath(path.relative_to(BUILTINS))}": path.read_bytes()
+        for path in sorted(BUILTINS.rglob("*"))
+        if path.is_file()
+    }
+
+
+def verify_builtins(payloads: dict[str, bytes], prefix: str) -> set[str]:
+    expected = builtin_payloads(prefix)
+    actual = {name: payload for name, payload in payloads.items() if name.startswith(prefix)}
+    if actual != expected:
+        raise RuntimeError(
+            f"packaged built-ins differ from the source tree; "
+            f"missing={sorted(set(expected) - set(actual))}, "
+            f"extra={sorted(set(actual) - set(expected))}"
+        )
+    catalog = json.loads(expected[f"{prefix}catalog.json"].decode("utf-8"))
+    records = {record["path"]: record for record in catalog["files"]}
+    for name, payload in expected.items():
+        relative = name.removeprefix(prefix)
+        if relative == "catalog.json":
+            continue
+        record = records.get(relative)
+        if record is None:
+            raise RuntimeError(f"built-ins catalog omits {relative}")
+        if record["bytes"] != len(payload) or record["sha256"] != hashlib.sha256(payload).hexdigest():
+            raise RuntimeError(f"built-ins catalog checksum mismatch: {relative}")
+    if set(records) != {name.removeprefix(prefix) for name in expected if not name.endswith("catalog.json")}:
+        raise RuntimeError("built-ins catalog has stale or extra records")
+    return set(expected)
+
+
+def reject_application_script_payload(binary: bytes, artifact: str) -> None:
+    present = []
+    for path in sorted(BUILTINS.rglob("*.lua")):
+        marker = next(
+            (line for line in path.read_bytes().splitlines() if len(line) >= 48),
+            path.read_bytes()[:64],
+        )
+        if marker and marker in binary:
+            present.append(path.name)
+    if present:
+        raise RuntimeError(f"{artifact} contains compiled application scripts: {present}")
 
 
 def require_application_icon(binary: bytes, artifact: str) -> None:
@@ -316,10 +369,12 @@ def verify_native(path: Path, platform: str) -> None:
             f"{app}Resources/icon.icns",
         }
         executable = f"{app}MacOS/shoopdaloop"
+        builtins_prefix = f"{app}Resources/builtins/"
         component_manifest_path = f"{app}Frameworks/carla-runtime/manifest.json"
     else:
         executable = f"{root}{executable_name(platform)}"
         required = metadata | fonts | {executable}
+        builtins_prefix = f"{root}builtins/"
         component_manifest_path = f"{root}carla-runtime/manifest.json"
     try:
         component_manifest = json.loads(
@@ -336,6 +391,7 @@ def verify_native(path: Path, platform: str) -> None:
     if payloads.get(notice_path) != (ROOT / "third_party" / "carla" / "README.md").read_bytes():
         raise RuntimeError("native archive contains an unreviewed Carla notice")
     required.add(component_manifest_path)
+    required.update(verify_builtins(payloads, builtins_prefix))
     for entry in component_manifest.get("files", []):
         archived = carla_archive_path(platform, entry["path"])
         required.add(archived)
@@ -357,6 +413,7 @@ def verify_native(path: Path, platform: str) -> None:
     require_native_architecture(carla_library, platform, "Carla Native library")
     require_application_icon(binary, "native executable")
     require_click_assets(binary, "native executable")
+    reject_application_script_payload(binary, "native executable")
 
 
 def verify_web(bundle: Path, html: Path) -> None:
@@ -365,7 +422,9 @@ def verify_web(bundle: Path, html: Path) -> None:
     fixed = {f"{root}{relative}" for relative in WEB_REQUIRED_FILES}
     glue = [name for name in names if name.startswith(f"{root}shoopdaloop-") and name.endswith(".js")]
     wasm = [name for name in names if name.startswith(f"{root}shoopdaloop-") and name.endswith("_bg.wasm")]
+    payloads = archive_payloads(bundle)
     required = fixed | set(glue) | set(wasm)
+    required.update(verify_builtins(payloads, f"{root}builtins/"))
     if len(glue) != 1 or len(wasm) != 1 or names != required:
         raise RuntimeError(f"unexpected hosted web archive manifest: {sorted(names)}")
     if any("preview" in name.lower() for name in names):
@@ -377,6 +436,7 @@ def verify_web(bundle: Path, html: Path) -> None:
     hosted_worklet = archive_file(bundle, f"{root}generated/shoop_audio_worklet.wasm")
     require_click_assets(hosted_application, "hosted application Wasm")
     reject_carla_native_payload(hosted_application, "hosted application Wasm")
+    reject_application_script_payload(hosted_application, "hosted application Wasm")
     reject_carla_native_payload(hosted_worklet, "hosted AudioWorklet Wasm")
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
@@ -415,7 +475,10 @@ def verify_web(bundle: Path, html: Path) -> None:
         reject_carla_native_payload(binary, f"self-contained {variable}")
         if variable == "shoopWasmBinary":
             application_binary = binary
-    require_click_assets(application_binary or b"", "self-contained application Wasm")
+    require_click_assets(application_binary or b"", "single-file core application Wasm")
+    reject_application_script_payload(
+        application_binary or b"", "single-file core application Wasm"
+    )
     worklet = re.search(
         r'const shoopAudioWorkletModuleUrl = "data:text/javascript;base64,([A-Za-z0-9+/=]+)";',
         text,

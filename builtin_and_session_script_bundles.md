@@ -69,20 +69,20 @@ Out of scope:
 
 ### 2. Replace hardcoded built-ins with discovery and dynamic settings
 
-- [ ] Add the global built-ins location setting and a dynamic ordered identity/toggle setting; remove active per-filename keyboard/MK1 setting logic.
-- [ ] Implement the native recursive scanner and the hosted-web catalog adapter/generator, including partial diagnostics and scan generations.
-- [ ] Build a reconciliation operation that atomically adds, reloads/restarts, removes, and preserves enablement for `ScriptKind::Bundled` records by relative identity.
-- [ ] Replace `KEYBOARD_SCRIPT`, APC, and dialog-example `include_str!`/manual `StartupScript` construction with discovered descriptors carrying real source paths or external browser resource origins.
-- [ ] Trigger discovery before initial script installation, after a committed location-setting change, and from a new **Rescan built-in scripts** Scripts action. Run native scanning on a worker and ignore stale scan completions.
-- [ ] Add a one-way legacy settings migration for stored keyboard/MK1 toggles, update settings documentation, and define newly discovered identities as disabled until explicitly enabled unless migrated.
-- [ ] Verify startup, enable/disable persistence, path changes, rescan add/change/delete behavior, invalid-file isolation, and stale-scan handling with temporary-directory tests.
+- [x] Add the global built-ins location setting and a dynamic ordered identity/toggle setting; remove active per-filename keyboard/MK1 setting logic.
+- [x] Implement the native recursive scanner and the hosted-web catalog adapter/generator, including partial diagnostics and scan generations.
+- [x] Build a reconciliation operation that atomically adds, reloads/restarts, removes, and preserves enablement for `ScriptKind::Bundled` records by relative identity.
+- [x] Replace `KEYBOARD_SCRIPT`, APC, and dialog-example `include_str!`/manual `StartupScript` construction with discovered descriptors carrying real source paths or external browser resource origins.
+- [x] Trigger discovery before initial script installation, after a committed location-setting change, and from a new **Rescan built-in scripts** Scripts action. Run native scanning on a worker and ignore stale scan completions.
+- [x] Add a one-way legacy settings migration for stored keyboard/MK1 toggles, update settings documentation, and define newly discovered identities as disabled until explicitly enabled unless migrated.
+- [x] Verify startup, enable/disable persistence, path changes, rescan add/change/delete behavior, invalid-file isolation, and stale-scan handling with temporary-directory tests.
 
 ### 3. Package and verify the external built-ins tree
 
-- [ ] Establish one distributable built-ins tree containing all intended scripts and companion resources; retain source-relative structure rather than flattening files.
-- [ ] Update Linux, Windows, and macOS artifact staging and default-path resolution, including macOS `Contents/Resources/builtins`.
+- [x] Establish one distributable built-ins tree containing all intended scripts and companion resources; retain source-relative structure rather than flattening files.
+- [x] Update Linux, Windows, and macOS artifact staging and default-path resolution, including macOS `Contents/Resources/builtins`.
 - [ ] Generate the hosted-web catalog from that tree and package the external files; adjust or retire the single-file web claim where an external built-ins tree cannot be present.
-- [ ] Extend artifact verification to assert expected scripts/resources, catalog hashes, absence of path flattening, and absence of compiled application-script source markers in binaries/WASM.
+- [x] Extend artifact verification to assert expected scripts/resources, catalog hashes, absence of path flattening, and absence of compiled application-script source markers in binaries/WASM.
 - [ ] Verify packaged applications discover scripts when launched outside the source checkout.
 
 ### 4. Introduce provider-backed Lua and Markdown resource loading

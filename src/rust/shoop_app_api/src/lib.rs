@@ -1059,6 +1059,17 @@ pub enum ScriptKind {
     Ephemeral,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CatalogScriptSource {
+    pub identity: String,
+    pub name: String,
+    pub source: Arc<str>,
+    pub source_path: Option<String>,
+    pub resource_bundle: Option<Arc<shoop_script_resources::ScriptResourceBundle>>,
+    pub kind: ScriptKind,
+    pub enabled: bool,
+}
+
 pub fn is_ephemeral_script_version(display_name: &str, source_name: &str) -> bool {
     if display_name == source_name {
         return true;
@@ -1622,6 +1633,9 @@ pub enum AppIntent {
         source: Arc<str>,
         source_path: Option<String>,
     },
+    ReconcileCatalogScripts {
+        scripts: Arc<[CatalogScriptSource]>,
+    },
     SetScriptEnabled {
         script_id: ScriptId,
         enabled: bool,
@@ -1861,6 +1875,7 @@ impl AppIntent {
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddEphemeralScript { .. } => "scripting.add_ephemeral",
+            Self::ReconcileCatalogScripts { .. } => "scripting.reconcile_catalog",
             Self::SetScriptEnabled { .. } => "scripting.set_enabled",
             Self::RestartScript { .. } => "scripting.restart",
             Self::ReplaceScriptSource { .. } => "scripting.replace_source",
