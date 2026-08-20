@@ -67,6 +67,19 @@ use shoop_session::{
 const COMMAND_CAPACITY: usize = 1024;
 const MAX_COOPERATIVE_COMMANDS_PER_TICK: usize = 64;
 const POLL_INTERVAL: Duration = Duration::from_millis(16);
+#[cfg(test)]
+const TEST_KEYBOARD_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/keyboard.lua"
+    ))
+};
+#[cfg(test)]
+const TEST_APC_MINI_SCRIPT: &str = unsafe {
+    std::str::from_utf8_unchecked(include_bytes!(
+        "../../../../resources/builtins/akai_apc_mini_mk1.lua"
+    ))
+};
+
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(2);
 const PREVIEW_OUTPUT_CAPACITY: usize = 1;
 
@@ -193,6 +206,7 @@ impl From<TrySendError<ApplicationMessage>> for DispatchError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartupScript {
     pub name: String,
+    pub identity: Option<String>,
     pub source: String,
     pub source_path: Option<String>,
     pub kind: ScriptKind,
@@ -539,6 +553,8 @@ fn update_application(
         model.notify_error(error);
     }
     model.advance_io(backend);
+    #[cfg(not(target_arch = "wasm32"))]
+    model.advance_script_conversions();
     if let Err(error) = model.advance_scripting(backend, elapsed) {
         model.notify_error(error);
     }
@@ -596,8 +612,20 @@ struct ApplicationModel {
     session_encoding: Option<Receiver<Result<Vec<u8>, String>>>,
     #[cfg(not(target_arch = "wasm32"))]
     background_session_encoding: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    next_script_conversion_request: u64,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_script_conversions: BTreeMap<ScriptId, PendingScriptConversion>,
     file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
     preview_outputs: Arc<Mutex<VecDeque<ApplicationAudioPreview>>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct PendingScriptConversion {
+    request_id: u64,
+    expected_source: String,
+    expected_generation: u64,
+    receiver: Receiver<Result<Arc<shoop_scripting::ScriptResourceBundle>, String>>,
 }
 
 struct TrackModel {
@@ -1206,6 +1234,10 @@ impl ApplicationModel {
             session_encoding: None,
             #[cfg(not(target_arch = "wasm32"))]
             background_session_encoding,
+            #[cfg(not(target_arch = "wasm32"))]
+            next_script_conversion_request: 1,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_script_conversions: BTreeMap::new(),
             file_outputs,
             preview_outputs,
         };
@@ -1217,13 +1249,25 @@ impl ApplicationModel {
     fn install_startup_scripts(&mut self, scripts: Vec<StartupScript>) -> Vec<Option<ScriptId>> {
         let mut ids = Vec::with_capacity(scripts.len());
         for script in scripts {
-            match self.script_manager.add_with_source_path(
-                script.name,
-                script.source,
-                script.kind,
-                script.enabled,
-                script.source_path,
-            ) {
+            let result = if let Some(identity) = script.identity {
+                self.script_manager.add_catalog_script(
+                    identity,
+                    script.source,
+                    script.kind,
+                    script.enabled,
+                    script.source_path,
+                    None,
+                )
+            } else {
+                self.script_manager.add_with_source_path(
+                    script.name,
+                    script.source,
+                    script.kind,
+                    script.enabled,
+                    script.source_path,
+                )
+            };
+            match result {
                 Ok(id) => ids.push(Some(id)),
                 Err(error) => {
                     ids.push(None);
@@ -1303,12 +1347,23 @@ impl ApplicationModel {
                 source,
                 kind,
                 enabled,
-            } => self.add_script_source(backend, name, source, kind, enabled),
+            } => self.add_script_source(backend, name, source, kind, enabled, None),
+            AppIntent::AddScriptFileSource {
+                name,
+                source,
+                source_path,
+                kind,
+                enabled,
+            } => self.add_script_source(backend, name, source, kind, enabled, Some(source_path)),
             AppIntent::AddEphemeralScript {
                 name,
                 source,
                 source_path,
             } => self.add_ephemeral_script(backend, name, source, source_path),
+            AppIntent::ReconcileCatalogScripts {
+                scripts,
+                preserve_identities,
+            } => self.reconcile_catalog_scripts(backend, &scripts, &preserve_identities),
             AppIntent::SetScriptEnabled { script_id, enabled } => {
                 self.set_script_enabled(backend, script_id, enabled)
             }
@@ -1550,12 +1605,29 @@ impl ApplicationModel {
         source: Arc<str>,
         kind: ScriptKind,
         enabled: bool,
+        source_path: Option<String>,
     ) -> Result<(), String> {
         self.prepare_script_invocation();
         let result = self
             .script_manager
-            .add(name, source.to_string(), kind, enabled)
+            .add_with_source_path(name, source.to_string(), kind, enabled, source_path)
             .map(|_| ())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
+    }
+
+    fn reconcile_catalog_scripts(
+        &mut self,
+        backend: &mut dyn Backend,
+        scripts: &[shoop_app_api::CatalogScriptSource],
+        preserve_identities: &[String],
+    ) -> Result<(), String> {
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .reconcile_catalog_scripts(scripts, preserve_identities)
             .map_err(|error| error.to_string())
             .and_then(|()| self.apply_script_operations(backend));
         self.refresh_scripting_view();
@@ -1600,12 +1672,101 @@ impl ApplicationModel {
     }
 
     fn convert_script_kind(&mut self, id: ScriptId, kind: ScriptKind) -> Result<(), String> {
+        if kind == ScriptKind::Session {
+            let (source, source_path, bundle, generation) = self
+                .script_manager
+                .conversion_source(id)
+                .map_err(|error| error.to_string())?;
+            if let Some(bundle) = bundle {
+                let result = self
+                    .script_manager
+                    .commit_session_bundle(id, &source, generation, bundle)
+                    .map_err(|error| error.to_string());
+                self.refresh_scripting_view();
+                return result;
+            }
+            #[cfg(target_arch = "wasm32")]
+            let _ = source_path;
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(source_path) = source_path {
+                let request_id = self.next_script_conversion_request;
+                self.next_script_conversion_request =
+                    self.next_script_conversion_request.saturating_add(1);
+                let expected_source = source.clone();
+                let source_bytes = Arc::<[u8]>::from(source.as_bytes());
+                let (sender, receiver) = mpsc::channel();
+                thread::Builder::new()
+                    .name("shoop-script-bundle-scan".to_owned())
+                    .spawn(move || {
+                        let result = shoop_script_resources::capture_filesystem_bundle(
+                            std::path::Path::new(&source_path),
+                            source_bytes,
+                            shoop_script_resources::ResourceLimits::default(),
+                        )
+                        .map(Arc::new)
+                        .map_err(|error| error.to_string());
+                        let _ = sender.send(result);
+                    })
+                    .map_err(|error| format!("could not start script resource scan: {error}"))?;
+                self.pending_script_conversions.insert(
+                    id,
+                    PendingScriptConversion {
+                        request_id,
+                        expected_source,
+                        expected_generation: generation,
+                        receiver,
+                    },
+                );
+                return Ok(());
+            }
+        }
         let result = self
             .script_manager
             .convert_kind(id, kind)
             .map_err(|error| error.to_string());
         self.refresh_scripting_view();
         result
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn advance_script_conversions(&mut self) {
+        let completed = self
+            .pending_script_conversions
+            .iter()
+            .filter_map(|(script_id, pending)| match pending.receiver.try_recv() {
+                Ok(result) => Some((*script_id, pending.request_id, result)),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some((
+                    *script_id,
+                    pending.request_id,
+                    Err("script resource scan worker stopped unexpectedly".to_owned()),
+                )),
+            })
+            .collect::<Vec<_>>();
+        for (script_id, request_id, result) in completed {
+            let Some(pending) = self.pending_script_conversions.remove(&script_id) else {
+                continue;
+            };
+            if pending.request_id != request_id {
+                continue;
+            }
+            match result {
+                Ok(bundle) => {
+                    if let Err(error) = self.script_manager.commit_session_bundle(
+                        script_id,
+                        &pending.expected_source,
+                        pending.expected_generation,
+                        bundle,
+                    ) {
+                        self.notify_error(format!("could not include script in session: {error}"));
+                    }
+                }
+                Err(error) => {
+                    self.notify_error(format!("could not include script in session: {error}"))
+                }
+            }
+            self.refresh_scripting_view();
+        }
     }
 
     fn remove_session_script(&mut self, id: ScriptId) -> Result<(), String> {
@@ -3022,9 +3183,14 @@ impl ApplicationModel {
         bundle: SessionBundle,
         task_id: TaskId,
     ) -> Result<(), String> {
-        if let Err(error) =
-            ScriptManager::validate_session_scripts(&session_script_sources(&bundle))
-        {
+        let session_scripts = match session_script_sources(&bundle) {
+            Ok(scripts) => scripts,
+            Err(message) => {
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
+        if let Err(error) = ScriptManager::validate_session_scripts(&session_scripts) {
             let message = error.to_string();
             self.finish_io(IoTaskStatus::Failed, &message);
             return Err(message);
@@ -7210,6 +7376,7 @@ impl ApplicationModel {
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
+        let (script_documents, scripts) = self.session_script_documents();
         let document = SessionDocument {
             sample_rate: capture.sample_rate,
             connection_model_version: shoop_session::CONNECTION_MODEL_VERSION,
@@ -7250,24 +7417,38 @@ impl ApplicationModel {
             buses: Vec::new(),
             global_ports,
             fx_states,
-            scripts: self.session_script_documents(),
+            scripts: script_documents,
             midi_control: MidiControlDocument::default(),
             settings: Vec::new(),
         };
-        Ok(SessionBundle { document, media })
+        Ok(SessionBundle {
+            document,
+            media,
+            scripts,
+        })
     }
 
-    fn session_script_documents(&self) -> Vec<ScriptDocument> {
-        self.script_manager
-            .session_scripts()
-            .into_iter()
+    fn session_script_documents(
+        &self,
+    ) -> (
+        Vec<ScriptDocument>,
+        BTreeMap<u64, Arc<shoop_scripting::ScriptResourceBundle>>,
+    ) {
+        let scripts = self.script_manager.session_scripts();
+        let documents = scripts
+            .iter()
             .map(|script| ScriptDocument {
                 id: script.document_id,
-                name: script.name,
-                source: script.source,
+                name: script.name.clone(),
+                entrypoint: script.bundle.entrypoint.to_string(),
                 enabled: script.enabled,
             })
-            .collect()
+            .collect();
+        let resources = scripts
+            .into_iter()
+            .map(|script| (script.document_id, script.bundle))
+            .collect();
+        (documents, resources)
     }
 
     fn apply_loaded_session(
@@ -7557,7 +7738,7 @@ impl ApplicationModel {
             bundle.document.global.auto_mute_other_track_inputs;
         self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
         self.script_manager
-            .replace_session_scripts(&session_script_sources(bundle))
+            .replace_session_scripts(&session_script_sources(bundle)?)
             .map_err(|error| error.to_string())?;
         self.refresh_scripting_view();
         Ok(())
@@ -8623,16 +8804,27 @@ fn validate_loaded_processor(
     Ok(())
 }
 
-fn session_script_sources(bundle: &SessionBundle) -> Vec<SessionScriptSource> {
+fn session_script_sources(bundle: &SessionBundle) -> Result<Vec<SessionScriptSource>, String> {
     bundle
         .document
         .scripts
         .iter()
-        .map(|script| SessionScriptSource {
-            document_id: script.id,
-            name: script.name.clone(),
-            source: script.source.clone(),
-            enabled: script.enabled,
+        .map(|script| {
+            let resources = bundle.scripts.get(&script.id).ok_or_else(|| {
+                format!("session script {} resource bundle is missing", script.id)
+            })?;
+            let source = std::str::from_utf8(&resources.entrypoint_resource().bytes)
+                .map_err(|error| {
+                    format!("session script {} source is not UTF-8: {error}", script.id)
+                })?
+                .to_owned();
+            Ok(SessionScriptSource {
+                document_id: script.id,
+                name: script.name.clone(),
+                source,
+                bundle: Arc::clone(resources),
+                enabled: script.enabled,
+            })
         })
         .collect()
 }
@@ -10323,7 +10515,8 @@ mod tests {
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
-                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                identity: None,
+                source: TEST_KEYBOARD_SCRIPT.to_owned(),
                 source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
@@ -10347,6 +10540,7 @@ mod tests {
             vec![
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
+                    identity: None,
                     source: "local =".to_owned(),
                     source_path: None,
                     kind: ScriptKind::User,
@@ -10354,6 +10548,7 @@ mod tests {
                 },
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
+                    identity: None,
                     source: "print('second')".to_owned(),
                     source_path: None,
                     kind: ScriptKind::User,
@@ -10361,6 +10556,7 @@ mod tests {
                 },
                 StartupScript {
                     name: "duplicate.lua".to_owned(),
+                    identity: None,
                     source: "print('third')".to_owned(),
                     source_path: None,
                     kind: ScriptKind::User,
@@ -10387,7 +10583,8 @@ mod tests {
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
-                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                identity: None,
+                source: TEST_KEYBOARD_SCRIPT.to_owned(),
                 source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
@@ -10431,7 +10628,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -10574,7 +10771,7 @@ c.auto_open_device_specific_midi_control_input('Controller', function() d.open('
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -10683,6 +10880,7 @@ c.auto_open_device_specific_midi_control_input('Controller', function() d.open('
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "actor-dialog.lua".to_owned(),
+                identity: None,
                 source: r#"
 shoop_announce_api_version(1, 0)
 local c=require('shoop_control')
@@ -11104,7 +11302,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "keyboard.lua".to_owned(),
-                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                source: Arc::from(TEST_KEYBOARD_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -11337,7 +11535,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "keyboard.lua".to_owned(),
-                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                source: Arc::from(TEST_KEYBOARD_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -11388,7 +11586,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "keyboard.lua".to_owned(),
-                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                source: Arc::from(TEST_KEYBOARD_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -11569,7 +11767,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Box::new(backend),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
-                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                identity: None,
+                source: TEST_KEYBOARD_SCRIPT.to_owned(),
                 source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
@@ -13124,7 +13323,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -13658,7 +13857,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -13802,7 +14001,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::AddScriptSource {
                 name: "akai_apc_mini_mk1.lua".to_owned(),
-                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                source: Arc::from(TEST_APC_MINI_SCRIPT),
                 kind: ScriptKind::Bundled,
                 enabled: true,
             })
@@ -15036,7 +15235,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             Box::new(FakeBackend::default()),
             vec![StartupScript {
                 name: "keyboard.lua".to_owned(),
-                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                identity: None,
+                source: TEST_KEYBOARD_SCRIPT.to_owned(),
                 source_path: None,
                 kind: ScriptKind::Bundled,
                 enabled: true,
@@ -15659,20 +15859,30 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
+        let session_source =
+            "shoop_announce_api_version(1, 0); require('shoop_control').set_solo(true)";
         let mut document = SessionDocument::empty(48_000);
         document.scripts.push(ScriptDocument {
             id: 77,
             name: "session.lua".to_owned(),
-            source: "shoop_announce_api_version(1, 0); require('shoop_control').set_solo(true)"
-                .to_owned(),
+            entrypoint: "main.lua".to_owned(),
             enabled: true,
         });
+        let mut session_bundle = SessionBundle::new(document.clone());
+        session_bundle.scripts.insert(
+            77,
+            Arc::new(
+                shoop_scripting::ScriptResourceBundle::source_only(
+                    "main.lua",
+                    Arc::<[u8]>::from(session_source.as_bytes()),
+                )
+                .unwrap(),
+            ),
+        );
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "scripts.shoop".to_owned(),
-                bytes: Arc::from(
-                    encode_session(&SessionBundle::new(document.clone()), "test").unwrap(),
-                ),
+                bytes: Arc::from(encode_session(&session_bundle, "test").unwrap()),
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -15700,14 +15910,24 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(saved.document.scripts, document.scripts);
 
         let before = runtime.snapshot().scripting.clone();
-        let mut cancelled = document.clone();
-        cancelled.sample_rate = 32_000;
-        cancelled.scripts[0].source =
-            "shoop_announce_api_version(1, 0); require('shoop_control').set_solo(false)".to_owned();
+        let mut cancelled = session_bundle.clone();
+        cancelled.document.sample_rate = 32_000;
+        cancelled.scripts.insert(
+            77,
+            Arc::new(
+                shoop_scripting::ScriptResourceBundle::source_only(
+                    "main.lua",
+                    Arc::<[u8]>::from(
+                        &b"shoop_announce_api_version(1, 0); require('shoop_control').set_solo(false)"[..],
+                    ),
+                )
+                .unwrap(),
+            ),
+        );
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "cancelled.shoop".to_owned(),
-                bytes: Arc::from(encode_session(&SessionBundle::new(cancelled), "test").unwrap()),
+                bytes: Arc::from(encode_session(&cancelled, "test").unwrap()),
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -15727,13 +15947,24 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         invalid.scripts.push(ScriptDocument {
             id: 88,
             name: "invalid.lua".to_owned(),
-            source: "function(".to_owned(),
+            entrypoint: "main.lua".to_owned(),
             enabled: true,
         });
+        let mut invalid = SessionBundle::new(invalid);
+        invalid.scripts.insert(
+            88,
+            Arc::new(
+                shoop_scripting::ScriptResourceBundle::source_only(
+                    "main.lua",
+                    Arc::<[u8]>::from(&b"function("[..]),
+                )
+                .unwrap(),
+            ),
+        );
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
                 name: "invalid.shoop".to_owned(),
-                bytes: Arc::from(encode_session(&SessionBundle::new(invalid), "test").unwrap()),
+                bytes: Arc::from(encode_session(&invalid, "test").unwrap()),
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
@@ -15758,6 +15989,112 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(scripts[0].name, "machine.lua");
         assert_eq!(scripts[1].name, "run-once.lua");
         assert_eq!(scripts[1].kind, ScriptKind::Ephemeral);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn filesystem_script_conversion_captures_resources_off_actor_and_survives_source_removal() {
+        let temporary = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(temporary.path().join("help/images")).unwrap();
+        let script_path = temporary.path().join("portable.lua");
+        let markdown = "portable\n\n![icon](images/icon.png)";
+        let source = "shoop_announce_api_version(1, 0); local f=require('shoop_file'); local loaded=f.load('help/readme.md'); local d=require('shoop_dialog'); d.simple('Help', {d.markdown_file('help/readme.md')})";
+        std::fs::write(&script_path, source).unwrap();
+        std::fs::write(temporary.path().join("help/readme.md"), markdown).unwrap();
+        std::fs::write(
+            temporary.path().join("help/images/icon.png"),
+            include_bytes!("../../../../resources/logo-small.png"),
+        )
+        .unwrap();
+
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddEphemeralScript {
+                name: "portable.lua".to_owned(),
+                source: Arc::from(source),
+                source_path: Some(script_path.to_string_lossy().into_owned()),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let script_id = runtime.snapshot().scripting.scripts[0].id;
+        runtime
+            .dispatch(AppIntent::ConvertScriptKind {
+                script_id,
+                kind: ScriptKind::Session,
+            })
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            runtime.tick(Duration::from_millis(1));
+            if runtime.snapshot().scripting.scripts[0].kind == ScriptKind::Session {
+                break;
+            }
+            assert!(Instant::now() < deadline, "script conversion timed out");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        std::fs::remove_dir_all(temporary.path()).unwrap();
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        let script = &saved.document.scripts[0];
+        let resources = &saved.scripts[&script.id];
+        assert_eq!(
+            resources.entrypoint_resource().bytes.as_ref(),
+            source.as_bytes()
+        );
+        assert_eq!(
+            resources
+                .get(
+                    &shoop_script_resources::NormalizedRelativePath::parse("help/readme.md")
+                        .unwrap()
+                )
+                .unwrap()
+                .bytes
+                .as_ref(),
+            markdown.as_bytes()
+        );
+        assert!(resources
+            .get(
+                &shoop_script_resources::NormalizedRelativePath::parse("help/images/icon.png")
+                    .unwrap()
+            )
+            .is_some());
+
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "portable.shoop".to_owned(),
+                bytes: Arc::clone(&output.bytes),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        let dialog = snapshot
+            .scripting
+            .dialogs
+            .iter()
+            .find(|dialog| dialog.name == "Help")
+            .unwrap_or_else(|| panic!("missing Help dialog: {:?}", snapshot.scripting.scripts));
+        let shoop_app_api::ScriptDialogKind::Simple(content) = &dialog.kind else {
+            panic!("expected simple dialog")
+        };
+        let shoop_app_api::ScriptDialogElement::Markdown {
+            resource_base_uri: Some(base_uri),
+            ..
+        } = &content.elements[0]
+        else {
+            panic!("expected provider-backed Markdown")
+        };
+        let image =
+            shoop_script_resources::read_resource_uri(&format!("{base_uri}images/icon.png"))
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            image.as_ref(),
+            include_bytes!("../../../../resources/logo-small.png")
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -15805,7 +16142,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime.tick(Duration::ZERO);
         let saved = decode_session(&runtime.take_file_output().unwrap().bytes).unwrap();
         assert_eq!(saved.document.scripts.len(), 1);
-        assert_eq!(saved.document.scripts[0].source, source);
+        assert_eq!(
+            saved.scripts[&saved.document.scripts[0].id]
+                .entrypoint_resource()
+                .bytes
+                .as_ref(),
+            source.as_bytes()
+        );
 
         runtime
             .dispatch(AppIntent::ConvertScriptKind {

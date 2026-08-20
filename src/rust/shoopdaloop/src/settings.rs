@@ -316,7 +316,8 @@ fn resolve_loaded(
             )
         }
         Ok(Some(contents)) => match decode_settings(&contents) {
-            Ok(document) => {
+            Ok(mut document) => {
+                migrate_legacy_script_settings(&mut document);
                 let resolved = registry.resolve(&document, 1);
                 (
                     document,
@@ -357,6 +358,36 @@ fn resolve_loaded(
             )
         }
     }
+}
+
+fn migrate_legacy_script_settings(document: &mut SettingsDocument) {
+    const KEYBOARD: &str = "scripting.bundled.keyboard.enabled";
+    const APC_MINI: &str = "scripting.bundled.akai_apc_mini_mk1.enabled";
+    const DYNAMIC: &str = "scripting.builtins.scripts";
+    let keyboard = document
+        .values
+        .remove(KEYBOARD)
+        .and_then(|value| value.as_bool());
+    let apc_mini = document
+        .values
+        .remove(APC_MINI)
+        .and_then(|value| value.as_bool());
+    if document.values.contains_key(DYNAMIC) || (keyboard.is_none() && apc_mini.is_none()) {
+        return;
+    }
+    let mut entries = Vec::new();
+    if let Some(enabled) = keyboard {
+        entries.push(serde_json::json!({"value": "keyboard.lua", "enabled": enabled}));
+    }
+    if let Some(enabled) = apc_mini {
+        entries.push(serde_json::json!({
+            "value": "akai_apc_mini_mk1.lua",
+            "enabled": enabled,
+        }));
+    }
+    document
+        .values
+        .insert(DYNAMIC.to_owned(), serde_json::Value::Array(entries));
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -513,6 +544,37 @@ mod tests {
         std::fs::remove_dir(&path).unwrap();
         std::fs::write(&path, &prior).unwrap();
         assert_eq!(std::fs::read(path).unwrap(), prior);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn legacy_script_toggles_migrate_once_into_dynamic_identities() {
+        let mut document = SettingsDocument {
+            writer_version: "old".to_owned(),
+            values: std::collections::BTreeMap::from([
+                (
+                    "scripting.bundled.keyboard.enabled".to_owned(),
+                    serde_json::json!(true),
+                ),
+                (
+                    "scripting.bundled.akai_apc_mini_mk1.enabled".to_owned(),
+                    serde_json::json!(false),
+                ),
+            ]),
+        };
+        migrate_legacy_script_settings(&mut document);
+        assert!(!document
+            .values
+            .contains_key("scripting.bundled.keyboard.enabled"));
+        assert_eq!(
+            document.values["scripting.builtins.scripts"],
+            serde_json::json!([
+                {"value": "keyboard.lua", "enabled": true},
+                {"value": "akai_apc_mini_mk1.lua", "enabled": false},
+            ])
+        );
+        let migrated = document.values.clone();
+        migrate_legacy_script_settings(&mut document);
+        assert_eq!(document.values, migrated);
     }
 
     #[shoop_wasm_test_support::shoop_test]

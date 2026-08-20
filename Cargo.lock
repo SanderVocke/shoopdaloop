@@ -3909,9 +3909,11 @@ dependencies = [
  "midir",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",
  "shoop_wasm_test_support",
+ "tempfile",
  "tracing",
  "tracy-nextest-capture",
  "wasm-bindgen-test",
@@ -3921,6 +3923,7 @@ dependencies = [
 name = "shoop_app_api"
 version = "0.3.0"
 dependencies = [
+ "shoop_script_resources",
  "shoop_wasm_test_support",
  "tracy-nextest-capture",
  "wasm-bindgen-test",
@@ -4001,6 +4004,7 @@ dependencies = [
  "image",
  "serde_json",
  "shoop_app_api",
+ "shoop_script_resources",
  "shoop_settings",
  "shoop_wasm_test_support",
  "tracing",
@@ -4057,6 +4061,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_script_resources"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "shoop_wasm_test_support",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracy-nextest-capture",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_scripting"
 version = "0.3.0"
 dependencies = [
@@ -4065,6 +4083,7 @@ dependencies = [
  "omnilua",
  "regex",
  "shoop_app_api",
+ "shoop_script_resources",
  "shoop_wasm_test_support",
  "tracy-nextest-capture",
  "wasm-bindgen-test",
@@ -4080,6 +4099,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "shoop_script_resources",
  "shoop_wasm_test_support",
  "thiserror 2.0.20",
  "tracy-nextest-capture",
@@ -4174,6 +4194,7 @@ dependencies = [
  "log",
  "rfd",
  "rodio",
+ "serde",
  "serde_json",
  "shoop_app",
  "shoop_audio_protocol",
@@ -4182,6 +4203,7 @@ dependencies = [
  "shoop_egui",
  "shoop_engine",
  "shoop_plugin_protocol",
+ "shoop_script_resources",
  "shoop_scripting",
  "shoop_session",
  "shoop_settings",

@@ -24,6 +24,10 @@ pub struct AppArgs {
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(long, hide = true, requires = "tracing")]
     pub tracing_smoke_test: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Validate packaged external built-in scripts and exit.
+    #[arg(long)]
+    pub probe_builtins: bool,
     #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
     /// Validate the bundled Carla runtime and exit without opening the GUI.
     #[arg(long)]

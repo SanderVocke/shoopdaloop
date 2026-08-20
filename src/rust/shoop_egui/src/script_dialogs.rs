@@ -282,7 +282,11 @@ fn show_content(
                     }
                     ui.add(egui::Label::new(text).wrap());
                 }
-                ScriptDialogElement::Markdown { text, links } => {
+                ScriptDialogElement::Markdown {
+                    text,
+                    links,
+                    resource_base_uri,
+                } => {
                     let (_response, clicked) = {
                         let cache = _dialogs
                             .markdown_caches
@@ -291,8 +295,11 @@ fn show_content(
                         for link in links.iter() {
                             cache.add_link_hook(&link.destination);
                         }
-                        let response =
-                            crate::script_markdown_viewer(script_path).show(ui, cache, text);
+                        let response = crate::script_markdown_viewer(
+                            script_path,
+                            resource_base_uri.as_deref(),
+                        )
+                        .show(ui, cache, text);
                         let clicked = links
                             .iter()
                             .filter(|link| cache.get_link_hook(&link.destination) == Some(true))
@@ -395,6 +402,7 @@ mod tests {
                         destination: "run".to_owned(),
                         callback_id,
                     }]),
+                    resource_base_uri: None,
                 }]),
             }),
             open_request,

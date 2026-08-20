@@ -232,6 +232,49 @@ function shoop_helpers.record_into_first_empty(overdub)
 end
 
 --  @shoop_lua_fn_docstring.start
+--  shoop_helpers.create_click_hold_detector(timeout_ms, on_click, on_hold_start, on_hold_stop)
+--  Create an independent button click/hold detector. Call press() and release() on the
+--  returned value for button transitions. A release before timeout_ms calls on_click;
+--  otherwise on_hold_start is called at the timeout and on_hold_stop at release.
+--  @shoop_lua_fn_docstring.end
+function shoop_helpers.create_click_hold_detector(timeout_ms, on_click, on_hold_start, on_hold_stop)
+    local pressed = false
+    local holding = false
+    local generation = 0
+
+    local press = function()
+        if pressed then return end
+        pressed = true
+        holding = false
+        generation = generation + 1
+        local press_generation = generation
+        shoop_control.register_one_shot_timer_cb(timeout_ms, function()
+            if pressed and generation == press_generation and not holding then
+                holding = true
+                on_hold_start()
+            end
+        end)
+    end
+
+    local release = function()
+        if not pressed then return end
+        pressed = false
+        generation = generation + 1
+        if holding then
+            holding = false
+            on_hold_stop()
+        else
+            on_click()
+        end
+    end
+
+    return {
+        press = press,
+        release = release,
+    }
+end
+
+--  @shoop_lua_fn_docstring.start
 --  shoop_helpers.toggle_solo()
 --  Toggle the global "solo" control
 --  @shoop_lua_fn_docstring.end

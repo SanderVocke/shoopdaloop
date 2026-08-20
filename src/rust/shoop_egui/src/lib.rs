@@ -19,6 +19,7 @@ mod midi_sequence_widget;
 mod optimistic_value;
 mod piano_pane;
 mod script_dialogs;
+mod script_resource_loader;
 mod settings_dialog;
 mod tiny_synth_fx_editor;
 mod track_controls;
@@ -29,10 +30,11 @@ mod waveform_widget;
 
 pub use app_widget::{
     audio_driver_config_from_draft, audio_driver_config_from_snapshot,
-    carla_hosting_mode_from_snapshot, register_audio_settings, register_bundled_script_settings,
-    register_carla_settings, register_script_settings, register_settings,
-    register_settings_with_ui_scale_default, selected_audio_driver, set_selected_audio_driver,
-    AppWidget, AppWidgetResponse, APC_MINI_SCRIPT_ENABLED, CARLA_HOSTING_MODE, CPAL_BUFFER_SIZE,
+    carla_hosting_mode_from_snapshot, default_builtins_location, register_audio_settings,
+    register_bundled_script_settings, register_carla_settings, register_script_settings,
+    register_settings, register_settings_with_ui_scale_default, selected_audio_driver,
+    set_selected_audio_driver, AppWidget, AppWidgetResponse, APC_MINI_SCRIPT_ENABLED,
+    BUILTINS_LOCATION, BUILTIN_SCRIPTS, CARLA_HOSTING_MODE, CPAL_BUFFER_SIZE,
     CPAL_CAPTURE_RING_FRAMES, CPAL_CLIENT_NAME, CPAL_HOST, CPAL_INPUT_CHANNELS, CPAL_INPUT_DEVICE,
     CPAL_MIDI_INPUTS, CPAL_MIDI_OUTPUTS, CPAL_OUTPUT_CHANNELS, CPAL_OUTPUT_DEVICE,
     CPAL_SAMPLE_RATE, DEFAULT_NEW_TRACK_AUDIO_CHANNELS, DEFAULT_NEW_TRACK_MIDI, DUMMY_BUFFER_SIZE,
@@ -59,15 +61,25 @@ pub use waveform_widget::WaveformWidget;
 
 pub fn initialize(context: &egui::Context) {
     fonts::initialize(context);
+    let loader = script_resource_loader::ScriptResourceLoader;
+    if !context.is_loader_installed(egui::load::BytesLoader::id(&loader)) {
+        context.add_bytes_loader(std::sync::Arc::new(loader));
+    }
     context.all_styles_mut(|style| {
         style.visuals.widgets.hovered.bg_fill = colors::HOVER_BACKGROUND;
         style.visuals.widgets.hovered.weak_bg_fill = colors::HOVER_BACKGROUND;
     });
 }
 
-fn script_markdown_viewer(script_path: &str) -> egui_commonmark::CommonMarkViewer<'static> {
-    egui_commonmark::CommonMarkViewer::new()
-        .default_implicit_uri_scheme(script_markdown_base_uri(script_path))
+fn script_markdown_viewer(
+    script_path: &str,
+    resource_base_uri: Option<&str>,
+) -> egui_commonmark::CommonMarkViewer<'static> {
+    egui_commonmark::CommonMarkViewer::new().default_implicit_uri_scheme(
+        resource_base_uri
+            .map(str::to_owned)
+            .unwrap_or_else(|| script_markdown_base_uri(script_path)),
+    )
 }
 
 fn script_markdown_base_uri(script_path: &str) -> String {

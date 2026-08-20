@@ -14,6 +14,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 [dependencies]
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_settings = { path = "../shoop_settings" }
+shoop_script_resources = { path = "../shoop_script_resources" }
 egui = { workspace = true }
 egui_material_icons = { workspace = true }
 egui_commonmark = { workspace = true }

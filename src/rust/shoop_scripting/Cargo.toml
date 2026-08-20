@@ -16,6 +16,7 @@ anyhow = { workspace = true }
 omnilua = { workspace = true }
 regex = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
+shoop_script_resources = { path = "../shoop_script_resources" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 midir = { workspace = true }

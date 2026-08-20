@@ -193,7 +193,7 @@ mod tests {
             scripts: vec![ScriptDocument {
                 id: 700,
                 name: "script".to_owned(),
-                source: "return 1".to_owned(),
+                entrypoint: "main.lua".to_owned(),
                 enabled: true,
             }],
             midi_control: MidiControlDocument {
@@ -209,7 +209,21 @@ mod tests {
                 value: SettingValueDocument::String("value".to_owned()),
             }],
         };
-        SessionBundle { document, media }
+        let scripts = BTreeMap::from([(
+            700,
+            std::sync::Arc::new(
+                shoop_script_resources::ScriptResourceBundle::source_only(
+                    "main.lua",
+                    std::sync::Arc::<[u8]>::from(&b"return 1"[..]),
+                )
+                .unwrap(),
+            ),
+        )]);
+        SessionBundle {
+            document,
+            media,
+            scripts,
+        }
     }
 
     fn tiny_synth_fx_bundle() -> SessionBundle {
@@ -442,6 +456,33 @@ mod tests {
         })
     }
 
+    fn legacy_source_only_archive(bytes: Vec<u8>, version: u16, source: &str) -> Vec<u8> {
+        let mut input = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut output = ZipWriter::new(Cursor::new(Vec::new()));
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        for index in 0..input.len() {
+            let mut entry = input.by_index(index).unwrap();
+            let name = entry.name().to_owned();
+            if name.starts_with("scripts/") {
+                continue;
+            }
+            let mut payload = Vec::new();
+            entry.read_to_end(&mut payload).unwrap();
+            if name == "manifest.json" {
+                let mut manifest: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+                manifest["document_version"] = serde_json::json!(version);
+                manifest["scripts"] = serde_json::json!([]);
+                let script = manifest["document"]["scripts"][0].as_object_mut().unwrap();
+                script.remove("entrypoint");
+                script.insert("source".to_owned(), serde_json::json!(source));
+                payload = serde_json::to_vec(&manifest).unwrap();
+            }
+            output.start_file(name, options).unwrap();
+            output.write_all(&payload).unwrap();
+        }
+        output.finish().unwrap().into_inner()
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_current_and_recorded_state_round_trip_and_validate_shape() {
         let bundle = tiny_synth_fx_bundle();
@@ -581,6 +622,111 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn independent_script_bundles_round_trip_exact_resources_and_paths() {
+        use shoop_script_resources::{
+            NormalizedRelativePath, ResourceKind, ResourceLimits, ScriptResource,
+            ScriptResourceBundle,
+        };
+        use std::sync::Arc;
+
+        let mut bundle = direct_bundle(1);
+        let resources = |source: &'static [u8], markdown: &'static [u8]| {
+            Arc::new(
+                ScriptResourceBundle::new(
+                    NormalizedRelativePath::parse("main.lua").unwrap(),
+                    BTreeMap::from([
+                        (
+                            NormalizedRelativePath::parse("main.lua").unwrap(),
+                            ScriptResource::new(ResourceKind::Lua, Arc::<[u8]>::from(source)),
+                        ),
+                        (
+                            NormalizedRelativePath::parse("help/readme.md").unwrap(),
+                            ScriptResource::new(
+                                ResourceKind::Markdown,
+                                Arc::<[u8]>::from(markdown),
+                            ),
+                        ),
+                        (
+                            NormalizedRelativePath::parse("help/image.png").unwrap(),
+                            ScriptResource::new(
+                                ResourceKind::Image,
+                                Arc::<[u8]>::from(&b"\0PNG\xff"[..]),
+                            ),
+                        ),
+                    ]),
+                    ResourceLimits::default(),
+                )
+                .unwrap(),
+            )
+        };
+        bundle.scripts.insert(700, resources(b"return 1", b"first"));
+        bundle.document.scripts.push(ScriptDocument {
+            id: 701,
+            name: "second".to_owned(),
+            entrypoint: "main.lua".to_owned(),
+            enabled: false,
+        });
+        bundle
+            .scripts
+            .insert(701, resources(b"return 2", b"second"));
+
+        let encoded = encode_session(&bundle, "script-bundles").unwrap();
+        assert_eq!(encoded, encode_session(&bundle, "script-bundles").unwrap());
+        let decoded = decode_session(&encoded).unwrap();
+        assert_eq!(decoded, bundle);
+        assert_eq!(
+            decoded.scripts[&700]
+                .get(&NormalizedRelativePath::parse("help/readme.md").unwrap())
+                .unwrap()
+                .bytes
+                .as_ref(),
+            b"first"
+        );
+        assert_eq!(
+            decoded.scripts[&701]
+                .get(&NormalizedRelativePath::parse("help/readme.md").unwrap())
+                .unwrap()
+                .bytes
+                .as_ref(),
+            b"second"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn source_only_legacy_sessions_migrate_to_one_entry_bundle() {
+        let source = "return 'legacy'";
+        for version in [1, 2] {
+            let encoded = legacy_source_only_archive(
+                encode_session(&direct_bundle(1), "legacy-script").unwrap(),
+                version,
+                source,
+            );
+            let decoded = decode_session(&encoded).unwrap();
+            assert_eq!(decoded.document.scripts[0].entrypoint, "main.lua");
+            assert_eq!(
+                decoded.scripts[&700].entrypoint_resource().bytes.as_ref(),
+                source.as_bytes()
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn undeclared_and_cross_owner_script_resources_are_rejected() {
+        let encoded = encode_session(&direct_bundle(1), "script-adversarial").unwrap();
+        let undeclared = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["scripts"].as_array_mut().unwrap().clear();
+        });
+        assert!(decode_session(&undeclared).is_err());
+        let wrong_owner = rewrite_manifest(encoded, |manifest| {
+            manifest["scripts"][0]["owner_script_id"] = serde_json::json!(999);
+        });
+        assert!(matches!(
+            decode_session(&wrong_owner),
+            Err(SessionError::Validation(_))
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -795,6 +941,7 @@ mod tests {
         }
         let converted = resample_session(&bundle, 32_000).unwrap();
         assert_eq!(converted.document.sample_rate, 32_000);
+        assert_eq!(converted.scripts, bundle.scripts);
         let track = &converted.document.track_groups[0].tracks[0];
         assert_eq!(track.ports[0].ringbuffer_frames, 64_000);
         let loop_ = &track.loops[0];

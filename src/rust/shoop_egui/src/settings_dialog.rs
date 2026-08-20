@@ -19,7 +19,7 @@ use shoop_settings::{
 use crate::{
     audio_driver_config_from_draft, colors, AppAction, AudioDriverKind, AudioDriverRuntimeState,
     ScriptId, ScriptKind, ScriptLifecycle, ScriptLogLevel, ScriptState, ScriptingState,
-    APC_MINI_SCRIPT_ENABLED, KEYBOARD_SCRIPT_ENABLED, UI_SCALE_FACTOR, USER_SCRIPTS,
+    BUILTINS_LOCATION, BUILTIN_SCRIPTS, UI_SCALE_FACTOR, USER_SCRIPTS,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -48,6 +48,7 @@ pub enum SettingsAction {
     RequestBrowserPermissions,
     RecoverWithDefaults,
     RequestAddUserScript,
+    RescanBuiltinScripts,
     RequestEphemeralScriptPicker,
     RequestReloadUserScript {
         script_id: ScriptId,
@@ -69,6 +70,7 @@ impl SettingsAction {
             Self::RequestBrowserPermissions => "settings.request_browser_permissions",
             Self::RecoverWithDefaults => "settings.recover_defaults",
             Self::RequestAddUserScript => "settings.add_user_script",
+            Self::RescanBuiltinScripts => "settings.rescan_builtin_scripts",
             Self::RequestEphemeralScriptPicker => "settings.pick_ephemeral_script",
             Self::RequestReloadUserScript { .. } => "settings.reload_user_script",
             Self::StartTracing { .. } => "developer.tracing.start",
@@ -926,6 +928,13 @@ impl SettingsDialog {
                     .settings_actions
                     .push(SettingsAction::RequestAddUserScript);
             }
+            if self.registry.definition(BUILTINS_LOCATION.id()).is_some()
+                && ui.button("Rescan built-in scripts").clicked()
+            {
+                response
+                    .settings_actions
+                    .push(SettingsAction::RescanBuiltinScripts);
+            }
         });
 
         for kind in [
@@ -1172,27 +1181,36 @@ impl SettingsDialog {
         let compatible = script.lifecycle != ScriptLifecycle::Incompatible;
         match script.kind {
             ScriptKind::Bundled => {
-                let key = match script.name.as_str() {
-                    "keyboard.lua" => Some(KEYBOARD_SCRIPT_ENABLED),
-                    "akai_apc_mini_mk1.lua" => Some(APC_MINI_SCRIPT_ENABLED),
-                    _ => None,
-                };
-                let Some(key) = key else {
+                let Some(identity) = script.identity.as_deref() else {
                     ui.weak("—");
                     return;
                 };
-                let mut enabled = self
+                let mut scripts = self
                     .draft
                     .as_ref()
-                    .and_then(|draft| draft.get(key).ok())
-                    .unwrap_or(script.enabled);
+                    .and_then(|draft| draft.get(BUILTIN_SCRIPTS).ok())
+                    .unwrap_or_default();
+                let mut enabled = scripts
+                    .0
+                    .iter()
+                    .find(|entry| entry.value == identity)
+                    .map_or(script.enabled, |entry| entry.enabled);
                 if ui
                     .add_enabled(compatible, egui::Checkbox::without_text(&mut enabled))
                     .on_hover_text("Run this built-in script at startup")
                     .changed()
                 {
+                    if let Some(entry) = scripts.0.iter_mut().find(|entry| entry.value == identity)
+                    {
+                        entry.enabled = enabled;
+                    } else {
+                        scripts.0.push(StringToggle {
+                            value: identity.to_owned(),
+                            enabled,
+                        });
+                    }
                     if let Some(draft) = &mut self.draft {
-                        draft.set(key, enabled);
+                        draft.set(BUILTIN_SCRIPTS, scripts);
                     }
                 }
             }
@@ -1302,7 +1320,11 @@ impl SettingsDialog {
                             .and_then(|paths| paths.get(&script.id))
                             .map(String::as_str)
                             .unwrap_or(&script.name);
-                        crate::script_markdown_viewer(script_path).show(
+                        crate::script_markdown_viewer(
+                            script_path,
+                            script.resource_base_uri.as_deref(),
+                        )
+                        .show(
                             ui,
                             &mut self.markdown_cache,
                             script
@@ -1937,10 +1959,12 @@ mod tests {
             scripts: Arc::from([crate::ScriptState {
                 id: script_id,
                 name: "dialogs.lua".to_owned(),
+                identity: None,
                 kind: ScriptKind::Example,
                 enabled: false,
                 lifecycle: ScriptLifecycle::Inactive,
                 documentation: Some("# Dialog example".to_owned()),
+                resource_base_uri: None,
                 latest_error: None,
                 activity: Default::default(),
                 midi: Default::default(),
@@ -2013,12 +2037,14 @@ mod tests {
             scripts: Arc::from([crate::ScriptState {
                 id: script_id,
                 name: "documented.lua".to_owned(),
+                identity: None,
                 kind: ScriptKind::User,
                 enabled: true,
                 lifecycle: ScriptLifecycle::Listening,
                 documentation: Some(
                     "# Guide\n\n| Key | Action |\n| --- | --- |\n| Space | Play |\n".to_owned(),
                 ),
+                resource_base_uri: None,
                 latest_error: None,
                 activity: Default::default(),
                 midi: Default::default(),
@@ -2054,10 +2080,12 @@ mod tests {
             scripts: Arc::from([crate::ScriptState {
                 id: script_id,
                 name: "future.lua".to_owned(),
+                identity: None,
                 kind: ScriptKind::Ephemeral,
                 enabled: true,
                 lifecycle: ScriptLifecycle::Incompatible,
                 documentation: None,
+                resource_base_uri: None,
                 latest_error: Some("script requests 2.0, host supports 1.2".to_owned()),
                 activity: Default::default(),
                 midi: Default::default(),
@@ -2142,10 +2170,12 @@ mod tests {
                 crate::ScriptState {
                     id: script_id,
                     name: "controller.lua".to_owned(),
+                    identity: None,
                     kind: ScriptKind::User,
                     enabled: true,
                     lifecycle: crate::ScriptLifecycle::Listening,
                     documentation: Some("Controller documentation".to_owned()),
+                    resource_base_uri: None,
                     latest_error: None,
                     activity: Default::default(),
                     midi: Default::default(),
@@ -2154,10 +2184,12 @@ mod tests {
                 crate::ScriptState {
                     id: second_script_id,
                     name: "second.lua".to_owned(),
+                    identity: None,
                     kind: ScriptKind::User,
                     enabled: false,
                     lifecycle: crate::ScriptLifecycle::Inactive,
                     documentation: None,
+                    resource_base_uri: None,
                     latest_error: None,
                     activity: Default::default(),
                     midi: Default::default(),
