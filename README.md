@@ -13,7 +13,7 @@ Releases before 1.0 remain development releases: I wouldn't recommend relying on
 
 ## Current features
 
-- Run on any major OS and in the browser - check the latest web [self-contained web development build](https://github.com/SanderVocke/shoopdaloop/releases/download/dev-web/shoopdaloop-web-wasm32-release.html) by just opening it in your browser!
+- Run on any major OS and in the browser. Browser distributions use the hosted bundle so the external built-ins catalog and resource tree remain available.
 - Audio and MIDI loops grouped in track columns which share input/output ports.
 - A sync loop controls synchronization. Others are multiples of its length.
 - Record/play MIDI and/or audio live, through FX/synth racks if desired.
@@ -23,7 +23,7 @@ Releases before 1.0 remain development releases: I wouldn't recommend relying on
 - Web Audio/AudioWorklet and Web MIDI in supported browsers.
 - Session load/save plus loop audio/MIDI import and export.
 - Generated audio or MIDI click tracks.
-- Embedded Lua scripting for control. Built-in scripts for keyboard control and APC Mini controller.
+- Sandboxed Lua scripting for control, with externally packaged keyboard and APC Mini built-ins plus self-contained session-script bundles.
 
 ## Screenshot
 
@@ -52,7 +52,7 @@ See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The applica
 
 ## Builds and platforms
 
-The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a hosted bundle and a self-contained HTML file. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
+The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a complete hosted bundle and a core-only single HTML file that explicitly omits the external built-ins tree. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
 
 ## License and credits
 

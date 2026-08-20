@@ -81,9 +81,9 @@ Out of scope:
 
 - [x] Establish one distributable built-ins tree containing all intended scripts and companion resources; retain source-relative structure rather than flattening files.
 - [x] Update Linux, Windows, and macOS artifact staging and default-path resolution, including macOS `Contents/Resources/builtins`.
-- [ ] Generate the hosted-web catalog from that tree and package the external files; adjust or retire the single-file web claim where an external built-ins tree cannot be present.
+- [x] Generate the hosted-web catalog from that tree and package the external files; adjust or retire the single-file web claim where an external built-ins tree cannot be present.
 - [x] Extend artifact verification to assert expected scripts/resources, catalog hashes, absence of path flattening, and absence of compiled application-script source markers in binaries/WASM.
-- [ ] Verify packaged applications discover scripts when launched outside the source checkout.
+- [x] Verify packaged applications discover scripts when launched outside the source checkout.
 
 ### 4. Introduce provider-backed Lua and Markdown resource loading
 
@@ -101,7 +101,7 @@ Out of scope:
 - [x] Validate script IDs, entrypoint presence/type, normalized unique paths, owner/path agreement, hashes, supported types, and resource budgets before constructing runtime state.
 - [x] Implement and test migration from the current source-only session document into a one-entry in-memory bundle; continue rejecting unsupported future versions transactionally.
 - [x] Carry bundles through `SessionScriptSource`, `ScriptManager`, save snapshots, load staging, replacement, conversion away from/back to session ownership, and sample-rate conversion without loss or machine paths.
-- [ ] Update session-format documentation and golden/round-trip/adversarial archive tests.
+- [x] Update session-format documentation and golden/round-trip/adversarial archive tests.
 
 ### 6. Capture filesystem resources during session conversion
 
@@ -119,7 +119,7 @@ Out of scope:
 - [ ] Browser: load the external built-ins catalog and verify rescan/reconciliation; load the same `.shoop` session and render bundled Markdown/images without filesystem access.
 - [ ] Verify old source-only sessions and legacy script settings migrate, while malicious archives/paths and failed conversions leave existing runtime/session state intact.
 - [ ] Run formatting, test-attribute policy, warning-denying workspace builds, complete native tests, WASM builds/tests, browser smoke tests, artifact verification, and tracing-coverage checks required by the touched code.
-- [ ] Update scripting, dialog/file API, settings-format, session-format, packaging, and user documentation to describe discovery, defaults, rescan, bundle capture rules, supported resource types/limits, and platform behavior.
+- [x] Update scripting, dialog/file API, settings-format, session-format, packaging, and user documentation to describe discovery, defaults, rescan, bundle capture rules, supported resource types/limits, and platform behavior.
 
 ## Execution contract
 

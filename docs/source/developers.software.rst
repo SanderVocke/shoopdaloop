@@ -26,8 +26,8 @@ ShoopDaLoop is a Rust workspace with one application composition root:
   native atomic storage, and browser storage values.
 
 ``shoop_scripting``
-  The omniLua runtime, control API, bundled sources, callbacks/timers, and
-  logical MIDI service.
+  The omniLua runtime, control API, provider-backed resources, callbacks/timers,
+  and logical MIDI service.
 
 ``shoop_audio_protocol`` and ``shoop_audio_worklet``
   Bounded browser control/audio/MIDI messages and the realtime Web Audio engine.
@@ -56,10 +56,11 @@ Build and packaging
 
 Cargo builds the native workspace. Trunk builds the browser UI and dedicated
 AudioWorklet with matching profiles. The application artifact script emits
-unsigned native archives, a hosted web archive, and a self-contained HTML file.
+unsigned native archives, a complete hosted web archive, and a core-only HTML file.
 Native archives include a manifest- and checksum-verified Carla runtime
 component with UI/discovery/bridge helpers, licenses, and corresponding-source
-metadata. Browser artifacts contain none of that component.
+metadata. Native and hosted-web archives include the external built-ins tree;
+the core-only HTML explicitly does not. Browser artifacts contain no Carla component.
 
 Testing
 ~~~~~~~

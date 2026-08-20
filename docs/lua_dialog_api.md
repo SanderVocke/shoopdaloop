@@ -65,7 +65,7 @@ Use **Markdown** here. [Enable solo](enable-solo), or
 
 A destination present in `link_callbacks` invokes its function instead of opening a URL. Matching is against the complete destination and is local to that Markdown element. Destinations without callbacks retain normal Markdown-link behavior. Link destinations must be non-empty strings and callback values must be functions.
 
-`markdown_file` reads UTF-8 Markdown from a path below the directory containing the Lua script. It otherwise behaves exactly like `markdown`, including support for callback links:
+`markdown_file` reads UTF-8 Markdown from the script's resource provider. Filesystem scripts are rooted below the directory containing the Lua file; bundled session/browser scripts use their immutable per-script resource map. It otherwise behaves exactly like `markdown`, including support for callback links:
 
 ```lua
 dialog.markdown_file('help/getting-started.md', {
@@ -84,7 +84,9 @@ local file = require('shoop_file')
 local contents = file.load('data/preset.bin')
 ```
 
-`load` returns the file contents as a Lua string, including non-UTF-8 data. The path must be relative and descend from the script directory. Absolute paths, `.` and `..` components, and symlinks which resolve outside the script directory are rejected. Scripts without a filesystem-backed location, including browser and session-only sources, cannot load files.
+`load` returns the file contents as a Lua string, including non-UTF-8 data. The path must be a normalized relative path below the script root. Absolute paths, empty/`.`/`..` components, backslashes, traversal, and filesystem symlinks which resolve outside the root are rejected. Session and hosted-browser bundles use the same checks, reject undeclared or cross-script resources, and require no extraction to disk.
+
+Relative Markdown images resolve from the directory of the Markdown file that contains them. The presentation layer uses generation-scoped `shoop-script-resource://` URIs, so replacing a script cannot reuse stale cached image bytes. Session conversion captures Markdown and the renderer-supported PNG image format; bundled resources are read-only and their archive/storage location is never exposed to Lua.
 
 ### Simple dialogs
 

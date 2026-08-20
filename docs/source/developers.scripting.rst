@@ -6,7 +6,7 @@ Runtime and ownership
 ~~~~~~~~~~~~~~~~~~~~~
 
 ShoopDaLoop embeds pinned omniLua with Lua 5.4 semantics. Native and browser
-builds run the same bundled libraries, ``keyboard.lua``, and APC Mini script.
+builds run the same embedded host API libraries and externally packaged application scripts.
 Each script has an isolated state owned by the application runtime. Stopping or
 restarting a script removes its callbacks, timers, logical MIDI ports,
 connections, queued output, and script-owned dialogs.
@@ -23,31 +23,24 @@ An incompatible source remains inspectable and exportable, but cannot be
 started.
 
 The sandbox exposes selected standard-library functions and ShoopDaLoop modules.
-It prevents ordinary module access and restricts file access to paths below each
-script, but should still be treated as a compatibility boundary for trusted local scripts, not as a hardened security
-boundary.
+It prevents ordinary module access and restricts file access to normalized paths in each script's filesystem or in-memory provider, but should still be treated as a compatibility boundary for trusted local scripts, not as a hardened security boundary.
 
 Script management
 ~~~~~~~~~~~~~~~~~
 
 Open **Settings → Scripts** to inspect lifecycle, errors, help, activity, logs,
 and MIDI diagnostics. Native builds can add, reload, and remove user script
-files. Browser builds manage bundled scripts and sources embedded in sessions,
-without machine path actions. Both targets can load a UTF-8 ``.lua`` file from
+files. Browser builds fetch the generated external built-ins catalog and manage sources bundled in sessions, without machine path actions. Both targets can load a UTF-8 ``.lua`` file from
 the run-once picker or by OS drag and drop after confirmation. Run-once sources
 remain restartable in memory, are independent of session replacement and
 serialization, and disappear when the app closes. Loading a same-named version
 stops the active version and retains both entries under unique display names.
 Every listed script can be exported as its exact ``.lua`` source. A built-in,
 example, user, or run-once script can be included in the session; this transfers
-the current source to session ownership. A session script can instead be
-converted to run once or removed from the session.
+the current source plus supported Markdown/PNG companions to atomic session-bundle ownership. A session script can instead be converted to run once or removed from the session; converting it back reuses the in-memory bundle.
 
-``keyboard.lua`` is enabled on first run. The APC Mini script is available but
-disabled by default. Persistent changes apply after **Save**; runtime Stop,
-Restart, and Reload do not alter the settings draft. Source-bearing scripts in a
-``.shoop`` session are syntax-checked before transactional session commit and
-round-trip without machine paths.
+Built-ins are discovered recursively by normalized relative identity. New identities are disabled until explicitly enabled. The Scripts tab can rescan after additions, changes, removals, or a location change. Persistent changes apply after **Save**; runtime Stop,
+Restart, and Reload do not alter the settings draft. Bundled scripts in a ``.shoop`` session are resource/hash/syntax-checked before transactional session commit and round-trip without machine paths.
 
 Browser builds target ``wasm32-unknown-unknown`` and run the same pure-Rust
 omniLua scripting manager cooperatively. Version checks, script-owned dialogs,

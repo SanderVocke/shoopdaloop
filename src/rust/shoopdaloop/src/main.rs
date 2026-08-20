@@ -1978,6 +1978,39 @@ fn main() {
     }
 
     let cli = AppArgs::parse();
+    if cli.probe_builtins {
+        let root = shoop_egui::default_builtins_location();
+        let result = shoop_script_resources::scan_builtin_directory(
+            std::path::Path::new(&root),
+            1,
+            shoop_script_resources::ResourceLimits::default(),
+        )
+        .map_err(anyhow::Error::from)
+        .and_then(|catalog| {
+            if catalog.entries.is_empty() || !catalog.diagnostics.is_empty() {
+                anyhow::bail!(
+                    "discovered {} scripts with diagnostics: {:?}",
+                    catalog.entries.len(),
+                    catalog.diagnostics
+                );
+            }
+            let runtime = shoop_scripting::LuaRuntime::new()?;
+            for entry in &catalog.entries {
+                runtime.check_syntax(entry.identity.as_str(), &entry.source)?;
+            }
+            Ok(catalog.entries.len())
+        });
+        match result {
+            Ok(count) => {
+                println!("Discovered {count} packaged built-in scripts in {root}");
+                return;
+            }
+            Err(error) => {
+                eprintln!("Built-in script probe failed: {error:#}");
+                std::process::exit(4);
+            }
+        }
+    }
     #[cfg(feature = "native-fx")]
     if cli.probe_carla_native || cli.probe_carla_native_ui {
         let result = if cli.probe_carla_native_ui {

@@ -461,7 +461,7 @@ pub fn register_bundled_script_settings(
     Ok(())
 }
 
-fn default_builtins_location() -> String {
+pub fn default_builtins_location() -> String {
     #[cfg(target_arch = "wasm32")]
     {
         "builtins".to_owned()

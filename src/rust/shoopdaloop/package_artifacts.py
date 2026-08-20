@@ -11,6 +11,7 @@ import json
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -142,6 +143,16 @@ def package_native(args: argparse.Namespace) -> list[Path]:
     with tempfile.TemporaryDirectory(prefix="shoop-package-") as temporary:
         stage = Path(temporary)
         create_native_stage(args.platform, binary, args.carla_runtime.resolve(), stage)
+        staged_executable = (
+            stage / ARCHIVE_ROOT / "ShoopDaLoop.app" / "Contents" / "MacOS" / "shoopdaloop"
+            if args.platform == "macos"
+            else stage / ARCHIVE_ROOT / executable_name(args.platform)
+        )
+        subprocess.run(
+            [str(staged_executable), "--probe-builtins"],
+            cwd=stage,
+            check=True,
+        )
         if args.platform == "windows":
             write_zip(stage / ARCHIVE_ROOT, output)
         else:
