@@ -2224,6 +2224,100 @@ end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn click_hold_detector_dispatches_exactly_once_and_ignores_stale_timers() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add_announced(
+                "click hold detector",
+                r#"
+local c = require('shoop_control')
+local h = require('shoop_helpers')
+local detector = h.create_click_hold_detector(
+    250,
+    function() print_info('click') end,
+    function() print_info('hold-start') end,
+    function() print_info('hold-stop') end
+)
+local actions = {
+    'press', 'release',
+    'press', 'release',
+    'press', 'release', 'press', 'release',
+    'press', 'press', 'release', 'release'
+}
+local next_action = 1
+c.register_global_event_cb(function()
+    detector[actions[next_action]]()
+    next_action = next_action + 1
+end)
+"#,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        let messages = |manager: &ScriptManager| {
+            manager
+                .logs(id)
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.message)
+                .collect::<Vec<_>>()
+        };
+
+        manager.dispatch_global_event();
+        manager.advance_timers(std::time::Duration::from_millis(249));
+        manager.dispatch_global_event();
+        assert_eq!(messages(&manager), ["click"]);
+        manager.advance_timers(std::time::Duration::from_millis(1));
+        assert_eq!(messages(&manager), ["click"]);
+
+        manager.dispatch_global_event();
+        manager.advance_timers(std::time::Duration::from_millis(250));
+        manager.advance_timers(std::time::Duration::from_millis(250));
+        manager.dispatch_global_event();
+        assert_eq!(messages(&manager), ["click", "hold-start", "hold-stop"]);
+
+        manager.dispatch_global_event();
+        manager.advance_timers(std::time::Duration::from_millis(100));
+        manager.dispatch_global_event();
+        manager.dispatch_global_event();
+        manager.advance_timers(std::time::Duration::from_millis(150));
+        assert_eq!(
+            messages(&manager),
+            ["click", "hold-start", "hold-stop", "click"]
+        );
+        manager.advance_timers(std::time::Duration::from_millis(100));
+        manager.dispatch_global_event();
+        assert_eq!(
+            messages(&manager),
+            [
+                "click",
+                "hold-start",
+                "hold-stop",
+                "click",
+                "hold-start",
+                "hold-stop"
+            ]
+        );
+
+        manager.dispatch_global_event();
+        manager.dispatch_global_event();
+        manager.dispatch_global_event();
+        manager.dispatch_global_event();
+        assert_eq!(
+            messages(&manager),
+            [
+                "click",
+                "hold-start",
+                "hold-stop",
+                "click",
+                "hold-start",
+                "hold-stop",
+                "click"
+            ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn timers_are_due_ordered_non_reentrant_capped_and_cancelled_on_stop() {
         let mut manager = ScriptManager::new();
         let id = manager
