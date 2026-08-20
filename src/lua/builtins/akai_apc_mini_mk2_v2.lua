@@ -1,24 +1,66 @@
--- Deep integration for the Akai APC Mini MK2.
+-- # Akai APC Mini MK2 controls
 --
--- Reassigned controls:
--- - MUTE -> GRAB
--- - DRUM -> SYNC
--- - NOTE -> sync loop
--- - SEND -> DRY
--- - DEVICE -> SET N CYCLES
+-- Deep ShoopDaLoop integration for the **Akai APC Mini MK2**. The script automatically discovers and connects to the controller's control MIDI ports.
 --
--- Grid modifiers:
--- - SELECT: select; SHIFT + SELECT: target
--- - REC ARM: record; REC ARM + DRY: record dry into wet
--- - GRAB: grab; SHIFT + GRAB: change the default recording action
--- - CLIP STOP: stop; SHIFT + CLIP STOP: clear
--- - VOLUME: toggle track mute
--- - PAN: toggle track input mute
--- - SHIFT + DRY: compose loops
+-- ## Relabeled controls
 --
--- SOLO and SYNC invert their global control while held. Hold SHIFT before
--- pressing either control to make the change permanent. Faders only act while
--- VOLUME or PAN is held. The master fader controls the sync track.
+-- | Device control | ShoopDaLoop function |
+-- | --- | --- |
+-- | REC ARM | **RECORD** |
+-- | MUTE | **GRAB** |
+-- | DRUM | **SYNC** |
+-- | NOTE | Sync-loop button |
+-- | SEND | **DRY** |
+-- | DEVICE | **SET N CYCLES** |
+--
+-- ## Loops
+--
+-- Grid pads show loop state. Pressing a pad performs that loop's default action. Hold a modifier to choose another action:
+--
+-- | Held control | Grid-pad action | With an additional modifier |
+-- | --- | --- | --- |
+-- | **DRY** | Play dry through wet when transitioning to play | **SHIFT** enters composition mode |
+-- | **CLIP STOP** | Stop the loop | **SHIFT** clears the loop |
+-- | **RECORD** | Record the loop | **DRY** re-records dry into wet |
+-- | **GRAB** | Grab the loop | **SHIFT** toggles the default recording action between record and grab |
+-- | **SELECT** | Toggle loop selection | **SHIFT** toggles loop targeting |
+--
+-- ## Global controls
+--
+-- | Control | Action |
+-- | --- | --- |
+-- | **SOLO** | Toggle solo while held. Add **SHIFT** to make the toggle permanent. |
+-- | **SYNC** | Toggle synchronization while held. Add **SHIFT** to make the toggle permanent. |
+-- | **STOP ALL CLIPS** | Stop all loops. Add **SELECT** to deselect all loops, or **SHIFT** to clear all loops. |
+-- | **DEVICE** | Hold and press a grid pad to set the number of recording cycles. Grid positions count from the top left, left to right; the bottom-right pad resets to zero. Add **SHIFT** to resynchronize the controller state and LEDs. |
+--
+-- ## Faders and track controls
+--
+-- Faders act only while a mode button is held:
+--
+-- | Held control | Fader action |
+-- | --- | --- |
+-- | **VOLUME** | Set track gain. |
+-- | **PAN** | Set stereo track balance. |
+--
+-- The master fader controls the sync track.
+--
+-- - **VOLUME + loop button** toggles output mute for the loop's track.
+-- - **PAN + grid pad** toggles input mute for that column's track.
+-- - **PAN + sync-loop button** toggles input mute for the sync track.
+--
+-- Unmuting always respects the global auto-mute-other-inputs control.
+--
+-- ## Composition mode
+--
+-- 1. Hold **SHIFT + DRY** throughout the composition process.
+-- 2. Press a loop to choose the composition target.
+-- 3. Press more loops to append them immediately. Existing composite content is retained.
+-- 4. Press several loops together to insert the additional loops in parallel.
+
+if shoop_announce_api_version then
+    shoop_announce_api_version(1, 1)
+end
 
 print_debug("Init akai_apc_mini_mk2_v2.lua")
 
@@ -293,7 +335,7 @@ local handle_loop_pressed = function(coords)
     elseif STATE_volume_pressed then
         shoop_helpers.track_toggle_muted(coords[1])
     elseif STATE_pan_pressed then
-        shoop_helpers.track_toggle_input_muted(coords[1])
+        shoop_helpers.track_toggle_input_muted(coords[1], true)
     elseif STATE_dry_pressed and STATE_shift_pressed then
         STATE_composition_active = true
         STATE_composition_target_loop = coords
@@ -484,7 +526,7 @@ local handle_loop_event = function(event)
     end
 end
 
-local DEVICE_REGEX = "(?i)^(?!.*(?:notes|midi(?:in|out)?\\s*2|port\\s*2)).*apc\\s*mini\\s*mk\\s*2.*$"
+local DEVICE_REGEX = "(?i)(.*apc\\s*mini\\s*mk\\s*2.*control.*|.*apc\\s*mini\\s*mk\\s*2.*midi\\s*1.*|apc\\s*mini\\s*mk\\s*2)"
 
 shoop_control.auto_open_device_specific_midi_control_output(
     DEVICE_REGEX,

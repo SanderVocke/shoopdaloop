@@ -1,17 +1,44 @@
--- akai_apc_mini_mk2.lua: Deep integration for the Akai APC Mini MK2.
+-- # Akai APC Mini MK2 basic controls
 --
--- This script automatically opens MIDI ports and connects to the APC Mini MK2.
--- It leverages RGB feedback, pulsing animations, and startup handshakes.
+-- Deep ShoopDaLoop integration for the **Akai APC Mini MK2**. The script automatically discovers and connects to the controller's control MIDI ports.
 --
--- Features:
---   - 8x8 grid pad loop recording, playback, and triggering
---   - Side buttons: solo toggle, sync active toggle, stop all
---   - Modifier buttons: shift, select, mute, recarm, dry, n-cycles
---   - Fader support via CC: volume, pan/balance, and send/device controls
---   - Modifier states alter grid behavior (mute, input mute, n-cycles, dry)
---   - Shift+stop-all clears all loops; select+stop-all deselects all
---   - SysEx handshake on connect for device initialization
---   - LED color/behavior cache for loop state visualization
+-- ## Relabeled controls
+--
+-- | Device control | ShoopDaLoop function |
+-- | --- | --- |
+-- | DRUM | **SYNC** |
+-- | SEND | **DRY** |
+-- | DEVICE | **SET N CYCLES** |
+-- | Bottom-right grid pad | Sync-loop button |
+--
+-- ## Loops and tracks
+--
+-- Pressing a grid pad performs that loop's default action. Hold a modifier to choose another action:
+--
+-- | Held control | Grid-pad action |
+-- | --- | --- |
+-- | **DRY** | Play dry through wet when transitioning to play. |
+-- | **DEVICE** | Set the number of recording cycles from the pad position. |
+-- | **VOLUME** | Toggle output mute for the pad's track. |
+-- | **PAN** | Toggle input mute for the pad's track. Unmuting respects the global auto-mute-other-inputs control. |
+--
+-- Grid pads show loop state: red is recording, green is playing, and yellow contains stopped content. Selected or targeted loops pulse blue.
+--
+-- ## Global controls
+--
+-- | Control | Action |
+-- | --- | --- |
+-- | **SOLO** | Toggle solo. |
+-- | **SYNC** | Toggle synchronization. |
+-- | **STOP ALL CLIPS** | Stop all loops. Add **SELECT** to deselect all loops, or **SHIFT** to clear all loops. |
+--
+-- ## Faders
+--
+-- Faders set track gain by default and while **VOLUME** is held. Hold **PAN** to set stereo track balance. The master fader controls the sync track.
+
+if shoop_announce_api_version then
+    shoop_announce_api_version(1, 1)
+end
 
 print_debug("Init akai_apc_mini_mk2.lua")
 
@@ -223,9 +250,9 @@ local handle_noteOn = function(msg)
             local n = (loop[1] + loop[2] * 8 + 1) % 64
             shoop_control.set_apply_n_cycles(n)
         elseif STATE_volume_pressed then
-            shoop_helpers.track_toggle_muted(loop)
+            shoop_helpers.track_toggle_muted(loop[1])
         elseif STATE_pan_pressed then
-            shoop_helpers.track_toggle_input_muted(loop)
+            shoop_helpers.track_toggle_input_muted(loop[1], true)
         else
             shoop_helpers.default_loop_action(loop, STATE_dry_pressed)
         end
@@ -312,8 +339,10 @@ local handle_loop_event = function(event)
 end
 
 -- Hardware Registration
-shoop_control.auto_open_device_specific_midi_control_output(".*APC mini mk2 Control.*", on_output_port_opened, on_output_port_connected, 1000)
-shoop_control.auto_open_device_specific_midi_control_input(".*APC mini mk2 Control.*", on_midi_in)
+local DEVICE_REGEX = "(?i)(.*apc\\s*mini\\s*mk\\s*2.*control.*|.*apc\\s*mini\\s*mk\\s*2.*midi\\s*1.*|apc\\s*mini\\s*mk\\s*2)"
+
+shoop_control.auto_open_device_specific_midi_control_output(DEVICE_REGEX, on_output_port_opened, on_output_port_connected, 1000)
+shoop_control.auto_open_device_specific_midi_control_input(DEVICE_REGEX, on_midi_in)
 shoop_control.register_loop_event_cb(handle_loop_event)
 shoop_control.register_global_event_cb(recheck_global_controls)
 
