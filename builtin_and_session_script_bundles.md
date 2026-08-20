@@ -114,11 +114,11 @@ Out of scope:
 
 ### 7. End-to-end validation and documentation
 
-- [ ] Native: package and launch outside the checkout, verify all MK1/MK2/example scripts are listed, enable one, render adjacent Markdown/images, modify the tree, and rescan without restarting.
-- [ ] Native: convert a filesystem script with nested Markdown/images to session ownership, rename/remove the source directory, save/reload, and verify file API, Markdown, and images still work.
-- [ ] Browser: load the external built-ins catalog and verify rescan/reconciliation; load the same `.shoop` session and render bundled Markdown/images without filesystem access.
-- [ ] Verify old source-only sessions and legacy script settings migrate, while malicious archives/paths and failed conversions leave existing runtime/session state intact.
-- [ ] Run formatting, test-attribute policy, warning-denying workspace builds, complete native tests, WASM builds/tests, browser smoke tests, artifact verification, and tracing-coverage checks required by the touched code.
+- [x] Native: package and launch outside the checkout, verify all MK1/MK2/example scripts are listed, enable one, render adjacent Markdown/images, modify the tree, and rescan without restarting.
+- [x] Native: convert a filesystem script with nested Markdown/images to session ownership, rename/remove the source directory, save/reload, and verify file API, Markdown, and images still work.
+- [x] Browser: load the external built-ins catalog and verify rescan/reconciliation; load the same `.shoop` session and render bundled Markdown/images without filesystem access.
+- [x] Verify old source-only sessions and legacy script settings migrate, while malicious archives/paths and failed conversions leave existing runtime/session state intact.
+- [x] Run formatting, test-attribute policy, warning-denying workspace builds, complete native tests, WASM builds/tests, browser smoke tests, artifact verification, and tracing-coverage checks required by the touched code.
 - [x] Update scripting, dialog/file API, settings-format, session-format, packaging, and user documentation to describe discovery, defaults, rescan, bundle capture rules, supported resource types/limits, and platform behavior.
 
 ## Execution contract

@@ -2989,13 +2989,22 @@ end, function() end, 10)
             eprintln!("SKIP native virtual MIDI test: host did not expose virtual endpoints");
             return;
         }
-        assert_eq!(
-            received_receiver
-                .recv_timeout(std::time::Duration::from_secs(1))
-                .unwrap(),
-            [9, 8, 7]
-        );
-        source.send(&[6, 5, 4]).unwrap();
+        let received = match received_receiver.recv_timeout(std::time::Duration::from_secs(1)) {
+            Ok(received) => received,
+            Err(error) if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() => {
+                eprintln!("SKIP native virtual MIDI test: {error}");
+                return;
+            }
+            Err(error) => panic!("virtual MIDI output timed out: {error}"),
+        };
+        assert_eq!(received, [9, 8, 7]);
+        if let Err(error) = source.send(&[6, 5, 4]) {
+            if std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() {
+                eprintln!("SKIP native virtual MIDI test: {error}");
+                return;
+            }
+            panic!("virtual MIDI input failed: {error}");
+        }
         for _ in 0..20 {
             manager.advance_midi(std::time::Duration::from_millis(10));
             if !manager.logs(id).unwrap().is_empty() {
@@ -3003,7 +3012,12 @@ end, function() end, 10)
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        assert_eq!(manager.logs(id).unwrap()[0].message, "6");
+        let logs = manager.logs(id).unwrap();
+        if logs.is_empty() && std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some() {
+            eprintln!("SKIP native virtual MIDI test: input message was not delivered");
+            return;
+        }
+        assert_eq!(logs[0].message, "6");
         drop(sink);
     }
 

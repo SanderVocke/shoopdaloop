@@ -119,6 +119,7 @@ pub struct ResourceLimits {
     pub max_script_bytes: u64,
     pub max_aggregate_bytes: u64,
     pub max_files_per_script: usize,
+    pub max_scan_entries: usize,
 }
 
 impl Default for ResourceLimits {
@@ -128,6 +129,7 @@ impl Default for ResourceLimits {
             max_script_bytes: 64 * 1024 * 1024,
             max_aggregate_bytes: 256 * 1024 * 1024,
             max_files_per_script: 10_000,
+            max_scan_entries: 100_000,
         }
     }
 }
@@ -489,6 +491,8 @@ pub enum ScanError {
     Path { path: String, message: String },
     #[error(transparent)]
     Bundle(#[from] BundleError),
+    #[error("scan exceeds the entry limit {0}")]
+    EntryLimit(usize),
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -509,12 +513,15 @@ pub fn scan_builtin_directory(
     }
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
+    let mut visited = 0_usize;
     collect_regular_files(
         &canonical_root,
         &canonical_root,
         &mut files,
         &mut diagnostics,
         false,
+        limits.max_scan_entries,
+        &mut visited,
     )?;
     files.sort_by(|left, right| left.0.cmp(&right.0));
     let mut entries = Vec::new();
@@ -649,7 +656,16 @@ pub fn capture_filesystem_bundle(
     }
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
-    collect_regular_files(&root, &root, &mut files, &mut diagnostics, true)?;
+    let mut visited = 0_usize;
+    collect_regular_files(
+        &root,
+        &root,
+        &mut files,
+        &mut diagnostics,
+        true,
+        limits.max_scan_entries,
+        &mut visited,
+    )?;
     if let Some(diagnostic) = diagnostics.into_iter().next() {
         return Err(ScanError::Path {
             path: diagnostic
@@ -786,6 +802,8 @@ fn collect_regular_files(
     files: &mut Vec<(NormalizedRelativePath, std::path::PathBuf)>,
     diagnostics: &mut Vec<ScanDiagnostic>,
     strict: bool,
+    max_entries: usize,
+    visited: &mut usize,
 ) -> Result<(), ScanError> {
     let entries = match std::fs::read_dir(directory) {
         Ok(entries) => entries,
@@ -803,22 +821,31 @@ fn collect_regular_files(
             });
         }
     };
-    let mut entries = match entries.collect::<Result<Vec<_>, _>>() {
-        Ok(entries) => entries,
-        Err(error) if !strict => {
-            diagnostics.push(ScanDiagnostic {
-                path: Some(directory.display().to_string()),
-                message: format!("could not enumerate directory: {error}"),
-            });
-            return Ok(());
+    let mut collected = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) if !strict => {
+                diagnostics.push(ScanDiagnostic {
+                    path: Some(directory.display().to_string()),
+                    message: format!("could not enumerate directory: {error}"),
+                });
+                return Ok(());
+            }
+            Err(error) => {
+                return Err(ScanError::Path {
+                    path: directory.display().to_string(),
+                    message: error.to_string(),
+                });
+            }
+        };
+        *visited = visited.saturating_add(1);
+        if *visited > max_entries {
+            return Err(ScanError::EntryLimit(max_entries));
         }
-        Err(error) => {
-            return Err(ScanError::Path {
-                path: directory.display().to_string(),
-                message: error.to_string(),
-            });
-        }
-    };
+        collected.push(entry);
+    }
+    let mut entries = collected;
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
         let path = entry.path();
@@ -884,7 +911,15 @@ fn collect_regular_files(
                 files.push((relative, resolved));
             }
         } else if metadata.is_dir() {
-            collect_regular_files(root, &path, files, diagnostics, strict)?;
+            collect_regular_files(
+                root,
+                &path,
+                files,
+                diagnostics,
+                strict,
+                max_entries,
+                visited,
+            )?;
         } else if metadata.is_file() {
             let resolved = path.canonicalize().map_err(|error| ScanError::Path {
                 path: relative.to_string(),
@@ -1082,6 +1117,17 @@ mod tests {
         std::fs::write(&script, "return").unwrap();
         std::fs::write(temporary.path().join("one.md"), [1, 2, 3]).unwrap();
         std::fs::write(temporary.path().join("two.md"), [4, 5, 6]).unwrap();
+
+        let scan_error = capture_filesystem_bundle(
+            &script,
+            Arc::<[u8]>::from(&b"return"[..]),
+            ResourceLimits {
+                max_scan_entries: 1,
+                ..ResourceLimits::default()
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(scan_error, ScanError::EntryLimit(1)));
 
         let count_error = capture_filesystem_bundle(
             &script,

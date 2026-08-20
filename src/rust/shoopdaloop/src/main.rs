@@ -1257,7 +1257,6 @@ struct Runtime {
     handle: ApplicationHandle,
     script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
     pending_script_paths: std::collections::VecDeque<(String, ScriptKind, String)>,
-    catalog_identities: std::collections::BTreeSet<String>,
     catalog_scan_generation: u64,
     catalog_scan_tx: std::sync::mpsc::Sender<CatalogScanCompletion>,
     catalog_scan_rx: std::sync::mpsc::Receiver<CatalogScanCompletion>,
@@ -1318,20 +1317,12 @@ impl Runtime {
         }
         let script_paths =
             associate_startup_script_paths(runtime.startup_script_ids(), script_paths);
-        let catalog_identities = handle
-            .snapshot()
-            .scripting
-            .scripts
-            .iter()
-            .filter_map(|script| script.identity.as_deref().map(str::to_owned))
-            .collect();
         let (catalog_scan_tx, catalog_scan_rx) = std::sync::mpsc::channel();
         Ok(Self {
             _runtime: runtime,
             handle,
             script_paths,
             pending_script_paths: std::collections::VecDeque::new(),
-            catalog_identities,
             catalog_scan_generation: 1,
             catalog_scan_tx,
             catalog_scan_rx,
@@ -1360,11 +1351,6 @@ impl Runtime {
                         });
                         continue;
                     }
-                    let desired = scripts
-                        .iter()
-                        .filter_map(|script| script.identity.clone())
-                        .chain(preserve_identities.iter().cloned())
-                        .collect::<std::collections::BTreeSet<_>>();
                     let descriptors = scripts
                         .iter()
                         .filter_map(|script| {
@@ -1398,7 +1384,6 @@ impl Runtime {
                                 ));
                             }
                         }
-                        self.catalog_identities = desired;
                     }
                 }
                 Err(error) => {
@@ -1627,8 +1612,7 @@ async fn fetch_browser_bytes(url: &str, max_bytes: u64) -> Result<Vec<u8>, Strin
         let result = JsFuture::from(reader.read())
             .await
             .map_err(|error| format!("could not read {url}: {error:?}"))?
-            .dyn_into::<web_sys::ReadableStreamReadResult>()
-            .map_err(|_| format!("fetch for {url} returned an invalid stream result"))?;
+            .unchecked_into::<web_sys::ReadableStreamReadResult>();
         if result.get_done().unwrap_or(false) {
             break;
         }
@@ -1677,6 +1661,13 @@ async fn fetch_browser_catalog(
         return Err("built-ins catalog has an unsupported format or version".to_owned());
     }
     let limits = ResourceLimits::default();
+    if catalog.files.len() > limits.max_scan_entries {
+        return Err(format!(
+            "built-ins catalog has {} entries; limit is {}",
+            catalog.files.len(),
+            limits.max_scan_entries
+        ));
+    }
     let mut declarations = Vec::with_capacity(catalog.files.len());
     let mut identities = std::collections::BTreeSet::new();
     let mut total = 0_u64;
@@ -2396,7 +2387,7 @@ fn set_browser_settings_test_status(status: &str, channels: u32, midi: bool, rec
 const BROWSER_SESSION_SCRIPT_NAME: &str = "browser-self-test-session.lua";
 #[cfg(target_arch = "wasm32")]
 const BROWSER_SESSION_SCRIPT_SOURCE: &str =
-    "shoop_announce_api_version(1, 0); local shoop_control = require('shoop_control'); local dialog = require('shoop_dialog'); dialog.simple('Browser bundle resources', {dialog.markdown_file('help.md')}); shoop_control.register_keyboard_event_cb(function(_) end)";
+    "shoop_announce_api_version(1, 0); local shoop_control = require('shoop_control'); local dialog = require('shoop_dialog'); local markdown = dialog.markdown_file('help.md'); shoop_control.register_keyboard_event_cb(function(_) end)";
 #[cfg(target_arch = "wasm32")]
 const BROWSER_SESSION_MARKDOWN: &[u8] = b"# Browser bundle\n\n![resource](image.png)";
 #[cfg(target_arch = "wasm32")]
@@ -3781,21 +3772,10 @@ impl BrowserSelfTest {
                 }
                 let resource_base_uri = snapshot
                     .scripting
-                    .dialogs
+                    .scripts
                     .iter()
-                    .find(|dialog| dialog.name == "Browser bundle resources")
-                    .and_then(|dialog| match &dialog.kind {
-                        shoop_egui::ScriptDialogKind::Simple(content) => {
-                            content.elements.iter().find_map(|element| match element {
-                                shoop_egui::ScriptDialogElement::Markdown {
-                                    resource_base_uri,
-                                    ..
-                                } => resource_base_uri.as_deref(),
-                                _ => None,
-                            })
-                        }
-                        shoop_egui::ScriptDialogKind::Paged(_) => None,
-                    });
+                    .find(|script| script.name == BROWSER_SESSION_SCRIPT_NAME)
+                    .and_then(|script| script.resource_base_uri.as_deref());
                 let Some(resource_base_uri) = resource_base_uri else {
                     return self.fail("browser session Markdown lost its bundle resource origin");
                 };
@@ -4357,7 +4337,7 @@ impl BrowserSelfTest {
                     .dispatch(AppIntent::AddScriptSource {
                         name: "dialogs.lua".to_owned(),
                         source: std::sync::Arc::from(
-                            "shoop_announce_api_version(1, 0); local d=require('shoop_dialog'); d.simple('Simple example', {d.rich_text('Browser dialog self-test')})",
+                            "shoop_announce_api_version(1, 0); local c=require('shoop_control'); local d=require('shoop_dialog'); d.simple('Lua dialog example', {d.button('Toggle Solo and show guide', function() c.set_solo(true); d.open('Lua dialog guide') end)}); d.paged('Lua dialog guide', {{d.markdown('Page one')}, {d.markdown('Page two')}}); d.open('Lua dialog example')",
                         ),
                         kind: ScriptKind::User,
                         enabled: true,
