@@ -20,6 +20,12 @@ pub(crate) struct TinySynthFxEditor {
     #[cfg(test)]
     gain_rect: Option<egui::Rect>,
     #[cfg(test)]
+    vocoder_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    vocoder_mix_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    vocoder_sensitivity_rect: Option<egui::Rect>,
+    #[cfg(test)]
     reverb_rect: Option<egui::Rect>,
     #[cfg(test)]
     reverb_amount_rect: Option<egui::Rect>,
@@ -64,6 +70,12 @@ impl Default for TinySynthFxEditor {
             panic_rect: None,
             #[cfg(test)]
             gain_rect: None,
+            #[cfg(test)]
+            vocoder_rect: None,
+            #[cfg(test)]
+            vocoder_mix_rect: None,
+            #[cfg(test)]
+            vocoder_sensitivity_rect: None,
             #[cfg(test)]
             reverb_rect: None,
             #[cfg(test)]
@@ -197,6 +209,46 @@ impl TinySynthFxEditor {
                 if gain_response.changed() {
                     actions.push(TrackAction::TinySynthFx(
                         TinySynthFxControl::SetMasterGainDb(gain),
+                    ));
+                }
+
+                let mut vocoder_enabled = editor.vocoder_enabled;
+                let vocoder = ui.checkbox(&mut vocoder_enabled, "Vocoder");
+                #[cfg(test)]
+                {
+                    self.vocoder_rect = Some(vocoder.rect);
+                }
+                if vocoder.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetVocoderEnabled(vocoder_enabled),
+                    ));
+                }
+                let mut vocoder_mix = editor.vocoder_mix;
+                let vocoder_mix_response = ui.add_enabled(
+                    vocoder_enabled,
+                    egui::Slider::new(&mut vocoder_mix, 0.0..=1.0).text("Mix"),
+                );
+                #[cfg(test)]
+                {
+                    self.vocoder_mix_rect = Some(vocoder_mix_response.rect);
+                }
+                if vocoder_mix_response.changed() {
+                    actions.push(TrackAction::TinySynthFx(TinySynthFxControl::SetVocoderMix(
+                        vocoder_mix,
+                    )));
+                }
+                let mut vocoder_sensitivity = editor.vocoder_sensitivity;
+                let vocoder_sensitivity_response = ui.add_enabled(
+                    vocoder_enabled,
+                    egui::Slider::new(&mut vocoder_sensitivity, 0.0..=1.0).text("Sensitivity"),
+                );
+                #[cfg(test)]
+                {
+                    self.vocoder_sensitivity_rect = Some(vocoder_sensitivity_response.rect);
+                }
+                if vocoder_sensitivity_response.changed() {
+                    actions.push(TrackAction::TinySynthFx(
+                        TinySynthFxControl::SetVocoderSensitivity(vocoder_sensitivity),
                     ));
                 }
 
@@ -461,6 +513,21 @@ impl TinySynthFxEditor {
     }
 
     #[cfg(test)]
+    pub(crate) fn vocoder_rect(&self) -> Option<egui::Rect> {
+        self.vocoder_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn vocoder_mix_rect(&self) -> Option<egui::Rect> {
+        self.vocoder_mix_rect
+    }
+
+    #[cfg(test)]
+    pub(crate) fn vocoder_sensitivity_rect(&self) -> Option<egui::Rect> {
+        self.vocoder_sensitivity_rect
+    }
+
+    #[cfg(test)]
     pub(crate) fn reverb_rect(&self) -> Option<egui::Rect> {
         self.reverb_rect
     }
@@ -594,6 +661,9 @@ mod tests {
                 editor: Some(TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
                     selected_preset_id: Some("sine".to_owned()),
                     master_gain_db: -6.0,
+                    vocoder_enabled: false,
+                    vocoder_mix: 1.0,
+                    vocoder_sensitivity: 0.5,
                     reverb_enabled: false,
                     reverb_amount: 0.25,
                     distortion_enabled: false,
@@ -772,6 +842,8 @@ mod tests {
         crate::initialize(&context);
         let (mut state, processor) = fixture();
         let mut editor = TinySynthFxEditor::default();
+        assert!(TinySynthFxParameter::ALL.contains(&TinySynthFxParameter::VocoderMix));
+        assert!(TinySynthFxParameter::ALL.contains(&TinySynthFxParameter::VocoderSensitivity));
         frame(&context, &mut editor, &state, &processor, Vec::new());
 
         let open = editor.midi_learn_rect().unwrap().center();
@@ -805,20 +877,20 @@ mod tests {
                 controller: 19,
             },
             TinySynthFxMidiCcAssignment {
-                parameter: TinySynthFxParameter::EqHigh,
+                parameter: TinySynthFxParameter::VocoderSensitivity,
                 channel: 1,
                 controller: 74,
             },
         ]);
         frame(&context, &mut editor, &state, &processor, Vec::new());
         let remove = editor
-            .midi_remove_rect(TinySynthFxParameter::EqHigh)
+            .midi_remove_rect(TinySynthFxParameter::VocoderSensitivity)
             .unwrap()
             .center();
         assert_eq!(
             click(&context, &mut editor, &state, &processor, remove),
             [TrackAction::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
-                TinySynthFxParameter::EqHigh
+                TinySynthFxParameter::VocoderSensitivity
             ))]
         );
         let remove_all = editor.midi_remove_all_rect().unwrap().center();
@@ -877,6 +949,34 @@ mod tests {
                 "pluck".to_owned()
             ))]
         );
+
+        let vocoder = editor.vocoder_rect().unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, vocoder),
+            [TrackAction::TinySynthFx(
+                TinySynthFxControl::SetVocoderEnabled(true)
+            )]
+        );
+        state_mut(&mut state).vocoder_enabled = true;
+        let _ = frame(&context, &mut editor, &state, &processor, Vec::new());
+        for (rect, expected) in [
+            (editor.vocoder_mix_rect().unwrap(), "mix"),
+            (editor.vocoder_sensitivity_rect().unwrap(), "sensitivity"),
+        ] {
+            let actions = click(
+                &context,
+                &mut editor,
+                &state,
+                &processor,
+                egui::pos2(rect.left() + 8.0, rect.center().y),
+            );
+            assert!(matches!(
+                (expected, actions.as_slice()),
+                ("mix", [TrackAction::TinySynthFx(TinySynthFxControl::SetVocoderMix(value))])
+                    | ("sensitivity", [TrackAction::TinySynthFx(TinySynthFxControl::SetVocoderSensitivity(value))])
+                    if (0.0..=1.0).contains(value)
+            ));
+        }
 
         let reverb = editor.reverb_rect().unwrap().center();
         assert_eq!(
