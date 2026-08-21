@@ -24,6 +24,7 @@ pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
     SettingKey::new("tracks.new.default_audio_channels");
 pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
 pub const UI_SCALE_FACTOR: SettingKey<f64> = SettingKey::new("appearance.ui_scale_factor");
+pub const TOUCH_MODE: SettingKey<bool> = SettingKey::new("appearance.touch_mode");
 pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.keyboard.enabled");
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
@@ -60,6 +61,14 @@ pub fn register_settings(
 pub fn register_settings_with_ui_scale_default(
     builder: &mut SettingsRegistryBuilder,
     ui_scale_default: f64,
+) -> Result<(), SettingsRegistryError> {
+    register_settings_with_appearance_defaults(builder, ui_scale_default, false)
+}
+
+pub fn register_settings_with_appearance_defaults(
+    builder: &mut SettingsRegistryBuilder,
+    ui_scale_default: f64,
+    touch_mode_default: bool,
 ) -> Result<(), SettingsRegistryError> {
     builder.register(
         SettingDefinition::new(
@@ -100,6 +109,18 @@ pub fn register_settings_with_ui_scale_default(
             min: 0.75,
             max: 2.0,
         }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            TOUCH_MODE,
+            touch_mode_default,
+            "Appearance",
+            "Touch mode",
+            "Always show direct loop controls and disable hover-only loop actions.",
+        )
+        .category_order(2)
+        .setting_order(20)
+        .effect(SettingEffect::Immediate),
     )
 }
 
@@ -768,6 +789,8 @@ impl AppWidget {
         .map(AppAction::KeyEvent)
         .collect::<Vec<_>>();
         let mut settings_actions = Vec::new();
+        let touch_mode = settings_state.active.get(TOUCH_MODE).unwrap_or(false);
+        crate::loop_widget::set_touch_mode(ui.ctx(), touch_mode);
 
         egui::Panel::top("global_controls")
             .frame(
@@ -2115,6 +2138,16 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn bottom_panel_starts_closed() {
         assert_eq!(AppWidget::default().bottom_pane, None);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn appearance_defaults_include_detected_touch_mode() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings_with_appearance_defaults(&mut builder, 1.25, true).unwrap();
+        let registry = builder.finish();
+        let defaults = registry.defaults(1);
+        assert_eq!(defaults.get(UI_SCALE_FACTOR).unwrap(), 1.25);
+        assert!(defaults.get(TOUCH_MODE).unwrap());
     }
 
     #[shoop_wasm_test_support::shoop_test]

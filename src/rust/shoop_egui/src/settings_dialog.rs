@@ -19,7 +19,7 @@ use shoop_settings::{
 use crate::{
     audio_driver_config_from_draft, colors, AppAction, AudioDriverKind, AudioDriverRuntimeState,
     ScriptId, ScriptKind, ScriptLifecycle, ScriptLogLevel, ScriptState, ScriptingState,
-    BUILTINS_LOCATION, BUILTIN_SCRIPTS, UI_SCALE_FACTOR, USER_SCRIPTS,
+    BUILTINS_LOCATION, BUILTIN_SCRIPTS, TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -545,6 +545,38 @@ impl SettingsDialog {
             self.setting_card_rects.clear();
             self.setting_card_rects.push(_card.response.rect);
         }
+        let Some(definition) = self.registry.definition(TOUCH_MODE.id()).cloned() else {
+            ui.colored_label(colors::ERROR, "Touch mode setting is unavailable");
+            return;
+        };
+        let card = egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(8));
+        let margin = card.total_margin();
+        let card_width = (ui.available_width() - margin.left - margin.right).max(0.0);
+        let _card = card.show(ui, |ui| {
+            ui.set_width(card_width);
+            ui.horizontal(|ui| {
+                ui.strong(definition.label());
+                if ui.small_button("Reset").clicked() {
+                    if let Some(draft) = &mut self.draft {
+                        draft.reset(&definition);
+                    }
+                }
+            });
+            ui.label(definition.help());
+            ui.weak(definition.effect().label());
+            let Some(draft) = &mut self.draft else {
+                return;
+            };
+            let Ok(mut enabled) = draft.get(TOUCH_MODE) else {
+                ui.colored_label(colors::ERROR, "Missing touch mode draft value");
+                return;
+            };
+            if ui.checkbox(&mut enabled, definition.label()).changed() {
+                draft.set(TOUCH_MODE, enabled);
+            }
+        });
+        #[cfg(test)]
+        self.setting_card_rects.push(_card.response.rect);
     }
 
     fn apply_appearance(&self, context: &egui::Context) {
