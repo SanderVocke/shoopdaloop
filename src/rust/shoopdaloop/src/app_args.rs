@@ -82,11 +82,13 @@ pub fn parse_web_query(query: &str) -> Result<AppArgs, clap::Error> {
     {
         let (raw_name, raw_value) = pair.split_once('=').unwrap_or((pair, ""));
         let name = decode_query_component(raw_name).map_err(clap::Error::new)?;
-        let value = decode_query_component(raw_value).map_err(clap::Error::new)?;
-        let argument = command
+        let Some(argument) = command
             .get_arguments()
             .find(|argument| argument.get_long() == Some(name.as_str()))
-            .ok_or_else(|| clap::Error::new(clap::error::ErrorKind::UnknownArgument))?;
+        else {
+            continue;
+        };
+        let value = decode_query_component(raw_value).map_err(clap::Error::new)?;
         if argument.get_action().takes_values() {
             argv.push(format!("--{name}={value}"));
         } else {
@@ -144,6 +146,11 @@ mod native_tests {
             Some("https://example.com/demo.shoop")
         );
     }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn cli_rejects_unknown_arguments() {
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--unknown=1"]).is_err());
+    }
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -167,11 +174,13 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn web_query_decodes_and_validates_exactly() {
-        let args = parse_web_query("?settings%2Dtest=save%2Dfailure&worker=false").unwrap();
+    fn web_query_ignores_unknown_arguments_and_validates_known_arguments() {
+        let args = parse_web_query(
+            "?settings%2Dtest=save%2Dfailure&worker=false&unknown=1&cache-bust=%ZZ",
+        )
+        .unwrap();
         assert_eq!(args.settings_test, Some(SettingsTest::SaveFailure));
         assert!(!args.worker);
-        assert!(parse_web_query("?unknown=1").is_err());
         assert!(parse_web_query("?offline=maybe").is_err());
         assert!(parse_web_query("?settings-test=write&settings-test=verify").is_err());
     }
