@@ -431,6 +431,22 @@ impl WorkletHost {
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
+            Command::SetLoopTiming {
+                loop_id,
+                start_offset,
+                preplay,
+                length,
+            } => {
+                self.backend
+                    .set_loop_timing(
+                        BackendLoopId::from_raw(loop_id),
+                        start_offset,
+                        preplay,
+                        length,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::BeginLoopContentReplace {
                 generation,
                 loop_id,
@@ -526,6 +542,8 @@ impl WorkletHost {
                     channel_count: chunk.channel_count,
                     offset: chunk.offset,
                     total_samples: chunk.total_samples,
+                    start_offset: chunk.start_offset,
+                    preplay: chunk.preplay,
                     final_chunk: chunk.offset.saturating_add(chunk.samples.len())
                         >= chunk.total_samples,
                     samples: chunk.samples,
@@ -2655,6 +2673,49 @@ mod tests {
             vec![0.5; 1024]
         );
         assert_eq!(captured.tracks[0].loops[0].midi[0].events[0].time, 512);
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::SetLoopTiming {
+                    loop_id: 1,
+                    start_offset: Some(-16),
+                    preplay: Some(32),
+                    length: Some(1536),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        let edited = host.backend.capture_session().unwrap();
+        assert_eq!(edited.tracks[0].loops[0].length, 1536);
+        assert!(edited.tracks[0].loops[0]
+            .audio
+            .iter()
+            .all(|channel| channel.start_offset == -16 && channel.preplay == 32));
+        assert!(edited.tracks[0].loops[0]
+            .midi
+            .iter()
+            .all(|channel| channel.start_offset == -16 && channel.preplay == 32));
+        let Event::Waveform(chunk) = command(
+            &mut host,
+            sequence,
+            Command::RequestWaveform {
+                loop_id: 1,
+                revision: 4,
+                channel: 0,
+                offset: 0,
+                max_samples: 2,
+            },
+        )
+        .event
+        else {
+            panic!("expected waveform chunk")
+        };
+        assert_eq!(chunk.start_offset, -16);
+        assert_eq!(chunk.preplay, 32);
+        sequence += 1;
         assert!(matches!(
             command(
                 &mut host,

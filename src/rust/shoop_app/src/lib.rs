@@ -30,7 +30,7 @@ use shoop_app_api::{
     TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
-    Backend, BackendAsyncResult, BackendAudioChannelUpdate, BackendAudioContent,
+    Backend, BackendAsyncResult, BackendAudioChannelUpdate, BackendAudioContent, BackendAudioData,
     BackendChannelMode, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
     BackendCompositeKind, BackendCompositeTarget, BackendConnectionSnapshot, BackendGrabRequest,
     BackendLoopContent, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
@@ -871,7 +871,7 @@ struct LoopModel {
     state: LoopState,
     length: u32,
     position: u32,
-    audio_data: Option<Vec<Arc<[f32]>>>,
+    audio_data: Option<BackendAudioData>,
     midi_data: Option<Vec<MidiSequenceChannelState>>,
     script_composition: Vec<Vec<LoopId>>,
     composite: Option<CompositeDocument>,
@@ -957,6 +957,7 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
                     })
                     .collect(),
                 start_offset: i64::from(channel.start_offset),
+                preplay_samples: u64::from(channel.preplay),
                 loop_length: u64::from(model.length),
                 played_sample: matches!(
                     model.state.mode,
@@ -1289,6 +1290,14 @@ impl ApplicationModel {
         );
         let _entered = span.enter();
         let result = match intent {
+            AppIntent::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            } => {
+                self.set_loop_timeline(backend, loop_id, start_offset, preplay_samples, loop_length)
+            }
             AppIntent::Loop {
                 track_id,
                 loop_id,
@@ -1474,6 +1483,66 @@ impl ApplicationModel {
         } else {
             span.record("outcome", "ok");
         }
+    }
+
+    fn set_loop_timeline(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        start_offset: Option<i64>,
+        preplay_samples: Option<u64>,
+        loop_length: Option<u64>,
+    ) -> Result<(), String> {
+        let backend_id = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?
+            .backend_id;
+        let start_offset = start_offset
+            .map(i32::try_from)
+            .transpose()
+            .map_err(|_| "loop start is outside the supported frame range".to_owned())?;
+        let preplay = preplay_samples
+            .map(u32::try_from)
+            .transpose()
+            .map_err(|_| "preplay is outside the supported frame range".to_owned())?;
+        let length = loop_length
+            .map(u32::try_from)
+            .transpose()
+            .map_err(|_| "loop length is outside the supported frame range".to_owned())?;
+        backend
+            .set_loop_timing(backend_id, start_offset, preplay, length)
+            .map_err(|error| format!("could not update loop timing: {error}"))?;
+
+        let model = self.loops.get_mut(&loop_id).expect("loop was checked");
+        if let Some(length) = length {
+            model.length = length;
+        }
+        if let Some(channels) = model.audio_data.as_mut() {
+            for channel in &mut channels.channels {
+                if let Some(offset) = start_offset {
+                    channel.start_offset = offset;
+                }
+                if let Some(samples) = preplay {
+                    channel.preplay = samples;
+                }
+            }
+        }
+        if let Some(channels) = model.midi_data.as_mut() {
+            for channel in channels {
+                if let Some(offset) = start_offset {
+                    channel.start_offset = i64::from(offset);
+                }
+                if let Some(samples) = preplay {
+                    channel.preplay_samples = u64::from(samples);
+                }
+                if let Some(length) = length {
+                    channel.loop_length = u64::from(length);
+                }
+            }
+        }
+        self.revision = self.revision.saturating_add(1);
+        Ok(())
     }
 
     fn handle_piano_action(
@@ -5654,13 +5723,13 @@ impl ApplicationModel {
         if needs_audio {
             if *has_audio {
                 let data = backend
-                    .loop_audio_data(*backend_id)
+                    .loop_audio_data_with_metadata(*backend_id)
                     .map_err(|error| format!("could not fetch selected loop audio: {error}"))?;
                 if let (Some(model), Some(data)) = (self.loops.get_mut(id), data) {
                     model.audio_data = Some(data);
                 }
             } else if let Some(model) = self.loops.get_mut(id) {
-                model.audio_data = Some(Vec::new());
+                model.audio_data = Some(BackendAudioData::default());
             }
         }
         if needs_midi {
@@ -7833,16 +7902,18 @@ impl ApplicationModel {
             .as_ref()
             .map(|channels| {
                 channels
+                    .channels
                     .iter()
                     .enumerate()
-                    .map(|(index, samples)| WaveformChannelState {
+                    .map(|(index, channel)| WaveformChannelState {
                         id: ChannelId::from_raw((model.id.raw() << 8) | index as u64 + 1),
                         label: labels
                             .get(index)
                             .cloned()
                             .unwrap_or_else(|| format!("Audio {}", index + 1)),
-                        samples: Arc::clone(samples),
-                        start_offset: 0,
+                        samples: Arc::clone(&channel.samples),
+                        start_offset: i64::from(channel.start_offset),
+                        preplay_samples: u64::from(channel.preplay),
                         loop_length: model.length as u64,
                         played_sample: matches!(model.state.mode, LoopMode::Playing)
                             .then_some(model.position as i64),
@@ -7886,6 +7957,7 @@ impl ApplicationModel {
             channels,
             midi_loading: composite.is_none() && model.state.has_midi && model.midi_data.is_none(),
             midi_channels,
+            sync_loop_length: u64::from(self.sync_length()),
             composite,
         })
     }
@@ -12201,7 +12273,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         {
             let model = model.loops.get_mut(&target).unwrap();
             model.length = 480;
-            model.audio_data = Some(vec![Arc::from([0.25, -0.25])]);
+            model.audio_data = Some(BackendAudioData {
+                channels: vec![shoop_backend::BackendAudioChannelData {
+                    samples: Arc::from([0.25, -0.25]),
+                    ..Default::default()
+                }],
+            });
             model.state.empty = false;
             model.state.selected = false;
         }
@@ -14716,6 +14793,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(details.midi_channels.len(), 1);
         let channel = &details.midi_channels[0];
         assert_eq!(channel.start_offset, -3);
+        assert_eq!(channel.preplay_samples, 4);
         assert_eq!(channel.loop_length, 24);
         assert_eq!(channel.events.len(), 2);
         assert_eq!(channel.events[0].data.as_ref(), [0x90, 67, 99]);
@@ -14726,6 +14804,19 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             2
         );
         let original_events = Arc::clone(&channel.events);
+        model.handle_intent(
+            &mut backend,
+            AppIntent::SetLoopTimeline {
+                loop_id,
+                start_offset: Some(-8),
+                preplay_samples: Some(6),
+                loop_length: Some(30),
+            },
+        );
+        let edited = model.details_snapshot().unwrap();
+        assert_eq!(edited.midi_channels[0].start_offset, -8);
+        assert_eq!(edited.midi_channels[0].preplay_samples, 6);
+        assert_eq!(edited.midi_channels[0].loop_length, 30);
         model
             .apply_script_operation(
                 &mut backend,

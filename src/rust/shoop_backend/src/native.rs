@@ -2275,6 +2275,30 @@ impl Backend for NativeBackend {
         ))
     }
 
+    fn loop_audio_data_with_metadata(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<Option<BackendAudioData>> {
+        let runtime = self.runtime()?;
+        let loop_ = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        let channels = loop_
+            .audio
+            .iter()
+            .map(|channel| {
+                let state = channel.get_state()?;
+                Ok(BackendAudioChannelData {
+                    samples: Arc::from(channel.get_data()),
+                    start_offset: state.start_offset,
+                    preplay: state.n_preplay_samples,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Some(BackendAudioData { channels }))
+    }
+
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
         let runtime = self.runtime()?;
         let loop_ = runtime
@@ -2496,6 +2520,46 @@ impl Backend for NativeBackend {
         runtime
             .session
             .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        Ok(())
+    }
+
+    fn set_loop_timing(
+        &mut self,
+        loop_id: BackendLoopId,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
+    ) -> Result<()> {
+        let runtime = self.runtime_mut()?;
+        let target = runtime
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        let mut sequences = Vec::new();
+        for channel in &target.audio {
+            if let Some(offset) = start_offset {
+                sequences.push(channel.set_start_offset(offset)?);
+            }
+            if let Some(samples) = preplay {
+                sequences.push(channel.set_n_preplay_samples(samples)?);
+            }
+        }
+        for channel in &target.midi {
+            if let Some(offset) = start_offset {
+                sequences.push(channel.set_start_offset(offset)?);
+            }
+            if let Some(samples) = preplay {
+                sequences.push(channel.set_n_preplay_samples(samples)?);
+            }
+        }
+        if let Some(length) = length {
+            sequences.push(target.handle.set_length(length)?);
+        }
+        for sequence in sequences {
+            runtime
+                .session
+                .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        }
         Ok(())
     }
 
@@ -3314,6 +3378,35 @@ mod tests {
         assert_eq!(midi_details.channels[0].preplay, 4);
         assert_eq!(midi_details.channels[0].events[0].data, [0x90, 64, 127]);
         assert!(midi_details.channels[0].content_revision > 0);
+
+        let audio_details = backend
+            .loop_audio_data_with_metadata(target)
+            .unwrap()
+            .unwrap();
+        assert_eq!(audio_details.channels.len(), 2);
+        assert_eq!(
+            audio_details.channels[0].samples.as_ref(),
+            [1.0, 2.0, 3.0, 4.0]
+        );
+        assert_eq!(audio_details.channels[0].start_offset, -1);
+        assert_eq!(audio_details.channels[0].preplay, 2);
+        backend
+            .set_loop_timing(target, Some(-8), Some(9), Some(12))
+            .unwrap();
+        let edited_audio = backend
+            .loop_audio_data_with_metadata(target)
+            .unwrap()
+            .unwrap();
+        assert!(edited_audio
+            .channels
+            .iter()
+            .all(|channel| channel.start_offset == -8 && channel.preplay == 9));
+        let edited_midi = backend.loop_midi_data(target).unwrap().unwrap();
+        assert!(edited_midi
+            .channels
+            .iter()
+            .all(|channel| channel.start_offset == -8 && channel.preplay == 9));
+        assert_eq!(backend.poll().unwrap().loops[&target].length, 12);
 
         let captured = backend.capture_session().unwrap();
         assert_eq!(
