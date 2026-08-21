@@ -1780,6 +1780,26 @@ async fn fetch_browser_bytes(url: &str, max_bytes: u64) -> Result<Vec<u8>, Strin
     use wasm_bindgen::JsCast as _;
     use wasm_bindgen_futures::JsFuture;
 
+    let embedded = js_sys::Reflect::get(
+        &js_sys::global(),
+        &wasm_bindgen::JsValue::from_str("shoopEmbeddedBuiltins"),
+    )
+    .map_err(|error| format!("could not inspect embedded built-ins: {error:?}"))?;
+    if !embedded.is_undefined() {
+        let value = js_sys::Reflect::get(&embedded, &wasm_bindgen::JsValue::from_str(url))
+            .map_err(|error| format!("could not inspect embedded built-in {url}: {error:?}"))?;
+        if !value.is_undefined() {
+            let bytes = js_sys::Uint8Array::new(&value);
+            if bytes.length() as u64 > max_bytes {
+                return Err(format!(
+                    "embedded built-in {url} is {} bytes; limit is {max_bytes}",
+                    bytes.length()
+                ));
+            }
+            return Ok(bytes.to_vec());
+        }
+    }
+
     let window = web_sys::window().ok_or_else(|| "browser window is unavailable".to_owned())?;
     let response = JsFuture::from(window.fetch_with_str(url))
         .await
