@@ -431,6 +431,22 @@ impl WorkletHost {
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
+            Command::SetLoopTiming {
+                loop_id,
+                start_offset,
+                preplay,
+                length,
+            } => {
+                self.backend
+                    .set_loop_timing(
+                        BackendLoopId::from_raw(loop_id),
+                        start_offset,
+                        preplay,
+                        length,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::BeginLoopContentReplace {
                 generation,
                 loop_id,
@@ -526,6 +542,8 @@ impl WorkletHost {
                     channel_count: chunk.channel_count,
                     offset: chunk.offset,
                     total_samples: chunk.total_samples,
+                    start_offset: chunk.start_offset,
+                    preplay: chunk.preplay,
                     final_chunk: chunk.offset.saturating_add(chunk.samples.len())
                         >= chunk.total_samples,
                     samples: chunk.samples,

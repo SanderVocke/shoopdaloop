@@ -33,18 +33,18 @@ use shoop_audio_protocol::{
 };
 use shoop_backend::{
     encode_tiny_synth_fx_state, tiny_synth_fx_descriptor, Backend, BackendActiveCompositeChild,
-    BackendAsyncResult, BackendChannelMode, BackendCompositeConfig, BackendCompositeId,
-    BackendCompositeKind, BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink,
-    BackendConnectionFailure, BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
-    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMutationDetail,
-    BackendMutationFailure, BackendMutationKind, BackendOperationKind, BackendOperationProgress,
-    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionReplacement,
-    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
-    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
-    DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
-    TrackProcessorTypeId, TrackRequest,
+    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
+    BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
+    BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
+    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
+    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
+    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
+    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
+    BackendTrackTopology, DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment,
+    TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -52,6 +52,7 @@ use crate::transport::{transport_pair, TransportCore};
 struct WaveformAssembly {
     revision: u64,
     channels: Vec<Vec<f32>>,
+    timing: Vec<(i32, u32)>,
     next_channel: usize,
     next_offset: usize,
     complete: bool,
@@ -338,9 +339,13 @@ impl RemoteWorkletBackend {
         assembly.in_flight = false;
         if assembly.channels.len() < chunk.channel_count {
             assembly.channels.resize_with(chunk.channel_count, Vec::new);
+            assembly.timing.resize(chunk.channel_count, (0, 0));
         }
         if let Some(channel) = assembly.channels.get_mut(chunk.channel) {
             channel.extend_from_slice(&chunk.samples);
+        }
+        if let Some(timing) = assembly.timing.get_mut(chunk.channel) {
+            *timing = (chunk.start_offset, chunk.preplay);
         }
         if chunk.final_chunk {
             assembly.next_channel += 1;
@@ -1120,7 +1125,8 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::SetLoopSyncSource { loop_id, .. }
         | Command::TransitionLoop { loop_id, .. }
         | Command::ClearLoop { loop_id }
-        | Command::SetLoopLength { loop_id, .. } => {
+        | Command::SetLoopLength { loop_id, .. }
+        | Command::SetLoopTiming { loop_id, .. } => {
             (BackendMutationKind::LoopControl, Some(*loop_id))
         }
         Command::GrabLoops { requests } => (
@@ -1722,6 +1728,7 @@ impl Backend for RemoteWorkletBackend {
             WaveformAssembly {
                 revision: *revision,
                 channels: Vec::new(),
+                timing: Vec::new(),
                 next_channel: 0,
                 next_offset: 0,
                 complete: false,
@@ -1730,6 +1737,34 @@ impl Backend for RemoteWorkletBackend {
         );
         self.request_waveform_chunk(loop_id)?;
         Ok(None)
+    }
+
+    fn loop_audio_data_with_metadata(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<Option<BackendAudioData>> {
+        let Some(channels) = self.loop_audio_data(loop_id)? else {
+            return Ok(None);
+        };
+        let timing = &self
+            .waveforms
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing completed waveform assembly"))?
+            .timing;
+        Ok(Some(BackendAudioData {
+            channels: channels
+                .into_iter()
+                .enumerate()
+                .map(|(index, samples)| {
+                    let (start_offset, preplay) = timing.get(index).copied().unwrap_or_default();
+                    BackendAudioChannelData {
+                        samples,
+                        start_offset,
+                        preplay,
+                    }
+                })
+                .collect(),
+        }))
     }
 
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
@@ -1864,6 +1899,45 @@ impl Backend for RemoteWorkletBackend {
             loop_id: loop_id.raw(),
             length,
         })
+    }
+
+    fn set_loop_timing(
+        &mut self,
+        loop_id: BackendLoopId,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
+    ) -> Result<()> {
+        self.submit(Command::SetLoopTiming {
+            loop_id: loop_id.raw(),
+            start_offset,
+            preplay,
+            length,
+        })?;
+        if let Some(assembly) = self.waveforms.get_mut(&loop_id) {
+            for timing in &mut assembly.timing {
+                if let Some(offset) = start_offset {
+                    timing.0 = offset;
+                }
+                if let Some(samples) = preplay {
+                    timing.1 = samples;
+                }
+            }
+        }
+        if let Some(assembly) = self.midi_data.get_mut(&loop_id) {
+            for channel in &mut assembly.channels {
+                if let Some(offset) = start_offset {
+                    channel.start_offset = offset;
+                }
+                if let Some(samples) = preplay {
+                    channel.preplay = samples;
+                }
+                if let Some(length) = length {
+                    channel.length = length;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {

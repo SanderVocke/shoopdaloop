@@ -871,6 +871,7 @@ pub struct WaveformChannelState {
     pub label: String,
     pub samples: Arc<[f32]>,
     pub start_offset: i64,
+    pub preplay_samples: u64,
     pub loop_length: u64,
     pub played_sample: Option<i64>,
 }
@@ -882,6 +883,7 @@ impl Default for WaveformChannelState {
             label: String::new(),
             samples: Arc::from([]),
             start_offset: 0,
+            preplay_samples: 0,
             loop_length: 0,
             played_sample: None,
         }
@@ -901,6 +903,7 @@ pub struct MidiSequenceChannelState {
     pub content_revision: u64,
     pub events: Arc<[MidiEventState]>,
     pub start_offset: i64,
+    pub preplay_samples: u64,
     pub loop_length: u64,
     pub played_sample: Option<i64>,
 }
@@ -913,6 +916,7 @@ impl Default for MidiSequenceChannelState {
             content_revision: 0,
             events: Arc::from([]),
             start_offset: 0,
+            preplay_samples: 0,
             loop_length: 0,
             played_sample: None,
         }
@@ -966,7 +970,15 @@ pub struct LoopDetailsState {
     pub channels: Vec<WaveformChannelState>,
     pub midi_loading: bool,
     pub midi_channels: Vec<MidiSequenceChannelState>,
+    pub sync_loop_length: u64,
     pub composite: Option<CompositeDetailsState>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TimelineEditTool {
+    LoopStart,
+    PreplayStart,
+    LoopEnd,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1572,6 +1584,12 @@ pub enum PianoAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
+    SetLoopTimeline {
+        loop_id: LoopId,
+        start_offset: Option<i64>,
+        preplay_samples: Option<u64>,
+        loop_length: Option<u64>,
+    },
     Loop {
         track_id: TrackId,
         loop_id: LoopId,
@@ -1868,6 +1886,7 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetLoopTimeline { .. } => "loop.timeline",
             Self::Loop { action, .. } => action.kind(),
             Self::Track { action, .. } => action.kind(),
             Self::Global(action) => action.kind(),

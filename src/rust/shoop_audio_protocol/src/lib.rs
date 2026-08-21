@@ -119,6 +119,12 @@ pub enum Command {
         loop_id: u64,
         length: u32,
     },
+    SetLoopTiming {
+        loop_id: u64,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
+    },
     BeginLoopContentReplace {
         generation: u64,
         loop_id: u64,
@@ -264,6 +270,16 @@ impl Command {
                     ..
                 },
                 Self::SetLoopLength {
+                    loop_id: replacement_loop,
+                    ..
+                },
+            ) => existing_loop == replacement_loop,
+            (
+                Self::SetLoopTiming {
+                    loop_id: existing_loop,
+                    ..
+                },
+                Self::SetLoopTiming {
                     loop_id: replacement_loop,
                     ..
                 },
@@ -679,6 +695,8 @@ pub struct WaveformChunk {
     pub channel_count: usize,
     pub offset: usize,
     pub total_samples: usize,
+    pub start_offset: i32,
+    pub preplay: u32,
     pub final_chunk: bool,
     pub samples: Vec<f32>,
 }

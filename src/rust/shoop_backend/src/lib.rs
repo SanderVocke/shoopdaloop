@@ -506,6 +506,18 @@ pub struct BackendAudioContent {
     pub preplay: u32,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BackendAudioChannelData {
+    pub samples: Arc<[f32]>,
+    pub start_offset: i32,
+    pub preplay: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BackendAudioData {
+    pub channels: Vec<BackendAudioChannelData>,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendLatestMidiMessage {
     pub bytes: [u8; 4],
@@ -650,6 +662,8 @@ pub struct BackendAudioDataChunk {
     pub channel_count: usize,
     pub offset: usize,
     pub total_samples: usize,
+    pub start_offset: i32,
+    pub preplay: u32,
     pub samples: Vec<f32>,
 }
 
@@ -831,6 +845,22 @@ pub trait Backend {
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()>;
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>>;
+    fn loop_audio_data_with_metadata(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<Option<BackendAudioData>> {
+        Ok(self
+            .loop_audio_data(loop_id)?
+            .map(|channels| BackendAudioData {
+                channels: channels
+                    .into_iter()
+                    .map(|samples| BackendAudioChannelData {
+                        samples,
+                        ..Default::default()
+                    })
+                    .collect(),
+            }))
+    }
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>>;
     fn loop_audio_data_chunk(
         &mut self,
@@ -851,6 +881,8 @@ pub trait Backend {
             channel_count: channels.len(),
             offset,
             total_samples: samples.len(),
+            start_offset: 0,
+            preplay: 0,
             samples: if offset < end {
                 samples[offset..end].to_vec()
             } else {
@@ -891,6 +923,15 @@ pub trait Backend {
     }
     fn set_loop_length(&mut self, _loop_id: BackendLoopId, _length: u32) -> Result<()> {
         Err(anyhow!("targeted loop length updates are unavailable"))
+    }
+    fn set_loop_timing(
+        &mut self,
+        _loop_id: BackendLoopId,
+        _start_offset: Option<i32>,
+        _preplay: Option<u32>,
+        _length: Option<u32>,
+    ) -> Result<()> {
+        Err(anyhow!("targeted loop timing updates are unavailable"))
     }
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         Err(anyhow!("session capture is unavailable"))
@@ -4001,6 +4042,32 @@ impl Backend for EngineBackend {
             .map(Some)
     }
 
+    fn loop_audio_data_with_metadata(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<Option<BackendAudioData>> {
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
+        let channels = channels
+            .audio
+            .iter()
+            .map(|index| {
+                let channel = self
+                    .session
+                    .audio_channel(*index)
+                    .ok_or_else(|| anyhow!("missing audio loop channel"))?;
+                Ok(BackendAudioChannelData {
+                    samples: Arc::from(channel.data()),
+                    start_offset: channel.start_offset(),
+                    preplay: channel.pre_play_samples(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Some(BackendAudioData { channels }))
+    }
+
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
         let channels = self
             .loop_channels
@@ -4071,6 +4138,8 @@ impl Backend for EngineBackend {
             channel_count,
             offset,
             total_samples,
+            start_offset: channel_ref.start_offset(),
+            preplay: channel_ref.pre_play_samples(),
             samples,
         })
     }
@@ -4252,6 +4321,47 @@ impl Backend for EngineBackend {
             .loop_mut(engine_loop)
             .ok_or_else(|| anyhow!("missing engine loop"))?
             .set_length(length);
+        Ok(())
+    }
+
+    fn set_loop_timing(
+        &mut self,
+        loop_id: BackendLoopId,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
+    ) -> Result<()> {
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
+        for index in &channels.audio {
+            let channel = self
+                .session
+                .audio_channel_mut(*index)
+                .ok_or_else(|| anyhow!("missing audio loop channel"))?;
+            if let Some(offset) = start_offset {
+                channel.set_start_offset(offset);
+            }
+            if let Some(samples) = preplay {
+                channel.set_pre_play_samples(samples);
+            }
+        }
+        for index in &channels.midi {
+            let channel = self
+                .session
+                .midi_channel_mut(*index)
+                .ok_or_else(|| anyhow!("missing MIDI loop channel"))?;
+            if let Some(offset) = start_offset {
+                channel.set_start_offset(offset);
+            }
+            if let Some(samples) = preplay {
+                channel.set_pre_play_samples(samples);
+            }
+        }
+        if let Some(length) = length {
+            self.set_loop_length(loop_id, length)?;
+        }
         Ok(())
     }
 
@@ -4703,6 +4813,13 @@ impl Backend for LocalDummyBackend {
         self.runtime.loop_audio_data(loop_id)
     }
 
+    fn loop_audio_data_with_metadata(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<Option<BackendAudioData>> {
+        self.runtime.loop_audio_data_with_metadata(loop_id)
+    }
+
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
         self.runtime.loop_midi_data(loop_id)
     }
@@ -4760,6 +4877,17 @@ impl Backend for LocalDummyBackend {
 
     fn set_loop_length(&mut self, loop_id: BackendLoopId, length: u32) -> Result<()> {
         self.runtime.set_loop_length(loop_id, length)
+    }
+
+    fn set_loop_timing(
+        &mut self,
+        loop_id: BackendLoopId,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
+    ) -> Result<()> {
+        self.runtime
+            .set_loop_timing(loop_id, start_offset, preplay, length)
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
@@ -6168,6 +6296,26 @@ impl Backend for FakeBackend {
         ))
     }
 
+    fn loop_audio_data_with_metadata(
+        &mut self,
+        loop_id: BackendLoopId,
+    ) -> Result<Option<BackendAudioData>> {
+        self.require_loop(loop_id)?;
+        let channels = self
+            .loop_content
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?
+            .audio
+            .iter()
+            .map(|channel| BackendAudioChannelData {
+                samples: Arc::from(channel.samples.clone()),
+                start_offset: channel.start_offset,
+                preplay: channel.preplay,
+            })
+            .collect();
+        Ok(Some(BackendAudioData { channels }))
+    }
+
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
         self.require_loop(loop_id)?;
         let channels = self
@@ -6403,6 +6551,40 @@ impl Backend for FakeBackend {
             .length = length;
         self.operations
             .push(FakeOperation::SetLoopLength(loop_id, length));
+        Ok(())
+    }
+
+    fn set_loop_timing(
+        &mut self,
+        loop_id: BackendLoopId,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
+    ) -> Result<()> {
+        self.require_loop(loop_id)?;
+        let content = self
+            .loop_content
+            .get_mut(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?;
+        for channel in &mut content.audio {
+            if let Some(offset) = start_offset {
+                channel.start_offset = offset;
+            }
+            if let Some(samples) = preplay {
+                channel.preplay = samples;
+            }
+        }
+        for channel in &mut content.midi {
+            if let Some(offset) = start_offset {
+                channel.start_offset = offset;
+            }
+            if let Some(samples) = preplay {
+                channel.preplay = samples;
+            }
+        }
+        if let Some(length) = length {
+            self.set_loop_length(loop_id, length)?;
+        }
         Ok(())
     }
 
@@ -7347,6 +7529,26 @@ mod tests {
         assert_eq!(retained_content.audio[1].start_offset, -2);
         assert_eq!(retained_content.audio[1].preplay, 5);
         assert_eq!(retained_content.midi[0].events[0].time, 2);
+
+        backend
+            .set_loop_timing(target, Some(-7), Some(12), Some(9))
+            .unwrap();
+        let edited = backend.capture_session().unwrap();
+        let edited_content = edited
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == target.raw())
+            .unwrap();
+        assert_eq!(edited_content.length, 9);
+        assert!(edited_content
+            .audio
+            .iter()
+            .all(|channel| channel.start_offset == -7 && channel.preplay == 12));
+        assert!(edited_content
+            .midi
+            .iter()
+            .all(|channel| channel.start_offset == -7 && channel.preplay == 12));
 
         backend
             .transition_loop(sync, BackendLoopMode::Recording, None)
