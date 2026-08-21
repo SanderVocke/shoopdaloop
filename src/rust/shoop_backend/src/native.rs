@@ -3379,6 +3379,35 @@ mod tests {
         assert_eq!(midi_details.channels[0].events[0].data, [0x90, 64, 127]);
         assert!(midi_details.channels[0].content_revision > 0);
 
+        let audio_details = backend
+            .loop_audio_data_with_metadata(target)
+            .unwrap()
+            .unwrap();
+        assert_eq!(audio_details.channels.len(), 2);
+        assert_eq!(
+            audio_details.channels[0].samples.as_ref(),
+            [1.0, 2.0, 3.0, 4.0]
+        );
+        assert_eq!(audio_details.channels[0].start_offset, -1);
+        assert_eq!(audio_details.channels[0].preplay, 2);
+        backend
+            .set_loop_timing(target, Some(-8), Some(9), Some(12))
+            .unwrap();
+        let edited_audio = backend
+            .loop_audio_data_with_metadata(target)
+            .unwrap()
+            .unwrap();
+        assert!(edited_audio
+            .channels
+            .iter()
+            .all(|channel| channel.start_offset == -8 && channel.preplay == 9));
+        let edited_midi = backend.loop_midi_data(target).unwrap().unwrap();
+        assert!(edited_midi
+            .channels
+            .iter()
+            .all(|channel| channel.start_offset == -8 && channel.preplay == 9));
+        assert_eq!(backend.poll().unwrap().loops[&target].length, 12);
+
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].loops[1].audio[0].samples,

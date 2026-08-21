@@ -2610,6 +2610,115 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn waveform_timing_is_assembled_edited_and_replayed_without_losing_partial_updates() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.midi_revision = 0;
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        deliver(&control, 1, 1, Event::Ack);
+        let creation = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "timing".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        deliver(&control, 1, 2, Event::Ack);
+        let loop_id = creation.loops[0];
+
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_none());
+        deliver(
+            &control,
+            1,
+            3,
+            Event::Waveform(WaveformChunk {
+                loop_id: loop_id.raw(),
+                revision: 1,
+                channel: 0,
+                channel_count: 1,
+                offset: 0,
+                total_samples: 3,
+                start_offset: -4,
+                preplay: 6,
+                final_chunk: true,
+                samples: vec![0.25, -0.5, 0.75],
+            }),
+        );
+        backend.poll().unwrap();
+        let audio = backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(audio.channels[0].samples.as_ref(), [0.25, -0.5, 0.75]);
+        assert_eq!(audio.channels[0].start_offset, -4);
+        assert_eq!(audio.channels[0].preplay, 6);
+
+        backend.midi_data.insert(
+            loop_id,
+            MidiDataAssembly {
+                generation: 1,
+                channels: vec![BackendMidiChannelData {
+                    content_revision: 1,
+                    mode: BackendChannelMode::Direct,
+                    length: 16,
+                    events: Vec::new(),
+                    start_offset: -4,
+                    preplay: 6,
+                }],
+                next_channel: 1,
+                next_offset: 0,
+                complete: true,
+                in_flight: false,
+            },
+        );
+        backend
+            .set_loop_timing(loop_id, Some(-8), None, None)
+            .unwrap();
+        backend
+            .set_loop_timing(loop_id, None, Some(12), None)
+            .unwrap();
+        backend
+            .set_loop_timing(loop_id, None, None, Some(32))
+            .unwrap();
+        let audio = backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(audio.channels[0].start_offset, -8);
+        assert_eq!(audio.channels[0].preplay, 12);
+        let midi = &backend.midi_data[&loop_id].channels[0];
+        assert_eq!((midi.start_offset, midi.preplay, midi.length), (-8, 12, 32));
+
+        let commands_before_restart = sent.borrow().len();
+        control.detach(false);
+        let restarted = MemoryEndpoint::default();
+        let replayed = restarted.sent.clone();
+        control.attach(Box::new(restarted), 2, 0, 2).unwrap();
+        let commands = replayed
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert!(commands_before_restart >= 6);
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| matches!(command, Command::SetLoopTiming { .. }))
+                .count(),
+            3
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn rich_wire_snapshot_converts_every_remote_domain_shape() {
         use shoop_audio_protocol::{
             WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,

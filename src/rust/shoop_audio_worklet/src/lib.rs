@@ -2677,6 +2677,49 @@ mod tests {
             command(
                 &mut host,
                 sequence,
+                Command::SetLoopTiming {
+                    loop_id: 1,
+                    start_offset: Some(-16),
+                    preplay: Some(32),
+                    length: Some(1536),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        let edited = host.backend.capture_session().unwrap();
+        assert_eq!(edited.tracks[0].loops[0].length, 1536);
+        assert!(edited.tracks[0].loops[0]
+            .audio
+            .iter()
+            .all(|channel| channel.start_offset == -16 && channel.preplay == 32));
+        assert!(edited.tracks[0].loops[0]
+            .midi
+            .iter()
+            .all(|channel| channel.start_offset == -16 && channel.preplay == 32));
+        let Event::Waveform(chunk) = command(
+            &mut host,
+            sequence,
+            Command::RequestWaveform {
+                loop_id: 1,
+                revision: 4,
+                channel: 0,
+                offset: 0,
+                max_samples: 2,
+            },
+        )
+        .event
+        else {
+            panic!("expected waveform chunk")
+        };
+        assert_eq!(chunk.start_offset, -16);
+        assert_eq!(chunk.preplay, 32);
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
                 Command::TransitionLoop {
                     loop_id: 1,
                     mode: WireLoopMode::Playing,

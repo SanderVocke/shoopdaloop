@@ -869,11 +869,16 @@ pub trait Backend {
         offset: usize,
         max_samples: usize,
     ) -> Result<BackendAudioDataChunk> {
-        let channels = self.loop_audio_data(loop_id)?.unwrap_or_default();
-        let samples = channels
-            .get(channel)
-            .cloned()
+        let channels = self
+            .loop_audio_data_with_metadata(loop_id)?
+            .unwrap_or_default()
+            .channels;
+        let channel_data = channels.get(channel);
+        let samples = channel_data
+            .map(|channel| Arc::clone(&channel.samples))
             .unwrap_or_else(|| Arc::from([]));
+        let start_offset = channel_data.map_or(0, |channel| channel.start_offset);
+        let preplay = channel_data.map_or(0, |channel| channel.preplay);
         let end = offset.saturating_add(max_samples).min(samples.len());
         Ok(BackendAudioDataChunk {
             content_revision: 0,
@@ -881,8 +886,8 @@ pub trait Backend {
             channel_count: channels.len(),
             offset,
             total_samples: samples.len(),
-            start_offset: 0,
-            preplay: 0,
+            start_offset,
+            preplay,
             samples: if offset < end {
                 samples[offset..end].to_vec()
             } else {
@@ -7533,6 +7538,10 @@ mod tests {
         backend
             .set_loop_timing(target, Some(-7), Some(12), Some(9))
             .unwrap();
+        let audio_chunk = backend.loop_audio_data_chunk(target, 0, 1, 1).unwrap();
+        assert_eq!(audio_chunk.start_offset, -7);
+        assert_eq!(audio_chunk.preplay, 12);
+        assert_eq!(audio_chunk.samples, [2.0]);
         let edited = backend.capture_session().unwrap();
         let edited_content = edited
             .tracks

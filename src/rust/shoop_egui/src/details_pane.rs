@@ -165,6 +165,43 @@ fn media_bounds(details: &LoopDetailsState) -> (f64, f64) {
     (start, end.max(start + 1.0))
 }
 
+fn timeline_edit_intent(
+    details: &LoopDetailsState,
+    tool: TimelineEditTool,
+    frame: i64,
+) -> AppIntent {
+    let current_start = details
+        .channels
+        .first()
+        .map(|channel| channel.start_offset)
+        .or_else(|| {
+            details
+                .midi_channels
+                .first()
+                .map(|channel| channel.start_offset)
+        })
+        .unwrap_or(0);
+    let (start_offset, preplay_samples, loop_length) = match tool {
+        TimelineEditTool::LoopStart => (Some(frame), None, None),
+        TimelineEditTool::PreplayStart => (
+            None,
+            Some(u64::try_from(current_start.saturating_sub(frame)).unwrap_or(0)),
+            None,
+        ),
+        TimelineEditTool::LoopEnd => (
+            None,
+            None,
+            Some(u64::try_from(frame.saturating_sub(current_start)).unwrap_or(0)),
+        ),
+    };
+    AppIntent::SetLoopTimeline {
+        loop_id: details.loop_id,
+        start_offset,
+        preplay_samples,
+        loop_length,
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct DetailsPane {
     loop_id: LoopId,
@@ -279,36 +316,7 @@ impl DetailsPane {
         let Some((tool, frame)) = self.edit_tool.zip(clicked_frame) else {
             return Vec::new();
         };
-        let start_offset = details
-            .channels
-            .first()
-            .map(|channel| channel.start_offset)
-            .or_else(|| {
-                details
-                    .midi_channels
-                    .first()
-                    .map(|channel| channel.start_offset)
-            })
-            .unwrap_or(0);
-        let (start_offset, preplay_samples, loop_length) = match tool {
-            TimelineEditTool::LoopStart => (Some(frame), None, None),
-            TimelineEditTool::PreplayStart => (
-                None,
-                Some(u64::try_from(start_offset.saturating_sub(frame)).unwrap_or(0)),
-                None,
-            ),
-            TimelineEditTool::LoopEnd => (
-                None,
-                None,
-                Some(u64::try_from(frame.saturating_sub(start_offset)).unwrap_or(0)),
-            ),
-        };
-        vec![AppIntent::SetLoopTimeline {
-            loop_id: details.loop_id,
-            start_offset,
-            preplay_samples,
-            loop_length,
-        }]
+        vec![timeline_edit_intent(details, tool, frame)]
     }
 }
 
@@ -416,6 +424,7 @@ mod tests {
             loop_id: LoopId::from_raw(1),
             title: "MIDI only".to_owned(),
             midi_channels: vec![midi.clone()],
+            sync_loop_length: 4,
             ..Default::default()
         };
         let mut ignored_output_1 = context.run_ui(Default::default(), |ui| {
@@ -433,6 +442,7 @@ mod tests {
                 ..Default::default()
             }],
             midi_channels: vec![midi],
+            sync_loop_length: 4,
             ..Default::default()
         };
         let mut ignored_output_2 = context.run_ui(Default::default(), |ui| {
@@ -441,5 +451,53 @@ mod tests {
         ignored_output_2.textures_delta.clear();
         assert_eq!(pane.waveforms.len(), 1);
         assert_eq!(pane.midi_sequences.len(), 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn timeline_tools_create_bounded_loop_wide_edits() {
+        let details = LoopDetailsState {
+            loop_id: LoopId::from_raw(9),
+            channels: vec![WaveformChannelState {
+                start_offset: 20,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            timeline_edit_intent(&details, TimelineEditTool::LoopStart, -5),
+            AppIntent::SetLoopTimeline {
+                loop_id: details.loop_id,
+                start_offset: Some(-5),
+                preplay_samples: None,
+                loop_length: None,
+            }
+        );
+        assert_eq!(
+            timeline_edit_intent(&details, TimelineEditTool::PreplayStart, 8),
+            AppIntent::SetLoopTimeline {
+                loop_id: details.loop_id,
+                start_offset: None,
+                preplay_samples: Some(12),
+                loop_length: None,
+            }
+        );
+        assert_eq!(
+            timeline_edit_intent(&details, TimelineEditTool::LoopEnd, 52),
+            AppIntent::SetLoopTimeline {
+                loop_id: details.loop_id,
+                start_offset: None,
+                preplay_samples: None,
+                loop_length: Some(32),
+            }
+        );
+        assert_eq!(
+            timeline_edit_intent(&details, TimelineEditTool::LoopEnd, 10),
+            AppIntent::SetLoopTimeline {
+                loop_id: details.loop_id,
+                start_offset: None,
+                preplay_samples: None,
+                loop_length: Some(0),
+            }
+        );
     }
 }
