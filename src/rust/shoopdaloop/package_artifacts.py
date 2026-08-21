@@ -457,6 +457,13 @@ def verify_web(bundle: Path, html: Path) -> None:
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
         raise RuntimeError("self-contained HTML does not contain the embedded application")
+    if "shoopEmbeddedBuiltins" not in text:
+        raise RuntimeError("self-contained HTML does not contain the built-ins tree")
+    for name, payload in builtin_payloads(f"{root}builtins/").items():
+        path = name.removeprefix(f"{root}builtins/")
+        encoded = base64.b64encode(payload).decode("ascii")
+        if f'"builtins/{path}": decodeBase64("{encoded}")' not in text:
+            raise RuntimeError(f"self-contained HTML is missing built-in {path}")
     if "enable_midi" not in text or "requestMIDIAccess" not in text:
         raise RuntimeError("self-contained HTML does not contain Web MIDI access")
     if (

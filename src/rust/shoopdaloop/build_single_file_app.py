@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import re
 from pathlib import Path
 
@@ -113,8 +114,24 @@ def build_single_file(dist: Path, output: Path) -> None:
         "ascii"
     )
     encoded_wasm = base64.b64encode(wasm_path.read_bytes()).decode("ascii")
+    builtins_root = dist / "builtins"
+    builtin_files = sorted(path for path in builtins_root.rglob("*") if path.is_file())
+    if not builtin_files or not (builtins_root / "catalog.json").is_file():
+        raise RuntimeError(f"missing built-ins catalog tree: {builtins_root}")
+    embedded_builtins = ",\n".join(
+        f"    {json.dumps(f'builtins/{path.relative_to(builtins_root).as_posix()}')}: "
+        f"decodeBase64({json.dumps(base64.b64encode(path.read_bytes()).decode('ascii'))})"
+        for path in builtin_files
+    )
     embedded_script = f"""
 <script type="module">
+const decodeBase64 = encoded => Uint8Array.from(
+    atob(encoded),
+    character => character.charCodeAt(0),
+);
+globalThis.shoopEmbeddedBuiltins = Object.freeze({{
+{embedded_builtins}
+}});
 const shoopAudioWorkletModuleUrl = "data:text/javascript;base64,{encoded_worklet_source}";
 const shoopAudioWorkerUrl = "data:text/javascript;base64,{encoded_worker_source}";
 const shoopAudioWorkletBinary = atob("{encoded_worklet_wasm}");
