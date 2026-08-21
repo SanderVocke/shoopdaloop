@@ -1775,6 +1775,11 @@ struct BrowserBuiltinFile {
     sha256: String,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+fn embedded_builtin_key(url: &str) -> &str {
+    url.trim_start_matches("./")
+}
+
 #[cfg(target_arch = "wasm32")]
 async fn fetch_browser_bytes(url: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
     use wasm_bindgen::JsCast as _;
@@ -1786,8 +1791,9 @@ async fn fetch_browser_bytes(url: &str, max_bytes: u64) -> Result<Vec<u8>, Strin
     )
     .map_err(|error| format!("could not inspect embedded built-ins: {error:?}"))?;
     if !embedded.is_undefined() {
-        let value = js_sys::Reflect::get(&embedded, &wasm_bindgen::JsValue::from_str(url))
-            .map_err(|error| format!("could not inspect embedded built-in {url}: {error:?}"))?;
+        let key = embedded_builtin_key(url);
+        let value = js_sys::Reflect::get(&embedded, &wasm_bindgen::JsValue::from_str(key))
+            .map_err(|error| format!("could not inspect embedded built-in {key}: {error:?}"))?;
         if !value.is_undefined() {
             let bytes = js_sys::Uint8Array::new(&value);
             if bytes.length() as u64 > max_bytes {
@@ -4972,6 +4978,22 @@ mod tests {
         assert_eq!(
             session_source_name("https://example.com/sessions/demo.shoop?download=1#top"),
             "demo.shoop"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn embedded_builtin_keys_accept_relative_root_variants() {
+        assert_eq!(
+            embedded_builtin_key("builtins/catalog.json"),
+            "builtins/catalog.json"
+        );
+        assert_eq!(
+            embedded_builtin_key("./builtins/catalog.json"),
+            "builtins/catalog.json"
+        );
+        assert_eq!(
+            embedded_builtin_key("././builtins/catalog.json"),
+            "builtins/catalog.json"
         );
     }
 
