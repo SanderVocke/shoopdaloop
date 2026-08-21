@@ -454,8 +454,6 @@ impl LoopWidget {
             self.play_popup_until = 0.0;
             self.record_popup_until = 0.0;
             self.balance_popup_until = 0.0;
-            self.gain_drag_start = None;
-            self.balance_drag_start = None;
         }
         let mut context_requested = response.secondary_clicked();
         let loop_visible = ui.clip_rect().intersect(rect).is_positive();
@@ -1319,8 +1317,11 @@ mod tests {
         set_touch_mode(&context, true);
         let state = state();
         let mut widget = LoopWidget::default();
+        widget.gain_drag_start = Some(state.gain);
         let response = frame(&context, &mut widget, &state, 1.0, Vec::new());
         assert!(!response.hover_active);
+        assert_eq!(widget.gain_drag_start, Some(state.gain));
+        widget.gain_drag_start = None;
 
         let play = widget.test_play_rect.unwrap().center();
         let response = click(&context, &mut widget, &state, play, 1.1);

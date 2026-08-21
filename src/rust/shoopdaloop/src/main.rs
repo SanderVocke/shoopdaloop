@@ -5022,7 +5022,7 @@ mod tests {
         assert_eq!(default_ui_scale_for_screen(None), 1.0);
 
         let mut builder = SettingsRegistryBuilder::default();
-        register_settings_with_ui_scale_default(&mut builder, 1.25).unwrap();
+        register_settings_with_appearance_defaults(&mut builder, 1.25, false).unwrap();
         let registry = builder.finish();
         assert_eq!(registry.defaults(1).get(UI_SCALE_FACTOR).unwrap(), 1.25);
 
