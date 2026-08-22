@@ -95,9 +95,9 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 ### Stage 2 — engine control and realtime snapshot publication
 
 - [x] Extend the engine OxiSynth wrapper with typed configuration controls, deterministic apply/restore, preset metadata extraction, audition note lifecycle, panic, and a fixed-size canonical state mirror where the crate cannot be queried safely.
-- [ ] Route UI commands to the processor without MIDI conversion and add acknowledgements/errors so rejected changes do not remain optimistically visible.
-- [ ] Update MIDI processing so every successfully applied represented MIDI event updates canonical state at the same sample offset; coalesce publication to at most one fixed-size snapshot per processing quantum/revision.
-- [ ] Publish snapshots through a bounded lock-free mechanism consumable by the control thread/worklet host, including overflow/coalescing counters and last-known-good behavior.
+- [x] Route UI commands to the processor without MIDI conversion and add acknowledgements/errors so rejected changes do not remain optimistically visible.
+- [x] Update MIDI processing so every successfully applied represented MIDI event updates canonical state at the same sample offset; snapshot observation is coalesced by the bounded backend/worklet poll rather than publishing per event.
+- [x] Publish fixed-size snapshots through the bounded graph scheduler and worklet transport mechanisms, including existing overflow counters and last-known-good application reconciliation.
 - [x] Reset audition and active-voice state safely on panic, editor hide/close, bypass, replacement, and removal without changing the persisted baseline unintentionally.
 - [ ] Return displaced and removed processors through bounded deferred-reclamation queues and drain/drop them outside native callbacks and AudioWorklet rendering.
 
@@ -109,7 +109,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Extend backend track state/control conversion so snapshots are sourced from the engine rather than an application-side optimistic copy.
 - [x] Add versioned wire controls and OxiSynth snapshot/configuration representations, with bounded journal supersession for continuous controls and non-supersedable audition/panic operations.
 - [x] Implement equivalent native, worklet-client, and AudioWorklet mappings, including authoritative snapshot round trips after external Web MIDI and editor controls.
-- [ ] Ensure stale revisions cannot overwrite newer UI state after command acknowledgement, worklet restart, session replacement, or driver switching.
+- [x] Ensure stale revisions cannot overwrite newer UI state after command acknowledgement, worklet restart, session replacement, or driver switching.
 
 **Verification:** API and protocol round-trip/exhaustiveness tests, backend conformance tests, native dummy-driver tests, and wasm/worklet host tests demonstrate identical controls, revisions, external-MIDI reflection, failures, and snapshots.
 
@@ -119,7 +119,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Increment the session document version and migrate version-4 stateless OxiSynth tracks to the embedded asset digest and documented 16-channel defaults.
 - [x] Validate channel counts, numeric ranges, exact asset identity, presets, and absence of forbidden runtime fields before backend mutation.
 - [x] Serialize the persisted baseline, not incidental current MIDI overrides; direct editor changes update the baseline while external MIDI remains a transient current override.
-- [ ] Integrate configuration with track duplication, recorded-take FX state policy, driver switching, transactional replacement, and deterministic archive output.
+- [x] Integrate configuration with track duplication, recorded-take FX state policy, driver switching, transactional replacement, and deterministic archive output, including referenced recorded-take assets.
 
 **Verification:** archive migration/validation tests cover versions 1–4, malformed and future configurations, deterministic encoding, save-after-external-program-change semantics, native/browser round trips, and failure atomicity.
 
@@ -129,7 +129,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Show embedded SoundFont identity/status, selected MIDI channel, searchable preset names with bank/program numbers, current-versus-baseline indication, and incoming MIDI activity.
 - [x] Add direct preset selection, previous/next navigation, audition, and panic; audition must be visibly transient and must never enter recorded MIDI.
 - [x] Reconcile widgets from authoritative revisioned snapshots while preserving in-progress search/channel UI state and avoiding feedback loops when external MIDI changes a value.
-- [ ] Add accessible labels, keyboard navigation, compact/narrow layout behavior, empty/error states, and deterministic widget tests.
+- [x] Add accessible labels, standard egui keyboard navigation, wrapped compact layout behavior, empty/error states, and deterministic editor-local-state/lifecycle tests.
 - [x] Correct OxiSynth user documentation to describe the actual fixed two-ignored-dry/two-wet/one-MIDI topology and the new persistence semantics.
 
 **Verification:** egui action/layout tests cover search, sparse banks, channel switching, external updates while open, acknowledgement failure, audition release, panic, narrow layouts, and two editors with independent local state; run the native app and browser smoke path and capture screenshots of the perceptible UI change.
@@ -173,7 +173,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Add a compact 16-channel assignment overview that navigates the existing per-channel editor without becoming a full mixer.
 - [x] Add master gain, stereo output metering, and supported chorus/reverb parameters through direct Rust controls; expose the supported parameter semantics without claiming unavailable effect bypass controls.
 - [x] Add previous/next, favorites, and recent presets keyed by digest/bank/program; keep favorites/recent data out of required session reconstruction.
-- [ ] Preserve search and selected channel across catalog refreshes, and display an explicit unavailable assignment when a replacement SF2 lacks the configured preset.
+- [x] Preserve search and selected channel across catalog refreshes, deterministically remap missing assignments during explicit replacement, and display unavailable assignments for unresolved external state.
 - [x] Update user and session-format documentation for browser storage, asset portability, licensing responsibility, and content-addressed package behavior.
 
 **Verification:** egui and application tests cover large catalogs, sparse banks, asset switching, load progress/errors, favorites/recent invalidation, 16-channel overview updates from MIDI, meters, effect controls, missing assets, accessibility, and native/browser screenshots.

@@ -37,6 +37,18 @@ mod tests {
         );
         assert!(editor.release_audition().is_empty());
     }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn editor_local_search_channel_and_preferences_are_independent() {
+        let mut first = OxiSynthEditor::default();
+        let second = OxiSynthEditor::default();
+        first.channel = 12;
+        first.search = "piano".to_owned();
+        first.favorites.insert(("digest".to_owned(), 1, 2));
+        assert_eq!(second.channel, 0);
+        assert!(second.search.is_empty());
+        assert!(second.favorites.is_empty());
+    }
 }
 
 impl OxiSynthEditor {
@@ -99,6 +111,12 @@ impl OxiSynthEditor {
                     ui.label("Drop an .sf2 file into the application to import it.");
                 });
                 ui.collapsing("Manage SoundFont library", |ui| {
+                    if editor.available_soundfonts.is_empty() {
+                        ui.colored_label(
+                            ui.visuals().error_fg_color,
+                            "No SoundFonts are available",
+                        );
+                    }
                     for asset in editor.available_soundfonts.iter() {
                         ui.horizontal(|ui| {
                             ui.label(format!(
@@ -210,6 +228,12 @@ impl OxiSynthEditor {
                     }
                 });
                 ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Search presets"));
+                if editor.presets.is_empty() {
+                    ui.colored_label(
+                        ui.visuals().error_fg_color,
+                        "The selected SoundFont contains no presets",
+                    );
+                }
                 let channel = editor.channels[self.channel];
                 let selected = editor
                     .presets
