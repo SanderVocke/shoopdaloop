@@ -27,6 +27,29 @@ pub struct OxiSynthPresetId {
 }
 
 impl OxiSynthPresetId {
+    pub fn from_stable_id(value: &str) -> Result<Self, OxiSynthStateError> {
+        let mut fields = value.split(':');
+        let bank = fields
+            .next()
+            .ok_or(OxiSynthStateError::InvalidPresetId)?
+            .parse::<u16>()
+            .map_err(|_| OxiSynthStateError::InvalidPresetId)?;
+        let program = fields
+            .next()
+            .ok_or(OxiSynthStateError::InvalidPresetId)?
+            .parse::<u8>()
+            .map_err(|_| OxiSynthStateError::InvalidPresetId)?;
+        if fields.next().is_some() || program > 127 {
+            return Err(OxiSynthStateError::InvalidPresetId);
+        }
+        let id = Self { bank, program };
+        validate_preset(id)?;
+        if id.stable_id() != value {
+            return Err(OxiSynthStateError::InvalidPresetId);
+        }
+        Ok(id)
+    }
+
     pub fn stable_id(self) -> String {
         format!("{}:{}", self.bank, self.program)
     }
@@ -67,6 +90,8 @@ impl Default for OxiSynthState {
 
 #[derive(Debug, Error, Eq, PartialEq)]
 pub enum OxiSynthStateError {
+    #[error("invalid OxiSynth preset ID")]
+    InvalidPresetId,
     #[error("invalid OxiSynth state envelope")]
     InvalidEnvelope,
     #[error("unsupported OxiSynth state version {0}")]

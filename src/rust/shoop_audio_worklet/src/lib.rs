@@ -6,8 +6,8 @@ use shoop_audio_protocol::{
     WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
-    WireMidiOutputEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
+    WireMidiOutputEvent, WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
+    WireSnapshot, WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
     WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
     COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
     PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
@@ -19,7 +19,7 @@ use shoop_backend::{
     BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
     BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
     BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
+    BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl, TinySynthFxControl,
     TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorEditorState,
     TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
@@ -862,6 +862,10 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         WireTrackFxControl::TinyPanic => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
         }
+        WireTrackFxControl::OxiSelectPreset(value) => {
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(value))
+        }
+        WireTrackFxControl::OxiPanic => BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
     }
 }
 
@@ -1061,17 +1065,8 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             .map(|(id, track)| WireTrackState {
                 id: id.raw(),
                 topology: to_wire_track_topology(&track.topology),
-                fx: track.fx.and_then(|fx| {
-                    if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
-                        return Some(WireTrackFxState {
-                            processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
-                            active: fx.active,
-                            visible: false,
-                            tiny: None,
-                        });
-                    }
-                    let TrackProcessorEditorState::TinySynthFx(editor) = fx.editor?;
-                    Some(WireTrackFxState {
+                fx: track.fx.and_then(|fx| match fx.editor? {
+                    TrackProcessorEditorState::TinySynthFx(editor) => Some(WireTrackFxState {
                         processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
                         active: fx.active,
                         visible: fx.visible,
@@ -1098,7 +1093,17 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                                 })
                                 .collect(),
                         }),
-                    })
+                        oxisynth: None,
+                    }),
+                    TrackProcessorEditorState::OxiSynth(editor) => Some(WireTrackFxState {
+                        processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                        active: fx.active,
+                        visible: fx.visible,
+                        tiny: None,
+                        oxisynth: Some(WireOxiSynthState {
+                            selected_preset_id: editor.selected_preset_id,
+                        }),
+                    }),
                 }),
                 audio_channels: track.audio_channels,
                 midi: track.midi,
@@ -1956,10 +1961,24 @@ mod tests {
                 4,
                 Command::InjectTrackMidiInput {
                     track_id: 1,
-                    events: vec![shoop_audio_protocol::WireMidiEvent {
-                        frame: 0,
-                        data: vec![0x90, 60, 100],
-                    }],
+                    events: vec![
+                        shoop_audio_protocol::WireMidiEvent {
+                            frame: 0,
+                            data: vec![0xcf, 40],
+                        },
+                        shoop_audio_protocol::WireMidiEvent {
+                            frame: 0,
+                            data: vec![0xbf, 0, 1],
+                        },
+                        shoop_audio_protocol::WireMidiEvent {
+                            frame: 0,
+                            data: vec![0xbf, 32, 1],
+                        },
+                        shoop_audio_protocol::WireMidiEvent {
+                            frame: 0,
+                            data: vec![0x9f, 60, 100],
+                        },
+                    ],
                 },
             )
             .event,
@@ -1986,6 +2005,45 @@ mod tests {
         let fx = snapshot.tracks[0].fx.as_ref().unwrap();
         assert_eq!(fx.processor_type, TrackProcessorTypeId::OXISYNTH);
         assert!(fx.tiny.is_none());
+        assert_eq!(fx.oxisynth.as_ref().unwrap().selected_preset_id, "0:0");
+        assert!(matches!(
+            command(
+                &mut host,
+                6,
+                Command::SetTrackFxControl {
+                    track_id: 1,
+                    control: WireTrackFxControl::OxiSelectPreset("0:40".to_owned()),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 7, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(
+            snapshot.tracks[0]
+                .fx
+                .as_ref()
+                .unwrap()
+                .oxisynth
+                .as_ref()
+                .unwrap()
+                .selected_preset_id,
+            "0:40"
+        );
+        assert!(matches!(
+            command(
+                &mut host,
+                8,
+                Command::SetTrackFxControl {
+                    track_id: 1,
+                    control: WireTrackFxControl::OxiPanic,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]

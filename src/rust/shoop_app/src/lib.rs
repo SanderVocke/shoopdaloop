@@ -712,6 +712,7 @@ enum FxControlKey {
     TinyEqMid,
     TinyEqHigh,
     TinyMidiAssignments,
+    OxiPreset,
 }
 
 fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
@@ -777,6 +778,19 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
                 shoop_backend::TinySynthFxControl::Panic => {}
             }
         }
+        BackendTrackFxControl::OxiSynth(control) => {
+            let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) =
+                fx.editor.as_mut()
+            else {
+                return;
+            };
+            match control {
+                shoop_app_api::OxiSynthControl::SelectPreset(id) => {
+                    editor.selected_preset_id.clone_from(id);
+                }
+                shoop_app_api::OxiSynthControl::Panic => {}
+            }
+        }
         BackendTrackFxControl::ToggleOrRecover
         | BackendTrackFxControl::RestoreState(_)
         | BackendTrackFxControl::ClearLogs => {}
@@ -828,6 +842,10 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
                 FxControlKey::TinyMidiAssignments
             }
             shoop_backend::TinySynthFxControl::Panic => return None,
+        },
+        BackendTrackFxControl::OxiSynth(control) => match control {
+            shoop_app_api::OxiSynthControl::SelectPreset(_) => FxControlKey::OxiPreset,
+            shoop_app_api::OxiSynthControl::Panic => return None,
         },
         BackendTrackFxControl::ToggleOrRecover
         | BackendTrackFxControl::RestoreState(_)
@@ -4398,6 +4416,22 @@ impl ApplicationModel {
                     .set_track_fx_control(track.backend_id, control.clone())
                     .map_err(|error| {
                         format!("could not update Tiny Synth/FX track {track_id}: {error}")
+                    })?;
+                if let Some(key) = fx_control_key(&control) {
+                    self.desired_fx_controls
+                        .insert((track.backend_id, key), control.clone());
+                    if let Some(fx) = track.fx.as_mut() {
+                        apply_fx_control(fx, &control);
+                    }
+                }
+                return Ok(());
+            }
+            TrackAction::OxiSynth(oxisynth) => {
+                let control = BackendTrackFxControl::OxiSynth(oxisynth);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| {
+                        format!("could not update OxiSynth track {track_id}: {error}")
                     })?;
                 if let Some(key) = fx_control_key(&control) {
                     self.desired_fx_controls

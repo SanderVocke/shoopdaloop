@@ -355,6 +355,8 @@ pub enum WireTrackFxControl {
     TinyRemoveMidiCc(WireTinySynthFxParameter),
     TinyClearMidiCcAssignments,
     TinyPanic,
+    OxiSelectPreset(String),
+    OxiPanic,
 }
 
 impl WireTrackFxControl {
@@ -368,6 +370,7 @@ impl WireTrackFxControl {
             Self::TinySetEqLowDb(_) => 5,
             Self::TinySetEqMidDb(_) => 6,
             Self::TinySetEqHighDb(_) => 7,
+            Self::OxiSelectPreset(_) => 8,
             Self::SetVisible(_)
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
@@ -380,7 +383,8 @@ impl WireTrackFxControl {
             | Self::TinyAssignMidiCc(_)
             | Self::TinyRemoveMidiCc(_)
             | Self::TinyClearMidiCcAssignments
-            | Self::TinyPanic => return None,
+            | Self::TinyPanic
+            | Self::OxiPanic => return None,
         })
     }
 }
@@ -641,6 +645,13 @@ pub struct WireTrackFxState {
     pub active: bool,
     pub visible: bool,
     pub tiny: Option<WireTinySynthFxState>,
+    #[serde(default)]
+    pub oxisynth: Option<WireOxiSynthState>,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthState {
+    pub selected_preset_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -823,6 +834,20 @@ mod tests {
         };
         assert!(replacement_gain.supersedes_in_journal(&gain));
         assert!(!panic.supersedes_in_journal(&gain));
+        let oxisynth_preset = Command::SetTrackFxControl {
+            track_id: 5,
+            control: WireTrackFxControl::OxiSelectPreset("0:0".to_owned()),
+        };
+        assert!(Command::SetTrackFxControl {
+            track_id: 5,
+            control: WireTrackFxControl::OxiSelectPreset("0:40".to_owned()),
+        }
+        .supersedes_in_journal(&oxisynth_preset));
+        assert!(!Command::SetTrackFxControl {
+            track_id: 5,
+            control: WireTrackFxControl::OxiPanic,
+        }
+        .supersedes_in_journal(&oxisynth_preset));
         assert!(!Command::SetTrackFxControl {
             track_id: 4,
             control: WireTrackFxControl::SetVisible(false),
@@ -1079,6 +1104,8 @@ mod tests {
             WireTrackFxControl::TinyRemoveMidiCc(WireTinySynthFxParameter::EqHigh),
             WireTrackFxControl::TinyClearMidiCcAssignments,
             WireTrackFxControl::TinyPanic,
+            WireTrackFxControl::OxiSelectPreset("0:40".to_owned()),
+            WireTrackFxControl::OxiPanic,
         ]
         .into_iter()
         .enumerate()

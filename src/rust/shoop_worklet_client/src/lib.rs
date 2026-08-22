@@ -19,7 +19,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    FxLifecycle, ResolvedAudioDriverConfig, TinySynthFxState, TrackFxState,
+    FxLifecycle, OxiSynthState, ResolvedAudioDriverConfig, TinySynthFxState, TrackFxState,
     TrackProcessorDescriptor, TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
@@ -32,19 +32,20 @@ use shoop_audio_protocol::{
     SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    encode_tiny_synth_fx_state, oxisynth_descriptor, tiny_synth_fx_descriptor, Backend,
-    BackendActiveCompositeChild, BackendAsyncResult, BackendAudioChannelData, BackendAudioData,
-    BackendChannelMode, BackendCompositeConfig, BackendCompositeId, BackendCompositeKind,
-    BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure,
-    BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData,
-    BackendMidiEvent, BackendMutationDetail, BackendMutationFailure, BackendMutationKind,
-    BackendOperationKind, BackendOperationProgress, BackendPortDataType, BackendPortDescriptor,
-    BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
+    encode_oxisynth_state, encode_tiny_synth_fx_state, oxisynth_descriptor,
+    tiny_synth_fx_descriptor, Backend, BackendActiveCompositeChild, BackendAsyncResult,
+    BackendAudioChannelData, BackendAudioData, BackendChannelMode, BackendCompositeConfig,
+    BackendCompositeId, BackendCompositeKind, BackendCompositeState, BackendCompositeTarget,
+    BackendConfirmedLink, BackendConnectionFailure, BackendDriverState, BackendGrabRequest,
+    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
+    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
     BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
     BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment,
-    TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
+    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TinySynthFxControl,
+    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -837,6 +838,11 @@ impl RemoteWorkletBackend {
                                         .into(),
                                 })
                             });
+                            let oxisynth = fx.oxisynth.map(|oxisynth| {
+                                TrackProcessorEditorState::OxiSynth(OxiSynthState {
+                                    selected_preset_id: oxisynth.selected_preset_id,
+                                })
+                            });
                             TrackFxState {
                                 processor_type: TrackProcessorTypeId::new(fx.processor_type),
                                 active: fx.active,
@@ -845,7 +851,7 @@ impl RemoteWorkletBackend {
                                 generation: 0,
                                 crash_summary: None,
                                 logs: Arc::from([]),
-                                editor: tiny,
+                                editor: tiny.or(oxisynth),
                             }
                         }),
                         audio_channels: track.audio_channels,
@@ -1257,6 +1263,12 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
             TinySynthFxControl::ClearMidiCcAssignments
         }
         WireTrackFxControl::TinyPanic => TinySynthFxControl::Panic,
+        WireTrackFxControl::OxiSelectPreset(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(value.clone()));
+        }
+        WireTrackFxControl::OxiPanic => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic);
+        }
     })
 }
 
@@ -1613,6 +1625,23 @@ impl Backend for RemoteWorkletBackend {
             .fx
             .as_ref()
             .ok_or_else(|| anyhow!("track has no processor"))?;
+        if let BackendTrackFxControl::OxiSynth(oxisynth) = &control {
+            if !matches!(
+                fx.editor.as_ref(),
+                Some(TrackProcessorEditorState::OxiSynth(_))
+            ) {
+                return Err(anyhow!("track has no OxiSynth editor state"));
+            }
+            if let OxiSynthControl::SelectPreset(id) = oxisynth {
+                if !matches!(
+                    oxisynth_descriptor().editor,
+                    Some(shoop_app_api::TrackProcessorEditorDescriptor::OxiSynth { presets })
+                        if presets.iter().any(|preset| preset.id == *id)
+                ) {
+                    return Err(anyhow!("unknown OxiSynth preset {id}"));
+                }
+            }
+        }
         if let BackendTrackFxControl::TinySynthFx(tiny) = &control {
             if !matches!(
                 fx.editor.as_ref(),
@@ -1681,6 +1710,7 @@ impl Backend for RemoteWorkletBackend {
             BackendTrackFxControl::ToggleOrRecover
                 | BackendTrackFxControl::ClearLogs
                 | BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
+                | BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic)
         ) {
             self.submit_ephemeral(command)
         } else {
@@ -1697,11 +1727,16 @@ impl Backend for RemoteWorkletBackend {
         let Some(fx) = &track.fx else {
             return Ok(None);
         };
-        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = &fx.editor else {
-            return Ok(None);
-        };
-        let sample_rate = self.snapshot.status.sample_rate.max(1) as f32;
-        Ok(Some(encode_tiny_synth_fx_state(sample_rate, editor)?))
+        match &fx.editor {
+            Some(TrackProcessorEditorState::TinySynthFx(editor)) => {
+                let sample_rate = self.snapshot.status.sample_rate.max(1) as f32;
+                Ok(Some(encode_tiny_synth_fx_state(sample_rate, editor)?))
+            }
+            Some(TrackProcessorEditorState::OxiSynth(editor)) => {
+                Ok(Some(encode_oxisynth_state(editor)?))
+            }
+            None => Ok(None),
+        }
     }
 
     fn inject_midi_input(
@@ -2553,6 +2588,10 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             }
             TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
         },
+        BackendTrackFxControl::OxiSynth(control) => match control {
+            OxiSynthControl::SelectPreset(value) => WireTrackFxControl::OxiSelectPreset(value),
+            OxiSynthControl::Panic => WireTrackFxControl::OxiPanic,
+        },
     }
 }
 
@@ -2834,8 +2873,8 @@ mod tests {
         use shoop_audio_protocol::{
             WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
             WireCompositeState, WireConfirmedLink, WireHostPort, WireLatestMidiMessage,
-            WireLoopState, WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter,
-            WireTinySynthFxState, WireTrackFxState, WireTrackState,
+            WireLoopState, WireOxiSynthState, WireTinySynthFxMidiCcAssignment,
+            WireTinySynthFxParameter, WireTinySynthFxState, WireTrackFxState, WireTrackState,
         };
 
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
@@ -2943,6 +2982,20 @@ mod tests {
                             active: true,
                             visible: true,
                             tiny: Some(tiny),
+                            oxisynth: None,
+                        }),
+                    ),
+                    track(
+                        3,
+                        WireTrackTopology::OxiSynth,
+                        Some(WireTrackFxState {
+                            processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                            active: true,
+                            visible: false,
+                            tiny: None,
+                            oxisynth: Some(WireOxiSynthState {
+                                selected_preset_id: "0:40".to_owned(),
+                            }),
                         }),
                     ),
                 ],
@@ -3042,7 +3095,41 @@ mod tests {
             }),
         );
         let snapshot = backend.poll().unwrap();
-        assert_eq!(snapshot.tracks.len(), 2);
+        assert_eq!(snapshot.tracks.len(), 3);
+        let oxisynth_track = BackendTrackId::from_raw(3);
+        let Some(TrackProcessorEditorState::OxiSynth(editor)) = snapshot.tracks[&oxisynth_track]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing remote OxiSynth editor state");
+        };
+        assert_eq!(editor.selected_preset_id, "0:40");
+        assert_eq!(
+            backend
+                .track_fx_state_string(oxisynth_track)
+                .unwrap()
+                .as_deref(),
+            Some("shoop-oxisynth:1:timgm6mb:0:40")
+        );
+        backend
+            .set_track_fx_control(
+                oxisynth_track,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset("0:41".to_owned())),
+            )
+            .unwrap();
+        assert!(backend
+            .set_track_fx_control(
+                oxisynth_track,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset("1:0".to_owned(),)),
+            )
+            .is_err());
+        backend
+            .set_track_fx_control(
+                oxisynth_track,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
+            )
+            .unwrap();
         assert_eq!(snapshot.loops.len(), modes.len());
         assert_eq!(snapshot.composites.len(), 1);
         assert_eq!(snapshot.connections.application_ports.len(), roles.len());

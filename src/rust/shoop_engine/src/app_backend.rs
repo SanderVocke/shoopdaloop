@@ -2874,18 +2874,16 @@ impl BackendSession {
             FXChainType::OxiSynth => {
                 let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
                 let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
-                let processor = engine::oxisynth::OxiSynthProcessor::new(
-                    sample_rate as f32,
-                    buffer_size as usize,
-                    engine::oxisynth::OxiSynthState::default(),
-                )?;
+                let control = engine::oxisynth::OxiSynthControlState::default();
+                let processor =
+                    control.prepare_processor(sample_rate as f32, buffer_size as usize)?;
                 let mut pending = Some((title.to_owned(), processor));
                 self.shared.send_topology(move |session| {
                     if let Some((title, processor)) = pending.take() {
                         let _ = session.set_oxisynth_processor(title, processor);
                     }
                 })?;
-                FXChainBackendKind::OxiSynth
+                FXChainBackendKind::OxiSynth(Mutex::new(control))
             }
             FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
                 #[cfg(feature = "carla")]
@@ -6092,7 +6090,7 @@ pub type FXChainState = engine::FXChainState;
 enum FXChainBackendKind {
     Test2x2x1,
     Tiny(Mutex<engine::tiny_synth_fx::TinySynthFxControlState>),
-    OxiSynth,
+    OxiSynth(Mutex<engine::oxisynth::OxiSynthControlState>),
     #[cfg(feature = "carla")]
     Carla(engine::carla_processor::CarlaControlHandle),
     Unavailable {
@@ -6145,7 +6143,7 @@ impl FXChain {
                     log::error!("could not queue Tiny Synth/FX active state: {error}");
                 }
             }
-            FXChainBackendKind::OxiSynth => {
+            FXChainBackendKind::OxiSynth(_) => {
                 let title = self.title.clone();
                 if let Err(error) = self.shared.send_control(move |session| {
                     session.set_oxisynth_active(&title, active);
@@ -6176,7 +6174,7 @@ impl FXChain {
             FXChainBackendKind::Carla(host) => host.toggle_or_recover(),
             FXChainBackendKind::Test2x2x1
             | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => {
+            | FXChainBackendKind::OxiSynth(_) => {
                 self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
                 Ok(())
             }
@@ -6190,7 +6188,7 @@ impl FXChain {
             FXChainBackendKind::Carla(host) => host.lifecycle(),
             FXChainBackendKind::Test2x2x1
             | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => {
+            | FXChainBackendKind::OxiSynth(_) => {
                 engine::carla_processor::CarlaProcessorLifecycle::Running
             }
             FXChainBackendKind::Unavailable { .. } => {
@@ -6235,6 +6233,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
             FXChainBackendKind::Tiny(control) => Ok(control.lock().unwrap().encode()),
+            FXChainBackendKind::OxiSynth(control) => Ok(control.lock().unwrap().encode()),
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.save_state(),
             _ => Ok(String::new()),
@@ -6246,8 +6245,6 @@ impl FXChain {
     }
 
     pub fn try_restore_state(&self, state: &str) -> Result<()> {
-        #[cfg(not(feature = "carla"))]
-        let _ = state;
         match &self.backend {
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.restore_state(state),
@@ -6272,8 +6269,21 @@ impl FXChain {
                 *control.lock().unwrap() = replacement;
                 Ok(())
             }
+            FXChainBackendKind::OxiSynth(control) => {
+                let replacement = engine::oxisynth::OxiSynthControlState::from_encoded(state)?;
+                let processor = replacement.prepare_processor(
+                    self.shared.sample_rate.load(Ordering::Relaxed).max(1) as f32,
+                    self.shared.buffer_size.load(Ordering::Relaxed).max(1) as usize,
+                )?;
+                let title = self.title.clone();
+                let displaced = self.shared.query_graph_scheduler_response(move |session| {
+                    session.set_oxisynth_processor(title, processor)
+                })?;
+                drop(displaced);
+                *control.lock().unwrap() = replacement;
+                Ok(())
+            }
             FXChainBackendKind::Test2x2x1 => Ok(()),
-            FXChainBackendKind::OxiSynth => Err(anyhow!("OxiSynth has no persistent state")),
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
         }
     }
@@ -6287,6 +6297,43 @@ impl FXChain {
             FXChainBackendKind::Tiny(control) => Some(control.lock().unwrap().editor_state()),
             _ => None,
         }
+    }
+
+    pub fn oxisynth_editor_state(&self) -> Option<engine::oxisynth::OxiSynthEditorState> {
+        match &self.backend {
+            FXChainBackendKind::OxiSynth(control) => Some(control.lock().unwrap().editor_state()),
+            _ => None,
+        }
+    }
+
+    pub fn oxisynth_select_preset(&self, id: &str) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
+        };
+        let preset = engine::oxisynth::OxiSynthPresetId::from_stable_id(id)?;
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
+                if let Err(error) = processor.select_preset(preset) {
+                    log::error!("could not select OxiSynth preset: {error}");
+                }
+            }
+        })?;
+        control.lock().unwrap().select_preset(preset)?;
+        Ok(())
+    }
+
+    pub fn oxisynth_panic(&self) -> Result<()> {
+        if !matches!(&self.backend, FXChainBackendKind::OxiSynth(_)) {
+            return Err(anyhow!("FX chain is not OxiSynth"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
+                processor.panic();
+            }
+        })?;
+        Ok(())
     }
 
     pub fn tiny_select_preset(&self, id: &str) -> Result<()> {
@@ -6558,7 +6605,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            FXChainBackendKind::OxiSynth => 0,
+            FXChainBackendKind::OxiSynth(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6569,7 +6616,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            FXChainBackendKind::OxiSynth => 2,
+            FXChainBackendKind::OxiSynth(_) => 2,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6579,7 +6626,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1
             | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => 1,
+            | FXChainBackendKind::OxiSynth(_) => 1,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6590,7 +6637,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1
             | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => 0,
+            | FXChainBackendKind::OxiSynth(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,

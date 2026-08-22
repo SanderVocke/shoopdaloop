@@ -147,6 +147,9 @@ pub enum TrackProcessorEditorDescriptor {
     TinySynthFx {
         presets: Arc<[TrackProcessorPresetDescriptor]>,
     },
+    OxiSynth {
+        presets: Arc<[TrackProcessorPresetDescriptor]>,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -271,9 +274,15 @@ pub struct TinySynthFxState {
     pub midi_cc_assignments: Arc<[TinySynthFxMidiCcAssignment]>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OxiSynthState {
+    pub selected_preset_id: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackProcessorEditorState {
     TinySynthFx(TinySynthFxState),
+    OxiSynth(OxiSynthState),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1524,6 +1533,12 @@ pub enum TinySynthFxControl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum OxiSynthControl {
+    SelectPreset(String),
+    Panic,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum TrackAction {
     Remove,
     MoveBefore(Option<TrackId>),
@@ -1543,6 +1558,7 @@ pub enum TrackAction {
     FxRestoreState(String),
     FxClearLogs,
     TinySynthFx(TinySynthFxControl),
+    OxiSynth(OxiSynthControl),
 }
 
 pub type TrackWidgetAction = TrackAction;
@@ -1841,6 +1857,15 @@ impl TinySynthFxControl {
     }
 }
 
+impl OxiSynthControl {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::SelectPreset(_) => "track.oxisynth.select_preset",
+            Self::Panic => "track.oxisynth.panic",
+        }
+    }
+}
+
 impl TrackAction {
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -1859,6 +1884,7 @@ impl TrackAction {
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
             Self::TinySynthFx(control) => control.kind(),
+            Self::OxiSynth(control) => control.kind(),
         }
     }
 }

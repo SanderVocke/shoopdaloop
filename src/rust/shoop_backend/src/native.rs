@@ -837,12 +837,8 @@ impl NativeRuntime {
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let processor_state =
-                if let Some(fx) = track.fx.as_mut() {
-                    if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
-                        None
-                    } else {
-                        match fx.chain.try_get_state_str() {
+            let processor_state = if let Some(fx) = track.fx.as_mut() {
+                match fx.chain.try_get_state_str() {
                     Ok(state) => {
                         fx.last_confirmed_state = Some(state.clone());
                         Some(state)
@@ -851,10 +847,9 @@ impl NativeRuntime {
                         anyhow!("processor state is unavailable and no checkpoint exists: {error}")
                     })?),
                 }
-                    }
-                } else {
-                    None
-                };
+            } else {
+                None
+            };
             let tiny_synth_midi_cc_assignments = track
                 .fx
                 .as_ref()
@@ -940,23 +935,11 @@ impl NativeRuntime {
                 BackendTrackTopology::DryWetExternal { .. } => {
                     self.create_external_track(request)?
                 }
-                BackendTrackTopology::DryWetProcessor { processor_type, .. }
-                    if processor_type == TrackProcessorTypeId::OXISYNTH =>
-                {
-                    if source_track.processor_state.is_some()
-                        || !source_track.tiny_synth_midi_cc_assignments.is_empty()
-                    {
-                        return Err(anyhow!("OxiSynth track contains unexpected state"));
-                    }
-                    self.create_processed_track(request)?
-                }
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     self.create_processed_track(request)?
                 }
             };
             match &source_track.topology {
-                BackendTrackTopology::DryWetProcessor { processor_type, .. }
-                    if processor_type == TrackProcessorTypeId::OXISYNTH => {}
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     let state = source_track
                         .processor_state
@@ -1675,6 +1658,17 @@ impl NativeRuntime {
                         fx.chain.tiny_clear_midi_cc_assignments()?
                     }
                     TinySynthFxControl::Panic => fx.chain.tiny_panic()?,
+                }
+            }
+            BackendTrackFxControl::OxiSynth(control) => {
+                if fx.processor_type.as_str() != TrackProcessorTypeId::OXISYNTH {
+                    return Err(anyhow!("track is not an OxiSynth processor"));
+                }
+                match control {
+                    OxiSynthControl::SelectPreset(id) => {
+                        fx.chain.oxisynth_select_preset(&id)?;
+                    }
+                    OxiSynthControl::Panic => fx.chain.oxisynth_panic()?,
                 }
             }
         }
@@ -2655,28 +2649,36 @@ impl Backend for NativeBackend {
                         })
                         .collect::<Vec<_>>()
                         .into(),
-                    editor: fx.chain.tiny_editor_state().map(|editor| {
-                        TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
-                            selected_preset_id: editor.selected_preset_id,
-                            master_gain_db: editor.master_gain_db,
-                            reverb_enabled: editor.reverb_enabled,
-                            reverb_amount: editor.reverb_amount,
-                            distortion_enabled: editor.distortion_enabled,
-                            distortion_drive: editor.distortion_drive,
-                            compressor_enabled: editor.compressor_enabled,
-                            compressor_amount: editor.compressor_amount,
-                            eq_enabled: editor.eq_enabled,
-                            eq_low_db: editor.eq_low_db,
-                            eq_mid_db: editor.eq_mid_db,
-                            eq_high_db: editor.eq_high_db,
-                            midi_cc_assignments: editor
-                                .midi_cc_assignments
-                                .into_iter()
-                                .map(app_midi_cc_assignment)
-                                .collect::<Vec<_>>()
-                                .into(),
+                    editor: if fx.processor_type.as_str() == TrackProcessorTypeId::TINY_SYNTH_FX {
+                        fx.chain.tiny_editor_state().map(|editor| {
+                            TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
+                                selected_preset_id: editor.selected_preset_id,
+                                master_gain_db: editor.master_gain_db,
+                                reverb_enabled: editor.reverb_enabled,
+                                reverb_amount: editor.reverb_amount,
+                                distortion_enabled: editor.distortion_enabled,
+                                distortion_drive: editor.distortion_drive,
+                                compressor_enabled: editor.compressor_enabled,
+                                compressor_amount: editor.compressor_amount,
+                                eq_enabled: editor.eq_enabled,
+                                eq_low_db: editor.eq_low_db,
+                                eq_mid_db: editor.eq_mid_db,
+                                eq_high_db: editor.eq_high_db,
+                                midi_cc_assignments: editor
+                                    .midi_cc_assignments
+                                    .into_iter()
+                                    .map(app_midi_cc_assignment)
+                                    .collect::<Vec<_>>()
+                                    .into(),
+                            })
                         })
-                    }),
+                    } else {
+                        fx.chain.oxisynth_editor_state().map(|editor| {
+                            TrackProcessorEditorState::OxiSynth(OxiSynthState {
+                                selected_preset_id: editor.selected_preset.stable_id(),
+                            })
+                        })
+                    },
                 }
             });
             state.input_peaks = track
@@ -3340,7 +3342,62 @@ mod tests {
         backend
             .set_track_fx_control(created.track_id, BackendTrackFxControl::SetActive(true))
             .unwrap();
-        backend.remove_track(created.track_id).unwrap();
+        backend
+            .set_track_fx_control(created.track_id, BackendTrackFxControl::SetVisible(true))
+            .unwrap();
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset("0:40".to_owned())),
+            )
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        let fx = snapshot.tracks[&created.track_id].fx.as_ref().unwrap();
+        assert!(fx.visible);
+        let Some(TrackProcessorEditorState::OxiSynth(editor)) = fx.editor.as_ref() else {
+            panic!("missing OxiSynth editor state");
+        };
+        assert_eq!(editor.selected_preset_id, "0:40");
+        let state = backend
+            .track_fx_state_string(created.track_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(state, "shoop-oxisynth:1:timgm6mb:0:40");
+        assert!(backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::RestoreState("malformed".to_owned()),
+            )
+            .is_err());
+        assert_eq!(
+            backend.track_fx_state_string(created.track_id).unwrap(),
+            Some(state.clone())
+        );
+        let captured = backend.capture_session().unwrap();
+        assert_eq!(captured.tracks[0].processor_state, Some(state));
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
+            )
+            .unwrap();
+        let mut malformed = captured.clone();
+        malformed.tracks[0].processor_state = Some("malformed".to_owned());
+        assert!(backend.replace_session(&malformed).is_err());
+        assert_eq!(backend.capture_session().unwrap(), captured);
+        let source_track = captured.tracks[0].source_id;
+        let replacement = backend.replace_session(&captured).unwrap();
+        let restored_track = replacement.tracks[&source_track].track_id;
+        let snapshot = backend.poll().unwrap();
+        let Some(TrackProcessorEditorState::OxiSynth(editor)) = snapshot.tracks[&restored_track]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing restored OxiSynth editor state");
+        };
+        assert_eq!(editor.selected_preset_id, "0:40");
+        backend.remove_track(restored_track).unwrap();
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -3939,6 +3939,7 @@ impl BrowserSelfTest {
                         shoop_egui::TrackProcessorEditorState::TinySynthFx(editor) => {
                             Some((fx.visible, editor))
                         }
+                        shoop_egui::TrackProcessorEditorState::OxiSynth(_) => None,
                     }
                 });
                 let Some((tiny_visible, tiny_state)) = tiny_state else {

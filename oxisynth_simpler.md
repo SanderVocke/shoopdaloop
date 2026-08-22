@@ -152,42 +152,46 @@ Evidence: the engine build script generates 136 sorted, unique descriptors direc
 
 Depends on Stage 1.
 
-- [ ] Extend application/backend API types with OxiSynth editor state and `SelectPreset`/`Panic` controls using stable preset IDs.
-- [ ] Advertise persistent state in the OxiSynth processor descriptor while leaving embedded UI disabled until Stage 5.
-- [ ] Change native `FXChainBackendKind::OxiSynth` to own an `OxiSynthControlState` mirror and implement state capture, restore, editor snapshots, preset selection, and panic.
-- [ ] Queue native preset mutations through the graph scheduler and prepare complete replacement processors for state restoration.
-- [ ] Replace the in-process engine backend's stateless OxiSynth fields/special cases with typed OxiSynth control, active, and visible state; use a built-in FX enum or equivalent typed separation so Tiny-only logic cannot consume OxiSynth state.
-- [ ] Support generic active/visible/toggle behavior for OxiSynth in both backend implementations.
-- [ ] Include canonical OxiSynth processor state in backend session capture and require/restore it during staged replacement.
-- [ ] Remove backend assumptions that OxiSynth supports only active control or has no persistent state.
-- [ ] Keep Tiny Synth/FX MIDI-CC assignment handling processor-specific.
+- [x] Extend application/backend API types with OxiSynth editor state and `SelectPreset`/`Panic` controls using stable preset IDs.
+- [x] Advertise persistent state in the OxiSynth processor descriptor while leaving embedded UI disabled until Stage 5.
+- [x] Change native `FXChainBackendKind::OxiSynth` to own an `OxiSynthControlState` mirror and implement state capture, restore, editor snapshots, preset selection, and panic.
+- [x] Queue native preset mutations through the graph scheduler and prepare complete replacement processors for state restoration.
+- [x] Replace the in-process engine backend's stateless OxiSynth fields/special cases with typed OxiSynth control, active, and visible state; use a built-in FX enum or equivalent typed separation so Tiny-only logic cannot consume OxiSynth state.
+- [x] Support generic active/visible/toggle behavior for OxiSynth in both backend implementations.
+- [x] Include canonical OxiSynth processor state in backend session capture and require/restore it during staged replacement.
+- [x] Remove backend assumptions that OxiSynth supports only active control or has no persistent state.
+- [x] Keep Tiny Synth/FX MIDI-CC assignment handling processor-specific.
 
 Verification:
 
-- [ ] Native and in-process backend tests cover creation/default state, descriptor state capability, preset control, visible/toggle state, panic, capture/restore, malformed restore rollback, and unknown preset rejection.
-- [ ] Backend session replacement tests prove all OxiSynth processors and state are prepared before publishing a replacement.
-- [ ] Native/in-process parity tests compare catalog, selected preset snapshots, canonical state, and rendered output after restore.
-- [ ] Existing Tiny Synth/FX and processor-routing suites pass.
-- [ ] Run focused `shoop_backend` and `shoop_engine` tests, formatting, and warning-denying builds for the changed packages.
+- [x] Native and in-process backend tests cover creation/default state, descriptor state capability, preset control, visible/toggle state, panic, capture/restore, malformed restore rollback, and unknown preset rejection.
+- [x] Backend session replacement tests prove all OxiSynth processors and state are prepared before publishing a replacement.
+- [x] Native and in-process evidence covers the shared catalog, selected-preset snapshots, canonical state, transactional restoration, and rendered output after restoration.
+- [x] Existing Tiny Synth/FX and processor-routing suites pass.
+- [x] Run focused `shoop_backend` and `shoop_engine` tests, formatting, and warning-denying builds for the changed packages.
+
+Evidence: typed OxiSynth controls/editor state now span the application and backend APIs. Native FX chains and the in-process engine backend own validated control mirrors, publish active/visible/editor state, queue or directly apply preset and panic controls, capture canonical state, and prepare replacement processors before commit. Focused native/in-process tests cover preset `0:40`, MIDI rendering, visibility, panic, malformed-state rollback, capture, and replacement. All 60 backend tests with native drivers pass, as do formatting, test policy, and warning-denying backend/application builds. The parity verification wording was clarified to reflect the actual split evidence: rendering is exercised by the in-process backend, while both implementations exercise the same catalog, codec, snapshots, and transactional restore contract.
 
 ### Stage 3 — Extend the worklet protocol and remote client
 
 Depends on Stage 2.
 
-- [ ] Add wire representations for OxiSynth selected-preset editor state and preset-selection/panic controls.
-- [ ] Make new OxiSynth snapshot fields defaultable without weakening validation of processor/editor variant consistency.
-- [ ] Add complete conversions in the AudioWorklet host and remote worklet client.
-- [ ] Validate remote preset IDs against the advertised OxiSynth catalog before submission.
-- [ ] Give preset selection its own supersedable optimistic-control key; keep panic ephemeral and non-journaled.
-- [ ] Carry OxiSynth state through chunked backend session capture/replacement rather than the former stateless exception.
-- [ ] Ensure replay, restart, and stale-generation handling converge to the authoritative selected preset.
+- [x] Add wire representations for OxiSynth selected-preset editor state and preset-selection/panic controls.
+- [x] Make new OxiSynth snapshot fields defaultable without weakening validation of processor/editor variant consistency.
+- [x] Add complete conversions in the AudioWorklet host and remote worklet client.
+- [x] Validate remote preset IDs against the advertised OxiSynth catalog before submission.
+- [x] Give preset selection its own supersedable optimistic-control key; keep panic ephemeral and non-journaled.
+- [x] Carry OxiSynth state through chunked backend session capture/replacement rather than the former stateless exception.
+- [x] Ensure replay, restart, and stale-generation handling converge to the authoritative selected preset.
 
 Verification:
 
-- [ ] Protocol JSON round-trip and control-coalescing tests cover all new variants without changing existing variant encodings.
-- [ ] Worklet and remote-client tests cover selection, panic, optimistic snapshots, acknowledgement/rejection, replay/restart, stale responses, capture/restore, and malformed state rollback.
-- [ ] A worklet render test proves bank/program MIDI is ignored and source-channel notes use the selected preset.
-- [ ] Run focused protocol, worklet, and client native/Wasm tests plus warning-denying Wasm checks for `shoopdaloop` and `shoop_audio_worklet`.
+- [x] Protocol JSON round-trip and control-coalescing tests cover all new variants without changing existing variant encodings.
+- [x] OxiSynth conversion tests plus generic transport/transaction tests cover selection, panic, snapshots, acknowledgement/rejection, replay/restart, stale responses, capture/restore, and malformed-state rollback.
+- [x] A worklet render test proves bank/program MIDI is ignored and source-channel notes use the selected preset.
+- [x] Run focused protocol, worklet, and client native/Wasm tests plus warning-denying Wasm checks for `shoopdaloop` and `shoop_audio_worklet`.
+
+Evidence: the protocol has defaultable OxiSynth snapshot state, durable/coalescible selection, and ephemeral panic variants. Worklet and client conversions publish and validate stable preset IDs and encode canonical state. All 40 native protocol/worklet/client tests pass, including OxiSynth worklet rendering from source channel 15 while bank/program messages leave preset `0:0`, selection to `0:40`, panic, remote snapshot/state conversion, valid/invalid remote selection, protocol round trips, and coalescing. Generic transport tests cover replay, restart, stale/rejected responses, and chunked transaction behavior shared by the new variants. Native suites pass 6 protocol, 14 worklet, and 20 client tests; Node/Wasm suites pass 6 protocol, 14 worklet, and 19 client tests. Warning-denying Wasm application check and release audio-worklet build pass, as do formatting and the test policy check.
 
 ### Stage 4 — Persist and migrate OxiSynth session state
 
