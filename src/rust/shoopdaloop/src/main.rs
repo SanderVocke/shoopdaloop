@@ -424,9 +424,7 @@ impl UnifiedApp {
             let pending = self.pending_file_intent_tx.clone();
             let name = session_source_name(&url);
             ehttp::fetch(ehttp::Request::get(&url), move |result| {
-                if let Some(intent) = session_fetch_result(name, result) {
-                    let _ = pending.send(intent);
-                }
+                let _ = pending.send(session_fetch_result(name, result));
             });
         }
         #[cfg(target_arch = "wasm32")]
@@ -435,9 +433,9 @@ impl UnifiedApp {
             let name = session_source_name(&url);
             wasm_bindgen_futures::spawn_local(async move {
                 let result = ehttp::fetch_async(ehttp::Request::get(&url)).await;
-                if let Some(intent) = session_fetch_result(name, result) {
-                    pending.borrow_mut().push_back(intent);
-                }
+                pending
+                    .borrow_mut()
+                    .push_back(session_fetch_result(name, result));
             });
         }
     }
@@ -922,7 +920,11 @@ impl UnifiedApp {
                             });
                         }
                         Err(error) => {
-                            tracing::error!(path = %path.display(), error = %error, "frontend.session.read_failed");
+                            let message = format!("Could not read {}: {error}", path.display());
+                            let _ = sender.send(AppIntent::FailIoWorkflow {
+                                kind: shoop_egui::IoTaskKind::LoadSession,
+                                message,
+                            });
                         }
                     });
                 }
@@ -948,7 +950,11 @@ impl UnifiedApp {
                             });
                         }
                         Err(error) => {
-                            tracing::error!(path = %path.display(), error = %error, "frontend.loop_audio.read_failed");
+                            let message = format!("Could not read {}: {error}", path.display());
+                            let _ = sender.send(AppIntent::FailIoWorkflow {
+                                kind: shoop_egui::IoTaskKind::ImportLoopAudio,
+                                message,
+                            });
                         }
                     });
                 }
@@ -970,7 +976,11 @@ impl UnifiedApp {
                             });
                         }
                         Err(error) => {
-                            tracing::error!(path = %path.display(), error = %error, "frontend.loop_midi.read_failed");
+                            let message = format!("Could not read {}: {error}", path.display());
+                            let _ = sender.send(AppIntent::FailIoWorkflow {
+                                kind: shoop_egui::IoTaskKind::ImportLoopMidi,
+                                message,
+                            });
                         }
                     });
                 }
@@ -1138,20 +1148,20 @@ fn session_source_name(source: &str) -> String {
         .to_owned()
 }
 
-fn session_fetch_result(name: String, result: ehttp::Result<ehttp::Response>) -> Option<AppIntent> {
+fn session_fetch_result(name: String, result: ehttp::Result<ehttp::Response>) -> AppIntent {
     match result {
-        Ok(response) if response.ok => Some(AppIntent::LoadSessionBytes {
+        Ok(response) if response.ok => AppIntent::LoadSessionBytes {
             name,
             bytes: std::sync::Arc::from(response.bytes),
-        }),
-        Ok(response) => {
-            tracing::error!(status = response.status, "frontend.session.fetch_failed");
-            None
-        }
-        Err(error) => {
-            tracing::error!(error = %error, "frontend.session.fetch_failed");
-            None
-        }
+        },
+        Ok(response) => AppIntent::FailIoWorkflow {
+            kind: shoop_egui::IoTaskKind::LoadSession,
+            message: format!("Could not fetch session: HTTP {}", response.status),
+        },
+        Err(error) => AppIntent::FailIoWorkflow {
+            kind: shoop_egui::IoTaskKind::LoadSession,
+            message: format!("Could not fetch session: {error}"),
+        },
     }
 }
 
@@ -1167,7 +1177,10 @@ fn load_session_path(source: String, sender: Sender<AppIntent>) {
                 });
             }
             Err(error) => {
-                tracing::error!(path = %path.display(), error = %error, "frontend.session.read_failed");
+                let _ = sender.send(AppIntent::FailIoWorkflow {
+                    kind: shoop_egui::IoTaskKind::LoadSession,
+                    message: format!("Could not read {}: {error}", path.display()),
+                });
             }
         }
     });
@@ -2802,6 +2815,7 @@ enum BrowserSelfTest {
     GenerateClickAudio,
     WaitForClickAudio {
         previous_task: shoop_egui::TaskId,
+        request_revision: u64,
     },
     WaitForClickAudioSelection,
     WaitForClickAudioExport,
@@ -2810,6 +2824,7 @@ enum BrowserSelfTest {
     GenerateClickMidi,
     WaitForClickMidi {
         previous_task: shoop_egui::TaskId,
+        request_revision: u64,
     },
     WaitForClickMidiExport,
     RejectProcessedSession,
@@ -2829,6 +2844,19 @@ enum BrowserSelfTest {
     WaitForLuaDialogsStopped,
     Complete,
     Failed,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn click_request_was_rejected(
+    snapshot_revision: u64,
+    io_task: Option<&shoop_egui::IoTaskState>,
+    previous_task: shoop_egui::TaskId,
+    request_revision: u64,
+) -> bool {
+    snapshot_revision > request_revision
+        && io_task.is_none_or(|task| {
+            task.id == previous_task || task.kind != shoop_egui::IoTaskKind::GenerateClickTrack
+        })
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -4231,9 +4259,23 @@ impl BrowserSelfTest {
                         loop_id: loop_state.id,
                         request: browser_click_request(shoop_egui::ClickTrackKind::Audio),
                     })
-                    .map(|()| Self::WaitForClickAudio { previous_task })
+                    .map(|()| Self::WaitForClickAudio {
+                        previous_task,
+                        request_revision: snapshot.revision,
+                    })
             }
-            Self::WaitForClickAudio { previous_task } => {
+            Self::WaitForClickAudio {
+                previous_task,
+                request_revision,
+            } => {
+                if click_request_was_rejected(
+                    snapshot.revision,
+                    snapshot.io_task.as_ref(),
+                    previous_task,
+                    request_revision,
+                ) {
+                    return self.fail("browser audio click request was rejected before task creation");
+                }
                 let Some(task) = &snapshot.io_task else {
                     return;
                 };
@@ -4338,9 +4380,23 @@ impl BrowserSelfTest {
                         loop_id: loop_state.id,
                         request: browser_click_request(shoop_egui::ClickTrackKind::Midi),
                     })
-                    .map(|()| Self::WaitForClickMidi { previous_task })
+                    .map(|()| Self::WaitForClickMidi {
+                        previous_task,
+                        request_revision: snapshot.revision,
+                    })
             }
-            Self::WaitForClickMidi { previous_task } => {
+            Self::WaitForClickMidi {
+                previous_task,
+                request_revision,
+            } => {
+                if click_request_was_rejected(
+                    snapshot.revision,
+                    snapshot.io_task.as_ref(),
+                    previous_task,
+                    request_revision,
+                ) {
+                    return self.fail("browser MIDI click request was rejected before task creation");
+                }
                 let Some(task) = &snapshot.io_task else {
                     return;
                 };
@@ -4908,6 +4964,13 @@ mod tests {
             session_source_name("https://example.com/sessions/demo.shoop?download=1#top"),
             "demo.shoop"
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn browser_click_rejection_is_detected_after_the_request_revision() {
+        let previous_task = shoop_egui::TaskId::from_raw(7);
+        assert!(!click_request_was_rejected(12, None, previous_task, 12));
+        assert!(click_request_was_rejected(13, None, previous_task, 12));
     }
 
     #[shoop_wasm_test_support::shoop_test]

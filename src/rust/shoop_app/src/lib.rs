@@ -1448,6 +1448,16 @@ impl ApplicationModel {
                 }
                 Ok(())
             }
+            AppIntent::FailIoWorkflow { kind, message } => {
+                if self.pending_io.is_some() {
+                    tracing::warn!(?kind, error = %message, "frontend.app.io_workflow_failure_ignored_while_busy");
+                } else {
+                    let task_id = self.start_io_task(kind, &message);
+                    tracing::error!(task_id = task_id.raw(), ?kind, error = %message, "frontend.app.io_workflow_failed");
+                    self.finish_io(IoTaskStatus::Failed, &message);
+                }
+                Ok(())
+            }
             AppIntent::PreviewClickTrack { loop_id, request } => {
                 self.preview_click_track(loop_id, request)
             }
@@ -1481,7 +1491,6 @@ impl ApplicationModel {
         if let Err(error) = result {
             span.record("outcome", "error");
             tracing::warn!(intent = kind, error = %error, "frontend.app.intent_failed");
-            self.report_error(error);
         } else {
             span.record("outcome", "ok");
         }
@@ -17497,6 +17506,19 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             runtime.snapshot().io_task.as_ref().unwrap().message,
             "injected save failure"
         );
+
+        runtime
+            .dispatch(AppIntent::FailIoWorkflow {
+                kind: IoTaskKind::LoadSession,
+                message: "injected read failure".to_owned(),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let workflow_failure = runtime.snapshot();
+        let task = workflow_failure.io_task.as_ref().unwrap();
+        assert_eq!(task.kind, IoTaskKind::LoadSession);
+        assert_eq!(task.status, IoTaskStatus::Failed);
+        assert_eq!(task.message, "injected read failure");
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -1741,6 +1741,10 @@ pub enum AppIntent {
         task_id: TaskId,
         message: String,
     },
+    FailIoWorkflow {
+        kind: IoTaskKind,
+        message: String,
+    },
     PreviewClickTrack {
         loop_id: LoopId,
         request: ClickTrackRequest,
@@ -1932,6 +1936,7 @@ impl AppIntent {
             Self::ConfirmAudioChannelSelection { .. } => "io.confirm_channel_selection",
             Self::CancelIoTask { .. } => "io.cancel",
             Self::FailIoTask { .. } => "io.fail",
+            Self::FailIoWorkflow { .. } => "io.fail_workflow",
             Self::PreviewClickTrack { .. } => "click_track.preview",
             Self::CompleteClickTrackPreview { .. } => "click_track.complete_preview",
             Self::GenerateClickTrack { .. } => "click_track.generate",

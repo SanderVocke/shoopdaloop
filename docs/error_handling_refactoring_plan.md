@@ -192,3 +192,11 @@ Depends on completion of all prior stages.
 - Formatting, tracing inventory, test-usage policy, warning-denying native and Wasm checks, release Wasm worklet build, smoke-budget check, 101 application tests, and 180 egui tests passed. Linux, macOS, WebAssembly, Windows release, Rust coverage, docs, and analysis PR jobs passed.
 - The exact local workspace build and nextest commands cannot link the host `shoop_audio_worklet` shared library because the container-provided Tracy static archive is not position-independent. The application packages compile with warnings denied, and the Linux CI workspace jobs pass in the supported environment. Packaged browser automation is likewise delegated to the passing WebAssembly CI jobs because no supported browser toolchain is installed locally.
 - The initial Windows debug CI run had one unrelated engine audio-channel round-trip timing failure after 1,332 other tests passed; its failed job was rerun.
+
+## Review follow-up
+
+- [x] Add the required Rust test-usage check to every test-changing stage and final validation.
+- [x] Detect browser click-generation requests that were processed and rejected before an I/O task could be created.
+- [x] Preserve URL-fetch and native picker read failures as typed, failed I/O workflows with visible terminal state.
+- [x] Remove the duplicate generic error event emitted after `frontend.app.intent_failed`.
+- [x] Add focused coverage for rejected browser click requests and task-independent I/O workflow failures.
