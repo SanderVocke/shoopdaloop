@@ -3598,6 +3598,28 @@ impl ApplicationModel {
                     .push(track.port_name_base.clone().into());
             }
         }
+        for state in bundle
+            .document
+            .fx_states
+            .iter()
+            .filter(|state| state.chain_type == FxChainTypeDocument::OxiSynth)
+        {
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&state.internal_state) else {
+                continue;
+            };
+            let Some(digest) = value
+                .get("soundfont_sha256")
+                .and_then(serde_json::Value::as_str)
+            else {
+                continue;
+            };
+            if !available.contains(digest) && !backend_data.soundfonts.contains_key(digest) {
+                missing
+                    .entry(digest.to_owned())
+                    .or_default()
+                    .push(format!("Recorded FX state {}", state.id).into());
+            }
+        }
         if !missing.is_empty() {
             let missing_soundfonts = missing
                 .into_iter()

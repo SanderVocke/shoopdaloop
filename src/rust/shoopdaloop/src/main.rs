@@ -6,7 +6,7 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 #[cfg(target_arch = "wasm32")]
 use std::rc::Rc;
 
@@ -220,8 +220,9 @@ struct BrowserEphemeralFile {
 const DB = 'shoopdaloop-soundfonts-v1';
 const STORE = 'assets';
 function openDb() { return new Promise((resolve, reject) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE, {keyPath:'sha256'}); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); }); }
-export async function shoopStoreSoundFont(name, bytes) { const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(v => v.toString(16).padStart(2,'0')).join(''); const db = await openDb(); await new Promise((resolve,reject) => { const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put({sha256:hash,name,bytes}); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); return hash; }
-export async function shoopLoadSoundFonts() { const db=await openDb(); const result=await new Promise((resolve,reject)=>{ const r=db.transaction(STORE).objectStore(STORE).getAll(); r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); }); db.close(); return result; }
+export async function shoopStoreSoundFont(name, bytes) { const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(v => v.toString(16).padStart(2,'0')).join(''); const db = await openDb(); await new Promise((resolve,reject) => { const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put({sha256:hash,name,bytes,ready:false}); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); return hash; }
+export async function shoopCommitSoundFont(hash) { const db=await openDb(); await new Promise((resolve,reject)=>{ const tx=db.transaction(STORE,'readwrite'); const store=tx.objectStore(STORE); const r=store.get(hash); r.onsuccess=()=>{ if(r.result){r.result.ready=true;store.put(r.result);} }; tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); }
+export async function shoopLoadSoundFonts() { const db=await openDb(); const result=await new Promise((resolve,reject)=>{ const tx=db.transaction(STORE,'readwrite'); const store=tx.objectStore(STORE); const r=store.getAll(); r.onsuccess=()=>{ for(const asset of r.result){if(!asset.ready)store.delete(asset.sha256);} resolve(r.result.filter(asset=>asset.ready));}; r.onerror=()=>reject(r.error); }); db.close(); return result; }
 export async function shoopDeleteSoundFont(hash) { const db=await openDb(); await new Promise((resolve,reject)=>{ const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).delete(hash); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); }
 "#)]
 extern "C" {
@@ -232,6 +233,10 @@ extern "C" {
     ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
     #[wasm_bindgen::prelude::wasm_bindgen(catch)]
     async fn shoopLoadSoundFonts() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn shoopCommitSoundFont(
+        hash: String,
+    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
     #[wasm_bindgen::prelude::wasm_bindgen(catch)]
     async fn shoopDeleteSoundFont(
         hash: String,
@@ -288,6 +293,8 @@ struct UnifiedApp {
     pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
     #[cfg(target_arch = "wasm32")]
     pending_ephemeral_files: Rc<RefCell<VecDeque<BrowserEphemeralFile>>>,
+    #[cfg(target_arch = "wasm32")]
+    browser_soundfont_catalog: BTreeSet<String>,
     #[cfg(not(target_arch = "wasm32"))]
     pending_file_intent_tx: Sender<AppIntent>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -391,6 +398,8 @@ impl UnifiedApp {
             pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
             #[cfg(target_arch = "wasm32")]
             pending_ephemeral_files,
+            #[cfg(target_arch = "wasm32")]
+            browser_soundfont_catalog: BTreeSet::new(),
             #[cfg(not(target_arch = "wasm32"))]
             pending_file_intent_tx,
             #[cfg(not(target_arch = "wasm32"))]
@@ -950,6 +959,53 @@ impl UnifiedApp {
             }
         }
         let snapshot = self.runtime.snapshot();
+        #[cfg(target_arch = "wasm32")]
+        {
+            let current = snapshot
+                .soundfonts
+                .iter()
+                .filter(|asset| !asset.built_in)
+                .map(|asset| asset.sha256.to_string())
+                .chain(
+                    snapshot
+                        .tracks
+                        .iter()
+                        .filter_map(|track| {
+                            let shoop_egui::TrackProcessorEditorState::OxiSynth(editor) =
+                                track.fx.as_ref()?.editor.as_ref()?
+                            else {
+                                return None;
+                            };
+                            Some(
+                                editor
+                                    .available_soundfonts
+                                    .iter()
+                                    .filter(|asset| !asset.built_in)
+                                    .map(|asset| asset.sha256.to_string())
+                                    .collect::<Vec<_>>(),
+                            )
+                        })
+                        .flatten(),
+                )
+                .collect::<BTreeSet<_>>();
+            for added in current.difference(&self.browser_soundfont_catalog) {
+                let added = added.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(error) = shoopCommitSoundFont(added).await {
+                        tracing::error!(error = ?error, "frontend.soundfont.commit_failed");
+                    }
+                });
+            }
+            for removed in self.browser_soundfont_catalog.difference(&current) {
+                let removed = removed.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(error) = shoopDeleteSoundFont(removed).await {
+                        tracing::error!(error = ?error, "frontend.soundfont.delete_failed");
+                    }
+                });
+            }
+            self.browser_soundfont_catalog = current;
+        }
         #[cfg(not(target_arch = "wasm32"))]
         self.reconcile_audio_settings(&snapshot);
         #[cfg(target_arch = "wasm32")]
