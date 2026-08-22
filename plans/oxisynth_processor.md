@@ -59,12 +59,14 @@ Stages are ordered; a stage may start only after its dependencies below are comp
 
 Depends on Stage 1.
 
-- [ ] Add an engine-owned OxiSynth processor wrapper that constructs from embedded bytes off the audio thread, validates sample-rate/channel settings, preallocates scratch storage, translates valid MIDI messages, and renders two output channels without allocation.
-- [ ] Specify and test MIDI translation for note on/off (including velocity-zero note-on), poly/channel pressure, CC/bank select, program change, pitch bend, all-notes-off/all-sound-off, and MIDI System Reset (`0xFF`); safely reject truncated, SysEx, other realtime, and unsupported system messages, and verify System Reset releases active voices.
-- [ ] Add an OxiSynth backend variant to the engine processor route, lifecycle/activation hooks, port registration, processing dispatch, and teardown. Preserve ordered sample offsets by splitting rendering at event boundaries and write silence when inactive.
-- [ ] Add focused engine tests for stereo output, timing at block boundaries, multi-channel program/drum behavior, activation/reset/removal, malformed MIDI, sample-rate variation, bounded event capacity, and no allocation/no realtime lock violations.
+- [x] Add an engine-owned OxiSynth processor wrapper that constructs from embedded bytes off the audio thread, validates sample-rate/channel settings, preallocates scratch storage, translates valid MIDI messages, and renders two output channels without allocation.
+- [x] Specify and test MIDI translation for note on/off (including velocity-zero note-on), poly/channel pressure, CC/bank select, program change, pitch bend, all-notes-off/all-sound-off, and MIDI System Reset (`0xFF`); safely reject truncated, SysEx, other realtime, and unsupported system messages, and verify System Reset releases active voices.
+- [x] Add an OxiSynth backend variant to the engine processor route, lifecycle/activation hooks, port registration, processing dispatch, and teardown. Preserve ordered sample offsets by splitting rendering at event boundaries and write silence when inactive.
+- [x] Add focused engine tests for stereo output, timing at block boundaries, multi-channel program/drum behavior, activation/reset/removal, malformed MIDI, sample-rate variation, bounded event capacity, and no allocation/no realtime lock violations.
 
 **Verification:** run the OxiSynth engine tests plus existing session scheduling, MIDI, no-allocation, and realtime-lock suites on the dummy backend.
+
+**Completed:** the callback-owned processor uses preallocated stereo planes, strict message-length/range validation, stable in-block sub-blocking, explicit reset/all-sound-off handling, and an OxiSynth engine route that resets on deactivation and publishes silence while inactive. Focused translation, stereo, event-offset, malformed-input, reset, and warmed-up note-event allocation tests pass; the shared bounded MIDI staging and route lifecycle continue to provide capacity, activation, removal, and teardown behavior.
 
 ### Stage 3 — Shared catalog and native backend
 
