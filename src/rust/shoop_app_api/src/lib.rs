@@ -1302,7 +1302,6 @@ pub struct AppSnapshot {
     pub scripting: Arc<ScriptingState>,
     pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
-    pub notifications: Vec<AppNotification>,
 }
 
 pub type AppState = AppSnapshot;
@@ -1734,8 +1733,12 @@ pub enum AppIntent {
     CancelIoTask {
         task_id: TaskId,
     },
-    ReportFileIoError {
-        task_id: Option<TaskId>,
+    FailIoTask {
+        task_id: TaskId,
+        message: String,
+    },
+    FailIoWorkflow {
+        kind: IoTaskKind,
         message: String,
     },
     PreviewClickTrack {
@@ -1928,7 +1931,8 @@ impl AppIntent {
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
             Self::ConfirmAudioChannelSelection { .. } => "io.confirm_channel_selection",
             Self::CancelIoTask { .. } => "io.cancel",
-            Self::ReportFileIoError { .. } => "io.report_error",
+            Self::FailIoTask { .. } => "io.fail",
+            Self::FailIoWorkflow { .. } => "io.fail_workflow",
             Self::PreviewClickTrack { .. } => "click_track.preview",
             Self::CompleteClickTrackPreview { .. } => "click_track.complete_preview",
             Self::GenerateClickTrack { .. } => "click_track.generate",
@@ -1943,19 +1947,6 @@ impl AppIntent {
 }
 
 pub type AppAction = AppIntent;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NotificationLevel {
-    Info,
-    Warning,
-    Error,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AppNotification {
-    pub level: NotificationLevel,
-    pub message: String,
-}
 
 #[cfg(test)]
 mod tests {

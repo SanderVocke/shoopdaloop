@@ -769,8 +769,7 @@ impl AppWidget {
         let _span = tracing::trace_span!(
             "frontend.egui.frame",
             revision = state.revision,
-            track_count = state.tracks.len(),
-            notification_count = state.notifications.len()
+            track_count = state.tracks.len()
         )
         .entered();
         self.ensure_logo(ui.ctx());
@@ -1890,14 +1889,6 @@ impl AppWidget {
             }
             if !state.audio_drivers.switch.message.is_empty() {
                 ui.label(&state.audio_drivers.switch.message);
-            }
-            if let Some(error) = state
-                .notifications
-                .iter()
-                .rev()
-                .find(|notification| notification.level == crate::NotificationLevel::Error)
-            {
-                ui.colored_label(colors::ERROR, format!("Latest error: {}", error.message));
             }
         });
     }

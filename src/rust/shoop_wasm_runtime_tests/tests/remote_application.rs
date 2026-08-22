@@ -9,8 +9,8 @@ use js_sys::{Array, Function, Promise};
 use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
     AppIntent, AppSnapshot, ClickTrackRequest, DirectTrackSpec, GlobalControlAction, IoTaskKind,
-    IoTaskStatus, LoopAction, LoopMode, NotificationLevel, TinySynthFxControl, TrackAction,
-    TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
+    IoTaskStatus, LoopAction, LoopMode, TinySynthFxControl, TrackAction, TrackProcessorEditorState,
+    TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
 };
 use shoop_backend::BackendDriverState;
 use shoop_worklet_client::{MessageEndpoint, NullHostMidiBridge, RemoteBackendControl};
@@ -191,9 +191,9 @@ impl RemoteAppHarness {
             self.drive_step().await;
         }
         panic!(
-            "remote application did not reach {description}; readiness={:?}, notifications={:?}",
+            "remote application did not reach {description}; readiness={:?}, io_task={:?}",
             self.control.readiness(),
-            self.snapshot().notifications
+            self.snapshot().io_task
         );
     }
 
@@ -363,14 +363,6 @@ async fn remote_loop_duplication_copies_content_and_controls() {
     assert_eq!(target_state.length_frames, source_state.length_frames);
     assert_eq!(target_state.gain, source_state.gain);
     assert_eq!(target_state.balance, source_state.balance);
-    assert!(
-        !snapshot
-            .notifications
-            .iter()
-            .any(|notification| notification.level == NotificationLevel::Error),
-        "unexpected duplication errors: {:?}",
-        snapshot.notifications
-    );
     harness.shutdown().await;
 }
 

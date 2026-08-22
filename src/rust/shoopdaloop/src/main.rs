@@ -358,12 +358,7 @@ impl UnifiedApp {
         #[cfg(not(target_arch = "wasm32"))]
         load_session_path(source, self.pending_file_intent_tx.clone());
         #[cfg(target_arch = "wasm32")]
-        self.pending_file_intents
-            .borrow_mut()
-            .push_back(AppIntent::ReportFileIoError {
-                task_id: None,
-                message: "Filesystem session paths are unavailable in the web app".to_owned(),
-            });
+        tracing::warn!(source = %source, "frontend.session.filesystem_path_unavailable");
     }
 
     fn show_session_url_dialogs(&mut self, context: &egui::Context) {
@@ -738,10 +733,7 @@ impl UnifiedApp {
         match load_ephemeral_script_bytes(name, bytes) {
             Ok((name, source)) => self.widget.queue_ephemeral_script(name, source),
             Err(error) => {
-                let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
-                    task_id: None,
-                    message: error.to_string(),
-                });
+                tracing::error!(error = %error, "frontend.scripting.ephemeral_load_failed")
             }
         }
     }
@@ -764,10 +756,7 @@ impl UnifiedApp {
                         .queue_ephemeral_script_from_path(name, source, Some(source_path))
                 }
                 Err(error) => {
-                    let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
-                        task_id: None,
-                        message: error.to_string(),
-                    });
+                    tracing::error!(path = %path.display(), error = %error, "frontend.scripting.ephemeral_load_failed")
                 }
             }
         }
@@ -866,7 +855,7 @@ impl UnifiedApp {
         let pending: Vec<_> = self.pending_file_intent_rx.try_iter().collect();
         for intent in pending {
             if let Err(error) = self.runtime.dispatch(intent) {
-                eprintln!("could not dispatch file intent: {error}");
+                tracing::error!(error = %error, "frontend.egui.file_intent_dispatch_failed");
             }
         }
         let snapshot = self.runtime.snapshot();
@@ -909,13 +898,6 @@ impl UnifiedApp {
                 save_file_output(output, Rc::clone(&self.pending_file_intents));
             }
         }
-        if let Some(notification) = snapshot.notifications.last() {
-            egui::Area::new(egui::Id::new("latest_notification"))
-                .anchor(egui::Align2::CENTER_TOP, [0.0, 8.0])
-                .show(ui.ctx(), |ui| {
-                    ui.label(&notification.message);
-                });
-        }
         ui.ctx().request_repaint_after(UPDATE_INTERVAL);
     }
 
@@ -938,9 +920,10 @@ impl UnifiedApp {
                             });
                         }
                         Err(error) => {
-                            let _ = sender.send(AppIntent::ReportFileIoError {
-                                task_id: None,
-                                message: format!("Could not read {}: {error}", path.display()),
+                            let message = format!("Could not read {}: {error}", path.display());
+                            let _ = sender.send(AppIntent::FailIoWorkflow {
+                                kind: shoop_egui::IoTaskKind::LoadSession,
+                                message,
                             });
                         }
                     });
@@ -967,9 +950,10 @@ impl UnifiedApp {
                             });
                         }
                         Err(error) => {
-                            let _ = sender.send(AppIntent::ReportFileIoError {
-                                task_id: None,
-                                message: format!("Could not read {}: {error}", path.display()),
+                            let message = format!("Could not read {}: {error}", path.display());
+                            let _ = sender.send(AppIntent::FailIoWorkflow {
+                                kind: shoop_egui::IoTaskKind::ImportLoopAudio,
+                                message,
                             });
                         }
                     });
@@ -992,9 +976,10 @@ impl UnifiedApp {
                             });
                         }
                         Err(error) => {
-                            let _ = sender.send(AppIntent::ReportFileIoError {
-                                task_id: None,
-                                message: format!("Could not read {}: {error}", path.display()),
+                            let message = format!("Could not read {}: {error}", path.display());
+                            let _ = sender.send(AppIntent::FailIoWorkflow {
+                                kind: shoop_egui::IoTaskKind::ImportLoopMidi,
+                                message,
                             });
                         }
                     });
@@ -1005,7 +990,7 @@ impl UnifiedApp {
         };
         if let Some(intent) = intent {
             if let Err(error) = self.runtime.dispatch(intent) {
-                eprintln!("could not dispatch GUI intent: {error}");
+                tracing::error!(error = %error, "frontend.egui.intent_dispatch_failed");
             }
         }
     }
@@ -1079,7 +1064,7 @@ impl UnifiedApp {
             }
             other => {
                 if let Err(error) = self.runtime.dispatch(other) {
-                    eprintln!("could not dispatch GUI intent: {error}");
+                    tracing::error!(error = %error, "frontend.egui.intent_dispatch_failed");
                 }
             }
         }
@@ -1125,8 +1110,8 @@ fn save_file_output(output: shoop_app::ApplicationFileOutput, sender: Sender<App
     };
     std::thread::spawn(move || {
         if let Err(error) = atomic_replace(&path, &output.bytes, output.task_id.raw()) {
-            let _ = sender.send(AppIntent::ReportFileIoError {
-                task_id: Some(output.task_id),
+            let _ = sender.send(AppIntent::FailIoTask {
+                task_id: output.task_id,
                 message: format!("Could not save {}: {error}", path.display()),
             });
         }
@@ -1169,12 +1154,12 @@ fn session_fetch_result(name: String, result: ehttp::Result<ehttp::Response>) ->
             name,
             bytes: std::sync::Arc::from(response.bytes),
         },
-        Ok(response) => AppIntent::ReportFileIoError {
-            task_id: None,
+        Ok(response) => AppIntent::FailIoWorkflow {
+            kind: shoop_egui::IoTaskKind::LoadSession,
             message: format!("Could not fetch session: HTTP {}", response.status),
         },
-        Err(error) => AppIntent::ReportFileIoError {
-            task_id: None,
+        Err(error) => AppIntent::FailIoWorkflow {
+            kind: shoop_egui::IoTaskKind::LoadSession,
             message: format!("Could not fetch session: {error}"),
         },
     }
@@ -1184,17 +1169,20 @@ fn session_fetch_result(name: String, result: ehttp::Result<ehttp::Response>) ->
 fn load_session_path(source: String, sender: Sender<AppIntent>) {
     std::thread::spawn(move || {
         let path = Path::new(&source);
-        let intent = match std::fs::read(path) {
-            Ok(bytes) => AppIntent::LoadSessionBytes {
-                name: file_name(path),
-                bytes: std::sync::Arc::from(bytes),
-            },
-            Err(error) => AppIntent::ReportFileIoError {
-                task_id: None,
-                message: format!("Could not read {}: {error}", path.display()),
-            },
-        };
-        let _ = sender.send(intent);
+        match std::fs::read(path) {
+            Ok(bytes) => {
+                let _ = sender.send(AppIntent::LoadSessionBytes {
+                    name: file_name(path),
+                    bytes: std::sync::Arc::from(bytes),
+                });
+            }
+            Err(error) => {
+                let _ = sender.send(AppIntent::FailIoWorkflow {
+                    kind: shoop_egui::IoTaskKind::LoadSession,
+                    message: format!("Could not read {}: {error}", path.display()),
+                });
+            }
+        }
     });
 }
 
@@ -1236,12 +1224,10 @@ fn save_file_output(
             .await
         {
             if let Err(error) = file.write(&output.bytes).await {
-                pending
-                    .borrow_mut()
-                    .push_back(AppIntent::ReportFileIoError {
-                        task_id: Some(output.task_id),
-                        message: format!("Could not save browser file: {error}"),
-                    });
+                pending.borrow_mut().push_back(AppIntent::FailIoTask {
+                    task_id: output.task_id,
+                    message: format!("Could not save browser file: {error}"),
+                });
             }
         }
     });
@@ -1501,11 +1487,7 @@ impl Runtime {
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
         for warning in warnings {
-            eprintln!("ShoopDaLoop settings: {warning}");
-            handle.dispatch(AppIntent::ReportFileIoError {
-                task_id: None,
-                message: warning,
-            })?;
+            tracing::warn!(warning = %warning, "frontend.startup.fallback");
         }
         let script_paths =
             associate_startup_script_paths(runtime.startup_script_ids(), script_paths);
@@ -1531,16 +1513,10 @@ impl Runtime {
             match result {
                 Ok((scripts, warnings, preserve_identities, deletions_safe)) => {
                     for warning in warnings {
-                        let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
-                            task_id: None,
-                            message: warning,
-                        });
+                        tracing::warn!(warning = %warning, "frontend.scripting.catalog_scan_warning");
                     }
                     if !deletions_safe {
-                        let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
-                            task_id: None,
-                            message: "built-in scan could not enumerate the complete tree; the previous catalog was retained".to_owned(),
-                        });
+                        tracing::warn!("frontend.scripting.catalog_scan_incomplete");
                         continue;
                     }
                     let descriptors = scripts
@@ -1579,10 +1555,7 @@ impl Runtime {
                     }
                 }
                 Err(error) => {
-                    let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
-                        task_id: None,
-                        message: format!("could not rescan built-in scripts: {error}"),
-                    });
+                    tracing::error!(error = %error, "frontend.scripting.catalog_scan_failed");
                 }
             }
         }
@@ -1642,10 +1615,7 @@ impl Runtime {
             }
         }
         for warning in warnings {
-            self.handle.dispatch(AppIntent::ReportFileIoError {
-                task_id: None,
-                message: warning,
-            })?;
+            tracing::warn!(warning = %warning, "frontend.scripting.user_script_warning");
         }
         let snapshot = self.handle.snapshot();
         for script in snapshot
@@ -1711,10 +1681,7 @@ impl Runtime {
                 let _ = sender.send((generation, result));
             })
         {
-            let _ = self.handle.dispatch(AppIntent::ReportFileIoError {
-                task_id: None,
-                message: format!("could not start built-in scan: {error}"),
-            });
+            tracing::error!(error = %error, "frontend.scripting.catalog_scan_start_failed");
         }
     }
 
@@ -2069,10 +2036,7 @@ impl Runtime {
             match result {
                 Ok((scripts, warnings, preserve_identities)) => {
                     for warning in warnings {
-                        let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
-                            task_id: None,
-                            message: warning,
-                        });
+                        tracing::warn!(warning = %warning, "frontend.scripting.catalog_scan_warning");
                     }
                     let _ = self.runtime.dispatch(AppIntent::ReconcileCatalogScripts {
                         scripts: scripts.into(),
@@ -2080,17 +2044,14 @@ impl Runtime {
                     });
                 }
                 Err(error) => {
-                    let _ = self.runtime.dispatch(AppIntent::ReportFileIoError {
-                        task_id: None,
-                        message: format!("could not rescan built-in scripts: {error}"),
-                    });
+                    tracing::error!(error = %error, "frontend.scripting.catalog_scan_failed");
                 }
             }
         }
         self.runtime.tick(elapsed);
         self.midi.update_presentation();
         let snapshot = self.runtime.snapshot();
-        let mut message = match &self.mode {
+        let message = match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => {
                 controller.update_presentation();
                 format!("Browser audio: {:?}", controller.state())
@@ -2100,10 +2061,6 @@ impl Runtime {
                 format!("Browser offline Worker engine: {:?}", driver.state())
             }
         };
-        if let Some(notification) = snapshot.notifications.first() {
-            message.push_str(": ");
-            message.push_str(&notification.message);
-        }
         set_browser_status(&message, Some(&snapshot));
         if let Some(element) = browser_status_element() {
             let _ = element.set_attribute("data-web-midi", &format!("{:?}", self.midi.state()));
@@ -2858,6 +2815,7 @@ enum BrowserSelfTest {
     GenerateClickAudio,
     WaitForClickAudio {
         previous_task: shoop_egui::TaskId,
+        request_revision: u64,
     },
     WaitForClickAudioSelection,
     WaitForClickAudioExport,
@@ -2866,6 +2824,7 @@ enum BrowserSelfTest {
     GenerateClickMidi,
     WaitForClickMidi {
         previous_task: shoop_egui::TaskId,
+        request_revision: u64,
     },
     WaitForClickMidiExport,
     RejectProcessedSession,
@@ -2885,6 +2844,19 @@ enum BrowserSelfTest {
     WaitForLuaDialogsStopped,
     Complete,
     Failed,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn click_request_was_rejected(
+    snapshot_revision: u64,
+    io_task: Option<&shoop_egui::IoTaskState>,
+    previous_task: shoop_egui::TaskId,
+    request_revision: u64,
+) -> bool {
+    snapshot_revision > request_revision
+        && io_task.is_none_or(|task| {
+            task.id == previous_task || task.kind != shoop_egui::IoTaskKind::GenerateClickTrack
+        })
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -4287,20 +4259,22 @@ impl BrowserSelfTest {
                         loop_id: loop_state.id,
                         request: browser_click_request(shoop_egui::ClickTrackKind::Audio),
                     })
-                    .map(|()| Self::WaitForClickAudio { previous_task })
-            }
-            Self::WaitForClickAudio { previous_task } => {
-                if let Some(notification) =
-                    snapshot.notifications.iter().rev().find(|notification| {
-                        notification.level == shoop_egui::NotificationLevel::Error
-                            && (notification.message.contains("click")
-                                || notification.message.contains("I/O task"))
+                    .map(|()| Self::WaitForClickAudio {
+                        previous_task,
+                        request_revision: snapshot.revision,
                     })
-                {
-                    return self.fail(&format!(
-                        "browser audio click request was rejected: {}",
-                        notification.message
-                    ));
+            }
+            Self::WaitForClickAudio {
+                previous_task,
+                request_revision,
+            } => {
+                if click_request_was_rejected(
+                    snapshot.revision,
+                    snapshot.io_task.as_ref(),
+                    previous_task,
+                    request_revision,
+                ) {
+                    return self.fail("browser audio click request was rejected before task creation");
                 }
                 let Some(task) = &snapshot.io_task else {
                     return;
@@ -4406,20 +4380,22 @@ impl BrowserSelfTest {
                         loop_id: loop_state.id,
                         request: browser_click_request(shoop_egui::ClickTrackKind::Midi),
                     })
-                    .map(|()| Self::WaitForClickMidi { previous_task })
-            }
-            Self::WaitForClickMidi { previous_task } => {
-                if let Some(notification) =
-                    snapshot.notifications.iter().rev().find(|notification| {
-                        notification.level == shoop_egui::NotificationLevel::Error
-                            && (notification.message.contains("click")
-                                || notification.message.contains("I/O task"))
+                    .map(|()| Self::WaitForClickMidi {
+                        previous_task,
+                        request_revision: snapshot.revision,
                     })
-                {
-                    return self.fail(&format!(
-                        "browser MIDI click request was rejected: {}",
-                        notification.message
-                    ));
+            }
+            Self::WaitForClickMidi {
+                previous_task,
+                request_revision,
+            } => {
+                if click_request_was_rejected(
+                    snapshot.revision,
+                    snapshot.io_task.as_ref(),
+                    previous_task,
+                    request_revision,
+                ) {
+                    return self.fail("browser MIDI click request was rejected before task creation");
                 }
                 let Some(task) = &snapshot.io_task else {
                     return;
@@ -4833,6 +4809,15 @@ fn set_browser_status(message: &str, snapshot: Option<&AppSnapshot>) {
             "data-storage-exhaustions",
             &status.storage_exhaustions.to_string(),
         );
+        if let Some(task) = &snapshot.io_task {
+            let _ = element.set_attribute("data-io-task-id", &task.id.raw().to_string());
+            let _ = element.set_attribute("data-io-task-kind", &format!("{:?}", task.kind));
+            let _ = element.set_attribute("data-io-task-status", &format!("{:?}", task.status));
+        } else {
+            let _ = element.remove_attribute("data-io-task-id");
+            let _ = element.remove_attribute("data-io-task-kind");
+            let _ = element.remove_attribute("data-io-task-status");
+        }
         let _ = element.set_attribute("data-web-midi", "AwaitingGesture");
         let _ = element.set_attribute(
             "data-application-ports",
@@ -4979,6 +4964,13 @@ mod tests {
             session_source_name("https://example.com/sessions/demo.shoop?download=1#top"),
             "demo.shoop"
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn browser_click_rejection_is_detected_after_the_request_revision() {
+        let previous_task = shoop_egui::TaskId::from_raw(7);
+        assert!(!click_request_was_rejected(12, None, previous_task, 12));
+        assert!(click_request_was_rejected(13, None, previous_task, 12));
     }
 
     #[shoop_wasm_test_support::shoop_test]
