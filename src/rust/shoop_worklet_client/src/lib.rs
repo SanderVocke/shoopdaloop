@@ -100,7 +100,9 @@ struct LoopContentReplaceAssembly {
 struct SoundFontImportAssembly {
     generation: u64,
     sha256: String,
+    original_filename: String,
     bytes: Arc<[u8]>,
+    begin_sent: bool,
     next_offset: usize,
     commit_sent: bool,
 }
@@ -240,6 +242,11 @@ impl RemoteWorkletBackend {
                 "loop content replacement operation {} was cancelled: {reason}",
                 replace.generation
             ));
+        }
+        if let Some(import) = self.soundfont_import.as_mut() {
+            import.begin_sent = false;
+            import.next_offset = 0;
+            import.commit_sent = false;
         }
     }
 
@@ -629,6 +636,19 @@ impl RemoteWorkletBackend {
         let Some(import) = self.soundfont_import.as_mut() else {
             return Ok(());
         };
+        if !import.begin_sent && self.transport.borrow().pending_len() < COMMAND_CAPACITY {
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::BeginSoundFontImport {
+                    generation: import.generation,
+                    original_filename: import.original_filename.clone(),
+                    total_bytes: import.bytes.len(),
+                })?;
+            import.begin_sent = true;
+        }
+        if !import.begin_sent {
+            return Ok(());
+        }
         while import.next_offset < import.bytes.len()
             && self.transport.borrow().pending_len() < COMMAND_CAPACITY / 2
         {
@@ -655,9 +675,6 @@ impl RemoteWorkletBackend {
                     generation: import.generation,
                 })?;
             import.commit_sent = true;
-        }
-        if import.commit_sent && self.transport.borrow().pending_len() == 0 {
-            self.soundfont_import = None;
         }
         Ok(())
     }
@@ -908,18 +925,13 @@ impl RemoteWorkletBackend {
                                     .ok()?;
                                 Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
                                     available_soundfonts: Arc::clone(&available_soundfonts),
-                                    soundfont_sha256: oxi.soundfont_sha256.into(),
+                                    soundfont_sha256: oxi.soundfont_sha256.clone().into(),
                                     soundfont_name: oxi.soundfont_name.into(),
-                                    presets: oxi
-                                        .presets
-                                        .into_iter()
-                                        .map(|preset| shoop_app_api::OxiSynthPresetDescriptor {
-                                            bank: preset.bank,
-                                            program: preset.program,
-                                            name: preset.name.into(),
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .into(),
+                                    presets: available_soundfonts
+                                        .iter()
+                                        .find(|asset| asset.sha256.as_ref() == oxi.soundfont_sha256)
+                                        .map(|asset| Arc::clone(&asset.presets))
+                                        .unwrap_or_else(|| Arc::from([])),
                                     revision: oxi.revision,
                                     midi_activity_revision: oxi.midi_activity_revision,
                                     master_gain: oxi.master_gain,
@@ -1515,15 +1527,12 @@ impl Backend for RemoteWorkletBackend {
             .import(bytes.clone(), original_filename.clone())?;
         let generation = self.next_session_generation.max(1);
         self.next_session_generation = generation.saturating_add(1);
-        self.submit_ephemeral(Command::BeginSoundFontImport {
-            generation,
-            original_filename: original_filename.clone(),
-            total_bytes: bytes.len(),
-        })?;
         self.soundfont_import = Some(SoundFontImportAssembly {
             generation,
             sha256: descriptor.sha256.to_string(),
+            original_filename,
             bytes,
+            begin_sent: false,
             next_offset: 0,
             commit_sent: false,
         });
@@ -2406,7 +2415,8 @@ impl Backend for RemoteWorkletBackend {
         } else if connection == ConnectionState::Detached
             && (self.session_capture.is_some()
                 || self.session_replace.is_some()
-                || self.loop_content_replace.is_some())
+                || self.loop_content_replace.is_some()
+                || self.soundfont_import.is_some())
         {
             self.cancel_transfers("transport detached");
         }
@@ -2445,11 +2455,32 @@ impl Backend for RemoteWorkletBackend {
             let sequence = received.envelope.sequence;
             let generation = received.generation;
             match received.envelope.event {
-                Event::Ack | Event::Stopped => {}
+                Event::Ack => {
+                    if let Command::CommitSoundFontImport { generation } = received.command {
+                        if self
+                            .soundfont_import
+                            .as_ref()
+                            .is_some_and(|import| import.generation == generation)
+                        {
+                            self.soundfont_import = None;
+                        }
+                    }
+                }
+                Event::Stopped => {}
                 Event::Error { message } => {
                     self.transport
                         .borrow_mut()
                         .reject_journaled(&received.command);
+                    if matches!(
+                        received.command,
+                        Command::BeginSoundFontImport { .. }
+                            | Command::WriteSoundFontImport { .. }
+                            | Command::CommitSoundFontImport { .. }
+                    ) {
+                        if let Some(import) = self.soundfont_import.take() {
+                            let _ = self.soundfonts.remove(&import.sha256, false);
+                        }
+                    }
                     match &received.command {
                         Command::CreateTrack {
                             expected_track_id, ..

@@ -3118,14 +3118,6 @@ impl EngineBackend {
                 .clone(),
             external_connections: global_connections.into_iter().collect(),
         }];
-        let referenced_soundfonts = tracks
-            .iter()
-            .filter_map(|track| track.processor_state.as_deref())
-            .filter_map(|state| {
-                shoop_engine::oxisynth::OxiSynthProcessor::decode_configuration(state).ok()
-            })
-            .map(|configuration| configuration.soundfont_sha256)
-            .collect::<BTreeSet<_>>();
         Ok(BackendSessionData {
             sample_rate: self.sample_rate,
             tracks,
@@ -3135,7 +3127,6 @@ impl EngineBackend {
                 .soundfonts
                 .user_assets()
                 .into_iter()
-                .filter(|asset| referenced_soundfonts.contains(&asset.sha256))
                 .map(|asset| {
                     (
                         asset.sha256.clone(),
@@ -4326,6 +4317,9 @@ impl Backend for EngineBackend {
                             .presets
                             .first()
                             .ok_or_else(|| anyhow!("SoundFont has no presets"))?;
+                        replacement.set_master_gain(previous.master_gain)?;
+                        replacement.set_reverb(previous.reverb)?;
+                        replacement.set_chorus(previous.chorus)?;
                         for (channel, program) in previous.channels.iter().enumerate() {
                             let (bank, program) = asset
                                 .presets

@@ -15,6 +15,30 @@ pub(crate) struct OxiSynthEditor {
     recent: VecDeque<(String, u32, u8)>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn releasing_hidden_editor_ends_audition() {
+        let mut editor = OxiSynthEditor {
+            channel: 3,
+            auditioning: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            editor.release_audition(),
+            vec![TrackAction::OxiSynth(OxiSynthControl::Audition {
+                channel: 3,
+                key: 60,
+                velocity: 100,
+                pressed: false,
+            })]
+        );
+        assert!(editor.release_audition().is_empty());
+    }
+}
+
 impl OxiSynthEditor {
     pub(crate) fn show(
         &mut self,
@@ -34,7 +58,7 @@ impl OxiSynthEditor {
             return Vec::new();
         };
         if !fx.visible {
-            return Vec::new();
+            return self.release_audition();
         }
 
         let mut actions = Vec::new();
@@ -381,8 +405,22 @@ impl OxiSynthEditor {
                 });
             });
         if !open {
+            actions.extend(self.release_audition());
             actions.push(TrackAction::FxVisibilityChanged(false));
         }
         actions
+    }
+
+    fn release_audition(&mut self) -> Vec<TrackAction> {
+        if !self.auditioning {
+            return Vec::new();
+        }
+        self.auditioning = false;
+        vec![TrackAction::OxiSynth(OxiSynthControl::Audition {
+            channel: self.channel as u8,
+            key: 60,
+            velocity: 100,
+            pressed: false,
+        })]
     }
 }

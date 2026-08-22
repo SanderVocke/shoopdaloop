@@ -98,7 +98,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [ ] Route UI commands to the processor without MIDI conversion and add acknowledgements/errors so rejected changes do not remain optimistically visible.
 - [ ] Update MIDI processing so every successfully applied represented MIDI event updates canonical state at the same sample offset; coalesce publication to at most one fixed-size snapshot per processing quantum/revision.
 - [ ] Publish snapshots through a bounded lock-free mechanism consumable by the control thread/worklet host, including overflow/coalescing counters and last-known-good behavior.
-- [ ] Reset audition and active-voice state safely on panic, bypass, replacement, and removal without changing the persisted baseline unintentionally.
+- [x] Reset audition and active-voice state safely on panic, editor hide/close, bypass, replacement, and removal without changing the persisted baseline unintentionally.
 - [ ] Return displaced and removed processors through bounded deferred-reclamation queues and drain/drop them outside native callbacks and AudioWorklet rendering.
 
 **Verification:** engine/session route tests cover direct-control versus MIDI ordering, snapshot coherence, high-rate controller/program traffic, queue saturation, activation/removal/replacement with deferred destruction, no stuck audition notes, and warmed-up no-allocation/no-lock rendering.
@@ -149,7 +149,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Implement bounded SF2 import and validation off the audio thread for native file selection and browser file input; reject malformed/unsupported content without disturbing running tracks.
 - [x] Deduplicate identical bytes, normalize display metadata safely, sort sparse presets deterministically, and cache immutable catalogs for UI search.
 - [ ] Add application library operations for import, list, inspect, remove-if-unreferenced, and explicit replacement; native durable storage, browser IndexedDB import/reload, and management UI are implemented, while browser durable deletion reconciliation remains.
-- [ ] Make byte/catalog installation and removal atomic so restarts never advertise a digest whose payload is absent, and garbage-collect only unreferenced payloads after the catalog update commits.
+- [ ] Make byte/catalog installation and removal atomic so restarts never advertise a digest whose payload is absent; staged native publication and IndexedDB transactional installation are implemented, while cross-runtime durable deletion reconciliation remains.
 - [x] Resolve asset digests to newly assigned per-synth `SoundFontId` values and construct configured replacement processors transactionally.
 - [ ] Add native background jobs and a browser worker/main-thread preparation protocol so hashing, parsing, validation, and heavy construction never execute in the live AudioWorklet command or render callback; hand off only bounded prepared data and defer old-processor destruction back to the host.
 - [ ] Measure parse time and memory across multiple tracks; introduce safe immutable parsed-font sharing only if supported and beneficial.

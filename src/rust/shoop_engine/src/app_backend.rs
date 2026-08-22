@@ -6400,6 +6400,9 @@ impl FXChain {
             .presets
             .first()
             .ok_or_else(|| anyhow!("SoundFont has no presets"))?;
+        replacement.set_master_gain(current.master_gain)?;
+        replacement.set_reverb(current.reverb)?;
+        replacement.set_chorus(current.chorus)?;
         for (channel, state) in current.channels.iter().enumerate() {
             let (bank, program) = asset
                 .presets

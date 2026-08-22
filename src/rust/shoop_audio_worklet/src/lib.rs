@@ -6,7 +6,7 @@ use shoop_audio_protocol::{
     WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
-    WireMidiOutputEvent, WireOxiSynthChannelState, WireOxiSynthChorusState, WireOxiSynthPreset,
+    WireMidiOutputEvent, WireOxiSynthChannelState, WireOxiSynthChorusState,
     WireOxiSynthReverbState, WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
     WireSnapshot, WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
     WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
@@ -1165,15 +1165,6 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                                 Some(WireOxiSynthState {
                                     soundfont_sha256: editor.soundfont_sha256.to_string(),
                                     soundfont_name: editor.soundfont_name.to_string(),
-                                    presets: editor
-                                        .presets
-                                        .iter()
-                                        .map(|preset| WireOxiSynthPreset {
-                                            bank: preset.bank,
-                                            program: preset.program,
-                                            name: preset.name.to_string(),
-                                        })
-                                        .collect(),
                                     revision: editor.revision,
                                     midi_activity_revision: editor.midi_activity_revision,
                                     master_gain: editor.master_gain,

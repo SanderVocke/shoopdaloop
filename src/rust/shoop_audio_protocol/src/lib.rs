@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 15;
+pub const PROTOCOL_VERSION: u16 = 16;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -685,7 +685,6 @@ pub struct WireTrackFxState {
 pub struct WireOxiSynthState {
     pub soundfont_sha256: String,
     pub soundfont_name: String,
-    pub presets: Vec<WireOxiSynthPreset>,
     pub revision: u64,
     pub midi_activity_revision: u64,
     pub master_gain: f32,
@@ -708,13 +707,6 @@ pub struct WireOxiSynthChorusState {
     pub level: f32,
     pub speed_hz: f32,
     pub depth_ms: f32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct WireOxiSynthPreset {
-    pub bank: u32,
-    pub program: u8,
-    pub name: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]

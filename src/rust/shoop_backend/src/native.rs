@@ -2783,20 +2783,10 @@ impl Backend for NativeBackend {
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         let mut session = self.runtime_mut()?.capture_session()?;
-        let referenced_soundfonts = session
-            .tracks
-            .iter()
-            .filter_map(|track| track.processor_state.as_deref())
-            .filter_map(|state| {
-                shoop_engine::oxisynth::OxiSynthProcessor::decode_configuration(state).ok()
-            })
-            .map(|configuration| configuration.soundfont_sha256)
-            .collect::<BTreeSet<_>>();
         session.soundfonts = self
             .soundfonts
             .user_assets()
             .into_iter()
-            .filter(|asset| referenced_soundfonts.contains(&asset.sha256))
             .map(|asset| {
                 (
                     asset.sha256.clone(),

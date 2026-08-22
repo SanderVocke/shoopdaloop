@@ -7782,6 +7782,28 @@ impl ApplicationModel {
             midi_control: MidiControlDocument::default(),
             settings: Vec::new(),
         };
+        let referenced_soundfonts = document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .filter_map(|track| track.fx_chain.as_ref())
+            .filter(|chain| chain.chain_type == FxChainTypeDocument::OxiSynth)
+            .map(|chain| chain.internal_state.as_str())
+            .chain(
+                document
+                    .fx_states
+                    .iter()
+                    .filter(|state| state.chain_type == FxChainTypeDocument::OxiSynth)
+                    .map(|state| state.internal_state.as_str()),
+            )
+            .filter_map(|state| serde_json::from_str::<serde_json::Value>(state).ok())
+            .filter_map(|state| {
+                state
+                    .get("soundfont_sha256")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
+            .collect::<BTreeSet<_>>();
         Ok(SessionBundle {
             document,
             media,
@@ -7789,6 +7811,7 @@ impl ApplicationModel {
             soundfonts: capture
                 .soundfonts
                 .iter()
+                .filter(|(digest, _)| referenced_soundfonts.contains(*digest))
                 .map(|(digest, asset)| {
                     (
                         digest.clone(),

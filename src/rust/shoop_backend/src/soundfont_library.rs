@@ -74,11 +74,13 @@ impl SoundFontLibrary {
                 continue;
             }
             let bytes: Arc<[u8]> = std::fs::read(entry.path())?.into();
-            let original_filename = std::fs::read_to_string(entry.path().with_extension("json"))
-                .ok()
-                .and_then(|json| serde_json::from_str::<PersistedAssetMetadata>(&json).ok())
-                .map(|metadata| metadata.original_filename)
-                .unwrap_or_else(|| file_name.clone());
+            let metadata_path = entry.path().with_extension("json");
+            if !metadata_path.exists() {
+                continue;
+            }
+            let original_filename =
+                serde_json::from_slice::<PersistedAssetMetadata>(&std::fs::read(metadata_path)?)?
+                    .original_filename;
             let descriptor = library.import(bytes, original_filename)?;
             if file_name != format!("{}.sf2", descriptor.sha256) {
                 return Err(anyhow!(
@@ -97,7 +99,11 @@ impl SoundFontLibrary {
         original_filename: impl Into<String>,
     ) -> Result<SoundFontAssetDescriptor> {
         std::fs::create_dir_all(directory).context("create SoundFont library")?;
-        let descriptor = self.import(bytes.clone(), original_filename)?;
+        let asset = Arc::new(SoundFontAsset::parse(bytes.clone(), original_filename)?);
+        if let Some(existing) = self.assets.get(&asset.sha256) {
+            return Ok(descriptor(existing));
+        }
+        let descriptor = descriptor(&asset);
         let destination = directory.join(format!("{}.sf2", descriptor.sha256));
         if !destination.exists() {
             let temporary = directory.join(format!(".{}.tmp", descriptor.sha256));
@@ -118,6 +124,7 @@ impl SoundFontLibrary {
             })?,
         )?;
         std::fs::rename(metadata_temporary, metadata_destination)?;
+        self.assets.insert(asset.sha256.clone(), asset);
         Ok(descriptor)
     }
 }
@@ -179,5 +186,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(metadata.original_filename, "font.sf2");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn failed_persistent_import_does_not_publish_asset() {
+        let directory = tempfile::tempdir().unwrap();
+        let invalid_directory = directory.path().join("not-a-directory");
+        std::fs::write(&invalid_directory, b"file").unwrap();
+        let bytes: Arc<[u8]> = Arc::from(shoop_engine::oxisynth::SOUNDFONT_BYTES);
+        let mut library = SoundFontLibrary::default();
+        assert!(library
+            .import_persistent(&invalid_directory, bytes, "font.sf2")
+            .is_err());
+        assert!(library.descriptors().is_empty());
     }
 }
