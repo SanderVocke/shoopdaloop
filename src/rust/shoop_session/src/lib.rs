@@ -801,6 +801,53 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn positioned_composite_instances_validate_identity_length_mode_and_range() {
+        let mut duplicate = deferred_feature_bundle();
+        let composite = duplicate.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.instances.push(composite.instances[0].clone());
+        assert!(matches!(
+            validate_bundle(&duplicate),
+            Err(SessionError::Validation(message)) if message.contains("duplicate instance ID")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let composite = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.instances[0].n_cycles = Some(0);
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message)) if message.contains("zero-length instance")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let composite = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.kind = CompositeKindDocument::Regular;
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message)) if message.contains("explicit instance mode")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let composite = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.instances[0].start_cycle = i64::MAX as u64 + 1;
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message)) if message.contains("out-of-range start cycle")
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn arbitrary_channel_loop_audio_round_trips() {
         let audio = LoopAudio {
             sample_rate: 96_000,
