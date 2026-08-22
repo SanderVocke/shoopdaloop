@@ -393,6 +393,11 @@ impl OxiSynthProcessor {
                 ctrl,
                 value,
             } => {
+                if ctrl == 121 {
+                    self.refresh_channel(channel);
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                    return;
+                }
                 if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
                     state.controllers[ctrl as usize] = value;
                     if matches!(ctrl, 0 | 32) {
@@ -697,5 +702,21 @@ mod tests {
 
         processor.process(64, &[MidiStorageElem::new(0, &[0xff]).unwrap()]);
         assert_eq!(processor.snapshot().channels[2].channel_pressure, 0);
+
+        processor.process(
+            64,
+            &[
+                MidiStorageElem::new(0, &[0xb2, 7, 1]).unwrap(),
+                MidiStorageElem::new(0, &[0xb2, 10, 2]).unwrap(),
+                MidiStorageElem::new(0, &[0xb2, 11, 3]).unwrap(),
+                MidiStorageElem::new(0, &[0xd2, 44]).unwrap(),
+                MidiStorageElem::new(0, &[0xb2, 121, 0]).unwrap(),
+            ],
+        );
+        let reset = processor.snapshot().channels[2];
+        assert_eq!(reset.controllers[7], 1);
+        assert_eq!(reset.controllers[10], 2);
+        assert_eq!(reset.controllers[11], 127);
+        assert_eq!(reset.channel_pressure, 44);
     }
 }

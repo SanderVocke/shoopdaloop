@@ -813,6 +813,25 @@ fn fx_control_matches(
     let Some(fx) = fx else {
         return false;
     };
+    if let BackendTrackFxControl::OxiSynth(control) = control {
+        let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) = &fx.editor else {
+            return false;
+        };
+        return match control {
+            shoop_backend::OxiSynthControl::SelectSoundFont(sha256) => {
+                editor.soundfont_sha256.as_ref() == sha256.as_ref()
+            }
+            shoop_backend::OxiSynthControl::SelectProgram {
+                channel,
+                bank,
+                program,
+            } => editor.channels.get(*channel as usize).is_some_and(|state| {
+                (state.baseline_bank, state.baseline_program) == (*bank, *program)
+            }),
+            shoop_backend::OxiSynthControl::Audition { .. }
+            | shoop_backend::OxiSynthControl::Panic => true,
+        };
+    }
     let mut effective = fx.clone();
     apply_fx_control(&mut effective, control);
     effective == *fx

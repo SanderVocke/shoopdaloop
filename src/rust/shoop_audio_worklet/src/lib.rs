@@ -1198,7 +1198,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                         return Some(WireTrackFxState {
                             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                             active: fx.active,
-                            visible: false,
+                            visible: fx.visible,
                             tiny: None,
                             oxisynth,
                         });

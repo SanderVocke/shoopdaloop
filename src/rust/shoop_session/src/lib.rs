@@ -560,7 +560,7 @@ mod tests {
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn portable_soundfont_payload_round_trips_once_by_digest() {
         let mut bundle = direct_bundle(1);
         let bytes = std::sync::Arc::<[u8]>::from(&b"test-sf2-payload"[..]);

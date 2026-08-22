@@ -139,7 +139,7 @@ mod tests {
         assert!(!first.presets.is_empty());
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     #[cfg(not(target_arch = "wasm32"))]
     fn persistent_import_survives_restart_and_revalidates_digest() {
         let directory = tempfile::tempdir().unwrap();
