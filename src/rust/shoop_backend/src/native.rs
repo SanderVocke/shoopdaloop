@@ -151,6 +151,7 @@ pub struct NativeBackend {
     catalog: Arc<[AudioDriverDescriptor]>,
     fatal_error: Option<String>,
     soundfonts: soundfont_library::SoundFontLibrary,
+    soundfont_directory: std::path::PathBuf,
 }
 
 struct NativeRuntime {
@@ -278,11 +279,17 @@ impl NativeBackend {
     pub fn new(config: AudioDriverConfig) -> Result<Self> {
         let runtime = NativeRuntime::start(config)?;
         let catalog = discover_audio_drivers(&runtime.configured);
+        let soundfont_directory = shoop_settings::default_settings_path()?
+            .parent()
+            .ok_or_else(|| anyhow!("settings path has no parent directory"))?
+            .join("soundfonts");
+        let soundfonts = soundfont_library::SoundFontLibrary::load_directory(&soundfont_directory)?;
         Ok(Self {
             runtime: Some(runtime),
             catalog,
             fatal_error: None,
-            soundfonts: soundfont_library::SoundFontLibrary::with_embedded()?,
+            soundfonts,
+            soundfont_directory,
         })
     }
 
@@ -2253,7 +2260,8 @@ impl Backend for NativeBackend {
         original_filename: String,
         bytes: Arc<[u8]>,
     ) -> Result<soundfont_library::SoundFontAssetDescriptor> {
-        self.soundfonts.import(bytes, original_filename)
+        self.soundfonts
+            .import_persistent(&self.soundfont_directory, bytes, original_filename)
     }
 
     fn remove_soundfont(&mut self, sha256: &str) -> Result<bool> {
@@ -2268,7 +2276,20 @@ impl Backend for NativeBackend {
                 })
             })
         });
-        self.soundfonts.remove(sha256, referenced)
+        let removed = self.soundfonts.remove(sha256, referenced)?;
+        if removed {
+            for extension in ["sf2", "json"] {
+                let path = self
+                    .soundfont_directory
+                    .join(format!("{sha256}.{extension}"));
+                match std::fs::remove_file(path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
+        Ok(removed)
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -4491,6 +4512,8 @@ mod tests {
             runtime: Some(runtime),
             catalog: Arc::from([]),
             fatal_error: None,
+            soundfonts: soundfont_library::SoundFontLibrary::with_embedded().unwrap(),
+            soundfont_directory: std::env::temp_dir(),
         };
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -4527,6 +4550,8 @@ mod tests {
             runtime: Some(runtime),
             catalog: Arc::from([]),
             fatal_error: None,
+            soundfonts: soundfont_library::SoundFontLibrary::with_embedded().unwrap(),
+            soundfont_directory: std::env::temp_dir(),
         };
         let created = backend
             .create_direct_track(DirectTrackRequest {

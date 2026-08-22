@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
 use shoop_engine::oxisynth::SoundFontAsset;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -70,7 +71,12 @@ impl SoundFontLibrary {
                 continue;
             }
             let bytes: Arc<[u8]> = std::fs::read(entry.path())?.into();
-            let descriptor = library.import(bytes, file_name.clone())?;
+            let original_filename = std::fs::read_to_string(entry.path().with_extension("json"))
+                .ok()
+                .and_then(|json| serde_json::from_str::<PersistedAssetMetadata>(&json).ok())
+                .map(|metadata| metadata.original_filename)
+                .unwrap_or_else(|| file_name.clone());
+            let descriptor = library.import(bytes, original_filename)?;
             if file_name != format!("{}.sf2", descriptor.sha256) {
                 return Err(anyhow!(
                     "SoundFont payload filename does not match its digest"
@@ -100,8 +106,22 @@ impl SoundFontLibrary {
             }
             std::fs::rename(&temporary, &destination)?;
         }
+        let metadata_destination = directory.join(format!("{}.json", descriptor.sha256));
+        let metadata_temporary = directory.join(format!(".{}.json.tmp", descriptor.sha256));
+        std::fs::write(
+            &metadata_temporary,
+            serde_json::to_vec(&PersistedAssetMetadata {
+                original_filename: descriptor.original_filename.to_string(),
+            })?,
+        )?;
+        std::fs::rename(metadata_temporary, metadata_destination)?;
         Ok(descriptor)
     }
+}
+
+#[derive(Deserialize, Serialize)]
+struct PersistedAssetMetadata {
+    original_filename: String,
 }
 
 fn descriptor(asset: &SoundFontAsset) -> SoundFontAssetDescriptor {
@@ -150,5 +170,10 @@ mod tests {
             .unwrap();
         let restored = SoundFontLibrary::load_directory(directory.path()).unwrap();
         assert!(restored.asset(&descriptor.sha256).is_some());
+        let metadata: PersistedAssetMetadata = serde_json::from_slice(
+            &std::fs::read(directory.path().join(format!("{}.json", descriptor.sha256))).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(metadata.original_filename, "font.sf2");
     }
 }

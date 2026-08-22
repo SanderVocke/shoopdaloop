@@ -9,13 +9,14 @@ browser-feature = "wasm-test-browser"
 
 [features]
 default = []
-native-drivers = ["shoop_engine/native_audio_backend"]
+native-drivers = ["shoop_engine/native_audio_backend", "shoop_settings/native-store"]
 native-fx = ["native-drivers", "shoop_engine/carla", "dep:shoop_plugin_protocol"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
 anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_engine = { path = "../shoop_engine" }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol", optional = true }
