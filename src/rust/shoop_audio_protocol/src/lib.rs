@@ -119,6 +119,12 @@ pub enum Command {
         loop_id: u64,
         length: u32,
     },
+    SetLoopTiming {
+        loop_id: u64,
+        start_offset: Option<i32>,
+        preplay: Option<u32>,
+        length: Option<u32>,
+    },
     BeginLoopContentReplace {
         generation: u64,
         loop_id: u64,
@@ -268,6 +274,25 @@ impl Command {
                     ..
                 },
             ) => existing_loop == replacement_loop,
+            (
+                Self::SetLoopTiming {
+                    loop_id: existing_loop,
+                    start_offset: existing_start_offset,
+                    preplay: existing_preplay,
+                    length: existing_length,
+                },
+                Self::SetLoopTiming {
+                    loop_id: replacement_loop,
+                    start_offset: replacement_start_offset,
+                    preplay: replacement_preplay,
+                    length: replacement_length,
+                },
+            ) => {
+                existing_loop == replacement_loop
+                    && (existing_start_offset.is_none() || replacement_start_offset.is_some())
+                    && (existing_preplay.is_none() || replacement_preplay.is_some())
+                    && (existing_length.is_none() || replacement_length.is_some())
+            }
             (Self::ConfigureDeviceChannels { .. }, Self::ConfigureDeviceChannels { .. })
             | (Self::ConfigureMidiEndpoints { .. }, Self::ConfigureMidiEndpoints { .. }) => true,
             (
@@ -681,6 +706,8 @@ pub struct WaveformChunk {
     pub channel_count: usize,
     pub offset: usize,
     pub total_samples: usize,
+    pub start_offset: i32,
+    pub preplay: u32,
     pub final_chunk: bool,
     pub samples: Vec<f32>,
 }
@@ -824,6 +851,36 @@ mod tests {
         .supersedes_in_journal(&Command::ConfigureMidiEndpoints {
             endpoints: Vec::new(),
         }));
+
+        let start_only = Command::SetLoopTiming {
+            loop_id: 5,
+            start_offset: Some(-8),
+            preplay: None,
+            length: None,
+        };
+        let length_only = Command::SetLoopTiming {
+            loop_id: 5,
+            start_offset: None,
+            preplay: None,
+            length: Some(64),
+        };
+        let complete = Command::SetLoopTiming {
+            loop_id: 5,
+            start_offset: Some(-4),
+            preplay: Some(12),
+            length: Some(96),
+        };
+        assert!(!length_only.supersedes_in_journal(&start_only));
+        assert!(!start_only.supersedes_in_journal(&length_only));
+        assert!(complete.supersedes_in_journal(&start_only));
+        assert!(complete.supersedes_in_journal(&length_only));
+        assert!(!Command::SetLoopTiming {
+            loop_id: 6,
+            start_offset: Some(-4),
+            preplay: Some(12),
+            length: Some(96),
+        }
+        .supersedes_in_journal(&complete));
     }
 
     #[shoop_wasm_test_support::shoop_test]

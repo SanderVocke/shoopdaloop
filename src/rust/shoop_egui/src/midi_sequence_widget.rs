@@ -1,4 +1,8 @@
-use crate::{colors, MediaView, MidiEventState, MidiSequenceChannelState};
+use crate::{
+    colors,
+    details_pane::{paint_timeline_regions, MediaWidgetResponse},
+    MediaView, MidiEventState, MidiSequenceChannelState,
+};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 
@@ -85,11 +89,13 @@ impl MidiSequenceWidget {
         ui: &mut egui::Ui,
         channel: &MidiSequenceChannelState,
         view: MediaView,
-    ) -> f64 {
+        sync_loop_length: u64,
+        editing: bool,
+    ) -> MediaWidgetResponse {
         self.update_notes(channel);
         let desired = egui::vec2(ui.available_width(), 96.0);
-        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::drag());
-        let pan_frames = if response.dragged() {
+        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click_and_drag());
+        let pan_frames = if response.dragged() && !editing {
             let mut panned_view = view;
             panned_view.pan(response.drag_delta().x, rect.width());
             panned_view.start_frame - view.start_frame
@@ -105,24 +111,15 @@ impl MidiSequenceWidget {
             egui::StrokeKind::Inside,
         );
         let frame_to_x = |frame: f64| view.frame_to_x(frame, rect);
-
-        let loop_left = frame_to_x(channel.start_offset as f64).clamp(rect.left(), rect.right());
-        let loop_right = frame_to_x(
-            channel
-                .start_offset
-                .saturating_add_unsigned(channel.loop_length) as f64,
-        )
-        .clamp(rect.left(), rect.right());
-        if loop_right > loop_left {
-            painter.rect_filled(
-                egui::Rect::from_min_max(
-                    egui::pos2(loop_left, rect.top()),
-                    egui::pos2(loop_right, rect.bottom()),
-                ),
-                0.0,
-                colors::WAVEFORM_LOOP_REGION,
-            );
-        }
+        paint_timeline_regions(
+            &painter,
+            rect,
+            view,
+            channel.start_offset,
+            channel.preplay_samples,
+            channel.loop_length,
+            sync_loop_length,
+        );
 
         if self.notes.is_empty() {
             painter.text(
@@ -172,7 +169,14 @@ impl MidiSequenceWidget {
             rect.right_top() + egui::vec2(-6.0, 22.0),
         );
         ui.place(label_rect, egui::Label::new(&channel.label).truncate());
-        pan_frames
+        MediaWidgetResponse {
+            pan_frames,
+            clicked_frame: editing
+                .then(|| response.interact_pointer_pos())
+                .flatten()
+                .filter(|_| response.clicked())
+                .map(|position| view.x_to_frame(position.x, rect).round() as i64),
+        }
     }
 
     fn update_notes(&mut self, channel: &MidiSequenceChannelState) {
@@ -283,6 +287,8 @@ mod tests {
                     start_frame: 0.0,
                     end_frame: 16.0,
                 },
+                4,
+                false,
             );
             assert!(ui.next_widget_position().y >= top + 96.0);
         });
@@ -312,6 +318,8 @@ mod tests {
                         start_frame: 0.0,
                         end_frame: 16.0,
                     },
+                    4,
+                    false,
                 );
             });
             output.textures_delta.clear();

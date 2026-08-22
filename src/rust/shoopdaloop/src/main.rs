@@ -42,7 +42,7 @@ use shoop_egui::register_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::{register_audio_settings, AudioDriverConfig};
 use shoop_egui::{
-    register_settings_with_ui_scale_default, AppIntent, AppSnapshot, AppWidget, ScriptKind,
+    register_settings_with_appearance_defaults, AppIntent, AppSnapshot, AppWidget, ScriptKind,
     SettingsAction, SettingsRegistryBuilder, UI_SCALE_FACTOR,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -284,12 +284,20 @@ fn load_settings_manager(
 }
 
 impl UnifiedApp {
-    fn new(ui_scale_default: f64, args: &AppArgs) -> anyhow::Result<Self> {
+    fn new(
+        ui_scale_default: f64,
+        touch_mode_default: bool,
+        args: &AppArgs,
+    ) -> anyhow::Result<Self> {
         let _span = tracing::info_span!("frontend.egui.initialize").entered();
         #[cfg(not(target_arch = "wasm32"))]
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
         let mut settings_builder = SettingsRegistryBuilder::default();
-        register_settings_with_ui_scale_default(&mut settings_builder, ui_scale_default)?;
+        register_settings_with_appearance_defaults(
+            &mut settings_builder,
+            ui_scale_default,
+            touch_mode_default,
+        )?;
         #[cfg(not(target_arch = "wasm32"))]
         register_audio_settings(&mut settings_builder)?;
         #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
@@ -1767,10 +1775,36 @@ struct BrowserBuiltinFile {
     sha256: String,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+fn embedded_builtin_key(url: &str) -> &str {
+    url.trim_start_matches("./")
+}
+
 #[cfg(target_arch = "wasm32")]
 async fn fetch_browser_bytes(url: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
     use wasm_bindgen::JsCast as _;
     use wasm_bindgen_futures::JsFuture;
+
+    let embedded = js_sys::Reflect::get(
+        &js_sys::global(),
+        &wasm_bindgen::JsValue::from_str("shoopEmbeddedBuiltins"),
+    )
+    .map_err(|error| format!("could not inspect embedded built-ins: {error:?}"))?;
+    if !embedded.is_undefined() {
+        let key = embedded_builtin_key(url);
+        let value = js_sys::Reflect::get(&embedded, &wasm_bindgen::JsValue::from_str(key))
+            .map_err(|error| format!("could not inspect embedded built-in {key}: {error:?}"))?;
+        if !value.is_undefined() {
+            let bytes = js_sys::Uint8Array::new(&value);
+            if bytes.length() as u64 > max_bytes {
+                return Err(format!(
+                    "embedded built-in {url} is {} bytes; limit is {max_bytes}",
+                    bytes.length()
+                ));
+            }
+            return Ok(bytes.to_vec());
+        }
+    }
 
     let window = web_sys::window().ok_or_else(|| "browser window is unavailable".to_owned())?;
     let response = JsFuture::from(window.fetch_with_str(url))
@@ -2186,6 +2220,18 @@ fn default_ui_scale_for_screen(screen_size: Option<egui::Vec2>) -> f64 {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn default_touch_mode() -> bool {
+    false
+}
+
+#[cfg(target_arch = "wasm32")]
+fn default_touch_mode() -> bool {
+    web_sys::window()
+        .and_then(|window| window.match_media("(any-hover: hover)").ok().flatten())
+        .is_some_and(|query| !query.matches())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn detected_screen_size(context: &eframe::CreationContext<'_>) -> Option<egui::Vec2> {
     context
         .egui_ctx
@@ -2207,7 +2253,7 @@ fn create_app(
 ) -> Result<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>> {
     shoop_egui::initialize(&context.egui_ctx);
     let ui_scale_default = default_ui_scale_for_screen(detected_screen_size(context));
-    let app = UnifiedApp::new(ui_scale_default, args)?;
+    let app = UnifiedApp::new(ui_scale_default, default_touch_mode(), args)?;
     #[cfg(not(target_arch = "wasm32"))]
     let mut app = app;
     #[cfg(not(target_arch = "wasm32"))]
@@ -4935,6 +4981,22 @@ mod tests {
         );
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn embedded_builtin_keys_accept_relative_root_variants() {
+        assert_eq!(
+            embedded_builtin_key("builtins/catalog.json"),
+            "builtins/catalog.json"
+        );
+        assert_eq!(
+            embedded_builtin_key("./builtins/catalog.json"),
+            "builtins/catalog.json"
+        );
+        assert_eq!(
+            embedded_builtin_key("././builtins/catalog.json"),
+            "builtins/catalog.json"
+        );
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn application_icon_is_embedded() {
@@ -5002,7 +5064,7 @@ mod tests {
         assert_eq!(default_ui_scale_for_screen(None), 1.0);
 
         let mut builder = SettingsRegistryBuilder::default();
-        register_settings_with_ui_scale_default(&mut builder, 1.25).unwrap();
+        register_settings_with_appearance_defaults(&mut builder, 1.25, false).unwrap();
         let registry = builder.finish();
         assert_eq!(registry.defaults(1).get(UI_SCALE_FACTOR).unwrap(), 1.25);
 
@@ -5026,7 +5088,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn confirmed_driver_switch_is_saved_once_and_completed_after_persistence() {
-        let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
+        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
         app.runtime.tick(Duration::ZERO);
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
         draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
@@ -5107,7 +5169,7 @@ mod tests {
         let manager = SettingsManager::load_from_path(builder.finish(), "test", path);
         std::fs::write(&blocker, b"not a directory").unwrap();
 
-        let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
+        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
         app.settings = manager;
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
         draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
@@ -5707,7 +5769,7 @@ mod tests {
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let context = egui::Context::default();
             shoop_egui::initialize(&context);
-            let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
+            let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
             let snapshot = app.runtime.snapshot();
             assert_eq!(snapshot.tracks.len(), 1);
             assert!(snapshot.tracks[0].is_sync);
@@ -5729,7 +5791,7 @@ mod tests {
     fn unified_native_app_runs_paints_invokes_and_removes_lua_dialogs() {
         let context = egui::Context::default();
         shoop_egui::initialize(&context);
-        let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
+        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
         for (name, source) in [
             (
                 "lua-api-higher-minor.lua",
@@ -5867,7 +5929,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_workflow_creates_records_and_controls_tracks_and_loops() {
-        let mut app = UnifiedApp::new(1.0, &AppArgs::default()).unwrap();
+        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
         let track_specs = [
             ("Native stereo + MIDI", 2, true),
             ("Native mono", 1, false),

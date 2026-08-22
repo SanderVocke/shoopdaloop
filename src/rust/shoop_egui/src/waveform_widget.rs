@@ -1,4 +1,9 @@
-use crate::{colors, waveform::WaveformPyramid, MediaView, WaveformChannelState};
+use crate::{
+    colors,
+    details_pane::{paint_timeline_regions, MediaWidgetResponse},
+    waveform::WaveformPyramid,
+    MediaView, WaveformChannelState,
+};
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -106,10 +111,12 @@ impl WaveformWidget {
         ui: &mut egui::Ui,
         channel: &WaveformChannelState,
         view: MediaView,
-    ) -> f64 {
+        sync_loop_length: u64,
+        editing: bool,
+    ) -> MediaWidgetResponse {
         let desired = egui::vec2(ui.available_width(), 72.0);
-        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::drag());
-        let pan_frames = if response.dragged() {
+        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click_and_drag());
+        let pan_frames = if response.dragged() && !editing {
             let mut panned_view = view;
             panned_view.pan(response.drag_delta().x, rect.width());
             panned_view.start_frame - view.start_frame
@@ -129,6 +136,24 @@ impl WaveformWidget {
             rect.center().y,
             egui::Stroke::new(1.0, colors::WAVEFORM_ZERO_LINE),
         );
+        paint_timeline_regions(
+            &painter,
+            rect,
+            view,
+            channel.start_offset,
+            channel.preplay_samples,
+            channel.loop_length,
+            sync_loop_length,
+        );
+        let clicked_frame = editing
+            .then(|| response.interact_pointer_pos())
+            .flatten()
+            .filter(|_| response.clicked())
+            .map(|position| view.x_to_frame(position.x, rect).round() as i64);
+        let result = MediaWidgetResponse {
+            pan_frames,
+            clicked_frame,
+        };
         if channel.samples.is_empty() {
             painter.text(
                 rect.center(),
@@ -138,25 +163,10 @@ impl WaveformWidget {
                 colors::MUTED_FOREGROUND,
             );
             Self::show_label(ui, rect, &channel.label);
-            return pan_frames;
+            return result;
         }
 
         let sample_to_x = |sample: i64| view.frame_to_x(sample as f64, rect);
-        let loop_start = channel.start_offset;
-        let loop_end = loop_start.saturating_add_unsigned(channel.loop_length);
-        let left = sample_to_x(loop_start).clamp(rect.left(), rect.right());
-        let right = sample_to_x(loop_end).clamp(rect.left(), rect.right());
-        if right > left {
-            painter.rect_filled(
-                egui::Rect::from_min_max(
-                    egui::pos2(left, rect.top()),
-                    egui::pos2(right, rect.bottom()),
-                ),
-                0.0,
-                colors::WAVEFORM_LOOP_REGION,
-            );
-        }
-
         self.update_pyramid(ui.ctx(), &channel.samples);
         let Some(pyramid) = self
             .pyramid
@@ -171,7 +181,7 @@ impl WaveformWidget {
                 colors::MUTED_FOREGROUND,
             );
             Self::show_label(ui, rect, &channel.label);
-            return pan_frames;
+            return result;
         };
         let sample_start = view
             .start_frame
@@ -217,7 +227,7 @@ impl WaveformWidget {
             }
         }
         Self::show_label(ui, rect, &channel.label);
-        pan_frames
+        result
     }
 
     fn show_label(ui: &mut egui::Ui, rect: egui::Rect, label: &str) {
@@ -296,6 +306,8 @@ mod tests {
                     start_frame: 0.0,
                     end_frame: 16.0,
                 },
+                4,
+                false,
             );
             assert!(ui.next_widget_position().y >= top + 72.0);
         });
