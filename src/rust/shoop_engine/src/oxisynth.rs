@@ -164,7 +164,7 @@ mod tests {
     use oxisynth::MidiEvent;
     use sha2::{Digest, Sha256};
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn embedded_soundfont_has_expected_digest_and_renders_stereo() {
         let digest = Sha256::digest(SOUNDFONT_BYTES);
         let digest = digest
@@ -190,7 +190,7 @@ mod tests {
         assert_no_alloc::assert_no_alloc(|| synth.write((&mut left[..], &mut right[..])));
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_translation_is_strict_and_complete() {
         assert!(matches!(
             translate_midi(&[0x90, 60, 0]),
@@ -239,7 +239,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[shoop_wasm_test_support::shoop_test]
     fn processor_preserves_event_offsets_and_allocates_nothing_realtime() {
         let mut processor = OxiSynthProcessor::new(48_000.0, 256).unwrap();
         let note = MidiStorageElem::new(128, &[0x90, 60, 100]).unwrap();
@@ -258,6 +258,36 @@ mod tests {
             .any(|sample| sample.abs() > f32::EPSILON));
         let note_off = MidiStorageElem::new(0, &[0x80, 60, 0]).unwrap();
         assert_no_alloc::assert_no_alloc(|| processor.process(256, &[note_off, note]));
+        processor.reset();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn sustained_polyphony_remains_bounded_and_allocation_free() {
+        let mut processor = OxiSynthProcessor::new(48_000.0, 128).unwrap();
+        let events = (0..POLYPHONY)
+            .map(|index| {
+                MidiStorageElem::new(
+                    0,
+                    &[
+                        0x90 | (index % 16) as u8,
+                        24 + ((index / 16) % 96) as u8,
+                        100,
+                    ],
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        processor.process(128, &events);
+        assert_no_alloc::assert_no_alloc(|| {
+            for _ in 0..64 {
+                processor.process(128, &[]);
+            }
+        });
+        assert!(processor
+            .output(0, 128)
+            .unwrap()
+            .iter()
+            .all(|sample| sample.is_finite()));
         processor.reset();
     }
 }

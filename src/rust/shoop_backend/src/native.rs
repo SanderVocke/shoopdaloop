@@ -3603,10 +3603,11 @@ mod tests {
         }))
         .unwrap();
         let catalog = backend.track_processor_catalog().unwrap();
-        assert_eq!(catalog.len(), 5);
+        assert_eq!(catalog.len(), 6);
         assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::TINY_SYNTH_FX);
+        assert_eq!(catalog[2].id.as_str(), TrackProcessorTypeId::OXISYNTH);
         let runtime_available = shoop_engine::carla_native::carla_runtime_availability().is_ok();
-        for descriptor in &catalog[2..] {
+        for descriptor in &catalog[3..] {
             assert_eq!(descriptor.available, runtime_available);
             assert_eq!(descriptor.unavailable_reason.is_none(), runtime_available);
             assert!(descriptor.features.state);
@@ -3641,10 +3642,10 @@ mod tests {
                     buffer_size: 128,
                 }))?;
             let catalog = backend.track_processor_catalog()?;
-            assert!(catalog[..2].iter().all(|descriptor| {
+            assert!(catalog[..3].iter().all(|descriptor| {
                 descriptor.available && !descriptor.id.as_str().starts_with("carla_")
             }));
-            assert!(catalog[2..].iter().all(|descriptor| {
+            assert!(catalog[3..].iter().all(|descriptor| {
                 !descriptor.available && descriptor.unavailable_reason.is_some()
             }));
             Ok::<_, anyhow::Error>(())
