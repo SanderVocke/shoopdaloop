@@ -215,6 +215,53 @@ struct BrowserEphemeralFile {
     bytes: Vec<u8>,
 }
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(inline_js = r#"
+const DB = 'shoopdaloop-soundfonts-v1';
+const STORE = 'assets';
+function openDb() { return new Promise((resolve, reject) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE, {keyPath:'sha256'}); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); }); }
+export async function shoopStoreSoundFont(name, bytes) { const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(v => v.toString(16).padStart(2,'0')).join(''); const db = await openDb(); await new Promise((resolve,reject) => { const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put({sha256:hash,name,bytes}); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); return hash; }
+export async function shoopLoadSoundFonts() { const db=await openDb(); const result=await new Promise((resolve,reject)=>{ const r=db.transaction(STORE).objectStore(STORE).getAll(); r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); }); db.close(); return result; }
+export async function shoopDeleteSoundFont(hash) { const db=await openDb(); await new Promise((resolve,reject)=>{ const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).delete(hash); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); }
+"#)]
+extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn shoopStoreSoundFont(
+        name: String,
+        bytes: js_sys::ArrayBuffer,
+    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn shoopLoadSoundFonts() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn shoopDeleteSoundFont(
+        hash: String,
+    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+}
+
+#[cfg(target_arch = "wasm32")]
+fn load_browser_soundfont_library(pending: Rc<RefCell<VecDeque<BrowserEphemeralFile>>>) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let Ok(value) = shoopLoadSoundFonts().await else {
+            return;
+        };
+        for record in js_sys::Array::from(&value).iter() {
+            let Ok(name) = js_sys::Reflect::get(&record, &"name".into()) else {
+                continue;
+            };
+            let Ok(bytes) = js_sys::Reflect::get(&record, &"bytes".into()) else {
+                continue;
+            };
+            let Some(name) = name.as_string() else {
+                continue;
+            };
+            pending.borrow_mut().push_back(BrowserEphemeralFile {
+                name,
+                bytes: js_sys::Uint8Array::new(&bytes).to_vec(),
+            });
+        }
+    });
+}
+
 struct UnifiedApp {
     runtime: Runtime,
     widget: AppWidget,
@@ -313,6 +360,10 @@ impl UnifiedApp {
         let runtime = Runtime::new(&settings.active())?;
         #[cfg(target_arch = "wasm32")]
         let runtime = Runtime::new(&settings.active(), args)?;
+        #[cfg(target_arch = "wasm32")]
+        let pending_ephemeral_files = Rc::new(RefCell::new(VecDeque::new()));
+        #[cfg(target_arch = "wasm32")]
+        load_browser_soundfont_library(Rc::clone(&pending_ephemeral_files));
         widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {
             runtime,
@@ -339,7 +390,7 @@ impl UnifiedApp {
             #[cfg(target_arch = "wasm32")]
             pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
             #[cfg(target_arch = "wasm32")]
-            pending_ephemeral_files: Rc::new(RefCell::new(VecDeque::new())),
+            pending_ephemeral_files,
             #[cfg(not(target_arch = "wasm32"))]
             pending_file_intent_tx,
             #[cfg(not(target_arch = "wasm32"))]
@@ -869,6 +920,14 @@ impl UnifiedApp {
         #[cfg(target_arch = "wasm32")]
         for file in ephemeral_files {
             if is_sf2_file_name(&file.name) {
+                let persistent_name = file.name.clone();
+                let persistent_bytes = js_sys::Uint8Array::from(file.bytes.as_slice()).buffer();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(error) = shoopStoreSoundFont(persistent_name, persistent_bytes).await
+                    {
+                        tracing::error!(error = ?error, "frontend.soundfont.persist_failed");
+                    }
+                });
                 if let Err(error) = self.runtime.dispatch(AppIntent::ImportSoundFont {
                     original_filename: file.name,
                     bytes: file.bytes.into(),
@@ -3978,6 +4037,7 @@ impl BrowserSelfTest {
                         shoop_egui::TrackProcessorEditorState::TinySynthFx(editor) => {
                             Some((fx.visible, editor))
                         }
+                        shoop_egui::TrackProcessorEditorState::OxiSynth(_) => None,
                     }
                 });
                 let Some((tiny_visible, tiny_state)) = tiny_state else {

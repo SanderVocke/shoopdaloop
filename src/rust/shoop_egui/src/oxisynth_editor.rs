@@ -2,6 +2,8 @@ use crate::{
     OxiSynthControl, TrackAction, TrackProcessorDescriptor, TrackProcessorEditorDescriptor,
     TrackProcessorEditorState, TrackState,
 };
+use std::collections::{BTreeSet, VecDeque};
+use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub(crate) struct OxiSynthEditor {
@@ -9,6 +11,8 @@ pub(crate) struct OxiSynthEditor {
     search: String,
     auditioning: bool,
     last_midi_activity_revision: u64,
+    favorites: BTreeSet<(String, u32, u8)>,
+    recent: VecDeque<(String, u32, u8)>,
 }
 
 impl OxiSynthEditor {
@@ -69,6 +73,29 @@ impl OxiSynthEditor {
                             }
                         });
                     ui.label("Drop an .sf2 file into the application to import it.");
+                });
+                ui.collapsing("Manage SoundFont library", |ui| {
+                    for asset in editor.available_soundfonts.iter() {
+                        ui.horizontal(|ui| {
+                            ui.label(format!(
+                                "{} — {} presets, {} bytes",
+                                asset.name,
+                                asset.presets.len(),
+                                asset.byte_len
+                            ));
+                            if !asset.built_in && asset.sha256 != editor.soundfont_sha256 {
+                                if ui.button("Remove").clicked() {
+                                    actions.push(TrackAction::RemoveSoundFont(Arc::clone(
+                                        &asset.sha256,
+                                    )));
+                                }
+                            } else if asset.built_in {
+                                ui.label("Built in");
+                            } else {
+                                ui.label("In use");
+                            }
+                        });
+                    }
                 });
                 ui.separator();
                 ui.label("Output");
@@ -172,6 +199,64 @@ impl OxiSynthEditor {
                 let selected_index = editor.presets.iter().position(|preset| {
                     preset.bank == channel.current_bank && preset.program == channel.current_program
                 });
+                let selected_key = (
+                    editor.soundfont_sha256.to_string(),
+                    channel.current_bank,
+                    channel.current_program,
+                );
+                let mut favorite = self.favorites.contains(&selected_key);
+                if ui.checkbox(&mut favorite, "Favorite preset").changed() {
+                    if favorite {
+                        self.favorites.insert(selected_key.clone());
+                    } else {
+                        self.favorites.remove(&selected_key);
+                    }
+                }
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Favorites:");
+                    for (_, bank, program) in self
+                        .favorites
+                        .iter()
+                        .filter(|(digest, _, _)| digest == editor.soundfont_sha256.as_ref())
+                    {
+                        let name = editor
+                            .presets
+                            .iter()
+                            .find(|preset| (preset.bank, preset.program) == (*bank, *program))
+                            .map(|preset| preset.name.as_ref())
+                            .unwrap_or("Unavailable");
+                        if ui.small_button(name).clicked() {
+                            actions.push(TrackAction::OxiSynth(OxiSynthControl::SelectProgram {
+                                channel: self.channel as u8,
+                                bank: *bank,
+                                program: *program,
+                            }));
+                        }
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Recent:");
+                    for (_, bank, program) in self
+                        .recent
+                        .iter()
+                        .filter(|(digest, _, _)| digest == editor.soundfont_sha256.as_ref())
+                        .take(8)
+                    {
+                        let name = editor
+                            .presets
+                            .iter()
+                            .find(|preset| (preset.bank, preset.program) == (*bank, *program))
+                            .map(|preset| preset.name.as_ref())
+                            .unwrap_or("Unavailable");
+                        if ui.small_button(name).clicked() {
+                            actions.push(TrackAction::OxiSynth(OxiSynthControl::SelectProgram {
+                                channel: self.channel as u8,
+                                bank: *bank,
+                                program: *program,
+                            }));
+                        }
+                    }
+                });
                 ui.horizontal(|ui| {
                     if ui
                         .add_enabled(
@@ -221,6 +306,14 @@ impl OxiSynthEditor {
                                 )
                                 .clicked()
                             {
+                                let key = (
+                                    editor.soundfont_sha256.to_string(),
+                                    preset.bank,
+                                    preset.program,
+                                );
+                                self.recent.retain(|entry| entry != &key);
+                                self.recent.push_front(key);
+                                self.recent.truncate(16);
                                 actions.push(TrackAction::OxiSynth(
                                     OxiSynthControl::SelectProgram {
                                         channel: self.channel as u8,

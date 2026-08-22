@@ -1,4 +1,7 @@
-use anyhow::{anyhow, Context, Result};
+#[cfg(not(target_arch = "wasm32"))]
+use anyhow::Context;
+use anyhow::{anyhow, Result};
+#[cfg(not(target_arch = "wasm32"))]
 use serde::{Deserialize, Serialize};
 use shoop_engine::oxisynth::SoundFontAsset;
 use std::collections::BTreeMap;
@@ -119,6 +122,7 @@ impl SoundFontLibrary {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Deserialize, Serialize)]
 struct PersistedAssetMetadata {
     original_filename: String,

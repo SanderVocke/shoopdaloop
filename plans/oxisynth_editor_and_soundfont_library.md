@@ -148,7 +148,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Define a stable SHA-256 asset ID, immutable metadata/preset catalog, managed-byte ownership, load status/error model, and reference counting independent of track/runtime IDs.
 - [x] Implement bounded SF2 import and validation off the audio thread for native file selection and browser file input; reject malformed/unsupported content without disturbing running tracks.
 - [x] Deduplicate identical bytes, normalize display metadata safely, sort sparse presets deterministically, and cache immutable catalogs for UI search.
-- [ ] Add application library operations for import, list, inspect, remove-if-unreferenced, and explicit replacement; native durable storage and browser in-memory storage are implemented, while browser durable storage and complete live-reference removal enforcement remain.
+- [ ] Add application library operations for import, list, inspect, remove-if-unreferenced, and explicit replacement; native durable storage, browser IndexedDB import/reload, and management UI are implemented, while browser durable deletion reconciliation remains.
 - [ ] Make byte/catalog installation and removal atomic so restarts never advertise a digest whose payload is absent, and garbage-collect only unreferenced payloads after the catalog update commits.
 - [x] Resolve asset digests to newly assigned per-synth `SoundFontId` values and construct configured replacement processors transactionally.
 - [ ] Add native background jobs and a browser worker/main-thread preparation protocol so hashing, parsing, validation, and heavy construction never execute in the live AudioWorklet command or render callback; hand off only bounded prepared data and defer old-processor destruction back to the host.
@@ -169,10 +169,10 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 
 ### Stage 9 — phase-2 editor expansion
 
-- [ ] Add SoundFont manage/import/change controls with ready-state selection, drag/drop import, missing/error diagnostics, retry/cancel, and explicit replacement implemented; loading progress and library removal UI remain.
+- [ ] Add SoundFont manage/import/change controls with ready-state selection, drag/drop import, missing/error diagnostics, retry/cancel, explicit replacement, and reference-aware library removal UI implemented; loading progress remains.
 - [x] Add a compact 16-channel assignment overview that navigates the existing per-channel editor without becoming a full mixer.
 - [x] Add master gain, stereo output metering, and supported chorus/reverb parameters through direct Rust controls; expose the supported parameter semantics without claiming unavailable effect bypass controls.
-- [ ] Add previous/next, favorites, and recent presets keyed by digest/bank/program; keep favorites/recent data out of required session reconstruction.
+- [x] Add previous/next, favorites, and recent presets keyed by digest/bank/program; keep favorites/recent data out of required session reconstruction.
 - [ ] Preserve search and selected channel across catalog refreshes, and display an explicit unavailable assignment when a replacement SF2 lacks the configured preset.
 - [ ] Update user, session-format, browser-storage, asset portability, license, and package-size documentation.
 

@@ -1626,6 +1626,7 @@ pub enum OxiSynthControl {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackAction {
+    RemoveSoundFont(Arc<str>),
     Remove,
     MoveBefore(Option<TrackId>),
     NameChanged(String),
@@ -1973,6 +1974,7 @@ impl OxiSynthControl {
 impl TrackAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::RemoveSoundFont(_) => "soundfont.remove",
             Self::Remove => "track.remove",
             Self::MoveBefore(_) => "track.move_before",
             Self::NameChanged(_) => "track.name",

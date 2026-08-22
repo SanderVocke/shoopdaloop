@@ -4592,6 +4592,15 @@ impl ApplicationModel {
         if action == TrackAction::Remove {
             return self.remove_track(backend, track_id);
         }
+        if let TrackAction::RemoveSoundFont(sha256) = &action {
+            backend
+                .remove_soundfont(sha256)
+                .map_err(|error| format!("could not remove SoundFont: {error}"))?;
+            self.soundfonts = backend
+                .soundfont_catalog()
+                .map_err(|error| format!("could not refresh SoundFont catalog: {error}"))?;
+            return Ok(());
+        }
         if let TrackAction::MoveBefore(target) = &action {
             return self.move_track_before(track_id, *target);
         }
@@ -4617,7 +4626,9 @@ impl ApplicationModel {
             return Ok(());
         }
         let backend_action = match action {
-            TrackAction::Remove | TrackAction::MoveBefore(_) => unreachable!(),
+            TrackAction::Remove | TrackAction::MoveBefore(_) | TrackAction::RemoveSoundFont(_) => {
+                unreachable!()
+            }
             TrackAction::NameChanged(name) => {
                 track.name = name;
                 return Ok(());
