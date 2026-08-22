@@ -138,7 +138,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 
 - [ ] Exercise notes and external bank/program changes from the production MIDI adapters on native and browser paths while observing immediate editor reconciliation.
 - [ ] Save, close, reload, switch driver/runtime, duplicate, bypass, reactivate, and delete an OxiSynth track; compare the persisted baseline and authoritative snapshot at each boundary.
-- [ ] Confirm session and recorded MIDI contain no events synthesized by UI preset selection or audition.
+- [x] Confirm session and recorded MIDI contain no events synthesized by UI preset selection or audition; backend integration coverage verifies external MIDI affects current state while the direct baseline persists without generated MIDI events.
 - [ ] Profile control bursts and snapshot publication with the realtime allocation/lock guards and Tracy coverage where applicable.
 
 **Verification:** run focused OxiSynth, backend, application, session, protocol, worklet, and egui suites followed by repository formatting, warning-denying builds, tracing inventory, complete native tests, wasm builds/tests, browser smoke checks where available, and native/browser release artifact-size checks.

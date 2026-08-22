@@ -8255,6 +8255,10 @@ mod tests {
             })
             .unwrap();
         backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend.poll().unwrap();
+        backend
             .set_track_control(created.track_id, BackendTrackControl::OutputGainDb(-4.0))
             .unwrap();
         backend.set_loop_gain(created.loops[0], 0.75).unwrap();
@@ -9594,6 +9598,70 @@ mod tests {
                 .count()
                 > rerecorded[1].len() / 2
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn oxisynth_direct_controls_and_external_midi_share_authoritative_state() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 2).unwrap();
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "oxisynth_state".to_owned(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend.poll().unwrap();
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectProgram {
+                    channel: 2,
+                    bank: 0,
+                    program: 12,
+                }),
+            )
+            .unwrap();
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0xc2, 14],
+                }],
+            )
+            .unwrap();
+        backend
+            .process_audio_quantum(&[], 0, &mut vec![0.0; 256], 2, 128)
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        let Some(TrackProcessorEditorState::OxiSynth(editor)) = snapshot.tracks[&created.track_id]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing OxiSynth editor state");
+        };
+        assert_eq!(editor.channels[2].baseline_program, 12);
+        assert_eq!(editor.channels[2].current_program, 14);
+        let captured = backend.capture_session_data().unwrap();
+        let configuration = shoop_engine::oxisynth::OxiSynthProcessor::decode_configuration(
+            captured.tracks[0].processor_state.as_deref().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(configuration.channels[2].program, 12);
+        assert!(captured.tracks[0].loops[0]
+            .midi
+            .iter()
+            .all(|channel| channel.events.is_empty()));
     }
 
     #[shoop_wasm_test_support::shoop_test]
