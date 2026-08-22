@@ -19,6 +19,9 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST_PATH: &str = "manifest.json";
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+const MAX_SOUNDFONT_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_SOUNDFONT_AGGREGATE_BYTES: u64 = 1024 * 1024 * 1024;
+const MAX_SOUNDFONT_RECORDS: usize = 64;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DecodeLimits {
@@ -190,7 +193,19 @@ pub fn encode_session(
             .cmp(&(right.owner_script_id, &right.relative_path))
     });
     let mut soundfont_records = Vec::with_capacity(bundle.soundfonts.len());
+    let mut soundfont_aggregate = 0_u64;
     for (digest, soundfont) in &bundle.soundfonts {
+        let byte_len = soundfont.bytes.len() as u64;
+        soundfont_aggregate = soundfont_aggregate.saturating_add(byte_len);
+        if soundfont_records.len() >= MAX_SOUNDFONT_RECORDS
+            || byte_len == 0
+            || byte_len > MAX_SOUNDFONT_BYTES
+            || soundfont_aggregate > MAX_SOUNDFONT_AGGREGATE_BYTES
+        {
+            return Err(SessionError::Validation(
+                "SoundFont payload limits exceeded".to_owned(),
+            ));
+        }
         if sha256(soundfont.bytes.as_ref()) != *digest {
             return Err(SessionError::HashMismatch { id: digest.clone() });
         }
@@ -199,7 +214,7 @@ pub fn encode_session(
             sha256: digest.clone(),
             original_filename: soundfont.original_filename.clone(),
             path: path.clone(),
-            uncompressed_bytes: soundfont.bytes.len() as u64,
+            uncompressed_bytes: byte_len,
         });
         payloads.insert(path, soundfont.bytes.to_vec());
     }
@@ -459,9 +474,17 @@ pub fn decode_session_with_limits(
         media.insert(record.id, payload);
     }
     let mut soundfonts = BTreeMap::new();
+    let mut soundfont_aggregate = 0_u64;
     for record in manifest.soundfonts {
+        soundfont_aggregate = soundfont_aggregate.saturating_add(record.uncompressed_bytes);
         if record.path != format!("soundfonts/{}.sf2", record.sha256)
             || soundfonts.contains_key(&record.sha256)
+            || record.sha256.len() != 64
+            || !record.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || soundfonts.len() >= MAX_SOUNDFONT_RECORDS
+            || record.uncompressed_bytes == 0
+            || record.uncompressed_bytes > MAX_SOUNDFONT_BYTES
+            || soundfont_aggregate > MAX_SOUNDFONT_AGGREGATE_BYTES
         {
             return Err(SessionError::Validation(
                 "invalid or duplicate SoundFont record".to_owned(),

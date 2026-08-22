@@ -130,7 +130,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Add direct preset selection, previous/next navigation, audition, and panic; audition must be visibly transient and must never enter recorded MIDI.
 - [x] Reconcile widgets from authoritative revisioned snapshots while preserving in-progress search/channel UI state and avoiding feedback loops when external MIDI changes a value.
 - [ ] Add accessible labels, keyboard navigation, compact/narrow layout behavior, empty/error states, and deterministic widget tests.
-- [ ] Correct OxiSynth user documentation to describe the actual fixed two-ignored-dry/two-wet/one-MIDI topology and the new persistence semantics.
+- [x] Correct OxiSynth user documentation to describe the actual fixed two-ignored-dry/two-wet/one-MIDI topology and the new persistence semantics.
 
 **Verification:** egui action/layout tests cover search, sparse banks, channel switching, external updates while open, acknowledgement failure, audition release, panic, narrow layouts, and two editors with independent local state; run the native app and browser smoke path and capture screenshots of the perceptible UI change.
 
@@ -159,11 +159,11 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 ### Stage 8 — phase-2 portable session assets and recovery
 
 - [x] Extend the session bundle/manifest with declared SoundFont asset records and content-addressed archive paths, storing each referenced payload once.
-- [ ] Increment the session format, add decode limits and aggregate accounting appropriate for SF2 files, verify size/digest before parsing, reject undeclared/duplicate/unsafe entries, and preserve deterministic output.
+- [x] Increment the session format, add per-asset/count/aggregate decode limits appropriate for SF2 files, verify size/digest before parsing, reject undeclared/duplicate/unsafe entries, and preserve deterministic output.
 - [x] Save portable sessions with user SF2 bytes while continuing to identify the built-in font without duplicating its payload.
 - [x] Split loading into decoded candidate, asset resolution, validated processor construction, and activation. Retain an inactive candidate document plus unresolved digests/errors for recovery while the current backend session keeps running, and publish the replacement only after every required asset and processor succeeds.
 - [x] Represent unresolved assets and affected tracks explicitly in the candidate-session application model; add cancel, locate/import-exact-digest, retry, and explicit-replacement flows with deterministic unavailable-preset remapping, and never substitute the built-in asset automatically.
-- [ ] Define export/privacy/licensing messaging that makes embedding a user-provided file explicit without asserting redistribution rights.
+- [x] Define export/privacy/licensing messaging that makes embedding a user-provided file explicit without asserting redistribution rights.
 
 **Verification:** cross-runtime portable-session tests cover one asset shared by tracks, multiple assets, missing payloads, wrong digest/size, archive bombs/limits, retained candidate diagnostics, cancel/retry recovery while the old backend keeps producing audio, explicit replacement and preset remapping failures, deterministic archives, older readers/versions, and transactional activation or rollback.
 
@@ -174,7 +174,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Add master gain, stereo output metering, and supported chorus/reverb parameters through direct Rust controls; expose the supported parameter semantics without claiming unavailable effect bypass controls.
 - [x] Add previous/next, favorites, and recent presets keyed by digest/bank/program; keep favorites/recent data out of required session reconstruction.
 - [ ] Preserve search and selected channel across catalog refreshes, and display an explicit unavailable assignment when a replacement SF2 lacks the configured preset.
-- [ ] Update user, session-format, browser-storage, asset portability, license, and package-size documentation.
+- [x] Update user and session-format documentation for browser storage, asset portability, licensing responsibility, and content-addressed package behavior.
 
 **Verification:** egui and application tests cover large catalogs, sparse banks, asset switching, load progress/errors, favorites/recent invalidation, 16-channel overview updates from MIDI, meters, effect controls, missing assets, accessibility, and native/browser screenshots.
 

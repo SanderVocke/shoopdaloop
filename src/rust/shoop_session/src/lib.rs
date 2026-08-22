@@ -585,6 +585,33 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn portable_soundfont_limits_reject_empty_and_excessive_catalogs() {
+        let mut bundle = direct_bundle(1);
+        let empty = crate::archive::payload_hash(&[]);
+        bundle.soundfonts.insert(
+            empty,
+            SoundFontPayload {
+                original_filename: "empty.sf2".to_owned(),
+                bytes: std::sync::Arc::from([]),
+            },
+        );
+        assert!(encode_session(&bundle, "empty-font").is_err());
+
+        bundle.soundfonts.clear();
+        for index in 0..65_u8 {
+            let bytes = std::sync::Arc::<[u8]>::from([index]);
+            bundle.soundfonts.insert(
+                crate::archive::payload_hash(bytes.as_ref()),
+                SoundFontPayload {
+                    original_filename: format!("{index}.sf2"),
+                    bytes,
+                },
+            );
+        }
+        assert!(encode_session(&bundle, "too-many-fonts").is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn missing_auto_mute_other_track_inputs_defaults_off() {
         let mut bundle = direct_bundle(1);
         bundle.document.global.auto_mute_other_track_inputs = false;
