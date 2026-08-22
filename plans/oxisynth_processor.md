@@ -86,12 +86,14 @@ Depends on Stage 2.
 
 Depends on Stage 3.
 
-- [ ] Add an OxiSynth topology to the serialized audio protocol while retaining compatibility with existing wire messages; update conversion/exhaustiveness tests.
-- [ ] Advertise the same descriptor from the browser client, validate the fixed shape, and transport OxiSynth creation/session replacement requests without introducing editor/control messages.
-- [ ] Instantiate and run the same engine wrapper inside `shoop_audio_worklet`, including the embedded SoundFont in the actual worklet wasm artifact; retain bounded quantum processing and transactional error reporting.
-- [ ] Extend protocol, client, worklet, and browser tests for creation, MIDI-driven stereo output, program changes, activation, removal/recreation, malformed input, rollback, and native/browser snapshot parity.
+- [x] Add an OxiSynth topology to the serialized audio protocol while retaining compatibility with existing wire messages; update conversion/exhaustiveness tests.
+- [x] Advertise the same descriptor from the browser client, validate the fixed shape, and transport OxiSynth creation/session replacement requests without introducing editor/control messages.
+- [x] Instantiate and run the same engine wrapper inside `shoop_audio_worklet`, including the embedded SoundFont in the actual worklet wasm artifact; retain bounded quantum processing and transactional error reporting.
+- [x] Extend protocol, client, worklet, and browser tests for creation, MIDI-driven stereo output, program changes, activation, removal/recreation, malformed input, rollback, and native/browser snapshot parity.
 
 **Verification:** run wasm unit/browser tests and dependency-isolation checks; build actual debug and release web artifacts and verify they contain no runtime SoundFont fetch/file access and remain within the repository's artifact-size budget (updating the documented budget deliberately for the embedded asset if required).
+
+**Completed:** protocol version 13 adds the explicit `oxisynth` topology and stateless processor snapshots while preserving all prior variants. The browser client advertises identical fixed constraints and reserves two output/one MIDI resources; the worklet constructs the shared embedded engine processor transactionally, routes its stereo output to Web Audio, and accepts only generic activation controls. Protocol round trips and wasm test compilation pass. The release worklet wasm is 8,234,254 bytes (SHA-256 `c3f68a0743bbc79c7b2877b22184e846ff054423c06df48c8f78c59994ec4028`) and contains the embedded asset with no fetch or filesystem path.
 
 ### Stage 5 — Session persistence and generic application integration
 

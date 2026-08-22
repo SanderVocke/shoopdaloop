@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 12;
+pub const PROTOCOL_VERSION: u16 = 13;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -303,6 +303,7 @@ pub enum WireTrackControl {
 pub enum WireTrackTopology {
     Direct { audio_channels: u32, midi: bool },
     TinySynthFx { audio_channels: u32 },
+    OxiSynth,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -611,9 +612,10 @@ pub struct WireTrackState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireTrackFxState {
+    pub processor_type: String,
     pub active: bool,
     pub visible: bool,
-    pub tiny: WireTinySynthFxState,
+    pub tiny: Option<WireTinySynthFxState>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -893,7 +895,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":12,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":13,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -904,7 +906,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":12,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":13,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 
@@ -982,6 +984,19 @@ mod tests {
         let encoded = serde_json::to_string(&tiny_topology).unwrap();
         let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, tiny_topology);
+
+        let oxisynth_topology = CommandEnvelope::new(
+            47,
+            Command::CreateTrack {
+                expected_track_id: 12,
+                expected_loop_ids: vec![13],
+                port_name_base: "oxisynth".to_owned(),
+                topology: WireTrackTopology::OxiSynth,
+            },
+        );
+        let encoded = serde_json::to_string(&oxisynth_topology).unwrap();
+        let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, oxisynth_topology);
 
         for (index, control) in [
             WireTrackFxControl::SetActive(false),
