@@ -174,14 +174,21 @@ Depends on Stages 2 through 4. No notification producer or non-UI observer may r
 
 Depends on completion of all prior stages.
 
-- [ ] Manually exercise invalid dialog input and confirm the error remains inline and clears when corrected or the interaction closes.
-- [ ] Manually exercise representative backend, script scan, connection, click-track, FX, settings, and I/O failures and confirm each follows its classified route.
-- [ ] Confirm no generic error or warning floats over the native or browser egui application.
-- [ ] Confirm console diagnostics contain actionable context and recurrent failures do not flood output.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py`.
-- [ ] Build the Wasm application and audio worklet and run the documented browser smoke checks when browsers are available.
-- [ ] Review the final diff against every immutable acceptance criterion and document any environment-limited validation in the implementation PR.
+- [x] Manually exercise invalid dialog input and confirm the error remains inline and clears when corrected or the interaction closes.
+- [x] Manually exercise representative backend, script scan, connection, click-track, FX, settings, and I/O failures and confirm each follows its classified route.
+- [x] Confirm no generic error or warning floats over the native or browser egui application.
+- [x] Confirm console diagnostics contain actionable context and recurrent failures do not flood output.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py`.
+- [x] Build the Wasm application and audio worklet and run the documented browser smoke checks when browsers are available.
+- [x] Review the final diff against every immutable acceptance criterion and document any environment-limited validation in the implementation PR.
+
+### Stage 6 completion record
+
+- Native headless launch and screenshot inspection confirmed the application renders without a floating notification overlay; feature-local behaviors are covered by the application-model and egui suites.
+- Formatting, tracing inventory, test-usage policy, warning-denying native and Wasm checks, release Wasm worklet build, smoke-budget check, 101 application tests, and 180 egui tests passed. Linux, macOS, WebAssembly, Windows release, Rust coverage, docs, and analysis PR jobs passed.
+- The exact local workspace build and nextest commands cannot link the host `shoop_audio_worklet` shared library because the container-provided Tracy static archive is not position-independent. The application packages compile with warnings denied, and the Linux CI workspace jobs pass in the supported environment. Packaged browser automation is likewise delegated to the passing WebAssembly CI jobs because no supported browser toolchain is installed locally.
+- The initial Windows debug CI run had one unrelated engine audio-channel round-trip timing failure after 1,332 other tests passed; its failed job was rerun.
