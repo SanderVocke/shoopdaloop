@@ -1164,6 +1164,7 @@ pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
         },
         features: shoop_app_api::TrackProcessorFeatures {
             state: true,
+            embedded_ui: true,
             ..shoop_app_api::TrackProcessorFeatures::default()
         },
         editor: Some(shoop_app_api::TrackProcessorEditorDescriptor::OxiSynth {
@@ -1193,7 +1194,7 @@ mod oxisynth_descriptor_tests {
         assert!(!descriptor.constraints.accepts(0, 1, true));
         assert!(!descriptor.constraints.accepts(0, 2, true));
         assert!(descriptor.features.state);
-        assert!(!descriptor.features.embedded_ui);
+        assert!(descriptor.features.embedded_ui);
         let Some(shoop_app_api::TrackProcessorEditorDescriptor::OxiSynth { presets }) =
             descriptor.editor
         else {

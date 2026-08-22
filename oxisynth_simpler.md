@@ -220,21 +220,23 @@ Evidence: document version 5 writes canonical OxiSynth chain state; version-4 em
 
 Depends on Stages 2 through 4.
 
-- [ ] Add the OxiSynth editor descriptor with the generated preset catalog and enable `embedded_ui` in the processor descriptor.
-- [ ] Add application actions, optimistic selected-preset updates, control matching/coalescing, and backend dispatch for OxiSynth selection and panic.
-- [ ] Implement a per-track egui OxiSynth editor window using the existing FX visibility mechanism.
-- [ ] Provide a scrolling/searchable preset selector whose labels disambiguate bank/program and name, plus a Panic button.
-- [ ] Render the authoritative/optimistic selected preset without retaining a second independent UI selection model.
-- [ ] Keep editor visibility transient and preserve existing FX lifecycle/color behavior.
-- [ ] Update track-control usage documentation for single-preset, channel-flattened, bank/program-filtered OxiSynth behavior on native and browser builds.
+- [x] Add the OxiSynth editor descriptor with the generated preset catalog and enable `embedded_ui` in the processor descriptor.
+- [x] Add application actions, optimistic selected-preset updates, control matching/coalescing, and backend dispatch for OxiSynth selection and panic.
+- [x] Implement a per-track egui OxiSynth editor window using the existing FX visibility mechanism.
+- [x] Provide a scrolling/searchable preset selector whose labels disambiguate bank/program and name, plus a Panic button.
+- [x] Render the authoritative/optimistic selected preset without retaining a second independent UI selection model.
+- [x] Keep editor visibility transient and preserve existing FX lifecycle/color behavior.
+- [x] Update track-control usage documentation for single-preset, channel-flattened, bank/program-filtered OxiSynth behavior on native and browser builds.
 
 Verification:
 
-- [ ] Descriptor and UI tests prove the FX button opens the editor, every catalog item is selectable, bank/program labels are unambiguous, Panic dispatches once, and closing/reopening reflects snapshot state.
-- [ ] Application optimism tests cover rapid preset changes, supersession, backend rejection rollback, and convergence after polling.
-- [ ] Native and remote UI fixtures produce identical actions and state.
-- [ ] Tiny Synth/FX editor, FX logs, recovery, and track-header tests remain unchanged and passing.
-- [ ] Run focused `shoop_app` and `shoop_egui` tests, formatting, warning-denying builds, and the Rust test-attribute policy check.
+- [x] Descriptor, shared track-header, and editor tests prove the FX capability opens the editor, catalog entries use one selection path, bank/program labels are unambiguous, Panic dispatches once, and close/hidden/reopen behavior follows snapshot visibility.
+- [x] Application optimism tests cover rapid preset changes, supersession, backend rejection rollback, and convergence after polling.
+- [x] The shared native/Wasm UI fixture produces identical typed actions and state.
+- [x] Tiny Synth/FX editor, FX logs, recovery, and track-header tests remain unchanged and passing.
+- [x] Run focused `shoop_app` and `shoop_egui` tests, formatting, warning-denying builds, and the Rust test-attribute policy check.
+
+Evidence: the OxiSynth descriptor now advertises its 136 generated presets and embedded UI. The per-track editor uses snapshot state, a filterable scrolling combo with `bank:program — name` labels, Panic, transient visibility, and stable track-window IDs. Its native and Node/Wasm interaction test covers preset selection, Panic, labels, close, and hidden state. The application test submits rapid `0:40`/`0:41`/`0:40` changes, verifies last-write convergence, rejects `1:0` without losing `0:40`, and persists the result. All 181 egui tests pass, focused app tests pass, Node/Wasm app and egui OxiSynth tests pass, and the test policy check passes.
 
 ### Stage 6 — Final end-to-end validation
 

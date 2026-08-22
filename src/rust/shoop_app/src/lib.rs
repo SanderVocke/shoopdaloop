@@ -9571,6 +9571,36 @@ mod tests {
             &BackendTrackFxControl::SetActive(fx.active),
         ));
 
+        let mut oxisynth = shoop_app_api::TrackFxState {
+            processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::OXISYNTH,
+            ),
+            active: true,
+            visible: true,
+            lifecycle: shoop_app_api::FxLifecycle::Running,
+            generation: 0,
+            crash_summary: None,
+            logs: Arc::from([]),
+            editor: Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(
+                shoop_app_api::OxiSynthState {
+                    selected_preset_id: "0:0".to_owned(),
+                },
+            )),
+        };
+        let select = BackendTrackFxControl::OxiSynth(shoop_app_api::OxiSynthControl::SelectPreset(
+            "0:40".to_owned(),
+        ));
+        assert_eq!(fx_control_key(&select), Some(FxControlKey::OxiPreset));
+        assert!(!fx_control_matches(Some(&oxisynth), &select));
+        apply_fx_control(&mut oxisynth, &select);
+        assert!(fx_control_matches(Some(&oxisynth), &select));
+        assert_eq!(
+            fx_control_key(&BackendTrackFxControl::OxiSynth(
+                shoop_app_api::OxiSynthControl::Panic,
+            )),
+            None
+        );
+
         let progress = |completed, total| BackendOperationProgress {
             key: 1,
             kind: shoop_backend::BackendOperationKind::SessionCapture,
@@ -10432,6 +10462,22 @@ mod tests {
                 )),
             })
             .unwrap();
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::OxiSynth(shoop_app_api::OxiSynthControl::SelectPreset(
+                    "0:41".to_owned(),
+                )),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::OxiSynth(shoop_app_api::OxiSynthControl::SelectPreset(
+                    "0:40".to_owned(),
+                )),
+            })
+            .unwrap();
         runtime.tick(Duration::ZERO);
         let selected = runtime.snapshot();
         let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) = selected.tracks[1]
@@ -10440,6 +10486,24 @@ mod tests {
             .and_then(|fx| fx.editor.as_ref())
         else {
             panic!("missing selected OxiSynth editor state");
+        };
+        assert_eq!(editor.selected_preset_id, "0:40");
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::OxiSynth(shoop_app_api::OxiSynthControl::SelectPreset(
+                    "1:0".to_owned(),
+                )),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let rejected = runtime.snapshot();
+        let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) = rejected.tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing OxiSynth editor state after rejection");
         };
         assert_eq!(editor.selected_preset_id, "0:40");
         runtime
