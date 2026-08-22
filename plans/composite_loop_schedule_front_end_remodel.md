@@ -398,18 +398,14 @@ Migration and lowering should exist before converting editor mutations; otherwis
 - Design rules may be revised only for a documented, well-supported reason.
 - Goals and acceptance criteria must not change without explicit user approval.
 
-## Investigation Commands
+## Validation Status
 
-No tests were run because no code was changed; these were repository-inspection commands used to build the plan:
+- [x] `cargo fmt --all -- --check`
+- [x] `python3 scripts/check_shoop_test_usage.py`
+- [x] `python3 scripts/check_tracing_coverage.py --require-closed`
+- [x] `cargo test -p shoop_session -p shoop_app_api -p shoop_app -p shoop_egui`
+- [x] `RUSTFLAGS="-D warnings" cargo build -p shoop_session -p shoop_app_api -p shoop_app -p shoop_egui`
+- [x] `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test -p shoop_backend --features shoop_engine/app_backend -- --test-threads=1`
+- [ ] GitHub Actions native and WebAssembly build matrix for the final commit.
 
-- ✅ `find .. -name AGENTS.md -print`
-- ✅ `cat AGENTS.md`
-- ✅ `cat .agents/index.md`
-- ✅ `cat .agents/rules/mandates.md`
-- ✅ `cat .agents/prompts/write_plan.md`
-- ✅ `cat .agents/info/test.md`
-- ✅ `rg -n -i "parallel playlist|parallel_playlist|parallelPlaylist|composite.*schedule|schedule.*composite|playlist" src tests docs plans`
-- ✅ `rg -n "ComposeAddToEnd|ComposeLoopAt|DeleteComposite|RelocateComposite|CompositeEventId" src/rust/shoop_app_api src/rust/shoop_egui src/rust/shoop_app/src/lib.rs`
-- ✅ `rg -n "BackendCompositeConfig|timelines|CompositeLoop" src/rust`
-- ✅ `rg -n "script_composition" src/rust/shoop_app/src/lib.rs`
-- ✅ `git status --short --branch` — the working tree remained clean, so no commit or pull request was created.
+The local all-workspace build reaches an environment-specific native `shoop_audio_worklet`/Tracy PIC link failure because this container does not provide the repository's Nix development shell. The supported GitHub Actions matrix supplies that environment and validates both native and WebAssembly targets.
