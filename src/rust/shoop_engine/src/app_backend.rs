@@ -6387,12 +6387,20 @@ impl FXChain {
             buffer_size as usize,
             asset,
         )?;
+        let fallback = asset
+            .presets
+            .first()
+            .ok_or_else(|| anyhow!("SoundFont has no presets"))?;
         for (channel, state) in current.channels.iter().enumerate() {
-            replacement.select_program(
-                channel as u8,
-                state.baseline_bank,
-                state.baseline_program,
-            )?;
+            let (bank, program) = asset
+                .presets
+                .iter()
+                .find(|preset| {
+                    (preset.bank, preset.program) == (state.baseline_bank, state.baseline_program)
+                })
+                .map(|preset| (preset.bank, preset.program))
+                .unwrap_or((fallback.bank, fallback.program));
+            replacement.select_program(channel as u8, bank, program)?;
         }
         let title = self.title.clone();
         let displaced = self.shared.query_graph_scheduler_response(move |session| {

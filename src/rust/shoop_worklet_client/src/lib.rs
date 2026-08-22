@@ -99,6 +99,7 @@ struct LoopContentReplaceAssembly {
 
 struct SoundFontImportAssembly {
     generation: u64,
+    sha256: String,
     bytes: Arc<[u8]>,
     next_offset: usize,
     commit_sent: bool,
@@ -1473,7 +1474,18 @@ impl Backend for RemoteWorkletBackend {
     fn soundfont_catalog(
         &mut self,
     ) -> Result<Arc<[shoop_backend::soundfont_library::SoundFontAssetDescriptor]>> {
-        Ok(self.soundfonts.descriptors())
+        let pending = self
+            .soundfont_import
+            .as_ref()
+            .map(|import| import.sha256.as_str());
+        Ok(self
+            .soundfonts
+            .descriptors()
+            .iter()
+            .filter(|asset| pending != Some(asset.sha256.as_ref()))
+            .cloned()
+            .collect::<Vec<_>>()
+            .into())
     }
 
     fn import_soundfont(
@@ -1496,6 +1508,7 @@ impl Backend for RemoteWorkletBackend {
         })?;
         self.soundfont_import = Some(SoundFontImportAssembly {
             generation,
+            sha256: descriptor.sha256.to_string(),
             bytes,
             next_offset: 0,
             commit_sent: false,

@@ -253,6 +253,9 @@ impl OxiSynthProcessor {
 
     pub fn reset(&mut self) {
         if self.synth.send_event(MidiEvent::SystemReset).is_ok() {
+            for channel in &mut self.snapshot.channels {
+                channel.channel_pressure = 0;
+            }
             self.refresh_all_channels();
         }
     }
