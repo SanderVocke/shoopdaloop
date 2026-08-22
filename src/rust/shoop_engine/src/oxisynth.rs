@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
-use oxisynth::{MidiEvent, SoundFont, Synth, SynthDescriptor};
+use oxisynth::{MidiEvent, SoundFont, SoundFontId, Synth, SynthDescriptor};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::io::Cursor;
+use std::sync::Arc;
 
 use crate::midi_storage::MidiStorageElem;
 
@@ -11,9 +14,222 @@ pub const SOUNDFONT_BYTES: &[u8] = include_bytes!(concat!(
 pub const SOUNDFONT_SHA256: &str =
     "c5378b62028c920cb11e4803327983fee2f2cdff5dc89c708e39da417e51c854";
 pub const POLYPHONY: u16 = 256;
+pub const MIDI_CHANNELS: usize = 16;
+pub const MIDI_CONTROLLERS: usize = 128;
+pub const MAX_SOUNDFONT_BYTES: usize = 256 * 1024 * 1024;
+
+#[derive(Clone, Debug)]
+pub struct SoundFontAsset {
+    pub sha256: String,
+    pub name: String,
+    pub original_filename: String,
+    pub bytes: Arc<[u8]>,
+    pub presets: Arc<[OxiSynthPreset]>,
+}
+
+impl SoundFontAsset {
+    pub fn parse(bytes: Arc<[u8]>, original_filename: impl Into<String>) -> Result<Self> {
+        if bytes.is_empty() || bytes.len() > MAX_SOUNDFONT_BYTES {
+            anyhow::bail!("SoundFont size is outside the supported range");
+        }
+        let mut cursor = Cursor::new(bytes.as_ref());
+        let font = soundfont::SoundFont2::load(&mut cursor).context("inspect SoundFont")?;
+        let original_filename = original_filename.into();
+        let name = if font.info.bank_name.trim().is_empty() {
+            original_filename.clone()
+        } else {
+            font.info.bank_name
+        };
+        let mut presets = font
+            .presets
+            .into_iter()
+            .filter_map(|preset| {
+                Some(OxiSynthPreset {
+                    bank: u32::from(preset.header.bank),
+                    program: u8::try_from(preset.header.preset).ok()?,
+                    name: preset.header.name,
+                })
+            })
+            .collect::<Vec<_>>();
+        presets.sort_by(|left, right| {
+            (left.bank, left.program, left.name.as_str()).cmp(&(
+                right.bank,
+                right.program,
+                right.name.as_str(),
+            ))
+        });
+        let sha256 = Sha256::digest(bytes.as_ref())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        Ok(Self {
+            sha256,
+            name,
+            original_filename,
+            bytes,
+            presets: presets.into(),
+        })
+    }
+
+    pub fn embedded() -> Result<Self> {
+        Self::parse(Arc::from(SOUNDFONT_BYTES), "TimGM6mb.sf2")
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OxiSynthPreset {
+    pub bank: u32,
+    pub program: u8,
+    pub name: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OxiSynthControl {
+    SetMasterGain(f32),
+    SetReverb(OxiSynthReverbConfiguration),
+    SetChorus(OxiSynthChorusConfiguration),
+    SelectProgram {
+        channel: u8,
+        bank: u32,
+        program: u8,
+    },
+    Audition {
+        channel: u8,
+        key: u8,
+        velocity: u8,
+        pressed: bool,
+    },
+    Panic,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OxiSynthChannelSnapshot {
+    pub baseline_bank: u32,
+    pub baseline_program: u8,
+    pub bank: u32,
+    pub program: u8,
+    pub controllers: [u8; MIDI_CONTROLLERS],
+    pub pitch_bend: u16,
+    pub pitch_wheel_sensitivity: u8,
+    pub channel_pressure: u8,
+}
+
+impl Default for OxiSynthChannelSnapshot {
+    fn default() -> Self {
+        Self {
+            bank: 0,
+            program: 0,
+            baseline_bank: 0,
+            baseline_program: 0,
+            controllers: [0; MIDI_CONTROLLERS],
+            pitch_bend: 8192,
+            pitch_wheel_sensitivity: 2,
+            channel_pressure: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OxiSynthSnapshot {
+    pub revision: u64,
+    pub midi_activity_revision: u64,
+    pub master_gain: f32,
+    pub reverb: OxiSynthReverbConfiguration,
+    pub chorus: OxiSynthChorusConfiguration,
+    pub channels: [OxiSynthChannelSnapshot; MIDI_CHANNELS],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OxiSynthReverbConfiguration {
+    pub room_size: f32,
+    pub damp: f32,
+    pub width: f32,
+    pub level: f32,
+}
+
+impl Default for OxiSynthReverbConfiguration {
+    fn default() -> Self {
+        Self {
+            room_size: 0.2,
+            damp: 0.0,
+            width: 0.5,
+            level: 0.9,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OxiSynthChorusConfiguration {
+    pub voices: u32,
+    pub level: f32,
+    pub speed_hz: f32,
+    pub depth_ms: f32,
+}
+
+impl Default for OxiSynthChorusConfiguration {
+    fn default() -> Self {
+        Self {
+            voices: 3,
+            level: 2.0,
+            speed_hz: 0.3,
+            depth_ms: 8.0,
+        }
+    }
+}
+
+fn default_master_gain() -> f32 {
+    0.2
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OxiSynthProgramConfiguration {
+    pub bank: u32,
+    pub program: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OxiSynthConfiguration {
+    pub version: u16,
+    pub soundfont_sha256: String,
+    #[serde(default = "default_master_gain")]
+    pub master_gain: f32,
+    #[serde(default)]
+    pub reverb: OxiSynthReverbConfiguration,
+    #[serde(default)]
+    pub chorus: OxiSynthChorusConfiguration,
+    pub channels: [OxiSynthProgramConfiguration; MIDI_CHANNELS],
+}
+
+impl Default for OxiSynthSnapshot {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            midi_activity_revision: 0,
+            master_gain: default_master_gain(),
+            reverb: OxiSynthReverbConfiguration::default(),
+            chorus: OxiSynthChorusConfiguration::default(),
+            channels: [OxiSynthChannelSnapshot::default(); MIDI_CHANNELS],
+        }
+    }
+}
+
+pub fn embedded_presets() -> Result<Vec<OxiSynthPreset>> {
+    Ok(SoundFontAsset::embedded()?.presets.to_vec())
+}
 
 pub fn create_synth(sample_rate: f32) -> Result<Synth> {
-    let mut bytes = Cursor::new(SOUNDFONT_BYTES);
+    create_synth_from_bytes(sample_rate, SOUNDFONT_BYTES).map(|(synth, _)| synth)
+}
+
+fn create_synth_from_bytes(
+    sample_rate: f32,
+    soundfont_bytes: &[u8],
+) -> Result<(Synth, SoundFontId)> {
+    let mut bytes = Cursor::new(soundfont_bytes);
     let font = SoundFont::load(&mut bytes).context("parse embedded TimGM6mb SoundFont")?;
     let mut synth = Synth::new(SynthDescriptor {
         sample_rate,
@@ -24,12 +240,17 @@ pub fn create_synth(sample_rate: f32) -> Result<Synth> {
         ..SynthDescriptor::default()
     })
     .context("configure OxiSynth")?;
-    synth.add_font(font, true);
-    Ok(synth)
+    let id = synth.add_font(font, true);
+    Ok((synth, id))
 }
 
 pub struct OxiSynthProcessor {
     synth: Synth,
+    sound_font_id: SoundFontId,
+    soundfont_sha256: String,
+    soundfont_name: String,
+    presets: Arc<[OxiSynthPreset]>,
+    snapshot: OxiSynthSnapshot,
     left: Vec<f32>,
     right: Vec<f32>,
 }
@@ -44,13 +265,33 @@ impl std::fmt::Debug for OxiSynthProcessor {
 }
 
 impl OxiSynthProcessor {
+    pub fn decode_configuration(encoded: &str) -> Result<OxiSynthConfiguration> {
+        serde_json::from_str(encoded).context("decode OxiSynth configuration")
+    }
     pub fn new(sample_rate: f32, max_frames: usize) -> Result<Self> {
+        Self::from_asset(sample_rate, max_frames, &SoundFontAsset::embedded()?)
+    }
+
+    pub fn from_asset(sample_rate: f32, max_frames: usize, asset: &SoundFontAsset) -> Result<Self> {
         let max_frames = max_frames.max(1);
-        Ok(Self {
-            synth: create_synth(sample_rate)?,
+        let (synth, sound_font_id) = create_synth_from_bytes(sample_rate, &asset.bytes)?;
+        let mut result = Self {
+            synth,
+            sound_font_id,
+            soundfont_sha256: asset.sha256.clone(),
+            soundfont_name: asset.name.clone(),
+            presets: asset.presets.clone(),
+            snapshot: OxiSynthSnapshot::default(),
             left: vec![0.0; max_frames],
             right: vec![0.0; max_frames],
-        })
+        };
+        result.refresh_all_channels();
+        result.refresh_global_settings();
+        for channel in &mut result.snapshot.channels {
+            channel.baseline_bank = channel.bank;
+            channel.baseline_program = channel.program;
+        }
+        Ok(result)
     }
 
     pub fn max_frames(&self) -> usize {
@@ -73,7 +314,147 @@ impl OxiSynthProcessor {
     }
 
     pub fn reset(&mut self) {
-        let _ = self.synth.send_event(MidiEvent::SystemReset);
+        if self.synth.send_event(MidiEvent::SystemReset).is_ok() {
+            for channel in &mut self.snapshot.channels {
+                channel.channel_pressure = 0;
+            }
+            self.refresh_all_channels();
+        }
+    }
+
+    pub fn snapshot(&self) -> OxiSynthSnapshot {
+        self.snapshot
+    }
+
+    pub fn soundfont_sha256(&self) -> &str {
+        &self.soundfont_sha256
+    }
+
+    pub fn soundfont_name(&self) -> &str {
+        &self.soundfont_name
+    }
+
+    pub fn presets(&self) -> &Arc<[OxiSynthPreset]> {
+        &self.presets
+    }
+
+    pub fn select_program(&mut self, channel: u8, bank: u32, program: u8) -> Result<()> {
+        self.synth
+            .select_program(channel, self.sound_font_id, bank, program)
+            .context("select OxiSynth program")?;
+        self.refresh_channel(channel);
+        let state = &mut self.snapshot.channels[channel as usize];
+        state.baseline_bank = bank;
+        state.baseline_program = program;
+        Ok(())
+    }
+
+    pub fn configuration(&self) -> OxiSynthConfiguration {
+        OxiSynthConfiguration {
+            version: 1,
+            soundfont_sha256: self.soundfont_sha256.clone(),
+            master_gain: self.snapshot.master_gain,
+            reverb: self.snapshot.reverb,
+            chorus: self.snapshot.chorus,
+            channels: std::array::from_fn(|channel| OxiSynthProgramConfiguration {
+                bank: self.snapshot.channels[channel].baseline_bank,
+                program: self.snapshot.channels[channel].baseline_program,
+            }),
+        }
+    }
+
+    pub fn encode_configuration(&self) -> Result<String> {
+        serde_json::to_string(&self.configuration()).context("encode OxiSynth configuration")
+    }
+
+    pub fn restore_configuration(&mut self, encoded: &str) -> Result<()> {
+        let configuration = Self::decode_configuration(encoded)?;
+        self.apply_configuration(&configuration)
+    }
+
+    pub fn apply_configuration(&mut self, configuration: &OxiSynthConfiguration) -> Result<()> {
+        if configuration.version != 1 || configuration.soundfont_sha256 != self.soundfont_sha256 {
+            anyhow::bail!("unsupported OxiSynth configuration");
+        }
+        self.set_master_gain(configuration.master_gain)?;
+        self.set_reverb(configuration.reverb)?;
+        self.set_chorus(configuration.chorus)?;
+        for (channel, program) in configuration.channels.iter().enumerate() {
+            self.select_program(channel as u8, program.bank, program.program)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_master_gain(&mut self, gain: f32) -> Result<()> {
+        if !gain.is_finite() || !(0.0..=10.0).contains(&gain) {
+            anyhow::bail!("OxiSynth master gain is outside 0..=10");
+        }
+        self.synth.set_gain(gain);
+        self.snapshot.master_gain = self.synth.gain();
+        self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+        Ok(())
+    }
+
+    pub fn set_reverb(&mut self, value: OxiSynthReverbConfiguration) -> Result<()> {
+        let values = [value.room_size, value.damp, value.width, value.level];
+        if values
+            .iter()
+            .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
+        {
+            anyhow::bail!("OxiSynth reverb parameter is outside 0..=1");
+        }
+        self.synth.set_reverb_params(&oxisynth::ReverbParams {
+            roomsize: value.room_size,
+            damp: value.damp,
+            width: value.width,
+            level: value.level,
+        });
+        self.refresh_global_settings();
+        self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+        Ok(())
+    }
+
+    pub fn set_chorus(&mut self, value: OxiSynthChorusConfiguration) -> Result<()> {
+        if value.voices > 99
+            || !value.level.is_finite()
+            || !(0.0..=10.0).contains(&value.level)
+            || !value.speed_hz.is_finite()
+            || !(0.1..=5.0).contains(&value.speed_hz)
+            || !value.depth_ms.is_finite()
+            || !(0.0..=256.0).contains(&value.depth_ms)
+        {
+            anyhow::bail!("OxiSynth chorus parameter is outside the supported range");
+        }
+        self.synth.set_chorus_params(&oxisynth::ChorusParams {
+            nr: value.voices,
+            level: value.level,
+            speed: value.speed_hz,
+            depth: value.depth_ms,
+            mode: Default::default(),
+        });
+        self.refresh_global_settings();
+        self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+        Ok(())
+    }
+
+    pub fn panic(&mut self) {
+        for channel in 0..MIDI_CHANNELS as u8 {
+            let _ = self.synth.send_event(MidiEvent::AllSoundOff { channel });
+        }
+        self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+    }
+
+    pub fn audition(&mut self, channel: u8, key: u8, velocity: u8, pressed: bool) -> Result<()> {
+        let event = if pressed {
+            MidiEvent::NoteOn {
+                channel,
+                key,
+                vel: velocity,
+            }
+        } else {
+            MidiEvent::NoteOff { channel, key }
+        };
+        self.synth.send_event(event).context("audition OxiSynth")
     }
 
     pub fn process(&mut self, frames: usize, events: &[MidiStorageElem]) {
@@ -85,11 +466,32 @@ impl OxiSynthProcessor {
             let offset = (event.time as usize).min(frames).max(cursor);
             self.render(cursor, offset);
             if let Some(event) = translate_midi(event.data()) {
-                let _ = self.synth.send_event(event);
+                if self.synth.send_event(event).is_ok() {
+                    self.note_midi_event(event);
+                }
             }
             cursor = offset;
         }
         self.render(cursor, frames);
+    }
+
+    pub fn process_midi_controls_only(&mut self, events: &[MidiStorageElem]) {
+        for event in events {
+            let Some(event) = translate_midi(event.data()) else {
+                continue;
+            };
+            if matches!(
+                event,
+                MidiEvent::ControlChange { .. }
+                    | MidiEvent::ProgramChange { .. }
+                    | MidiEvent::PitchBend { .. }
+                    | MidiEvent::ChannelPressure { .. }
+                    | MidiEvent::SystemReset
+            ) && self.synth.send_event(event).is_ok()
+            {
+                self.note_midi_event(event);
+            }
+        }
     }
 
     fn render(&mut self, start: usize, end: usize) {
@@ -98,6 +500,111 @@ impl OxiSynthProcessor {
         }
         self.synth
             .write((&mut self.left[start..end], &mut self.right[start..end]));
+    }
+
+    fn note_midi_event(&mut self, event: MidiEvent) {
+        self.snapshot.midi_activity_revision = self.snapshot.midi_activity_revision.wrapping_add(1);
+        match event {
+            MidiEvent::SystemReset => {
+                for channel in &mut self.snapshot.channels {
+                    channel.channel_pressure = 0;
+                }
+                self.refresh_all_channels();
+            }
+            MidiEvent::ControlChange {
+                channel,
+                ctrl,
+                value,
+            } => {
+                if ctrl == 121 {
+                    self.refresh_channel(channel);
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                    return;
+                }
+                if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
+                    state.controllers[ctrl as usize] = value;
+                    if matches!(ctrl, 0 | 32) {
+                        if let Ok((_, bank, program)) = self.synth.program(channel) {
+                            state.bank = bank;
+                            state.program = program as u8;
+                        }
+                    }
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                }
+            }
+            MidiEvent::PitchBend { channel, value } => {
+                if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
+                    state.pitch_bend = value;
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                }
+            }
+            MidiEvent::ProgramChange {
+                channel,
+                program_id,
+            } => {
+                if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
+                    state.program = program_id;
+                    if let Ok((_, bank, program)) = self.synth.program(channel) {
+                        state.bank = bank;
+                        state.program = program as u8;
+                    }
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                }
+            }
+            MidiEvent::ChannelPressure { channel, value } => {
+                if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
+                    state.channel_pressure = value;
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn refresh_all_channels(&mut self) {
+        for channel in 0..MIDI_CHANNELS as u8 {
+            self.refresh_channel(channel);
+        }
+    }
+
+    fn refresh_global_settings(&mut self) {
+        self.snapshot.master_gain = self.synth.gain();
+        let reverb = self.synth.reverb_params();
+        self.snapshot.reverb = OxiSynthReverbConfiguration {
+            room_size: reverb.roomsize,
+            damp: reverb.damp,
+            width: reverb.width,
+            level: reverb.level,
+        };
+        let chorus = self.synth.chorus_params();
+        self.snapshot.chorus = OxiSynthChorusConfiguration {
+            voices: chorus.nr,
+            level: chorus.level,
+            speed_hz: chorus.speed,
+            depth_ms: chorus.depth,
+        };
+    }
+
+    fn refresh_channel(&mut self, channel: u8) {
+        let Some(state) = self.snapshot.channels.get_mut(channel as usize) else {
+            return;
+        };
+        if let Ok((_, bank, program)) = self.synth.program(channel) {
+            state.bank = bank;
+            state.program = program as u8;
+        }
+        for (controller, destination) in state.controllers.iter_mut().enumerate() {
+            if let Ok(value) = self.synth.cc(channel, controller as u16) {
+                *destination = value;
+            }
+        }
+        if let Ok(value) = self.synth.pitch_bend(channel) {
+            state.pitch_bend = value;
+        }
+        if let Ok(value) = self.synth.pitch_wheel_sensitivity(channel) {
+            state.pitch_wheel_sensitivity = value;
+        }
+        self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
     }
 }
 
@@ -289,5 +796,105 @@ mod tests {
             .iter()
             .all(|sample| sample.is_finite()));
         processor.reset();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn embedded_preset_catalog_and_direct_selection_are_consistent() {
+        let presets = embedded_presets().unwrap();
+        assert!(!presets.is_empty());
+        assert!(presets
+            .windows(2)
+            .all(|pair| (pair[0].bank, pair[0].program) <= (pair[1].bank, pair[1].program)));
+
+        let preset = presets.iter().find(|preset| preset.bank < 128).unwrap();
+        let mut processor = OxiSynthProcessor::new(48_000.0, 64).unwrap();
+        processor
+            .select_program(3, preset.bank, preset.program)
+            .unwrap();
+        let channel = processor.snapshot().channels[3];
+        assert_eq!(
+            (channel.bank, channel.program),
+            (preset.bank, preset.program)
+        );
+        assert!(processor.select_program(16, 0, 0).is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn external_midi_updates_the_authoritative_snapshot() {
+        let mut processor = OxiSynthProcessor::new(48_000.0, 64).unwrap();
+        let before = processor.snapshot();
+        let events = [
+            MidiStorageElem::new(0, &[0xb2, 7, 91]).unwrap(),
+            MidiStorageElem::new(0, &[0xc2, 12]).unwrap(),
+            MidiStorageElem::new(0, &[0xe2, 1, 65]).unwrap(),
+            MidiStorageElem::new(0, &[0xd2, 44]).unwrap(),
+        ];
+        processor.process(64, &events);
+        let after = processor.snapshot();
+        assert!(after.revision > before.revision);
+        assert_eq!(
+            after.midi_activity_revision,
+            before.midi_activity_revision + 4
+        );
+        assert_eq!(after.channels[2].controllers[7], 91);
+        assert_eq!(after.channels[2].program, 12);
+        assert_eq!(after.channels[2].pitch_bend, 65 << 7 | 1);
+        assert_eq!(after.channels[2].channel_pressure, 44);
+
+        processor.process(64, &[MidiStorageElem::new(0, &[0xff]).unwrap()]);
+        assert_eq!(processor.snapshot().channels[2].channel_pressure, 0);
+
+        processor.process(
+            64,
+            &[
+                MidiStorageElem::new(0, &[0xb2, 7, 1]).unwrap(),
+                MidiStorageElem::new(0, &[0xb2, 10, 2]).unwrap(),
+                MidiStorageElem::new(0, &[0xb2, 11, 3]).unwrap(),
+                MidiStorageElem::new(0, &[0xd2, 44]).unwrap(),
+                MidiStorageElem::new(0, &[0xb2, 121, 0]).unwrap(),
+            ],
+        );
+        let reset = processor.snapshot().channels[2];
+        assert_eq!(reset.controllers[7], 1);
+        assert_eq!(reset.controllers[10], 2);
+        assert_eq!(reset.controllers[11], 127);
+        assert_eq!(reset.channel_pressure, 44);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_settings_are_direct_validated_and_serializable() {
+        let mut processor = OxiSynthProcessor::new(48_000.0, 64).unwrap();
+        processor.set_master_gain(0.75).unwrap();
+        processor
+            .set_reverb(OxiSynthReverbConfiguration {
+                room_size: 0.4,
+                damp: 0.3,
+                width: 0.8,
+                level: 0.6,
+            })
+            .unwrap();
+        processor
+            .set_chorus(OxiSynthChorusConfiguration {
+                voices: 5,
+                level: 1.5,
+                speed_hz: 0.7,
+                depth_ms: 12.0,
+            })
+            .unwrap();
+        let encoded = processor.encode_configuration().unwrap();
+        let mut restored = OxiSynthProcessor::new(48_000.0, 64).unwrap();
+        restored.restore_configuration(&encoded).unwrap();
+        assert_eq!(restored.configuration(), processor.configuration());
+        assert_eq!(restored.snapshot().master_gain, 0.75);
+        assert!(restored.set_master_gain(f32::NAN).is_err());
+        assert!(restored
+            .set_reverb(OxiSynthReverbConfiguration {
+                level: 2.0,
+                ..Default::default()
+            })
+            .is_err());
+        let mut unknown: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        unknown["active_voices"] = 12.into();
+        assert!(OxiSynthProcessor::decode_configuration(&unknown.to_string()).is_err());
     }
 }

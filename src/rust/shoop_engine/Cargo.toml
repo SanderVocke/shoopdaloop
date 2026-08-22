@@ -32,7 +32,8 @@ cpal = { workspace = true, optional = true }
 # MIDI for hosts without JACK. Optional for the same reason.
 midir = { workspace = true, optional = true }
 base64 = { workspace = true }
-serde_json = { workspace = true, optional = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
 libloading = { workspace = true, optional = true }
 libc = { workspace = true, optional = true }
 memmap2 = { workspace = true }
@@ -45,6 +46,7 @@ enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 tinyviolin = { workspace = true }
 oxisynth = { workspace = true }
+soundfont = { workspace = true }
 sha2 = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -63,7 +65,7 @@ prebuild = []
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
-carla = ["dep:serde_json", "dep:libloading", "dep:libc", "dep:rfd"]
+carla = ["dep:libloading", "dep:libc", "dep:rfd"]
 native_audio_backend = ["jack", "cpal", "midir"]
 app_backend = ["native_audio_backend"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]

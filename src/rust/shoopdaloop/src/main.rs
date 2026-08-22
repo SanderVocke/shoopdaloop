@@ -6,7 +6,7 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
 #[cfg(target_arch = "wasm32")]
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 #[cfg(target_arch = "wasm32")]
 use std::rc::Rc;
 
@@ -213,6 +213,60 @@ struct PendingAudioSettings {
 struct BrowserEphemeralFile {
     name: String,
     bytes: Vec<u8>,
+    durable: bool,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(inline_js = r#"
+const DB = 'shoopdaloop-soundfonts-v1';
+const STORE = 'assets';
+function openDb() { return new Promise((resolve, reject) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE, {keyPath:'sha256'}); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); }); }
+export async function shoopStoreSoundFont(name, bytes) { const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(v => v.toString(16).padStart(2,'0')).join(''); const db = await openDb(); await new Promise((resolve,reject) => { const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put({sha256:hash,name,bytes,ready:false}); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); return hash; }
+export async function shoopCommitSoundFont(hash) { const db=await openDb(); await new Promise((resolve,reject)=>{ const tx=db.transaction(STORE,'readwrite'); const store=tx.objectStore(STORE); const r=store.get(hash); r.onsuccess=()=>{ if(r.result){r.result.ready=true;store.put(r.result);} }; tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); }
+export async function shoopLoadSoundFonts() { const db=await openDb(); const result=await new Promise((resolve,reject)=>{ const tx=db.transaction(STORE,'readwrite'); const store=tx.objectStore(STORE); const r=store.getAll(); r.onsuccess=()=>{ for(const asset of r.result){if(!asset.ready)store.delete(asset.sha256);} resolve(r.result.filter(asset=>asset.ready));}; r.onerror=()=>reject(r.error); }); db.close(); return result; }
+export async function shoopDeleteSoundFont(hash) { const db=await openDb(); await new Promise((resolve,reject)=>{ const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).delete(hash); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); }); db.close(); }
+"#)]
+extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn shoopStoreSoundFont(
+        name: String,
+        bytes: js_sys::ArrayBuffer,
+    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn shoopLoadSoundFonts() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn shoopCommitSoundFont(
+        hash: String,
+    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn shoopDeleteSoundFont(
+        hash: String,
+    ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+}
+
+#[cfg(target_arch = "wasm32")]
+fn load_browser_soundfont_library(pending: Rc<RefCell<VecDeque<BrowserEphemeralFile>>>) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let Ok(value) = shoopLoadSoundFonts().await else {
+            return;
+        };
+        for record in js_sys::Array::from(&value).iter() {
+            let Ok(name) = js_sys::Reflect::get(&record, &"name".into()) else {
+                continue;
+            };
+            let Ok(bytes) = js_sys::Reflect::get(&record, &"bytes".into()) else {
+                continue;
+            };
+            let Some(name) = name.as_string() else {
+                continue;
+            };
+            pending.borrow_mut().push_back(BrowserEphemeralFile {
+                name,
+                bytes: js_sys::Uint8Array::new(&bytes).to_vec(),
+                durable: true,
+            });
+        }
+    });
 }
 
 struct UnifiedApp {
@@ -241,6 +295,8 @@ struct UnifiedApp {
     pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
     #[cfg(target_arch = "wasm32")]
     pending_ephemeral_files: Rc<RefCell<VecDeque<BrowserEphemeralFile>>>,
+    #[cfg(target_arch = "wasm32")]
+    browser_soundfont_catalog: BTreeSet<String>,
     #[cfg(not(target_arch = "wasm32"))]
     pending_file_intent_tx: Sender<AppIntent>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -313,6 +369,10 @@ impl UnifiedApp {
         let runtime = Runtime::new(&settings.active())?;
         #[cfg(target_arch = "wasm32")]
         let runtime = Runtime::new(&settings.active(), args)?;
+        #[cfg(target_arch = "wasm32")]
+        let pending_ephemeral_files = Rc::new(RefCell::new(VecDeque::new()));
+        #[cfg(target_arch = "wasm32")]
+        load_browser_soundfont_library(Rc::clone(&pending_ephemeral_files));
         widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {
             runtime,
@@ -339,7 +399,9 @@ impl UnifiedApp {
             #[cfg(target_arch = "wasm32")]
             pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
             #[cfg(target_arch = "wasm32")]
-            pending_ephemeral_files: Rc::new(RefCell::new(VecDeque::new())),
+            pending_ephemeral_files,
+            #[cfg(target_arch = "wasm32")]
+            browser_soundfont_catalog: BTreeSet::new(),
             #[cfg(not(target_arch = "wasm32"))]
             pending_file_intent_tx,
             #[cfg(not(target_arch = "wasm32"))]
@@ -614,6 +676,7 @@ impl UnifiedApp {
                         pending.borrow_mut().push_back(BrowserEphemeralFile {
                             name: file.file_name(),
                             bytes: file.read().await,
+                            durable: false,
                         });
                     }
                 });
@@ -743,6 +806,29 @@ impl UnifiedApp {
         let files = context.input(|input| input.raw.dropped_files.clone());
         for file in files {
             let path = file.path();
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(is_sf2_file_name)
+            {
+                match std::fs::read(path) {
+                    Ok(bytes) => {
+                        let name = path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("imported.sf2")
+                            .to_owned();
+                        if let Err(error) = self.runtime.dispatch(AppIntent::ImportSoundFont {
+                            original_filename: name,
+                            bytes: bytes.into(),
+                        }) {
+                            tracing::error!(%error, "frontend.soundfont.import_failed");
+                        }
+                    }
+                    Err(error) => tracing::error!(%error, "frontend.soundfont.read_failed"),
+                }
+                continue;
+            }
             if !path
                 .file_name()
                 .and_then(|name| name.to_str())
@@ -774,15 +860,17 @@ impl UnifiedApp {
             else {
                 continue;
             };
-            if !is_lua_file_name(&name) {
+            if !is_lua_file_name(&name) && !is_sf2_file_name(&name) {
                 continue;
             }
             let pending = Rc::clone(&self.pending_ephemeral_files);
             wasm_bindgen_futures::spawn_local(async move {
                 if let Ok(bytes) = file.bytes_async().await {
-                    pending
-                        .borrow_mut()
-                        .push_back(BrowserEphemeralFile { name, bytes });
+                    pending.borrow_mut().push_back(BrowserEphemeralFile {
+                        name,
+                        bytes,
+                        durable: false,
+                    });
                 }
             });
         }
@@ -845,7 +933,34 @@ impl UnifiedApp {
             .collect();
         #[cfg(target_arch = "wasm32")]
         for file in ephemeral_files {
-            self.queue_ephemeral_script_bytes(file.name, &file.bytes);
+            if is_sf2_file_name(&file.name) {
+                if file.durable {
+                    if let Err(error) = self.runtime.dispatch(AppIntent::ImportSoundFont {
+                        original_filename: file.name,
+                        bytes: file.bytes.into(),
+                    }) {
+                        tracing::error!(%error, "frontend.soundfont.import_failed");
+                    }
+                } else {
+                    let pending = Rc::clone(&self.pending_file_intents);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let persistent_bytes =
+                            js_sys::Uint8Array::from(file.bytes.as_slice()).buffer();
+                        match shoopStoreSoundFont(file.name.clone(), persistent_bytes).await {
+                            Ok(_) => pending.borrow_mut().push_back(AppIntent::ImportSoundFont {
+                                original_filename: file.name,
+                                bytes: file.bytes.into(),
+                            }),
+                            Err(error) => tracing::error!(
+                                error = ?error,
+                                "frontend.soundfont.persist_failed"
+                            ),
+                        }
+                    });
+                }
+            } else {
+                self.queue_ephemeral_script_bytes(file.name, &file.bytes);
+            }
         }
         self.handle_dropped_files(ui.ctx());
 
@@ -859,6 +974,53 @@ impl UnifiedApp {
             }
         }
         let snapshot = self.runtime.snapshot();
+        #[cfg(target_arch = "wasm32")]
+        {
+            let current = snapshot
+                .soundfonts
+                .iter()
+                .filter(|asset| !asset.built_in)
+                .map(|asset| asset.sha256.to_string())
+                .chain(
+                    snapshot
+                        .tracks
+                        .iter()
+                        .filter_map(|track| {
+                            let shoop_egui::TrackProcessorEditorState::OxiSynth(editor) =
+                                track.fx.as_ref()?.editor.as_ref()?
+                            else {
+                                return None;
+                            };
+                            Some(
+                                editor
+                                    .available_soundfonts
+                                    .iter()
+                                    .filter(|asset| !asset.built_in)
+                                    .map(|asset| asset.sha256.to_string())
+                                    .collect::<Vec<_>>(),
+                            )
+                        })
+                        .flatten(),
+                )
+                .collect::<BTreeSet<_>>();
+            for added in current.difference(&self.browser_soundfont_catalog) {
+                let added = added.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(error) = shoopCommitSoundFont(added).await {
+                        tracing::error!(error = ?error, "frontend.soundfont.commit_failed");
+                    }
+                });
+            }
+            for removed in self.browser_soundfont_catalog.difference(&current) {
+                let removed = removed.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(error) = shoopDeleteSoundFont(removed).await {
+                        tracing::error!(error = ?error, "frontend.soundfont.delete_failed");
+                    }
+                });
+            }
+            self.browser_soundfont_catalog = current;
+        }
         #[cfg(not(target_arch = "wasm32"))]
         self.reconcile_audio_settings(&snapshot);
         #[cfg(target_arch = "wasm32")]
@@ -1074,6 +1236,13 @@ impl UnifiedApp {
 fn is_lua_file_name(name: &str) -> bool {
     name.rsplit_once('.')
         .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("lua"))
+}
+
+fn is_sf2_file_name(name: &str) -> bool {
+    std::path::Path::new(name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("sf2"))
 }
 
 fn load_ephemeral_script_bytes(
@@ -3939,6 +4108,7 @@ impl BrowserSelfTest {
                         shoop_egui::TrackProcessorEditorState::TinySynthFx(editor) => {
                             Some((fx.visible, editor))
                         }
+                        shoop_egui::TrackProcessorEditorState::OxiSynth(_) => None,
                     }
                 });
                 let Some((tiny_visible, tiny_state)) = tiny_state else {

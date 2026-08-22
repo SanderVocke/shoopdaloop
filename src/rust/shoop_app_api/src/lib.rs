@@ -147,6 +147,28 @@ pub enum TrackProcessorEditorDescriptor {
     TinySynthFx {
         presets: Arc<[TrackProcessorPresetDescriptor]>,
     },
+    OxiSynth {
+        soundfont_name: Arc<str>,
+        soundfont_sha256: Arc<str>,
+        presets: Arc<[OxiSynthPresetDescriptor]>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OxiSynthPresetDescriptor {
+    pub bank: u32,
+    pub program: u8,
+    pub name: Arc<str>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SoundFontAssetDescriptor {
+    pub sha256: Arc<str>,
+    pub name: Arc<str>,
+    pub original_filename: Arc<str>,
+    pub byte_len: usize,
+    pub presets: Arc<[OxiSynthPresetDescriptor]>,
+    pub built_in: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -274,6 +296,50 @@ pub struct TinySynthFxState {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackProcessorEditorState {
     TinySynthFx(TinySynthFxState),
+    OxiSynth(OxiSynthState),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OxiSynthChannelState {
+    pub baseline_bank: u32,
+    pub baseline_program: u8,
+    pub current_bank: u32,
+    pub current_program: u8,
+    pub volume: u8,
+    pub pan: u8,
+    pub expression: u8,
+    pub pitch_bend: u16,
+    pub channel_pressure: u8,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct OxiSynthState {
+    pub available_soundfonts: Arc<[SoundFontAssetDescriptor]>,
+    pub soundfont_sha256: Arc<str>,
+    pub soundfont_name: Arc<str>,
+    pub presets: Arc<[OxiSynthPresetDescriptor]>,
+    pub revision: u64,
+    pub midi_activity_revision: u64,
+    pub master_gain: f32,
+    pub reverb: OxiSynthReverbState,
+    pub chorus: OxiSynthChorusState,
+    pub channels: [OxiSynthChannelState; 16],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OxiSynthReverbState {
+    pub room_size: f32,
+    pub damp: f32,
+    pub width: f32,
+    pub level: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OxiSynthChorusState {
+    pub voices: u32,
+    pub level: f32,
+    pub speed_hz: f32,
+    pub depth_ms: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -545,6 +611,7 @@ pub struct StatusState {
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
+    pub soundfont_import_progress: Option<f32>,
 }
 
 impl StatusState {
@@ -1303,6 +1370,7 @@ pub struct AppSnapshot {
     pub revision: u64,
     pub tracks: Vec<TrackState>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
+    pub soundfonts: Arc<[SoundFontAssetDescriptor]>,
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
@@ -1311,6 +1379,20 @@ pub struct AppSnapshot {
     pub scripting: Arc<ScriptingState>,
     pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
+    pub session_recovery: Option<SessionRecoveryState>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MissingSoundFontState {
+    pub sha256: Arc<str>,
+    pub affected_tracks: Arc<[Arc<str>]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionRecoveryState {
+    pub session_name: Arc<str>,
+    pub missing_soundfonts: Arc<[MissingSoundFontState]>,
+    pub last_error: Option<Arc<str>>,
 }
 
 pub type AppState = AppSnapshot;
@@ -1524,7 +1606,28 @@ pub enum TinySynthFxControl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum OxiSynthControl {
+    SetMasterGain(f32),
+    SetReverb(OxiSynthReverbState),
+    SetChorus(OxiSynthChorusState),
+    SelectSoundFont(Arc<str>),
+    SelectProgram {
+        channel: u8,
+        bank: u32,
+        program: u8,
+    },
+    Audition {
+        channel: u8,
+        key: u8,
+        velocity: u8,
+        pressed: bool,
+    },
+    Panic,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum TrackAction {
+    RemoveSoundFont(Arc<str>),
     Remove,
     MoveBefore(Option<TrackId>),
     NameChanged(String),
@@ -1543,6 +1646,7 @@ pub enum TrackAction {
     FxRestoreState(String),
     FxClearLogs,
     TinySynthFx(TinySynthFxControl),
+    OxiSynth(OxiSynthControl),
 }
 
 pub type TrackWidgetAction = TrackAction;
@@ -1607,6 +1711,19 @@ pub enum AppIntent {
     Piano(PianoAction),
     AddTrack(DirectTrackSpec),
     AddTrackWithTopology(TrackSpec),
+    ImportSoundFont {
+        original_filename: String,
+        bytes: Arc<[u8]>,
+    },
+    RemoveSoundFont {
+        sha256: Arc<str>,
+    },
+    RetrySessionRecovery,
+    CancelSessionRecovery,
+    ReplaceMissingSoundFont {
+        expected_sha256: Arc<str>,
+        replacement_sha256: Arc<str>,
+    },
     AddLoop {
         track_id: TrackId,
     },
@@ -1841,9 +1958,24 @@ impl TinySynthFxControl {
     }
 }
 
+impl OxiSynthControl {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::SetMasterGain(_) => "track.oxisynth.set_master_gain",
+            Self::SetReverb(_) => "track.oxisynth.set_reverb",
+            Self::SetChorus(_) => "track.oxisynth.set_chorus",
+            Self::SelectSoundFont(_) => "track.oxisynth.select_soundfont",
+            Self::SelectProgram { .. } => "track.oxisynth.select_program",
+            Self::Audition { .. } => "track.oxisynth.audition",
+            Self::Panic => "track.oxisynth.panic",
+        }
+    }
+}
+
 impl TrackAction {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::RemoveSoundFont(_) => "soundfont.remove",
             Self::Remove => "track.remove",
             Self::MoveBefore(_) => "track.move_before",
             Self::NameChanged(_) => "track.name",
@@ -1859,6 +1991,7 @@ impl TrackAction {
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
             Self::TinySynthFx(control) => control.kind(),
+            Self::OxiSynth(control) => control.kind(),
         }
     }
 }
@@ -1901,6 +2034,11 @@ impl AppIntent {
             Self::Piano(action) => action.kind(),
             Self::AddTrack(_) => "track.add_direct",
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
+            Self::ImportSoundFont { .. } => "soundfont.import",
+            Self::RemoveSoundFont { .. } => "soundfont.remove",
+            Self::RetrySessionRecovery => "session.recovery.retry",
+            Self::CancelSessionRecovery => "session.recovery.cancel",
+            Self::ReplaceMissingSoundFont { .. } => "session.recovery.replace_soundfont",
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",

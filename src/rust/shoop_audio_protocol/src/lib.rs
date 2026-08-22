@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 13;
+pub const PROTOCOL_VERSION: u16 = 17;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -180,6 +180,22 @@ pub enum Command {
     AbortSessionTransfer {
         generation: u64,
     },
+    BeginSoundFontImport {
+        generation: u64,
+        original_filename: String,
+        total_bytes: usize,
+    },
+    WriteSoundFontImport {
+        generation: u64,
+        offset: usize,
+        bytes: Vec<u8>,
+    },
+    CommitSoundFontImport {
+        generation: u64,
+    },
+    RemoveSoundFont {
+        sha256: String,
+    },
     Poll,
     Shutdown,
 }
@@ -355,6 +371,22 @@ pub enum WireTrackFxControl {
     TinyRemoveMidiCc(WireTinySynthFxParameter),
     TinyClearMidiCcAssignments,
     TinyPanic,
+    OxiSetMasterGain(f32),
+    OxiSetReverb(WireOxiSynthReverbState),
+    OxiSetChorus(WireOxiSynthChorusState),
+    OxiSelectProgram {
+        channel: u8,
+        bank: u32,
+        program: u8,
+    },
+    OxiSelectSoundFont(String),
+    OxiAudition {
+        channel: u8,
+        key: u8,
+        velocity: u8,
+        pressed: bool,
+    },
+    OxiPanic,
 }
 
 impl WireTrackFxControl {
@@ -368,6 +400,11 @@ impl WireTrackFxControl {
             Self::TinySetEqLowDb(_) => 5,
             Self::TinySetEqMidDb(_) => 6,
             Self::TinySetEqHighDb(_) => 7,
+            Self::OxiSetMasterGain(_) => 8,
+            Self::OxiSetReverb(_) => 9,
+            Self::OxiSetChorus(_) => 10,
+            Self::OxiSelectProgram { channel, .. } => 16u8.saturating_add(*channel),
+            Self::OxiSelectSoundFont(_) => 15,
             Self::SetVisible(_)
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
@@ -380,7 +417,9 @@ impl WireTrackFxControl {
             | Self::TinyAssignMidiCc(_)
             | Self::TinyRemoveMidiCc(_)
             | Self::TinyClearMidiCcAssignments
-            | Self::TinyPanic => return None,
+            | Self::TinyPanic
+            | Self::OxiAudition { .. }
+            | Self::OxiPanic => return None,
         })
     }
 }
@@ -641,6 +680,49 @@ pub struct WireTrackFxState {
     pub active: bool,
     pub visible: bool,
     pub tiny: Option<WireTinySynthFxState>,
+    #[serde(default)]
+    pub oxisynth: Option<WireOxiSynthState>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthState {
+    pub soundfont_sha256: String,
+    pub soundfont_name: String,
+    pub revision: u64,
+    pub midi_activity_revision: u64,
+    pub master_gain: f32,
+    pub reverb: WireOxiSynthReverbState,
+    pub chorus: WireOxiSynthChorusState,
+    pub channels: Vec<WireOxiSynthChannelState>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthReverbState {
+    pub room_size: f32,
+    pub damp: f32,
+    pub width: f32,
+    pub level: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthChorusState {
+    pub voices: u32,
+    pub level: f32,
+    pub speed_hz: f32,
+    pub depth_ms: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthChannelState {
+    pub baseline_bank: u32,
+    pub baseline_program: u8,
+    pub current_bank: u32,
+    pub current_program: u8,
+    pub volume: u8,
+    pub pan: u8,
+    pub expression: u8,
+    pub pitch_bend: u16,
+    pub channel_pressure: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -952,7 +1034,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":13,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":17,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -963,7 +1045,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":13,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":17,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

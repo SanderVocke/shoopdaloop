@@ -2283,6 +2283,14 @@ impl BackendSession {
             return Err(anyhow!("FX chain belongs to another session"));
         }
         let title = chain.title.clone();
+        let oxisynth = matches!(chain.backend, FXChainBackendKind::OxiSynth(_));
+        if oxisynth {
+            let removal_title = title.clone();
+            let displaced = self.shared.query_graph_scheduler_response(move |session| {
+                session.remove_oxisynth_processor(&removal_title)
+            })?;
+            drop(displaced);
+        }
         let audio = chain
             .audio_inputs
             .iter()
@@ -2296,7 +2304,9 @@ impl BackendSession {
             .map(|port| Arc::clone(&port.control))
             .collect::<Vec<_>>();
         Ok(self.shared.send_topology(move |session| {
-            session.remove_processor(&title);
+            if !oxisynth {
+                session.remove_processor(&title);
+            }
             for control in &audio {
                 if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
                     let _ = session.remove_port(index);
@@ -2874,9 +2884,11 @@ impl BackendSession {
             FXChainType::OxiSynth => {
                 let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
                 let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
-                let processor = engine::oxisynth::OxiSynthProcessor::new(
+                let asset = engine::oxisynth::SoundFontAsset::embedded()?;
+                let processor = engine::oxisynth::OxiSynthProcessor::from_asset(
                     sample_rate as f32,
                     buffer_size as usize,
+                    &asset,
                 )?;
                 let mut pending = Some((title.to_owned(), processor));
                 self.shared.send_topology(move |session| {
@@ -2884,7 +2896,7 @@ impl BackendSession {
                         let _ = session.set_oxisynth_processor(title, processor);
                     }
                 })?;
-                FXChainBackendKind::OxiSynth
+                FXChainBackendKind::OxiSynth(Mutex::new(OxiSynthAssetMetadata::from(&asset)))
             }
             FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
                 #[cfg(feature = "carla")]
@@ -6088,10 +6100,27 @@ impl DecoupledMidiPort {
 
 pub type FXChainState = engine::FXChainState;
 
+#[derive(Clone, Debug)]
+pub struct OxiSynthAssetMetadata {
+    pub sha256: String,
+    pub name: String,
+    pub presets: Arc<[engine::oxisynth::OxiSynthPreset]>,
+}
+
+impl From<&engine::oxisynth::SoundFontAsset> for OxiSynthAssetMetadata {
+    fn from(asset: &engine::oxisynth::SoundFontAsset) -> Self {
+        Self {
+            sha256: asset.sha256.clone(),
+            name: asset.name.clone(),
+            presets: Arc::clone(&asset.presets),
+        }
+    }
+}
+
 enum FXChainBackendKind {
     Test2x2x1,
     Tiny(Mutex<engine::tiny_synth_fx::TinySynthFxControlState>),
-    OxiSynth,
+    OxiSynth(Mutex<OxiSynthAssetMetadata>),
     #[cfg(feature = "carla")]
     Carla(engine::carla_processor::CarlaControlHandle),
     Unavailable {
@@ -6144,7 +6173,7 @@ impl FXChain {
                     log::error!("could not queue Tiny Synth/FX active state: {error}");
                 }
             }
-            FXChainBackendKind::OxiSynth => {
+            FXChainBackendKind::OxiSynth(_) => {
                 let title = self.title.clone();
                 if let Err(error) = self.shared.send_control(move |session| {
                     session.set_oxisynth_active(&title, active);
@@ -6175,7 +6204,7 @@ impl FXChain {
             FXChainBackendKind::Carla(host) => host.toggle_or_recover(),
             FXChainBackendKind::Test2x2x1
             | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => {
+            | FXChainBackendKind::OxiSynth(_) => {
                 self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
                 Ok(())
             }
@@ -6189,7 +6218,7 @@ impl FXChain {
             FXChainBackendKind::Carla(host) => host.lifecycle(),
             FXChainBackendKind::Test2x2x1
             | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => {
+            | FXChainBackendKind::OxiSynth(_) => {
                 engine::carla_processor::CarlaProcessorLifecycle::Running
             }
             FXChainBackendKind::Unavailable { .. } => {
@@ -6236,6 +6265,16 @@ impl FXChain {
             FXChainBackendKind::Tiny(control) => Ok(control.lock().unwrap().encode()),
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.save_state(),
+            FXChainBackendKind::OxiSynth(_) => {
+                let title = self.title.clone();
+                self.shared
+                    .query_graph_scheduler_response(move |session| {
+                        session
+                            .oxisynth_processor(&title)
+                            .map(|processor| processor.encode_configuration())
+                    })?
+                    .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?
+            }
             _ => Ok(String::new()),
         }
     }
@@ -6272,7 +6311,17 @@ impl FXChain {
                 Ok(())
             }
             FXChainBackendKind::Test2x2x1 => Ok(()),
-            FXChainBackendKind::OxiSynth => Err(anyhow!("OxiSynth has no persistent state")),
+            FXChainBackendKind::OxiSynth(_) => {
+                let configuration =
+                    engine::oxisynth::OxiSynthProcessor::decode_configuration(state)?;
+                let title = self.title.clone();
+                self.shared.query_graph_scheduler_response(move |session| {
+                    session
+                        .oxisynth_processor_mut(&title)
+                        .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?
+                        .apply_configuration(&configuration)
+                })?
+            }
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
         }
     }
@@ -6284,6 +6333,134 @@ impl FXChain {
     pub fn tiny_editor_state(&self) -> Option<engine::tiny_synth_fx::TinySynthFxEditorState> {
         match &self.backend {
             FXChainBackendKind::Tiny(control) => Some(control.lock().unwrap().editor_state()),
+            _ => None,
+        }
+    }
+
+    pub fn oxisynth_snapshot(&self) -> Option<engine::oxisynth::OxiSynthSnapshot> {
+        if !matches!(self.backend, FXChainBackendKind::OxiSynth(_)) {
+            return None;
+        }
+        let title = self.title.clone();
+        self.shared
+            .query_graph_scheduler_response(move |session| {
+                session
+                    .oxisynth_processor(&title)
+                    .map(|processor| processor.snapshot())
+            })
+            .ok()
+            .flatten()
+    }
+
+    pub fn set_oxisynth_control(&self, control: engine::oxisynth::OxiSynthControl) -> Result<()> {
+        if !matches!(self.backend, FXChainBackendKind::OxiSynth(_)) {
+            return Err(anyhow!("not an OxiSynth chain"));
+        }
+        let title = self.title.clone();
+        self.shared
+            .query_graph_scheduler_response(move |session| {
+                let processor = session
+                    .oxisynth_processor_mut(&title)
+                    .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?;
+                match control {
+                    engine::oxisynth::OxiSynthControl::SetMasterGain(value) => {
+                        processor.set_master_gain(value)
+                    }
+                    engine::oxisynth::OxiSynthControl::SetReverb(value) => {
+                        processor.set_reverb(value)
+                    }
+                    engine::oxisynth::OxiSynthControl::SetChorus(value) => {
+                        processor.set_chorus(value)
+                    }
+                    engine::oxisynth::OxiSynthControl::SelectProgram {
+                        channel,
+                        bank,
+                        program,
+                    } => processor.select_program(channel, bank, program),
+                    engine::oxisynth::OxiSynthControl::Audition {
+                        channel,
+                        key,
+                        velocity,
+                        pressed,
+                    } => processor.audition(channel, key, velocity, pressed),
+                    engine::oxisynth::OxiSynthControl::Panic => {
+                        processor.panic();
+                        Ok(())
+                    }
+                }
+            })??;
+        Ok(())
+    }
+
+    pub fn replace_oxisynth_asset(&self, asset: &engine::oxisynth::SoundFontAsset) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(metadata) = &self.backend else {
+            return Err(anyhow!("not an OxiSynth chain"));
+        };
+        let current = self
+            .oxisynth_snapshot()
+            .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?;
+        let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+        let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
+        let mut replacement = engine::oxisynth::OxiSynthProcessor::from_asset(
+            sample_rate as f32,
+            buffer_size as usize,
+            asset,
+        )?;
+        let fallback = asset
+            .presets
+            .first()
+            .ok_or_else(|| anyhow!("SoundFont has no presets"))?;
+        replacement.set_master_gain(current.master_gain)?;
+        replacement.set_reverb(current.reverb)?;
+        replacement.set_chorus(current.chorus)?;
+        for (channel, state) in current.channels.iter().enumerate() {
+            let (bank, program) = asset
+                .presets
+                .iter()
+                .find(|preset| {
+                    (preset.bank, preset.program) == (state.baseline_bank, state.baseline_program)
+                })
+                .map(|preset| (preset.bank, preset.program))
+                .unwrap_or((fallback.bank, fallback.program));
+            replacement.select_program(channel as u8, bank, program)?;
+        }
+        let title = self.title.clone();
+        let displaced = self.shared.query_graph_scheduler_response(move |session| {
+            session.set_oxisynth_processor(title, replacement)
+        })?;
+        drop(displaced);
+        *metadata.lock().unwrap() = OxiSynthAssetMetadata::from(asset);
+        Ok(())
+    }
+
+    pub fn restore_oxisynth_configuration(
+        &self,
+        asset: &engine::oxisynth::SoundFontAsset,
+        configuration: &engine::oxisynth::OxiSynthConfiguration,
+    ) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(metadata) = &self.backend else {
+            return Err(anyhow!("not an OxiSynth chain"));
+        };
+        let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+        let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
+        let mut replacement = engine::oxisynth::OxiSynthProcessor::from_asset(
+            sample_rate as f32,
+            buffer_size as usize,
+            asset,
+        )?;
+        replacement.apply_configuration(configuration)?;
+        let title = self.title.clone();
+        let displaced = self.shared.query_graph_scheduler_response(move |session| {
+            session.set_oxisynth_processor(title, replacement)
+        })?;
+        drop(displaced);
+        *metadata.lock().unwrap() = OxiSynthAssetMetadata::from(asset);
+        Ok(())
+    }
+
+    pub fn oxisynth_asset_metadata(&self) -> Option<OxiSynthAssetMetadata> {
+        match &self.backend {
+            FXChainBackendKind::OxiSynth(metadata) => Some(metadata.lock().unwrap().clone()),
             _ => None,
         }
     }
@@ -6557,7 +6734,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            FXChainBackendKind::OxiSynth => 0,
+            FXChainBackendKind::OxiSynth(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6568,7 +6745,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            FXChainBackendKind::OxiSynth => 2,
+            FXChainBackendKind::OxiSynth(_) => 2,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6578,7 +6755,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1
             | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => 1,
+            | FXChainBackendKind::OxiSynth(_) => 1,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6589,7 +6766,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1
             | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => 0,
+            | FXChainBackendKind::OxiSynth(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,

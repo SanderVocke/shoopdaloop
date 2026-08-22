@@ -6,8 +6,9 @@ use shoop_audio_protocol::{
     WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
-    WireMidiOutputEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
+    WireMidiOutputEvent, WireOxiSynthChannelState, WireOxiSynthChorusState,
+    WireOxiSynthReverbState, WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
+    WireSnapshot, WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
     WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
     COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
     PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
@@ -19,7 +20,7 @@ use shoop_backend::{
     BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
     BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
     BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
+    BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl, TinySynthFxControl,
     TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorEditorState,
     TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
@@ -45,6 +46,10 @@ pub struct WorkletHost {
     loop_content_id: Option<BackendLoopId>,
     loop_content_expected_bytes: usize,
     loop_content_bytes: Vec<u8>,
+    soundfont_generation: Option<u64>,
+    soundfont_filename: String,
+    soundfont_expected_bytes: usize,
+    soundfont_bytes: Vec<u8>,
 }
 
 impl WorkletHost {
@@ -77,6 +82,10 @@ impl WorkletHost {
             loop_content_id: None,
             loop_content_expected_bytes: 0,
             loop_content_bytes: Vec::new(),
+            soundfont_generation: None,
+            soundfont_filename: String::new(),
+            soundfont_expected_bytes: 0,
+            soundfont_bytes: Vec::new(),
         })
     }
 
@@ -715,6 +724,61 @@ impl WorkletHost {
                 }
                 Ok(Event::SessionTransferAborted { generation })
             }
+            Command::BeginSoundFontImport {
+                generation,
+                original_filename,
+                total_bytes,
+            } => {
+                if generation == 0 || total_bytes > SESSION_TRANSFER_MAX_BYTES {
+                    return Err("invalid SoundFont import size or generation".to_owned());
+                }
+                self.soundfont_generation = Some(generation);
+                self.soundfont_filename = original_filename;
+                self.soundfont_expected_bytes = total_bytes;
+                self.soundfont_bytes = Vec::with_capacity(total_bytes);
+                Ok(Event::Ack)
+            }
+            Command::WriteSoundFontImport {
+                generation,
+                offset,
+                bytes,
+            } => {
+                if self.soundfont_generation != Some(generation)
+                    || offset != self.soundfont_bytes.len()
+                    || bytes.len() > SESSION_TRANSFER_CHUNK_BYTES
+                    || offset.saturating_add(bytes.len()) > self.soundfont_expected_bytes
+                {
+                    return Err("invalid SoundFont import chunk".to_owned());
+                }
+                self.soundfont_bytes.extend_from_slice(&bytes);
+                Ok(Event::Ack)
+            }
+            Command::CommitSoundFontImport { generation } => {
+                if self.soundfont_generation != Some(generation)
+                    || self.soundfont_bytes.len() != self.soundfont_expected_bytes
+                {
+                    return Err("incomplete SoundFont import".to_owned());
+                }
+                self.backend
+                    .import_soundfont(
+                        std::mem::take(&mut self.soundfont_filename),
+                        std::mem::take(&mut self.soundfont_bytes).into(),
+                    )
+                    .map_err(|error| error.to_string())?;
+                self.soundfont_generation = None;
+                self.soundfont_expected_bytes = 0;
+                Ok(Event::Ack)
+            }
+            Command::RemoveSoundFont { sha256 } => {
+                if !self
+                    .backend
+                    .remove_soundfont(&sha256)
+                    .map_err(|error| error.to_string())?
+                {
+                    return Err("SoundFont is unavailable or still referenced".to_owned());
+                }
+                Ok(Event::Ack)
+            }
             Command::Poll => {
                 if let Some(message) = self.fatal_error.clone() {
                     return Err(message);
@@ -862,6 +926,49 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         WireTrackFxControl::TinyPanic => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
         }
+        WireTrackFxControl::OxiSetMasterGain(value) => {
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::SetMasterGain(value))
+        }
+        WireTrackFxControl::OxiSetReverb(value) => BackendTrackFxControl::OxiSynth(
+            OxiSynthControl::SetReverb(shoop_app_api::OxiSynthReverbState {
+                room_size: value.room_size,
+                damp: value.damp,
+                width: value.width,
+                level: value.level,
+            }),
+        ),
+        WireTrackFxControl::OxiSetChorus(value) => BackendTrackFxControl::OxiSynth(
+            OxiSynthControl::SetChorus(shoop_app_api::OxiSynthChorusState {
+                voices: value.voices,
+                level: value.level,
+                speed_hz: value.speed_hz,
+                depth_ms: value.depth_ms,
+            }),
+        ),
+        WireTrackFxControl::OxiSelectProgram {
+            channel,
+            bank,
+            program,
+        } => BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectProgram {
+            channel,
+            bank,
+            program,
+        }),
+        WireTrackFxControl::OxiSelectSoundFont(sha256) => {
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectSoundFont(sha256.into()))
+        }
+        WireTrackFxControl::OxiAudition {
+            channel,
+            key,
+            velocity,
+            pressed,
+        } => BackendTrackFxControl::OxiSynth(OxiSynthControl::Audition {
+            channel,
+            key,
+            velocity,
+            pressed,
+        }),
+        WireTrackFxControl::OxiPanic => BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
     }
 }
 
@@ -1063,14 +1170,55 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 topology: to_wire_track_topology(&track.topology),
                 fx: track.fx.and_then(|fx| {
                     if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
+                        let oxisynth = match fx.editor {
+                            Some(TrackProcessorEditorState::OxiSynth(editor)) => {
+                                Some(WireOxiSynthState {
+                                    soundfont_sha256: editor.soundfont_sha256.to_string(),
+                                    soundfont_name: editor.soundfont_name.to_string(),
+                                    revision: editor.revision,
+                                    midi_activity_revision: editor.midi_activity_revision,
+                                    master_gain: editor.master_gain,
+                                    reverb: WireOxiSynthReverbState {
+                                        room_size: editor.reverb.room_size,
+                                        damp: editor.reverb.damp,
+                                        width: editor.reverb.width,
+                                        level: editor.reverb.level,
+                                    },
+                                    chorus: WireOxiSynthChorusState {
+                                        voices: editor.chorus.voices,
+                                        level: editor.chorus.level,
+                                        speed_hz: editor.chorus.speed_hz,
+                                        depth_ms: editor.chorus.depth_ms,
+                                    },
+                                    channels: editor
+                                        .channels
+                                        .map(|channel| WireOxiSynthChannelState {
+                                            baseline_bank: channel.baseline_bank,
+                                            baseline_program: channel.baseline_program,
+                                            current_bank: channel.current_bank,
+                                            current_program: channel.current_program,
+                                            volume: channel.volume,
+                                            pan: channel.pan,
+                                            expression: channel.expression,
+                                            pitch_bend: channel.pitch_bend,
+                                            channel_pressure: channel.channel_pressure,
+                                        })
+                                        .into(),
+                                })
+                            }
+                            _ => None,
+                        };
                         return Some(WireTrackFxState {
                             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                             active: fx.active,
-                            visible: false,
+                            visible: fx.visible,
                             tiny: None,
+                            oxisynth,
                         });
                     }
-                    let TrackProcessorEditorState::TinySynthFx(editor) = fx.editor?;
+                    let TrackProcessorEditorState::TinySynthFx(editor) = fx.editor? else {
+                        return None;
+                    };
                     Some(WireTrackFxState {
                         processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
                         active: fx.active,
@@ -1098,6 +1246,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                                 })
                                 .collect(),
                         }),
+                        oxisynth: None,
                     })
                 }),
                 audio_channels: track.audio_channels,

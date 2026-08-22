@@ -1680,9 +1680,41 @@ impl Session {
         }
     }
 
+    pub fn oxisynth_processor(&self, title: &str) -> Option<&OxiSynthProcessor> {
+        self.processors
+            .iter()
+            .find(|route| route.title == title)
+            .and_then(|route| match &route.backend {
+                ProcessorBackend::OxiSynth(processor) => Some(processor),
+                _ => None,
+            })
+    }
+
+    pub fn oxisynth_processor_mut(&mut self, title: &str) -> Option<&mut OxiSynthProcessor> {
+        self.processors
+            .iter_mut()
+            .find(|route| route.title == title)
+            .and_then(|route| match &mut route.backend {
+                ProcessorBackend::OxiSynth(processor) => Some(processor),
+                _ => None,
+            })
+    }
+
     pub fn remove_processor(&mut self, title: &str) {
         self.processors.retain(|route| route.title != title);
         self.note_graph_change();
+    }
+
+    pub fn remove_oxisynth_processor(&mut self, title: &str) -> Option<OxiSynthProcessor> {
+        let index = self.processors.iter().position(|route| {
+            route.title == title && matches!(route.backend, ProcessorBackend::OxiSynth(_))
+        })?;
+        let route = self.processors.swap_remove(index);
+        self.note_graph_change();
+        match route.backend {
+            ProcessorBackend::OxiSynth(processor) => Some(processor),
+            _ => unreachable!(),
+        }
     }
 
     pub fn tiny_synth_fx_processor_mut(
@@ -2448,7 +2480,9 @@ impl Session {
                 let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
                 processor.process_midi_controls_only(events);
             }
-            if matches!(route.backend, ProcessorBackend::OxiSynth(_)) {
+            if let ProcessorBackend::OxiSynth(processor) = &mut route.backend {
+                let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
+                processor.process_midi_controls_only(events);
                 for &port in &route.audio_outputs {
                     self.ports[port].buffer(n_frames).fill(0.0);
                 }

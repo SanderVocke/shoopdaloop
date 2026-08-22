@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 4;
+pub const SESSION_DOCUMENT_VERSION: u16 = 5;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -34,6 +34,14 @@ pub struct SessionBundle {
     pub media: BTreeMap<String, MediaPayload>,
     #[serde(skip)]
     pub scripts: BTreeMap<u64, Arc<ScriptResourceBundle>>,
+    #[serde(skip)]
+    pub soundfonts: BTreeMap<String, SoundFontPayload>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SoundFontPayload {
+    pub original_filename: String,
+    pub bytes: Arc<[u8]>,
 }
 
 impl SessionBundle {
@@ -42,6 +50,7 @@ impl SessionBundle {
             document,
             media: BTreeMap::new(),
             scripts: BTreeMap::new(),
+            soundfonts: BTreeMap::new(),
         }
     }
 }

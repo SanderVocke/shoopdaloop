@@ -14,6 +14,56 @@ use shoop_engine::{
     MidiEvent, PortDirection,
 };
 
+fn app_oxisynth_state(
+    snapshot: shoop_engine::oxisynth::OxiSynthSnapshot,
+    metadata: shoop_engine::app_backend::OxiSynthAssetMetadata,
+    available_soundfonts: Arc<[shoop_app_api::SoundFontAssetDescriptor]>,
+) -> TrackProcessorEditorState {
+    TrackProcessorEditorState::OxiSynth(shoop_app_api::OxiSynthState {
+        available_soundfonts,
+        soundfont_sha256: metadata.sha256.into(),
+        soundfont_name: metadata.name.into(),
+        presets: metadata
+            .presets
+            .iter()
+            .map(|preset| shoop_app_api::OxiSynthPresetDescriptor {
+                bank: preset.bank,
+                program: preset.program,
+                name: preset.name.clone().into(),
+            })
+            .collect::<Vec<_>>()
+            .into(),
+        revision: snapshot.revision,
+        midi_activity_revision: snapshot.midi_activity_revision,
+        master_gain: snapshot.master_gain,
+        reverb: shoop_app_api::OxiSynthReverbState {
+            room_size: snapshot.reverb.room_size,
+            damp: snapshot.reverb.damp,
+            width: snapshot.reverb.width,
+            level: snapshot.reverb.level,
+        },
+        chorus: shoop_app_api::OxiSynthChorusState {
+            voices: snapshot.chorus.voices,
+            level: snapshot.chorus.level,
+            speed_hz: snapshot.chorus.speed_hz,
+            depth_ms: snapshot.chorus.depth_ms,
+        },
+        channels: snapshot
+            .channels
+            .map(|channel| shoop_app_api::OxiSynthChannelState {
+                baseline_bank: channel.baseline_bank,
+                baseline_program: channel.baseline_program,
+                current_bank: channel.bank,
+                current_program: channel.program,
+                volume: channel.controllers[7],
+                pan: channel.controllers[10],
+                expression: channel.controllers[11],
+                pitch_bend: channel.pitch_bend,
+                channel_pressure: channel.channel_pressure,
+            }),
+    })
+}
+
 #[cfg(feature = "native-fx")]
 pub fn configure_carla_hosting_mode(mode: shoop_settings::CarlaHostingMode) {
     shoop_engine::app_backend::set_carla_hosting_mode(mode);
@@ -113,6 +163,8 @@ pub struct NativeBackend {
     runtime: Option<NativeRuntime>,
     catalog: Arc<[AudioDriverDescriptor]>,
     fatal_error: Option<String>,
+    soundfonts: soundfont_library::SoundFontLibrary,
+    soundfont_directory: std::path::PathBuf,
 }
 
 struct NativeRuntime {
@@ -240,10 +292,17 @@ impl NativeBackend {
     pub fn new(config: AudioDriverConfig) -> Result<Self> {
         let runtime = NativeRuntime::start(config)?;
         let catalog = discover_audio_drivers(&runtime.configured);
+        let soundfont_directory = shoop_settings::default_settings_path()?
+            .parent()
+            .ok_or_else(|| anyhow!("settings path has no parent directory"))?
+            .join("soundfonts");
+        let soundfonts = soundfont_library::SoundFontLibrary::load_directory(&soundfont_directory)?;
         Ok(Self {
             runtime: Some(runtime),
             catalog,
             fatal_error: None,
+            soundfonts,
+            soundfont_directory,
         })
     }
 
@@ -289,6 +348,14 @@ impl NativeBackend {
         session: &BackendSessionData,
     ) -> Result<(NativeRuntime, BackendSessionReplacement)> {
         let mut runtime = NativeRuntime::start(config)?;
+        for (digest, asset) in &session.soundfonts {
+            let imported = self
+                .soundfonts
+                .import(asset.bytes.clone().into(), asset.original_filename.clone())?;
+            if imported.sha256.as_ref() != digest {
+                return Err(anyhow!("session SoundFont digest mismatch"));
+            }
+        }
         if runtime.resolved.sample_rate != session.sample_rate {
             return Err(anyhow!(
                 "resolved target sample rate changed from {} to {}",
@@ -296,7 +363,7 @@ impl NativeBackend {
                 runtime.resolved.sample_rate
             ));
         }
-        let replacement = runtime.restore_session(session)?;
+        let replacement = runtime.restore_session(session, &self.soundfonts)?;
         Ok((runtime, replacement))
     }
 }
@@ -837,12 +904,8 @@ impl NativeRuntime {
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let processor_state =
-                if let Some(fx) = track.fx.as_mut() {
-                    if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
-                        None
-                    } else {
-                        match fx.chain.try_get_state_str() {
+            let processor_state = if let Some(fx) = track.fx.as_mut() {
+                match fx.chain.try_get_state_str() {
                     Ok(state) => {
                         fx.last_confirmed_state = Some(state.clone());
                         Some(state)
@@ -851,10 +914,9 @@ impl NativeRuntime {
                         anyhow!("processor state is unavailable and no checkpoint exists: {error}")
                     })?),
                 }
-                    }
-                } else {
-                    None
-                };
+            } else {
+                None
+            };
             let tiny_synth_midi_cc_assignments = track
                 .fx
                 .as_ref()
@@ -890,10 +952,15 @@ impl NativeRuntime {
             tracks,
             global_ports,
             use_legacy_browser_default_routes: false,
+            soundfonts: BTreeMap::new(),
         })
     }
 
-    fn restore_session(&mut self, data: &BackendSessionData) -> Result<BackendSessionReplacement> {
+    fn restore_session(
+        &mut self,
+        data: &BackendSessionData,
+        soundfonts: &soundfont_library::SoundFontLibrary,
+    ) -> Result<BackendSessionReplacement> {
         if !self.tracks.is_empty() {
             return Err(anyhow!("target native session is not empty"));
         }
@@ -943,10 +1010,8 @@ impl NativeRuntime {
                 BackendTrackTopology::DryWetProcessor { processor_type, .. }
                     if processor_type == TrackProcessorTypeId::OXISYNTH =>
                 {
-                    if source_track.processor_state.is_some()
-                        || !source_track.tiny_synth_midi_cc_assignments.is_empty()
-                    {
-                        return Err(anyhow!("OxiSynth track contains unexpected state"));
+                    if !source_track.tiny_synth_midi_cc_assignments.is_empty() {
+                        return Err(anyhow!("OxiSynth track contains Tiny Synth MIDI mappings"));
                     }
                     self.create_processed_track(request)?
                 }
@@ -955,8 +1020,6 @@ impl NativeRuntime {
                 }
             };
             match &source_track.topology {
-                BackendTrackTopology::DryWetProcessor { processor_type, .. }
-                    if processor_type == TrackProcessorTypeId::OXISYNTH => {}
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     let state = source_track
                         .processor_state
@@ -967,6 +1030,16 @@ impl NativeRuntime {
                         .get_mut(&created.track_id)
                         .and_then(|track| track.fx.as_mut())
                         .ok_or_else(|| anyhow!("restored track has no processor"))?;
+                    if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
+                        let configuration =
+                            shoop_engine::oxisynth::OxiSynthProcessor::decode_configuration(state)?;
+                        let asset = soundfonts
+                            .asset(&configuration.soundfont_sha256)
+                            .ok_or_else(|| {
+                                anyhow!("missing SoundFont {}", configuration.soundfont_sha256)
+                            })?;
+                        fx.chain.replace_oxisynth_asset(&asset)?;
+                    }
                     fx.chain.try_restore_state(state)?;
                     for assignment in &source_track.tiny_synth_midi_cc_assignments {
                         fx.chain.tiny_assign_midi_cc(engine_midi_cc_assignment(
@@ -1677,6 +1750,61 @@ impl NativeRuntime {
                     TinySynthFxControl::Panic => fx.chain.tiny_panic()?,
                 }
             }
+            BackendTrackFxControl::OxiSynth(control) => {
+                if fx.processor_type.as_str() != TrackProcessorTypeId::OXISYNTH {
+                    return Err(anyhow!("track is not an OxiSynth processor"));
+                }
+                let control = match control {
+                    OxiSynthControl::SetMasterGain(value) => {
+                        shoop_engine::oxisynth::OxiSynthControl::SetMasterGain(value)
+                    }
+                    OxiSynthControl::SetReverb(value) => {
+                        shoop_engine::oxisynth::OxiSynthControl::SetReverb(
+                            shoop_engine::oxisynth::OxiSynthReverbConfiguration {
+                                room_size: value.room_size,
+                                damp: value.damp,
+                                width: value.width,
+                                level: value.level,
+                            },
+                        )
+                    }
+                    OxiSynthControl::SetChorus(value) => {
+                        shoop_engine::oxisynth::OxiSynthControl::SetChorus(
+                            shoop_engine::oxisynth::OxiSynthChorusConfiguration {
+                                voices: value.voices,
+                                level: value.level,
+                                speed_hz: value.speed_hz,
+                                depth_ms: value.depth_ms,
+                            },
+                        )
+                    }
+                    OxiSynthControl::SelectSoundFont(_) => {
+                        return Err(anyhow!("SoundFont selection was not prepared"));
+                    }
+                    OxiSynthControl::SelectProgram {
+                        channel,
+                        bank,
+                        program,
+                    } => shoop_engine::oxisynth::OxiSynthControl::SelectProgram {
+                        channel,
+                        bank,
+                        program,
+                    },
+                    OxiSynthControl::Audition {
+                        channel,
+                        key,
+                        velocity,
+                        pressed,
+                    } => shoop_engine::oxisynth::OxiSynthControl::Audition {
+                        channel,
+                        key,
+                        velocity,
+                        pressed,
+                    },
+                    OxiSynthControl::Panic => shoop_engine::oxisynth::OxiSynthControl::Panic,
+                };
+                fx.chain.set_oxisynth_control(control)?;
+            }
         }
         Ok(())
     }
@@ -2159,6 +2287,47 @@ impl Backend for NativeBackend {
         Ok(catalog.into())
     }
 
+    fn soundfont_catalog(&mut self) -> Result<Arc<[soundfont_library::SoundFontAssetDescriptor]>> {
+        Ok(self.soundfonts.descriptors())
+    }
+
+    fn import_soundfont(
+        &mut self,
+        original_filename: String,
+        bytes: Arc<[u8]>,
+    ) -> Result<soundfont_library::SoundFontAssetDescriptor> {
+        self.soundfonts
+            .import_persistent(&self.soundfont_directory, bytes, original_filename)
+    }
+
+    fn remove_soundfont(&mut self, sha256: &str) -> Result<bool> {
+        let referenced = self.runtime.as_ref().is_some_and(|runtime| {
+            runtime.tracks.values().any(|track| {
+                track.fx.as_ref().is_some_and(|fx| {
+                    fx.chain.oxisynth_snapshot().is_some()
+                        && fx
+                            .chain
+                            .try_get_state_str()
+                            .is_ok_and(|state| state.contains(sha256))
+                })
+            })
+        });
+        let removed = self.soundfonts.remove(sha256, referenced)?;
+        if removed {
+            for extension in ["sf2", "json"] {
+                let path = self
+                    .soundfont_directory
+                    .join(format!("{sha256}.{extension}"));
+                match std::fs::remove_file(path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
+        Ok(removed)
+    }
+
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
         match &request.topology {
             BackendTrackTopology::Direct {
@@ -2229,6 +2398,52 @@ impl Backend for NativeBackend {
         track_id: BackendTrackId,
         control: BackendTrackFxControl,
     ) -> Result<()> {
+        if let BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectSoundFont(sha256)) = &control
+        {
+            let asset = self
+                .soundfonts
+                .asset(sha256)
+                .ok_or_else(|| anyhow!("unknown SoundFont {sha256}"))?;
+            let fx = self
+                .runtime_mut()?
+                .tracks
+                .get_mut(&track_id)
+                .and_then(|track| track.fx.as_mut())
+                .ok_or_else(|| anyhow!("track has no processor"))?;
+            if fx.processor_type.as_str() != TrackProcessorTypeId::OXISYNTH {
+                return Err(anyhow!("track is not an OxiSynth processor"));
+            }
+            return fx.chain.replace_oxisynth_asset(&asset);
+        }
+        if let BackendTrackFxControl::RestoreState(state) = &control {
+            if let Ok(configuration) =
+                shoop_engine::oxisynth::OxiSynthProcessor::decode_configuration(state)
+            {
+                let asset = self
+                    .soundfonts
+                    .asset(&configuration.soundfont_sha256)
+                    .ok_or_else(|| {
+                        anyhow!("unknown SoundFont {}", configuration.soundfont_sha256)
+                    })?;
+                let fx = self
+                    .runtime_mut()?
+                    .tracks
+                    .get_mut(&track_id)
+                    .and_then(|track| track.fx.as_mut())
+                    .ok_or_else(|| anyhow!("track has no processor"))?;
+                if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH
+                    && fx
+                        .chain
+                        .oxisynth_asset_metadata()
+                        .is_some_and(|metadata| metadata.sha256 != configuration.soundfont_sha256)
+                {
+                    fx.chain
+                        .restore_oxisynth_configuration(&asset, &configuration)?;
+                    fx.last_confirmed_state = Some(state.clone());
+                    return Ok(());
+                }
+            }
+        }
         self.runtime_mut()?.set_track_fx_control(track_id, control)
     }
 
@@ -2596,7 +2811,22 @@ impl Backend for NativeBackend {
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
-        self.runtime_mut()?.capture_session()
+        let mut session = self.runtime_mut()?.capture_session()?;
+        session.soundfonts = self
+            .soundfonts
+            .user_assets()
+            .into_iter()
+            .map(|asset| {
+                (
+                    asset.sha256.clone(),
+                    BackendSoundFontAsset {
+                        original_filename: asset.original_filename.clone(),
+                        bytes: asset.bytes.to_vec(),
+                    },
+                )
+            })
+            .collect();
+        Ok(session)
     }
 
     fn replace_session(
@@ -2621,6 +2851,7 @@ impl Backend for NativeBackend {
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
         let audio_drivers = self.audio_driver_state()?;
+        let available_soundfonts = self.soundfonts.descriptors();
         let runtime = self.runtime_mut()?;
         runtime.wait();
         let track_ids = runtime.tracks.keys().copied().collect::<Vec<_>>();
@@ -2655,28 +2886,42 @@ impl Backend for NativeBackend {
                         })
                         .collect::<Vec<_>>()
                         .into(),
-                    editor: fx.chain.tiny_editor_state().map(|editor| {
-                        TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
-                            selected_preset_id: editor.selected_preset_id,
-                            master_gain_db: editor.master_gain_db,
-                            reverb_enabled: editor.reverb_enabled,
-                            reverb_amount: editor.reverb_amount,
-                            distortion_enabled: editor.distortion_enabled,
-                            distortion_drive: editor.distortion_drive,
-                            compressor_enabled: editor.compressor_enabled,
-                            compressor_amount: editor.compressor_amount,
-                            eq_enabled: editor.eq_enabled,
-                            eq_low_db: editor.eq_low_db,
-                            eq_mid_db: editor.eq_mid_db,
-                            eq_high_db: editor.eq_high_db,
-                            midi_cc_assignments: editor
-                                .midi_cc_assignments
-                                .into_iter()
-                                .map(app_midi_cc_assignment)
-                                .collect::<Vec<_>>()
-                                .into(),
+                    editor: fx
+                        .chain
+                        .tiny_editor_state()
+                        .map(|editor| {
+                            TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
+                                selected_preset_id: editor.selected_preset_id,
+                                master_gain_db: editor.master_gain_db,
+                                reverb_enabled: editor.reverb_enabled,
+                                reverb_amount: editor.reverb_amount,
+                                distortion_enabled: editor.distortion_enabled,
+                                distortion_drive: editor.distortion_drive,
+                                compressor_enabled: editor.compressor_enabled,
+                                compressor_amount: editor.compressor_amount,
+                                eq_enabled: editor.eq_enabled,
+                                eq_low_db: editor.eq_low_db,
+                                eq_mid_db: editor.eq_mid_db,
+                                eq_high_db: editor.eq_high_db,
+                                midi_cc_assignments: editor
+                                    .midi_cc_assignments
+                                    .into_iter()
+                                    .map(app_midi_cc_assignment)
+                                    .collect::<Vec<_>>()
+                                    .into(),
+                            })
                         })
-                    }),
+                        .or_else(|| {
+                            fx.chain.oxisynth_snapshot().and_then(|snapshot| {
+                                fx.chain.oxisynth_asset_metadata().map(|metadata| {
+                                    app_oxisynth_state(
+                                        snapshot,
+                                        metadata,
+                                        Arc::clone(&available_soundfonts),
+                                    )
+                                })
+                            })
+                        }),
                 }
             });
             state.input_peaks = track
@@ -4332,6 +4577,8 @@ mod tests {
             runtime: Some(runtime),
             catalog: Arc::from([]),
             fatal_error: None,
+            soundfonts: soundfont_library::SoundFontLibrary::with_embedded().unwrap(),
+            soundfont_directory: std::env::temp_dir(),
         };
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -4368,6 +4615,8 @@ mod tests {
             runtime: Some(runtime),
             catalog: Arc::from([]),
             fatal_error: None,
+            soundfonts: soundfont_library::SoundFontLibrary::with_embedded().unwrap(),
+            soundfont_directory: std::env::temp_dir(),
         };
         let created = backend
             .create_direct_track(DirectTrackRequest {

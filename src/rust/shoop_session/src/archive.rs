@@ -19,6 +19,9 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST_PATH: &str = "manifest.json";
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+const MAX_SOUNDFONT_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_SOUNDFONT_AGGREGATE_BYTES: u64 = 1024 * 1024 * 1024;
+const MAX_SOUNDFONT_RECORDS: usize = 64;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DecodeLimits {
@@ -91,6 +94,16 @@ struct SessionManifest {
     media: Vec<MediaRecord>,
     #[serde(default)]
     scripts: Vec<ScriptResourceRecord>,
+    #[serde(default)]
+    soundfonts: Vec<SoundFontRecord>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SoundFontRecord {
+    sha256: String,
+    original_filename: String,
+    path: String,
+    uncompressed_bytes: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -179,6 +192,32 @@ pub fn encode_session(
         (left.owner_script_id, &left.relative_path)
             .cmp(&(right.owner_script_id, &right.relative_path))
     });
+    let mut soundfont_records = Vec::with_capacity(bundle.soundfonts.len());
+    let mut soundfont_aggregate = 0_u64;
+    for (digest, soundfont) in &bundle.soundfonts {
+        let byte_len = soundfont.bytes.len() as u64;
+        soundfont_aggregate = soundfont_aggregate.saturating_add(byte_len);
+        if soundfont_records.len() >= MAX_SOUNDFONT_RECORDS
+            || byte_len == 0
+            || byte_len > MAX_SOUNDFONT_BYTES
+            || soundfont_aggregate > MAX_SOUNDFONT_AGGREGATE_BYTES
+        {
+            return Err(SessionError::Validation(
+                "SoundFont payload limits exceeded".to_owned(),
+            ));
+        }
+        if sha256(soundfont.bytes.as_ref()) != *digest {
+            return Err(SessionError::HashMismatch { id: digest.clone() });
+        }
+        let path = format!("soundfonts/{digest}.sf2");
+        soundfont_records.push(SoundFontRecord {
+            sha256: digest.clone(),
+            original_filename: soundfont.original_filename.clone(),
+            path: path.clone(),
+            uncompressed_bytes: byte_len,
+        });
+        payloads.insert(path, soundfont.bytes.to_vec());
+    }
     let manifest = SessionManifest {
         format: SESSION_FORMAT.to_owned(),
         format_version: FormatVersion::default(),
@@ -188,6 +227,7 @@ pub fn encode_session(
         document: bundle.document.clone(),
         media: records,
         scripts: script_records,
+        soundfonts: soundfont_records,
     };
     encode_zip(&manifest, payloads)
 }
@@ -377,6 +417,7 @@ pub fn decode_session_with_limits(
     if manifest.document_version >= 3 {
         declared_paths.extend(manifest.scripts.iter().map(|record| record.path.clone()));
     }
+    declared_paths.extend(manifest.soundfonts.iter().map(|record| record.path.clone()));
     if archive_paths != declared_paths {
         return Err(SessionError::Archive(format!(
             "archive entries do not match the manifest; undeclared={:?}, missing={:?}",
@@ -432,10 +473,40 @@ pub fn decode_session_with_limits(
         };
         media.insert(record.id, payload);
     }
+    let mut soundfonts = BTreeMap::new();
+    let mut soundfont_aggregate = 0_u64;
+    for record in manifest.soundfonts {
+        soundfont_aggregate = soundfont_aggregate.saturating_add(record.uncompressed_bytes);
+        if record.path != format!("soundfonts/{}.sf2", record.sha256)
+            || soundfonts.contains_key(&record.sha256)
+            || record.sha256.len() != 64
+            || !record.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || soundfonts.len() >= MAX_SOUNDFONT_RECORDS
+            || record.uncompressed_bytes == 0
+            || record.uncompressed_bytes > MAX_SOUNDFONT_BYTES
+            || soundfont_aggregate > MAX_SOUNDFONT_AGGREGATE_BYTES
+        {
+            return Err(SessionError::Validation(
+                "invalid or duplicate SoundFont record".to_owned(),
+            ));
+        }
+        let bytes = read_entry(&mut archive, &record.path, record.uncompressed_bytes)?;
+        if bytes.len() as u64 != record.uncompressed_bytes || sha256(&bytes) != record.sha256 {
+            return Err(SessionError::HashMismatch { id: record.sha256 });
+        }
+        soundfonts.insert(
+            record.sha256,
+            crate::SoundFontPayload {
+                original_filename: record.original_filename,
+                bytes: bytes.into(),
+            },
+        );
+    }
     let bundle = SessionBundle {
         document: manifest.document,
         media,
         scripts: script_bundles,
+        soundfonts,
     };
     validate_bundle(&bundle)?;
     Ok(bundle)
@@ -1133,11 +1204,10 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
         )),
         (TrackTopologyDocument::OxiSynth, Some(chain))
             if chain.chain_type != FxChainTypeDocument::OxiSynth
-                || !chain.internal_state.is_empty()
                 || !chain.midi_cc_assignments.is_empty() =>
         {
             Err(SessionError::Validation(format!(
-                "OxiSynth track {} contains mismatched or persistent processor state",
+                "OxiSynth track {} contains mismatched processor state",
                 track.id
             )))
         }

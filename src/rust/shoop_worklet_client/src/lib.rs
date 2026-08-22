@@ -11,7 +11,7 @@ pub use transport::{
 };
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,8 +19,8 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    FxLifecycle, ResolvedAudioDriverConfig, TinySynthFxState, TrackFxState,
-    TrackProcessorDescriptor, TrackProcessorEditorState,
+    FxLifecycle, OxiSynthChannelState, OxiSynthState, ResolvedAudioDriverConfig, TinySynthFxState,
+    TrackFxState, TrackProcessorDescriptor, TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
     Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
@@ -43,8 +43,8 @@ use shoop_backend::{
     BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
     BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
     BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment,
-    TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
+    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TinySynthFxControl,
+    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -97,6 +97,16 @@ struct LoopContentReplaceAssembly {
     complete: bool,
 }
 
+struct SoundFontImportAssembly {
+    generation: u64,
+    sha256: String,
+    original_filename: String,
+    bytes: Arc<[u8]>,
+    begin_sent: bool,
+    next_offset: usize,
+    commit_sent: bool,
+}
+
 #[derive(Default)]
 struct BrowserTrackResources {
     topology: BackendTrackTopology,
@@ -129,6 +139,10 @@ pub struct RemoteWorkletBackend {
     loop_content_replace_error: Option<String>,
     midi: Box<dyn HostMidiBridge>,
     midi_revision: u64,
+    soundfonts: shoop_backend::soundfont_library::SoundFontLibrary,
+    soundfont_import: Option<SoundFontImportAssembly>,
+    soundfont_import_queue: VecDeque<SoundFontImportAssembly>,
+    pending_soundfont_removals: BTreeSet<String>,
 }
 
 impl RemoteWorkletBackend {
@@ -183,6 +197,11 @@ impl RemoteWorkletBackend {
                 loop_content_replace_error: None,
                 midi: Box::new(midi),
                 midi_revision: u64::MAX,
+                soundfonts: shoop_backend::soundfont_library::SoundFontLibrary::with_embedded()
+                    .expect("embedded SoundFont is valid"),
+                soundfont_import: None,
+                soundfont_import_queue: VecDeque::new(),
+                pending_soundfont_removals: BTreeSet::new(),
             },
             control,
         )
@@ -227,6 +246,11 @@ impl RemoteWorkletBackend {
                 "loop content replacement operation {} was cancelled: {reason}",
                 replace.generation
             ));
+        }
+        if let Some(import) = self.soundfont_import.as_mut() {
+            import.begin_sent = false;
+            import.next_offset = 0;
+            import.commit_sent = false;
         }
     }
 
@@ -612,6 +636,53 @@ impl RemoteWorkletBackend {
         Ok(())
     }
 
+    fn pump_soundfont_import(&mut self) -> Result<()> {
+        let Some(import) = self.soundfont_import.as_mut() else {
+            return Ok(());
+        };
+        if !import.begin_sent && self.transport.borrow().pending_len() < COMMAND_CAPACITY {
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::BeginSoundFontImport {
+                    generation: import.generation,
+                    original_filename: import.original_filename.clone(),
+                    total_bytes: import.bytes.len(),
+                })?;
+            import.begin_sent = true;
+        }
+        if !import.begin_sent {
+            return Ok(());
+        }
+        while import.next_offset < import.bytes.len()
+            && self.transport.borrow().pending_len() < COMMAND_CAPACITY / 2
+        {
+            let end = import
+                .next_offset
+                .saturating_add(SESSION_TRANSFER_CHUNK_BYTES)
+                .min(import.bytes.len());
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::WriteSoundFontImport {
+                    generation: import.generation,
+                    offset: import.next_offset,
+                    bytes: import.bytes[import.next_offset..end].to_vec(),
+                })?;
+            import.next_offset = end;
+        }
+        if import.next_offset == import.bytes.len()
+            && !import.commit_sent
+            && self.transport.borrow().pending_len() < COMMAND_CAPACITY
+        {
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::CommitSoundFontImport {
+                    generation: import.generation,
+                })?;
+            import.commit_sent = true;
+        }
+        Ok(())
+    }
+
     fn apply_replaced_session(
         &mut self,
         session: &BackendSessionData,
@@ -778,6 +849,7 @@ impl RemoteWorkletBackend {
             .collect::<BTreeSet<_>>();
         self.pending_removed_tracks
             .retain(|track_id, _| observed_track_ids.contains(track_id));
+        let available_soundfonts = self.soundfonts.descriptors();
         self.snapshot.tracks = wire
             .tracks
             .into_iter()
@@ -837,6 +909,51 @@ impl RemoteWorkletBackend {
                                         .into(),
                                 })
                             });
+                            let oxisynth = fx.oxisynth.and_then(|oxi| {
+                                let channels: [OxiSynthChannelState; 16] = oxi
+                                    .channels
+                                    .into_iter()
+                                    .map(|channel| OxiSynthChannelState {
+                                        baseline_bank: channel.baseline_bank,
+                                        baseline_program: channel.baseline_program,
+                                        current_bank: channel.current_bank,
+                                        current_program: channel.current_program,
+                                        volume: channel.volume,
+                                        pan: channel.pan,
+                                        expression: channel.expression,
+                                        pitch_bend: channel.pitch_bend,
+                                        channel_pressure: channel.channel_pressure,
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .try_into()
+                                    .ok()?;
+                                Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
+                                    available_soundfonts: Arc::clone(&available_soundfonts),
+                                    soundfont_sha256: oxi.soundfont_sha256.clone().into(),
+                                    soundfont_name: oxi.soundfont_name.into(),
+                                    presets: available_soundfonts
+                                        .iter()
+                                        .find(|asset| asset.sha256.as_ref() == oxi.soundfont_sha256)
+                                        .map(|asset| Arc::clone(&asset.presets))
+                                        .unwrap_or_else(|| Arc::from([])),
+                                    revision: oxi.revision,
+                                    midi_activity_revision: oxi.midi_activity_revision,
+                                    master_gain: oxi.master_gain,
+                                    reverb: shoop_app_api::OxiSynthReverbState {
+                                        room_size: oxi.reverb.room_size,
+                                        damp: oxi.reverb.damp,
+                                        width: oxi.reverb.width,
+                                        level: oxi.reverb.level,
+                                    },
+                                    chorus: shoop_app_api::OxiSynthChorusState {
+                                        voices: oxi.chorus.voices,
+                                        level: oxi.chorus.level,
+                                        speed_hz: oxi.chorus.speed_hz,
+                                        depth_ms: oxi.chorus.depth_ms,
+                                    },
+                                    channels,
+                                }))
+                            });
                             TrackFxState {
                                 processor_type: TrackProcessorTypeId::new(fx.processor_type),
                                 active: fx.active,
@@ -845,7 +962,7 @@ impl RemoteWorkletBackend {
                                 generation: 0,
                                 crash_summary: None,
                                 logs: Arc::from([]),
-                                editor: tiny,
+                                editor: tiny.or(oxisynth),
                             }
                         }),
                         audio_channels: track.audio_channels,
@@ -1197,7 +1314,11 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::BeginSessionReplace { .. }
         | Command::WriteSessionReplace { .. }
         | Command::CommitSessionReplace { .. }
-        | Command::AbortSessionTransfer { .. } => (BackendMutationKind::SessionTransfer, None),
+        | Command::AbortSessionTransfer { .. }
+        | Command::BeginSoundFontImport { .. }
+        | Command::WriteSoundFontImport { .. }
+        | Command::CommitSoundFontImport { .. }
+        | Command::RemoveSoundFont { .. } => (BackendMutationKind::SessionTransfer, None),
         Command::DrainMidiOutput { .. }
         | Command::RequestWaveform { .. }
         | Command::RequestMidiData { .. }
@@ -1257,6 +1378,61 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
             TinySynthFxControl::ClearMidiCcAssignments
         }
         WireTrackFxControl::TinyPanic => TinySynthFxControl::Panic,
+        WireTrackFxControl::OxiSetMasterGain(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetMasterGain(*value));
+        }
+        WireTrackFxControl::OxiSetReverb(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetReverb(
+                shoop_app_api::OxiSynthReverbState {
+                    room_size: value.room_size,
+                    damp: value.damp,
+                    width: value.width,
+                    level: value.level,
+                },
+            ));
+        }
+        WireTrackFxControl::OxiSetChorus(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetChorus(
+                shoop_app_api::OxiSynthChorusState {
+                    voices: value.voices,
+                    level: value.level,
+                    speed_hz: value.speed_hz,
+                    depth_ms: value.depth_ms,
+                },
+            ));
+        }
+        WireTrackFxControl::OxiSelectProgram {
+            channel,
+            bank,
+            program,
+        } => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectProgram {
+                channel: *channel,
+                bank: *bank,
+                program: *program,
+            });
+        }
+        WireTrackFxControl::OxiSelectSoundFont(sha256) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectSoundFont(
+                sha256.clone().into(),
+            ));
+        }
+        WireTrackFxControl::OxiAudition {
+            channel,
+            key,
+            velocity,
+            pressed,
+        } => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::Audition {
+                channel: *channel,
+                key: *key,
+                velocity: *velocity,
+                pressed: *pressed,
+            });
+        }
+        WireTrackFxControl::OxiPanic => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic);
+        }
     })
 }
 
@@ -1324,6 +1500,87 @@ impl Backend for RemoteWorkletBackend {
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![tiny_synth_fx_descriptor(), oxisynth_descriptor()].into())
+    }
+
+    fn soundfont_catalog(
+        &mut self,
+    ) -> Result<Arc<[shoop_backend::soundfont_library::SoundFontAssetDescriptor]>> {
+        let pending = self
+            .soundfont_import
+            .iter()
+            .chain(self.soundfont_import_queue.iter())
+            .map(|import| import.sha256.as_str())
+            .collect::<BTreeSet<_>>();
+        Ok(self
+            .soundfonts
+            .descriptors()
+            .iter()
+            .filter(|asset| !pending.contains(asset.sha256.as_ref()))
+            .cloned()
+            .collect::<Vec<_>>()
+            .into())
+    }
+
+    fn import_soundfont(
+        &mut self,
+        original_filename: String,
+        bytes: Arc<[u8]>,
+    ) -> Result<shoop_backend::soundfont_library::SoundFontAssetDescriptor> {
+        let known = self
+            .soundfonts
+            .descriptors()
+            .iter()
+            .map(|asset| asset.sha256.clone())
+            .collect::<BTreeSet<_>>();
+        let descriptor = self
+            .soundfonts
+            .import(bytes.clone(), original_filename.clone())?;
+        if known.contains(&descriptor.sha256) {
+            return Ok(descriptor);
+        }
+        let generation = self.next_session_generation.max(1);
+        self.next_session_generation = generation.saturating_add(1);
+        let import = SoundFontImportAssembly {
+            generation,
+            sha256: descriptor.sha256.to_string(),
+            original_filename,
+            bytes,
+            begin_sent: false,
+            next_offset: 0,
+            commit_sent: false,
+        };
+        if self.soundfont_import.is_some() {
+            self.soundfont_import_queue.push_back(import);
+        } else {
+            self.soundfont_import = Some(import);
+        }
+        self.pump_soundfont_import()?;
+        Ok(descriptor)
+    }
+
+    fn remove_soundfont(&mut self, sha256: &str) -> Result<bool> {
+        let referenced = self.snapshot.tracks.values().any(|track| {
+            track.fx.as_ref().is_some_and(|fx| {
+                matches!(
+                    fx.editor.as_ref(),
+                    Some(TrackProcessorEditorState::OxiSynth(state))
+                        if state.soundfont_sha256.as_ref() == sha256
+                )
+            })
+        });
+        if referenced || self.pending_soundfont_removals.contains(sha256) {
+            return Ok(false);
+        }
+        if self.soundfonts.asset(sha256).is_none() {
+            return Ok(false);
+        }
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::RemoveSoundFont {
+                sha256: sha256.to_owned(),
+            })?;
+        self.pending_soundfont_removals.insert(sha256.to_owned());
+        Ok(true)
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -2188,18 +2445,30 @@ impl Backend for RemoteWorkletBackend {
         } else if connection == ConnectionState::Detached
             && (self.session_capture.is_some()
                 || self.session_replace.is_some()
-                || self.loop_content_replace.is_some())
+                || self.loop_content_replace.is_some()
+                || self.soundfont_import.is_some())
         {
             self.cancel_transfers("transport detached");
         }
         self.transport_generation = transport.generation;
         self.sync_midi_endpoints()?;
+        self.pump_soundfont_import()?;
         let readiness = self.transport.borrow().readiness();
         let state = self.transport.borrow().driver_state();
         let running = matches!(state, BackendDriverState::Running);
         self.pump_midi_input(running)?;
         self.snapshot.status.driver_state = state;
         self.snapshot.status.command_overflows = self.transport.borrow().overflows();
+        self.snapshot.status.soundfont_import_progress =
+            self.soundfont_import.as_ref().map(|import| {
+                if import.bytes.is_empty() {
+                    0.0
+                } else if import.commit_sent {
+                    0.99
+                } else {
+                    import.next_offset as f32 / import.bytes.len() as f32
+                }
+            });
         let engine_pollable = readiness.connection == ConnectionState::Attached
             && readiness.protocol == ProtocolState::Negotiated
             && readiness.replay == ReplayState::Complete
@@ -2226,11 +2495,41 @@ impl Backend for RemoteWorkletBackend {
             let sequence = received.envelope.sequence;
             let generation = received.generation;
             match received.envelope.event {
-                Event::Ack | Event::Stopped => {}
+                Event::Ack => match &received.command {
+                    Command::CommitSoundFontImport { generation } => {
+                        if self
+                            .soundfont_import
+                            .as_ref()
+                            .is_some_and(|import| import.generation == *generation)
+                        {
+                            self.soundfont_import = self.soundfont_import_queue.pop_front();
+                        }
+                    }
+                    Command::RemoveSoundFont { sha256 } => {
+                        self.pending_soundfont_removals.remove(sha256);
+                        let _ = self.soundfonts.remove(sha256, false);
+                    }
+                    _ => {}
+                },
+                Event::Stopped => {}
                 Event::Error { message } => {
                     self.transport
                         .borrow_mut()
                         .reject_journaled(&received.command);
+                    if matches!(
+                        received.command,
+                        Command::BeginSoundFontImport { .. }
+                            | Command::WriteSoundFontImport { .. }
+                            | Command::CommitSoundFontImport { .. }
+                    ) {
+                        if let Some(import) = self.soundfont_import.take() {
+                            let _ = self.soundfonts.remove(&import.sha256, false);
+                        }
+                        self.soundfont_import = self.soundfont_import_queue.pop_front();
+                    }
+                    if let Command::RemoveSoundFont { sha256 } = &received.command {
+                        self.pending_soundfont_removals.remove(sha256);
+                    }
                     match &received.command {
                         Command::CreateTrack {
                             expected_track_id, ..
@@ -2429,6 +2728,7 @@ impl Backend for RemoteWorkletBackend {
                 }
             }
         }
+        self.pump_soundfont_import()?;
         self.pump_session_replace()?;
         self.pump_loop_content_replace()?;
         if let Some(error) = self.transport.borrow_mut().take_error() {
@@ -2552,6 +2852,49 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
                 WireTrackFxControl::TinyClearMidiCcAssignments
             }
             TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
+        },
+        BackendTrackFxControl::OxiSynth(control) => match control {
+            OxiSynthControl::SetMasterGain(value) => WireTrackFxControl::OxiSetMasterGain(value),
+            OxiSynthControl::SetReverb(value) => {
+                WireTrackFxControl::OxiSetReverb(shoop_audio_protocol::WireOxiSynthReverbState {
+                    room_size: value.room_size,
+                    damp: value.damp,
+                    width: value.width,
+                    level: value.level,
+                })
+            }
+            OxiSynthControl::SetChorus(value) => {
+                WireTrackFxControl::OxiSetChorus(shoop_audio_protocol::WireOxiSynthChorusState {
+                    voices: value.voices,
+                    level: value.level,
+                    speed_hz: value.speed_hz,
+                    depth_ms: value.depth_ms,
+                })
+            }
+            OxiSynthControl::SelectSoundFont(sha256) => {
+                WireTrackFxControl::OxiSelectSoundFont(sha256.to_string())
+            }
+            OxiSynthControl::SelectProgram {
+                channel,
+                bank,
+                program,
+            } => WireTrackFxControl::OxiSelectProgram {
+                channel,
+                bank,
+                program,
+            },
+            OxiSynthControl::Audition {
+                channel,
+                key,
+                velocity,
+                pressed,
+            } => WireTrackFxControl::OxiAudition {
+                channel,
+                key,
+                velocity,
+                pressed,
+            },
+            OxiSynthControl::Panic => WireTrackFxControl::OxiPanic,
         },
     }
 }
@@ -2943,6 +3286,7 @@ mod tests {
                             active: true,
                             visible: true,
                             tiny: Some(tiny),
+                            oxisynth: None,
                         }),
                     ),
                 ],
@@ -3345,6 +3689,7 @@ mod tests {
             tracks: Vec::new(),
             global_ports: Vec::new(),
             use_legacy_browser_default_routes: false,
+            soundfonts: BTreeMap::new(),
         };
         assert!(matches!(
             backend.replace_session_async(&session).unwrap(),
