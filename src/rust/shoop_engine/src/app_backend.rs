@@ -2877,6 +2877,7 @@ impl BackendSession {
                 let processor = engine::oxisynth::OxiSynthProcessor::new(
                     sample_rate as f32,
                     buffer_size as usize,
+                    engine::oxisynth::OxiSynthState::default(),
                 )?;
                 let mut pending = Some((title.to_owned(), processor));
                 self.shared.send_topology(move |session| {

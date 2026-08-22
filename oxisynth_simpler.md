@@ -127,24 +127,26 @@ Evidence: `docs/oxisynth_simpler_baseline.md` records the digest, 136-preset/two
 
 Depends on Stage 0.
 
-- [ ] Add a build-time SoundFont preset-header generator and expose one immutable, deterministically ordered preset catalog.
-- [ ] Add the preset ID, logical SoundFont ID, state, control-state, editor-state, and strict canonical codec types in the engine OxiSynth module.
-- [ ] Change processor construction to require an explicit validated preset while retaining OxiSynth's mandatory 16 internal channels and disabling drum-channel behavior.
-- [ ] Store the loaded SoundFont handle and selected preset inside the processor and implement direct `select_program`-based preset changes.
-- [ ] Make preset changes silence current voices before applying the new preset.
-- [ ] Replace MIDI translation with channel-0 remapping and explicit rejection of Program Change and CC 0/32 while preserving strict validation and event offsets.
-- [ ] Keep internal reset/panic behavior from changing the selected preset; reassert the selected preset if a reset operation can affect program state.
-- [ ] Add session graph access needed to mutate an OxiSynth processor at a scheduled control boundary without exposing OxiSynth itself.
-- [ ] Narrow visibility of raw synth-construction and translation helpers where external access is no longer required.
+- [x] Add a build-time SoundFont preset-header generator and expose one immutable, deterministically ordered preset catalog.
+- [x] Add the preset ID, logical SoundFont ID, state, control-state, editor-state, and strict canonical codec types in the engine OxiSynth module.
+- [x] Change processor construction to require an explicit validated preset while retaining OxiSynth's mandatory 16 internal channels and disabling drum-channel behavior.
+- [x] Store the loaded SoundFont handle and selected preset inside the processor and implement direct `select_program`-based preset changes.
+- [x] Make preset changes silence current voices before applying the new preset.
+- [x] Replace MIDI translation with channel-0 remapping and explicit rejection of Program Change and CC 0/32 while preserving strict validation and event offsets.
+- [x] Keep internal reset/panic behavior from changing the selected preset; reassert the selected preset if a reset operation can affect program state.
+- [x] Add session graph access needed to mutate an OxiSynth processor at a scheduled control boundary without exposing OxiSynth itself.
+- [x] Narrow visibility of raw synth-construction and translation helpers where external access is no longer required.
 
 Verification:
 
-- [ ] Catalog tests prove deterministic unique IDs, valid ranges, expected digest/default, and successful selection of every generated preset.
-- [ ] Codec tests cover canonical round trip plus malformed, unsupported-version, unknown-font, out-of-range, and unavailable-preset rejection.
-- [ ] MIDI tests cover all 16 source channels, Program Change, CC 0/32, ordinary CC, pressure, bend, note-on velocity zero, malformed messages, event ordering, and sample offsets.
-- [ ] Audio tests demonstrate different representative presets render and a preset switch removes old voices.
-- [ ] Allocation guards cover steady processing, filtered messages, preset-stable reset/panic, and post-selection processing.
-- [ ] Run focused `shoop_engine` native and Wasm tests, formatting, and a warning-denying `shoop_engine` build.
+- [x] Catalog tests prove deterministic unique IDs, valid ranges, expected digest/default, and successful selection of every generated preset.
+- [x] Codec tests cover canonical round trip plus malformed, unsupported-version, unknown-font, out-of-range, and unavailable-preset rejection.
+- [x] MIDI tests cover all 16 source channels, Program Change, CC 0/32, ordinary CC, pressure, bend, note-on velocity zero, malformed messages, event ordering, and sample offsets.
+- [x] Audio tests demonstrate different representative presets render and a preset switch removes old voices.
+- [x] Allocation guards cover steady processing, filtered messages, preset-stable reset/panic, and post-selection processing.
+- [x] Run focused `shoop_engine` native and Wasm tests, formatting, and a warning-denying `shoop_engine` build.
+
+Evidence: the engine build script generates 136 sorted, unique descriptors directly from the embedded SoundFont and rejects invalid source identities. The narrow control/processor API, canonical state codec, channel-0 filter, drum disablement, direct preset selection, reset-on-switch, and graph accessor are implemented. Ten focused native and Node/Wasm tests pass, including every-catalog-preset selection, strict codec failures, all-source-channel filtering, render differentiation, voice shutdown, and realtime allocation guards. Formatting, test policy, warning-denying engine/app-backend, and backend builds pass.
 
 ### Stage 2 — Add typed controls and backend implementations
 

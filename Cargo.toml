@@ -70,6 +70,7 @@ tracy-nextest-capture = { git = "https://github.com/SanderVocke/tracy-extensions
 shoop_tracing = { path = "src/rust/shoop_tracing", default-features = false }
 tinyviolin = "=0.3.0"
 oxisynth = { version = "=0.1.0", default-features = false }
+soundfont = "=0.1.0"
 
 [patch.crates-io]
 tracy-client-sys = { git = "https://github.com/SanderVocke/tracy-extensions", tag = "v0.6.0" }

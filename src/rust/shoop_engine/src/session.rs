@@ -1698,6 +1698,16 @@ impl Session {
             })
     }
 
+    pub fn oxisynth_processor_mut(&mut self, title: &str) -> Option<&mut OxiSynthProcessor> {
+        self.processors
+            .iter_mut()
+            .find(|route| route.title == title)
+            .and_then(|route| match &mut route.backend {
+                ProcessorBackend::OxiSynth(processor) => Some(processor),
+                _ => None,
+            })
+    }
+
     #[cfg(feature = "carla")]
     pub fn set_carla_fx_host(&mut self, title: impl Into<String>, host: Box<dyn CarlaProcessor>) {
         let title = title.into();

@@ -4133,6 +4133,7 @@ dependencies = [
  "shoop_settings",
  "shoop_tracing",
  "shoop_wasm_test_support",
+ "soundfont",
  "tempfile",
  "thiserror 2.0.20",
  "tinyviolin",

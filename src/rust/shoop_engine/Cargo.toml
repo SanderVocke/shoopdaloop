@@ -47,6 +47,9 @@ tinyviolin = { workspace = true }
 oxisynth = { workspace = true }
 sha2 = { workspace = true }
 
+[build-dependencies]
+soundfont = { workspace = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_tracing = { workspace = true, features = ["tracy"] }
 uuid = { workspace = true }

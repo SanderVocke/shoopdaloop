@@ -2747,6 +2747,7 @@ impl EngineBackend {
         let processor = shoop_engine::oxisynth::OxiSynthProcessor::new(
             self.sample_rate as f32,
             self.buffer_size as usize,
+            shoop_engine::oxisynth::OxiSynthState::default(),
         )?;
         let _ = self
             .session
