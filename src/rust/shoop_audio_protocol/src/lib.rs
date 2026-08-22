@@ -355,6 +355,18 @@ pub enum WireTrackFxControl {
     TinyRemoveMidiCc(WireTinySynthFxParameter),
     TinyClearMidiCcAssignments,
     TinyPanic,
+    OxiSelectProgram {
+        channel: u8,
+        bank: u32,
+        program: u8,
+    },
+    OxiAudition {
+        channel: u8,
+        key: u8,
+        velocity: u8,
+        pressed: bool,
+    },
+    OxiPanic,
 }
 
 impl WireTrackFxControl {
@@ -368,6 +380,7 @@ impl WireTrackFxControl {
             Self::TinySetEqLowDb(_) => 5,
             Self::TinySetEqMidDb(_) => 6,
             Self::TinySetEqHighDb(_) => 7,
+            Self::OxiSelectProgram { channel, .. } => 16u8.saturating_add(*channel),
             Self::SetVisible(_)
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
@@ -380,7 +393,9 @@ impl WireTrackFxControl {
             | Self::TinyAssignMidiCc(_)
             | Self::TinyRemoveMidiCc(_)
             | Self::TinyClearMidiCcAssignments
-            | Self::TinyPanic => return None,
+            | Self::TinyPanic
+            | Self::OxiAudition { .. }
+            | Self::OxiPanic => return None,
         })
     }
 }
@@ -641,6 +656,28 @@ pub struct WireTrackFxState {
     pub active: bool,
     pub visible: bool,
     pub tiny: Option<WireTinySynthFxState>,
+    #[serde(default)]
+    pub oxisynth: Option<WireOxiSynthState>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthState {
+    pub revision: u64,
+    pub midi_activity_revision: u64,
+    pub channels: Vec<WireOxiSynthChannelState>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthChannelState {
+    pub baseline_bank: u32,
+    pub baseline_program: u8,
+    pub current_bank: u32,
+    pub current_program: u8,
+    pub volume: u8,
+    pub pan: u8,
+    pub expression: u8,
+    pub pitch_bend: u16,
+    pub channel_pressure: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -17,6 +17,7 @@ mod loop_widget;
 mod meter_ballistics;
 mod midi_sequence_widget;
 mod optimistic_value;
+mod oxisynth_editor;
 mod piano_pane;
 mod script_dialogs;
 mod script_resource_loader;

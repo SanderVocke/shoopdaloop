@@ -7,6 +7,7 @@ use crate::{
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
+use crate::oxisynth_editor::OxiSynthEditor;
 use crate::tiny_synth_fx_editor::TinySynthFxEditor;
 
 const DEFAULT_TRACK_WIDTH: f32 = 120.0;
@@ -44,6 +45,7 @@ pub struct TrackWidget {
     controls: TrackControls,
     fx_logs_open: bool,
     tiny_synth_fx_editor: TinySynthFxEditor,
+    oxisynth_editor: OxiSynthEditor,
     width: f32,
     rendered_content_width: f32,
     width_drag_start: Option<f32>,
@@ -98,6 +100,7 @@ impl Default for TrackWidget {
             controls: TrackControls::default(),
             fx_logs_open: false,
             tiny_synth_fx_editor: TinySynthFxEditor::default(),
+            oxisynth_editor: OxiSynthEditor::default(),
             width: DEFAULT_TRACK_WIDTH,
             rendered_content_width: DEFAULT_TRACK_WIDTH,
             width_drag_start: None,
@@ -416,6 +419,9 @@ impl TrackWidget {
         result
             .actions
             .extend(self.tiny_synth_fx_editor.show(ui.ctx(), state, processor));
+        result
+            .actions
+            .extend(self.oxisynth_editor.show(ui.ctx(), state, processor));
         if !result.actions.is_empty()
             || !result.loop_actions.is_empty()
             || !result.io_intents.is_empty()

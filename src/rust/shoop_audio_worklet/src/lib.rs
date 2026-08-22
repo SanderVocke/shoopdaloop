@@ -6,12 +6,13 @@ use shoop_audio_protocol::{
     WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
-    WireMidiOutputEvent, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
-    WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
-    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
-    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
+    WireMidiOutputEvent, WireOxiSynthChannelState, WireOxiSynthState, WirePortDataType,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxMidiCcAssignment,
+    WireTinySynthFxParameter, WireTinySynthFxState, WireTrackControl, WireTrackFxControl,
+    WireTrackFxState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
+    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
@@ -19,7 +20,7 @@ use shoop_backend::{
     BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
     BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
     BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, EngineBackend, TinySynthFxControl,
+    BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl, TinySynthFxControl,
     TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorEditorState,
     TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
@@ -862,6 +863,27 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         WireTrackFxControl::TinyPanic => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
         }
+        WireTrackFxControl::OxiSelectProgram {
+            channel,
+            bank,
+            program,
+        } => BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectProgram {
+            channel,
+            bank,
+            program,
+        }),
+        WireTrackFxControl::OxiAudition {
+            channel,
+            key,
+            velocity,
+            pressed,
+        } => BackendTrackFxControl::OxiSynth(OxiSynthControl::Audition {
+            channel,
+            key,
+            velocity,
+            pressed,
+        }),
+        WireTrackFxControl::OxiPanic => BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
     }
 }
 
@@ -1063,14 +1085,40 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 topology: to_wire_track_topology(&track.topology),
                 fx: track.fx.and_then(|fx| {
                     if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
+                        let oxisynth = match fx.editor {
+                            Some(TrackProcessorEditorState::OxiSynth(editor)) => {
+                                Some(WireOxiSynthState {
+                                    revision: editor.revision,
+                                    midi_activity_revision: editor.midi_activity_revision,
+                                    channels: editor
+                                        .channels
+                                        .map(|channel| WireOxiSynthChannelState {
+                                            baseline_bank: channel.baseline_bank,
+                                            baseline_program: channel.baseline_program,
+                                            current_bank: channel.current_bank,
+                                            current_program: channel.current_program,
+                                            volume: channel.volume,
+                                            pan: channel.pan,
+                                            expression: channel.expression,
+                                            pitch_bend: channel.pitch_bend,
+                                            channel_pressure: channel.channel_pressure,
+                                        })
+                                        .into(),
+                                })
+                            }
+                            _ => None,
+                        };
                         return Some(WireTrackFxState {
                             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                             active: fx.active,
                             visible: false,
                             tiny: None,
+                            oxisynth,
                         });
                     }
-                    let TrackProcessorEditorState::TinySynthFx(editor) = fx.editor?;
+                    let TrackProcessorEditorState::TinySynthFx(editor) = fx.editor? else {
+                        return None;
+                    };
                     Some(WireTrackFxState {
                         processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
                         active: fx.active,
@@ -1098,6 +1146,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                                 })
                                 .collect(),
                         }),
+                        oxisynth: None,
                     })
                 }),
                 audio_channels: track.audio_channels,

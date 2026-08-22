@@ -712,6 +712,7 @@ enum FxControlKey {
     TinyEqMid,
     TinyEqHigh,
     TinyMidiAssignments,
+    OxiProgram(u8),
 }
 
 fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
@@ -777,6 +778,26 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
                 shoop_backend::TinySynthFxControl::Panic => {}
             }
         }
+        BackendTrackFxControl::OxiSynth(control) => {
+            let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) =
+                fx.editor.as_mut()
+            else {
+                return;
+            };
+            if let shoop_backend::OxiSynthControl::SelectProgram {
+                channel,
+                bank,
+                program,
+            } = control
+            {
+                if let Some(state) = editor.channels.get_mut(*channel as usize) {
+                    state.baseline_bank = *bank;
+                    state.baseline_program = *program;
+                    state.current_bank = *bank;
+                    state.current_program = *program;
+                }
+            }
+        }
         BackendTrackFxControl::ToggleOrRecover
         | BackendTrackFxControl::RestoreState(_)
         | BackendTrackFxControl::ClearLogs => {}
@@ -828,6 +849,13 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
                 FxControlKey::TinyMidiAssignments
             }
             shoop_backend::TinySynthFxControl::Panic => return None,
+        },
+        BackendTrackFxControl::OxiSynth(control) => match control {
+            shoop_backend::OxiSynthControl::SelectProgram { channel, .. } => {
+                FxControlKey::OxiProgram(*channel)
+            }
+            shoop_backend::OxiSynthControl::Audition { .. }
+            | shoop_backend::OxiSynthControl::Panic => return None,
         },
         BackendTrackFxControl::ToggleOrRecover
         | BackendTrackFxControl::RestoreState(_)
@@ -4408,6 +4436,22 @@ impl ApplicationModel {
                 }
                 return Ok(());
             }
+            TrackAction::OxiSynth(oxi) => {
+                let control = BackendTrackFxControl::OxiSynth(oxi);
+                backend
+                    .set_track_fx_control(track.backend_id, control.clone())
+                    .map_err(|error| {
+                        format!("could not update OxiSynth track {track_id}: {error}")
+                    })?;
+                if let Some(key) = fx_control_key(&control) {
+                    self.desired_fx_controls
+                        .insert((track.backend_id, key), control.clone());
+                    if let Some(fx) = track.fx.as_mut() {
+                        apply_fx_control(fx, &control);
+                    }
+                }
+                return Ok(());
+            }
         };
         backend
             .set_track_control(track.backend_id, backend_action)
@@ -7333,19 +7377,9 @@ impl ApplicationModel {
                     let chain_type = fx_chain_type_for_processor(
                         &shoop_app_api::TrackProcessorTypeId::new(processor_type.clone()),
                     )?;
-                    let internal_state = if chain_type == FxChainTypeDocument::OxiSynth {
-                        if captured.processor_state.is_some() {
-                            return Err(format!(
-                                "OxiSynth track {} unexpectedly captured processor state",
-                                track.id
-                            ));
-                        }
-                        String::new()
-                    } else {
-                        captured.processor_state.clone().ok_or_else(|| {
-                            format!("processed track {} has no captured state", track.id)
-                        })?
-                    };
+                    let internal_state = captured.processor_state.clone().ok_or_else(|| {
+                        format!("processed track {} has no captured state", track.id)
+                    })?;
                     let topology = if chain_type == FxChainTypeDocument::TinySynthFx {
                         if dry_audio_channels != wet_audio_channels || !dry_midi {
                             return Err(format!(
@@ -9161,9 +9195,14 @@ fn session_bundle_to_backend(
             state,
             loops,
             ports,
-            processor_state: track.fx_chain.as_ref().and_then(|chain| {
-                (chain.chain_type != FxChainTypeDocument::OxiSynth)
-                    .then(|| chain.internal_state.clone())
+            processor_state: track.fx_chain.as_ref().map(|chain| {
+                if chain.chain_type == FxChainTypeDocument::OxiSynth
+                    && chain.internal_state.is_empty()
+                {
+                    shoop_backend::default_oxisynth_state()
+                } else {
+                    chain.internal_state.clone()
+                }
             }),
             tiny_synth_midi_cc_assignments: track
                 .fx_chain
@@ -10371,7 +10410,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn oxisynth_session_round_trip_is_stateless_and_has_no_editor() {
+    fn oxisynth_session_round_trip_persists_configuration_and_editor() {
         let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
         runtime.tick(Duration::ZERO);
@@ -10390,7 +10429,10 @@ mod tests {
             .unwrap();
         runtime.tick(Duration::ZERO);
         let track = &runtime.snapshot().tracks[1];
-        assert!(track.fx.as_ref().is_some_and(|fx| fx.editor.is_none()));
+        assert!(matches!(
+            track.fx.as_ref().and_then(|fx| fx.editor.as_ref()),
+            Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(_))
+        ));
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
         for _ in 0..3 {
             runtime.tick(Duration::ZERO);
@@ -10401,7 +10443,7 @@ mod tests {
         assert_eq!(saved_track.topology, TrackTopologyDocument::OxiSynth);
         let chain = saved_track.fx_chain.as_ref().unwrap();
         assert_eq!(chain.chain_type, FxChainTypeDocument::OxiSynth);
-        assert!(chain.internal_state.is_empty());
+        assert!(!chain.internal_state.is_empty());
         assert!(saved
             .document
             .fx_states
@@ -10419,10 +10461,13 @@ mod tests {
         }
         let loaded = runtime.snapshot();
         assert_eq!(loaded.tracks[1].topology, track.topology);
-        assert!(loaded.tracks[1]
-            .fx
-            .as_ref()
-            .is_some_and(|fx| fx.editor.is_none()));
+        assert!(matches!(
+            loaded.tracks[1]
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.editor.as_ref()),
+            Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(_))
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]

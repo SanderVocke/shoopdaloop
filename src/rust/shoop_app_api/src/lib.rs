@@ -147,6 +147,18 @@ pub enum TrackProcessorEditorDescriptor {
     TinySynthFx {
         presets: Arc<[TrackProcessorPresetDescriptor]>,
     },
+    OxiSynth {
+        soundfont_name: Arc<str>,
+        soundfont_sha256: Arc<str>,
+        presets: Arc<[OxiSynthPresetDescriptor]>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OxiSynthPresetDescriptor {
+    pub bank: u32,
+    pub program: u8,
+    pub name: Arc<str>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -274,6 +286,27 @@ pub struct TinySynthFxState {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackProcessorEditorState {
     TinySynthFx(TinySynthFxState),
+    OxiSynth(OxiSynthState),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OxiSynthChannelState {
+    pub baseline_bank: u32,
+    pub baseline_program: u8,
+    pub current_bank: u32,
+    pub current_program: u8,
+    pub volume: u8,
+    pub pan: u8,
+    pub expression: u8,
+    pub pitch_bend: u16,
+    pub channel_pressure: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OxiSynthState {
+    pub revision: u64,
+    pub midi_activity_revision: u64,
+    pub channels: [OxiSynthChannelState; 16],
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1523,6 +1556,22 @@ pub enum TinySynthFxControl {
     Panic,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OxiSynthControl {
+    SelectProgram {
+        channel: u8,
+        bank: u32,
+        program: u8,
+    },
+    Audition {
+        channel: u8,
+        key: u8,
+        velocity: u8,
+        pressed: bool,
+    },
+    Panic,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackAction {
     Remove,
@@ -1543,6 +1592,7 @@ pub enum TrackAction {
     FxRestoreState(String),
     FxClearLogs,
     TinySynthFx(TinySynthFxControl),
+    OxiSynth(OxiSynthControl),
 }
 
 pub type TrackWidgetAction = TrackAction;
@@ -1841,6 +1891,16 @@ impl TinySynthFxControl {
     }
 }
 
+impl OxiSynthControl {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::SelectProgram { .. } => "track.oxisynth.select_program",
+            Self::Audition { .. } => "track.oxisynth.audition",
+            Self::Panic => "track.oxisynth.panic",
+        }
+    }
+}
+
 impl TrackAction {
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -1859,6 +1919,7 @@ impl TrackAction {
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
             Self::TinySynthFx(control) => control.kind(),
+            Self::OxiSynth(control) => control.kind(),
         }
     }
 }

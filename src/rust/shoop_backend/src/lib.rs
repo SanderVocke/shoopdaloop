@@ -11,8 +11,8 @@ pub use native::{
     run_carla_worker_if_requested, smoke_test_carla_runtime, smoke_test_carla_ui,
 };
 pub use shoop_app_api::{
-    TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter, TinySynthFxState,
-    TrackProcessorEditorState, TrackProcessorTypeId,
+    OxiSynthControl, TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
+    TinySynthFxState, TrackProcessorEditorState, TrackProcessorTypeId,
 };
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -278,6 +278,7 @@ pub enum BackendTrackFxControl {
     RestoreState(String),
     ClearLogs,
     TinySynthFx(TinySynthFxControl),
+    OxiSynth(OxiSynthControl),
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -1148,6 +1149,15 @@ pub fn tiny_synth_fx_descriptor() -> TrackProcessorDescriptor {
 }
 
 pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
+    let presets = shoop_engine::oxisynth::embedded_presets()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|preset| shoop_app_api::OxiSynthPresetDescriptor {
+            bank: preset.bank,
+            program: preset.program,
+            name: preset.name.into(),
+        })
+        .collect::<Vec<_>>();
     TrackProcessorDescriptor {
         id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
         label: "OxiSynth".to_owned(),
@@ -1161,9 +1171,23 @@ pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
             matching_audio_channels: false,
             midi: shoop_app_api::TrackProcessorMidiPolicy::Required,
         },
-        features: shoop_app_api::TrackProcessorFeatures::default(),
-        editor: None,
+        features: shoop_app_api::TrackProcessorFeatures {
+            state: true,
+            embedded_ui: true,
+            ..Default::default()
+        },
+        editor: Some(shoop_app_api::TrackProcessorEditorDescriptor::OxiSynth {
+            soundfont_name: "TimGM6mb".into(),
+            soundfont_sha256: shoop_engine::oxisynth::SOUNDFONT_SHA256.into(),
+            presets: presets.into(),
+        }),
     }
+}
+
+pub fn default_oxisynth_state() -> String {
+    shoop_engine::oxisynth::OxiSynthProcessor::new(48_000.0, 1)
+        .and_then(|processor| processor.encode_configuration())
+        .expect("embedded OxiSynth defaults are valid")
 }
 
 #[cfg(test)]
@@ -1171,7 +1195,7 @@ mod oxisynth_descriptor_tests {
     use super::*;
 
     #[shoop_wasm_test_support::shoop_test]
-    fn descriptor_is_fixed_stereo_midi_only_and_stateless() {
+    fn descriptor_is_fixed_stereo_midi_with_persistent_editor() {
         let descriptor = oxisynth_descriptor();
         assert_eq!(descriptor.id.as_str(), TrackProcessorTypeId::OXISYNTH);
         assert_eq!(descriptor.label, "OxiSynth");
@@ -1179,11 +1203,14 @@ mod oxisynth_descriptor_tests {
         assert!(descriptor.constraints.accepts(2, 2, true));
         assert!(!descriptor.constraints.accepts(0, 1, true));
         assert!(!descriptor.constraints.accepts(0, 2, true));
-        assert_eq!(
-            descriptor.features,
-            shoop_app_api::TrackProcessorFeatures::default()
-        );
-        assert_eq!(descriptor.editor, None);
+        assert!(descriptor.features.state);
+        assert!(descriptor.features.embedded_ui);
+        let Some(shoop_app_api::TrackProcessorEditorDescriptor::OxiSynth { presets, .. }) =
+            descriptor.editor
+        else {
+            panic!("missing OxiSynth editor descriptor");
+        };
+        assert!(!presets.is_empty());
     }
 }
 
@@ -1383,6 +1410,7 @@ struct EngineTrack {
     input_monitoring: bool,
     fx: Option<EngineTinyFx>,
     oxisynth_active: bool,
+    oxisynth_visible: bool,
 }
 
 struct EngineTinyFx {
@@ -2577,6 +2605,7 @@ impl EngineBackend {
                     visible: false,
                 }),
                 oxisynth_active: false,
+                oxisynth_visible: false,
             },
         );
         let mut loops = Vec::with_capacity(request.initial_loops);
@@ -2782,6 +2811,7 @@ impl EngineBackend {
                 input_monitoring: false,
                 fx: None,
                 oxisynth_active: false,
+                oxisynth_visible: false,
             },
         );
         let mut loops = Vec::with_capacity(request.initial_loops);
@@ -2896,7 +2926,15 @@ impl EngineBackend {
                         BackendTrackTopology::DryWetProcessor { processor_type, .. }
                             if processor_type == TrackProcessorTypeId::OXISYNTH
                     )
-                    .then(|| engine_oxisynth_fx_state(track.oxisynth_active))
+                    .then(|| {
+                        engine_oxisynth_fx_state(
+                            track.oxisynth_active,
+                            track.oxisynth_visible,
+                            self.session
+                                .oxisynth_processor(&track.port_name_base)
+                                .map(|processor| processor.snapshot()),
+                        )
+                    })
                 }),
                 audio_channels: track.audio_outputs.len() as u32,
                 midi: track.midi_input.is_some(),
@@ -3028,7 +3066,11 @@ impl EngineBackend {
                     .map(app_midi_cc_assignment)
                     .map(backend_midi_cc_assignment)
                     .collect(),
-                processor_state: track.fx.as_mut().map(|fx| fx.control.encode()),
+                processor_state: track.fx.as_mut().map(|fx| fx.control.encode()).or_else(|| {
+                    self.session
+                        .oxisynth_processor(&track.port_name_base)
+                        .and_then(|processor| processor.encode_configuration().ok())
+                }),
             });
         }
         let mut global_connections = connections
@@ -3085,7 +3127,7 @@ impl EngineBackend {
                 BackendTrackTopology::DryWetProcessor { processor_type, .. }
                     if processor_type == TrackProcessorTypeId::OXISYNTH =>
                 {
-                    track.processor_state.is_none()
+                    track.processor_state.is_some()
                         && track.tiny_synth_midi_cc_assignments.is_empty()
                 }
                 _ => false,
@@ -3460,16 +3502,38 @@ fn engine_tiny_fx_state(fx: &mut EngineTinyFx) -> TrackFxState {
     }
 }
 
-fn engine_oxisynth_fx_state(active: bool) -> TrackFxState {
+fn engine_oxisynth_fx_state(
+    active: bool,
+    visible: bool,
+    snapshot: Option<shoop_engine::oxisynth::OxiSynthSnapshot>,
+) -> TrackFxState {
     TrackFxState {
         processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
         active,
-        visible: false,
+        visible,
         lifecycle: FxLifecycle::Running,
         generation: 0,
         crash_summary: None,
         logs: Arc::from([]),
-        editor: None,
+        editor: snapshot.map(|snapshot| {
+            TrackProcessorEditorState::OxiSynth(shoop_app_api::OxiSynthState {
+                revision: snapshot.revision,
+                midi_activity_revision: snapshot.midi_activity_revision,
+                channels: snapshot
+                    .channels
+                    .map(|channel| shoop_app_api::OxiSynthChannelState {
+                        baseline_bank: channel.baseline_bank,
+                        baseline_program: channel.baseline_program,
+                        current_bank: channel.bank,
+                        current_program: channel.program,
+                        volume: channel.controllers[7],
+                        pan: channel.controllers[10],
+                        expression: channel.controllers[11],
+                        pitch_bend: channel.pitch_bend,
+                        channel_pressure: channel.channel_pressure,
+                    }),
+            })
+        }),
     }
 }
 
@@ -3897,6 +3961,7 @@ impl Backend for EngineBackend {
                 input_monitoring: false,
                 fx: None,
                 oxisynth_active: false,
+                oxisynth_visible: false,
             },
         );
         let mut loops = Vec::with_capacity(request.initial_loops);
@@ -4104,7 +4169,55 @@ impl Backend for EngineBackend {
                         .set_oxisynth_active(&track.port_name_base, active);
                     Ok(())
                 }
-                _ => Err(anyhow!("OxiSynth supports only generic active control")),
+                BackendTrackFxControl::SetVisible(visible) => {
+                    track.oxisynth_visible = visible;
+                    Ok(())
+                }
+                BackendTrackFxControl::ToggleOrRecover => {
+                    track.oxisynth_visible = !track.oxisynth_visible;
+                    Ok(())
+                }
+                BackendTrackFxControl::RestoreState(state) => {
+                    let mut processor = shoop_engine::oxisynth::OxiSynthProcessor::new(
+                        self.sample_rate as f32,
+                        self.buffer_size as usize,
+                    )?;
+                    processor.restore_configuration(&state)?;
+                    let displaced = self
+                        .session
+                        .set_oxisynth_processor(track.port_name_base.clone(), processor);
+                    drop(displaced);
+                    self.session
+                        .set_oxisynth_active(&track.port_name_base, track.oxisynth_active);
+                    Ok(())
+                }
+                BackendTrackFxControl::ClearLogs => Ok(()),
+                BackendTrackFxControl::OxiSynth(control) => {
+                    let processor = self
+                        .session
+                        .oxisynth_processor_mut(&track.port_name_base)
+                        .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?;
+                    match control {
+                        OxiSynthControl::SelectProgram {
+                            channel,
+                            bank,
+                            program,
+                        } => processor.select_program(channel, bank, program),
+                        OxiSynthControl::Audition {
+                            channel,
+                            key,
+                            velocity,
+                            pressed,
+                        } => processor.audition(channel, key, velocity, pressed),
+                        OxiSynthControl::Panic => {
+                            processor.panic();
+                            Ok(())
+                        }
+                    }
+                }
+                BackendTrackFxControl::TinySynthFx(_) => {
+                    Err(anyhow!("track is not a Tiny Synth/FX processor"))
+                }
             };
         }
         let fx = track
@@ -4238,6 +4351,9 @@ impl Backend for EngineBackend {
                     }
                 }
             },
+            BackendTrackFxControl::OxiSynth(_) => {
+                return Err(anyhow!("track is not an OxiSynth processor"));
+            }
         }
         Ok(())
     }
@@ -4247,6 +4363,17 @@ impl Backend for EngineBackend {
             .tracks
             .get_mut(&track_id)
             .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?;
+        if matches!(
+            &track.topology,
+            BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                if processor_type == TrackProcessorTypeId::OXISYNTH
+        ) {
+            return self
+                .session
+                .oxisynth_processor(&track.port_name_base)
+                .map(|processor| processor.encode_configuration().map(Some))
+                .unwrap_or_else(|| Err(anyhow!("OxiSynth processor is unavailable")));
+        }
         Ok(track.fx.as_mut().map(|fx| fx.control.encode()))
     }
 
@@ -4823,7 +4950,15 @@ impl Backend for EngineBackend {
                             BackendTrackTopology::DryWetProcessor { processor_type, .. }
                                 if processor_type == TrackProcessorTypeId::OXISYNTH
                         )
-                        .then(|| engine_oxisynth_fx_state(track.oxisynth_active))
+                        .then(|| {
+                            engine_oxisynth_fx_state(
+                                track.oxisynth_active,
+                                track.oxisynth_visible,
+                                self.session
+                                    .oxisynth_processor(&track.port_name_base)
+                                    .map(|processor| processor.snapshot()),
+                            )
+                        })
                     }),
                     audio_channels: track.audio_outputs.len() as u32,
                     midi: track.midi_input.is_some(),
@@ -6538,6 +6673,9 @@ impl Backend for FakeBackend {
             BackendTrackFxControl::ClearLogs => fx.logs = Arc::from([]),
             BackendTrackFxControl::TinySynthFx(_) => {
                 return Err(anyhow!("Tiny Synth/FX controls are unavailable"));
+            }
+            BackendTrackFxControl::OxiSynth(_) => {
+                return Err(anyhow!("OxiSynth controls are unavailable"));
             }
         }
         Ok(())

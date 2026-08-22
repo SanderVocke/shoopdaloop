@@ -4127,6 +4127,7 @@ dependencies = [
  "rfd",
  "rtrb",
  "rubato",
+ "serde",
  "serde_json",
  "sha2 0.11.0",
  "shoop_plugin_protocol",

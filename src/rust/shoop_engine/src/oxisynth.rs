@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use oxisynth::{MidiEvent, SoundFont, SoundFontId, Synth, SynthDescriptor};
+use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 
 use crate::midi_storage::MidiStorageElem;
@@ -22,7 +23,25 @@ pub struct OxiSynthPreset {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OxiSynthControl {
+    SelectProgram {
+        channel: u8,
+        bank: u32,
+        program: u8,
+    },
+    Audition {
+        channel: u8,
+        key: u8,
+        velocity: u8,
+        pressed: bool,
+    },
+    Panic,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OxiSynthChannelSnapshot {
+    pub baseline_bank: u32,
+    pub baseline_program: u8,
     pub bank: u32,
     pub program: u8,
     pub controllers: [u8; MIDI_CONTROLLERS],
@@ -36,6 +55,8 @@ impl Default for OxiSynthChannelSnapshot {
         Self {
             bank: 0,
             program: 0,
+            baseline_bank: 0,
+            baseline_program: 0,
             controllers: [0; MIDI_CONTROLLERS],
             pitch_bend: 8192,
             pitch_wheel_sensitivity: 2,
@@ -49,6 +70,19 @@ pub struct OxiSynthSnapshot {
     pub revision: u64,
     pub midi_activity_revision: u64,
     pub channels: [OxiSynthChannelSnapshot; MIDI_CHANNELS],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct OxiSynthProgramConfiguration {
+    pub bank: u32,
+    pub program: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct OxiSynthConfiguration {
+    pub version: u16,
+    pub soundfont_sha256: String,
+    pub channels: [OxiSynthProgramConfiguration; MIDI_CHANNELS],
 }
 
 impl Default for OxiSynthSnapshot {
@@ -129,6 +163,10 @@ impl OxiSynthProcessor {
             right: vec![0.0; max_frames],
         };
         result.refresh_all_channels();
+        for channel in &mut result.snapshot.channels {
+            channel.baseline_bank = channel.bank;
+            channel.baseline_program = channel.program;
+        }
         Ok(result)
     }
 
@@ -166,6 +204,36 @@ impl OxiSynthProcessor {
             .select_program(channel, self.sound_font_id, bank, program)
             .context("select OxiSynth program")?;
         self.refresh_channel(channel);
+        let state = &mut self.snapshot.channels[channel as usize];
+        state.baseline_bank = bank;
+        state.baseline_program = program;
+        Ok(())
+    }
+
+    pub fn configuration(&self) -> OxiSynthConfiguration {
+        OxiSynthConfiguration {
+            version: 1,
+            soundfont_sha256: SOUNDFONT_SHA256.to_owned(),
+            channels: std::array::from_fn(|channel| OxiSynthProgramConfiguration {
+                bank: self.snapshot.channels[channel].baseline_bank,
+                program: self.snapshot.channels[channel].baseline_program,
+            }),
+        }
+    }
+
+    pub fn encode_configuration(&self) -> Result<String> {
+        serde_json::to_string(&self.configuration()).context("encode OxiSynth configuration")
+    }
+
+    pub fn restore_configuration(&mut self, encoded: &str) -> Result<()> {
+        let configuration: OxiSynthConfiguration =
+            serde_json::from_str(encoded).context("decode OxiSynth configuration")?;
+        if configuration.version != 1 || configuration.soundfont_sha256 != SOUNDFONT_SHA256 {
+            anyhow::bail!("unsupported OxiSynth configuration");
+        }
+        for (channel, program) in configuration.channels.into_iter().enumerate() {
+            self.select_program(channel as u8, program.bank, program.program)?;
+        }
         Ok(())
     }
 
@@ -237,10 +305,47 @@ impl OxiSynthProcessor {
     fn note_midi_event(&mut self, event: MidiEvent) {
         self.snapshot.midi_activity_revision = self.snapshot.midi_activity_revision.wrapping_add(1);
         match event {
-            MidiEvent::SystemReset => self.refresh_all_channels(),
-            MidiEvent::ControlChange { channel, .. }
-            | MidiEvent::PitchBend { channel, .. }
-            | MidiEvent::ProgramChange { channel, .. } => self.refresh_channel(channel),
+            MidiEvent::SystemReset => {
+                for channel in &mut self.snapshot.channels {
+                    channel.channel_pressure = 0;
+                }
+                self.refresh_all_channels();
+            }
+            MidiEvent::ControlChange {
+                channel,
+                ctrl,
+                value,
+            } => {
+                if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
+                    state.controllers[ctrl as usize] = value;
+                    if matches!(ctrl, 0 | 32) {
+                        if let Ok((_, bank, program)) = self.synth.program(channel) {
+                            state.bank = bank;
+                            state.program = program as u8;
+                        }
+                    }
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                }
+            }
+            MidiEvent::PitchBend { channel, value } => {
+                if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
+                    state.pitch_bend = value;
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                }
+            }
+            MidiEvent::ProgramChange {
+                channel,
+                program_id,
+            } => {
+                if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
+                    state.program = program_id;
+                    if let Ok((_, bank, program)) = self.synth.program(channel) {
+                        state.bank = bank;
+                        state.program = program as u8;
+                    }
+                    self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+                }
+            }
             MidiEvent::ChannelPressure { channel, value } => {
                 if let Some(state) = self.snapshot.channels.get_mut(channel as usize) {
                     state.channel_pressure = value;
@@ -512,5 +617,8 @@ mod tests {
         assert_eq!(after.channels[2].program, 12);
         assert_eq!(after.channels[2].pitch_bend, 65 << 7 | 1);
         assert_eq!(after.channels[2].channel_pressure, 44);
+
+        processor.process(64, &[MidiStorageElem::new(0, &[0xff]).unwrap()]);
+        assert_eq!(processor.snapshot().channels[2].channel_pressure, 0);
     }
 }

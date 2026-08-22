@@ -6236,6 +6236,16 @@ impl FXChain {
             FXChainBackendKind::Tiny(control) => Ok(control.lock().unwrap().encode()),
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.save_state(),
+            FXChainBackendKind::OxiSynth => {
+                let title = self.title.clone();
+                self.shared
+                    .query_graph_scheduler_response(move |session| {
+                        session
+                            .oxisynth_processor(&title)
+                            .map(|processor| processor.encode_configuration())
+                    })?
+                    .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?
+            }
             _ => Ok(String::new()),
         }
     }
@@ -6272,7 +6282,21 @@ impl FXChain {
                 Ok(())
             }
             FXChainBackendKind::Test2x2x1 => Ok(()),
-            FXChainBackendKind::OxiSynth => Err(anyhow!("OxiSynth has no persistent state")),
+            FXChainBackendKind::OxiSynth => {
+                let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+                let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
+                let mut processor = engine::oxisynth::OxiSynthProcessor::new(
+                    sample_rate as f32,
+                    buffer_size as usize,
+                )?;
+                processor.restore_configuration(state)?;
+                let title = self.title.clone();
+                let displaced = self.shared.query_graph_scheduler_response(move |session| {
+                    session.set_oxisynth_processor(title, processor)
+                })?;
+                drop(displaced);
+                Ok(())
+            }
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
         }
     }
@@ -6286,6 +6310,52 @@ impl FXChain {
             FXChainBackendKind::Tiny(control) => Some(control.lock().unwrap().editor_state()),
             _ => None,
         }
+    }
+
+    pub fn oxisynth_snapshot(&self) -> Option<engine::oxisynth::OxiSynthSnapshot> {
+        if !matches!(self.backend, FXChainBackendKind::OxiSynth) {
+            return None;
+        }
+        let title = self.title.clone();
+        self.shared
+            .query_graph_scheduler_response(move |session| {
+                session
+                    .oxisynth_processor(&title)
+                    .map(|processor| processor.snapshot())
+            })
+            .ok()
+            .flatten()
+    }
+
+    pub fn set_oxisynth_control(&self, control: engine::oxisynth::OxiSynthControl) -> Result<()> {
+        if !matches!(self.backend, FXChainBackendKind::OxiSynth) {
+            return Err(anyhow!("not an OxiSynth chain"));
+        }
+        let title = self.title.clone();
+        self.shared
+            .query_graph_scheduler_response(move |session| {
+                let processor = session
+                    .oxisynth_processor_mut(&title)
+                    .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?;
+                match control {
+                    engine::oxisynth::OxiSynthControl::SelectProgram {
+                        channel,
+                        bank,
+                        program,
+                    } => processor.select_program(channel, bank, program),
+                    engine::oxisynth::OxiSynthControl::Audition {
+                        channel,
+                        key,
+                        velocity,
+                        pressed,
+                    } => processor.audition(channel, key, velocity, pressed),
+                    engine::oxisynth::OxiSynthControl::Panic => {
+                        processor.panic();
+                        Ok(())
+                    }
+                }
+            })??;
+        Ok(())
     }
 
     pub fn tiny_select_preset(&self, id: &str) -> Result<()> {

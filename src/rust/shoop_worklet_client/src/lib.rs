@@ -19,8 +19,8 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    FxLifecycle, ResolvedAudioDriverConfig, TinySynthFxState, TrackFxState,
-    TrackProcessorDescriptor, TrackProcessorEditorState,
+    FxLifecycle, OxiSynthChannelState, OxiSynthState, ResolvedAudioDriverConfig, TinySynthFxState,
+    TrackFxState, TrackProcessorDescriptor, TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
     Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
@@ -43,8 +43,8 @@ use shoop_backend::{
     BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
     BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
     BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment,
-    TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
+    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TinySynthFxControl,
+    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -837,6 +837,30 @@ impl RemoteWorkletBackend {
                                         .into(),
                                 })
                             });
+                            let oxisynth = fx.oxisynth.and_then(|oxi| {
+                                let channels: [OxiSynthChannelState; 16] = oxi
+                                    .channels
+                                    .into_iter()
+                                    .map(|channel| OxiSynthChannelState {
+                                        baseline_bank: channel.baseline_bank,
+                                        baseline_program: channel.baseline_program,
+                                        current_bank: channel.current_bank,
+                                        current_program: channel.current_program,
+                                        volume: channel.volume,
+                                        pan: channel.pan,
+                                        expression: channel.expression,
+                                        pitch_bend: channel.pitch_bend,
+                                        channel_pressure: channel.channel_pressure,
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .try_into()
+                                    .ok()?;
+                                Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
+                                    revision: oxi.revision,
+                                    midi_activity_revision: oxi.midi_activity_revision,
+                                    channels,
+                                }))
+                            });
                             TrackFxState {
                                 processor_type: TrackProcessorTypeId::new(fx.processor_type),
                                 active: fx.active,
@@ -845,7 +869,7 @@ impl RemoteWorkletBackend {
                                 generation: 0,
                                 crash_summary: None,
                                 logs: Arc::from([]),
-                                editor: tiny,
+                                editor: tiny.or(oxisynth),
                             }
                         }),
                         audio_channels: track.audio_channels,
@@ -1257,6 +1281,33 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
             TinySynthFxControl::ClearMidiCcAssignments
         }
         WireTrackFxControl::TinyPanic => TinySynthFxControl::Panic,
+        WireTrackFxControl::OxiSelectProgram {
+            channel,
+            bank,
+            program,
+        } => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectProgram {
+                channel: *channel,
+                bank: *bank,
+                program: *program,
+            });
+        }
+        WireTrackFxControl::OxiAudition {
+            channel,
+            key,
+            velocity,
+            pressed,
+        } => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::Audition {
+                channel: *channel,
+                key: *key,
+                velocity: *velocity,
+                pressed: *pressed,
+            });
+        }
+        WireTrackFxControl::OxiPanic => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic);
+        }
     })
 }
 
@@ -2553,6 +2604,29 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             }
             TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
         },
+        BackendTrackFxControl::OxiSynth(control) => match control {
+            OxiSynthControl::SelectProgram {
+                channel,
+                bank,
+                program,
+            } => WireTrackFxControl::OxiSelectProgram {
+                channel,
+                bank,
+                program,
+            },
+            OxiSynthControl::Audition {
+                channel,
+                key,
+                velocity,
+                pressed,
+            } => WireTrackFxControl::OxiAudition {
+                channel,
+                key,
+                velocity,
+                pressed,
+            },
+            OxiSynthControl::Panic => WireTrackFxControl::OxiPanic,
+        },
     }
 }
 
@@ -2943,6 +3017,7 @@ mod tests {
                             active: true,
                             visible: true,
                             tiny: Some(tiny),
+                            oxisynth: None,
                         }),
                     ),
                 ],

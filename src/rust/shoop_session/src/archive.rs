@@ -1133,11 +1133,10 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
         )),
         (TrackTopologyDocument::OxiSynth, Some(chain))
             if chain.chain_type != FxChainTypeDocument::OxiSynth
-                || !chain.internal_state.is_empty()
                 || !chain.midi_cc_assignments.is_empty() =>
         {
             Err(SessionError::Validation(format!(
-                "OxiSynth track {} contains mismatched or persistent processor state",
+                "OxiSynth track {} contains mismatched processor state",
                 track.id
             )))
         }

@@ -8,6 +8,8 @@ Add a native and browser OxiSynth editor in two deliverable phases. The MVP make
 
 - [x] Planning and architecture audit complete.
 - [x] Stage 1 API/state proof implemented and verified.
+- [x] Phase 1 direct controls, authoritative native/browser snapshots, configuration codec, session v5 persistence, and initial egui editor implemented.
+- [ ] Phase 1 lifecycle hardening, comprehensive tests, screenshots, and integration gate in progress.
 - [ ] Phase 1 implementation in progress.
 - [ ] Phase 2 implementation pending.
 - [ ] Final end-to-end validation pending.
@@ -63,6 +65,8 @@ Add a native and browser OxiSynth editor in two deliverable phases. The MVP make
 10. **Keep format evolution explicit.** Version the OxiSynth state payload independently where useful and increment the session/protocol versions where their closed representations change. Older readers must fail clearly rather than misinterpret asset-bearing sessions.
 11. **Preserve deterministic rendering.** UI controls are asynchronous control-plane changes with acknowledged snapshots; MIDI remains sample-offset performance input. Tests must define ordering when a control and MIDI program change reach the same processing quantum.
 12. **Treat phase boundaries as shippable.** Phase 1 must not depend on arbitrary-file infrastructure. Phase 2 extends the asset identity already used for the embedded font instead of replacing the MVP state model.
+13. **Prepare browser assets outside the AudioWorklet.** Parse, validate, and construct arbitrary SoundFont-owned state in a browser worker/main-thread preparation service that can transfer a prepared immutable asset or construction recipe without blocking the live-rendering AudioWorklet message/render thread. The final worklet handoff is bounded and must not parse SF2 bytes.
+14. **Reclaim processors off the realtime thread.** Replacement and removal return displaced OxiSynth processors through a bounded deferred-drop queue to the native control thread or browser host. Audio-thread graph mutations must never destroy SoundFonts or large processor buffers.
 
 ## State model to prove before implementation
 
@@ -95,8 +99,9 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [ ] Update MIDI processing so every successfully applied represented MIDI event updates canonical state at the same sample offset; coalesce publication to at most one fixed-size snapshot per processing quantum/revision.
 - [ ] Publish snapshots through a bounded lock-free mechanism consumable by the control thread/worklet host, including overflow/coalescing counters and last-known-good behavior.
 - [ ] Reset audition and active-voice state safely on panic, bypass, replacement, and removal without changing the persisted baseline unintentionally.
+- [ ] Return displaced and removed processors through bounded deferred-reclamation queues and drain/drop them outside native callbacks and AudioWorklet rendering.
 
-**Verification:** engine/session route tests cover direct-control versus MIDI ordering, snapshot coherence, high-rate controller/program traffic, queue saturation, activation/removal, no stuck audition notes, and warmed-up no-allocation/no-lock rendering.
+**Verification:** engine/session route tests cover direct-control versus MIDI ordering, snapshot coherence, high-rate controller/program traffic, queue saturation, activation/removal/replacement with deferred destruction, no stuck audition notes, and warmed-up no-allocation/no-lock rendering.
 
 ### Stage 3 — shared API, backend, and native/browser protocol
 
@@ -146,9 +151,10 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [ ] Add application library operations for import, list, inspect, remove-if-unreferenced, and explicit replacement; durably persist content-addressed bytes together with catalog metadata in native and browser storage.
 - [ ] Make byte/catalog installation and removal atomic so restarts never advertise a digest whose payload is absent, and garbage-collect only unreferenced payloads after the catalog update commits.
 - [ ] Resolve asset digests to newly assigned per-synth `SoundFontId` values and construct configured replacement processors transactionally.
+- [ ] Add native background jobs and a browser worker/main-thread preparation protocol so hashing, parsing, validation, and heavy construction never execute in the live AudioWorklet command or render callback; hand off only bounded prepared data and defer old-processor destruction back to the host.
 - [ ] Measure parse time and memory across multiple tracks; introduce safe immutable parsed-font sharing only if supported and beneficial.
 
-**Verification:** asset tests cover duplicate content/different filenames, hash mismatch, malformed/truncated/oversized SF2, sparse/non-GM presets, Unicode metadata, removal with live references, concurrent imports, atomic-write interruption, native and browser restart/reload with byte revalidation, native/browser parity, and failed replacement preserving audio.
+**Verification:** asset tests cover duplicate content/different filenames, hash mismatch, malformed/truncated/oversized SF2, sparse/non-GM presets, Unicode metadata, removal with live references, concurrent imports, atomic-write interruption, native and browser restart/reload with byte revalidation, native/browser parity, failed replacement preserving audio, and a browser live-rendering load/replacement test that proves the AudioWorklet does no SF2 parsing or large destruction.
 
 ### Stage 8 — phase-2 portable session assets and recovery
 
