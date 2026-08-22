@@ -132,7 +132,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Add accessible labels, standard egui keyboard navigation, wrapped compact layout behavior, empty/error states, and deterministic editor-local-state/lifecycle tests.
 - [x] Correct OxiSynth user documentation to describe the actual fixed two-ignored-dry/two-wet/one-MIDI topology and the new persistence semantics.
 
-**Verification:** egui action/layout tests cover search, sparse banks, channel switching, external updates while open, acknowledgement failure, audition release, panic, narrow layouts, and two editors with independent local state; run the native app and browser smoke path and capture screenshots of the perceptible UI change.
+**Verification:** egui action/layout tests cover search, sparse banks, channel switching, external updates while open, acknowledgement failure, audition release, panic, narrow layouts, and two editors with independent local state; run the native app and browser smoke path and capture screenshots of the perceptible UI change. Native screenshot captured at `docs/source/resources/oxisynth_editor.png`; browser capture remains part of the final matrix.
 
 ### Stage 6 — phase-1 integration gate
 
