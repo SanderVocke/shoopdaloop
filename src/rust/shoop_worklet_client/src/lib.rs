@@ -1093,6 +1093,8 @@ fn browser_oxisynth_port_descriptors(
             direction: BackendPortDirection::Input,
             role: BackendPortRole::AudioInput,
         });
+    }
+    for index in 0..2 {
         let id = BackendPortId::from_raw(*next_port_id);
         *next_port_id = next_port_id.saturating_add(1);
         ports.push(BackendPortDescriptor {
@@ -2588,6 +2590,34 @@ mod tests {
 
     #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
     shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn oxisynth_port_reservations_match_worklet_registration_order() {
+        let mut next_port_id = 10;
+        let ports = browser_oxisynth_port_descriptors("synth", &mut next_port_id);
+        assert_eq!(next_port_id, 15);
+        assert_eq!(
+            ports
+                .iter()
+                .map(|port| (port.id.raw(), port.role, port.direction))
+                .collect::<Vec<_>>(),
+            vec![
+                (10, BackendPortRole::AudioInput, BackendPortDirection::Input,),
+                (11, BackendPortRole::AudioInput, BackendPortDirection::Input,),
+                (
+                    12,
+                    BackendPortRole::AudioOutput,
+                    BackendPortDirection::Output,
+                ),
+                (
+                    13,
+                    BackendPortRole::AudioOutput,
+                    BackendPortDirection::Output,
+                ),
+                (14, BackendPortRole::MidiInput, BackendPortDirection::Input,),
+            ]
+        );
+    }
 
     #[derive(Default)]
     struct MemoryEndpoint {
