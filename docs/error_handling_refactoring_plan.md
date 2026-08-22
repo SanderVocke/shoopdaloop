@@ -75,20 +75,25 @@ This stage is a dependency for all implementation stages.
 
 Depends on Stage 1 classifications. This stage must land before generic notification state is removed.
 
-- [ ] Replace non-boundary `eprintln!` calls with structured `tracing` events at an appropriate level.
-- [ ] Add structured events for application-model failures that currently rely on generic notifications as their only diagnostic output.
-- [ ] Include stable operation names and useful fields such as intent kind, task or request ID, path, subsystem, and underlying error.
-- [ ] Make polling and periodic-update diagnostics transition-aware or bounded, including a recovery event when that information is useful.
-- [ ] Retain direct stderr reporting only for logging initialization failure, fatal process boundaries, or shutdown paths where the subscriber cannot be relied upon.
-- [ ] Verify startup fallback and recovery conditions use warning severity rather than being promoted to generic UI errors.
+- [x] Replace non-boundary `eprintln!` calls with structured `tracing` events at an appropriate level.
+- [x] Add structured events for application-model failures that currently rely on generic notifications as their only diagnostic output.
+- [x] Include stable operation names and useful fields such as intent kind, task or request ID, path, subsystem, and underlying error.
+- [x] Make polling and periodic-update diagnostics transition-aware or bounded, including a recovery event when that information is useful.
+- [x] Retain direct stderr reporting only for logging initialization failure, fatal process boundaries, or shutdown paths where the subscriber cannot be relied upon.
+- [x] Verify startup fallback and recovery conditions use warning severity rather than being promoted to generic UI errors.
 
 ### Stage 2 verification
 
-- [ ] Add or update focused tests for any new transition/suppression state.
-- [ ] Exercise representative intent, backend, startup fallback, script scan, and I/O failures and verify one appropriately leveled structured event is emitted without per-frame repetition.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
+- [x] Add or update focused tests for any new transition/suppression state.
+- [x] Exercise representative intent, backend, startup fallback, script scan, and I/O failures and verify one appropriately leveled structured event is emitted without per-frame repetition.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
+
+### Stage 2 completion record
+
+- Structured diagnostics now cover former notification producers, periodic failures are logged once until recovery, and non-boundary stderr dispatch reporting uses tracing.
+- Formatting, the test-usage policy check, the periodic-failure test, the complete `shoop_app` unit suite, and warning-denying package checks passed. The warning-denying workspace build reached all changed packages but the host-only audio-worklet shared-library link is unavailable because the container Tracy archive is not position-independent.
 
 ## Stage 3: Narrow file-I/O failure handling
 

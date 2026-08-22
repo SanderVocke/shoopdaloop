@@ -13,21 +13,21 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
-    AppIntent, AppNotification, AppSnapshot, ApplicationPortOwner, ApplicationPortState,
-    AudioChannelMappingState, AudioChannelSelectionState, AudioDriverConfig,
-    AudioDriverRuntimeState, AudioDriverState, AudioDriverSwitchState, AudioDriverSwitchStatus,
-    ChannelId, ClickSoundDescriptor, ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest,
-    ClickTrackState, CompositeDetailsState, CompositeEventDetailsState, CompositeEventId,
+    AppIntent, AppSnapshot, ApplicationPortOwner, ApplicationPortState, AudioChannelMappingState,
+    AudioChannelSelectionState, AudioDriverConfig, AudioDriverRuntimeState, AudioDriverState,
+    AudioDriverSwitchState, AudioDriverSwitchStatus, ChannelId, ClickSoundDescriptor,
+    ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest, ClickTrackState,
+    CompositeDetailsState, CompositeEventDetailsState, CompositeEventId,
     CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
     ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultRecordingAction,
     DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
     IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
-    LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState, NotificationLevel,
-    PendingConnectionState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
-    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
-    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
-    TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec,
-    TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
+    LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState, PendingConnectionState,
+    PianoAction, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
+    ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind, ScriptMidiRuleDirection,
+    ScriptingState, StatusState, StructuralState, TaskId, TrackAction, TrackControlState, TrackId,
+    TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState,
+    TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAsyncResult, BackendAudioChannelUpdate, BackendAudioContent, BackendAudioData,
@@ -531,33 +531,34 @@ fn update_application(
     }
     model.age_pending_connections(elapsed);
     match backend.poll() {
-        Ok(snapshot) => model.apply_backend_snapshot(snapshot),
+        Ok(snapshot) => {
+            model.clear_periodic_failure("backend.poll");
+            model.apply_backend_snapshot(snapshot);
+        }
         Err(error) => {
             model.connection_backend_available = false;
-            model.push_connection_error(ConnectionErrorState {
-                port_id: None,
-                external_port: None,
-                kind: ConnectionErrorKind::BackendUnavailable,
-                message: format!("backend poll failed: {error}"),
-            });
-            model.notify_error(format!("backend poll failed: {error}"));
+            let message = format!("backend poll failed: {error}");
+            if model.report_periodic_failure("backend.poll", message.clone()) {
+                model.push_connection_error(ConnectionErrorState {
+                    port_id: None,
+                    external_port: None,
+                    kind: ConnectionErrorKind::BackendUnavailable,
+                    message,
+                });
+            }
         }
     }
-    if let Err(error) = model.refresh_backend_composite_configs(backend) {
-        model.notify_error(error);
-    }
-    if let Err(error) = model.advance_script_compositions(backend, elapsed) {
-        model.notify_error(error);
-    }
-    if let Err(error) = model.refresh_selected_media(backend) {
-        model.notify_error(error);
-    }
+    let composite_result = model.refresh_backend_composite_configs(backend);
+    model.report_periodic_result("backend.composite_configs", composite_result);
+    let composition_result = model.advance_script_compositions(backend, elapsed);
+    model.report_periodic_result("scripting.compositions", composition_result);
+    let selected_media_result = model.refresh_selected_media(backend);
+    model.report_periodic_result("backend.selected_media", selected_media_result);
     model.advance_io(backend);
     #[cfg(not(target_arch = "wasm32"))]
     model.advance_script_conversions();
-    if let Err(error) = model.advance_scripting(backend, elapsed) {
-        model.notify_error(error);
-    }
+    let scripting_result = model.advance_scripting(backend, elapsed);
+    model.report_periodic_result("scripting.advance", scripting_result);
     model.revision = model.revision.wrapping_add(1);
     {
         let _span = tracing::trace_span!(
@@ -603,7 +604,7 @@ struct ApplicationModel {
     audio_drivers: AudioDriverRuntimeState,
     click_track: ClickTrackState,
     next_preview_request_id: u64,
-    notifications: Vec<AppNotification>,
+    active_periodic_failures: BTreeSet<&'static str>,
     next_task_id: u64,
     next_audio_switch_id: u64,
     pending_audio_switch: Option<PendingAudioSwitch>,
@@ -1226,7 +1227,7 @@ impl ApplicationModel {
                 ..Default::default()
             },
             next_preview_request_id: 1,
-            notifications: Vec::new(),
+            active_periodic_failures: BTreeSet::new(),
             next_task_id: 1,
             next_audio_switch_id: 1,
             pending_audio_switch: None,
@@ -1272,7 +1273,7 @@ impl ApplicationModel {
                 Ok(id) => ids.push(Some(id)),
                 Err(error) => {
                     ids.push(None);
-                    self.notify_error(error.to_string());
+                    self.report_error(error.to_string());
                 }
             }
         }
@@ -1438,12 +1439,13 @@ impl ApplicationModel {
                 self.confirm_audio_channel_selection(task_id, channels)
             }
             AppIntent::CancelIoTask { task_id } => self.cancel_io_task(task_id),
-            AppIntent::ReportFileIoError { task_id, message } => {
-                if task_id.is_some_and(|id| self.io_task.as_ref().is_some_and(|task| task.id == id))
-                {
+            AppIntent::FailIoTask { task_id, message } => {
+                if self.io_task.as_ref().is_some_and(|task| task.id == task_id) {
+                    tracing::error!(task_id = task_id.raw(), error = %message, "frontend.app.io_task_failed");
                     self.finish_io(IoTaskStatus::Failed, &message);
+                } else {
+                    tracing::warn!(task_id = task_id.raw(), error = %message, "frontend.app.stale_io_task_failure");
                 }
-                self.notify_error(message);
                 Ok(())
             }
             AppIntent::PreviewClickTrack { loop_id, request } => {
@@ -1479,7 +1481,7 @@ impl ApplicationModel {
         if let Err(error) = result {
             span.record("outcome", "error");
             tracing::warn!(intent = kind, error = %error, "frontend.app.intent_failed");
-            self.notify_error(error);
+            self.report_error(error);
         } else {
             span.record("outcome", "ok");
         }
@@ -1828,11 +1830,11 @@ impl ApplicationModel {
                         pending.expected_generation,
                         bundle,
                     ) {
-                        self.notify_error(format!("could not include script in session: {error}"));
+                        self.report_error(format!("could not include script in session: {error}"));
                     }
                 }
                 Err(error) => {
-                    self.notify_error(format!("could not include script in session: {error}"))
+                    self.report_error(format!("could not include script in session: {error}"))
                 }
             }
             self.refresh_scripting_view();
@@ -2841,7 +2843,7 @@ impl ApplicationModel {
         }
         let source = self.audio_drivers.switch.source.clone();
         if let Err(error) = self.handle_piano_action(backend, PianoAction::ReleaseAll) {
-            self.notify_error(error);
+            self.report_error(error);
         }
         self.audio_drivers.switch.status = AudioDriverSwitchStatus::Switching;
         self.audio_drivers.switch.message = "Capturing the current session".to_owned();
@@ -3576,7 +3578,7 @@ impl ApplicationModel {
 
     fn fail_io(&mut self, message: String) {
         self.finish_io(IoTaskStatus::Failed, &message);
-        self.notify_error(message);
+        self.report_error(message);
     }
 
     fn start_session_encoding(&mut self, bundle: SessionBundle) {
@@ -3915,7 +3917,7 @@ impl ApplicationModel {
                                             )
                                         });
                                     if let Err(error) = result {
-                                        self.notify_error(error);
+                                        self.report_error(error);
                                     }
                                 } else {
                                     self.pending_io = Some(PendingIo::CommitLoopDuplicate {
@@ -3927,7 +3929,7 @@ impl ApplicationModel {
                                     });
                                 }
                             }
-                            None => self.notify_error(format!(
+                            None => self.report_error(format!(
                                 "backend content for loop {} is unavailable",
                                 source.id
                             )),
@@ -3937,7 +3939,7 @@ impl ApplicationModel {
                         self.pending_io = Some(PendingIo::CaptureLoopDuplicate { source, target });
                     }
                     Err(error) => {
-                        self.notify_error(format!("could not capture loop {}: {error}", source.id))
+                        self.report_error(format!("could not capture loop {}: {error}", source.id))
                     }
                 }
             }
@@ -3960,7 +3962,7 @@ impl ApplicationModel {
                             .finish_primitive_loop_duplicate(backend, source, target, gain, balance)
                         {
                             Ok(()) => {}
-                            Err(error) => self.notify_error(error),
+                            Err(error) => self.report_error(error),
                         }
                     }
                     Ok(BackendAsyncResult::Pending(_)) => {
@@ -3973,7 +3975,7 @@ impl ApplicationModel {
                         });
                     }
                     Err(error) => {
-                        self.notify_error(format!("could not duplicate loop content: {error}"))
+                        self.report_error(format!("could not duplicate loop content: {error}"))
                     }
                 }
             }
@@ -6446,7 +6448,7 @@ impl ApplicationModel {
                 }
                 None => {}
             }
-            self.notify_error(format!(
+            self.report_error(format!(
                 "Backend rejected {:?} mutation (driver generation {}, sequence {}): {}",
                 failure.kind, failure.driver_generation, failure.sequence, failure.message
             ));
@@ -6536,7 +6538,7 @@ impl ApplicationModel {
             } else {
                 "callbacks"
             };
-            self.notify_warning(format!(
+            self.report_warning(format!(
                 "Audio recovered after memory grew during {render_memory_growths} render {callback_label}; timing may have been disrupted"
             ));
         }
@@ -7090,7 +7092,7 @@ impl ApplicationModel {
             kind: ConnectionErrorKind::CommandSaturated,
             message: message.clone(),
         });
-        self.notify_error(message);
+        self.report_error(message);
     }
 
     fn push_connection_error(&mut self, error: ConnectionErrorState) {
@@ -7881,7 +7883,6 @@ impl ApplicationModel {
             scripting: Arc::clone(&self.scripting_view),
             click_track: self.click_track.clone(),
             io_task: self.io_task.clone(),
-            notifications: self.notifications.clone(),
         }
     }
 
@@ -8493,13 +8494,10 @@ impl ApplicationModel {
         };
         let (bytes, extension, mime) = if standard {
             let encoded = encode_standard_midi(&midi).map_err(|error| error.to_string())?;
-            self.notifications.push(AppNotification {
-                level: NotificationLevel::Warning,
-                message: format!(
-                    "Standard MIDI export timing error is at most {:.3} samples",
-                    encoded.max_quantization_error_frames
-                ),
-            });
+            tracing::warn!(
+                max_error_samples = encoded.max_quantization_error_frames,
+                "frontend.app.standard_midi_quantized"
+            );
             (encoded.bytes, "mid", "audio/midi")
         } else {
             (
@@ -8521,20 +8519,38 @@ impl ApplicationModel {
         Ok(())
     }
 
-    fn notify_warning(&mut self, message: String) {
-        self.notify(NotificationLevel::Warning, message);
+    fn report_warning(&self, message: String) {
+        tracing::warn!(diagnostic = %message, "frontend.app.warning");
     }
 
-    fn notify_error(&mut self, message: String) {
-        self.notify(NotificationLevel::Error, message);
+    fn report_error(&self, message: String) {
+        tracing::error!(error = %message, "frontend.app.operation_failed");
     }
 
-    fn notify(&mut self, level: NotificationLevel, message: String) {
-        self.notifications.push(AppNotification { level, message });
-        const MAX_NOTIFICATIONS: usize = 32;
-        if self.notifications.len() > MAX_NOTIFICATIONS {
-            self.notifications
-                .drain(..self.notifications.len() - MAX_NOTIFICATIONS);
+    fn report_periodic_result(
+        &mut self,
+        operation: &'static str,
+        result: std::result::Result<(), String>,
+    ) {
+        match result {
+            Ok(()) => self.clear_periodic_failure(operation),
+            Err(error) => {
+                self.report_periodic_failure(operation, error);
+            }
+        }
+    }
+
+    fn report_periodic_failure(&mut self, operation: &'static str, message: String) -> bool {
+        if !self.active_periodic_failures.insert(operation) {
+            return false;
+        }
+        tracing::error!(operation, error = %message, "frontend.app.periodic_operation_failed");
+        true
+    }
+
+    fn clear_periodic_failure(&mut self, operation: &'static str) {
+        if self.active_periodic_failures.remove(operation) {
+            tracing::info!(operation, "frontend.app.periodic_operation_recovered");
         }
     }
 }
@@ -10488,12 +10504,7 @@ mod tests {
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
-        assert!(
-            !runtime.snapshot().notifications.iter().any(|notification| {
-                notification.level == NotificationLevel::Error
-                    && notification.message.contains("recorded FX")
-            })
-        );
+        assert!(runtime.snapshot().tracks[1].loops[0].has_recorded_fx_state);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -10555,11 +10566,7 @@ mod tests {
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Recording
         );
-        assert!(runtime.snapshot().notifications.iter().any(|notification| {
-            notification
-                .message
-                .contains("active recording/replacement content to settle")
-        }));
+        assert!(runtime.snapshot().io_task.is_none());
         runtime
             .dispatch(AppIntent::Loop {
                 track_id: track.id,
@@ -10580,12 +10587,6 @@ mod tests {
         assert_eq!(after.tracks[1].id, track.id);
         assert_eq!(after.tracks[1].loops[0].id, loop_id);
         assert!(after.tracks[1].loops[0].has_recorded_fx_state);
-        assert!(after.notifications.iter().any(|notification| {
-            notification.level == NotificationLevel::Error
-                && notification
-                    .message
-                    .contains("injected processor state restore failure")
-        }));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -11306,11 +11307,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
-        assert!(runtime.snapshot().notifications.iter().any(|notification| {
-            notification
-                .message
-                .contains("stale or unknown script dialog button")
-        }));
+        assert_eq!(runtime.snapshot().scripting.dialogs.len(), 3);
 
         runtime
             .dispatch(AppIntent::StopScript { script_id: owner })
@@ -11556,12 +11553,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         press(&mut runtime, 83, 0);
         press(&mut runtime, 71, 0);
         let after_grab = runtime.snapshot();
-        assert!(after_grab
-            .notifications
-            .iter()
-            .any(|notification| notification
-                .message
-                .contains("cannot grab before the sync loop has a length")));
+        assert!(after_grab.tracks[1].loops[0].empty);
         press(&mut runtime, 80, 0);
         press(&mut runtime, 78, 0);
         assert_eq!(
@@ -11735,19 +11727,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
 
         press(&mut runtime, 87);
-        assert!(runtime
-            .snapshot()
-            .notifications
-            .iter()
-            .any(|notification| notification
-                .message
-                .contains("cannot record with targeted: no loop is targeted")));
+        assert!(!runtime.snapshot().tracks[1].loops[0].targeted);
         press(&mut runtime, 16_777_216);
-        let notifications_before_empty_w = runtime.snapshot().notifications.len();
         press(&mut runtime, 87);
-        assert_eq!(
-            runtime.snapshot().notifications.len(),
-            notifications_before_empty_w + 1
+        assert_ne!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Recording
         );
         press(&mut runtime, 16_777_236);
         press(&mut runtime, 67);
@@ -11760,13 +11745,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .unwrap();
         runtime.tick(Duration::ZERO);
         press(&mut runtime, 32);
-        assert!(runtime
-            .snapshot()
-            .notifications
-            .iter()
-            .any(|notification| notification
-                .message
-                .contains("cannot grab before the sync loop has a length")));
+        assert!(runtime.snapshot().tracks[1].loops[0].empty);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -13546,9 +13525,8 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert_eq!(
             after_default.tracks[1].loops[0].mode,
             LoopMode::Recording,
-            "script={:?} notifications={:?}",
-            after_default.scripting.scripts[0],
-            after_default.notifications
+            "script={:?}",
+            after_default.scripting.scripts[0]
         );
         send_note(&mut runtime, &midi_control, 70, true);
         send_note(&mut runtime, &midi_control, grid_note, true);
@@ -13573,13 +13551,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         send_note(&mut runtime, &midi_control, 85, true);
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 85, false);
-        assert!(runtime
-            .snapshot()
-            .notifications
-            .iter()
-            .any(|notification| notification
-                .message
-                .contains("cannot grab before the sync loop has a length")));
+        assert!(runtime.snapshot().tracks[1].loops[0].empty);
         send_note(&mut runtime, &midi_control, 82, true);
         send_note(&mut runtime, &midi_control, grid_note, true);
         send_note(&mut runtime, &midi_control, 82, false);
@@ -14160,9 +14132,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
 
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
-    fn actor_rejects_stale_and_mismatched_ids_observably() {
+    fn actor_rejects_stale_and_mismatched_ids_without_state_changes() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();
+        let initial = handle.snapshot();
         handle
             .dispatch(AppIntent::Loop {
                 track_id: TrackId::from_raw(900),
@@ -14170,10 +14143,9 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 action: LoopAction::IconClicked(SelectionModifiers::default()),
             })
             .unwrap();
-        let snapshot = wait_for(&handle, |snapshot| !snapshot.notifications.is_empty());
-        assert!(snapshot.notifications[0]
-            .message
-            .contains("stale or unknown"));
+        let snapshot = wait_for(&handle, |snapshot| snapshot.revision > initial.revision);
+        assert_eq!(snapshot.tracks.len(), initial.tracks.len());
+        assert_eq!(snapshot.tracks[0].id, initial.tracks[0].id);
 
         handle
             .dispatch(AppIntent::Track {
@@ -14181,10 +14153,9 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 action: TrackAction::NameChanged("nope".to_owned()),
             })
             .unwrap();
-        let snapshot = wait_for(&handle, |snapshot| snapshot.notifications.len() >= 2);
-        assert!(snapshot.notifications[1]
-            .message
-            .contains("stale or unknown track"));
+        let after_track = wait_for(&handle, |candidate| candidate.revision > snapshot.revision);
+        assert_eq!(after_track.tracks.len(), initial.tracks.len());
+        assert_eq!(after_track.tracks[0].id, initial.tracks[0].id);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -14201,7 +14172,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 midi: false,
             }))
             .unwrap();
-        let snapshot = wait_for(&handle, |snapshot| !snapshot.notifications.is_empty());
+        let snapshot = wait_for(&handle, |snapshot| snapshot.revision > 1);
         assert_eq!(snapshot.tracks.len(), 1);
         assert!(snapshot.connections.application_ports.iter().all(|port| {
             port.owner == ApplicationPortOwner::GlobalFxControl
@@ -14211,9 +14182,6 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         if track_id == snapshot.tracks[0].id
                 )
         }));
-        assert!(snapshot.notifications[0]
-            .message
-            .contains("injected track creation failure"));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -15634,10 +15602,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             AudioDriverSwitchStatus::Idle
         );
         assert_eq!(snapshot.status.sample_rate, 48_000);
-        assert!(snapshot
-            .notifications
-            .iter()
-            .any(|notification| notification.message.contains("I/O task is active")));
+        assert!(snapshot.io_task.is_some());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -16342,11 +16307,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime.tick(Duration::ZERO);
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
         runtime.tick(Duration::ZERO);
-        assert!(runtime.snapshot().notifications.iter().any(|notification| {
-            notification
-                .message
-                .contains("active recording/replacement")
-        }));
+        assert!(runtime.snapshot().io_task.is_none());
         runtime
             .dispatch(AppIntent::Loop {
                 track_id: persistent_track,
@@ -16464,9 +16425,11 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
         assert!(runtime
             .snapshot()
-            .notifications
-            .iter()
-            .any(|notification| notification.message.contains("unsupported file format")));
+            .io_task
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("unsupported file format"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -16644,11 +16607,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             before_ids
         );
         assert_eq!(after.io_task.as_ref().unwrap().status, IoTaskStatus::Failed);
-        assert!(after.notifications.iter().any(|notification| {
-            notification
-                .message
-                .contains("unsupported trigger topology")
-        }));
+        assert!(after
+            .io_task
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("unsupported trigger topology"));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -17482,6 +17446,22 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn periodic_failures_are_reported_once_until_recovery() {
+        let mut backend = FakeBackend::default();
+        let files = Arc::new(Mutex::new(VecDeque::new()));
+        let previews = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model = ApplicationModel::initialize(&mut backend, files, previews, false).unwrap();
+
+        assert!(model.report_periodic_failure("test.operation", "first failure".to_owned()));
+        assert!(!model.report_periodic_failure("test.operation", "repeated failure".to_owned()));
+        assert!(model.active_periodic_failures.contains("test.operation"));
+
+        model.clear_periodic_failure("test.operation");
+        assert!(model.report_periodic_failure("test.operation", "new failure".to_owned()));
+        assert!(model.active_periodic_failures.contains("test.operation"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn render_memory_growth_is_a_recoverable_warning() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
@@ -17492,18 +17472,13 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         snapshot.status.render_memory_growths = 1;
         model.apply_backend_snapshot(snapshot.clone());
         assert_eq!(model.status.render_memory_growths, 1);
-        assert_eq!(model.notifications.len(), 1);
-        assert_eq!(model.notifications[0].level, NotificationLevel::Warning);
-        assert!(model.notifications[0].message.contains("Audio recovered"));
 
         model.apply_backend_snapshot(snapshot.clone());
-        assert_eq!(model.notifications.len(), 1);
+        assert_eq!(model.status.render_memory_growths, 1);
 
         snapshot.status.render_memory_growths = 3;
         model.apply_backend_snapshot(snapshot);
         assert_eq!(model.status.render_memory_growths, 3);
-        assert_eq!(model.notifications.len(), 2);
-        assert!(model.notifications[1].message.contains('2'));
     }
 
     #[shoop_wasm_test_support::shoop_test]
