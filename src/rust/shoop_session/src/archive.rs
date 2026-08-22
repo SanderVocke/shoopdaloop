@@ -1,7 +1,7 @@
 use crate::document::{
-    AudioPayload, ChannelModeDocument, DataTypeDocument, FormatVersion, FxChainTypeDocument,
-    MediaPayload, SessionBundle, SessionDocument, TrackDocument, TrackTopologyDocument,
-    AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
+    AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
+    FxChainTypeDocument, MediaPayload, SessionBundle, SessionDocument, TrackDocument,
+    TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
     SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
@@ -1011,6 +1011,35 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         if event.n_cycles == Some(0) {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} has a zero-length instance",
+                                loop_.id
+                            )));
+                        }
+                        if event.start_cycle > i64::MAX as u64 {
+                            return Err(SessionError::Validation(format!(
+                                "composite loop {} has an out-of-range start cycle",
+                                loop_.id
+                            )));
+                        }
+                        if event.mode.as_deref().is_some_and(|mode| {
+                            !matches!(
+                                mode,
+                                "stopped"
+                                    | "playing"
+                                    | "recording"
+                                    | "replacing"
+                                    | "playing_dry_through_wet"
+                                    | "recording_dry_into_wet"
+                            )
+                        }) {
+                            return Err(SessionError::Validation(format!(
+                                "composite loop {} has an unsupported instance mode",
+                                loop_.id
+                            )));
+                        }
+                        if composite.kind == CompositeKindDocument::Regular && event.mode.is_some()
+                        {
+                            return Err(SessionError::Validation(format!(
+                                "regular composite loop {} has an explicit instance mode",
                                 loop_.id
                             )));
                         }

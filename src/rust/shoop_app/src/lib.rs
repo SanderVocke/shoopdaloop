@@ -886,7 +886,7 @@ fn composite_with_appended_sources(
     add: &[LoopId],
     start_cycle: u64,
     serial_step_cycles: &[u64],
-) -> CompositeDocument {
+) -> Result<CompositeDocument, String> {
     let mut composite = existing.cloned().unwrap_or(CompositeDocument {
         kind: CompositeKindDocument::Regular,
         instances: Vec::new(),
@@ -901,7 +901,8 @@ fn composite_with_appended_sources(
         .map(|instance| instance.instance_id)
         .max()
         .unwrap_or(0)
-        .saturating_add(1);
+        .checked_add(1)
+        .ok_or_else(|| "composite instance ID space is exhausted".to_owned())?;
     let mut position = start_cycle;
     for (source, duration) in add.iter().zip(serial_step_cycles) {
         composite.instances.push(CompositeLoopInstanceDocument {
@@ -911,17 +912,21 @@ fn composite_with_appended_sources(
             mode: None,
             n_cycles: None,
         });
-        next_id = next_id.saturating_add(1);
-        position = position.saturating_add(*duration);
+        next_id = next_id
+            .checked_add(1)
+            .ok_or_else(|| "composite instance ID space is exhausted".to_owned())?;
+        position = position
+            .checked_add(*duration)
+            .ok_or_else(|| "composite schedule position overflows".to_owned())?;
     }
-    composite
+    Ok(composite)
 }
 
 fn composite_with_source_at(
     existing: &CompositeDocument,
     source: LoopId,
     start_iteration: u64,
-) -> CompositeDocument {
+) -> Result<CompositeDocument, String> {
     let mut composite = existing.clone();
     let mode = (composite.kind == CompositeKindDocument::Script).then(|| "playing".to_owned());
     let instance_id = composite
@@ -930,7 +935,8 @@ fn composite_with_source_at(
         .map(|instance| instance.instance_id)
         .max()
         .unwrap_or(0)
-        .saturating_add(1);
+        .checked_add(1)
+        .ok_or_else(|| "composite instance ID space is exhausted".to_owned())?;
     composite.instances.push(CompositeLoopInstanceDocument {
         instance_id,
         start_cycle: start_iteration,
@@ -938,7 +944,7 @@ fn composite_with_source_at(
         mode,
         n_cycles: None,
     });
-    composite
+    Ok(composite)
 }
 
 fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSequenceChannelState> {
@@ -2360,7 +2366,7 @@ impl ApplicationModel {
                     &add,
                     start_cycle,
                     &durations,
-                );
+                )?;
                 let previous_backend_composite = target_loop.backend_composite;
                 let backend_composite = match self.backend_composite_config(&composite)? {
                     Some(config) => match previous_backend_composite {
@@ -5185,7 +5191,7 @@ impl ApplicationModel {
             return Err("positioned composite schedules require backend support".to_owned());
         }
 
-        let composite = composite_with_source_at(existing, source, start_iteration);
+        let composite = composite_with_source_at(existing, source, start_iteration)?;
         let previous_backend_composite = target_model.backend_composite;
         let config = self.backend_composite_config(&composite)?.ok_or_else(|| {
             "positioned composite schedule is not backend-configurable".to_owned()
@@ -5340,7 +5346,8 @@ impl ApplicationModel {
             .map(|instance| instance.instance_id)
             .max()
             .unwrap_or(0)
-            .saturating_add(1);
+            .checked_add(1)
+            .ok_or_else(|| "composite instance ID space is exhausted".to_owned())?;
         for event in selected_details {
             let document = existing
                 .instances
@@ -5354,7 +5361,9 @@ impl ApplicationModel {
                 .ok_or_else(|| "composite relocation position overflow".to_owned())?;
             if duplicate {
                 document.instance_id = next_id;
-                next_id = next_id.saturating_add(1);
+                next_id = next_id
+                    .checked_add(1)
+                    .ok_or_else(|| "composite instance ID space is exhausted".to_owned())?;
             }
             composite.instances.push(document);
         }
@@ -12501,6 +12510,22 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             let moved = &after.events[after.events.len() - 2..];
             assert_eq!(moved[0].start_frame, 10 * cycle_length);
             assert_eq!(moved[1].start_frame - moved[0].start_frame, relative);
+            if duplicate {
+                assert!(moved.iter().all(|event| selected
+                    .iter()
+                    .all(|id| id.instance_id != event.instance_id)));
+            } else {
+                assert_eq!(
+                    moved
+                        .iter()
+                        .map(|event| event.instance_id)
+                        .collect::<Vec<_>>(),
+                    selected
+                        .iter()
+                        .map(|event| event.instance_id)
+                        .collect::<Vec<_>>()
+                );
+            }
             assert!(after.events.iter().any(|event| {
                 event.loop_id == before.events[1].loop_id
                     && event.start_frame == before.events[1].start_frame
