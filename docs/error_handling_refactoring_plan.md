@@ -99,22 +99,27 @@ Depends on Stage 1 classifications. This stage must land before generic notifica
 
 Depends on Stage 2 so failures remain observable after generic publication is removed.
 
-- [ ] Replace the optional-ID file-I/O error intent with an explicitly named I/O-task failure intent that requires a task ID and updates only the matching task.
-- [ ] Keep concise failure information in `IoTaskState` so the active I/O dialog explains the failed operation and its terminal state.
-- [ ] Update native and browser save paths with active tasks to log diagnostic detail and dispatch the typed task failure.
-- [ ] Route picker reads, URL fetches, dropped files, scans, and startup warnings without active tasks to structured logging or their actual feature owner.
-- [ ] Define behavior for stale task failure completion and log it without overwriting a newer task.
-- [ ] Ensure successful, cancelled, and failed task lifecycles remain distinguishable without consulting generic notifications.
+- [x] Replace the optional-ID file-I/O error intent with an explicitly named I/O-task failure intent that requires a task ID and updates only the matching task.
+- [x] Keep concise failure information in `IoTaskState` so the active I/O dialog explains the failed operation and its terminal state.
+- [x] Update native and browser save paths with active tasks to log diagnostic detail and dispatch the typed task failure.
+- [x] Route picker reads, URL fetches, dropped files, scans, and startup warnings without active tasks to structured logging or their actual feature owner.
+- [x] Define behavior for stale task failure completion and log it without overwriting a newer task.
+- [x] Ensure successful, cancelled, and failed task lifecycles remain distinguishable without consulting generic notifications.
 
 ### Stage 3 verification
 
-- [ ] Add or update focused model tests for matching and stale task failures.
-- [ ] Verify failed session and loop imports/exports remain visible in the I/O dialog while unrelated file failures do not create UI overlays.
-- [ ] Verify native and browser I/O callers no longer dispatch an error intent without a task ID.
-- [ ] Run targeted `shoop_app`, `shoop_egui`, and `shoopdaloop` tests covering I/O state and rendering.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
+- [x] Add or update focused model tests for matching and stale task failures.
+- [x] Verify failed session and loop imports/exports remain visible in the I/O dialog while unrelated file failures do not create UI overlays.
+- [x] Verify native and browser I/O callers no longer dispatch an error intent without a task ID.
+- [x] Run targeted `shoop_app`, `shoop_egui`, and `shoopdaloop` tests covering I/O state and rendering.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
+
+### Stage 3 completion record
+
+- `FailIoTask` now requires a task ID, logs matching failures, ignores stale completions without mutating newer state, and leaves non-task file and scan failures in structured logs.
+- The matching/stale task test, complete application-model suite, formatting, warning-denying package check, egui suite, and test-usage policy check passed.
 
 ## Stage 4: Replace browser notification observation
 

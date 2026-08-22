@@ -17462,6 +17462,44 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn io_task_failures_update_only_the_matching_task() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        let task_id = runtime.snapshot().io_task.as_ref().unwrap().id;
+
+        runtime
+            .dispatch(AppIntent::FailIoTask {
+                task_id,
+                message: "injected save failure".to_owned(),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let failed = runtime.snapshot();
+        assert_eq!(
+            failed.io_task.as_ref().unwrap().status,
+            IoTaskStatus::Failed
+        );
+        assert_eq!(
+            failed.io_task.as_ref().unwrap().message,
+            "injected save failure"
+        );
+
+        runtime
+            .dispatch(AppIntent::FailIoTask {
+                task_id: TaskId::from_raw(task_id.raw().wrapping_add(1)),
+                message: "stale failure".to_owned(),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().message,
+            "injected save failure"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn render_memory_growth_is_a_recoverable_warning() {
         let mut backend = FakeBackend::default();
         let files = Arc::new(Mutex::new(VecDeque::new()));
