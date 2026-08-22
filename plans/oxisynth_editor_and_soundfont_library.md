@@ -4,6 +4,13 @@
 
 Add a native and browser OxiSynth editor in two deliverable phases. The MVP makes the embedded TimGM6mb instrument inspectable, directly configurable, automatically synchronized with externally received MIDI, and persistable. The second phase adds arbitrary SF2 import, managed assets, portable sessions, missing-asset recovery, and expanded sound controls without changing the realtime guarantees of the existing processor.
 
+## Status
+
+- [x] Planning and architecture audit complete.
+- [ ] Phase 1 implementation in progress.
+- [ ] Phase 2 implementation pending.
+- [ ] Final end-to-end validation pending.
+
 ## Scope
 
 ### Phase 1 — embedded-SoundFont MVP
@@ -135,11 +142,12 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [ ] Define a stable SHA-256 asset ID, immutable metadata/preset catalog, managed-byte ownership, load status/error model, and reference counting independent of track/runtime IDs.
 - [ ] Implement bounded SF2 import and validation off the audio thread for native file selection and browser file input; reject malformed/unsupported content without disturbing running tracks.
 - [ ] Deduplicate identical bytes, normalize display metadata safely, sort sparse presets deterministically, and cache immutable catalogs for UI search.
-- [ ] Add application library operations for import, list, inspect, remove-if-unreferenced, and explicit replacement; define persistence for application-library metadata on native and browser storage.
+- [ ] Add application library operations for import, list, inspect, remove-if-unreferenced, and explicit replacement; durably persist content-addressed bytes together with catalog metadata in native and browser storage.
+- [ ] Make byte/catalog installation and removal atomic so restarts never advertise a digest whose payload is absent, and garbage-collect only unreferenced payloads after the catalog update commits.
 - [ ] Resolve asset digests to newly assigned per-synth `SoundFontId` values and construct configured replacement processors transactionally.
 - [ ] Measure parse time and memory across multiple tracks; introduce safe immutable parsed-font sharing only if supported and beneficial.
 
-**Verification:** asset tests cover duplicate content/different filenames, hash mismatch, malformed/truncated/oversized SF2, sparse/non-GM presets, Unicode metadata, removal with live references, concurrent imports, native/browser parity, and failed replacement preserving audio.
+**Verification:** asset tests cover duplicate content/different filenames, hash mismatch, malformed/truncated/oversized SF2, sparse/non-GM presets, Unicode metadata, removal with live references, concurrent imports, atomic-write interruption, native and browser restart/reload with byte revalidation, native/browser parity, and failed replacement preserving audio.
 
 ### Stage 8 — phase-2 portable session assets and recovery
 
