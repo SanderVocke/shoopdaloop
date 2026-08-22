@@ -45,6 +45,7 @@ enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 tinyviolin = { workspace = true }
 oxisynth = { workspace = true }
+soundfont = { workspace = true }
 sha2 = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

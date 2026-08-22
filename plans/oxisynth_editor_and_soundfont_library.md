@@ -7,6 +7,7 @@ Add a native and browser OxiSynth editor in two deliverable phases. The MVP make
 ## Status
 
 - [x] Planning and architecture audit complete.
+- [x] Stage 1 API/state proof implemented and verified.
 - [ ] Phase 1 implementation in progress.
 - [ ] Phase 2 implementation pending.
 - [ ] Final end-to-end validation pending.
@@ -79,11 +80,11 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 
 ### Stage 1 — state semantics and OxiSynth API proof
 
-- [ ] Inventory OxiSynth 0.1.0 direct getters/setters, MIDI reset/bank/program rules, preset enumeration, effect activation support, and allocation behavior for each proposed control.
-- [ ] Specify the exact phase-1 persisted fields, current snapshot fields, defaults, validation ranges, system-reset behavior, and same-quantum control/MIDI ordering in a short state contract.
-- [ ] Prototype fixed-size configuration/snapshot types and prove that direct preset selection plus externally received bank/program MIDI converge on the same reported state for all 16 channels.
-- [ ] Decide whether inactive tracks continue consuming configuration-changing MIDI for UI accuracy, documenting the choice consistently with existing bypass semantics.
-- [ ] Confirm how preset descriptors are enumerated and sorted from the embedded SF2 without retaining or copying them on the render path.
+- [x] Inventory OxiSynth 0.1.0 direct getters/setters, MIDI reset/bank/program rules, preset enumeration, effect activation support, and allocation behavior for each proposed control.
+- [x] Specify the exact phase-1 persisted fields, current snapshot fields, defaults, validation ranges, system-reset behavior, and same-quantum control/MIDI ordering in a short state contract.
+- [x] Prototype fixed-size configuration/snapshot types and prove that direct preset selection plus externally received bank/program MIDI converge on the same reported state for all 16 channels.
+- [x] Decide whether inactive tracks continue consuming configuration-changing MIDI for UI accuracy, documenting the choice consistently with existing bypass semantics.
+- [x] Confirm how preset descriptors are enumerated and sorted from the embedded SF2 without retaining or copying them on the render path.
 
 **Verification:** focused engine tests cover exact direct selection, bank MSB/LSB plus program changes, channel 10, invalid presets/channels, reset, inactive behavior, and zero allocations after warm-up; native and wasm test builds exercise the same state contract.
 
