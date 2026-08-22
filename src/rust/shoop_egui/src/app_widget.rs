@@ -993,6 +993,17 @@ impl AppWidget {
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         self.show_session_recovery_dialog(ui.ctx(), state, &mut actions);
+        if let Some(progress) = state.status.soundfont_import_progress {
+            egui::Area::new(egui::Id::new("soundfont_import_progress"))
+                .anchor(egui::Align2::RIGHT_BOTTOM, [-16.0, -16.0])
+                .order(egui::Order::Foreground)
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.label("Preparing SoundFont…");
+                        ui.add(egui::ProgressBar::new(progress).show_percentage());
+                    });
+                });
+        }
         actions.extend(self.connections.show(ui.ctx(), state));
         actions.extend(self.script_dialogs.show_windows(
             ui.ctx(),

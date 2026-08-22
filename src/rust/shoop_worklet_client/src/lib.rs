@@ -11,7 +11,7 @@ pub use transport::{
 };
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -141,6 +141,8 @@ pub struct RemoteWorkletBackend {
     midi_revision: u64,
     soundfonts: shoop_backend::soundfont_library::SoundFontLibrary,
     soundfont_import: Option<SoundFontImportAssembly>,
+    soundfont_import_queue: VecDeque<SoundFontImportAssembly>,
+    pending_soundfont_removals: BTreeSet<String>,
 }
 
 impl RemoteWorkletBackend {
@@ -198,6 +200,8 @@ impl RemoteWorkletBackend {
                 soundfonts: shoop_backend::soundfont_library::SoundFontLibrary::with_embedded()
                     .expect("embedded SoundFont is valid"),
                 soundfont_import: None,
+                soundfont_import_queue: VecDeque::new(),
+                pending_soundfont_removals: BTreeSet::new(),
             },
             control,
         )
@@ -1313,7 +1317,8 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::AbortSessionTransfer { .. }
         | Command::BeginSoundFontImport { .. }
         | Command::WriteSoundFontImport { .. }
-        | Command::CommitSoundFontImport { .. } => (BackendMutationKind::SessionTransfer, None),
+        | Command::CommitSoundFontImport { .. }
+        | Command::RemoveSoundFont { .. } => (BackendMutationKind::SessionTransfer, None),
         Command::DrainMidiOutput { .. }
         | Command::RequestWaveform { .. }
         | Command::RequestMidiData { .. }
@@ -1519,15 +1524,12 @@ impl Backend for RemoteWorkletBackend {
         original_filename: String,
         bytes: Arc<[u8]>,
     ) -> Result<shoop_backend::soundfont_library::SoundFontAssetDescriptor> {
-        if self.soundfont_import.is_some() {
-            return Err(anyhow!("another SoundFont import is in progress"));
-        }
         let descriptor = self
             .soundfonts
             .import(bytes.clone(), original_filename.clone())?;
         let generation = self.next_session_generation.max(1);
         self.next_session_generation = generation.saturating_add(1);
-        self.soundfont_import = Some(SoundFontImportAssembly {
+        let import = SoundFontImportAssembly {
             generation,
             sha256: descriptor.sha256.to_string(),
             original_filename,
@@ -1535,7 +1537,12 @@ impl Backend for RemoteWorkletBackend {
             begin_sent: false,
             next_offset: 0,
             commit_sent: false,
-        });
+        };
+        if self.soundfont_import.is_some() {
+            self.soundfont_import_queue.push_back(import);
+        } else {
+            self.soundfont_import = Some(import);
+        }
         self.pump_soundfont_import()?;
         Ok(descriptor)
     }
@@ -1550,7 +1557,19 @@ impl Backend for RemoteWorkletBackend {
                 )
             })
         });
-        self.soundfonts.remove(sha256, referenced)
+        if referenced || self.pending_soundfont_removals.contains(sha256) {
+            return Ok(false);
+        }
+        if self.soundfonts.asset(sha256).is_none() {
+            return Ok(false);
+        }
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::RemoveSoundFont {
+                sha256: sha256.to_owned(),
+            })?;
+        self.pending_soundfont_removals.insert(sha256.to_owned());
+        Ok(true)
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -2429,6 +2448,16 @@ impl Backend for RemoteWorkletBackend {
         self.pump_midi_input(running)?;
         self.snapshot.status.driver_state = state;
         self.snapshot.status.command_overflows = self.transport.borrow().overflows();
+        self.snapshot.status.soundfont_import_progress =
+            self.soundfont_import.as_ref().map(|import| {
+                if import.bytes.is_empty() {
+                    0.0
+                } else if import.commit_sent {
+                    0.99
+                } else {
+                    import.next_offset as f32 / import.bytes.len() as f32
+                }
+            });
         let engine_pollable = readiness.connection == ConnectionState::Attached
             && readiness.protocol == ProtocolState::Negotiated
             && readiness.replay == ReplayState::Complete
@@ -2455,17 +2484,22 @@ impl Backend for RemoteWorkletBackend {
             let sequence = received.envelope.sequence;
             let generation = received.generation;
             match received.envelope.event {
-                Event::Ack => {
-                    if let Command::CommitSoundFontImport { generation } = received.command {
+                Event::Ack => match &received.command {
+                    Command::CommitSoundFontImport { generation } => {
                         if self
                             .soundfont_import
                             .as_ref()
-                            .is_some_and(|import| import.generation == generation)
+                            .is_some_and(|import| import.generation == *generation)
                         {
-                            self.soundfont_import = None;
+                            self.soundfont_import = self.soundfont_import_queue.pop_front();
                         }
                     }
-                }
+                    Command::RemoveSoundFont { sha256 } => {
+                        self.pending_soundfont_removals.remove(sha256);
+                        let _ = self.soundfonts.remove(sha256, false);
+                    }
+                    _ => {}
+                },
                 Event::Stopped => {}
                 Event::Error { message } => {
                     self.transport
@@ -2480,6 +2514,10 @@ impl Backend for RemoteWorkletBackend {
                         if let Some(import) = self.soundfont_import.take() {
                             let _ = self.soundfonts.remove(&import.sha256, false);
                         }
+                        self.soundfont_import = self.soundfont_import_queue.pop_front();
+                    }
+                    if let Command::RemoveSoundFont { sha256 } = &received.command {
+                        self.pending_soundfont_removals.remove(sha256);
                     }
                     match &received.command {
                         Command::CreateTrack {
@@ -2679,6 +2717,7 @@ impl Backend for RemoteWorkletBackend {
                 }
             }
         }
+        self.pump_soundfont_import()?;
         self.pump_session_replace()?;
         self.pump_loop_content_replace()?;
         if let Some(error) = self.transport.borrow_mut().take_error() {
@@ -3639,6 +3678,7 @@ mod tests {
             tracks: Vec::new(),
             global_ports: Vec::new(),
             use_legacy_browser_default_routes: false,
+            soundfonts: BTreeMap::new(),
         };
         assert!(matches!(
             backend.replace_session_async(&session).unwrap(),

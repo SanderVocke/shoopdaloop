@@ -769,6 +769,16 @@ impl WorkletHost {
                 self.soundfont_expected_bytes = 0;
                 Ok(Event::Ack)
             }
+            Command::RemoveSoundFont { sha256 } => {
+                if !self
+                    .backend
+                    .remove_soundfont(&sha256)
+                    .map_err(|error| error.to_string())?
+                {
+                    return Err("SoundFont is unavailable or still referenced".to_owned());
+                }
+                Ok(Event::Ack)
+            }
             Command::Poll => {
                 if let Some(message) = self.fatal_error.clone() {
                     return Err(message);

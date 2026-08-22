@@ -611,6 +611,7 @@ pub struct StatusState {
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
+    pub soundfont_import_progress: Option<f32>,
 }
 
 impl StatusState {

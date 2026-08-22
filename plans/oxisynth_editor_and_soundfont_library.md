@@ -11,7 +11,7 @@ Add a native and browser OxiSynth editor in two deliverable phases. The MVP make
 - [x] Phase 1 direct controls, authoritative native/browser snapshots, configuration codec, session v5 persistence, and initial egui editor implemented.
 - [ ] Phase 1 lifecycle hardening, comprehensive tests, screenshots, and integration gate in progress.
 - [x] Phase 1 implementation complete.
-- [ ] Phase 2 implementation in progress: native/browser import transport, content addressing, native durable storage, portable archive assets, transactional sparse-font replacement, referenced-asset-only capture, revision-independent catalog publication, retained candidate-session recovery, explicit replacement/remapping, master/effect controls, meters, and library UI are implemented; background browser preparation and durable storage, favorites/recent presets, and final hardening remain.
+- [ ] Phase 2 implementation in progress: native/browser import transport, serialized browser imports, acknowledged worklet removal, content addressing, native/browser durable storage, portable archive assets, transactional sparse-font replacement, current and recorded-state reference protection, revision-independent catalog publication, retained candidate-session recovery, explicit replacement/remapping, master/effect controls, meters, favorites/recent presets, and library UI are implemented; background browser preparation and final hardening remain.
 - [ ] Final end-to-end validation pending.
 
 ## Scope
@@ -169,7 +169,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 
 ### Stage 9 — phase-2 editor expansion
 
-- [ ] Add SoundFont manage/import/change controls with ready-state selection, drag/drop import, missing/error diagnostics, retry/cancel, explicit replacement, and reference-aware library removal UI implemented; loading progress remains.
+- [x] Add SoundFont manage/import/change controls with ready-state selection, drag/drop import, bounded browser transfer progress, missing/error diagnostics, retry/cancel, explicit replacement, and reference-aware library removal UI.
 - [x] Add a compact 16-channel assignment overview that navigates the existing per-channel editor without becoming a full mixer.
 - [x] Add master gain, stereo output metering, and supported chorus/reverb parameters through direct Rust controls; expose the supported parameter semantics without claiming unavailable effect bypass controls.
 - [x] Add previous/next, favorites, and recent presets keyed by digest/bank/program; keep favorites/recent data out of required session reconstruction.

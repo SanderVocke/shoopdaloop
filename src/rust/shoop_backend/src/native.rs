@@ -2415,6 +2415,32 @@ impl Backend for NativeBackend {
             }
             return fx.chain.replace_oxisynth_asset(&asset);
         }
+        if let BackendTrackFxControl::RestoreState(state) = &control {
+            if let Ok(configuration) =
+                shoop_engine::oxisynth::OxiSynthProcessor::decode_configuration(state)
+            {
+                let asset = self
+                    .soundfonts
+                    .asset(&configuration.soundfont_sha256)
+                    .ok_or_else(|| {
+                        anyhow!("unknown SoundFont {}", configuration.soundfont_sha256)
+                    })?;
+                let fx = self
+                    .runtime_mut()?
+                    .tracks
+                    .get_mut(&track_id)
+                    .and_then(|track| track.fx.as_mut())
+                    .ok_or_else(|| anyhow!("track has no processor"))?;
+                if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH
+                    && fx
+                        .chain
+                        .oxisynth_asset_metadata()
+                        .is_some_and(|metadata| metadata.sha256 != configuration.soundfont_sha256)
+                {
+                    fx.chain.replace_oxisynth_asset(&asset)?;
+                }
+            }
+        }
         self.runtime_mut()?.set_track_fx_control(track_id, control)
     }
 

@@ -4615,6 +4615,30 @@ impl ApplicationModel {
             return self.remove_track(backend, track_id);
         }
         if let TrackAction::RemoveSoundFont(sha256) = &action {
+            let recorded_reference = self.loops.values().any(|loop_model| {
+                loop_model
+                    .recorded_fx_state
+                    .as_ref()
+                    .is_some_and(|recorded| {
+                        recorded.processor_type.as_str()
+                            == shoop_app_api::TrackProcessorTypeId::OXISYNTH
+                            && serde_json::from_str::<serde_json::Value>(&recorded.state)
+                                .ok()
+                                .and_then(|value| {
+                                    value
+                                        .get("soundfont_sha256")
+                                        .and_then(serde_json::Value::as_str)
+                                        .map(ToOwned::to_owned)
+                                })
+                                .as_deref()
+                                == Some(sha256.as_ref())
+                    })
+            });
+            if recorded_reference {
+                return Err(format!(
+                    "could not remove SoundFont: {sha256} is referenced by recorded FX state"
+                ));
+            }
             backend
                 .remove_soundfont(sha256)
                 .map_err(|error| format!("could not remove SoundFont: {error}"))?;
@@ -6846,6 +6870,7 @@ impl ApplicationModel {
         self.status.command_overflows = snapshot.status.command_overflows;
         self.status.storage_low_channels = snapshot.status.storage_low_channels;
         self.status.storage_exhaustions = snapshot.status.storage_exhaustions;
+        self.status.soundfont_import_progress = snapshot.status.soundfont_import_progress;
         self.desired_track_controls
             .retain(|(backend_id, _), desired| {
                 !snapshot

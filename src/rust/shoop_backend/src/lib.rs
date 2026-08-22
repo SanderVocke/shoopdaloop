@@ -335,6 +335,7 @@ pub struct BackendStatus {
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
+    pub soundfont_import_progress: Option<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -5261,6 +5262,7 @@ impl Backend for EngineBackend {
                 memory_growths: 0,
                 render_memory_growths: 0,
                 command_overflows: 0,
+                soundfont_import_progress: None,
                 storage_low_channels: self
                     .loop_channels
                     .values()
