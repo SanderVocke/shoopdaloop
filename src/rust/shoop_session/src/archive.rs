@@ -829,6 +829,8 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     }
     let mut track_ids = BTreeSet::new();
     let mut loop_ids = BTreeSet::new();
+    let mut loop_lengths = BTreeMap::new();
+    let mut sync_length = 1_u64;
     let mut port_ids = BTreeSet::new();
     let mut channel_ids = BTreeSet::new();
     let mut fx_chain_ids = BTreeSet::new();
@@ -892,6 +894,10 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         "duplicate loop ID {}",
                         loop_.id
                     )));
+                }
+                loop_lengths.insert(loop_.id, loop_.length_frames);
+                if loop_.is_sync {
+                    sync_length = loop_.length_frames.max(1);
                 }
                 validate_finite(loop_.gain, "loop gain")?;
                 validate_finite(loop_.balance, "loop balance")?;
@@ -1014,7 +1020,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                                 loop_.id
                             )));
                         }
-                        if event.start_cycle > i64::MAX as u64 {
+                        if event.start_cycle > u64::from(u32::MAX) {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} has an out-of-range start cycle",
                                 loop_.id
@@ -1047,6 +1053,19 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} references stale loop {}",
                                 loop_.id, event.loop_id
+                            )));
+                        }
+                        let duration = event.n_cycles.map(u64::from).unwrap_or_else(|| {
+                            loop_lengths[&event.loop_id].div_ceil(sync_length).max(1)
+                        });
+                        if event
+                            .start_cycle
+                            .checked_add(duration)
+                            .is_none_or(|end| end > u64::from(u32::MAX))
+                        {
+                            return Err(SessionError::Validation(format!(
+                                "composite loop {} has an out-of-range instance end cycle",
+                                loop_.id
                             )));
                         }
                     }

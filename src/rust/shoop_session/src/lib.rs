@@ -840,10 +840,22 @@ mod tests {
             .composite
             .as_mut()
             .unwrap();
-        composite.instances[0].start_cycle = i64::MAX as u64 + 1;
+        composite.instances[0].start_cycle = u64::from(u32::MAX) + 1;
         assert!(matches!(
             validate_bundle(&invalid),
             Err(SessionError::Validation(message)) if message.contains("out-of-range start cycle")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let composite = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.instances[0].start_cycle = u64::from(u32::MAX) - 1;
+        composite.instances[0].n_cycles = Some(2);
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message)) if message.contains("out-of-range instance end cycle")
         ));
     }
 
