@@ -1378,6 +1378,20 @@ pub struct AppSnapshot {
     pub scripting: Arc<ScriptingState>,
     pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
+    pub session_recovery: Option<SessionRecoveryState>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MissingSoundFontState {
+    pub sha256: Arc<str>,
+    pub affected_tracks: Arc<[Arc<str>]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionRecoveryState {
+    pub session_name: Arc<str>,
+    pub missing_soundfonts: Arc<[MissingSoundFontState]>,
+    pub last_error: Option<Arc<str>>,
 }
 
 pub type AppState = AppSnapshot;
@@ -1702,6 +1716,12 @@ pub enum AppIntent {
     RemoveSoundFont {
         sha256: Arc<str>,
     },
+    RetrySessionRecovery,
+    CancelSessionRecovery,
+    ReplaceMissingSoundFont {
+        expected_sha256: Arc<str>,
+        replacement_sha256: Arc<str>,
+    },
     AddLoop {
         track_id: TrackId,
     },
@@ -2013,6 +2033,9 @@ impl AppIntent {
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
             Self::ImportSoundFont { .. } => "soundfont.import",
             Self::RemoveSoundFont { .. } => "soundfont.remove",
+            Self::RetrySessionRecovery => "session.recovery.retry",
+            Self::CancelSessionRecovery => "session.recovery.cancel",
+            Self::ReplaceMissingSoundFont { .. } => "session.recovery.replace_soundfont",
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",

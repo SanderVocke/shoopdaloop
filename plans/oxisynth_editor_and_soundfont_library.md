@@ -11,7 +11,7 @@ Add a native and browser OxiSynth editor in two deliverable phases. The MVP make
 - [x] Phase 1 direct controls, authoritative native/browser snapshots, configuration codec, session v5 persistence, and initial egui editor implemented.
 - [ ] Phase 1 lifecycle hardening, comprehensive tests, screenshots, and integration gate in progress.
 - [x] Phase 1 implementation complete.
-- [ ] Phase 2 implementation in progress: native/browser import transport, content addressing, native durable storage, portable archive assets, transactional sparse-font replacement, referenced-asset-only capture, revision-independent catalog publication, master/effect controls, meters, and initial library UI are implemented; background browser preparation and durable storage, recovery UI, favorites/recent presets, and final hardening remain.
+- [ ] Phase 2 implementation in progress: native/browser import transport, content addressing, native durable storage, portable archive assets, transactional sparse-font replacement, referenced-asset-only capture, revision-independent catalog publication, retained candidate-session recovery, explicit replacement/remapping, master/effect controls, meters, and library UI are implemented; background browser preparation and durable storage, favorites/recent presets, and final hardening remain.
 - [ ] Final end-to-end validation pending.
 
 ## Scope
@@ -161,15 +161,15 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [x] Extend the session bundle/manifest with declared SoundFont asset records and content-addressed archive paths, storing each referenced payload once.
 - [ ] Increment the session format, add decode limits and aggregate accounting appropriate for SF2 files, verify size/digest before parsing, reject undeclared/duplicate/unsafe entries, and preserve deterministic output.
 - [x] Save portable sessions with user SF2 bytes while continuing to identify the built-in font without duplicating its payload.
-- [ ] Split loading into decoded candidate, asset resolution, validated processor construction, and activation. Retain an inactive candidate document plus unresolved digests/errors for recovery while the current backend session keeps running, and publish the replacement only after every required asset and processor succeeds.
-- [ ] Represent unresolved assets and affected tracks explicitly in the candidate-session application model; add cancel, locate/import-exact-digest, retry, and explicit-replacement flows, and never substitute the built-in asset automatically.
+- [x] Split loading into decoded candidate, asset resolution, validated processor construction, and activation. Retain an inactive candidate document plus unresolved digests/errors for recovery while the current backend session keeps running, and publish the replacement only after every required asset and processor succeeds.
+- [x] Represent unresolved assets and affected tracks explicitly in the candidate-session application model; add cancel, locate/import-exact-digest, retry, and explicit-replacement flows with deterministic unavailable-preset remapping, and never substitute the built-in asset automatically.
 - [ ] Define export/privacy/licensing messaging that makes embedding a user-provided file explicit without asserting redistribution rights.
 
 **Verification:** cross-runtime portable-session tests cover one asset shared by tracks, multiple assets, missing payloads, wrong digest/size, archive bombs/limits, retained candidate diagnostics, cancel/retry recovery while the old backend keeps producing audio, explicit replacement and preset remapping failures, deterministic archives, older readers/versions, and transactional activation or rollback.
 
 ### Stage 9 — phase-2 editor expansion
 
-- [ ] Add SoundFont manage/import/change controls with ready-state selection and drag/drop import implemented; loading, missing, invalid, removal, and replacement recovery states remain.
+- [ ] Add SoundFont manage/import/change controls with ready-state selection, drag/drop import, missing/error diagnostics, retry/cancel, and explicit replacement implemented; loading progress and library removal UI remain.
 - [x] Add a compact 16-channel assignment overview that navigates the existing per-channel editor without becoming a full mixer.
 - [x] Add master gain, stereo output metering, and supported chorus/reverb parameters through direct Rust controls; expose the supported parameter semantics without claiming unavailable effect bypass controls.
 - [ ] Add previous/next, favorites, and recent presets keyed by digest/bank/program; keep favorites/recent data out of required session reconstruction.

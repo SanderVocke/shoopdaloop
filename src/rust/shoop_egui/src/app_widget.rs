@@ -992,6 +992,7 @@ impl AppWidget {
         self.show_add_track_dialog(ui.ctx(), &state.track_processors, &mut actions);
         actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
+        self.show_session_recovery_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
         actions.extend(self.script_dialogs.show_windows(
             ui.ctx(),
@@ -1461,6 +1462,71 @@ impl AppWidget {
                         "The operation failed; the prior session is unchanged.",
                     );
                 }
+            });
+    }
+
+    fn show_session_recovery_dialog(
+        &mut self,
+        context: &egui::Context,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        let Some(recovery) = &state.session_recovery else {
+            return;
+        };
+        egui::Window::new("Resolve missing SoundFonts")
+            .id(egui::Id::new("session_soundfont_recovery"))
+            .collapsible(false)
+            .show(context, |ui| {
+                ui.label(format!(
+                    "{} was decoded but has not replaced the running session.",
+                    recovery.session_name
+                ));
+                for missing in recovery.missing_soundfonts.iter() {
+                    ui.group(|ui| {
+                        ui.label(format!("Expected SHA-256: {}", missing.sha256));
+                        ui.label(format!(
+                            "Affected tracks: {}",
+                            missing
+                                .affected_tracks
+                                .iter()
+                                .map(|track| track.as_ref())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                        egui::ComboBox::from_id_salt((
+                            "missing_soundfont_replacement",
+                            missing.sha256.as_ref(),
+                        ))
+                        .selected_text("Choose an explicit replacement…")
+                        .show_ui(ui, |ui| {
+                            for asset in state.soundfonts.iter() {
+                                if ui
+                                    .button(format!("{} ({})", asset.name, asset.sha256))
+                                    .clicked()
+                                {
+                                    actions.push(AppAction::ReplaceMissingSoundFont {
+                                        expected_sha256: Arc::clone(&missing.sha256),
+                                        replacement_sha256: Arc::clone(&asset.sha256),
+                                    });
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
+                }
+                if let Some(error) = &recovery.last_error {
+                    ui.colored_label(ui.visuals().error_fg_color, error.as_ref());
+                }
+                ui.label("Drop or import the exact .sf2 file, then retry.");
+                ui.horizontal(|ui| {
+                    if ui.button("Retry").clicked() {
+                        actions.push(AppAction::RetrySessionRecovery);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        actions.push(AppAction::CancelSessionRecovery);
+                    }
+                });
             });
     }
 

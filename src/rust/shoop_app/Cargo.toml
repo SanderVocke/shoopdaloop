@@ -13,6 +13,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
 anyhow = { workspace = true }
+serde_json = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend" }
 shoop_session = { path = "../shoop_session" }

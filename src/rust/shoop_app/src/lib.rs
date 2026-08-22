@@ -611,6 +611,7 @@ struct ApplicationModel {
     pending_audio_switch: Option<PendingAudioSwitch>,
     io_task: Option<IoTaskState>,
     pending_io: Option<PendingIo>,
+    session_recovery: Option<SessionRecoveryCandidate>,
     session_encoding: Option<Receiver<Result<Vec<u8>, String>>>,
     #[cfg(not(target_arch = "wasm32"))]
     background_session_encoding: bool,
@@ -1162,6 +1163,62 @@ enum PendingIo {
     },
 }
 
+struct SessionRecoveryCandidate {
+    name: String,
+    bundle: SessionBundle,
+    state: shoop_app_api::SessionRecoveryState,
+}
+
+fn replace_soundfont_identity(
+    value: &mut serde_json::Value,
+    expected: &str,
+    replacement: &str,
+    presets: &BTreeSet<(u32, u8)>,
+    fallback: (u32, u8),
+) {
+    match value {
+        serde_json::Value::Object(object) => {
+            let matches = object
+                .get("soundfont_sha256")
+                .and_then(serde_json::Value::as_str)
+                == Some(expected);
+            if matches {
+                object.insert(
+                    "soundfont_sha256".to_owned(),
+                    serde_json::Value::String(replacement.to_owned()),
+                );
+                if let Some(channels) = object
+                    .get_mut("channels")
+                    .and_then(serde_json::Value::as_array_mut)
+                {
+                    for channel in channels {
+                        let bank = channel.get("bank").and_then(serde_json::Value::as_u64);
+                        let program = channel.get("program").and_then(serde_json::Value::as_u64);
+                        let available = bank.zip(program).is_some_and(|(bank, program)| {
+                            presets.contains(&(bank as u32, program as u8))
+                        });
+                        if !available {
+                            if let Some(channel) = channel.as_object_mut() {
+                                channel.insert("bank".to_owned(), fallback.0.into());
+                                channel.insert("program".to_owned(), fallback.1.into());
+                            }
+                        }
+                    }
+                }
+            }
+            for child in object.values_mut() {
+                replace_soundfont_identity(child, expected, replacement, presets, fallback);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for child in values {
+                replace_soundfont_identity(child, expected, replacement, presets, fallback);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn piano_failures(failures: Vec<String>) -> Result<(), String> {
     if failures.is_empty() {
         Ok(())
@@ -1321,6 +1378,7 @@ impl ApplicationModel {
             pending_audio_switch: None,
             io_task: None,
             pending_io: None,
+            session_recovery: None,
             session_encoding: None,
             #[cfg(not(target_arch = "wasm32"))]
             background_session_encoding,
@@ -1418,6 +1476,66 @@ impl ApplicationModel {
                 self.soundfonts = backend
                     .soundfont_catalog()
                     .map_err(|error| format!("could not refresh SoundFont catalog: {error}"))?;
+                Ok(())
+            })(),
+            AppIntent::RetrySessionRecovery => (|| {
+                let candidate = self
+                    .session_recovery
+                    .take()
+                    .ok_or_else(|| "no session recovery candidate".to_owned())?;
+                self.soundfonts = backend
+                    .soundfont_catalog()
+                    .map_err(|error| format!("could not refresh SoundFont catalog: {error}"))?;
+                let task_id = self.start_io_task(IoTaskKind::LoadSession, "Retrying session load");
+                self.begin_session_load(candidate.name, candidate.bundle, task_id)
+            })(),
+            AppIntent::CancelSessionRecovery => {
+                self.session_recovery = None;
+                self.io_task = None;
+                Ok(())
+            }
+            AppIntent::ReplaceMissingSoundFont {
+                expected_sha256,
+                replacement_sha256,
+            } => (|| {
+                let replacement = self
+                    .soundfonts
+                    .iter()
+                    .find(|asset| asset.sha256 == replacement_sha256)
+                    .ok_or_else(|| "replacement SoundFont is unavailable".to_owned())?;
+                let fallback = replacement
+                    .presets
+                    .first()
+                    .map(|preset| (preset.bank, preset.program))
+                    .ok_or_else(|| "replacement SoundFont has no presets".to_owned())?;
+                let presets = replacement
+                    .presets
+                    .iter()
+                    .map(|preset| (preset.bank, preset.program))
+                    .collect::<BTreeSet<_>>();
+                let candidate = self
+                    .session_recovery
+                    .as_mut()
+                    .ok_or_else(|| "no session recovery candidate".to_owned())?;
+                let mut document = serde_json::to_value(&candidate.bundle.document)
+                    .map_err(|error| error.to_string())?;
+                replace_soundfont_identity(
+                    &mut document,
+                    &expected_sha256,
+                    &replacement_sha256,
+                    &presets,
+                    fallback,
+                );
+                candidate.bundle.document =
+                    serde_json::from_value(document).map_err(|error| error.to_string())?;
+                candidate.state.missing_soundfonts = candidate
+                    .state
+                    .missing_soundfonts
+                    .iter()
+                    .filter(|missing| missing.sha256 != expected_sha256)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .into();
                 Ok(())
             })(),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
@@ -3454,6 +3572,60 @@ impl ApplicationModel {
                 return Err(message);
             }
         };
+        let available = self
+            .soundfonts
+            .iter()
+            .map(|asset| asset.sha256.as_ref())
+            .collect::<BTreeSet<_>>();
+        let mut missing = BTreeMap::<String, Vec<Arc<str>>>::new();
+        for track in &backend_data.tracks {
+            let Some(state) = track.processor_state.as_deref() else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(state) else {
+                continue;
+            };
+            let Some(digest) = value
+                .get("soundfont_sha256")
+                .and_then(|value| value.as_str())
+            else {
+                continue;
+            };
+            if !available.contains(digest) && !backend_data.soundfonts.contains_key(digest) {
+                missing
+                    .entry(digest.to_owned())
+                    .or_default()
+                    .push(track.port_name_base.clone().into());
+            }
+        }
+        if !missing.is_empty() {
+            let missing_soundfonts = missing
+                .into_iter()
+                .map(
+                    |(sha256, affected_tracks)| shoop_app_api::MissingSoundFontState {
+                        sha256: sha256.into(),
+                        affected_tracks: affected_tracks.into(),
+                    },
+                )
+                .collect::<Vec<_>>()
+                .into();
+            let state = shoop_app_api::SessionRecoveryState {
+                session_name: name.clone().into(),
+                missing_soundfonts,
+                last_error: None,
+            };
+            self.session_recovery = Some(SessionRecoveryCandidate {
+                name,
+                bundle,
+                state,
+            });
+            self.finish_io(
+                IoTaskStatus::Failed,
+                "Session requires missing SoundFont assets; the active session was retained",
+            );
+            return Ok(());
+        }
+        self.session_recovery = None;
         self.pending_io = Some(PendingIo::CommitSessionLoad {
             name,
             bundle,
@@ -3840,7 +4012,19 @@ impl ApplicationModel {
                         "Replacing backend session",
                     );
                 }
-                Err(error) => self.fail_io(format!("could not replace session: {error}")),
+                Err(error) => {
+                    let message = format!("could not replace session: {error}");
+                    self.session_recovery = Some(SessionRecoveryCandidate {
+                        name: name.clone(),
+                        bundle,
+                        state: shoop_app_api::SessionRecoveryState {
+                            session_name: name.into(),
+                            missing_soundfonts: Arc::from([]),
+                            last_error: Some(message.clone().into()),
+                        },
+                    });
+                    self.fail_io(message);
+                }
             },
             PendingIo::AwaitingLoopAudioExportSelection { loop_id, format } => {
                 self.pending_io =
@@ -7977,6 +8161,10 @@ impl ApplicationModel {
             scripting: Arc::clone(&self.scripting_view),
             click_track: self.click_track.clone(),
             io_task: self.io_task.clone(),
+            session_recovery: self
+                .session_recovery
+                .as_ref()
+                .map(|candidate| candidate.state.clone()),
         }
     }
 
@@ -10561,6 +10749,58 @@ mod tests {
                 .and_then(|fx| fx.editor.as_ref()),
             Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(_))
         ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn missing_soundfont_load_retains_recoverable_candidate_and_active_session() {
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Current OxiSynth".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::OXISYNTH,
+                    ),
+                },
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let output = runtime.take_file_output().unwrap();
+        let mut bundle = decode_session(&output.bytes).unwrap();
+        let chain = bundle.document.track_groups[1].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap();
+        let missing = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let mut configuration: serde_json::Value =
+            serde_json::from_str(&chain.internal_state).unwrap();
+        configuration["soundfont_sha256"] = missing.into();
+        chain.internal_state = serde_json::to_string(&configuration).unwrap();
+        let candidate = encode_session(&bundle, "missing-soundfont-test").unwrap();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "candidate.shoop".to_owned(),
+                bytes: candidate.into(),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        assert_eq!(snapshot.tracks[1].name, "Current OxiSynth");
+        let recovery = snapshot.session_recovery.as_ref().unwrap();
+        assert_eq!(recovery.missing_soundfonts[0].sha256.as_ref(), missing);
+        assert!(!recovery.missing_soundfonts[0].affected_tracks.is_empty());
+        runtime.dispatch(AppIntent::CancelSessionRecovery).unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().session_recovery.is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]
