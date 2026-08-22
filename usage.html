@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Usage &#8212; ShoopDaLoop  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="For Developers / Advanced Users" href="developers.html" />
+    <link rel="prev" title="Concepts" href="concept.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="usage">
+<h1>Usage<a class="headerlink" href="#usage" title="Link to this heading">¶</a></h1>
+<p>ShoopDaLoop buttons provide tooltips for their current action. Context menus on
+tracks and loops expose operations that apply to that object. The main menu
+contains session, connection, and application settings actions.</p>
+<section id="loops">
+<h2>Loops<a class="headerlink" href="#loops" title="Link to this heading">¶</a></h2>
+<section id="transitions">
+<h3>Transitions<a class="headerlink" href="#transitions" title="Link to this heading">¶</a></h3>
+<p>Primitive loops can play, record, stop, and grab. Dry/wet loops additionally
+support playing recorded dry content through the processor and recording that
+processed result into wet content. Synchronized actions wait for the sync or
+target loop; immediate actions do not.</p>
+<p>Selection applies a transition to multiple loops. Solo mode stops competing
+loops in affected tracks. Auto-play determines whether a completed recording or
+grab starts playback. The record-cycle control sets a fixed duration; zero is
+unbounded.</p>
+</section>
+<section id="playback-controls">
+<h3>Playback controls<a class="headerlink" href="#playback-controls" title="Link to this heading">¶</a></h3>
+<p>Each loop has playback gain and, for stereo content, balance. The status area
+shows current mode, pending transitions, selection, targeting, and loop
+progress. A double click on the status area targets a loop. Touch mode can be
+toggled in the Appearance settings. In the browser it defaults on when the device
+has no hover capability; native builds default it off. In touch mode, the play,
+record, and stop controls are always visible, hover-only action variants are
+unavailable, and a stationary long touch opens the loop’s context menu.</p>
+</section>
+<section id="grabbing">
+<h3>Grabbing<a class="headerlink" href="#grabbing" title="Link to this heading">¶</a></h3>
+<p>Grab copies recent input from bounded always-on recording buffers. In
+synchronized mode it ends at the most recently completed sync boundary. In
+immediate mode it includes the current interval and records its remainder. A
+targeted loop can provide alignment instead of the global sync loop.</p>
+</section>
+<section id="click-track-generation">
+<h3>Click-track generation<a class="headerlink" href="#click-track-generation" title="Link to this heading">¶</a></h3>
+<p>Right-click a primitive audio or MIDI loop and choose <strong>Generate click
+track…</strong>. The dialog supports primary/secondary audio sounds or MIDI notes,
+fractional tempo, click count, odd-click delay, and fitting to an existing loop
+length. Preview is non-mutating. Generated media is saved as ordinary loop
+content.</p>
+</section>
+<section id="files">
+<h3>Files<a class="headerlink" href="#files" title="Link to this heading">¶</a></h3>
+<p>The main menu saves and loads versioned <code class="docutils literal notranslate"><span class="pre">.shoop</span></code> sessions. Loop context menus
+import or export exact <code class="docutils literal notranslate"><span class="pre">.shoop-audio</span></code>/<code class="docutils literal notranslate"><span class="pre">.shoop-midi</span></code>, float WAV, and standard
+MIDI. Different sample rates require confirmation before deterministic timing
+and media conversion.</p>
+</section>
+<section id="loop-details">
+<h3>Loop details<a class="headerlink" href="#loop-details" title="Link to this heading">¶</a></h3>
+<p>Select one primitive loop and open the bottom <strong>details</strong> pane to inspect its
+media. Audio channels appear as waveforms. MIDI channels appear as read-only
+piano-roll lanes with note pitch, timing, duration, loop region, and playback
+position. Mixed loops show both kinds of channel. Drag a lane horizontally to
+pan and use its zoom control to change the visible time range.</p>
+<p>The basic MIDI lane displays note messages only. Controller, pitch-bend,
+pressure, program, and SysEx messages remain in the loop but are not drawn.
+Inspecting details never changes loop content.</p>
+</section>
+<section id="on-screen-midi-piano">
+<h3>On-screen MIDI piano<a class="headerlink" href="#on-screen-midi-piano" title="Link to this heading">¶</a></h3>
+<p>The bottom <strong>piano</strong> pane spans MIDI notes 0–127. Pointer presses send channel-1
+notes to every monitored track with a MIDI input. Releases follow the tracks
+that received the press, including after monitoring changes; pane closure and
+focus loss release held notes.</p>
+</section>
+</section>
+<section id="tracks">
+<h2>Tracks<a class="headerlink" href="#tracks" title="Link to this heading">¶</a></h2>
+<section id="adding-a-track">
+<h3>Adding a track<a class="headerlink" href="#adding-a-track" title="Link to this heading">¶</a></h3>
+<p>Use <strong>Add Track</strong> to create a <strong>Regular</strong>, <strong>Trigger</strong>, or <strong>Dry + Wet</strong> track.
+Trigger tracks have no audio or MIDI channels. The dialog configures the display
+name, audio-channel counts, optional MIDI, and, for processed tracks, the
+processor kind.</p>
+<p>Native processor choices are External, Tiny Synth/FX, OxiSynth, and feature-dependent
+Carla modes. Browser builds offer Tiny Synth/FX and OxiSynth. New Dry + Wet tracks use one
+shared audio-channel count for their matched dry inputs and wet outputs. Tiny
+Synth/FX additionally requires one MIDI input.</p>
+</section>
+<section id="track-controls">
+<h3>Track controls<a class="headerlink" href="#track-controls" title="Link to this heading">¶</a></h3>
+<p>Input gain affects monitored and recorded input. Input mute disables monitoring
+without discarding recording input. The top-bar exclusive-input toggle makes
+enabling one track’s input monitoring mute all other track inputs, which is
+useful when switching recording tracks. Output gain and mute affect monitored
+and played-back output. Stereo sides expose balance controls. Meters and MIDI
+activity indicators summarize applicable ports.</p>
+<p>A track title can be edited after creation. Its stable port-name base does not
+change when the title changes.</p>
+</section>
+<section id="connections-and-processors">
+<h3>Connections and processors<a class="headerlink" href="#connections-and-processors" title="Link to this heading">¶</a></h3>
+<p>Open <strong>Connections…</strong> from a track menu for a track-scoped port matrix, or use
+the main-menu Connections action for all tracks. External dry/wet tracks expose
+dry input/send and wet return/output ports. Hosted processors keep their
+internal endpoints private while exposing applicable dry inputs, wet outputs,
+and dry MIDI.</p>
+<p>The all-tracks Connections dialog also exposes <strong>Global FX Control MIDI In</strong>.
+CC 0–119, channel pressure, and pitch bend on all MIDI channels fan out to every
+MIDI-capable FX processor without being recorded, replayed, or turned into
+automation. Notes, poly pressure, program changes, channel-mode CC 120–127,
+system messages, SysEx, malformed messages, and other event-like traffic are
+filtered. Sleeping processors keep only the latest value for each supported
+control and apply it when normal processing resumes; the controller does not
+wake their DSP. A dense restore is bounded and may finish over several active
+audio blocks.</p>
+<p>Connecting one controller to both this port and a track MIDI input is additive:
+absolute controls can be applied twice, relative encoders may behave incorrectly,
+and only the regular track copy can be recorded. Some host MIDI APIs cannot open
+the same hardware endpoint twice; in that case the failed connection remains
+unconfirmed and is reported in the matrix.</p>
+<p>Control interpretation remains processor-owned. Configure Carla parameter
+mappings in Carla. Tiny Synth/FX and External chains respond only to controls
+they already support; the global port does not add a mapping editor or fixed CC
+assignments.</p>
+<p>Processed-track controls show only capabilities advertised by the selected
+processor. Tiny Synth/FX uses an embedded editor. Carla tracks expose lifecycle,
+UI, recovery, state, and bounded process-log controls when available.</p>
+<p>OxiSynth is an embedded General MIDI SoundFont instrument. Its track shape is
+fixed at no dry audio inputs, two wet audio outputs, and one MIDI input. Select
+banks and programs, play notes, and control the instrument entirely with MIDI;
+there is no processor editor or persisted synth state.</p>
+</section>
+</section>
+<section id="carla-process-isolation">
+<h2>Carla process isolation<a class="headerlink" href="#carla-process-isolation" title="Link to this heading">¶</a></h2>
+<p>Native builds with FX support can run Carla Rack and Patchbay chains in the
+application process or in one worker process per chain. Select the global mode
+under <strong>Settings → Carla</strong>. It takes effect on the next launch and is not stored
+in sessions.</p>
+<p>A subprocess authenticates its control connection and uses bounded shared
+memory for realtime audio and MIDI blocks. A late or failed worker produces a
+bounded failure for that wet block instead of delaying the audio callback.
+Other tracks continue. Recovery starts a new worker generation and restores the
+last confirmed state and desired active state.</p>
+<p>Processed-track controls expose lifecycle and recovery state. <strong>Carla Process
+Logs…</strong> shows bounded stdout and stderr records per generation, including any
+dropped-byte count. Closing a plugin UI or unloading a session is normal
+shutdown, not a crash.</p>
+<p>Release archives include a pinned Carla Native runtime, external UI, and plugin
+discovery/bridge helpers. ShoopDaLoop loads this runtime directly rather than
+hosting Carla through LV2. Source builds need no Carla SDK; when no runtime is
+present the Carla processors are shown as unavailable without affecting External
+or Tiny Synth/FX tracks. Developers can use the absolute-path overrides
+<code class="docutils literal notranslate"><span class="pre">SHOOP_CARLA_NATIVE_LIBRARY</span></code> and <code class="docutils literal notranslate"><span class="pre">SHOOP_CARLA_RESOURCE_DIR</span></code> to select an
+exact runtime and <code class="docutils literal notranslate"><span class="pre">--probe-carla-native</span></code> to validate it. <code class="docutils literal notranslate"><span class="pre">--probe-carla-native-ui</span></code> additionally
+opens, idles, hides, and reopens every external Carla UI before exiting.</p>
+</section>
+<section id="midi-controllers">
+<h2>MIDI controllers<a class="headerlink" href="#midi-controllers" title="Link to this heading">¶</a></h2>
+<p>ShoopDaLoop controller integration is script-based. Open <strong>Settings → Scripts</strong>
+to enable the bundled APC Mini script or manage other scripts. Scripts are
+grouped by kind in a table; its icon controls open separate help, log, and status
+windows showing callbacks, timers, logical MIDI rules, matched and connected
+endpoints, queue drops, and failures.
+The table also exports every script’s source and manages session ownership.
+Incompatible scripts remain visible with their error status so they can be
+exported and updated, but their start control is disabled.</p>
+<p>Native builds discover MIDI through the selected JACK or midir service. Browser
+builds discover physical endpoints after the independent <strong>Enable Web MIDI +
+SysEx</strong> action. Denied or unavailable Web MIDI does not disable audio, keyboard
+control, or the rest of the application.</p>
+<section id="autoconnection">
+<h3>Autoconnection<a class="headerlink" href="#autoconnection" title="Link to this heading">¶</a></h3>
+<p>A script-created logical MIDI port contains a direction and a full-name regular
+expression. It connects to every compatible matching endpoint and reconnects
+after hotplug. An empty expression matches nothing. Output rules can set a
+positive message rate; zero is unthrottled. Queues are bounded and expose drop
+counters rather than growing indefinitely.</p>
+</section>
+<section id="custom-controllers">
+<h3>Custom controllers<a class="headerlink" href="#custom-controllers" title="Link to this heading">¶</a></h3>
+<p>Controller behavior can use the <code class="docutils literal notranslate"><span class="pre">shoop_control</span></code> Lua API, callbacks, timers,
+and MIDI helpers. Native builds may add user script files. Browser builds use
+bundled and session-contained sources and intentionally omit machine file-path
+actions. See <a class="reference internal" href="developers.html#id1"><span class="std std-ref">Lua scripting</span></a>.</p>
+</section>
+</section>
+<section id="keyboard-control">
+<h2>Keyboard control<a class="headerlink" href="#keyboard-control" title="Link to this heading">¶</a></h2>
+<p>The computer keyboard can control many aspects of <strong>ShoopDaLoop</strong>. Keyboard behavior is implemented by the bundled <strong>Lua script</strong> <code class="docutils literal notranslate"><span class="pre">keyboard.lua</span></code>. Native builds can use a modified copy as a user script; browser builds fetch it from the packaged external built-ins tree or use session-contained sources.</p>
+<p>The help text of the default <strong>keyboard.lua</strong> is shown here for reference. Open <strong>Settings</strong> and select <strong>Scripts</strong> to view this help, edit startup enablement, restart the script, and inspect errors or logs. Keyboard presses are ignored while the GUI is accepting text input; key repeats are suppressed, and held sampler keys are released when the window loses focus. Newly discovered scripts are disabled until enabled in the dynamic identity list and saved.</p>
+<p><div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Keyboard controls
+
+Control ShoopDaLoop directly from the computer keyboard.
+
+## Key bindings
+
+| Key | Action |
+| --- | --- |
+| **Arrow keys** | Move the selection. With no selection, select the loop at the origin. Hold **Ctrl** to expand the selection instead of moving it. |
+| **Escape** | Clear the selection. |
+| **Space** | Perform the default action on selected loops, cycling between recording, playing, and stopped. |
+| **R** | Record selected loops. With no selection, select all recording loops. |
+| **P** | Play selected loops. With no selection, select all playing loops. |
+| **S** | Stop selected loops. With no selection, stop all loops. |
+| **L** | Play selected loops dry through wet. With no selection, select all loops already playing dry through wet. |
+| **M** | Record selected loops dry into wet. With no selection, select all loops already recording dry into wet. |
+| **I** | Toggle input mute for tracks containing selected loops. Unmuting respects the global auto-mute-other-inputs control. |
+| **N** | **Record next:** queue recording into the first empty loop of the selected or recording track. |
+| **G** | **Grab:** retroactively record data from the running buffer. |
+| **O** | **Overdub:** queue recording into the first empty loop while currently recording loops play back. |
+| **T** | Toggle one selected loop as the target. If several loops are selected, one is chosen. |
+| **U** | Untarget all loops. |
+| **W** | Record selected loops in sync with targeted loops. |
+| **C** | Clear selected loops. |
+| **.** | Sampling mode: selected loops record or play immediately until the key is released, without synchronization. |
+| **0–9** | Set the number of sync-loop cycles for future actions. **0** makes actions open-ended. Hold digits together to enter larger values, for example **1**, then **2**, for **12**. |
+
+## Synchronization
+
+Loop-transition actions follow the global **synchronization active** state. Toggle it in the UI, or hold **Ctrl** to invert it momentarily.
+</pre></div>
+</div>
+</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">ShoopDaLoop</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="concept.html">Concepts</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Usage</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#loops">Loops</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#tracks">Tracks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#carla-process-isolation">Carla process isolation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#midi-controllers">MIDI controllers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#keyboard-control">Keyboard control</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">For Developers / Advanced Users</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html#rust-tracing-coverage-inventory">Rust tracing coverage inventory</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="concept.html" title="previous chapter">Concepts</a></li>
+      <li>Next: <a href="developers.html" title="next chapter">For Developers / Advanced Users</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2023, Sander Vocke.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/usage.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
