@@ -3158,6 +3158,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxisynth"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68d089fc07e074f57ac6698292ce3da05eac1d282b821eb4156d4c7d8e36c6ec"
+dependencies = [
+ "bitflags 2.13.1",
+ "log",
+ "oxisynth-chorus",
+ "oxisynth-reverb",
+ "soundfont",
+]
+
+[[package]]
+name = "oxisynth-chorus"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "755d6ea336fc37043b00a1b54198e24cb4537c509435c7aca2d837d36185703b"
+dependencies = [
+ "log",
+]
+
+[[package]]
+name = "oxisynth-reverb"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdbb2d72d399b03dc7546c1087fabcdba68402f987bea903fe284c946fcca7aa"
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4094,11 +4122,13 @@ dependencies = [
  "memmap2",
  "midir",
  "num_enum",
+ "oxisynth",
  "regex",
  "rfd",
  "rtrb",
  "rubato",
  "serde_json",
+ "sha2 0.11.0",
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_tracing",
@@ -4424,6 +4454,12 @@ checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "soundfont"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a7f4cb358863e55f8f1a3882f68601360cf6c42fc53ff2fe9aea41c33e24489"
 
 [[package]]
 name = "stable_deref_trait"

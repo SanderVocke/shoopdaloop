@@ -46,12 +46,14 @@ Stages are ordered; a stage may start only after its dependencies below are comp
 
 ### Stage 1 — Dependency, asset, and realtime feasibility
 
-- [ ] Pin `oxisynth` in the workspace and engine manifests with the minimum feature set, update the lockfile, and confirm its license/dependency metadata and `wasm32-unknown-unknown` compatibility.
-- [ ] Add the exact `TimGM6mb.sf2` binary under a dedicated resource/third-party location plus a human-readable provenance/license notice and machine-checkable SHA-256 metadata.
-- [ ] Add an asset integrity test that parses the `include_bytes!` payload with OxiSynth and verifies its digest, expected identity/preset availability, and non-empty stereo rendering from a fixed MIDI note.
-- [ ] Audit or instrument OxiSynth construction, `send_event`, and `write` calls for realtime behavior; select fixed polyphony/buffer limits and record any required upstream workaround before graph integration.
+- [x] Pin `oxisynth` in the workspace and engine manifests with the minimum feature set, update the lockfile, and confirm its license/dependency metadata and `wasm32-unknown-unknown` compatibility.
+- [x] Add the exact `TimGM6mb.sf2` binary under a dedicated resource/third-party location plus a human-readable provenance/license notice and machine-checkable SHA-256 metadata.
+- [x] Add an asset integrity test that parses the `include_bytes!` payload with OxiSynth and verifies its digest, expected identity/preset availability, and non-empty stereo rendering from a fixed MIDI note.
+- [x] Audit or instrument OxiSynth construction, `send_event`, and `write` calls for realtime behavior; select fixed polyphony/buffer limits and record any required upstream workaround before graph integration.
 
 **Verification:** build the engine for native and `wasm32-unknown-unknown`; run the focused asset/render test; run license/metadata checks; prove the render path passes the repository's no-allocation guard after warm-up.
+
+**Completed:** `oxisynth` 0.1.0 is pinned without default features (LGPL-2.1; pure-Rust dependency graph), both engine targets compile, and the embedded 5,969,788-byte GPL SoundFont matches SHA-256 `c5378b62028c920cb11e4803327983fee2f2cdff5dc89c708e39da417e51c854`. The focused 48 kHz stereo render and warmed-up no-allocation assertion pass with 16 MIDI channels and fixed polyphony 256.
 
 ### Stage 2 — Engine processor and realtime graph
 
