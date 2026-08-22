@@ -37,7 +37,7 @@ Add a native and browser OxiSynth editor in two deliverable phases. The MVP make
 5. The persisted MVP state restores the embedded SoundFont configuration, all 16 channel program assignments, and every explicitly persisted baseline field. It never claims to restore live voices or effects tails, and legacy OxiSynth sessions load with the prior defaults.
 6. Phase 2 identifies every arbitrary SoundFont by a stable content digest, validates its bytes before publication, and enumerates the actual presets present in that file without assuming General MIDI names or dense banks.
 7. A portable saved session contains each referenced user SoundFont at most once, verifies declared size and digest on load, rejects unsafe/oversized/malformed assets transactionally, and produces the same assignments on native and browser runtimes.
-8. A missing or changed SoundFont never falls back silently. The track remains diagnosable and the user can locate/import the exact digest or explicitly choose a replacement before transactional activation.
+8. A missing or changed SoundFont never falls back silently. The decoded session is retained as an inactive recovery candidate, including every unresolved track and expected digest, while the current backend session keeps running; the user can locate/import the exact digest or explicitly choose a replacement before transactional activation.
 9. Session replacement, driver switching, track duplication/removal, activation, and save/load preserve configuration and asset ownership without stale UI state, leaked resources, stuck notes, or interruption of an already-running session on failure.
 10. Existing Direct, External, Carla, Tiny Synth/FX, legacy session, realtime-allocation, protocol, and package-size behavior remains compatible unless an intentional version/budget update is documented and tested.
 
@@ -146,11 +146,11 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 - [ ] Extend the session bundle/manifest with declared SoundFont asset records and content-addressed archive paths, storing each referenced payload once.
 - [ ] Increment the session format, add decode limits and aggregate accounting appropriate for SF2 files, verify size/digest before parsing, reject undeclared/duplicate/unsafe entries, and preserve deterministic output.
 - [ ] Save portable sessions with user SF2 bytes while continuing to identify the built-in font without duplicating its payload.
-- [ ] Load every required asset and processor before publishing a replacement session; errors must leave the current session running.
-- [ ] Represent unresolved assets explicitly in the application model and add locate/import-exact-digest plus explicit-replacement flows; never substitute the built-in asset automatically.
+- [ ] Split loading into decoded candidate, asset resolution, validated processor construction, and activation. Retain an inactive candidate document plus unresolved digests/errors for recovery while the current backend session keeps running, and publish the replacement only after every required asset and processor succeeds.
+- [ ] Represent unresolved assets and affected tracks explicitly in the candidate-session application model; add cancel, locate/import-exact-digest, retry, and explicit-replacement flows, and never substitute the built-in asset automatically.
 - [ ] Define export/privacy/licensing messaging that makes embedding a user-provided file explicit without asserting redistribution rights.
 
-**Verification:** cross-runtime portable-session tests cover one asset shared by tracks, multiple assets, missing payloads, wrong digest/size, archive bombs/limits, explicit replacement and preset remapping failures, deterministic archives, older readers/versions, and transactional rollback.
+**Verification:** cross-runtime portable-session tests cover one asset shared by tracks, multiple assets, missing payloads, wrong digest/size, archive bombs/limits, retained candidate diagnostics, cancel/retry recovery while the old backend keeps producing audio, explicit replacement and preset remapping failures, deterministic archives, older readers/versions, and transactional activation or rollback.
 
 ### Stage 9 — phase-2 editor expansion
 
