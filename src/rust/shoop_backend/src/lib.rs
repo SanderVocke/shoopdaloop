@@ -9331,11 +9331,66 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(state, "shoop-oxisynth:1:timgm6mb:0:40");
+        let preserved_midi = vec![
+            BackendMidiEvent {
+                time: 0,
+                data: vec![0xcf, 41],
+            },
+            BackendMidiEvent {
+                time: 1,
+                data: vec![0xbf, 0, 1],
+            },
+            BackendMidiEvent {
+                time: 2,
+                data: vec![0xbf, 32, 2],
+            },
+            BackendMidiEvent {
+                time: 3,
+                data: vec![0x9f, 64, 100],
+            },
+        ];
+        backend
+            .replace_loop_content(
+                created.loops[0],
+                &BackendLoopContentUpdate {
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 128,
+                        start_state: vec![vec![0xbf, 0, 3], vec![0xcf, 42]],
+                        events: preserved_midi.clone(),
+                        start_offset: None,
+                        preplay: None,
+                    }],
+                    length: Some(128),
+                    ..BackendLoopContentUpdate::default()
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(
+                created.loops[0],
+                BackendLoopMode::PlayingDryThroughWet,
+                None,
+            )
+            .unwrap();
+        backend.poll().unwrap();
+        backend
+            .process_audio_quantum(&[], 0, &mut output, 2, 128)
+            .unwrap();
+        let midi = backend.loop_midi_data(created.loops[0]).unwrap().unwrap();
+        assert_eq!(midi.channels[0].events, preserved_midi);
         let captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.tracks[0].processor_state.as_deref(),
             Some(state.as_str())
         );
+        assert!(captured.tracks[0].loops[0].midi[0]
+            .start_state
+            .contains(&vec![0xbf, 0, 3]));
+        assert!(captured.tracks[0].loops[0].midi[0]
+            .start_state
+            .contains(&vec![0xcf, 42]));
+        assert_eq!(captured.tracks[0].loops[0].midi[0].events, preserved_midi);
         assert!(captured.tracks[0].tiny_synth_midi_cc_assignments.is_empty());
 
         assert!(backend

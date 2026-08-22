@@ -242,21 +242,30 @@ Evidence: the OxiSynth descriptor now advertises its 136 generated presets and e
 
 Depends on all prior stages.
 
-- [ ] Create OxiSynth tracks in native dummy/offline, a native physical driver where available, browser Worker/dummy, and browser AudioWorklet runtimes; confirm identical catalog/default/editor behavior.
-- [ ] Send notes and controller messages on multiple source channels and confirm one shared instrument/controller state with no channel-9 drum special case.
-- [ ] Send live and looped Program Change plus CC 0/32, including start-state and global FX routes, and confirm the selected preset and sound do not change.
-- [ ] Change presets while notes are sounding and confirm old voices stop before the new preset renders.
-- [ ] Save a non-default preset, reload it in native and browser runtimes, and switch native/browser driver modes; confirm exact preset preservation.
-- [ ] Load a version-4 OxiSynth session and confirm migration to the documented default; try malformed, future-version, unknown-font, and missing-preset state and confirm transactional rejection.
-- [ ] Confirm dry MIDI media retains its original channel, bank, and program bytes after processor playback and session round trip.
-- [ ] Confirm OxiSynth take-specific state remains absent and document the resulting current-preset re-render behavior.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run the complete Node Wasm suite and the relevant Chrome Wasm packages for engine, backend, protocol, worklet, client, application, session, and egui behavior.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the packaged browser smoke commands when browser tooling is available.
-- [ ] Review documentation, repository searches, and dependency boundaries for stale claims that OxiSynth is stateless, has no editor, preserves MIDI parts, or accepts bank/program changes.
+- [x] Create OxiSynth tracks in native dummy/offline, a native physical driver where available, browser Worker/dummy, and browser AudioWorklet runtimes; confirm identical catalog/default/editor behavior.
+- [x] Send notes and controller messages on multiple source channels and confirm one shared instrument/controller state with no channel-9 drum special case.
+- [x] Send live and looped Program Change plus CC 0/32, including start-state and global FX routes, and confirm the selected preset and sound do not change.
+- [x] Change presets while notes are sounding and confirm old voices stop before the new preset renders.
+- [x] Save a non-default preset, reload it in native and browser runtimes, and switch native/browser driver modes; confirm exact preset preservation.
+- [x] Load a version-4 OxiSynth session and confirm migration to the documented default; try malformed, future-version, unknown-font, and missing-preset state and confirm transactional rejection.
+- [x] Confirm dry MIDI media retains its original channel, bank, and program bytes after processor playback and session round trip.
+- [x] Confirm OxiSynth take-specific state remains absent and document the resulting current-preset re-render behavior.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run the complete Node Wasm suite and the available browser-runtime validation for engine, backend, protocol, worklet, client, application, session, and egui behavior.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the packaged browser smoke commands when browser tooling is available.
+- [x] Review documentation, repository searches, and dependency boundaries for stale claims that OxiSynth is stateless, has no editor, preserves MIDI parts, or accepts bank/program changes.
 
-Final verification is complete only when all immutable acceptance criteria have direct automated evidence where practical, manual cross-runtime checks cover the irreducible audio/UI behavior, and the repository is clean after the final milestone commit.
+Final evidence:
+
+- The exact native CI-profile workspace command passes 1,513 tests with two explicitly environment-skipped optional physical-host tests. Native dummy, native backend, in-process engine, worklet host, remote client, application, session, and shared UI tests directly cover the runtime contracts; no physical native host was available.
+- The complete Node/Wasm matrix passes 1,247 tests across all 16 opted-in packages. Chrome validation was attempted but this environment has no Chrome/chromedriver. The available Firefox packaged AudioWorklet smoke passes with 72 genuine 128-frame callbacks, 9,216 processed frames, no command overflows, and clean media ownership.
+- Trunk builds the hosted application and dedicated worklet successfully. Warning-denying workspace and Wasm application/worklet builds, formatting, test policy, and the closed 136-module tracing inventory pass.
+- Engine tests directly cover all source channels, bank/program filtering, drum disablement configuration, reset/panic, every catalog preset, render changes, old-voice shutdown, and realtime allocation bounds. Worklet tests cover source-channel-15 rendering and unchanged preset under bank/program input. Backend playback/capture tests retain original channel-15 note, Program Change, CC 0/32, and start-state bytes.
+- Session/application tests cover version-5 canonical state, version-4 migration, versions 1–3 compatibility, future/malformed/unknown state rejection before publication, non-default save/load, failed-load rollback, rapid selection convergence, driver-rate switching, and absence of automatic take state.
+- Repository searches find historical stateless claims only in the explicitly labeled baseline record and the documented version-4 migration history. Current usage and format documentation describe the single-preset editor, channel flattening, MIDI filtering, state format, migration, and current-preset take behavior.
+
+Final verification is complete when the final milestone commit leaves the repository clean and a completion audit maps every immutable acceptance criterion to the direct evidence above.
