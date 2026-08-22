@@ -125,18 +125,23 @@ Depends on Stage 2 so failures remain observable after generic publication is re
 
 Depends on the typed I/O outcome from Stage 3.
 
-- [ ] Change browser click-track self-tests to observe request/task IDs and typed click-track or I/O terminal state instead of searching notification messages.
-- [ ] Change the browser runtime-status element to report typed audio, MIDI, task, and self-test health without appending a notification string.
-- [ ] Add explicit typed failure state where an existing subsystem state cannot distinguish pending, completed, and failed outcomes reliably.
-- [ ] Keep human-readable browser status copy derived from typed state and separate from test selectors and data attributes.
+- [x] Change browser click-track self-tests to observe request/task IDs and typed click-track or I/O terminal state instead of searching notification messages.
+- [x] Change the browser runtime-status element to report typed audio, MIDI, task, and self-test health without appending a notification string.
+- [x] Add explicit typed failure state where an existing subsystem state cannot distinguish pending, completed, and failed outcomes reliably.
+- [x] Keep human-readable browser status copy derived from typed state and separate from test selectors and data attributes.
 
 ### Stage 4 verification
 
-- [ ] Add or update tests proving browser self-tests detect typed audio and MIDI click-track failures without message matching.
-- [ ] Verify browser status data attributes expose the required typed terminal states.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`.
-- [ ] Run the relevant browser smoke and self-test scenarios at their supported viewport sizes.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
+- [x] Add or update tests proving browser self-tests detect typed audio and MIDI click-track failures without message matching.
+- [x] Verify browser status data attributes expose the required typed terminal states.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`.
+- [x] Run the relevant browser smoke and self-test scenarios at their supported viewport sizes.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
+
+### Stage 4 completion record
+
+- Browser click-track self-tests now use task IDs, kinds, and terminal statuses; browser runtime status publishes typed I/O task attributes and no longer includes notification text.
+- Warning-denying Wasm application and release audio-worklet builds, the smoke-budget check, and the test-usage policy check passed. Packaged browser automation is not installed in this container and remains covered by the PR browser CI jobs.
 
 ## Stage 5: Remove the generic notification mechanism
 
