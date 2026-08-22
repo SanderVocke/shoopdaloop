@@ -140,6 +140,7 @@ pub struct OxiSynthSnapshot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OxiSynthReverbConfiguration {
     pub room_size: f32,
     pub damp: f32,
@@ -159,6 +160,7 @@ impl Default for OxiSynthReverbConfiguration {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OxiSynthChorusConfiguration {
     pub voices: u32,
     pub level: f32,
@@ -182,12 +184,14 @@ fn default_master_gain() -> f32 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OxiSynthProgramConfiguration {
     pub bank: u32,
     pub program: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OxiSynthConfiguration {
     pub version: u16,
     pub soundfont_sha256: String,
@@ -889,5 +893,8 @@ mod tests {
                 ..Default::default()
             })
             .is_err());
+        let mut unknown: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        unknown["active_voices"] = 12.into();
+        assert!(OxiSynthProcessor::decode_configuration(&unknown.to_string()).is_err());
     }
 }

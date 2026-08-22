@@ -117,8 +117,8 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 
 - [x] Define a typed, versioned OxiSynth configuration document rather than an opaque dump of the `Synth`; exclude SoundFont bytes and runtime state.
 - [x] Increment the session document version and migrate version-4 stateless OxiSynth tracks to the embedded asset digest and documented 16-channel defaults.
-- [ ] Validate channel counts, numeric ranges, exact embedded asset identity, presets, and absence of forbidden runtime fields before backend mutation.
-- [ ] Serialize the persisted baseline, not incidental current MIDI overrides; document and test the user action or policy that promotes current programs to the baseline if provided.
+- [x] Validate channel counts, numeric ranges, exact asset identity, presets, and absence of forbidden runtime fields before backend mutation.
+- [x] Serialize the persisted baseline, not incidental current MIDI overrides; direct editor changes update the baseline while external MIDI remains a transient current override.
 - [ ] Integrate configuration with track duplication, recorded-take FX state policy, driver switching, transactional replacement, and deterministic archive output.
 
 **Verification:** archive migration/validation tests cover versions 1–4, malformed and future configurations, deterministic encoding, save-after-external-program-change semantics, native/browser round trips, and failure atomicity.

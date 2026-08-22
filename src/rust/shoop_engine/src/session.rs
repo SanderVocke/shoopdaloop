@@ -1705,6 +1705,18 @@ impl Session {
         self.note_graph_change();
     }
 
+    pub fn remove_oxisynth_processor(&mut self, title: &str) -> Option<OxiSynthProcessor> {
+        let index = self.processors.iter().position(|route| {
+            route.title == title && matches!(route.backend, ProcessorBackend::OxiSynth(_))
+        })?;
+        let route = self.processors.swap_remove(index);
+        self.note_graph_change();
+        match route.backend {
+            ProcessorBackend::OxiSynth(processor) => Some(processor),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn tiny_synth_fx_processor_mut(
         &mut self,
         title: &str,

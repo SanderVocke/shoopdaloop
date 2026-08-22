@@ -2283,6 +2283,14 @@ impl BackendSession {
             return Err(anyhow!("FX chain belongs to another session"));
         }
         let title = chain.title.clone();
+        let oxisynth = matches!(chain.backend, FXChainBackendKind::OxiSynth(_));
+        if oxisynth {
+            let removal_title = title.clone();
+            let displaced = self.shared.query_graph_scheduler_response(move |session| {
+                session.remove_oxisynth_processor(&removal_title)
+            })?;
+            drop(displaced);
+        }
         let audio = chain
             .audio_inputs
             .iter()
@@ -2296,7 +2304,9 @@ impl BackendSession {
             .map(|port| Arc::clone(&port.control))
             .collect::<Vec<_>>();
         Ok(self.shared.send_topology(move |session| {
-            session.remove_processor(&title);
+            if !oxisynth {
+                session.remove_processor(&title);
+            }
             for control in &audio {
                 if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
                     let _ = session.remove_port(index);
