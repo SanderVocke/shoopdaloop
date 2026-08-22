@@ -11,7 +11,7 @@ Add a native and browser OxiSynth editor in two deliverable phases. The MVP make
 - [x] Phase 1 direct controls, authoritative native/browser snapshots, configuration codec, session v5 persistence, and initial egui editor implemented.
 - [ ] Phase 1 lifecycle hardening, comprehensive tests, screenshots, and integration gate in progress.
 - [x] Phase 1 implementation complete.
-- [ ] Phase 2 implementation in progress: native/browser import transport, content addressing, portable archive assets, transactional replacement, and initial library UI are implemented; background browser preparation, recovery UI, expanded synth parameters, and final hardening remain.
+- [ ] Phase 2 implementation in progress: native/browser import transport, content addressing, native durable storage, portable archive assets, transactional sparse-font replacement, referenced-asset-only capture, and initial library UI are implemented; background browser preparation and durable storage, recovery UI, expanded synth parameters, and final hardening remain.
 - [ ] Final end-to-end validation pending.
 
 ## Scope
