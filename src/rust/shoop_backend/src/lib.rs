@@ -1075,7 +1075,9 @@ pub fn tiny_synth_fx_descriptor() -> TrackProcessorDescriptor {
         available: true,
         unavailable_reason: None,
         constraints: shoop_app_api::TrackProcessorConstraints {
+            min_dry_audio_channels: None,
             max_dry_audio_channels: None,
+            min_wet_audio_channels: None,
             max_wet_audio_channels: None,
             matching_audio_channels: true,
             midi: shoop_app_api::TrackProcessorMidiPolicy::Required,
@@ -1096,6 +1098,46 @@ pub fn tiny_synth_fx_descriptor() -> TrackProcessorDescriptor {
                 .collect::<Vec<_>>()
                 .into(),
         }),
+    }
+}
+
+pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
+    TrackProcessorDescriptor {
+        id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
+        label: "OxiSynth".to_owned(),
+        available: true,
+        unavailable_reason: None,
+        constraints: shoop_app_api::TrackProcessorConstraints {
+            min_dry_audio_channels: Some(0),
+            max_dry_audio_channels: Some(0),
+            min_wet_audio_channels: Some(2),
+            max_wet_audio_channels: Some(2),
+            matching_audio_channels: false,
+            midi: shoop_app_api::TrackProcessorMidiPolicy::Required,
+        },
+        features: shoop_app_api::TrackProcessorFeatures::default(),
+        editor: None,
+    }
+}
+
+#[cfg(test)]
+mod oxisynth_descriptor_tests {
+    use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn descriptor_is_fixed_stereo_midi_only_and_stateless() {
+        let descriptor = oxisynth_descriptor();
+        assert_eq!(descriptor.id.as_str(), TrackProcessorTypeId::OXISYNTH);
+        assert_eq!(descriptor.label, "OxiSynth");
+        assert!(descriptor.available);
+        assert!(descriptor.constraints.accepts(0, 2, true));
+        assert!(!descriptor.constraints.accepts(0, 1, true));
+        assert!(!descriptor.constraints.accepts(1, 2, true));
+        assert_eq!(
+            descriptor.features,
+            shoop_app_api::TrackProcessorFeatures::default()
+        );
+        assert_eq!(descriptor.editor, None);
     }
 }
 
@@ -3150,7 +3192,7 @@ impl Backend for EngineBackend {
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
-        Ok(vec![tiny_synth_fx_descriptor()].into())
+        Ok(vec![tiny_synth_fx_descriptor(), oxisynth_descriptor()].into())
     }
 
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
@@ -7085,7 +7127,9 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: shoop_app_api::TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: Some(8),
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: Some(8),
                 matching_audio_channels: false,
                 midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,

@@ -72,13 +72,15 @@ Depends on Stage 1.
 
 Depends on Stage 2.
 
-- [ ] Extend `TrackProcessorConstraints` with minimum or exact audio-channel bounds, update every descriptor, validator, selector, and construction consumer to preserve existing processor behavior, and add acceptance tests proving under- and over-sized shapes are rejected.
-- [ ] Add `TrackProcessorTypeId::OXISYNTH` and an always-available descriptor with exact fixed constraints (`dry=0`, `wet=2`, required MIDI), no editor, and no persistent processor state/recovery/log features.
-- [ ] Generalize native processed-track construction where necessary, create the stereo wet ports and MIDI dry port, instantiate OxiSynth transactionally before publishing track state, and include it in every native catalog independently of Carla/native-driver feature flags.
-- [ ] Ensure generic active/bypass behavior, snapshots, driver switching, session replacement, loop creation, routing, and cleanup recognize OxiSynth without adding processor-specific actions.
-- [ ] Extend backend contract tests for descriptor constraints, successful and invalid shapes, rollback after construction failure, processor identity, port roles, audio generation, deletion, and driver-switch reconstruction.
+- [x] Extend `TrackProcessorConstraints` with minimum or exact audio-channel bounds, update every descriptor, validator, selector, and construction consumer to preserve existing processor behavior, and add acceptance tests proving under- and over-sized shapes are rejected.
+- [x] Add `TrackProcessorTypeId::OXISYNTH` and an always-available descriptor with exact fixed constraints (`dry=0`, `wet=2`, required MIDI), no editor, and no persistent processor state/recovery/log features.
+- [x] Generalize native processed-track construction where necessary, create the stereo wet ports and MIDI dry port, instantiate OxiSynth transactionally before publishing track state, and include it in every native catalog independently of Carla/native-driver feature flags.
+- [x] Ensure generic active/bypass behavior, snapshots, driver switching, session replacement, loop creation, routing, and cleanup recognize OxiSynth without adding processor-specific actions.
+- [x] Extend backend contract tests for descriptor constraints, successful and invalid shapes, rollback after construction failure, processor identity, port roles, audio generation, deletion, and driver-switch reconstruction.
 
 **Verification:** run shared API and backend tests with the minimal, native-driver, and native-fx feature combinations; run warning-denying native builds to prove OxiSynth is present with and without Carla.
+
+**Completed:** shared constraints now enforce lower and upper audio-channel bounds without changing existing descriptor behavior. Native and engine catalogs always expose the stateless/no-editor `oxisynth` descriptor; native construction validates the fixed shape before building an embedded processor, publishes exactly two output ports plus one MIDI input, and uses the generic active/routing/removal lifecycle. Focused API, descriptor, invalid-shape, native port-role, activation, and removal tests pass with the native-driver feature set.
 
 ### Stage 4 — Web protocol, worklet, and client
 

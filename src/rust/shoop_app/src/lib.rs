@@ -9903,7 +9903,9 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: shoop_app_api::TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: Some(2),
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: Some(2),
                 matching_audio_channels: false,
                 midi: shoop_app_api::TrackProcessorMidiPolicy::Unsupported,
@@ -9937,7 +9939,9 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: shoop_app_api::TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: None,
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: None,
                 matching_audio_channels: false,
                 midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
@@ -10295,7 +10299,9 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: shoop_app_api::TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: Some(2),
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: Some(2),
                 matching_audio_channels: false,
                 midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
@@ -10434,7 +10440,9 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: shoop_app_api::TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: Some(2),
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: Some(2),
                 matching_audio_channels: false,
                 midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
@@ -14346,7 +14354,9 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             available: true,
             unavailable_reason: None,
             constraints: shoop_app_api::TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: None,
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: None,
                 matching_audio_channels: false,
                 midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,
@@ -16954,7 +16964,9 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             available: true,
             unavailable_reason: None,
             constraints: shoop_app_api::TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: None,
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: None,
                 matching_audio_channels: false,
                 midi: shoop_app_api::TrackProcessorMidiPolicy::Optional,

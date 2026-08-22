@@ -70,6 +70,7 @@ impl TrackProcessorTypeId {
     pub const CARLA_PATCHBAY: &'static str = "carla_patchbay";
     pub const CARLA_PATCHBAY_16X: &'static str = "carla_patchbay_16x";
     pub const TINY_SYNTH_FX: &'static str = "tiny_synth_fx";
+    pub const OXISYNTH: &'static str = "oxisynth";
 
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -105,7 +106,9 @@ pub enum TrackProcessorMidiPolicy {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct TrackProcessorConstraints {
+    pub min_dry_audio_channels: Option<u32>,
     pub max_dry_audio_channels: Option<u32>,
+    pub min_wet_audio_channels: Option<u32>,
     pub max_wet_audio_channels: Option<u32>,
     pub matching_audio_channels: bool,
     pub midi: TrackProcessorMidiPolicy,
@@ -113,8 +116,14 @@ pub struct TrackProcessorConstraints {
 
 impl TrackProcessorConstraints {
     pub fn accepts(self, dry_audio_channels: u32, wet_audio_channels: u32, dry_midi: bool) -> bool {
-        self.max_dry_audio_channels
-            .is_none_or(|limit| dry_audio_channels <= limit)
+        self.min_dry_audio_channels
+            .is_none_or(|limit| dry_audio_channels >= limit)
+            && self
+                .max_dry_audio_channels
+                .is_none_or(|limit| dry_audio_channels <= limit)
+            && self
+                .min_wet_audio_channels
+                .is_none_or(|limit| wet_audio_channels >= limit)
             && self
                 .max_wet_audio_channels
                 .is_none_or(|limit| wet_audio_channels <= limit)
@@ -1990,7 +1999,9 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: Some(4),
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: Some(2),
                 matching_audio_channels: false,
                 midi: TrackProcessorMidiPolicy::Unsupported,
@@ -2051,9 +2062,28 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn processor_constraints_enforce_exact_channel_counts() {
+        let constraints = TrackProcessorConstraints {
+            min_dry_audio_channels: Some(0),
+            max_dry_audio_channels: Some(0),
+            min_wet_audio_channels: Some(2),
+            max_wet_audio_channels: Some(2),
+            matching_audio_channels: false,
+            midi: TrackProcessorMidiPolicy::Required,
+        };
+        assert!(constraints.accepts(0, 2, true));
+        assert!(!constraints.accepts(0, 1, true));
+        assert!(!constraints.accepts(0, 3, true));
+        assert!(!constraints.accepts(1, 2, true));
+        assert!(!constraints.accepts(0, 2, false));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn tiny_synth_fx_constraints_require_matched_audio_and_midi() {
         let constraints = TrackProcessorConstraints {
+            min_dry_audio_channels: None,
             max_dry_audio_channels: None,
+            min_wet_audio_channels: None,
             max_wet_audio_channels: None,
             matching_audio_channels: true,
             midi: TrackProcessorMidiPolicy::Required,

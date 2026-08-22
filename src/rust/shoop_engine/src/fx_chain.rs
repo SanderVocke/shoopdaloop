@@ -20,6 +20,7 @@ pub enum FXChainType {
     CarlaPatchbay16x = 2,
     Test2x2x1 = 3,
     TinySynthFx = 4,
+    OxiSynth = 5,
 }
 
 impl FXChainType {
