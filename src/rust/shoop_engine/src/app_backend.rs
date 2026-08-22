@@ -6353,6 +6353,15 @@ impl FXChain {
                     .oxisynth_processor_mut(&title)
                     .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?;
                 match control {
+                    engine::oxisynth::OxiSynthControl::SetMasterGain(value) => {
+                        processor.set_master_gain(value)
+                    }
+                    engine::oxisynth::OxiSynthControl::SetReverb(value) => {
+                        processor.set_reverb(value)
+                    }
+                    engine::oxisynth::OxiSynthControl::SetChorus(value) => {
+                        processor.set_chorus(value)
+                    }
                     engine::oxisynth::OxiSynthControl::SelectProgram {
                         channel,
                         bank,

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 14;
+pub const PROTOCOL_VERSION: u16 = 15;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -368,6 +368,9 @@ pub enum WireTrackFxControl {
     TinyRemoveMidiCc(WireTinySynthFxParameter),
     TinyClearMidiCcAssignments,
     TinyPanic,
+    OxiSetMasterGain(f32),
+    OxiSetReverb(WireOxiSynthReverbState),
+    OxiSetChorus(WireOxiSynthChorusState),
     OxiSelectProgram {
         channel: u8,
         bank: u32,
@@ -394,6 +397,9 @@ impl WireTrackFxControl {
             Self::TinySetEqLowDb(_) => 5,
             Self::TinySetEqMidDb(_) => 6,
             Self::TinySetEqHighDb(_) => 7,
+            Self::OxiSetMasterGain(_) => 8,
+            Self::OxiSetReverb(_) => 9,
+            Self::OxiSetChorus(_) => 10,
             Self::OxiSelectProgram { channel, .. } => 16u8.saturating_add(*channel),
             Self::OxiSelectSoundFont(_) => 15,
             Self::SetVisible(_)
@@ -677,23 +683,31 @@ pub struct WireTrackFxState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireOxiSynthState {
-    pub available_soundfonts: Vec<WireSoundFontAssetDescriptor>,
     pub soundfont_sha256: String,
     pub soundfont_name: String,
     pub presets: Vec<WireOxiSynthPreset>,
     pub revision: u64,
     pub midi_activity_revision: u64,
+    pub master_gain: f32,
+    pub reverb: WireOxiSynthReverbState,
+    pub chorus: WireOxiSynthChorusState,
     pub channels: Vec<WireOxiSynthChannelState>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct WireSoundFontAssetDescriptor {
-    pub sha256: String,
-    pub name: String,
-    pub original_filename: String,
-    pub byte_len: usize,
-    pub presets: Vec<WireOxiSynthPreset>,
-    pub built_in: bool,
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthReverbState {
+    pub room_size: f32,
+    pub damp: f32,
+    pub width: f32,
+    pub level: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthChorusState {
+    pub voices: u32,
+    pub level: f32,
+    pub speed_hz: f32,
+    pub depth_ms: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

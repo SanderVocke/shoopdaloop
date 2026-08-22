@@ -715,6 +715,9 @@ enum FxControlKey {
     TinyMidiAssignments,
     OxiProgram(u8),
     OxiSoundFont,
+    OxiMasterGain,
+    OxiReverb,
+    OxiChorus,
 }
 
 fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
@@ -786,18 +789,27 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
             else {
                 return;
             };
-            if let shoop_backend::OxiSynthControl::SelectProgram {
-                channel,
-                bank,
-                program,
-            } = control
-            {
-                if let Some(state) = editor.channels.get_mut(*channel as usize) {
-                    state.baseline_bank = *bank;
-                    state.baseline_program = *program;
-                    state.current_bank = *bank;
-                    state.current_program = *program;
+            match control {
+                shoop_backend::OxiSynthControl::SetMasterGain(value) => {
+                    editor.master_gain = *value;
                 }
+                shoop_backend::OxiSynthControl::SetReverb(value) => editor.reverb = *value,
+                shoop_backend::OxiSynthControl::SetChorus(value) => editor.chorus = *value,
+                shoop_backend::OxiSynthControl::SelectProgram {
+                    channel,
+                    bank,
+                    program,
+                } => {
+                    if let Some(state) = editor.channels.get_mut(*channel as usize) {
+                        state.baseline_bank = *bank;
+                        state.baseline_program = *program;
+                        state.current_bank = *bank;
+                        state.current_program = *program;
+                    }
+                }
+                shoop_backend::OxiSynthControl::SelectSoundFont(_)
+                | shoop_backend::OxiSynthControl::Audition { .. }
+                | shoop_backend::OxiSynthControl::Panic => {}
             }
         }
         BackendTrackFxControl::ToggleOrRecover
@@ -818,6 +830,11 @@ fn fx_control_matches(
             return false;
         };
         return match control {
+            shoop_backend::OxiSynthControl::SetMasterGain(value) => {
+                (editor.master_gain - *value).abs() <= f32::EPSILON
+            }
+            shoop_backend::OxiSynthControl::SetReverb(value) => editor.reverb == *value,
+            shoop_backend::OxiSynthControl::SetChorus(value) => editor.chorus == *value,
             shoop_backend::OxiSynthControl::SelectSoundFont(sha256) => {
                 editor.soundfont_sha256.as_ref() == sha256.as_ref()
             }
@@ -872,6 +889,9 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
             shoop_backend::TinySynthFxControl::Panic => return None,
         },
         BackendTrackFxControl::OxiSynth(control) => match control {
+            shoop_backend::OxiSynthControl::SetMasterGain(_) => FxControlKey::OxiMasterGain,
+            shoop_backend::OxiSynthControl::SetReverb(_) => FxControlKey::OxiReverb,
+            shoop_backend::OxiSynthControl::SetChorus(_) => FxControlKey::OxiChorus,
             shoop_backend::OxiSynthControl::SelectSoundFont(_) => FxControlKey::OxiSoundFont,
             shoop_backend::OxiSynthControl::SelectProgram { channel, .. } => {
                 FxControlKey::OxiProgram(*channel)

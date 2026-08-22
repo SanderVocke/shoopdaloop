@@ -11,7 +11,7 @@ Add a native and browser OxiSynth editor in two deliverable phases. The MVP make
 - [x] Phase 1 direct controls, authoritative native/browser snapshots, configuration codec, session v5 persistence, and initial egui editor implemented.
 - [ ] Phase 1 lifecycle hardening, comprehensive tests, screenshots, and integration gate in progress.
 - [x] Phase 1 implementation complete.
-- [ ] Phase 2 implementation in progress: native/browser import transport, content addressing, native durable storage, portable archive assets, transactional sparse-font replacement, referenced-asset-only capture, and initial library UI are implemented; background browser preparation and durable storage, recovery UI, expanded synth parameters, and final hardening remain.
+- [ ] Phase 2 implementation in progress: native/browser import transport, content addressing, native durable storage, portable archive assets, transactional sparse-font replacement, referenced-asset-only capture, revision-independent catalog publication, master/effect controls, meters, and initial library UI are implemented; background browser preparation and durable storage, recovery UI, favorites/recent presets, and final hardening remain.
 - [ ] Final end-to-end validation pending.
 
 ## Scope
@@ -171,7 +171,7 @@ If OxiSynth lacks a getter required for a represented field, maintain a processo
 
 - [ ] Add SoundFont manage/import/change controls with ready-state selection and drag/drop import implemented; loading, missing, invalid, removal, and replacement recovery states remain.
 - [x] Add a compact 16-channel assignment overview that navigates the existing per-channel editor without becoming a full mixer.
-- [ ] Add master gain, stereo output metering, and supported chorus/reverb parameters through direct Rust controls; verify true enable/bypass support or expose only truthful parameter semantics.
+- [x] Add master gain, stereo output metering, and supported chorus/reverb parameters through direct Rust controls; expose the supported parameter semantics without claiming unavailable effect bypass controls.
 - [ ] Add previous/next, favorites, and recent presets keyed by digest/bank/program; keep favorites/recent data out of required session reconstruction.
 - [ ] Preserve search and selected channel across catalog refreshes, and display an explicit unavailable assignment when a replacement SF2 lacks the configured preset.
 - [ ] Update user, session-format, browser-storage, asset portability, license, and package-size documentation.

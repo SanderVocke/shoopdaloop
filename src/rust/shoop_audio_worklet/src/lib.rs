@@ -6,9 +6,9 @@ use shoop_audio_protocol::{
     WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
-    WireMidiOutputEvent, WireOxiSynthChannelState, WireOxiSynthPreset, WireOxiSynthState,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireSoundFontAssetDescriptor,
-    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
+    WireMidiOutputEvent, WireOxiSynthChannelState, WireOxiSynthChorusState, WireOxiSynthPreset,
+    WireOxiSynthReverbState, WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
+    WireSnapshot, WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
     WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
     COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
     PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
@@ -916,6 +916,25 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
         WireTrackFxControl::TinyPanic => {
             BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
         }
+        WireTrackFxControl::OxiSetMasterGain(value) => {
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::SetMasterGain(value))
+        }
+        WireTrackFxControl::OxiSetReverb(value) => BackendTrackFxControl::OxiSynth(
+            OxiSynthControl::SetReverb(shoop_app_api::OxiSynthReverbState {
+                room_size: value.room_size,
+                damp: value.damp,
+                width: value.width,
+                level: value.level,
+            }),
+        ),
+        WireTrackFxControl::OxiSetChorus(value) => BackendTrackFxControl::OxiSynth(
+            OxiSynthControl::SetChorus(shoop_app_api::OxiSynthChorusState {
+                voices: value.voices,
+                level: value.level,
+                speed_hz: value.speed_hz,
+                depth_ms: value.depth_ms,
+            }),
+        ),
         WireTrackFxControl::OxiSelectProgram {
             channel,
             bank,
@@ -1144,26 +1163,6 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                         let oxisynth = match fx.editor {
                             Some(TrackProcessorEditorState::OxiSynth(editor)) => {
                                 Some(WireOxiSynthState {
-                                    available_soundfonts: editor
-                                        .available_soundfonts
-                                        .iter()
-                                        .map(|asset| WireSoundFontAssetDescriptor {
-                                            sha256: asset.sha256.to_string(),
-                                            name: asset.name.to_string(),
-                                            original_filename: asset.original_filename.to_string(),
-                                            byte_len: asset.byte_len,
-                                            presets: asset
-                                                .presets
-                                                .iter()
-                                                .map(|preset| WireOxiSynthPreset {
-                                                    bank: preset.bank,
-                                                    program: preset.program,
-                                                    name: preset.name.to_string(),
-                                                })
-                                                .collect(),
-                                            built_in: asset.built_in,
-                                        })
-                                        .collect(),
                                     soundfont_sha256: editor.soundfont_sha256.to_string(),
                                     soundfont_name: editor.soundfont_name.to_string(),
                                     presets: editor
@@ -1177,6 +1176,19 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                                         .collect(),
                                     revision: editor.revision,
                                     midi_activity_revision: editor.midi_activity_revision,
+                                    master_gain: editor.master_gain,
+                                    reverb: WireOxiSynthReverbState {
+                                        room_size: editor.reverb.room_size,
+                                        damp: editor.reverb.damp,
+                                        width: editor.reverb.width,
+                                        level: editor.reverb.level,
+                                    },
+                                    chorus: WireOxiSynthChorusState {
+                                        voices: editor.chorus.voices,
+                                        level: editor.chorus.level,
+                                        speed_hz: editor.chorus.speed_hz,
+                                        depth_ms: editor.chorus.depth_ms,
+                                    },
                                     channels: editor
                                         .channels
                                         .map(|channel| WireOxiSynthChannelState {

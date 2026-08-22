@@ -16,6 +16,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
+shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend" }
 serde_json = { workspace = true }
 

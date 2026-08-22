@@ -35,6 +35,19 @@ fn app_oxisynth_state(
             .into(),
         revision: snapshot.revision,
         midi_activity_revision: snapshot.midi_activity_revision,
+        master_gain: snapshot.master_gain,
+        reverb: shoop_app_api::OxiSynthReverbState {
+            room_size: snapshot.reverb.room_size,
+            damp: snapshot.reverb.damp,
+            width: snapshot.reverb.width,
+            level: snapshot.reverb.level,
+        },
+        chorus: shoop_app_api::OxiSynthChorusState {
+            voices: snapshot.chorus.voices,
+            level: snapshot.chorus.level,
+            speed_hz: snapshot.chorus.speed_hz,
+            depth_ms: snapshot.chorus.depth_ms,
+        },
         channels: snapshot
             .channels
             .map(|channel| shoop_app_api::OxiSynthChannelState {
@@ -1742,6 +1755,29 @@ impl NativeRuntime {
                     return Err(anyhow!("track is not an OxiSynth processor"));
                 }
                 let control = match control {
+                    OxiSynthControl::SetMasterGain(value) => {
+                        shoop_engine::oxisynth::OxiSynthControl::SetMasterGain(value)
+                    }
+                    OxiSynthControl::SetReverb(value) => {
+                        shoop_engine::oxisynth::OxiSynthControl::SetReverb(
+                            shoop_engine::oxisynth::OxiSynthReverbConfiguration {
+                                room_size: value.room_size,
+                                damp: value.damp,
+                                width: value.width,
+                                level: value.level,
+                            },
+                        )
+                    }
+                    OxiSynthControl::SetChorus(value) => {
+                        shoop_engine::oxisynth::OxiSynthControl::SetChorus(
+                            shoop_engine::oxisynth::OxiSynthChorusConfiguration {
+                                voices: value.voices,
+                                level: value.level,
+                                speed_hz: value.speed_hz,
+                                depth_ms: value.depth_ms,
+                            },
+                        )
+                    }
                     OxiSynthControl::SelectSoundFont(_) => {
                         return Err(anyhow!("SoundFont selection was not prepared"));
                     }

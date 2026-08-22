@@ -70,6 +70,74 @@ impl OxiSynthEditor {
                         });
                     ui.label("Drop an .sf2 file into the application to import it.");
                 });
+                ui.separator();
+                ui.label("Output");
+                let mut master_gain = editor.master_gain;
+                if ui
+                    .add(
+                        egui::Slider::new(&mut master_gain, 0.0..=10.0)
+                            .text("Master gain")
+                            .logarithmic(true),
+                    )
+                    .changed()
+                {
+                    actions.push(TrackAction::OxiSynth(OxiSynthControl::SetMasterGain(
+                        master_gain,
+                    )));
+                }
+                ui.horizontal(|ui| {
+                    ui.label("Stereo output");
+                    ui.add(
+                        egui::ProgressBar::new(
+                            ((state.controls.output_peak_left_db + 60.0) / 60.0).clamp(0.0, 1.0),
+                        )
+                        .text(format!("L {:.1} dB", state.controls.output_peak_left_db)),
+                    );
+                    ui.add(
+                        egui::ProgressBar::new(
+                            ((state.controls.output_peak_right_db + 60.0) / 60.0).clamp(0.0, 1.0),
+                        )
+                        .text(format!("R {:.1} dB", state.controls.output_peak_right_db)),
+                    );
+                });
+                ui.collapsing("Reverb", |ui| {
+                    let mut value = editor.reverb;
+                    let mut changed = false;
+                    changed |= ui
+                        .add(egui::Slider::new(&mut value.room_size, 0.0..=1.0).text("Room size"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut value.damp, 0.0..=1.0).text("Damping"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut value.width, 0.0..=1.0).text("Stereo width"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut value.level, 0.0..=1.0).text("Level"))
+                        .changed();
+                    if changed {
+                        actions.push(TrackAction::OxiSynth(OxiSynthControl::SetReverb(value)));
+                    }
+                });
+                ui.collapsing("Chorus", |ui| {
+                    let mut value = editor.chorus;
+                    let mut changed = false;
+                    changed |= ui
+                        .add(egui::Slider::new(&mut value.voices, 0..=99).text("Voices"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut value.level, 0.0..=10.0).text("Level"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut value.speed_hz, 0.1..=5.0).text("Speed (Hz)"))
+                        .changed();
+                    changed |= ui
+                        .add(egui::Slider::new(&mut value.depth_ms, 0.0..=256.0).text("Depth (ms)"))
+                        .changed();
+                    if changed {
+                        actions.push(TrackAction::OxiSynth(OxiSynthControl::SetChorus(value)));
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.label("MIDI channel");
                     egui::ComboBox::from_id_salt("oxisynth_channel")

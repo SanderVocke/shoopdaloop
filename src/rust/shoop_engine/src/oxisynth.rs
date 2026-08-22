@@ -83,8 +83,11 @@ pub struct OxiSynthPreset {
     pub name: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OxiSynthControl {
+    SetMasterGain(f32),
+    SetReverb(OxiSynthReverbConfiguration),
+    SetChorus(OxiSynthChorusConfiguration),
     SelectProgram {
         channel: u8,
         bank: u32,
@@ -126,11 +129,56 @@ impl Default for OxiSynthChannelSnapshot {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OxiSynthSnapshot {
     pub revision: u64,
     pub midi_activity_revision: u64,
+    pub master_gain: f32,
+    pub reverb: OxiSynthReverbConfiguration,
+    pub chorus: OxiSynthChorusConfiguration,
     pub channels: [OxiSynthChannelSnapshot; MIDI_CHANNELS],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OxiSynthReverbConfiguration {
+    pub room_size: f32,
+    pub damp: f32,
+    pub width: f32,
+    pub level: f32,
+}
+
+impl Default for OxiSynthReverbConfiguration {
+    fn default() -> Self {
+        Self {
+            room_size: 0.2,
+            damp: 0.0,
+            width: 0.5,
+            level: 0.9,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OxiSynthChorusConfiguration {
+    pub voices: u32,
+    pub level: f32,
+    pub speed_hz: f32,
+    pub depth_ms: f32,
+}
+
+impl Default for OxiSynthChorusConfiguration {
+    fn default() -> Self {
+        Self {
+            voices: 3,
+            level: 2.0,
+            speed_hz: 0.3,
+            depth_ms: 8.0,
+        }
+    }
+}
+
+fn default_master_gain() -> f32 {
+    0.2
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -139,10 +187,16 @@ pub struct OxiSynthProgramConfiguration {
     pub program: u8,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OxiSynthConfiguration {
     pub version: u16,
     pub soundfont_sha256: String,
+    #[serde(default = "default_master_gain")]
+    pub master_gain: f32,
+    #[serde(default)]
+    pub reverb: OxiSynthReverbConfiguration,
+    #[serde(default)]
+    pub chorus: OxiSynthChorusConfiguration,
     pub channels: [OxiSynthProgramConfiguration; MIDI_CHANNELS],
 }
 
@@ -151,6 +205,9 @@ impl Default for OxiSynthSnapshot {
         Self {
             revision: 0,
             midi_activity_revision: 0,
+            master_gain: default_master_gain(),
+            reverb: OxiSynthReverbConfiguration::default(),
+            chorus: OxiSynthChorusConfiguration::default(),
             channels: [OxiSynthChannelSnapshot::default(); MIDI_CHANNELS],
         }
     }
@@ -225,6 +282,7 @@ impl OxiSynthProcessor {
             right: vec![0.0; max_frames],
         };
         result.refresh_all_channels();
+        result.refresh_global_settings();
         for channel in &mut result.snapshot.channels {
             channel.baseline_bank = channel.bank;
             channel.baseline_program = channel.program;
@@ -291,6 +349,9 @@ impl OxiSynthProcessor {
         OxiSynthConfiguration {
             version: 1,
             soundfont_sha256: self.soundfont_sha256.clone(),
+            master_gain: self.snapshot.master_gain,
+            reverb: self.snapshot.reverb,
+            chorus: self.snapshot.chorus,
             channels: std::array::from_fn(|channel| OxiSynthProgramConfiguration {
                 bank: self.snapshot.channels[channel].baseline_bank,
                 program: self.snapshot.channels[channel].baseline_program,
@@ -311,9 +372,64 @@ impl OxiSynthProcessor {
         if configuration.version != 1 || configuration.soundfont_sha256 != self.soundfont_sha256 {
             anyhow::bail!("unsupported OxiSynth configuration");
         }
+        self.set_master_gain(configuration.master_gain)?;
+        self.set_reverb(configuration.reverb)?;
+        self.set_chorus(configuration.chorus)?;
         for (channel, program) in configuration.channels.iter().enumerate() {
             self.select_program(channel as u8, program.bank, program.program)?;
         }
+        Ok(())
+    }
+
+    pub fn set_master_gain(&mut self, gain: f32) -> Result<()> {
+        if !gain.is_finite() || !(0.0..=10.0).contains(&gain) {
+            anyhow::bail!("OxiSynth master gain is outside 0..=10");
+        }
+        self.synth.set_gain(gain);
+        self.snapshot.master_gain = self.synth.gain();
+        self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+        Ok(())
+    }
+
+    pub fn set_reverb(&mut self, value: OxiSynthReverbConfiguration) -> Result<()> {
+        let values = [value.room_size, value.damp, value.width, value.level];
+        if values
+            .iter()
+            .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
+        {
+            anyhow::bail!("OxiSynth reverb parameter is outside 0..=1");
+        }
+        self.synth.set_reverb_params(&oxisynth::ReverbParams {
+            roomsize: value.room_size,
+            damp: value.damp,
+            width: value.width,
+            level: value.level,
+        });
+        self.refresh_global_settings();
+        self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
+        Ok(())
+    }
+
+    pub fn set_chorus(&mut self, value: OxiSynthChorusConfiguration) -> Result<()> {
+        if value.voices > 99
+            || !value.level.is_finite()
+            || !(0.0..=10.0).contains(&value.level)
+            || !value.speed_hz.is_finite()
+            || !(0.1..=5.0).contains(&value.speed_hz)
+            || !value.depth_ms.is_finite()
+            || !(0.0..=256.0).contains(&value.depth_ms)
+        {
+            anyhow::bail!("OxiSynth chorus parameter is outside the supported range");
+        }
+        self.synth.set_chorus_params(&oxisynth::ChorusParams {
+            nr: value.voices,
+            level: value.level,
+            speed: value.speed_hz,
+            depth: value.depth_ms,
+            mode: Default::default(),
+        });
+        self.refresh_global_settings();
+        self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
         Ok(())
     }
 
@@ -445,6 +561,24 @@ impl OxiSynthProcessor {
         for channel in 0..MIDI_CHANNELS as u8 {
             self.refresh_channel(channel);
         }
+    }
+
+    fn refresh_global_settings(&mut self) {
+        self.snapshot.master_gain = self.synth.gain();
+        let reverb = self.synth.reverb_params();
+        self.snapshot.reverb = OxiSynthReverbConfiguration {
+            room_size: reverb.roomsize,
+            damp: reverb.damp,
+            width: reverb.width,
+            level: reverb.level,
+        };
+        let chorus = self.synth.chorus_params();
+        self.snapshot.chorus = OxiSynthChorusConfiguration {
+            voices: chorus.nr,
+            level: chorus.level,
+            speed_hz: chorus.speed,
+            depth_ms: chorus.depth,
+        };
     }
 
     fn refresh_channel(&mut self, channel: u8) {
@@ -721,5 +855,39 @@ mod tests {
         assert_eq!(reset.controllers[10], 2);
         assert_eq!(reset.controllers[11], 127);
         assert_eq!(reset.channel_pressure, 44);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_settings_are_direct_validated_and_serializable() {
+        let mut processor = OxiSynthProcessor::new(48_000.0, 64).unwrap();
+        processor.set_master_gain(0.75).unwrap();
+        processor
+            .set_reverb(OxiSynthReverbConfiguration {
+                room_size: 0.4,
+                damp: 0.3,
+                width: 0.8,
+                level: 0.6,
+            })
+            .unwrap();
+        processor
+            .set_chorus(OxiSynthChorusConfiguration {
+                voices: 5,
+                level: 1.5,
+                speed_hz: 0.7,
+                depth_ms: 12.0,
+            })
+            .unwrap();
+        let encoded = processor.encode_configuration().unwrap();
+        let mut restored = OxiSynthProcessor::new(48_000.0, 64).unwrap();
+        restored.restore_configuration(&encoded).unwrap();
+        assert_eq!(restored.configuration(), processor.configuration());
+        assert_eq!(restored.snapshot().master_gain, 0.75);
+        assert!(restored.set_master_gain(f32::NAN).is_err());
+        assert!(restored
+            .set_reverb(OxiSynthReverbConfiguration {
+                level: 2.0,
+                ..Default::default()
+            })
+            .is_err());
     }
 }

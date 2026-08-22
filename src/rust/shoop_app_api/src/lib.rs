@@ -312,7 +312,7 @@ pub struct OxiSynthChannelState {
     pub channel_pressure: u8,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OxiSynthState {
     pub available_soundfonts: Arc<[SoundFontAssetDescriptor]>,
     pub soundfont_sha256: Arc<str>,
@@ -320,7 +320,26 @@ pub struct OxiSynthState {
     pub presets: Arc<[OxiSynthPresetDescriptor]>,
     pub revision: u64,
     pub midi_activity_revision: u64,
+    pub master_gain: f32,
+    pub reverb: OxiSynthReverbState,
+    pub chorus: OxiSynthChorusState,
     pub channels: [OxiSynthChannelState; 16],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OxiSynthReverbState {
+    pub room_size: f32,
+    pub damp: f32,
+    pub width: f32,
+    pub level: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OxiSynthChorusState {
+    pub voices: u32,
+    pub level: f32,
+    pub speed_hz: f32,
+    pub depth_ms: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1573,6 +1592,9 @@ pub enum TinySynthFxControl {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum OxiSynthControl {
+    SetMasterGain(f32),
+    SetReverb(OxiSynthReverbState),
+    SetChorus(OxiSynthChorusState),
     SelectSoundFont(Arc<str>),
     SelectProgram {
         channel: u8,
@@ -1917,6 +1939,9 @@ impl TinySynthFxControl {
 impl OxiSynthControl {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetMasterGain(_) => "track.oxisynth.set_master_gain",
+            Self::SetReverb(_) => "track.oxisynth.set_reverb",
+            Self::SetChorus(_) => "track.oxisynth.set_chorus",
             Self::SelectSoundFont(_) => "track.oxisynth.select_soundfont",
             Self::SelectProgram { .. } => "track.oxisynth.select_program",
             Self::Audition { .. } => "track.oxisynth.audition",

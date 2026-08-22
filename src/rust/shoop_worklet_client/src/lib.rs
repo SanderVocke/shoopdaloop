@@ -828,6 +828,7 @@ impl RemoteWorkletBackend {
             .collect::<BTreeSet<_>>();
         self.pending_removed_tracks
             .retain(|track_id, _| observed_track_ids.contains(track_id));
+        let available_soundfonts = self.soundfonts.descriptors();
         self.snapshot.tracks = wire
             .tracks
             .into_iter()
@@ -906,30 +907,7 @@ impl RemoteWorkletBackend {
                                     .try_into()
                                     .ok()?;
                                 Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
-                                    available_soundfonts: oxi
-                                        .available_soundfonts
-                                        .into_iter()
-                                        .map(|asset| shoop_app_api::SoundFontAssetDescriptor {
-                                            sha256: asset.sha256.into(),
-                                            name: asset.name.into(),
-                                            original_filename: asset.original_filename.into(),
-                                            byte_len: asset.byte_len,
-                                            presets: asset
-                                                .presets
-                                                .into_iter()
-                                                .map(|preset| {
-                                                    shoop_app_api::OxiSynthPresetDescriptor {
-                                                        bank: preset.bank,
-                                                        program: preset.program,
-                                                        name: preset.name.into(),
-                                                    }
-                                                })
-                                                .collect::<Vec<_>>()
-                                                .into(),
-                                            built_in: asset.built_in,
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .into(),
+                                    available_soundfonts: Arc::clone(&available_soundfonts),
                                     soundfont_sha256: oxi.soundfont_sha256.into(),
                                     soundfont_name: oxi.soundfont_name.into(),
                                     presets: oxi
@@ -944,6 +922,19 @@ impl RemoteWorkletBackend {
                                         .into(),
                                     revision: oxi.revision,
                                     midi_activity_revision: oxi.midi_activity_revision,
+                                    master_gain: oxi.master_gain,
+                                    reverb: shoop_app_api::OxiSynthReverbState {
+                                        room_size: oxi.reverb.room_size,
+                                        damp: oxi.reverb.damp,
+                                        width: oxi.reverb.width,
+                                        level: oxi.reverb.level,
+                                    },
+                                    chorus: shoop_app_api::OxiSynthChorusState {
+                                        voices: oxi.chorus.voices,
+                                        level: oxi.chorus.level,
+                                        speed_hz: oxi.chorus.speed_hz,
+                                        depth_ms: oxi.chorus.depth_ms,
+                                    },
                                     channels,
                                 }))
                             });
@@ -1370,6 +1361,29 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
             TinySynthFxControl::ClearMidiCcAssignments
         }
         WireTrackFxControl::TinyPanic => TinySynthFxControl::Panic,
+        WireTrackFxControl::OxiSetMasterGain(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetMasterGain(*value));
+        }
+        WireTrackFxControl::OxiSetReverb(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetReverb(
+                shoop_app_api::OxiSynthReverbState {
+                    room_size: value.room_size,
+                    damp: value.damp,
+                    width: value.width,
+                    level: value.level,
+                },
+            ));
+        }
+        WireTrackFxControl::OxiSetChorus(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetChorus(
+                shoop_app_api::OxiSynthChorusState {
+                    voices: value.voices,
+                    level: value.level,
+                    speed_hz: value.speed_hz,
+                    depth_ms: value.depth_ms,
+                },
+            ));
+        }
         WireTrackFxControl::OxiSelectProgram {
             channel,
             bank,
@@ -2759,6 +2773,23 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
         },
         BackendTrackFxControl::OxiSynth(control) => match control {
+            OxiSynthControl::SetMasterGain(value) => WireTrackFxControl::OxiSetMasterGain(value),
+            OxiSynthControl::SetReverb(value) => {
+                WireTrackFxControl::OxiSetReverb(shoop_audio_protocol::WireOxiSynthReverbState {
+                    room_size: value.room_size,
+                    damp: value.damp,
+                    width: value.width,
+                    level: value.level,
+                })
+            }
+            OxiSynthControl::SetChorus(value) => {
+                WireTrackFxControl::OxiSetChorus(shoop_audio_protocol::WireOxiSynthChorusState {
+                    voices: value.voices,
+                    level: value.level,
+                    speed_hz: value.speed_hz,
+                    depth_ms: value.depth_ms,
+                })
+            }
             OxiSynthControl::SelectSoundFont(sha256) => {
                 WireTrackFxControl::OxiSelectSoundFont(sha256.to_string())
             }

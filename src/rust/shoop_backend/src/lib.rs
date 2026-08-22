@@ -2940,6 +2940,7 @@ impl EngineBackend {
 
     fn capture_session_data(&mut self) -> Result<BackendSessionData> {
         let connections = self.connection_snapshot();
+        let available_soundfonts = self.soundfonts.descriptors();
         let mut tracks = Vec::with_capacity(self.tracks.len());
         for (track_id, track) in &mut self.tracks {
             let state = BackendTrackState {
@@ -2955,7 +2956,7 @@ impl EngineBackend {
                             track.oxisynth_active,
                             track.oxisynth_visible,
                             self.session.oxisynth_processor(&track.port_name_base),
-                            self.soundfonts.descriptors(),
+                            Arc::clone(&available_soundfonts),
                         )
                     })
                 }),
@@ -3588,6 +3589,19 @@ fn engine_oxisynth_fx_state(
                     .into(),
                 revision: snapshot.revision,
                 midi_activity_revision: snapshot.midi_activity_revision,
+                master_gain: snapshot.master_gain,
+                reverb: shoop_app_api::OxiSynthReverbState {
+                    room_size: snapshot.reverb.room_size,
+                    damp: snapshot.reverb.damp,
+                    width: snapshot.reverb.width,
+                    level: snapshot.reverb.level,
+                },
+                chorus: shoop_app_api::OxiSynthChorusState {
+                    voices: snapshot.chorus.voices,
+                    level: snapshot.chorus.level,
+                    speed_hz: snapshot.chorus.speed_hz,
+                    depth_ms: snapshot.chorus.depth_ms,
+                },
                 channels: snapshot
                     .channels
                     .map(|channel| shoop_app_api::OxiSynthChannelState {
@@ -4308,12 +4322,20 @@ impl Backend for EngineBackend {
                                 self.buffer_size as usize,
                                 &asset,
                             )?;
+                        let fallback = asset
+                            .presets
+                            .first()
+                            .ok_or_else(|| anyhow!("SoundFont has no presets"))?;
                         for (channel, program) in previous.channels.iter().enumerate() {
-                            replacement.select_program(
-                                channel as u8,
-                                program.bank,
-                                program.program,
-                            )?;
+                            let (bank, program) = asset
+                                .presets
+                                .iter()
+                                .find(|preset| {
+                                    (preset.bank, preset.program) == (program.bank, program.program)
+                                })
+                                .map(|preset| (preset.bank, preset.program))
+                                .unwrap_or((fallback.bank, fallback.program));
+                            replacement.select_program(channel as u8, bank, program)?;
                         }
                         let displaced = self
                             .session
@@ -4328,6 +4350,23 @@ impl Backend for EngineBackend {
                         .oxisynth_processor_mut(&track.port_name_base)
                         .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?;
                     match control {
+                        OxiSynthControl::SetMasterGain(value) => processor.set_master_gain(value),
+                        OxiSynthControl::SetReverb(value) => processor.set_reverb(
+                            shoop_engine::oxisynth::OxiSynthReverbConfiguration {
+                                room_size: value.room_size,
+                                damp: value.damp,
+                                width: value.width,
+                                level: value.level,
+                            },
+                        ),
+                        OxiSynthControl::SetChorus(value) => processor.set_chorus(
+                            shoop_engine::oxisynth::OxiSynthChorusConfiguration {
+                                voices: value.voices,
+                                level: value.level,
+                                speed_hz: value.speed_hz,
+                                depth_ms: value.depth_ms,
+                            },
+                        ),
                         OxiSynthControl::SelectSoundFont(_) => unreachable!(),
                         OxiSynthControl::SelectProgram {
                             channel,
@@ -5027,6 +5066,7 @@ impl Backend for EngineBackend {
         for track_id in track_ids {
             self.apply_engine_track_routing(track_id)?;
         }
+        let available_soundfonts = self.soundfonts.descriptors();
         let mut tracks = BTreeMap::new();
         for (id, track) in &mut self.tracks {
             let input_peaks = track
@@ -5086,7 +5126,7 @@ impl Backend for EngineBackend {
                                 track.oxisynth_active,
                                 track.oxisynth_visible,
                                 self.session.oxisynth_processor(&track.port_name_base),
-                                self.soundfonts.descriptors(),
+                                Arc::clone(&available_soundfonts),
                             )
                         })
                     }),
