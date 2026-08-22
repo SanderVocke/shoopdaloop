@@ -1,7 +1,7 @@
 use crate::document::{
-    AudioPayload, ChannelModeDocument, DataTypeDocument, FormatVersion, FxChainTypeDocument,
-    MediaPayload, SessionBundle, SessionDocument, TrackDocument, TrackTopologyDocument,
-    AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
+    AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
+    FxChainTypeDocument, MediaPayload, SessionBundle, SessionDocument, TrackDocument,
+    TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
     SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
@@ -192,6 +192,144 @@ pub fn encode_session(
     encode_zip(&manifest, payloads)
 }
 
+fn migrate_legacy_composites(manifest: &mut serde_json::Value) -> Result<(), SessionError> {
+    let groups = manifest
+        .pointer_mut("/document/track_groups")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| SessionError::Manifest("track_groups is not an array".to_owned()))?;
+    let mut lengths = BTreeMap::<u64, u64>::new();
+    let mut sync_length = 1_u64;
+    for group in groups.iter() {
+        for loop_ in group
+            .get("tracks")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .flat_map(|track| {
+                track
+                    .get("loops")
+                    .and_then(serde_json::Value::as_array)
+                    .into_iter()
+                    .flatten()
+            })
+        {
+            let Some(id) = loop_.get("id").and_then(serde_json::Value::as_u64) else {
+                continue;
+            };
+            let length = loop_
+                .get("length_frames")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            lengths.insert(id, length);
+            if loop_
+                .get("is_sync")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+            {
+                sync_length = length.max(1);
+            }
+        }
+    }
+
+    for loop_ in groups
+        .iter_mut()
+        .flat_map(|group| {
+            group
+                .get_mut("tracks")
+                .and_then(serde_json::Value::as_array_mut)
+                .into_iter()
+                .flatten()
+        })
+        .flat_map(|track| {
+            track
+                .get_mut("loops")
+                .and_then(serde_json::Value::as_array_mut)
+                .into_iter()
+                .flatten()
+        })
+    {
+        let Some(composite) = loop_
+            .get_mut("composite")
+            .and_then(serde_json::Value::as_object_mut)
+        else {
+            continue;
+        };
+        let playlists = composite
+            .remove("playlists")
+            .and_then(|value| value.as_array().cloned())
+            .unwrap_or_default();
+        let mut instances = Vec::new();
+        let mut next_id = 1_u64;
+        for playlist in playlists {
+            let Some(sections) = playlist.as_array() else {
+                continue;
+            };
+            let mut section_origin = 0_u64;
+            for section in sections {
+                let Some(events) = section.as_array() else {
+                    continue;
+                };
+                let mut section_duration = 0_u64;
+                for event in events {
+                    let mut instance = event.as_object().cloned().ok_or_else(|| {
+                        SessionError::Manifest("legacy composite event is not an object".to_owned())
+                    })?;
+                    let delay = instance
+                        .remove("delay")
+                        .or_else(|| instance.remove("delay_frames"))
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0);
+                    let loop_id = instance
+                        .get("loop_id")
+                        .and_then(serde_json::Value::as_u64)
+                        .ok_or_else(|| {
+                            SessionError::Manifest(
+                                "legacy composite event has no loop_id".to_owned(),
+                            )
+                        })?;
+                    let natural_cycles = lengths
+                        .get(&loop_id)
+                        .copied()
+                        .unwrap_or(0)
+                        .div_ceil(sync_length)
+                        .max(1);
+                    let duration = instance
+                        .get("n_cycles")
+                        .and_then(serde_json::Value::as_u64)
+                        .filter(|cycles| *cycles > 0)
+                        .unwrap_or(natural_cycles);
+                    let start_cycle = section_origin.checked_add(delay).ok_or_else(|| {
+                        SessionError::Validation(
+                            "legacy composite start cycle overflows".to_owned(),
+                        )
+                    })?;
+                    section_duration =
+                        section_duration.max(delay.checked_add(duration).ok_or_else(|| {
+                            SessionError::Validation(
+                                "legacy composite duration overflows".to_owned(),
+                            )
+                        })?);
+                    instance.insert("instance_id".to_owned(), next_id.into());
+                    instance.insert("start_cycle".to_owned(), start_cycle.into());
+                    next_id = next_id.checked_add(1).ok_or_else(|| {
+                        SessionError::Validation(
+                            "legacy composite contains too many instances".to_owned(),
+                        )
+                    })?;
+                    instances.push(serde_json::Value::Object(instance));
+                }
+                section_origin = section_origin
+                    .checked_add(section_duration)
+                    .ok_or_else(|| {
+                        SessionError::Validation("legacy composite timeline overflows".to_owned())
+                    })?;
+            }
+        }
+        composite.insert("instances".to_owned(), instances.into());
+    }
+    Ok(())
+}
+
 pub fn decode_session(bytes: &[u8]) -> Result<SessionBundle, SessionError> {
     decode_session_with_limits(bytes, DecodeLimits::default())
 }
@@ -207,7 +345,7 @@ pub fn decode_session_with_limits(
     let mut archive = ZipArchive::new(Cursor::new(bytes))?;
     let archive_paths = inspect_archive(&mut archive, limits)?;
     let manifest_bytes = read_entry(&mut archive, MANIFEST_PATH, limits.max_uncompressed_bytes)?;
-    let manifest_value: serde_json::Value = serde_json::from_slice(&manifest_bytes)
+    let mut manifest_value: serde_json::Value = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     let header: SessionManifestHeader = serde_json::from_value(manifest_value.clone())
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
@@ -221,6 +359,9 @@ pub fn decode_session_with_limits(
             minor: header.format_version.minor,
         });
     }
+    if header.document_version < 4 {
+        migrate_legacy_composites(&mut manifest_value)?;
+    }
     let mut manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     if manifest.format != SESSION_FORMAT {
@@ -233,7 +374,7 @@ pub fn decode_session_with_limits(
     }
     let mut declared_paths = BTreeSet::from([MANIFEST_PATH.to_owned()]);
     declared_paths.extend(manifest.media.iter().map(|record| record.path.clone()));
-    if manifest.document_version == SESSION_DOCUMENT_VERSION {
+    if manifest.document_version >= 3 {
         declared_paths.extend(manifest.scripts.iter().map(|record| record.path.clone()));
     }
     if archive_paths != declared_paths {
@@ -247,7 +388,7 @@ pub fn decode_session_with_limits(
                 .collect::<Vec<_>>()
         )));
     }
-    let script_bundles = if manifest.document_version < SESSION_DOCUMENT_VERSION {
+    let script_bundles = if manifest.document_version < 3 {
         migrate_legacy_script_bundles(&manifest_value, &mut manifest.document)?
     } else {
         decode_script_bundles(&mut archive, &manifest.document, manifest.scripts, limits)?
@@ -688,6 +829,8 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
     }
     let mut track_ids = BTreeSet::new();
     let mut loop_ids = BTreeSet::new();
+    let mut loop_lengths = BTreeMap::new();
+    let mut sync_length = 1_u64;
     let mut port_ids = BTreeSet::new();
     let mut channel_ids = BTreeSet::new();
     let mut fx_chain_ids = BTreeSet::new();
@@ -751,6 +894,10 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         "duplicate loop ID {}",
                         loop_.id
                     )));
+                }
+                loop_lengths.insert(loop_.id, loop_.length_frames);
+                if loop_.is_sync {
+                    sync_length = loop_.length_frames.max(1);
                 }
                 validate_finite(loop_.gain, "loop gain")?;
                 validate_finite(loop_.balance, "loop balance")?;
@@ -859,11 +1006,66 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                     }
                 }
                 if let Some(composite) = &loop_.composite {
-                    for event in composite.playlists.iter().flatten().flatten() {
+                    let mut instance_ids = BTreeSet::new();
+                    for event in &composite.instances {
+                        if event.instance_id == 0 || !instance_ids.insert(event.instance_id) {
+                            return Err(SessionError::Validation(format!(
+                                "composite loop {} has invalid or duplicate instance ID {}",
+                                loop_.id, event.instance_id
+                            )));
+                        }
+                        if event.n_cycles == Some(0) {
+                            return Err(SessionError::Validation(format!(
+                                "composite loop {} has a zero-length instance",
+                                loop_.id
+                            )));
+                        }
+                        if event.start_cycle > u64::from(u32::MAX) {
+                            return Err(SessionError::Validation(format!(
+                                "composite loop {} has an out-of-range start cycle",
+                                loop_.id
+                            )));
+                        }
+                        if event.mode.as_deref().is_some_and(|mode| {
+                            !matches!(
+                                mode,
+                                "stopped"
+                                    | "playing"
+                                    | "recording"
+                                    | "replacing"
+                                    | "playing_dry_through_wet"
+                                    | "recording_dry_into_wet"
+                            )
+                        }) {
+                            return Err(SessionError::Validation(format!(
+                                "composite loop {} has an unsupported instance mode",
+                                loop_.id
+                            )));
+                        }
+                        if composite.kind == CompositeKindDocument::Regular && event.mode.is_some()
+                        {
+                            return Err(SessionError::Validation(format!(
+                                "regular composite loop {} has an explicit instance mode",
+                                loop_.id
+                            )));
+                        }
                         if !loop_ids.contains(&event.loop_id) {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} references stale loop {}",
                                 loop_.id, event.loop_id
+                            )));
+                        }
+                        let duration = event.n_cycles.map(u64::from).unwrap_or_else(|| {
+                            loop_lengths[&event.loop_id].div_ceil(sync_length).max(1)
+                        });
+                        if event
+                            .start_cycle
+                            .checked_add(duration)
+                            .is_none_or(|end| end > u64::from(u32::MAX))
+                        {
+                            return Err(SessionError::Validation(format!(
+                                "composite loop {} has an out-of-range instance end cycle",
+                                loop_.id
                             )));
                         }
                     }

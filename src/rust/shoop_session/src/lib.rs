@@ -341,12 +341,13 @@ mod tests {
                     channels: Vec::new(),
                     composite: Some(CompositeDocument {
                         kind: CompositeKindDocument::Script,
-                        playlists: vec![vec![vec![CompositeEventDocument {
-                            delay: 2,
+                        instances: vec![CompositeLoopInstanceDocument {
+                            instance_id: 1,
+                            start_cycle: 2,
                             loop_id: 10,
                             mode: Some("playing".to_owned()),
                             n_cycles: Some(2),
-                        }]]],
+                        }],
                     }),
                 }],
                 ports: Vec::new(),
@@ -749,8 +750,8 @@ mod tests {
                 .composite
                 .as_ref()
                 .unwrap()
-                .playlists[0][0][0]
-                .delay,
+                .instances[0]
+                .start_cycle,
             2
         );
         assert!(matches!(
@@ -761,6 +762,100 @@ mod tests {
                 midi: true,
                 ..
             }
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn version_three_composite_playlists_migrate_to_positioned_instances() {
+        let bundle = deferred_feature_bundle();
+        let encoded = encode_session(&bundle, "legacy-composite").unwrap();
+        let legacy = rewrite_manifest(encoded, |manifest| {
+            manifest["document_version"] = serde_json::json!(3);
+            let composite = manifest["document"]["track_groups"][0]["tracks"][2]["loops"][0]
+                ["composite"]
+                .as_object_mut()
+                .unwrap();
+            composite.remove("instances");
+            composite.insert(
+                "playlists".to_owned(),
+                serde_json::json!([[[{
+                    "delay": 2,
+                    "loop_id": 10,
+                    "mode": "playing",
+                    "n_cycles": 2
+                }]]]),
+            );
+        });
+
+        let decoded = decode_session(&legacy).unwrap();
+        let instances = &decoded.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_ref()
+            .unwrap()
+            .instances;
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].instance_id, 1);
+        assert_eq!(instances[0].start_cycle, 2);
+        assert_eq!(instances[0].n_cycles, Some(2));
+        assert_eq!(instances[0].mode.as_deref(), Some("playing"));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn positioned_composite_instances_validate_identity_length_mode_and_range() {
+        let mut duplicate = deferred_feature_bundle();
+        let composite = duplicate.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.instances.push(composite.instances[0].clone());
+        assert!(matches!(
+            validate_bundle(&duplicate),
+            Err(SessionError::Validation(message)) if message.contains("duplicate instance ID")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let composite = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.instances[0].n_cycles = Some(0);
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message)) if message.contains("zero-length instance")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let composite = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.kind = CompositeKindDocument::Regular;
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message)) if message.contains("explicit instance mode")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let composite = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.instances[0].start_cycle = u64::from(u32::MAX) + 1;
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message)) if message.contains("out-of-range start cycle")
+        ));
+
+        let mut invalid = deferred_feature_bundle();
+        let composite = invalid.document.track_groups[0].tracks[2].loops[0]
+            .composite
+            .as_mut()
+            .unwrap();
+        composite.instances[0].start_cycle = u64::from(u32::MAX) - 1;
+        composite.instances[0].n_cycles = Some(2);
+        assert!(matches!(
+            validate_bundle(&invalid),
+            Err(SessionError::Validation(message)) if message.contains("out-of-range instance end cycle")
         ));
     }
 
@@ -963,8 +1058,8 @@ mod tests {
                 .composite
                 .as_ref()
                 .unwrap()
-                .playlists[0][0][0]
-                .delay,
+                .instances[0]
+                .start_cycle,
             2
         );
     }
