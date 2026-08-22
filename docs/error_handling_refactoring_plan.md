@@ -147,23 +147,28 @@ Depends on the typed I/O outcome from Stage 3.
 
 Depends on Stages 2 through 4. No notification producer or non-UI observer may remain before this stage starts.
 
-- [ ] Delete the top-center `latest_notification` egui area.
-- [ ] Delete the historical “Latest error” entry from the backend-health tooltip.
-- [ ] Remove notification severity and notification message types from the application API.
-- [ ] Remove notification storage and helper methods from the application model.
-- [ ] Remove notifications from application snapshots, constructors, fixtures, and public re-exports.
-- [ ] Remove notification count from egui tracing instrumentation.
-- [ ] Rewrite remaining tests to assert typed feature/task state or diagnostic behavior.
-- [ ] Confirm feature-owned validation, settings diagnostics, connection errors, script logs, FX status, click-track failures, and audio-driver messages still render in their existing contexts.
+- [x] Delete the top-center `latest_notification` egui area.
+- [x] Delete the historical “Latest error” entry from the backend-health tooltip.
+- [x] Remove notification severity and notification message types from the application API.
+- [x] Remove notification storage and helper methods from the application model.
+- [x] Remove notifications from application snapshots, constructors, fixtures, and public re-exports.
+- [x] Remove notification count from egui tracing instrumentation.
+- [x] Rewrite remaining tests to assert typed feature/task state or diagnostic behavior.
+- [x] Confirm feature-owned validation, settings diagnostics, connection errors, script logs, FX status, click-track failures, and audio-driver messages still render in their existing contexts.
 
 ### Stage 5 verification
 
-- [ ] Confirm repository searches find no generic notification type, collection, helper, renderer, or message-matching test.
-- [ ] Run focused egui paint tests for I/O, settings, connections, scripts, FX, click-track, and form validation.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
+- [x] Confirm repository searches find no generic notification type, collection, helper, renderer, or message-matching test.
+- [x] Run focused egui paint tests for I/O, settings, connections, scripts, FX, click-track, and form validation.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
+
+### Stage 5 completion record
+
+- Generic notification types, storage, snapshot publication, floating rendering, backend-tooltip history, tracing counts, and message-based assertions are removed. Feature-owned validation and status presentation remains intact.
+- Repository absence checks, all 180 egui tests, all 101 application-model tests, tracing coverage, formatting, warning-denying native and Wasm package checks, and the test-usage policy check passed.
 
 ## Stage 6: Final end-to-end validation
 
