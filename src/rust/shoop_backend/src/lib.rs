@@ -1154,8 +1154,8 @@ pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
         available: true,
         unavailable_reason: None,
         constraints: shoop_app_api::TrackProcessorConstraints {
-            min_dry_audio_channels: Some(0),
-            max_dry_audio_channels: Some(0),
+            min_dry_audio_channels: Some(2),
+            max_dry_audio_channels: Some(2),
             min_wet_audio_channels: Some(2),
             max_wet_audio_channels: Some(2),
             matching_audio_channels: false,
@@ -1176,9 +1176,9 @@ mod oxisynth_descriptor_tests {
         assert_eq!(descriptor.id.as_str(), TrackProcessorTypeId::OXISYNTH);
         assert_eq!(descriptor.label, "OxiSynth");
         assert!(descriptor.available);
-        assert!(descriptor.constraints.accepts(0, 2, true));
+        assert!(descriptor.constraints.accepts(2, 2, true));
         assert!(!descriptor.constraints.accepts(0, 1, true));
-        assert!(!descriptor.constraints.accepts(1, 2, true));
+        assert!(!descriptor.constraints.accepts(0, 2, true));
         assert_eq!(
             descriptor.features,
             shoop_app_api::TrackProcessorFeatures::default()
@@ -2602,19 +2602,62 @@ impl EngineBackend {
             return Err(anyhow!("expected processed track topology"));
         };
         if processor_type != TrackProcessorTypeId::OXISYNTH
-            || dry_audio_channels != 0
+            || dry_audio_channels != 2
             || wet_audio_channels != 2
             || !dry_midi
         {
             return Err(anyhow!(
-                "OxiSynth requires no dry audio, two wet audio channels, and one MIDI input"
+                "OxiSynth requires two dry audio channels, two wet audio channels, and one MIDI input"
             ));
         }
         let capture_samples = self.sample_rate as usize * INPUT_CAPTURE_CAPACITY_SECONDS as usize;
         let capture_block_size = capture_samples.div_ceil(32).max(self.buffer_size as usize);
+        let mut audio_inputs = Vec::with_capacity(2);
+        let mut audio_sends = Vec::with_capacity(2);
         let mut audio_outputs = Vec::with_capacity(2);
         let mut audio_returns = Vec::with_capacity(2);
-        let mut ports = Vec::with_capacity(3);
+        let mut ports = Vec::with_capacity(5);
+        for index in 0..2 {
+            let input_name = format!("{}_audio_dry_in_{}", request.port_name_base, index + 1);
+            let input_registry_id = self.next_port_id();
+            let input = if self.port_model == EnginePortModel::Physical {
+                let mut input = ExternalAudioPort::new(
+                    input_name.clone(),
+                    PortDirection::Input,
+                    capture_block_size,
+                );
+                input.audio_mut().set_passthrough_muted(true);
+                input.audio_mut().set_ringbuffer_n_samples(capture_samples);
+                self.session.add_port(Port::External(input))
+            } else {
+                let mut input = DummyAudioPort::new(
+                    input_registry_id,
+                    input_name.clone(),
+                    PortDirection::Input,
+                    capture_block_size,
+                );
+                input.audio_mut().set_passthrough_muted(true);
+                input.audio_mut().set_ringbuffer_n_samples(capture_samples);
+                self.session.add_port(Port::Dummy(input))
+            };
+            let send = self.session.add_port(Port::Internal(InternalAudioPort::new(
+                format!("{}:audio_in_{index}", request.port_name_base),
+                self.buffer_size as usize,
+                shoop_engine::PortConnectability::INTERNAL,
+                shoop_engine::PortConnectability::INTERNAL,
+                0,
+            )));
+            self.session.connect_ports_internal(input, send)?;
+            ports.push(self.register_connection_port(
+                input_registry_id,
+                input_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Input,
+                BackendPortRole::AudioInput,
+            ));
+            audio_inputs.push(input);
+            audio_sends.push(send);
+        }
         for index in 0..2 {
             let output_name = format!("{}_audio_wet_out_{}", request.port_name_base, index + 1);
             let output_registry_id = self.next_port_id();
@@ -2665,7 +2708,7 @@ impl EngineBackend {
                 })
                 .count();
             for channel in 0..output_channels.min(2) {
-                let registry = self.connection_ports[&ports[channel].id].registry_id;
+                let registry = self.connection_ports[&ports[2 + channel].id].registry_id;
                 self.external_connections
                     .connect(registry, WEB_AUDIO_DESTINATION_PORTS[channel])?;
             }
@@ -2721,9 +2764,9 @@ impl EngineBackend {
             EngineTrack {
                 port_name_base: request.port_name_base,
                 topology: request.topology,
-                audio_inputs: Vec::new(),
+                audio_inputs,
                 audio_outputs,
-                audio_sends: Vec::new(),
+                audio_sends,
                 audio_returns,
                 midi_input: Some(midi_input),
                 midi_output: Some(midi_target),

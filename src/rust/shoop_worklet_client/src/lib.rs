@@ -803,7 +803,7 @@ impl RemoteWorkletBackend {
                             }
                             WireTrackTopology::OxiSynth => BackendTrackTopology::DryWetProcessor {
                                 processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
-                                dry_audio_channels: 0,
+                                dry_audio_channels: 2,
                                 wet_audio_channels: 2,
                                 dry_midi: true,
                             },
@@ -1081,8 +1081,18 @@ fn browser_oxisynth_port_descriptors(
     base: &str,
     next_port_id: &mut u64,
 ) -> Vec<BackendPortDescriptor> {
-    let mut ports = Vec::with_capacity(3);
+    let mut ports = Vec::with_capacity(5);
     for index in 0..2 {
+        let id = BackendPortId::from_raw(*next_port_id);
+        *next_port_id = next_port_id.saturating_add(1);
+        ports.push(BackendPortDescriptor {
+            id,
+            owner: BackendPortOwner::Track,
+            name: format!("{base}_audio_dry_in_{}", index + 1),
+            data_type: BackendPortDataType::Audio,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::AudioInput,
+        });
         let id = BackendPortId::from_raw(*next_port_id);
         *next_port_id = next_port_id.saturating_add(1);
         ports.push(BackendPortDescriptor {
@@ -1368,7 +1378,7 @@ impl Backend for RemoteWorkletBackend {
             }
             BackendTrackTopology::DryWetProcessor {
                 processor_type,
-                dry_audio_channels: 0,
+                dry_audio_channels: 2,
                 wet_audio_channels: 2,
                 dry_midi: true,
             } if processor_type == TrackProcessorTypeId::OXISYNTH => {

@@ -10,7 +10,7 @@ This work includes the engine processor, native and AudioWorklet backend integra
 
 - Every supported native and browser build advertises an available processor with stable ID `oxisynth` and display label **OxiSynth**.
 - A user can create, save, load, and remove an OxiSynth track through the existing generic processed-track workflow; loading is transactional and never silently substitutes another topology.
-- Each OxiSynth track has no dry audio inputs, exactly two wet audio outputs (left/right), and exactly one required MIDI input.
+- Each OxiSynth track has two dry audio inputs, exactly two wet audio outputs (left/right), and exactly one required MIDI input. The dry audio is accepted for compatibility with ordinary stereo tracks but is ignored by the synth.
 - The implementation uses a pinned `oxisynth` crate dependency and renders `f32` stereo audio at the active backend sample rate.
 - Standard MIDI channel messages supported by OxiSynth—including notes, controllers/bank selection, program changes, channel pressure, and pitch bend—are forwarded with their in-block timing preserved. Unsupported or malformed MIDI is ignored safely, and system reset/all-notes-off behavior cannot leave permanently stuck voices.
 - `TimGM6mb.sf2` is checked into the repository with documented origin, redistribution/license information, and a pinned digest, and is compiled into the executable/wasm module rather than fetched or read from the filesystem at runtime.
@@ -23,7 +23,7 @@ This work includes the engine processor, native and AudioWorklet backend integra
 
 These are deliberate major design choices for the initial implementation:
 
-1. **Model OxiSynth as a synth-only dry/wet processor with shape `0 dry audio / 2 wet audio / 1 dry MIDI`.** Do not overload the matched-channel `TinySynthFx` topology. Extend the generic `DryWetProcessor` contract and add explicit OxiSynth variants only where the persisted and worklet formats currently use closed topology enums.
+1. **Model OxiSynth as a synth-only dry/wet processor with shape `2 dry audio / 2 wet audio / 1 dry MIDI`.** Accept the ordinary stereo dry inputs so OxiSynth is available on standard audio-and-MIDI tracks, but deliberately ignore their samples while rendering the synth output. Do not overload the matched-channel `TinySynthFx` topology. Add explicit OxiSynth variants only where the persisted and worklet formats currently use closed topology enums.
 2. **Use one OxiSynth instance per track.** Configure 16 MIDI channels, stereo output, the backend sample rate, a fixed reviewed polyphony limit, and OxiSynth's built-in chorus/reverb defaults. MIDI bank select and program change choose TimGM6mb presets; channel 10 follows General MIDI percussion behavior.
 3. **Keep synthesis state transient.** Advertise `state: false` and `editor: None`; session data persists the processor topology and ordinary track state, but not voices, effects tails, current programs/controllers, or a duplicate SoundFont blob. Recorded MIDI must contain any bank/program/controller setup needed for deterministic playback after a fresh load. Do not create OxiSynth variants in `TrackProcessorEditorState` or `TrackAction`.
 4. **Parse the embedded bytes on the control path for each track initially.** This keeps ownership and native/wasm behavior simple and avoids introducing shared mutable synthesizer state. If profiling later proves parsing or memory duplication unacceptable, immutable parsed-SoundFont sharing may be introduced without changing the public/session contract.
@@ -73,14 +73,14 @@ Depends on Stage 1.
 Depends on Stage 2.
 
 - [x] Extend `TrackProcessorConstraints` with minimum or exact audio-channel bounds, update every descriptor, validator, selector, and construction consumer to preserve existing processor behavior, and add acceptance tests proving under- and over-sized shapes are rejected.
-- [x] Add `TrackProcessorTypeId::OXISYNTH` and an always-available descriptor with exact fixed constraints (`dry=0`, `wet=2`, required MIDI), no editor, and no persistent processor state/recovery/log features.
+- [x] Add `TrackProcessorTypeId::OXISYNTH` and an always-available descriptor with exact fixed constraints (`dry=2`, `wet=2`, required MIDI), no editor, and no persistent processor state/recovery/log features. Dry audio samples are intentionally ignored.
 - [x] Generalize native processed-track construction where necessary, create the stereo wet ports and MIDI dry port, instantiate OxiSynth transactionally before publishing track state, and include it in every native catalog independently of Carla/native-driver feature flags.
 - [x] Ensure generic active/bypass behavior, snapshots, driver switching, session replacement, loop creation, routing, and cleanup recognize OxiSynth without adding processor-specific actions.
 - [x] Extend backend contract tests for descriptor constraints, successful and invalid shapes, rollback after construction failure, processor identity, port roles, audio generation, deletion, and driver-switch reconstruction.
 
 **Verification:** run shared API and backend tests with the minimal, native-driver, and native-fx feature combinations; run warning-denying native builds to prove OxiSynth is present with and without Carla.
 
-**Completed:** shared constraints now enforce lower and upper audio-channel bounds without changing existing descriptor behavior. Native and engine catalogs always expose the stateless/no-editor `oxisynth` descriptor; native construction validates the fixed shape before building an embedded processor, publishes exactly two output ports plus one MIDI input, and uses the generic active/routing/removal lifecycle. Focused API, descriptor, invalid-shape, native port-role, activation, and removal tests pass with the native-driver feature set.
+**Completed:** shared constraints now enforce lower and upper audio-channel bounds without changing existing descriptor behavior. Native and engine catalogs always expose the stateless/no-editor `oxisynth` descriptor; native construction validates the fixed stereo shape before building an embedded processor, publishes two ignored dry audio inputs, two synth audio outputs, and one MIDI input, and uses the generic active/routing/removal lifecycle. Focused API, descriptor, invalid-shape, native port-role, activation, dry-input-isolation, and removal tests pass with the native-driver feature set.
 
 ### Stage 4 — Web protocol, worklet, and client
 

@@ -1025,7 +1025,7 @@ fn validate_track_channel_shape(
                 })
         }
         TrackTopologyDocument::OxiSynth => {
-            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == 0
+            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == 2
                 && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == 2
                 && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 1
                 && channels.iter().all(|channel| {

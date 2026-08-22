@@ -7386,7 +7386,7 @@ impl ApplicationModel {
                             audio_channels: *dry_audio_channels,
                         }
                     } else if chain_type == FxChainTypeDocument::OxiSynth {
-                        if *dry_audio_channels != 0 || *wet_audio_channels != 2 || !dry_midi {
+                        if *dry_audio_channels != 2 || *wet_audio_channels != 2 || !dry_midi {
                             return Err(format!(
                                 "OxiSynth track {} has an invalid channel shape",
                                 track.id
@@ -8877,16 +8877,16 @@ fn runtime_track_topology(
             let processor = shoop_app_api::TrackProcessorTypeId::new(
                 shoop_app_api::TrackProcessorTypeId::OXISYNTH,
             );
-            validate_loaded_processor(track.id, &processor, 0, 2, true, processors)?;
+            validate_loaded_processor(track.id, &processor, 2, 2, true, processors)?;
             Ok((
                 BackendTrackTopology::DryWetProcessor {
                     processor_type: processor.as_str().to_owned(),
-                    dry_audio_channels: 0,
+                    dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
                 },
                 TrackTopology::DryWet {
-                    dry_audio_channels: 0,
+                    dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
                     processor_type: processor,
@@ -10412,7 +10412,7 @@ mod tests {
             .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
                 name: "OxiSynth".to_owned(),
                 topology: TrackSpecTopology::DryWet {
-                    dry_audio_channels: 0,
+                    dry_audio_channels: 2,
                     wet_audio_channels: 2,
                     dry_midi: true,
                     processor_type: shoop_app_api::TrackProcessorTypeId::new(

@@ -1409,10 +1409,10 @@ impl NativeRuntime {
             ));
         }
         if chain_type == FXChainType::OxiSynth
-            && (dry_audio_channels != 0 || wet_audio_channels != 2 || !dry_midi)
+            && (dry_audio_channels != 2 || wet_audio_channels != 2 || !dry_midi)
         {
             return Err(anyhow!(
-                "OxiSynth requires no dry audio, two wet audio channels, and one MIDI input"
+                "OxiSynth requires two dry audio channels, two wet audio channels, and one MIDI input"
             ));
         }
         let ring = self
@@ -3299,19 +3299,28 @@ mod tests {
             buffer_size: 128,
         }))
         .unwrap();
-        let request = |wet_audio_channels| TrackRequest {
-            port_name_base: format!("oxisynth-{wet_audio_channels}"),
+        let request = |dry_audio_channels, wet_audio_channels| TrackRequest {
+            port_name_base: format!("oxisynth-{dry_audio_channels}-{wet_audio_channels}"),
             topology: BackendTrackTopology::DryWetProcessor {
                 processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
-                dry_audio_channels: 0,
+                dry_audio_channels,
                 wet_audio_channels,
                 dry_midi: true,
             },
             initial_loops: 1,
         };
-        assert!(backend.create_track(request(1)).is_err());
-        let created = backend.create_track(request(2)).unwrap();
-        assert_eq!(created.ports.len(), 3);
+        assert!(backend.create_track(request(2, 1)).is_err());
+        assert!(backend.create_track(request(0, 2)).is_err());
+        let created = backend.create_track(request(2, 2)).unwrap();
+        assert_eq!(created.ports.len(), 5);
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .filter(|port| port.role == BackendPortRole::AudioInput)
+                .count(),
+            2
+        );
         assert_eq!(
             created
                 .ports
