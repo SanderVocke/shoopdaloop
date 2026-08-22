@@ -213,6 +213,7 @@ struct PendingAudioSettings {
 struct BrowserEphemeralFile {
     name: String,
     bytes: Vec<u8>,
+    durable: bool,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -262,6 +263,7 @@ fn load_browser_soundfont_library(pending: Rc<RefCell<VecDeque<BrowserEphemeralF
             pending.borrow_mut().push_back(BrowserEphemeralFile {
                 name,
                 bytes: js_sys::Uint8Array::new(&bytes).to_vec(),
+                durable: true,
             });
         }
     });
@@ -674,6 +676,7 @@ impl UnifiedApp {
                         pending.borrow_mut().push_back(BrowserEphemeralFile {
                             name: file.file_name(),
                             bytes: file.read().await,
+                            durable: false,
                         });
                     }
                 });
@@ -863,9 +866,11 @@ impl UnifiedApp {
             let pending = Rc::clone(&self.pending_ephemeral_files);
             wasm_bindgen_futures::spawn_local(async move {
                 if let Ok(bytes) = file.bytes_async().await {
-                    pending
-                        .borrow_mut()
-                        .push_back(BrowserEphemeralFile { name, bytes });
+                    pending.borrow_mut().push_back(BrowserEphemeralFile {
+                        name,
+                        bytes,
+                        durable: false,
+                    });
                 }
             });
         }
@@ -929,19 +934,29 @@ impl UnifiedApp {
         #[cfg(target_arch = "wasm32")]
         for file in ephemeral_files {
             if is_sf2_file_name(&file.name) {
-                let persistent_name = file.name.clone();
-                let persistent_bytes = js_sys::Uint8Array::from(file.bytes.as_slice()).buffer();
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Err(error) = shoopStoreSoundFont(persistent_name, persistent_bytes).await
-                    {
-                        tracing::error!(error = ?error, "frontend.soundfont.persist_failed");
+                if file.durable {
+                    if let Err(error) = self.runtime.dispatch(AppIntent::ImportSoundFont {
+                        original_filename: file.name,
+                        bytes: file.bytes.into(),
+                    }) {
+                        tracing::error!(%error, "frontend.soundfont.import_failed");
                     }
-                });
-                if let Err(error) = self.runtime.dispatch(AppIntent::ImportSoundFont {
-                    original_filename: file.name,
-                    bytes: file.bytes.into(),
-                }) {
-                    tracing::error!(%error, "frontend.soundfont.import_failed");
+                } else {
+                    let pending = Rc::clone(&self.pending_file_intents);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let persistent_bytes =
+                            js_sys::Uint8Array::from(file.bytes.as_slice()).buffer();
+                        match shoopStoreSoundFont(file.name.clone(), persistent_bytes).await {
+                            Ok(_) => pending.borrow_mut().push_back(AppIntent::ImportSoundFont {
+                                original_filename: file.name,
+                                bytes: file.bytes.into(),
+                            }),
+                            Err(error) => tracing::error!(
+                                error = ?error,
+                                "frontend.soundfont.persist_failed"
+                            ),
+                        }
+                    });
                 }
             } else {
                 self.queue_ephemeral_script_bytes(file.name, &file.bytes);

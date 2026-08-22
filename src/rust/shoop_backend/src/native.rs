@@ -2437,7 +2437,10 @@ impl Backend for NativeBackend {
                         .oxisynth_asset_metadata()
                         .is_some_and(|metadata| metadata.sha256 != configuration.soundfont_sha256)
                 {
-                    fx.chain.replace_oxisynth_asset(&asset)?;
+                    fx.chain
+                        .restore_oxisynth_configuration(&asset, &configuration)?;
+                    fx.last_confirmed_state = Some(state.clone());
+                    return Ok(());
                 }
             }
         }

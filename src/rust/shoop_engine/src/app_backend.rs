@@ -6433,6 +6433,31 @@ impl FXChain {
         Ok(())
     }
 
+    pub fn restore_oxisynth_configuration(
+        &self,
+        asset: &engine::oxisynth::SoundFontAsset,
+        configuration: &engine::oxisynth::OxiSynthConfiguration,
+    ) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(metadata) = &self.backend else {
+            return Err(anyhow!("not an OxiSynth chain"));
+        };
+        let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+        let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
+        let mut replacement = engine::oxisynth::OxiSynthProcessor::from_asset(
+            sample_rate as f32,
+            buffer_size as usize,
+            asset,
+        )?;
+        replacement.apply_configuration(configuration)?;
+        let title = self.title.clone();
+        let displaced = self.shared.query_graph_scheduler_response(move |session| {
+            session.set_oxisynth_processor(title, replacement)
+        })?;
+        drop(displaced);
+        *metadata.lock().unwrap() = OxiSynthAssetMetadata::from(asset);
+        Ok(())
+    }
+
     pub fn oxisynth_asset_metadata(&self) -> Option<OxiSynthAssetMetadata> {
         match &self.backend {
             FXChainBackendKind::OxiSynth(metadata) => Some(metadata.lock().unwrap().clone()),

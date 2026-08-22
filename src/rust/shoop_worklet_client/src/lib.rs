@@ -1507,13 +1507,15 @@ impl Backend for RemoteWorkletBackend {
     ) -> Result<Arc<[shoop_backend::soundfont_library::SoundFontAssetDescriptor]>> {
         let pending = self
             .soundfont_import
-            .as_ref()
-            .map(|import| import.sha256.as_str());
+            .iter()
+            .chain(self.soundfont_import_queue.iter())
+            .map(|import| import.sha256.as_str())
+            .collect::<BTreeSet<_>>();
         Ok(self
             .soundfonts
             .descriptors()
             .iter()
-            .filter(|asset| pending != Some(asset.sha256.as_ref()))
+            .filter(|asset| !pending.contains(asset.sha256.as_ref()))
             .cloned()
             .collect::<Vec<_>>()
             .into())
