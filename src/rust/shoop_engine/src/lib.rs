@@ -55,6 +55,7 @@ pub mod midi_storage;
 #[cfg(feature = "midir")]
 pub mod midir_driver;
 pub mod multichannel_audio;
+pub mod oxisynth;
 pub mod pending_midi_control;
 pub mod port;
 pub mod profiling;

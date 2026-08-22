@@ -147,6 +147,7 @@ pub enum TrackTopologyDocument {
     TinySynthFx {
         audio_channels: u32,
     },
+    OxiSynth,
     Trigger,
 }
 
@@ -292,6 +293,7 @@ pub enum FxChainTypeDocument {
     CarlaPatchbay,
     CarlaPatchbay16x,
     TinySynthFx,
+    OxiSynth,
     Test,
 }
 

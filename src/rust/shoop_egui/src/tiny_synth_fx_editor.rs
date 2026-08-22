@@ -551,7 +551,9 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: None,
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: None,
                 matching_audio_channels: true,
                 midi: TrackProcessorMidiPolicy::Required,

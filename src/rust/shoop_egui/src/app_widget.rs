@@ -2707,7 +2707,9 @@ mod tests {
             available: true,
             unavailable_reason: None,
             constraints: crate::TrackProcessorConstraints {
+                min_dry_audio_channels: None,
                 max_dry_audio_channels: Some(2),
+                min_wet_audio_channels: None,
                 max_wet_audio_channels: Some(2),
                 matching_audio_channels: false,
                 midi: crate::TrackProcessorMidiPolicy::Optional,

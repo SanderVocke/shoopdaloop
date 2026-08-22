@@ -32,15 +32,15 @@ use shoop_audio_protocol::{
     SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    encode_tiny_synth_fx_state, tiny_synth_fx_descriptor, Backend, BackendActiveCompositeChild,
-    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
-    BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
-    BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
-    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
-    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
-    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
+    encode_tiny_synth_fx_state, oxisynth_descriptor, tiny_synth_fx_descriptor, Backend,
+    BackendActiveCompositeChild, BackendAsyncResult, BackendAudioChannelData, BackendAudioData,
+    BackendChannelMode, BackendCompositeConfig, BackendCompositeId, BackendCompositeKind,
+    BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure,
+    BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate,
+    BackendLoopId, BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData,
+    BackendMidiEvent, BackendMutationDetail, BackendMutationFailure, BackendMutationKind,
+    BackendOperationKind, BackendOperationProgress, BackendPortDataType, BackendPortDescriptor,
+    BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
     BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
     BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
     BackendTrackTopology, DirectTrackRequest, TinySynthFxControl, TinySynthFxMidiCcAssignment,
@@ -801,33 +801,29 @@ impl RemoteWorkletBackend {
                                     dry_midi: true,
                                 }
                             }
+                            WireTrackTopology::OxiSynth => BackendTrackTopology::DryWetProcessor {
+                                processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                                dry_audio_channels: 2,
+                                wet_audio_channels: 2,
+                                dry_midi: true,
+                            },
                         },
-                        fx: track.fx.map(|fx| TrackFxState {
-                            processor_type: TrackProcessorTypeId::new(
-                                TrackProcessorTypeId::TINY_SYNTH_FX,
-                            ),
-                            active: fx.active,
-                            visible: fx.visible,
-                            lifecycle: FxLifecycle::Running,
-                            generation: 0,
-                            crash_summary: None,
-                            logs: Arc::from([]),
-                            editor: Some(TrackProcessorEditorState::TinySynthFx(
-                                TinySynthFxState {
-                                    selected_preset_id: fx.tiny.selected_preset_id,
-                                    master_gain_db: fx.tiny.master_gain_db,
-                                    reverb_enabled: fx.tiny.reverb_enabled,
-                                    reverb_amount: fx.tiny.reverb_amount,
-                                    distortion_enabled: fx.tiny.distortion_enabled,
-                                    distortion_drive: fx.tiny.distortion_drive,
-                                    compressor_enabled: fx.tiny.compressor_enabled,
-                                    compressor_amount: fx.tiny.compressor_amount,
-                                    eq_enabled: fx.tiny.eq_enabled,
-                                    eq_low_db: fx.tiny.eq_low_db,
-                                    eq_mid_db: fx.tiny.eq_mid_db,
-                                    eq_high_db: fx.tiny.eq_high_db,
-                                    midi_cc_assignments: fx
-                                        .tiny
+                        fx: track.fx.map(|fx| {
+                            let tiny = fx.tiny.map(|tiny| {
+                                TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
+                                    selected_preset_id: tiny.selected_preset_id,
+                                    master_gain_db: tiny.master_gain_db,
+                                    reverb_enabled: tiny.reverb_enabled,
+                                    reverb_amount: tiny.reverb_amount,
+                                    distortion_enabled: tiny.distortion_enabled,
+                                    distortion_drive: tiny.distortion_drive,
+                                    compressor_enabled: tiny.compressor_enabled,
+                                    compressor_amount: tiny.compressor_amount,
+                                    eq_enabled: tiny.eq_enabled,
+                                    eq_low_db: tiny.eq_low_db,
+                                    eq_mid_db: tiny.eq_mid_db,
+                                    eq_high_db: tiny.eq_high_db,
+                                    midi_cc_assignments: tiny
                                         .midi_cc_assignments
                                         .into_iter()
                                         .map(|assignment| TinySynthFxMidiCcAssignment {
@@ -839,8 +835,18 @@ impl RemoteWorkletBackend {
                                         })
                                         .collect::<Vec<_>>()
                                         .into(),
-                                },
-                            )),
+                                })
+                            });
+                            TrackFxState {
+                                processor_type: TrackProcessorTypeId::new(fx.processor_type),
+                                active: fx.active,
+                                visible: fx.visible,
+                                lifecycle: FxLifecycle::Running,
+                                generation: 0,
+                                crash_summary: None,
+                                logs: Arc::from([]),
+                                editor: tiny,
+                            }
                         }),
                         audio_channels: track.audio_channels,
                         midi: track.midi,
@@ -1071,6 +1077,48 @@ fn browser_tiny_port_descriptors(
     ports
 }
 
+fn browser_oxisynth_port_descriptors(
+    base: &str,
+    next_port_id: &mut u64,
+) -> Vec<BackendPortDescriptor> {
+    let mut ports = Vec::with_capacity(5);
+    for index in 0..2 {
+        let id = BackendPortId::from_raw(*next_port_id);
+        *next_port_id = next_port_id.saturating_add(1);
+        ports.push(BackendPortDescriptor {
+            id,
+            owner: BackendPortOwner::Track,
+            name: format!("{base}_audio_dry_in_{}", index + 1),
+            data_type: BackendPortDataType::Audio,
+            direction: BackendPortDirection::Input,
+            role: BackendPortRole::AudioInput,
+        });
+    }
+    for index in 0..2 {
+        let id = BackendPortId::from_raw(*next_port_id);
+        *next_port_id = next_port_id.saturating_add(1);
+        ports.push(BackendPortDescriptor {
+            id,
+            owner: BackendPortOwner::Track,
+            name: format!("{base}_audio_wet_out_{}", index + 1),
+            data_type: BackendPortDataType::Audio,
+            direction: BackendPortDirection::Output,
+            role: BackendPortRole::AudioOutput,
+        });
+    }
+    let id = BackendPortId::from_raw(*next_port_id);
+    *next_port_id = next_port_id.saturating_add(1);
+    ports.push(BackendPortDescriptor {
+        id,
+        owner: BackendPortOwner::Track,
+        name: format!("{base}_dry_midi_in"),
+        data_type: BackendPortDataType::Midi,
+        direction: BackendPortDirection::Input,
+        role: BackendPortRole::MidiInput,
+    });
+    ports
+}
+
 fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, Option<u64>)> {
     Some(match command {
         Command::ConfigureDeviceChannels { .. } | Command::ConfigureMidiEndpoints { .. } => {
@@ -1275,7 +1323,7 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
-        Ok(vec![tiny_synth_fx_descriptor()].into())
+        Ok(vec![tiny_synth_fx_descriptor(), oxisynth_descriptor()].into())
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -1314,6 +1362,41 @@ impl Backend for RemoteWorkletBackend {
                     topology: WireTrackTopology::TinySynthFx {
                         audio_channels: *dry_audio_channels,
                     },
+                })?;
+                self.next_track_id = self.next_track_id.saturating_add(1);
+                self.next_loop_id = self.next_loop_id.saturating_add(loops.len() as u64);
+                self.track_resources.insert(
+                    track_id,
+                    BrowserTrackResources {
+                        topology: request.topology.clone(),
+                        loops: loops.clone(),
+                    },
+                );
+                Ok(BackendTrackCreation {
+                    track_id,
+                    loops,
+                    ports,
+                })
+            }
+            BackendTrackTopology::DryWetProcessor {
+                processor_type,
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: true,
+            } if processor_type == TrackProcessorTypeId::OXISYNTH => {
+                let track_id = BackendTrackId::from_raw(self.next_track_id);
+                let ports = browser_oxisynth_port_descriptors(
+                    &request.port_name_base,
+                    &mut self.next_port_id,
+                );
+                let loops: Vec<_> = (0..request.initial_loops)
+                    .map(|offset| BackendLoopId::from_raw(self.next_loop_id + offset as u64))
+                    .collect();
+                self.submit(Command::CreateTrack {
+                    expected_track_id: track_id.raw(),
+                    expected_loop_ids: loops.iter().map(|id| id.raw()).collect(),
+                    port_name_base: request.port_name_base,
+                    topology: WireTrackTopology::OxiSynth,
                 })?;
                 self.next_track_id = self.next_track_id.saturating_add(1);
                 self.next_loop_id = self.next_loop_id.saturating_add(loops.len() as u64);
@@ -2508,6 +2591,34 @@ mod tests {
     #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
     shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn oxisynth_port_reservations_match_worklet_registration_order() {
+        let mut next_port_id = 10;
+        let ports = browser_oxisynth_port_descriptors("synth", &mut next_port_id);
+        assert_eq!(next_port_id, 15);
+        assert_eq!(
+            ports
+                .iter()
+                .map(|port| (port.id.raw(), port.role, port.direction))
+                .collect::<Vec<_>>(),
+            vec![
+                (10, BackendPortRole::AudioInput, BackendPortDirection::Input,),
+                (11, BackendPortRole::AudioInput, BackendPortDirection::Input,),
+                (
+                    12,
+                    BackendPortRole::AudioOutput,
+                    BackendPortDirection::Output,
+                ),
+                (
+                    13,
+                    BackendPortRole::AudioOutput,
+                    BackendPortDirection::Output,
+                ),
+                (14, BackendPortRole::MidiInput, BackendPortDirection::Input,),
+            ]
+        );
+    }
+
     #[derive(Default)]
     struct MemoryEndpoint {
         sent: Rc<RefCell<Vec<String>>>,
@@ -2828,9 +2939,10 @@ mod tests {
                         2,
                         WireTrackTopology::TinySynthFx { audio_channels: 2 },
                         Some(WireTrackFxState {
+                            processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
                             active: true,
                             visible: true,
-                            tiny,
+                            tiny: Some(tiny),
                         }),
                     ),
                 ],

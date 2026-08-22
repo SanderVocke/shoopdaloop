@@ -770,6 +770,12 @@ fn from_wire_track_topology(topology: WireTrackTopology) -> BackendTrackTopology
                 dry_midi: true,
             }
         }
+        WireTrackTopology::OxiSynth => BackendTrackTopology::DryWetProcessor {
+            processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+            dry_audio_channels: 2,
+            wet_audio_channels: 2,
+            dry_midi: true,
+        },
     }
 }
 
@@ -932,6 +938,12 @@ fn to_wire_track_topology(topology: &BackendTrackTopology) -> WireTrackTopology 
                 audio_channels: *dry_audio_channels,
             }
         }
+        BackendTrackTopology::DryWetProcessor {
+            processor_type,
+            dry_audio_channels: 2,
+            wet_audio_channels: 2,
+            dry_midi: true,
+        } if processor_type == TrackProcessorTypeId::OXISYNTH => WireTrackTopology::OxiSynth,
         _ => WireTrackTopology::Direct {
             audio_channels: 0,
             midi: false,
@@ -1050,11 +1062,20 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 id: id.raw(),
                 topology: to_wire_track_topology(&track.topology),
                 fx: track.fx.and_then(|fx| {
+                    if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
+                        return Some(WireTrackFxState {
+                            processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                            active: fx.active,
+                            visible: false,
+                            tiny: None,
+                        });
+                    }
                     let TrackProcessorEditorState::TinySynthFx(editor) = fx.editor?;
                     Some(WireTrackFxState {
+                        processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
                         active: fx.active,
                         visible: fx.visible,
-                        tiny: WireTinySynthFxState {
+                        tiny: Some(WireTinySynthFxState {
                             selected_preset_id: editor.selected_preset_id,
                             master_gain_db: editor.master_gain_db,
                             reverb_enabled: editor.reverb_enabled,
@@ -1076,7 +1097,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                                     controller: assignment.controller,
                                 })
                                 .collect(),
-                        },
+                        }),
                     })
                 }),
                 audio_channels: track.audio_channels,
@@ -1847,12 +1868,13 @@ mod tests {
         );
         let fx = snapshot.tracks[0].fx.as_ref().unwrap();
         assert!(fx.visible);
-        assert_eq!(fx.tiny.selected_preset_id, None);
-        assert_eq!(fx.tiny.master_gain_db, -12.0);
-        assert!(fx.tiny.reverb_enabled);
-        assert_eq!(fx.tiny.reverb_amount, 1.0);
+        let tiny = fx.tiny.as_ref().unwrap();
+        assert_eq!(tiny.selected_preset_id, None);
+        assert_eq!(tiny.master_gain_db, -12.0);
+        assert!(tiny.reverb_enabled);
+        assert_eq!(tiny.reverb_amount, 1.0);
         assert_eq!(
-            fx.tiny.midi_cc_assignments,
+            tiny.midi_cc_assignments,
             [WireTinySynthFxMidiCcAssignment {
                 parameter: WireTinySynthFxParameter::ReverbAmount,
                 channel: 2,
@@ -1866,14 +1888,14 @@ mod tests {
                 len: 3,
             })
         );
-        assert!(fx.tiny.distortion_enabled);
-        assert_eq!(fx.tiny.distortion_drive, 7.0);
-        assert!(fx.tiny.compressor_enabled);
-        assert_eq!(fx.tiny.compressor_amount, 0.6);
-        assert!(fx.tiny.eq_enabled);
-        assert_eq!(fx.tiny.eq_low_db, 3.0);
-        assert_eq!(fx.tiny.eq_mid_db, -2.0);
-        assert_eq!(fx.tiny.eq_high_db, 1.5);
+        assert!(tiny.distortion_enabled);
+        assert_eq!(tiny.distortion_drive, 7.0);
+        assert!(tiny.compressor_enabled);
+        assert_eq!(tiny.compressor_amount, 0.6);
+        assert!(tiny.eq_enabled);
+        assert_eq!(tiny.eq_low_db, 3.0);
+        assert_eq!(tiny.eq_mid_db, -2.0);
+        assert_eq!(tiny.eq_high_db, 1.5);
 
         let session = host.backend.capture_session().unwrap();
         host.backend.replace_session(&session).unwrap();
@@ -1885,6 +1907,85 @@ mod tests {
             .values()
             .all(|track| !track.fx.as_ref().unwrap().visible));
         assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn oxisynth_generates_stereo_audio_in_the_worklet() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 2,
+                    output_channels: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "oxisynth".to_owned(),
+                    topology: WireTrackTopology::OxiSynth,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                3,
+                Command::SetTrackControl {
+                    track_id: 1,
+                    control: WireTrackControl::InputMonitoring(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::InjectTrackMidiInput {
+                    track_id: 1,
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0x90, 60, 100],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 5, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        let mut rendered_audio = false;
+        host.input()[..256].fill(0.75);
+        for _ in 0..4 {
+            assert_no_alloc::assert_no_alloc(|| assert!(host.process(2, 2, 128)));
+            rendered_audio |= host
+                .output()
+                .iter()
+                .any(|sample| sample.abs() > f32::EPSILON);
+            assert!(host
+                .output()
+                .iter()
+                .all(|sample| (*sample - 0.75).abs() > 1.0e-3));
+        }
+        assert!(rendered_audio);
+        assert_eq!(snapshot.tracks[0].topology, WireTrackTopology::OxiSynth);
+        let fx = snapshot.tracks[0].fx.as_ref().unwrap();
+        assert_eq!(fx.processor_type, TrackProcessorTypeId::OXISYNTH);
+        assert!(fx.tiny.is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]

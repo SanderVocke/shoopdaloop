@@ -9,8 +9,8 @@ Trigger tracks have no audio or MIDI channels. The dialog configures the display
 name, audio-channel counts, optional MIDI, and, for processed tracks, the
 processor kind.
 
-Native processor choices are External, Tiny Synth/FX, and feature-dependent
-Carla modes. Browser builds offer Tiny Synth/FX. New Dry + Wet tracks use one
+Native processor choices are External, Tiny Synth/FX, OxiSynth, and feature-dependent
+Carla modes. Browser builds offer Tiny Synth/FX and OxiSynth. New Dry + Wet tracks use one
 shared audio-channel count for their matched dry inputs and wet outputs. Tiny
 Synth/FX additionally requires one MIDI input.
 
@@ -60,3 +60,8 @@ assignments.
 Processed-track controls show only capabilities advertised by the selected
 processor. Tiny Synth/FX uses an embedded editor. Carla tracks expose lifecycle,
 UI, recovery, state, and bounded process-log controls when available.
+
+OxiSynth is an embedded General MIDI SoundFont instrument. Its track shape is
+fixed at no dry audio inputs, two wet audio outputs, and one MIDI input. Select
+banks and programs, play notes, and control the instrument entirely with MIDI;
+there is no processor editor or persisted synth state.

@@ -40,6 +40,7 @@ use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::MidiStorageElem;
+use crate::oxisynth::OxiSynthProcessor;
 use crate::profiling::{Profiler, ProfilingReport, ProfilingReportItem, Stage};
 use crate::state_mirror::{
     AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
@@ -407,6 +408,7 @@ enum ProcessorBackend {
     External,
     Test2x2x1,
     Tiny(TinySynthFxProcessor),
+    OxiSynth(OxiSynthProcessor),
     #[cfg(feature = "carla")]
     Carla(Box<dyn CarlaProcessor>),
 }
@@ -1625,6 +1627,59 @@ impl Session {
         }
     }
 
+    pub fn set_oxisynth_processor(
+        &mut self,
+        title: impl Into<String>,
+        processor: OxiSynthProcessor,
+    ) -> Option<OxiSynthProcessor> {
+        let title = title.into();
+        let displaced = if let Some(route) = self
+            .processors
+            .iter_mut()
+            .find(|route| route.title == title)
+        {
+            match std::mem::replace(&mut route.backend, ProcessorBackend::OxiSynth(processor)) {
+                ProcessorBackend::OxiSynth(previous) => Some(previous),
+                _ => None,
+            }
+        } else {
+            self.processors.push(ProcessorRoute {
+                title,
+                backend: ProcessorBackend::OxiSynth(processor),
+                active: false,
+                audio_inputs: Vec::new(),
+                audio_outputs: Vec::new(),
+                midi_inputs: Vec::new(),
+                midi_staging: Vec::new(),
+                global_pending: PendingMidiControlState::default(),
+                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
+                global_rejected: 0,
+                global_pending_overwrites: 0,
+                global_pending_drained: 0,
+                global_capacity_deferrals: 0,
+            });
+            None
+        };
+        self.note_graph_change();
+        displaced
+    }
+
+    pub fn set_oxisynth_active(&mut self, title: &str, active: bool) {
+        if let Some(route) = self
+            .processors
+            .iter_mut()
+            .find(|route| route.title == title)
+        {
+            if route.active && !active {
+                if let ProcessorBackend::OxiSynth(processor) = &mut route.backend {
+                    processor.reset();
+                }
+            }
+            route.active = active;
+        }
+    }
+
     pub fn remove_processor(&mut self, title: &str) {
         self.processors.retain(|route| route.title != title);
         self.note_graph_change();
@@ -2393,6 +2448,11 @@ impl Session {
                 let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
                 processor.process_midi_controls_only(events);
             }
+            if matches!(route.backend, ProcessorBackend::OxiSynth(_)) {
+                for &port in &route.audio_outputs {
+                    self.ports[port].buffer(n_frames).fill(0.0);
+                }
+            }
             self.processors = processors;
             return;
         }
@@ -2505,6 +2565,20 @@ impl Session {
                         self.ports[port_index]
                             .buffer(n_frames)
                             .copy_from_slice(source);
+                    }
+                }
+            }
+            ProcessorBackend::OxiSynth(processor) => {
+                if n_frames <= processor.max_frames() {
+                    processor.process(n_frames, &route.combined_midi);
+                    for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
+                        if let Some(source) = processor.output(output_index, n_frames) {
+                            self.ports[port_index]
+                                .buffer(n_frames)
+                                .copy_from_slice(source);
+                        } else {
+                            self.ports[port_index].buffer(n_frames).fill(0.0);
+                        }
                     }
                 }
             }

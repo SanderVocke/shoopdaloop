@@ -837,8 +837,12 @@ impl NativeRuntime {
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let processor_state = if let Some(fx) = track.fx.as_mut() {
-                match fx.chain.try_get_state_str() {
+            let processor_state =
+                if let Some(fx) = track.fx.as_mut() {
+                    if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
+                        None
+                    } else {
+                        match fx.chain.try_get_state_str() {
                     Ok(state) => {
                         fx.last_confirmed_state = Some(state.clone());
                         Some(state)
@@ -847,9 +851,10 @@ impl NativeRuntime {
                         anyhow!("processor state is unavailable and no checkpoint exists: {error}")
                     })?),
                 }
-            } else {
-                None
-            };
+                    }
+                } else {
+                    None
+                };
             let tiny_synth_midi_cc_assignments = track
                 .fx
                 .as_ref()
@@ -935,11 +940,23 @@ impl NativeRuntime {
                 BackendTrackTopology::DryWetExternal { .. } => {
                     self.create_external_track(request)?
                 }
+                BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                    if processor_type == TrackProcessorTypeId::OXISYNTH =>
+                {
+                    if source_track.processor_state.is_some()
+                        || !source_track.tiny_synth_midi_cc_assignments.is_empty()
+                    {
+                        return Err(anyhow!("OxiSynth track contains unexpected state"));
+                    }
+                    self.create_processed_track(request)?
+                }
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     self.create_processed_track(request)?
                 }
             };
             match &source_track.topology {
+                BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                    if processor_type == TrackProcessorTypeId::OXISYNTH => {}
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     let state = source_track
                         .processor_state
@@ -1391,20 +1408,30 @@ impl NativeRuntime {
                 "Tiny Synth/FX requires matched audio channels and one MIDI input"
             ));
         }
+        if chain_type == FXChainType::OxiSynth
+            && (dry_audio_channels != 2 || wet_audio_channels != 2 || !dry_midi)
+        {
+            return Err(anyhow!(
+                "OxiSynth requires two dry audio channels, two wet audio channels, and one MIDI input"
+            ));
+        }
         let ring = self
             .resolved
             .sample_rate
             .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
         let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
-        let chain = if chain_type == FXChainType::TinySynthFx {
-            self.session.create_tiny_synth_fx_chain(
+        let chain = match chain_type {
+            FXChainType::TinySynthFx => self.session.create_tiny_synth_fx_chain(
                 &request.port_name_base,
                 dry_audio_channels as usize,
                 ring,
-            )?
-        } else {
-            self.session
-                .create_fx_chain(chain_type, &request.port_name_base, ring)?
+            )?,
+            FXChainType::OxiSynth => self
+                .session
+                .create_oxisynth_chain(&request.port_name_base, ring)?,
+            _ => self
+                .session
+                .create_fx_chain(chain_type, &request.port_name_base, ring)?,
         };
         let last_confirmed_state = chain.try_get_state_str().ok();
         let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
@@ -2078,7 +2105,9 @@ impl Backend for NativeBackend {
                 available: true,
                 unavailable_reason: None,
                 constraints: TrackProcessorConstraints {
+                    min_dry_audio_channels: None,
                     max_dry_audio_channels: None,
+                    min_wet_audio_channels: None,
                     max_wet_audio_channels: None,
                     matching_audio_channels: false,
                     midi: TrackProcessorMidiPolicy::Optional,
@@ -2087,6 +2116,7 @@ impl Backend for NativeBackend {
                 editor: None,
             },
             tiny_synth_fx_descriptor(),
+            oxisynth_descriptor(),
         ];
         #[cfg(feature = "native-fx")]
         let catalog = {
@@ -2107,7 +2137,9 @@ impl Backend for NativeBackend {
                     available: carla_availability.is_ok(),
                     unavailable_reason: carla_availability.as_ref().err().cloned(),
                     constraints: TrackProcessorConstraints {
+                        min_dry_audio_channels: None,
                         max_dry_audio_channels: Some(max_channels),
+                        min_wet_audio_channels: None,
                         max_wet_audio_channels: Some(max_channels),
                         matching_audio_channels: false,
                         midi: TrackProcessorMidiPolicy::Optional,
@@ -2983,6 +3015,7 @@ fn fx_lifecycle(lifecycle: shoop_engine::carla_processor::CarlaProcessorLifecycl
 fn processor_chain_type(processor_type: &str) -> Option<FXChainType> {
     match processor_type {
         TrackProcessorTypeId::TINY_SYNTH_FX => Some(FXChainType::TinySynthFx),
+        TrackProcessorTypeId::OXISYNTH => Some(FXChainType::OxiSynth),
         #[cfg(feature = "native-fx")]
         TrackProcessorTypeId::CARLA_RACK => Some(FXChainType::CarlaRack),
         #[cfg(feature = "native-fx")]
@@ -3257,6 +3290,57 @@ mod tests {
             })
             .unwrap();
         assert_injected_note_reaches_output(&mut backend, &created, 60);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_oxisynth_track_has_fixed_ports_and_rejects_invalid_shapes() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        }))
+        .unwrap();
+        let request = |dry_audio_channels, wet_audio_channels| TrackRequest {
+            port_name_base: format!("oxisynth-{dry_audio_channels}-{wet_audio_channels}"),
+            topology: BackendTrackTopology::DryWetProcessor {
+                processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi: true,
+            },
+            initial_loops: 1,
+        };
+        assert!(backend.create_track(request(2, 1)).is_err());
+        assert!(backend.create_track(request(0, 2)).is_err());
+        let created = backend.create_track(request(2, 2)).unwrap();
+        assert_eq!(created.ports.len(), 5);
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .filter(|port| port.role == BackendPortRole::AudioInput)
+                .count(),
+            2
+        );
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .filter(|port| port.role == BackendPortRole::AudioOutput)
+                .count(),
+            2
+        );
+        assert_eq!(
+            created
+                .ports
+                .iter()
+                .filter(|port| port.role == BackendPortRole::MidiInput)
+                .count(),
+            1
+        );
+        backend
+            .set_track_fx_control(created.track_id, BackendTrackFxControl::SetActive(true))
+            .unwrap();
+        backend.remove_track(created.track_id).unwrap();
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3621,10 +3705,11 @@ mod tests {
         }))
         .unwrap();
         let catalog = backend.track_processor_catalog().unwrap();
-        assert_eq!(catalog.len(), 5);
+        assert_eq!(catalog.len(), 6);
         assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::TINY_SYNTH_FX);
+        assert_eq!(catalog[2].id.as_str(), TrackProcessorTypeId::OXISYNTH);
         let runtime_available = shoop_engine::carla_native::carla_runtime_availability().is_ok();
-        for descriptor in &catalog[2..] {
+        for descriptor in &catalog[3..] {
             assert_eq!(descriptor.available, runtime_available);
             assert_eq!(descriptor.unavailable_reason.is_none(), runtime_available);
             assert!(descriptor.features.state);
@@ -3659,10 +3744,10 @@ mod tests {
                     buffer_size: 128,
                 }))?;
             let catalog = backend.track_processor_catalog()?;
-            assert!(catalog[..2].iter().all(|descriptor| {
+            assert!(catalog[..3].iter().all(|descriptor| {
                 descriptor.available && !descriptor.id.as_str().starts_with("carla_")
             }));
-            assert!(catalog[2..].iter().all(|descriptor| {
+            assert!(catalog[3..].iter().all(|descriptor| {
                 !descriptor.available && descriptor.unavailable_reason.is_some()
             }));
             Ok::<_, anyhow::Error>(())
