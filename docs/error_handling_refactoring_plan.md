@@ -51,16 +51,25 @@ This refactor covers native and browser logging, generic application notificatio
 
 This stage is a dependency for all implementation stages.
 
-- [ ] Inventory every producer and consumer of application notifications, notification severity, and file-I/O error intents across native, Wasm, application-model, UI, and test code.
-- [ ] Classify each producer as console-only, feature-state-only, or console plus feature state.
-- [ ] Identify update-loop producers that can repeat and define their transition or suppression behavior before replacing notification writes with logs.
-- [ ] Identify direct `eprintln!` calls and classify the few legitimate process-boundary uses separately from calls that should become structured logs.
-- [ ] Record the typed state that will replace each browser runtime or self-test dependency on notification text.
+- [x] Inventory every producer and consumer of application notifications, notification severity, and file-I/O error intents across native, Wasm, application-model, UI, and test code.
+- [x] Classify each producer as console-only, feature-state-only, or console plus feature state.
+- [x] Identify update-loop producers that can repeat and define their transition or suppression behavior before replacing notification writes with logs.
+- [x] Identify direct `eprintln!` calls and classify the few legitimate process-boundary uses separately from calls that should become structured logs.
+- [x] Record the typed state that will replace each browser runtime or self-test dependency on notification text.
 
 ### Stage 1 verification
 
-- [ ] Confirm searches account for every notification type, field, helper, producer, UI consumer, tracing field, browser consumer, and test assertion.
-- [ ] Confirm every producer has one documented replacement route and every generic consumer has a typed replacement or is intentionally deleted.
+- [x] Confirm searches account for every notification type, field, helper, producer, UI consumer, tracing field, browser consumer, and test assertion.
+- [x] Confirm every producer has one documented replacement route and every generic consumer has a typed replacement or is intentionally deleted.
+
+### Stage 1 routing record
+
+- Periodic backend, composition, selected-media, and scripting failures become transition-deduplicated structured errors; connection failures additionally retain connection-owned state.
+- Intent failures, script/session serialization failures, loop capture/duplication failures, queue failures, audio recovery, and MIDI quantization become structured events at error or warning severity as appropriate.
+- I/O completion failures with a task ID retain typed task state and structured diagnostics; picker, URL, dropped-file, scan, and startup failures without a task become console-only.
+- The floating area, backend tooltip history, snapshot notification count, and browser status notification suffix are deleted.
+- Browser click-track self-tests observe the typed I/O task status and message associated with the request instead of the notification history.
+- Non-boundary `eprintln!` calls become structured events. Fatal startup and post-run shutdown reporting remain direct stderr boundaries.
 
 ## Stage 2: Establish structured diagnostic coverage
 
@@ -79,6 +88,7 @@ Depends on Stage 1 classifications. This stage must land before generic notifica
 - [ ] Exercise representative intent, backend, startup fallback, script scan, and I/O failures and verify one appropriately leveled structured event is emitted without per-frame repetition.
 - [ ] Run `cargo fmt --all -- --check`.
 - [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [ ] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
 
 ## Stage 3: Narrow file-I/O failure handling
 
@@ -99,6 +109,7 @@ Depends on Stage 2 so failures remain observable after generic publication is re
 - [ ] Run targeted `shoop_app`, `shoop_egui`, and `shoopdaloop` tests covering I/O state and rendering.
 - [ ] Run `cargo fmt --all -- --check`.
 - [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [ ] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
 
 ## Stage 4: Replace browser notification observation
 
@@ -115,6 +126,7 @@ Depends on the typed I/O outcome from Stage 3.
 - [ ] Verify browser status data attributes expose the required typed terminal states.
 - [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`.
 - [ ] Run the relevant browser smoke and self-test scenarios at their supported viewport sizes.
+- [ ] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
 
 ## Stage 5: Remove the generic notification mechanism
 
@@ -136,6 +148,7 @@ Depends on Stages 2 through 4. No notification producer or non-UI observer may r
 - [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
 - [ ] Run `cargo fmt --all -- --check`.
 - [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [ ] Run `python3 scripts/check_shoop_test_usage.py` before committing Rust test changes.
 
 ## Stage 6: Final end-to-end validation
 
@@ -149,5 +162,6 @@ Depends on completion of all prior stages.
 - [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
 - [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
 - [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [ ] Run `python3 scripts/check_shoop_test_usage.py`.
 - [ ] Build the Wasm application and audio worklet and run the documented browser smoke checks when browsers are available.
 - [ ] Review the final diff against every immutable acceptance criterion and document any environment-limited validation in the implementation PR.
