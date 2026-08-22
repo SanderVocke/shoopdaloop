@@ -1526,9 +1526,18 @@ impl Backend for RemoteWorkletBackend {
         original_filename: String,
         bytes: Arc<[u8]>,
     ) -> Result<shoop_backend::soundfont_library::SoundFontAssetDescriptor> {
+        let known = self
+            .soundfonts
+            .descriptors()
+            .iter()
+            .map(|asset| asset.sha256.clone())
+            .collect::<BTreeSet<_>>();
         let descriptor = self
             .soundfonts
             .import(bytes.clone(), original_filename.clone())?;
+        if known.contains(&descriptor.sha256) {
+            return Ok(descriptor);
+        }
         let generation = self.next_session_generation.max(1);
         self.next_session_generation = generation.saturating_add(1);
         let import = SoundFontImportAssembly {
