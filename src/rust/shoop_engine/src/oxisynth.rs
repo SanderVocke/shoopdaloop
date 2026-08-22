@@ -191,6 +191,26 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn embedded_soundfont_defaults_to_bank_zero_program_zero() {
+        let synth = create_synth(48_000.0).unwrap();
+        assert_eq!(synth.channel_count(), 16);
+        let (_, bank, program) = synth.program(0).unwrap();
+        assert_eq!((bank, program), (0, 0));
+        let preset = synth.channel_preset(0).unwrap();
+        assert_eq!(preset.name(), "Piano 1");
+        assert_eq!((preset.banknum(), preset.num()), (0, 0));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dependency_rejects_a_single_internal_midi_channel() {
+        assert!(Synth::new(SynthDescriptor {
+            midi_channels: 1,
+            ..SynthDescriptor::default()
+        })
+        .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_translation_is_strict_and_complete() {
         assert!(matches!(
             translate_midi(&[0x90, 60, 0]),
