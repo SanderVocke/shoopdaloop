@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 13;
+pub const PROTOCOL_VERSION: u16 = 14;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -178,6 +178,19 @@ pub enum Command {
         generation: u64,
     },
     AbortSessionTransfer {
+        generation: u64,
+    },
+    BeginSoundFontImport {
+        generation: u64,
+        original_filename: String,
+        total_bytes: usize,
+    },
+    WriteSoundFontImport {
+        generation: u64,
+        offset: usize,
+        bytes: Vec<u8>,
+    },
+    CommitSoundFontImport {
         generation: u64,
     },
     Poll,
@@ -360,6 +373,7 @@ pub enum WireTrackFxControl {
         bank: u32,
         program: u8,
     },
+    OxiSelectSoundFont(String),
     OxiAudition {
         channel: u8,
         key: u8,
@@ -381,6 +395,7 @@ impl WireTrackFxControl {
             Self::TinySetEqMidDb(_) => 6,
             Self::TinySetEqHighDb(_) => 7,
             Self::OxiSelectProgram { channel, .. } => 16u8.saturating_add(*channel),
+            Self::OxiSelectSoundFont(_) => 15,
             Self::SetVisible(_)
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
@@ -662,9 +677,30 @@ pub struct WireTrackFxState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireOxiSynthState {
+    pub available_soundfonts: Vec<WireSoundFontAssetDescriptor>,
+    pub soundfont_sha256: String,
+    pub soundfont_name: String,
+    pub presets: Vec<WireOxiSynthPreset>,
     pub revision: u64,
     pub midi_activity_revision: u64,
     pub channels: Vec<WireOxiSynthChannelState>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireSoundFontAssetDescriptor {
+    pub sha256: String,
+    pub name: String,
+    pub original_filename: String,
+    pub byte_len: usize,
+    pub presets: Vec<WireOxiSynthPreset>,
+    pub built_in: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthPreset {
+    pub bank: u32,
+    pub program: u8,
+    pub name: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]

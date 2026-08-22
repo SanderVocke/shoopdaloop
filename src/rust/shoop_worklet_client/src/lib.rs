@@ -97,6 +97,13 @@ struct LoopContentReplaceAssembly {
     complete: bool,
 }
 
+struct SoundFontImportAssembly {
+    generation: u64,
+    bytes: Arc<[u8]>,
+    next_offset: usize,
+    commit_sent: bool,
+}
+
 #[derive(Default)]
 struct BrowserTrackResources {
     topology: BackendTrackTopology,
@@ -129,6 +136,8 @@ pub struct RemoteWorkletBackend {
     loop_content_replace_error: Option<String>,
     midi: Box<dyn HostMidiBridge>,
     midi_revision: u64,
+    soundfonts: shoop_backend::soundfont_library::SoundFontLibrary,
+    soundfont_import: Option<SoundFontImportAssembly>,
 }
 
 impl RemoteWorkletBackend {
@@ -183,6 +192,9 @@ impl RemoteWorkletBackend {
                 loop_content_replace_error: None,
                 midi: Box::new(midi),
                 midi_revision: u64::MAX,
+                soundfonts: shoop_backend::soundfont_library::SoundFontLibrary::with_embedded()
+                    .expect("embedded SoundFont is valid"),
+                soundfont_import: None,
             },
             control,
         )
@@ -612,6 +624,43 @@ impl RemoteWorkletBackend {
         Ok(())
     }
 
+    fn pump_soundfont_import(&mut self) -> Result<()> {
+        let Some(import) = self.soundfont_import.as_mut() else {
+            return Ok(());
+        };
+        while import.next_offset < import.bytes.len()
+            && self.transport.borrow().pending_len() < COMMAND_CAPACITY / 2
+        {
+            let end = import
+                .next_offset
+                .saturating_add(SESSION_TRANSFER_CHUNK_BYTES)
+                .min(import.bytes.len());
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::WriteSoundFontImport {
+                    generation: import.generation,
+                    offset: import.next_offset,
+                    bytes: import.bytes[import.next_offset..end].to_vec(),
+                })?;
+            import.next_offset = end;
+        }
+        if import.next_offset == import.bytes.len()
+            && !import.commit_sent
+            && self.transport.borrow().pending_len() < COMMAND_CAPACITY
+        {
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::CommitSoundFontImport {
+                    generation: import.generation,
+                })?;
+            import.commit_sent = true;
+        }
+        if import.commit_sent && self.transport.borrow().pending_len() == 0 {
+            self.soundfont_import = None;
+        }
+        Ok(())
+    }
+
     fn apply_replaced_session(
         &mut self,
         session: &BackendSessionData,
@@ -856,6 +905,42 @@ impl RemoteWorkletBackend {
                                     .try_into()
                                     .ok()?;
                                 Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
+                                    available_soundfonts: oxi
+                                        .available_soundfonts
+                                        .into_iter()
+                                        .map(|asset| shoop_app_api::SoundFontAssetDescriptor {
+                                            sha256: asset.sha256.into(),
+                                            name: asset.name.into(),
+                                            original_filename: asset.original_filename.into(),
+                                            byte_len: asset.byte_len,
+                                            presets: asset
+                                                .presets
+                                                .into_iter()
+                                                .map(|preset| {
+                                                    shoop_app_api::OxiSynthPresetDescriptor {
+                                                        bank: preset.bank,
+                                                        program: preset.program,
+                                                        name: preset.name.into(),
+                                                    }
+                                                })
+                                                .collect::<Vec<_>>()
+                                                .into(),
+                                            built_in: asset.built_in,
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .into(),
+                                    soundfont_sha256: oxi.soundfont_sha256.into(),
+                                    soundfont_name: oxi.soundfont_name.into(),
+                                    presets: oxi
+                                        .presets
+                                        .into_iter()
+                                        .map(|preset| shoop_app_api::OxiSynthPresetDescriptor {
+                                            bank: preset.bank,
+                                            program: preset.program,
+                                            name: preset.name.into(),
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .into(),
                                     revision: oxi.revision,
                                     midi_activity_revision: oxi.midi_activity_revision,
                                     channels,
@@ -1221,7 +1306,10 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::BeginSessionReplace { .. }
         | Command::WriteSessionReplace { .. }
         | Command::CommitSessionReplace { .. }
-        | Command::AbortSessionTransfer { .. } => (BackendMutationKind::SessionTransfer, None),
+        | Command::AbortSessionTransfer { .. }
+        | Command::BeginSoundFontImport { .. }
+        | Command::WriteSoundFontImport { .. }
+        | Command::CommitSoundFontImport { .. } => (BackendMutationKind::SessionTransfer, None),
         Command::DrainMidiOutput { .. }
         | Command::RequestWaveform { .. }
         | Command::RequestMidiData { .. }
@@ -1291,6 +1379,11 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
                 bank: *bank,
                 program: *program,
             });
+        }
+        WireTrackFxControl::OxiSelectSoundFont(sha256) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectSoundFont(
+                sha256.clone().into(),
+            ));
         }
         WireTrackFxControl::OxiAudition {
             channel,
@@ -1375,6 +1468,53 @@ impl Backend for RemoteWorkletBackend {
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![tiny_synth_fx_descriptor(), oxisynth_descriptor()].into())
+    }
+
+    fn soundfont_catalog(
+        &mut self,
+    ) -> Result<Arc<[shoop_backend::soundfont_library::SoundFontAssetDescriptor]>> {
+        Ok(self.soundfonts.descriptors())
+    }
+
+    fn import_soundfont(
+        &mut self,
+        original_filename: String,
+        bytes: Arc<[u8]>,
+    ) -> Result<shoop_backend::soundfont_library::SoundFontAssetDescriptor> {
+        if self.soundfont_import.is_some() {
+            return Err(anyhow!("another SoundFont import is in progress"));
+        }
+        let descriptor = self
+            .soundfonts
+            .import(bytes.clone(), original_filename.clone())?;
+        let generation = self.next_session_generation.max(1);
+        self.next_session_generation = generation.saturating_add(1);
+        self.submit_ephemeral(Command::BeginSoundFontImport {
+            generation,
+            original_filename: original_filename.clone(),
+            total_bytes: bytes.len(),
+        })?;
+        self.soundfont_import = Some(SoundFontImportAssembly {
+            generation,
+            bytes,
+            next_offset: 0,
+            commit_sent: false,
+        });
+        self.pump_soundfont_import()?;
+        Ok(descriptor)
+    }
+
+    fn remove_soundfont(&mut self, sha256: &str) -> Result<bool> {
+        let referenced = self.snapshot.tracks.values().any(|track| {
+            track.fx.as_ref().is_some_and(|fx| {
+                matches!(
+                    fx.editor.as_ref(),
+                    Some(TrackProcessorEditorState::OxiSynth(state))
+                        if state.soundfont_sha256.as_ref() == sha256
+                )
+            })
+        });
+        self.soundfonts.remove(sha256, referenced)
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -2245,6 +2385,7 @@ impl Backend for RemoteWorkletBackend {
         }
         self.transport_generation = transport.generation;
         self.sync_midi_endpoints()?;
+        self.pump_soundfont_import()?;
         let readiness = self.transport.borrow().readiness();
         let state = self.transport.borrow().driver_state();
         let running = matches!(state, BackendDriverState::Running);
@@ -2605,6 +2746,9 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
             TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
         },
         BackendTrackFxControl::OxiSynth(control) => match control {
+            OxiSynthControl::SelectSoundFont(sha256) => {
+                WireTrackFxControl::OxiSelectSoundFont(sha256.to_string())
+            }
             OxiSynthControl::SelectProgram {
                 channel,
                 bank,

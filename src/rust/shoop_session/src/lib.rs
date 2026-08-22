@@ -223,6 +223,7 @@ mod tests {
             document,
             media,
             scripts,
+            soundfonts: BTreeMap::new(),
         }
     }
 
@@ -557,6 +558,30 @@ mod tests {
         let bundle = SessionBundle::new(SessionDocument::empty(48_000));
         let encoded = encode_session(&bundle, "minimal-fixture").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
+    }
+
+    #[test]
+    fn portable_soundfont_payload_round_trips_once_by_digest() {
+        let mut bundle = direct_bundle(1);
+        let bytes = std::sync::Arc::<[u8]>::from(&b"test-sf2-payload"[..]);
+        let digest = crate::archive::payload_hash(bytes.as_ref());
+        bundle.soundfonts.insert(
+            digest.clone(),
+            SoundFontPayload {
+                original_filename: "custom.sf2".to_owned(),
+                bytes: bytes.clone(),
+            },
+        );
+        let encoded = encode_session(&bundle, "soundfont-test").unwrap();
+        let decoded = decode_session(&encoded).unwrap();
+        assert_eq!(decoded.soundfonts, bundle.soundfonts);
+        assert_eq!(
+            encoded
+                .windows(digest.len())
+                .filter(|window| *window == digest.as_bytes())
+                .count(),
+            2
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

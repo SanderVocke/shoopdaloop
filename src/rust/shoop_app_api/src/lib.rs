@@ -162,6 +162,16 @@ pub struct OxiSynthPresetDescriptor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SoundFontAssetDescriptor {
+    pub sha256: Arc<str>,
+    pub name: Arc<str>,
+    pub original_filename: Arc<str>,
+    pub byte_len: usize,
+    pub presets: Arc<[OxiSynthPresetDescriptor]>,
+    pub built_in: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrackProcessorDescriptor {
     pub id: TrackProcessorTypeId,
     pub label: String,
@@ -304,6 +314,10 @@ pub struct OxiSynthChannelState {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OxiSynthState {
+    pub available_soundfonts: Arc<[SoundFontAssetDescriptor]>,
+    pub soundfont_sha256: Arc<str>,
+    pub soundfont_name: Arc<str>,
+    pub presets: Arc<[OxiSynthPresetDescriptor]>,
     pub revision: u64,
     pub midi_activity_revision: u64,
     pub channels: [OxiSynthChannelState; 16],
@@ -1336,6 +1350,7 @@ pub struct AppSnapshot {
     pub revision: u64,
     pub tracks: Vec<TrackState>,
     pub track_processors: Arc<[TrackProcessorDescriptor]>,
+    pub soundfonts: Arc<[SoundFontAssetDescriptor]>,
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
@@ -1556,8 +1571,9 @@ pub enum TinySynthFxControl {
     Panic,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum OxiSynthControl {
+    SelectSoundFont(Arc<str>),
     SelectProgram {
         channel: u8,
         bank: u32,
@@ -1657,6 +1673,13 @@ pub enum AppIntent {
     Piano(PianoAction),
     AddTrack(DirectTrackSpec),
     AddTrackWithTopology(TrackSpec),
+    ImportSoundFont {
+        original_filename: String,
+        bytes: Arc<[u8]>,
+    },
+    RemoveSoundFont {
+        sha256: Arc<str>,
+    },
     AddLoop {
         track_id: TrackId,
     },
@@ -1894,6 +1917,7 @@ impl TinySynthFxControl {
 impl OxiSynthControl {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SelectSoundFont(_) => "track.oxisynth.select_soundfont",
             Self::SelectProgram { .. } => "track.oxisynth.select_program",
             Self::Audition { .. } => "track.oxisynth.audition",
             Self::Panic => "track.oxisynth.panic",
@@ -1962,6 +1986,8 @@ impl AppIntent {
             Self::Piano(action) => action.kind(),
             Self::AddTrack(_) => "track.add_direct",
             Self::AddTrackWithTopology(_) => "track.add_with_topology",
+            Self::ImportSoundFont { .. } => "soundfont.import",
+            Self::RemoveSoundFont { .. } => "soundfont.remove",
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",

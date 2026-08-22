@@ -34,6 +34,14 @@ pub struct SessionBundle {
     pub media: BTreeMap<String, MediaPayload>,
     #[serde(skip)]
     pub scripts: BTreeMap<u64, Arc<ScriptResourceBundle>>,
+    #[serde(skip)]
+    pub soundfonts: BTreeMap<String, SoundFontPayload>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SoundFontPayload {
+    pub original_filename: String,
+    pub bytes: Arc<[u8]>,
 }
 
 impl SessionBundle {
@@ -42,6 +50,7 @@ impl SessionBundle {
             document,
             media: BTreeMap::new(),
             scripts: BTreeMap::new(),
+            soundfonts: BTreeMap::new(),
         }
     }
 }

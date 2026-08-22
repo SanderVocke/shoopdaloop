@@ -16,8 +16,23 @@ use shoop_engine::{
 
 fn app_oxisynth_state(
     snapshot: shoop_engine::oxisynth::OxiSynthSnapshot,
+    metadata: shoop_engine::app_backend::OxiSynthAssetMetadata,
+    available_soundfonts: Arc<[shoop_app_api::SoundFontAssetDescriptor]>,
 ) -> TrackProcessorEditorState {
     TrackProcessorEditorState::OxiSynth(shoop_app_api::OxiSynthState {
+        available_soundfonts,
+        soundfont_sha256: metadata.sha256.into(),
+        soundfont_name: metadata.name.into(),
+        presets: metadata
+            .presets
+            .iter()
+            .map(|preset| shoop_app_api::OxiSynthPresetDescriptor {
+                bank: preset.bank,
+                program: preset.program,
+                name: preset.name.clone().into(),
+            })
+            .collect::<Vec<_>>()
+            .into(),
         revision: snapshot.revision,
         midi_activity_revision: snapshot.midi_activity_revision,
         channels: snapshot
@@ -135,6 +150,7 @@ pub struct NativeBackend {
     runtime: Option<NativeRuntime>,
     catalog: Arc<[AudioDriverDescriptor]>,
     fatal_error: Option<String>,
+    soundfonts: soundfont_library::SoundFontLibrary,
 }
 
 struct NativeRuntime {
@@ -266,6 +282,7 @@ impl NativeBackend {
             runtime: Some(runtime),
             catalog,
             fatal_error: None,
+            soundfonts: soundfont_library::SoundFontLibrary::with_embedded()?,
         })
     }
 
@@ -311,6 +328,14 @@ impl NativeBackend {
         session: &BackendSessionData,
     ) -> Result<(NativeRuntime, BackendSessionReplacement)> {
         let mut runtime = NativeRuntime::start(config)?;
+        for (digest, asset) in &session.soundfonts {
+            let imported = self
+                .soundfonts
+                .import(asset.bytes.clone().into(), asset.original_filename.clone())?;
+            if imported.sha256.as_ref() != digest {
+                return Err(anyhow!("session SoundFont digest mismatch"));
+            }
+        }
         if runtime.resolved.sample_rate != session.sample_rate {
             return Err(anyhow!(
                 "resolved target sample rate changed from {} to {}",
@@ -318,7 +343,7 @@ impl NativeBackend {
                 runtime.resolved.sample_rate
             ));
         }
-        let replacement = runtime.restore_session(session)?;
+        let replacement = runtime.restore_session(session, &self.soundfonts)?;
         Ok((runtime, replacement))
     }
 }
@@ -907,10 +932,15 @@ impl NativeRuntime {
             tracks,
             global_ports,
             use_legacy_browser_default_routes: false,
+            soundfonts: BTreeMap::new(),
         })
     }
 
-    fn restore_session(&mut self, data: &BackendSessionData) -> Result<BackendSessionReplacement> {
+    fn restore_session(
+        &mut self,
+        data: &BackendSessionData,
+        soundfonts: &soundfont_library::SoundFontLibrary,
+    ) -> Result<BackendSessionReplacement> {
         if !self.tracks.is_empty() {
             return Err(anyhow!("target native session is not empty"));
         }
@@ -980,6 +1010,16 @@ impl NativeRuntime {
                         .get_mut(&created.track_id)
                         .and_then(|track| track.fx.as_mut())
                         .ok_or_else(|| anyhow!("restored track has no processor"))?;
+                    if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
+                        let configuration =
+                            shoop_engine::oxisynth::OxiSynthProcessor::decode_configuration(state)?;
+                        let asset = soundfonts
+                            .asset(&configuration.soundfont_sha256)
+                            .ok_or_else(|| {
+                                anyhow!("missing SoundFont {}", configuration.soundfont_sha256)
+                            })?;
+                        fx.chain.replace_oxisynth_asset(&asset)?;
+                    }
                     fx.chain.try_restore_state(state)?;
                     for assignment in &source_track.tiny_synth_midi_cc_assignments {
                         fx.chain.tiny_assign_midi_cc(engine_midi_cc_assignment(
@@ -1695,6 +1735,9 @@ impl NativeRuntime {
                     return Err(anyhow!("track is not an OxiSynth processor"));
                 }
                 let control = match control {
+                    OxiSynthControl::SelectSoundFont(_) => {
+                        return Err(anyhow!("SoundFont selection was not prepared"));
+                    }
                     OxiSynthControl::SelectProgram {
                         channel,
                         bank,
@@ -2201,6 +2244,33 @@ impl Backend for NativeBackend {
         Ok(catalog.into())
     }
 
+    fn soundfont_catalog(&mut self) -> Result<Arc<[soundfont_library::SoundFontAssetDescriptor]>> {
+        Ok(self.soundfonts.descriptors())
+    }
+
+    fn import_soundfont(
+        &mut self,
+        original_filename: String,
+        bytes: Arc<[u8]>,
+    ) -> Result<soundfont_library::SoundFontAssetDescriptor> {
+        self.soundfonts.import(bytes, original_filename)
+    }
+
+    fn remove_soundfont(&mut self, sha256: &str) -> Result<bool> {
+        let referenced = self.runtime.as_ref().is_some_and(|runtime| {
+            runtime.tracks.values().any(|track| {
+                track.fx.as_ref().is_some_and(|fx| {
+                    fx.chain.oxisynth_snapshot().is_some()
+                        && fx
+                            .chain
+                            .try_get_state_str()
+                            .is_ok_and(|state| state.contains(sha256))
+                })
+            })
+        });
+        self.soundfonts.remove(sha256, referenced)
+    }
+
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
         match &request.topology {
             BackendTrackTopology::Direct {
@@ -2271,6 +2341,23 @@ impl Backend for NativeBackend {
         track_id: BackendTrackId,
         control: BackendTrackFxControl,
     ) -> Result<()> {
+        if let BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectSoundFont(sha256)) = &control
+        {
+            let asset = self
+                .soundfonts
+                .asset(sha256)
+                .ok_or_else(|| anyhow!("unknown SoundFont {sha256}"))?;
+            let fx = self
+                .runtime_mut()?
+                .tracks
+                .get_mut(&track_id)
+                .and_then(|track| track.fx.as_mut())
+                .ok_or_else(|| anyhow!("track has no processor"))?;
+            if fx.processor_type.as_str() != TrackProcessorTypeId::OXISYNTH {
+                return Err(anyhow!("track is not an OxiSynth processor"));
+            }
+            return fx.chain.replace_oxisynth_asset(&asset);
+        }
         self.runtime_mut()?.set_track_fx_control(track_id, control)
     }
 
@@ -2638,7 +2725,22 @@ impl Backend for NativeBackend {
     }
 
     fn capture_session(&mut self) -> Result<BackendSessionData> {
-        self.runtime_mut()?.capture_session()
+        let mut session = self.runtime_mut()?.capture_session()?;
+        session.soundfonts = self
+            .soundfonts
+            .user_assets()
+            .into_iter()
+            .map(|asset| {
+                (
+                    asset.sha256.clone(),
+                    BackendSoundFontAsset {
+                        original_filename: asset.original_filename.clone(),
+                        bytes: asset.bytes.to_vec(),
+                    },
+                )
+            })
+            .collect();
+        Ok(session)
     }
 
     fn replace_session(
@@ -2663,6 +2765,7 @@ impl Backend for NativeBackend {
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
         let audio_drivers = self.audio_driver_state()?;
+        let available_soundfonts = self.soundfonts.descriptors();
         let runtime = self.runtime_mut()?;
         runtime.wait();
         let track_ids = runtime.tracks.keys().copied().collect::<Vec<_>>();
@@ -2722,7 +2825,17 @@ impl Backend for NativeBackend {
                                     .into(),
                             })
                         })
-                        .or_else(|| fx.chain.oxisynth_snapshot().map(app_oxisynth_state)),
+                        .or_else(|| {
+                            fx.chain.oxisynth_snapshot().and_then(|snapshot| {
+                                fx.chain.oxisynth_asset_metadata().map(|metadata| {
+                                    app_oxisynth_state(
+                                        snapshot,
+                                        metadata,
+                                        Arc::clone(&available_soundfonts),
+                                    )
+                                })
+                            })
+                        }),
                 }
             });
             state.input_peaks = track

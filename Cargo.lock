@@ -4056,6 +4056,7 @@ dependencies = [
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_wasm_test_support",
+ "tempfile",
  "tracy-nextest-capture",
  "wasm-bindgen-test",
 ]

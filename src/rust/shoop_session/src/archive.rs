@@ -91,6 +91,16 @@ struct SessionManifest {
     media: Vec<MediaRecord>,
     #[serde(default)]
     scripts: Vec<ScriptResourceRecord>,
+    #[serde(default)]
+    soundfonts: Vec<SoundFontRecord>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SoundFontRecord {
+    sha256: String,
+    original_filename: String,
+    path: String,
+    uncompressed_bytes: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -179,6 +189,20 @@ pub fn encode_session(
         (left.owner_script_id, &left.relative_path)
             .cmp(&(right.owner_script_id, &right.relative_path))
     });
+    let mut soundfont_records = Vec::with_capacity(bundle.soundfonts.len());
+    for (digest, soundfont) in &bundle.soundfonts {
+        if sha256(soundfont.bytes.as_ref()) != *digest {
+            return Err(SessionError::HashMismatch { id: digest.clone() });
+        }
+        let path = format!("soundfonts/{digest}.sf2");
+        soundfont_records.push(SoundFontRecord {
+            sha256: digest.clone(),
+            original_filename: soundfont.original_filename.clone(),
+            path: path.clone(),
+            uncompressed_bytes: soundfont.bytes.len() as u64,
+        });
+        payloads.insert(path, soundfont.bytes.to_vec());
+    }
     let manifest = SessionManifest {
         format: SESSION_FORMAT.to_owned(),
         format_version: FormatVersion::default(),
@@ -188,6 +212,7 @@ pub fn encode_session(
         document: bundle.document.clone(),
         media: records,
         scripts: script_records,
+        soundfonts: soundfont_records,
     };
     encode_zip(&manifest, payloads)
 }
@@ -377,6 +402,7 @@ pub fn decode_session_with_limits(
     if manifest.document_version >= 3 {
         declared_paths.extend(manifest.scripts.iter().map(|record| record.path.clone()));
     }
+    declared_paths.extend(manifest.soundfonts.iter().map(|record| record.path.clone()));
     if archive_paths != declared_paths {
         return Err(SessionError::Archive(format!(
             "archive entries do not match the manifest; undeclared={:?}, missing={:?}",
@@ -432,10 +458,32 @@ pub fn decode_session_with_limits(
         };
         media.insert(record.id, payload);
     }
+    let mut soundfonts = BTreeMap::new();
+    for record in manifest.soundfonts {
+        if record.path != format!("soundfonts/{}.sf2", record.sha256)
+            || soundfonts.contains_key(&record.sha256)
+        {
+            return Err(SessionError::Validation(
+                "invalid or duplicate SoundFont record".to_owned(),
+            ));
+        }
+        let bytes = read_entry(&mut archive, &record.path, record.uncompressed_bytes)?;
+        if bytes.len() as u64 != record.uncompressed_bytes || sha256(&bytes) != record.sha256 {
+            return Err(SessionError::HashMismatch { id: record.sha256 });
+        }
+        soundfonts.insert(
+            record.sha256,
+            crate::SoundFontPayload {
+                original_filename: record.original_filename,
+                bytes: bytes.into(),
+            },
+        );
+    }
     let bundle = SessionBundle {
         document: manifest.document,
         media,
         scripts: script_bundles,
+        soundfonts,
     };
     validate_bundle(&bundle)?;
     Ok(bundle)

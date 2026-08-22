@@ -593,6 +593,7 @@ struct ApplicationModel {
     connection_view: Arc<ConnectionViewState>,
     scripting_view: Arc<ScriptingState>,
     track_processors: Arc<[TrackProcessorDescriptor]>,
+    soundfonts: Arc<[shoop_app_api::SoundFontAssetDescriptor]>,
     script_manager: ScriptManager,
     script_last_snapshot: ControlSnapshot,
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
@@ -713,6 +714,7 @@ enum FxControlKey {
     TinyEqHigh,
     TinyMidiAssignments,
     OxiProgram(u8),
+    OxiSoundFont,
 }
 
 fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
@@ -851,6 +853,7 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
             shoop_backend::TinySynthFxControl::Panic => return None,
         },
         BackendTrackFxControl::OxiSynth(control) => match control {
+            shoop_backend::OxiSynthControl::SelectSoundFont(_) => FxControlKey::OxiSoundFont,
             shoop_backend::OxiSynthControl::SelectProgram { channel, .. } => {
                 FxControlKey::OxiProgram(*channel)
             }
@@ -1248,6 +1251,9 @@ impl ApplicationModel {
             track_processors: backend
                 .track_processor_catalog()
                 .unwrap_or_else(|_| Arc::from([])),
+            soundfonts: backend
+                .soundfont_catalog()
+                .unwrap_or_else(|_| Arc::from([])),
             script_manager,
             script_last_snapshot: ControlSnapshot::default(),
             script_composition_playback: BTreeMap::new(),
@@ -1354,6 +1360,27 @@ impl ApplicationModel {
             }
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddTrackWithTopology(spec) => self.add_track_spec(backend, spec),
+            AppIntent::ImportSoundFont {
+                original_filename,
+                bytes,
+            } => (|| {
+                backend
+                    .import_soundfont(original_filename, bytes)
+                    .map_err(|error| format!("could not import SoundFont: {error}"))?;
+                self.soundfonts = backend
+                    .soundfont_catalog()
+                    .map_err(|error| format!("could not refresh SoundFont catalog: {error}"))?;
+                Ok(())
+            })(),
+            AppIntent::RemoveSoundFont { sha256 } => (|| {
+                backend
+                    .remove_soundfont(&sha256)
+                    .map_err(|error| format!("could not remove SoundFont: {error}"))?;
+                self.soundfonts = backend
+                    .soundfont_catalog()
+                    .map_err(|error| format!("could not refresh SoundFont catalog: {error}"))?;
+                Ok(())
+            })(),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
             AppIntent::ComposeLoopSerial {
                 target_loop_id,
@@ -7525,6 +7552,19 @@ impl ApplicationModel {
             document,
             media,
             scripts,
+            soundfonts: capture
+                .soundfonts
+                .iter()
+                .map(|(digest, asset)| {
+                    (
+                        digest.clone(),
+                        shoop_session::SoundFontPayload {
+                            original_filename: asset.original_filename.clone(),
+                            bytes: asset.bytes.clone().into(),
+                        },
+                    )
+                })
+                .collect(),
         })
     }
 
@@ -7889,6 +7929,7 @@ impl ApplicationModel {
                 })
                 .collect(),
             track_processors: Arc::clone(&self.track_processors),
+            soundfonts: Arc::clone(&self.soundfonts),
             global_controls: self.global.clone(),
             status: self.status.clone(),
             audio_drivers: self.audio_drivers.clone(),
@@ -9219,6 +9260,19 @@ fn session_bundle_to_backend(
         global_ports,
         use_legacy_browser_default_routes: cfg!(target_arch = "wasm32")
             && bundle.document.connection_model_version == 0,
+        soundfonts: bundle
+            .soundfonts
+            .iter()
+            .map(|(digest, asset)| {
+                (
+                    digest.clone(),
+                    shoop_backend::BackendSoundFontAsset {
+                        original_filename: asset.original_filename.clone(),
+                        bytes: asset.bytes.to_vec(),
+                    },
+                )
+            })
+            .collect(),
     })
 }
 

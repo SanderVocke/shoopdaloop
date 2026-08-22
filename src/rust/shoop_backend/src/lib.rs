@@ -3,6 +3,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 mod native;
+pub mod soundfont_library;
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 pub use native::NativeBackend;
 #[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
@@ -646,6 +647,14 @@ pub struct BackendSessionData {
     pub global_ports: Vec<BackendSessionPort>,
     #[serde(default)]
     pub use_legacy_browser_default_routes: bool,
+    #[serde(default)]
+    pub soundfonts: BTreeMap<String, BackendSoundFontAsset>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BackendSoundFontAsset {
+    pub original_filename: String,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -743,6 +752,19 @@ pub trait Backend {
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(Arc::from([]))
+    }
+    fn soundfont_catalog(&mut self) -> Result<Arc<[soundfont_library::SoundFontAssetDescriptor]>> {
+        Ok(Arc::from([]))
+    }
+    fn import_soundfont(
+        &mut self,
+        _original_filename: String,
+        _bytes: Arc<[u8]>,
+    ) -> Result<soundfont_library::SoundFontAssetDescriptor> {
+        Err(anyhow!("SoundFont import is unavailable"))
+    }
+    fn remove_soundfont(&mut self, _sha256: &str) -> Result<bool> {
+        Err(anyhow!("SoundFont removal is unavailable"))
     }
 
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
@@ -1345,6 +1367,7 @@ pub struct EngineBackend {
     web_midi_output_pending: VecDeque<BackendWebMidiOutputEvent>,
     web_midi_output_dropped: u32,
     web_midi_input_refused: u32,
+    soundfonts: soundfont_library::SoundFontLibrary,
 }
 
 /// Local deterministic driver wrapper. It owns elapsed-time policy while the
@@ -1492,6 +1515,7 @@ impl EngineBackend {
             web_midi_output_pending: VecDeque::with_capacity(WEB_MIDI_OUTPUT_QUEUE_CAPACITY),
             web_midi_output_dropped: 0,
             web_midi_input_refused: 0,
+            soundfonts: soundfont_library::SoundFontLibrary::with_embedded()?,
         })
     }
 
@@ -2930,9 +2954,8 @@ impl EngineBackend {
                         engine_oxisynth_fx_state(
                             track.oxisynth_active,
                             track.oxisynth_visible,
-                            self.session
-                                .oxisynth_processor(&track.port_name_base)
-                                .map(|processor| processor.snapshot()),
+                            self.session.oxisynth_processor(&track.port_name_base),
+                            self.soundfonts.descriptors(),
                         )
                     })
                 }),
@@ -3099,6 +3122,20 @@ impl EngineBackend {
             tracks,
             global_ports,
             use_legacy_browser_default_routes: false,
+            soundfonts: self
+                .soundfonts
+                .user_assets()
+                .into_iter()
+                .map(|asset| {
+                    (
+                        asset.sha256.clone(),
+                        BackendSoundFontAsset {
+                            original_filename: asset.original_filename.clone(),
+                            bytes: asset.bytes.to_vec(),
+                        },
+                    )
+                })
+                .collect(),
         })
     }
 
@@ -3143,6 +3180,14 @@ impl EngineBackend {
             EnginePortModel::Dummy => Self::new_dummy_runtime(self.sample_rate, self.buffer_size)?,
             EnginePortModel::Physical => Self::new_web_audio(self.sample_rate, self.buffer_size)?,
         };
+        for (digest, asset) in &data.soundfonts {
+            let imported = staged
+                .soundfonts
+                .import(asset.bytes.clone().into(), asset.original_filename.clone())?;
+            if imported.sha256.as_ref() != digest {
+                return Err(anyhow!("session SoundFont digest mismatch"));
+            }
+        }
         let source_global = data
             .global_ports
             .first()
@@ -3505,7 +3550,8 @@ fn engine_tiny_fx_state(fx: &mut EngineTinyFx) -> TrackFxState {
 fn engine_oxisynth_fx_state(
     active: bool,
     visible: bool,
-    snapshot: Option<shoop_engine::oxisynth::OxiSynthSnapshot>,
+    processor: Option<&shoop_engine::oxisynth::OxiSynthProcessor>,
+    available_soundfonts: Arc<[shoop_app_api::SoundFontAssetDescriptor]>,
 ) -> TrackFxState {
     TrackFxState {
         processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
@@ -3515,8 +3561,22 @@ fn engine_oxisynth_fx_state(
         generation: 0,
         crash_summary: None,
         logs: Arc::from([]),
-        editor: snapshot.map(|snapshot| {
+        editor: processor.map(|processor| {
+            let snapshot = processor.snapshot();
             TrackProcessorEditorState::OxiSynth(shoop_app_api::OxiSynthState {
+                available_soundfonts: Arc::clone(&available_soundfonts),
+                soundfont_sha256: processor.soundfont_sha256().into(),
+                soundfont_name: processor.soundfont_name().into(),
+                presets: processor
+                    .presets()
+                    .iter()
+                    .map(|preset| shoop_app_api::OxiSynthPresetDescriptor {
+                        bank: preset.bank,
+                        program: preset.program,
+                        name: preset.name.clone().into(),
+                    })
+                    .collect::<Vec<_>>()
+                    .into(),
                 revision: snapshot.revision,
                 midi_activity_revision: snapshot.midi_activity_revision,
                 channels: snapshot
@@ -3544,6 +3604,27 @@ impl Backend for EngineBackend {
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
         Ok(vec![tiny_synth_fx_descriptor(), oxisynth_descriptor()].into())
+    }
+
+    fn soundfont_catalog(&mut self) -> Result<Arc<[soundfont_library::SoundFontAssetDescriptor]>> {
+        Ok(self.soundfonts.descriptors())
+    }
+
+    fn import_soundfont(
+        &mut self,
+        original_filename: String,
+        bytes: Arc<[u8]>,
+    ) -> Result<soundfont_library::SoundFontAssetDescriptor> {
+        self.soundfonts.import(bytes, original_filename)
+    }
+
+    fn remove_soundfont(&mut self, sha256: &str) -> Result<bool> {
+        let referenced = self.tracks.values().any(|track| {
+            self.session
+                .oxisynth_processor(&track.port_name_base)
+                .is_some_and(|processor| processor.configuration().soundfont_sha256 == sha256)
+        });
+        self.soundfonts.remove(sha256, referenced)
     }
 
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
@@ -4178,9 +4259,18 @@ impl Backend for EngineBackend {
                     Ok(())
                 }
                 BackendTrackFxControl::RestoreState(state) => {
-                    let mut processor = shoop_engine::oxisynth::OxiSynthProcessor::new(
+                    let configuration =
+                        shoop_engine::oxisynth::OxiSynthProcessor::decode_configuration(&state)?;
+                    let asset = self
+                        .soundfonts
+                        .asset(&configuration.soundfont_sha256)
+                        .ok_or_else(|| {
+                            anyhow!("missing SoundFont {}", configuration.soundfont_sha256)
+                        })?;
+                    let mut processor = shoop_engine::oxisynth::OxiSynthProcessor::from_asset(
                         self.sample_rate as f32,
                         self.buffer_size as usize,
+                        &asset,
                     )?;
                     processor.restore_configuration(&state)?;
                     let displaced = self
@@ -4193,11 +4283,43 @@ impl Backend for EngineBackend {
                 }
                 BackendTrackFxControl::ClearLogs => Ok(()),
                 BackendTrackFxControl::OxiSynth(control) => {
+                    if let OxiSynthControl::SelectSoundFont(sha256) = &control {
+                        let asset = self
+                            .soundfonts
+                            .asset(sha256)
+                            .ok_or_else(|| anyhow!("unknown SoundFont {sha256}"))?;
+                        let previous = self
+                            .session
+                            .oxisynth_processor(&track.port_name_base)
+                            .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?
+                            .configuration();
+                        let mut replacement =
+                            shoop_engine::oxisynth::OxiSynthProcessor::from_asset(
+                                self.sample_rate as f32,
+                                self.buffer_size as usize,
+                                &asset,
+                            )?;
+                        for (channel, program) in previous.channels.iter().enumerate() {
+                            replacement.select_program(
+                                channel as u8,
+                                program.bank,
+                                program.program,
+                            )?;
+                        }
+                        let displaced = self
+                            .session
+                            .set_oxisynth_processor(track.port_name_base.clone(), replacement);
+                        drop(displaced);
+                        self.session
+                            .set_oxisynth_active(&track.port_name_base, track.oxisynth_active);
+                        return Ok(());
+                    }
                     let processor = self
                         .session
                         .oxisynth_processor_mut(&track.port_name_base)
                         .ok_or_else(|| anyhow!("OxiSynth processor is unavailable"))?;
                     match control {
+                        OxiSynthControl::SelectSoundFont(_) => unreachable!(),
                         OxiSynthControl::SelectProgram {
                             channel,
                             bank,
@@ -4954,9 +5076,8 @@ impl Backend for EngineBackend {
                             engine_oxisynth_fx_state(
                                 track.oxisynth_active,
                                 track.oxisynth_visible,
-                                self.session
-                                    .oxisynth_processor(&track.port_name_base)
-                                    .map(|processor| processor.snapshot()),
+                                self.session.oxisynth_processor(&track.port_name_base),
+                                self.soundfonts.descriptors(),
                             )
                         })
                     }),
@@ -7121,6 +7242,7 @@ impl Backend for FakeBackend {
             tracks,
             global_ports,
             use_legacy_browser_default_routes: false,
+            soundfonts: BTreeMap::new(),
         })
     }
 

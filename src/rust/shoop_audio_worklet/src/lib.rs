@@ -6,13 +6,13 @@ use shoop_audio_protocol::{
     WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
-    WireMidiOutputEvent, WireOxiSynthChannelState, WireOxiSynthState, WirePortDataType,
-    WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxMidiCcAssignment,
-    WireTinySynthFxParameter, WireTinySynthFxState, WireTrackControl, WireTrackFxControl,
-    WireTrackFxState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
-    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
-    WAVEFORM_CHUNK_SAMPLES,
+    WireMidiOutputEvent, WireOxiSynthChannelState, WireOxiSynthPreset, WireOxiSynthState,
+    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireSoundFontAssetDescriptor,
+    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTinySynthFxState,
+    WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology,
+    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
+    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
@@ -46,6 +46,10 @@ pub struct WorkletHost {
     loop_content_id: Option<BackendLoopId>,
     loop_content_expected_bytes: usize,
     loop_content_bytes: Vec<u8>,
+    soundfont_generation: Option<u64>,
+    soundfont_filename: String,
+    soundfont_expected_bytes: usize,
+    soundfont_bytes: Vec<u8>,
 }
 
 impl WorkletHost {
@@ -78,6 +82,10 @@ impl WorkletHost {
             loop_content_id: None,
             loop_content_expected_bytes: 0,
             loop_content_bytes: Vec::new(),
+            soundfont_generation: None,
+            soundfont_filename: String::new(),
+            soundfont_expected_bytes: 0,
+            soundfont_bytes: Vec::new(),
         })
     }
 
@@ -716,6 +724,51 @@ impl WorkletHost {
                 }
                 Ok(Event::SessionTransferAborted { generation })
             }
+            Command::BeginSoundFontImport {
+                generation,
+                original_filename,
+                total_bytes,
+            } => {
+                if generation == 0 || total_bytes > SESSION_TRANSFER_MAX_BYTES {
+                    return Err("invalid SoundFont import size or generation".to_owned());
+                }
+                self.soundfont_generation = Some(generation);
+                self.soundfont_filename = original_filename;
+                self.soundfont_expected_bytes = total_bytes;
+                self.soundfont_bytes = Vec::with_capacity(total_bytes);
+                Ok(Event::Ack)
+            }
+            Command::WriteSoundFontImport {
+                generation,
+                offset,
+                bytes,
+            } => {
+                if self.soundfont_generation != Some(generation)
+                    || offset != self.soundfont_bytes.len()
+                    || bytes.len() > SESSION_TRANSFER_CHUNK_BYTES
+                    || offset.saturating_add(bytes.len()) > self.soundfont_expected_bytes
+                {
+                    return Err("invalid SoundFont import chunk".to_owned());
+                }
+                self.soundfont_bytes.extend_from_slice(&bytes);
+                Ok(Event::Ack)
+            }
+            Command::CommitSoundFontImport { generation } => {
+                if self.soundfont_generation != Some(generation)
+                    || self.soundfont_bytes.len() != self.soundfont_expected_bytes
+                {
+                    return Err("incomplete SoundFont import".to_owned());
+                }
+                self.backend
+                    .import_soundfont(
+                        std::mem::take(&mut self.soundfont_filename),
+                        std::mem::take(&mut self.soundfont_bytes).into(),
+                    )
+                    .map_err(|error| error.to_string())?;
+                self.soundfont_generation = None;
+                self.soundfont_expected_bytes = 0;
+                Ok(Event::Ack)
+            }
             Command::Poll => {
                 if let Some(message) = self.fatal_error.clone() {
                     return Err(message);
@@ -872,6 +925,9 @@ fn from_wire_track_fx_control(control: WireTrackFxControl) -> BackendTrackFxCont
             bank,
             program,
         }),
+        WireTrackFxControl::OxiSelectSoundFont(sha256) => {
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectSoundFont(sha256.into()))
+        }
         WireTrackFxControl::OxiAudition {
             channel,
             key,
@@ -1088,6 +1144,37 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                         let oxisynth = match fx.editor {
                             Some(TrackProcessorEditorState::OxiSynth(editor)) => {
                                 Some(WireOxiSynthState {
+                                    available_soundfonts: editor
+                                        .available_soundfonts
+                                        .iter()
+                                        .map(|asset| WireSoundFontAssetDescriptor {
+                                            sha256: asset.sha256.to_string(),
+                                            name: asset.name.to_string(),
+                                            original_filename: asset.original_filename.to_string(),
+                                            byte_len: asset.byte_len,
+                                            presets: asset
+                                                .presets
+                                                .iter()
+                                                .map(|preset| WireOxiSynthPreset {
+                                                    bank: preset.bank,
+                                                    program: preset.program,
+                                                    name: preset.name.to_string(),
+                                                })
+                                                .collect(),
+                                            built_in: asset.built_in,
+                                        })
+                                        .collect(),
+                                    soundfont_sha256: editor.soundfont_sha256.to_string(),
+                                    soundfont_name: editor.soundfont_name.to_string(),
+                                    presets: editor
+                                        .presets
+                                        .iter()
+                                        .map(|preset| WireOxiSynthPreset {
+                                            bank: preset.bank,
+                                            program: preset.program,
+                                            name: preset.name.to_string(),
+                                        })
+                                        .collect(),
                                     revision: editor.revision,
                                     midi_activity_revision: editor.midi_activity_revision,
                                     channels: editor

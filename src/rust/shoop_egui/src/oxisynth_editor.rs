@@ -24,11 +24,8 @@ impl OxiSynthEditor {
         let Some(TrackProcessorEditorState::OxiSynth(editor)) = &fx.editor else {
             return Vec::new();
         };
-        let Some(TrackProcessorEditorDescriptor::OxiSynth {
-            soundfont_name,
-            presets,
-            ..
-        }) = processor.and_then(|processor| processor.editor.as_ref())
+        let Some(TrackProcessorEditorDescriptor::OxiSynth { .. }) =
+            processor.and_then(|processor| processor.editor.as_ref())
         else {
             return Vec::new();
         };
@@ -43,7 +40,36 @@ impl OxiSynthEditor {
             .open(&mut open)
             .resizable(true)
             .show(context, |ui| {
-                ui.label(format!("SoundFont: {soundfont_name} (built in)"));
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("SoundFont");
+                    egui::ComboBox::from_id_salt("oxisynth_soundfont")
+                        .selected_text(editor.soundfont_name.as_ref())
+                        .show_ui(ui, |ui| {
+                            for asset in editor.available_soundfonts.iter() {
+                                if ui
+                                    .selectable_label(
+                                        asset.sha256 == editor.soundfont_sha256,
+                                        format!(
+                                            "{} ({} presets{})",
+                                            asset.name,
+                                            asset.presets.len(),
+                                            if asset.built_in { ", built in" } else { "" }
+                                        ),
+                                    )
+                                    .on_hover_text(format!(
+                                        "{}\n{} bytes\nSHA-256 {}",
+                                        asset.original_filename, asset.byte_len, asset.sha256
+                                    ))
+                                    .clicked()
+                                {
+                                    actions.push(TrackAction::OxiSynth(
+                                        OxiSynthControl::SelectSoundFont(asset.sha256.clone()),
+                                    ));
+                                }
+                            }
+                        });
+                    ui.label("Drop an .sf2 file into the application to import it.");
+                });
                 ui.horizontal(|ui| {
                     ui.label("MIDI channel");
                     egui::ComboBox::from_id_salt("oxisynth_channel")
@@ -66,7 +92,8 @@ impl OxiSynthEditor {
                 });
                 ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Search presets"));
                 let channel = editor.channels[self.channel];
-                let selected = presets
+                let selected = editor
+                    .presets
                     .iter()
                     .find(|preset| {
                         preset.bank == channel.current_bank
@@ -74,6 +101,39 @@ impl OxiSynthEditor {
                     })
                     .map(|preset| preset.name.as_ref())
                     .unwrap_or("Unavailable preset");
+                let selected_index = editor.presets.iter().position(|preset| {
+                    preset.bank == channel.current_bank && preset.program == channel.current_program
+                });
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            selected_index.is_some_and(|index| index > 0),
+                            egui::Button::new("Previous"),
+                        )
+                        .clicked()
+                    {
+                        let preset = &editor.presets[selected_index.unwrap() - 1];
+                        actions.push(TrackAction::OxiSynth(OxiSynthControl::SelectProgram {
+                            channel: self.channel as u8,
+                            bank: preset.bank,
+                            program: preset.program,
+                        }));
+                    }
+                    if ui
+                        .add_enabled(
+                            selected_index.is_some_and(|index| index + 1 < editor.presets.len()),
+                            egui::Button::new("Next"),
+                        )
+                        .clicked()
+                    {
+                        let preset = &editor.presets[selected_index.unwrap() + 1];
+                        actions.push(TrackAction::OxiSynth(OxiSynthControl::SelectProgram {
+                            channel: self.channel as u8,
+                            bank: preset.bank,
+                            program: preset.program,
+                        }));
+                    }
+                });
                 egui::ComboBox::from_id_salt("oxisynth_preset")
                     .selected_text(format!(
                         "{selected} ({}:{})",
@@ -81,7 +141,7 @@ impl OxiSynthEditor {
                     ))
                     .show_ui(ui, |ui| {
                         let needle = self.search.to_lowercase();
-                        for preset in presets.iter().filter(|preset| {
+                        for preset in editor.presets.iter().filter(|preset| {
                             needle.is_empty() || preset.name.to_lowercase().contains(&needle)
                         }) {
                             let selected = preset.bank == channel.current_bank
@@ -111,6 +171,38 @@ impl OxiSynthEditor {
                         channel.baseline_bank, channel.baseline_program
                     ));
                 }
+                ui.collapsing("All channel assignments", |ui| {
+                    egui::Grid::new("oxisynth_channel_overview")
+                        .num_columns(2)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (index, channel) in editor.channels.iter().enumerate() {
+                                if ui
+                                    .selectable_label(
+                                        self.channel == index,
+                                        format!("Ch {}", index + 1),
+                                    )
+                                    .clicked()
+                                {
+                                    self.channel = index;
+                                }
+                                let name = editor
+                                    .presets
+                                    .iter()
+                                    .find(|preset| {
+                                        preset.bank == channel.current_bank
+                                            && preset.program == channel.current_program
+                                    })
+                                    .map(|preset| preset.name.as_ref())
+                                    .unwrap_or("Unavailable preset");
+                                ui.label(format!(
+                                    "{} ({}:{})",
+                                    name, channel.current_bank, channel.current_program
+                                ));
+                                ui.end_row();
+                            }
+                        });
+                });
                 ui.horizontal(|ui| {
                     let pressed = ui.button("Hold to audition").is_pointer_button_down_on();
                     if pressed != self.auditioning {

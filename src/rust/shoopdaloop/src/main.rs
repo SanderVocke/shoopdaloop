@@ -743,6 +743,29 @@ impl UnifiedApp {
         let files = context.input(|input| input.raw.dropped_files.clone());
         for file in files {
             let path = file.path();
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(is_sf2_file_name)
+            {
+                match std::fs::read(path) {
+                    Ok(bytes) => {
+                        let name = path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("imported.sf2")
+                            .to_owned();
+                        if let Err(error) = self.runtime.dispatch(AppIntent::ImportSoundFont {
+                            original_filename: name,
+                            bytes: bytes.into(),
+                        }) {
+                            tracing::error!(%error, "frontend.soundfont.import_failed");
+                        }
+                    }
+                    Err(error) => tracing::error!(%error, "frontend.soundfont.read_failed"),
+                }
+                continue;
+            }
             if !path
                 .file_name()
                 .and_then(|name| name.to_str())
@@ -774,7 +797,7 @@ impl UnifiedApp {
             else {
                 continue;
             };
-            if !is_lua_file_name(&name) {
+            if !is_lua_file_name(&name) && !is_sf2_file_name(&name) {
                 continue;
             }
             let pending = Rc::clone(&self.pending_ephemeral_files);
@@ -845,7 +868,16 @@ impl UnifiedApp {
             .collect();
         #[cfg(target_arch = "wasm32")]
         for file in ephemeral_files {
-            self.queue_ephemeral_script_bytes(file.name, &file.bytes);
+            if is_sf2_file_name(&file.name) {
+                if let Err(error) = self.runtime.dispatch(AppIntent::ImportSoundFont {
+                    original_filename: file.name,
+                    bytes: file.bytes.into(),
+                }) {
+                    tracing::error!(%error, "frontend.soundfont.import_failed");
+                }
+            } else {
+                self.queue_ephemeral_script_bytes(file.name, &file.bytes);
+            }
         }
         self.handle_dropped_files(ui.ctx());
 
@@ -1074,6 +1106,13 @@ impl UnifiedApp {
 fn is_lua_file_name(name: &str) -> bool {
     name.rsplit_once('.')
         .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("lua"))
+}
+
+fn is_sf2_file_name(name: &str) -> bool {
+    std::path::Path::new(name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("sf2"))
 }
 
 fn load_ephemeral_script_bytes(

@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use oxisynth::{MidiEvent, SoundFont, SoundFontId, Synth, SynthDescriptor};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::io::Cursor;
+use std::sync::Arc;
 
 use crate::midi_storage::MidiStorageElem;
 
@@ -14,6 +16,65 @@ pub const SOUNDFONT_SHA256: &str =
 pub const POLYPHONY: u16 = 256;
 pub const MIDI_CHANNELS: usize = 16;
 pub const MIDI_CONTROLLERS: usize = 128;
+pub const MAX_SOUNDFONT_BYTES: usize = 256 * 1024 * 1024;
+
+#[derive(Clone, Debug)]
+pub struct SoundFontAsset {
+    pub sha256: String,
+    pub name: String,
+    pub original_filename: String,
+    pub bytes: Arc<[u8]>,
+    pub presets: Arc<[OxiSynthPreset]>,
+}
+
+impl SoundFontAsset {
+    pub fn parse(bytes: Arc<[u8]>, original_filename: impl Into<String>) -> Result<Self> {
+        if bytes.is_empty() || bytes.len() > MAX_SOUNDFONT_BYTES {
+            anyhow::bail!("SoundFont size is outside the supported range");
+        }
+        let mut cursor = Cursor::new(bytes.as_ref());
+        let font = soundfont::SoundFont2::load(&mut cursor).context("inspect SoundFont")?;
+        let original_filename = original_filename.into();
+        let name = if font.info.bank_name.trim().is_empty() {
+            original_filename.clone()
+        } else {
+            font.info.bank_name
+        };
+        let mut presets = font
+            .presets
+            .into_iter()
+            .filter_map(|preset| {
+                Some(OxiSynthPreset {
+                    bank: u32::from(preset.header.bank),
+                    program: u8::try_from(preset.header.preset).ok()?,
+                    name: preset.header.name,
+                })
+            })
+            .collect::<Vec<_>>();
+        presets.sort_by(|left, right| {
+            (left.bank, left.program, left.name.as_str()).cmp(&(
+                right.bank,
+                right.program,
+                right.name.as_str(),
+            ))
+        });
+        let sha256 = Sha256::digest(bytes.as_ref())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        Ok(Self {
+            sha256,
+            name,
+            original_filename,
+            bytes,
+            presets: presets.into(),
+        })
+    }
+
+    pub fn embedded() -> Result<Self> {
+        Self::parse(Arc::from(SOUNDFONT_BYTES), "TimGM6mb.sf2")
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OxiSynthPreset {
@@ -96,26 +157,18 @@ impl Default for OxiSynthSnapshot {
 }
 
 pub fn embedded_presets() -> Result<Vec<OxiSynthPreset>> {
-    let mut bytes = Cursor::new(SOUNDFONT_BYTES);
-    let font = soundfont::SoundFont2::load(&mut bytes).context("inspect embedded SoundFont")?;
-    let mut presets = font
-        .presets
-        .into_iter()
-        .filter_map(|preset| {
-            let program = u8::try_from(preset.header.preset).ok()?;
-            Some(OxiSynthPreset {
-                bank: u32::from(preset.header.bank),
-                program,
-                name: preset.header.name,
-            })
-        })
-        .collect::<Vec<_>>();
-    presets.sort_by_key(|preset| (preset.bank, preset.program, preset.name.clone()));
-    Ok(presets)
+    Ok(SoundFontAsset::embedded()?.presets.to_vec())
 }
 
 pub fn create_synth(sample_rate: f32) -> Result<Synth> {
-    let mut bytes = Cursor::new(SOUNDFONT_BYTES);
+    create_synth_from_bytes(sample_rate, SOUNDFONT_BYTES).map(|(synth, _)| synth)
+}
+
+fn create_synth_from_bytes(
+    sample_rate: f32,
+    soundfont_bytes: &[u8],
+) -> Result<(Synth, SoundFontId)> {
+    let mut bytes = Cursor::new(soundfont_bytes);
     let font = SoundFont::load(&mut bytes).context("parse embedded TimGM6mb SoundFont")?;
     let mut synth = Synth::new(SynthDescriptor {
         sample_rate,
@@ -126,13 +179,16 @@ pub fn create_synth(sample_rate: f32) -> Result<Synth> {
         ..SynthDescriptor::default()
     })
     .context("configure OxiSynth")?;
-    synth.add_font(font, true);
-    Ok(synth)
+    let id = synth.add_font(font, true);
+    Ok((synth, id))
 }
 
 pub struct OxiSynthProcessor {
     synth: Synth,
     sound_font_id: SoundFontId,
+    soundfont_sha256: String,
+    soundfont_name: String,
+    presets: Arc<[OxiSynthPreset]>,
     snapshot: OxiSynthSnapshot,
     left: Vec<f32>,
     right: Vec<f32>,
@@ -148,16 +204,22 @@ impl std::fmt::Debug for OxiSynthProcessor {
 }
 
 impl OxiSynthProcessor {
+    pub fn decode_configuration(encoded: &str) -> Result<OxiSynthConfiguration> {
+        serde_json::from_str(encoded).context("decode OxiSynth configuration")
+    }
     pub fn new(sample_rate: f32, max_frames: usize) -> Result<Self> {
+        Self::from_asset(sample_rate, max_frames, &SoundFontAsset::embedded()?)
+    }
+
+    pub fn from_asset(sample_rate: f32, max_frames: usize, asset: &SoundFontAsset) -> Result<Self> {
         let max_frames = max_frames.max(1);
-        let synth = create_synth(sample_rate)?;
-        let sound_font_id = synth
-            .program(0)?
-            .0
-            .context("embedded SoundFont did not initialize a program")?;
+        let (synth, sound_font_id) = create_synth_from_bytes(sample_rate, &asset.bytes)?;
         let mut result = Self {
             synth,
             sound_font_id,
+            soundfont_sha256: asset.sha256.clone(),
+            soundfont_name: asset.name.clone(),
+            presets: asset.presets.clone(),
             snapshot: OxiSynthSnapshot::default(),
             left: vec![0.0; max_frames],
             right: vec![0.0; max_frames],
@@ -199,6 +261,18 @@ impl OxiSynthProcessor {
         self.snapshot
     }
 
+    pub fn soundfont_sha256(&self) -> &str {
+        &self.soundfont_sha256
+    }
+
+    pub fn soundfont_name(&self) -> &str {
+        &self.soundfont_name
+    }
+
+    pub fn presets(&self) -> &Arc<[OxiSynthPreset]> {
+        &self.presets
+    }
+
     pub fn select_program(&mut self, channel: u8, bank: u32, program: u8) -> Result<()> {
         self.synth
             .select_program(channel, self.sound_font_id, bank, program)
@@ -213,7 +287,7 @@ impl OxiSynthProcessor {
     pub fn configuration(&self) -> OxiSynthConfiguration {
         OxiSynthConfiguration {
             version: 1,
-            soundfont_sha256: SOUNDFONT_SHA256.to_owned(),
+            soundfont_sha256: self.soundfont_sha256.clone(),
             channels: std::array::from_fn(|channel| OxiSynthProgramConfiguration {
                 bank: self.snapshot.channels[channel].baseline_bank,
                 program: self.snapshot.channels[channel].baseline_program,
@@ -226,12 +300,15 @@ impl OxiSynthProcessor {
     }
 
     pub fn restore_configuration(&mut self, encoded: &str) -> Result<()> {
-        let configuration: OxiSynthConfiguration =
-            serde_json::from_str(encoded).context("decode OxiSynth configuration")?;
-        if configuration.version != 1 || configuration.soundfont_sha256 != SOUNDFONT_SHA256 {
+        let configuration = Self::decode_configuration(encoded)?;
+        self.apply_configuration(&configuration)
+    }
+
+    pub fn apply_configuration(&mut self, configuration: &OxiSynthConfiguration) -> Result<()> {
+        if configuration.version != 1 || configuration.soundfont_sha256 != self.soundfont_sha256 {
             anyhow::bail!("unsupported OxiSynth configuration");
         }
-        for (channel, program) in configuration.channels.into_iter().enumerate() {
+        for (channel, program) in configuration.channels.iter().enumerate() {
             self.select_program(channel as u8, program.bank, program.program)?;
         }
         Ok(())
