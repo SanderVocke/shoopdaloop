@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 3;
+pub const SESSION_DOCUMENT_VERSION: u16 = 4;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -305,7 +305,7 @@ pub struct FxStateDocument {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CompositeDocument {
     pub kind: CompositeKindDocument,
-    pub playlists: Vec<Vec<Vec<CompositeEventDocument>>>,
+    pub instances: Vec<CompositeLoopInstanceDocument>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -316,10 +316,9 @@ pub enum CompositeKindDocument {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct CompositeEventDocument {
-    /// Sync-loop iterations after the containing section begins.
-    #[serde(alias = "delay_frames")]
-    pub delay: u64,
+pub struct CompositeLoopInstanceDocument {
+    pub instance_id: u64,
+    pub start_cycle: u64,
     pub loop_id: u64,
     pub mode: Option<String>,
     pub n_cycles: Option<u32>,

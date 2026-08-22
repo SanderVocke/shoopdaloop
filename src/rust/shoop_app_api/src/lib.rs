@@ -931,9 +931,7 @@ pub struct CompositeTrackDetailsState {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CompositeEventId {
-    pub playlist_index: u32,
-    pub section_index: u32,
-    pub parallel_index: u32,
+    pub instance_id: u64,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -943,9 +941,7 @@ pub struct CompositeEventDetailsState {
     pub track_id: TrackId,
     pub start_frame: u64,
     pub end_frame: u64,
-    pub playlist_index: u32,
-    pub section_index: u32,
-    pub parallel_index: u32,
+    pub instance_id: u64,
     pub mode: Option<String>,
     pub forced_n_cycles: Option<u32>,
     pub loop_mode: LoopMode,
@@ -1627,7 +1623,7 @@ pub enum AppIntent {
     },
     SetCompositeLoopCycles {
         target_loop_id: LoopId,
-        source_loop_id: LoopId,
+        event: CompositeEventId,
         n_cycles: Option<u32>,
     },
     SetCompositeKind {
@@ -2206,27 +2202,19 @@ mod tests {
         );
         let delete = AppIntent::DeleteCompositeEvents {
             target_loop_id: loop_id,
-            events: vec![CompositeEventId {
-                playlist_index: 1,
-                section_index: 2,
-                parallel_index: 3,
-            }],
+            events: vec![CompositeEventId { instance_id: 123 }],
         };
         assert_eq!(delete.kind(), "loop.composite.delete_events");
         assert_eq!(
             delete,
             AppIntent::DeleteCompositeEvents {
                 target_loop_id: loop_id,
-                events: vec![CompositeEventId {
-                    playlist_index: 1,
-                    section_index: 2,
-                    parallel_index: 3,
-                }],
+                events: vec![CompositeEventId { instance_id: 123 }],
             }
         );
         let force_length = AppIntent::SetCompositeLoopCycles {
             target_loop_id: loop_id,
-            source_loop_id,
+            event: CompositeEventId { instance_id: 123 },
             n_cycles: Some(4),
         };
         assert_eq!(force_length.kind(), "loop.composite.set_loop_cycles");
@@ -2241,11 +2229,7 @@ mod tests {
         assert_eq!(
             AppIntent::SetCompositeEventMode {
                 target_loop_id: loop_id,
-                event: CompositeEventId {
-                    playlist_index: 1,
-                    section_index: 2,
-                    parallel_index: 3,
-                },
+                event: CompositeEventId { instance_id: 123 },
                 mode: LoopMode::Recording,
             }
             .kind(),

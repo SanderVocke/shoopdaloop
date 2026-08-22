@@ -1,6 +1,17 @@
 # Composite Schedule Remodel: End-to-End Plan
 
-I read the repository instructions in `AGENTS.md`, `.agents/index.md`, `.agents/rules/mandates.md`, `.agents/prompts/write_plan.md`, and `.agents/info/test.md`. This is an implementation plan only; I did not modify the repository, so there is no commit or pull request.
+## Implementation Status
+
+- [x] Replace persisted parallel playlists with positioned loop instances.
+- [x] Migrate version-three playlist documents to stable instance IDs and absolute cycle positions.
+- [x] Lower positioned instances to the existing backend timeline transport.
+- [x] Address editor operations and intents by stable instance ID.
+- [x] Make repeated occurrences independently resizable and mode-editable.
+- [x] Replace playlist-specific deletion compensation with direct instance removal.
+- [x] Update application, API, editor, session, and migration tests.
+- [ ] Complete workspace-wide validation and browser checks.
+
+This status is updated as implementation proceeds; the detailed plan and acceptance criteria remain below.
 
 ## 1. Goal
 

@@ -28,17 +28,13 @@ struct CompositeEventDragPayload {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct CompositeEventKey {
-    playlist_index: u32,
-    section_index: u32,
-    parallel_index: u32,
+    instance_id: u64,
 }
 
 impl From<&CompositeEventDetailsState> for CompositeEventKey {
     fn from(event: &CompositeEventDetailsState) -> Self {
         Self {
-            playlist_index: event.playlist_index,
-            section_index: event.section_index,
-            parallel_index: event.parallel_index,
+            instance_id: event.instance_id,
         }
     }
 }
@@ -46,9 +42,7 @@ impl From<&CompositeEventDetailsState> for CompositeEventKey {
 impl From<CompositeEventKey> for CompositeEventId {
     fn from(event: CompositeEventKey) -> Self {
         Self {
-            playlist_index: event.playlist_index,
-            section_index: event.section_index,
-            parallel_index: event.parallel_index,
+            instance_id: event.instance_id,
         }
     }
 }
@@ -94,9 +88,7 @@ fn pack_swimlanes(details: &CompositeDetailsState) -> Vec<PackedTrack> {
                 (
                     event.start_frame,
                     event.end_frame,
-                    event.playlist_index,
-                    event.section_index,
-                    event.parallel_index,
+                    event.instance_id,
                     event.loop_id,
                     *index,
                 )
@@ -499,12 +491,7 @@ impl CompositeLoopWidget {
                             if event_rect.intersects(timeline_clip_rect) {
                                 let response = ui.interact(
                                     event_rect.intersect(timeline_clip_rect),
-                                    ui.id().with((
-                                        "composite_event",
-                                        event_key.playlist_index,
-                                        event_key.section_index,
-                                        event_key.parallel_index,
-                                    )),
+                                    ui.id().with(("composite_event", event_key.instance_id)),
                                     egui::Sense::click_and_drag(),
                                 );
                                 if response.clicked() {
@@ -582,27 +569,26 @@ impl CompositeLoopWidget {
                                                 .suffix(" cycles"),
                                         );
                                     });
-                                    let force = ui.button("Force length for all instances");
+                                    let force = ui.button("Force instance length");
                                     #[cfg(test)]
                                     {
                                         self.force_length_menu_rect = Some(force.rect);
                                     }
                                     if force.clicked() {
                                         length_request = Some((
-                                            event.loop_id,
+                                            event_key,
                                             Some(self.force_length_cycles.max(1)),
                                         ));
                                         ui.close();
                                     }
                                     if event.forced_n_cycles.is_some() {
-                                        let natural =
-                                            ui.button("Use natural length for all instances");
+                                        let natural = ui.button("Use natural instance length");
                                         #[cfg(test)]
                                         {
                                             self.natural_length_menu_rect = Some(natural.rect);
                                         }
                                         if natural.clicked() {
-                                            length_request = Some((event.loop_id, None));
+                                            length_request = Some((event_key, None));
                                             ui.close();
                                         }
                                     }
@@ -712,10 +698,10 @@ impl CompositeLoopWidget {
                     }
                     ui.ctx().request_repaint();
                 }
-                if let Some((source_loop_id, n_cycles)) = length_request {
+                if let Some((event, n_cycles)) = length_request {
                     intents.push(AppIntent::SetCompositeLoopCycles {
                         target_loop_id: self.loop_id,
-                        source_loop_id,
+                        event: event.into(),
                         n_cycles,
                     });
                 }
@@ -1062,7 +1048,7 @@ mod tests {
         end_frame: u64,
     ) -> CompositeEventDetailsState {
         CompositeEventDetailsState {
-            playlist_index: key,
+            instance_id: u64::from(key) + 1,
             ..event(loop_id, track_id, start_frame, end_frame)
         }
     }
@@ -1207,11 +1193,7 @@ mod tests {
         );
         assert_eq!(
             widget.selected_events,
-            BTreeSet::from([CompositeEventKey {
-                playlist_index: 0,
-                section_index: 0,
-                parallel_index: 0,
-            }])
+            BTreeSet::from([CompositeEventKey { instance_id: 1 }])
         );
 
         click(
@@ -1233,11 +1215,7 @@ mod tests {
         );
         assert_eq!(
             widget.selected_events,
-            BTreeSet::from([CompositeEventKey {
-                playlist_index: 1,
-                section_index: 0,
-                parallel_index: 0,
-            }])
+            BTreeSet::from([CompositeEventKey { instance_id: 2 }])
         );
 
         click(
@@ -1299,11 +1277,9 @@ mod tests {
             egui::Modifiers::ALT,
         );
         assert_eq!(widget.selected_events.len(), 2);
-        assert!(!widget.selected_events.contains(&CompositeEventKey {
-            playlist_index: 0,
-            section_index: 0,
-            parallel_index: 0,
-        }));
+        assert!(!widget
+            .selected_events
+            .contains(&CompositeEventKey { instance_id: 1 }));
 
         let partial = egui::Rect::from_min_max(
             event_rects[1].min - egui::vec2(0.5, 0.5),
@@ -1370,16 +1346,8 @@ mod tests {
             [AppIntent::DeleteCompositeEvents {
                 target_loop_id: loop_id,
                 events: vec![
-                    CompositeEventId {
-                        playlist_index: 0,
-                        section_index: 0,
-                        parallel_index: 0,
-                    },
-                    CompositeEventId {
-                        playlist_index: 1,
-                        section_index: 0,
-                        parallel_index: 0,
-                    },
+                    CompositeEventId { instance_id: 1 },
+                    CompositeEventId { instance_id: 2 },
                 ],
             }]
         );
@@ -1462,11 +1430,7 @@ mod tests {
             intents,
             [AppIntent::DeleteCompositeEvents {
                 target_loop_id: loop_id,
-                events: vec![CompositeEventId {
-                    playlist_index: 3,
-                    section_index: 0,
-                    parallel_index: 0,
-                }],
+                events: vec![CompositeEventId { instance_id: 4 }],
             }]
         );
         assert!(widget.selected_events.is_empty());
@@ -1534,7 +1498,7 @@ mod tests {
             intents,
             [AppIntent::SetCompositeLoopCycles {
                 target_loop_id: loop_id,
-                source_loop_id: LoopId::from_raw(1),
+                event: CompositeEventId { instance_id: 4 },
                 n_cycles: None,
             }]
         );
@@ -1642,16 +1606,8 @@ mod tests {
         let mut widget = CompositeLoopWidget::default();
         let _ = widget_frame(&context, &mut widget, target, &state, Vec::new());
         let events = vec![
-            CompositeEventId {
-                playlist_index: 0,
-                section_index: 0,
-                parallel_index: 0,
-            },
-            CompositeEventId {
-                playlist_index: 1,
-                section_index: 0,
-                parallel_index: 0,
-            },
+            CompositeEventId { instance_id: 1 },
+            CompositeEventId { instance_id: 2 },
         ];
         let drop_position = egui::pos2(
             widget.timeline_left.unwrap() + DEFAULT_CYCLE_WIDTH * 2.5,
@@ -1665,9 +1621,7 @@ mod tests {
             widget.selected_events = events
                 .iter()
                 .map(|event| CompositeEventKey {
-                    playlist_index: event.playlist_index,
-                    section_index: event.section_index,
-                    parallel_index: event.parallel_index,
+                    instance_id: event.instance_id,
                 })
                 .collect();
             egui::DragAndDrop::set_payload(
@@ -1984,11 +1938,7 @@ mod tests {
             intents,
             [AppIntent::SetCompositeEventMode {
                 target_loop_id: loop_id,
-                event: CompositeEventId {
-                    playlist_index: 3,
-                    section_index: 0,
-                    parallel_index: 0,
-                },
+                event: CompositeEventId { instance_id: 4 },
                 mode: LoopMode::Recording,
             }]
         );
