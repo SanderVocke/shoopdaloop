@@ -192,6 +192,48 @@ pub fn encode_session(
     encode_zip(&manifest, payloads)
 }
 
+fn migrate_legacy_oxisynth_state(manifest: &mut serde_json::Value) -> Result<(), SessionError> {
+    let groups = manifest
+        .pointer_mut("/document/track_groups")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| SessionError::Manifest("track_groups is not an array".to_owned()))?;
+    for track in groups
+        .iter_mut()
+        .flat_map(|group| {
+            group
+                .get_mut("tracks")
+                .and_then(serde_json::Value::as_array_mut)
+        })
+        .flat_map(|tracks| tracks.iter_mut())
+    {
+        if track
+            .pointer("/topology/kind")
+            .and_then(serde_json::Value::as_str)
+            != Some("oxi_synth")
+        {
+            continue;
+        }
+        let Some(state) = track.pointer_mut("/fx_chain/internal_state") else {
+            continue;
+        };
+        let Some(state) = state.as_str() else {
+            return Err(SessionError::Manifest(
+                "legacy OxiSynth state is not a string".to_owned(),
+            ));
+        };
+        if !state.is_empty() {
+            return Err(SessionError::Validation(
+                "legacy OxiSynth state must be empty".to_owned(),
+            ));
+        }
+        *track
+            .pointer_mut("/fx_chain/internal_state")
+            .expect("state was checked") =
+            serde_json::Value::String("shoop-oxisynth:1:timgm6mb:0:0".to_owned());
+    }
+    Ok(())
+}
+
 fn migrate_legacy_composites(manifest: &mut serde_json::Value) -> Result<(), SessionError> {
     let groups = manifest
         .pointer_mut("/document/track_groups")
@@ -361,6 +403,9 @@ pub fn decode_session_with_limits(
     }
     if header.document_version < 4 {
         migrate_legacy_composites(&mut manifest_value)?;
+    }
+    if header.document_version < 5 {
+        migrate_legacy_oxisynth_state(&mut manifest_value)?;
     }
     let mut manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
@@ -1133,11 +1178,11 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
         )),
         (TrackTopologyDocument::OxiSynth, Some(chain))
             if chain.chain_type != FxChainTypeDocument::OxiSynth
-                || !chain.internal_state.is_empty()
+                || chain.internal_state.is_empty()
                 || !chain.midi_cc_assignments.is_empty() =>
         {
             Err(SessionError::Validation(format!(
-                "OxiSynth track {} contains mismatched or persistent processor state",
+                "OxiSynth track {} contains mismatched or invalid processor state",
                 track.id
             )))
         }

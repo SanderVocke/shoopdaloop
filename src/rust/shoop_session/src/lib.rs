@@ -255,6 +255,41 @@ mod tests {
         bundle
     }
 
+    fn oxisynth_bundle() -> SessionBundle {
+        let mut bundle = direct_bundle(2);
+        let track = &mut bundle.document.track_groups[0].tracks[0];
+        track.name = "OxiSynth".to_owned();
+        track.port_name_base = "oxisynth".to_owned();
+        track.topology = TrackTopologyDocument::OxiSynth;
+        track.fx_chain = Some(FxChainDocument {
+            id: 800,
+            title: "OxiSynth".to_owned(),
+            chain_type: FxChainTypeDocument::OxiSynth,
+            ports: Vec::new(),
+            internal_state: "shoop-oxisynth:1:timgm6mb:0:40".to_owned(),
+            midi_cc_assignments: Vec::new(),
+        });
+        let channels = &mut track.loops[0].channels;
+        for channel in channels.iter_mut() {
+            channel.mode = ChannelModeDocument::Dry;
+            channel.recording_fx_state_id = None;
+        }
+        let wet = channels[..2]
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, mut channel)| {
+                channel.id = 200 + index as u64;
+                channel.mode = ChannelModeDocument::Wet;
+                channel.connected_port_ids.clear();
+                channel
+            })
+            .collect::<Vec<_>>();
+        channels.splice(2..2, wet);
+        bundle.document.fx_states.clear();
+        bundle
+    }
+
     fn deferred_feature_bundle() -> SessionBundle {
         let mut bundle = direct_bundle(2);
         bundle.document.track_groups[0].tracks.extend([
@@ -538,6 +573,74 @@ mod tests {
             Err(SessionError::Validation(message))
                 if message.contains("channel shape does not match")
         ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn oxisynth_state_round_trips_and_version_four_migrates_to_default() {
+        let bundle = oxisynth_bundle();
+        let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
+        assert_eq!(decode_session(&encoded).unwrap(), bundle);
+
+        let legacy = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["document_version"] = serde_json::json!(4);
+            manifest["document"]["track_groups"][0]["tracks"][0]["fx_chain"]["internal_state"] =
+                serde_json::json!("");
+        });
+        let migrated = decode_session(&legacy).unwrap();
+        assert_eq!(
+            migrated.document.track_groups[0].tracks[0]
+                .fx_chain
+                .as_ref()
+                .unwrap()
+                .internal_state,
+            "shoop-oxisynth:1:timgm6mb:0:0"
+        );
+
+        let future = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["document_version"] = serde_json::json!(6);
+        });
+        assert!(matches!(
+            decode_session(&future),
+            Err(SessionError::UnsupportedVersion { .. })
+        ));
+
+        let invalid_legacy = rewrite_manifest(encoded, |manifest| {
+            manifest["document_version"] = serde_json::json!(4);
+        });
+        assert!(matches!(
+            decode_session(&invalid_legacy),
+            Err(SessionError::Validation(message))
+                if message.contains("legacy OxiSynth state must be empty")
+        ));
+
+        let mut mismatched = bundle.clone();
+        mismatched.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .chain_type = FxChainTypeDocument::TinySynthFx;
+        assert!(validate_bundle(&mismatched).is_err());
+
+        let mut empty = bundle.clone();
+        empty.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .internal_state
+            .clear();
+        assert!(validate_bundle(&empty).is_err());
+        let mut mapped = bundle;
+        mapped.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .midi_cc_assignments
+            .push(TinySynthFxMidiCcAssignmentDocument {
+                parameter: TinySynthFxParameterDocument::EqHigh,
+                channel: 0,
+                controller: 74,
+            });
+        assert!(validate_bundle(&mapped).is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

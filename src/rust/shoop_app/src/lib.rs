@@ -5679,7 +5679,11 @@ impl ApplicationModel {
             let TrackTopology::DryWet { processor_type, .. } = &track.topology else {
                 continue;
             };
-            if processor_type.as_str() == shoop_app_api::TrackProcessorTypeId::EXTERNAL {
+            if matches!(
+                processor_type.as_str(),
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL
+                    | shoop_app_api::TrackProcessorTypeId::OXISYNTH
+            ) {
                 continue;
             }
             let state = backend
@@ -7367,19 +7371,9 @@ impl ApplicationModel {
                     let chain_type = fx_chain_type_for_processor(
                         &shoop_app_api::TrackProcessorTypeId::new(processor_type.clone()),
                     )?;
-                    let internal_state = if chain_type == FxChainTypeDocument::OxiSynth {
-                        if captured.processor_state.is_some() {
-                            return Err(format!(
-                                "OxiSynth track {} unexpectedly captured processor state",
-                                track.id
-                            ));
-                        }
-                        String::new()
-                    } else {
-                        captured.processor_state.clone().ok_or_else(|| {
-                            format!("processed track {} has no captured state", track.id)
-                        })?
-                    };
+                    let internal_state = captured.processor_state.clone().ok_or_else(|| {
+                        format!("processed track {} has no captured state", track.id)
+                    })?;
                     let topology = if chain_type == FxChainTypeDocument::TinySynthFx {
                         if dry_audio_channels != wet_audio_channels || !dry_midi {
                             return Err(format!(
@@ -9195,10 +9189,10 @@ fn session_bundle_to_backend(
             state,
             loops,
             ports,
-            processor_state: track.fx_chain.as_ref().and_then(|chain| {
-                (chain.chain_type != FxChainTypeDocument::OxiSynth)
-                    .then(|| chain.internal_state.clone())
-            }),
+            processor_state: track
+                .fx_chain
+                .as_ref()
+                .map(|chain| chain.internal_state.clone()),
             tiny_synth_midi_cc_assignments: track
                 .fx_chain
                 .as_ref()
@@ -10405,7 +10399,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn oxisynth_session_round_trip_is_stateless_and_has_no_editor() {
+    fn oxisynth_session_round_trip_preserves_selected_preset() {
         let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
         let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
         runtime.tick(Duration::ZERO);
@@ -10423,8 +10417,48 @@ mod tests {
             }))
             .unwrap();
         runtime.tick(Duration::ZERO);
-        let track = &runtime.snapshot().tracks[1];
-        assert!(track.fx.as_ref().is_some_and(|fx| fx.editor.is_none()));
+        let track = runtime.snapshot().tracks[1].clone();
+        let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) =
+            track.fx.as_ref().and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing OxiSynth editor state");
+        };
+        assert_eq!(editor.selected_preset_id, "0:0");
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::OxiSynth(shoop_app_api::OxiSynthControl::SelectPreset(
+                    "0:40".to_owned(),
+                )),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let selected = runtime.snapshot();
+        let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) = selected.tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing selected OxiSynth editor state");
+        };
+        assert_eq!(editor.selected_preset_id, "0:40");
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id: track.loops[0].id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(!runtime.snapshot().tracks[1].loops[0].has_recorded_fx_state);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id: track.loops[0].id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
         for _ in 0..3 {
             runtime.tick(Duration::ZERO);
@@ -10435,12 +10469,39 @@ mod tests {
         assert_eq!(saved_track.topology, TrackTopologyDocument::OxiSynth);
         let chain = saved_track.fx_chain.as_ref().unwrap();
         assert_eq!(chain.chain_type, FxChainTypeDocument::OxiSynth);
-        assert!(chain.internal_state.is_empty());
+        assert_eq!(chain.internal_state, "shoop-oxisynth:1:timgm6mb:0:40");
         assert!(saved
             .document
             .fx_states
             .iter()
             .all(|state| state.id != chain.id));
+
+        let mut malformed = saved.clone();
+        malformed.document.track_groups[1].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .internal_state = "malformed".to_owned();
+        let malformed = encode_session(&malformed, "malformed-oxisynth").unwrap();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "malformed-oxisynth.shoop".to_owned(),
+                bytes: malformed.into(),
+            })
+            .unwrap();
+        for _ in 0..4 {
+            runtime.tick(Duration::ZERO);
+        }
+        let after_failed_load = runtime.snapshot();
+        let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) = after_failed_load
+            .tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("OxiSynth state disappeared after failed load");
+        };
+        assert_eq!(editor.selected_preset_id, "0:40");
 
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
@@ -10453,10 +10514,44 @@ mod tests {
         }
         let loaded = runtime.snapshot();
         assert_eq!(loaded.tracks[1].topology, track.topology);
-        assert!(loaded.tracks[1]
+        let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) = loaded.tracks[1]
             .fx
             .as_ref()
-            .is_some_and(|fx| fx.editor.is_none()));
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing loaded OxiSynth editor state");
+        };
+        assert_eq!(editor.selected_preset_id, "0:40");
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 256,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let switched = runtime.snapshot();
+        assert_eq!(switched.status.sample_rate, 44_100);
+        let Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(editor)) = switched.tracks[1]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing OxiSynth state after sample-rate switch");
+        };
+        assert_eq!(editor.selected_preset_id, "0:40");
     }
 
     #[shoop_wasm_test_support::shoop_test]

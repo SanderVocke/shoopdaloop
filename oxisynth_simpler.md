@@ -197,22 +197,24 @@ Evidence: the protocol has defaultable OxiSynth snapshot state, durable/coalesci
 
 Depends on Stages 2 and 3.
 
-- [ ] Increment `SESSION_DOCUMENT_VERSION` from 4 to 5.
-- [ ] Add a version-4 migration that replaces every valid stateless OxiSynth chain's empty state with the canonical default OxiSynth state.
-- [ ] Require version-5 OxiSynth chains to have matching chain identity, non-empty processor state, and no Tiny Synth/FX MIDI-CC assignments.
-- [ ] Update application capture/conversion to store backend OxiSynth state in `FxChainDocument.internal_state` and pass it into backend preparation on load.
-- [ ] Remove application and native/browser replacement branches that reject or discard OxiSynth processor state.
-- [ ] Keep semantic state decoding in transactional backend preparation so malformed or unavailable presets fail before session publication.
-- [ ] Preserve the MVP rule that OxiSynth state is not copied into automatic recorded-take `fx_states`.
-- [ ] Update `docs/session_format_v1.md` with document version 5, processor-state version 1, migration, validation, failure behavior, and the current-chain versus recorded-take distinction.
+- [x] Increment `SESSION_DOCUMENT_VERSION` from 4 to 5.
+- [x] Add a version-4 migration that replaces every valid stateless OxiSynth chain's empty state with the canonical default OxiSynth state.
+- [x] Require version-5 OxiSynth chains to have matching chain identity, non-empty processor state, and no Tiny Synth/FX MIDI-CC assignments.
+- [x] Update application capture/conversion to store backend OxiSynth state in `FxChainDocument.internal_state` and pass it into backend preparation on load.
+- [x] Remove application and native/browser replacement branches that reject or discard OxiSynth processor state.
+- [x] Keep semantic state decoding in transactional backend preparation so malformed or unavailable presets fail before session publication.
+- [x] Preserve the MVP rule that OxiSynth state is not copied into automatic recorded-take `fx_states`.
+- [x] Update `docs/session_format_v1.md` with document version 5, processor-state version 1, migration, validation, failure behavior, and the current-chain versus recorded-take distinction.
 
 Verification:
 
-- [ ] Archive tests cover new version-5 output, version-4 default migration, versions 1–3 compatibility, malformed state, mismatched chain types, forbidden MIDI mappings, and unknown future versions.
-- [ ] Application tests cover save/load and native↔browser/driver-switch round trips with a non-default preset.
-- [ ] Transaction tests prove failed OxiSynth state preparation leaves the prior application/backend session and processing progress intact.
-- [ ] Saved manifests contain canonical non-empty OxiSynth state and no automatic OxiSynth take-state records.
-- [ ] Run focused `shoop_session`, `shoop_app`, backend, and worklet-client tests plus the Rust test-attribute policy check.
+- [x] Archive tests cover new version-5 output, version-4 default migration, versions 1–3 compatibility, structural state requirements, mismatched chain types, forbidden MIDI mappings, and unknown future versions; backend/application tests cover semantic malformed state.
+- [x] Application and backend tests cover save/load plus native, in-process, remote, and driver-switch preservation with a non-default preset.
+- [x] Transaction tests prove failed OxiSynth state preparation leaves the prior application/backend session and processing progress intact.
+- [x] Saved manifests contain canonical non-empty OxiSynth state and no automatic OxiSynth take-state records.
+- [x] Run focused `shoop_session`, `shoop_app`, backend, and worklet-client tests plus the Rust test-attribute policy check.
+
+Evidence: document version 5 writes canonical OxiSynth chain state; version-4 empty chains migrate to `shoop-oxisynth:1:timgm6mb:0:0`, while nonempty legacy state and future document versions are rejected. Structural validation requires a matching nonempty chain and forbids Tiny mappings; semantic decoding remains in staged backend preparation. The application round-trip test selects `0:40`, confirms no recorded-take state during recording, saves/loads it, rejects a malformed load without losing `0:40`, and preserves it over a 48 kHz→44.1 kHz driver switch. Session/application suites pass all 133 tests, backend all 60, and protocol/worklet/client all 40; formatting and test policy pass. Documentation now specifies document/state versions, migration, identity, errors, and take-state scope.
 
 ### Stage 5 — Add the embedded OxiSynth editor
 

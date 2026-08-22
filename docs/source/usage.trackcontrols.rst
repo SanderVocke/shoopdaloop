@@ -61,7 +61,8 @@ Processed-track controls show only capabilities advertised by the selected
 processor. Tiny Synth/FX uses an embedded editor. Carla tracks expose lifecycle,
 UI, recovery, state, and bounded process-log controls when available.
 
-OxiSynth is an embedded General MIDI SoundFont instrument. Its track shape is
-fixed at no dry audio inputs, two wet audio outputs, and one MIDI input. Select
-banks and programs, play notes, and control the instrument entirely with MIDI;
-there is no processor editor or persisted synth state.
+OxiSynth is an embedded SoundFont instrument. Its track shape is fixed at two
+dry audio inputs, two wet audio outputs, and one MIDI input; the synth ignores
+the dry audio samples. Choose one preset in its embedded editor. OxiSynth merges
+all source MIDI channels into one instrument, ignores MIDI bank/program changes,
+and saves the selected preset with the session.
