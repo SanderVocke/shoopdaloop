@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 3;
+pub const SESSION_DOCUMENT_VERSION: u16 = 4;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -147,6 +147,7 @@ pub enum TrackTopologyDocument {
     TinySynthFx {
         audio_channels: u32,
     },
+    OxiSynth,
     Trigger,
 }
 
@@ -292,6 +293,7 @@ pub enum FxChainTypeDocument {
     CarlaPatchbay,
     CarlaPatchbay16x,
     TinySynthFx,
+    OxiSynth,
     Test,
 }
 

@@ -7293,9 +7293,19 @@ impl ApplicationModel {
                     let chain_type = fx_chain_type_for_processor(
                         &shoop_app_api::TrackProcessorTypeId::new(processor_type.clone()),
                     )?;
-                    let internal_state = captured.processor_state.clone().ok_or_else(|| {
-                        format!("processed track {} has no captured state", track.id)
-                    })?;
+                    let internal_state = if chain_type == FxChainTypeDocument::OxiSynth {
+                        if captured.processor_state.is_some() {
+                            return Err(format!(
+                                "OxiSynth track {} unexpectedly captured processor state",
+                                track.id
+                            ));
+                        }
+                        String::new()
+                    } else {
+                        captured.processor_state.clone().ok_or_else(|| {
+                            format!("processed track {} has no captured state", track.id)
+                        })?
+                    };
                     let topology = if chain_type == FxChainTypeDocument::TinySynthFx {
                         if dry_audio_channels != wet_audio_channels || !dry_midi {
                             return Err(format!(
@@ -7306,6 +7316,14 @@ impl ApplicationModel {
                         TrackTopologyDocument::TinySynthFx {
                             audio_channels: *dry_audio_channels,
                         }
+                    } else if chain_type == FxChainTypeDocument::OxiSynth {
+                        if *dry_audio_channels != 0 || *wet_audio_channels != 2 || !dry_midi {
+                            return Err(format!(
+                                "OxiSynth track {} has an invalid channel shape",
+                                track.id
+                            ));
+                        }
+                        TrackTopologyDocument::OxiSynth
                     } else {
                         TrackTopologyDocument::Carla {
                             chain_type,
@@ -8642,6 +8660,7 @@ fn fx_chain_type_for_processor(
             Ok(FxChainTypeDocument::CarlaPatchbay16x)
         }
         shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX => Ok(FxChainTypeDocument::TinySynthFx),
+        shoop_app_api::TrackProcessorTypeId::OXISYNTH => Ok(FxChainTypeDocument::OxiSynth),
         "test_2x2x1" => Ok(FxChainTypeDocument::Test),
         value => Err(format!(
             "processor {value} has no session FX-chain representation"
@@ -8659,6 +8678,7 @@ fn processor_for_fx_chain_type(
             shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X
         }
         FxChainTypeDocument::TinySynthFx => shoop_app_api::TrackProcessorTypeId::TINY_SYNTH_FX,
+        FxChainTypeDocument::OxiSynth => shoop_app_api::TrackProcessorTypeId::OXISYNTH,
         FxChainTypeDocument::Test => "test_2x2x1",
     })
 }
@@ -8778,6 +8798,28 @@ fn runtime_track_topology(
                     processor_type: processor,
                 },
                 audio_channels.saturating_mul(2),
+                true,
+            ))
+        }
+        TrackTopologyDocument::OxiSynth => {
+            let processor = shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::OXISYNTH,
+            );
+            validate_loaded_processor(track.id, &processor, 0, 2, true, processors)?;
+            Ok((
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: processor.as_str().to_owned(),
+                    dry_audio_channels: 0,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels: 0,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: processor,
+                },
+                2,
                 true,
             ))
         }
@@ -9080,10 +9122,10 @@ fn session_bundle_to_backend(
             state,
             loops,
             ports,
-            processor_state: track
-                .fx_chain
-                .as_ref()
-                .map(|chain| chain.internal_state.clone()),
+            processor_state: track.fx_chain.as_ref().and_then(|chain| {
+                (chain.chain_type != FxChainTypeDocument::OxiSynth)
+                    .then(|| chain.internal_state.clone())
+            }),
             tiny_synth_midi_cc_assignments: track
                 .fx_chain
                 .as_ref()
@@ -10287,6 +10329,61 @@ mod tests {
         assert_eq!(switched_editor.eq_low_db, 3.0);
         assert_eq!(switched_editor.eq_mid_db, -2.0);
         assert_eq!(switched_editor.eq_high_db, 1.5);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn oxisynth_session_round_trip_is_stateless_and_has_no_editor() {
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "OxiSynth".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 0,
+                    wet_audio_channels: 2,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::OXISYNTH,
+                    ),
+                },
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = &runtime.snapshot().tracks[1];
+        assert!(track.fx.as_ref().is_some_and(|fx| fx.editor.is_none()));
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..3 {
+            runtime.tick(Duration::ZERO);
+        }
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        let saved_track = &saved.document.track_groups[1].tracks[0];
+        assert_eq!(saved_track.topology, TrackTopologyDocument::OxiSynth);
+        let chain = saved_track.fx_chain.as_ref().unwrap();
+        assert_eq!(chain.chain_type, FxChainTypeDocument::OxiSynth);
+        assert!(chain.internal_state.is_empty());
+        assert!(saved
+            .document
+            .fx_states
+            .iter()
+            .all(|state| state.id != chain.id));
+
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "oxisynth.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        for _ in 0..4 {
+            runtime.tick(Duration::ZERO);
+        }
+        let loaded = runtime.snapshot();
+        assert_eq!(loaded.tracks[1].topology, track.topology);
+        assert!(loaded.tracks[1]
+            .fx
+            .as_ref()
+            .is_some_and(|fx| fx.editor.is_none()));
     }
 
     #[shoop_wasm_test_support::shoop_test]

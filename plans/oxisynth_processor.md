@@ -99,12 +99,14 @@ Depends on Stage 3.
 
 Depends on Stages 3 and 4.
 
-- [ ] Introduce session document version 4 for the additive `OxiSynth` track topology and chain type, update archive dispatch/current-version metadata, and add explicit migrations from the currently supported version-1 through version-3 documents; represent only the fixed channel shape and processor identity.
-- [ ] Save/load OxiSynth tracks without processor-state entries; reject mismatched chain/topology, illegal channel layouts, unavailable runtimes, or unexpected OxiSynth state transactionally while preserving all older documents.
-- [ ] Include OxiSynth in the capability-driven generic track-creation flow with its fixed stereo/MIDI shape, and ensure the ordinary track widget does not offer an editor action when `editor: None`.
-- [ ] Add round-trip, malformed-document, session replacement, recorded MIDI playback, generic selector, and no-editor regression tests for native and browser paths. Update the session-format and user/developer documentation, third-party attribution, and build/package descriptions.
+- [x] Introduce session document version 4 for the additive `OxiSynth` track topology and chain type, update archive dispatch/current-version metadata, and add explicit migrations from the currently supported version-1 through version-3 documents; represent only the fixed channel shape and processor identity.
+- [x] Save/load OxiSynth tracks without processor-state entries; reject mismatched chain/topology, illegal channel layouts, unavailable runtimes, or unexpected OxiSynth state transactionally while preserving all older documents.
+- [x] Include OxiSynth in the capability-driven generic track-creation flow with its fixed stereo/MIDI shape, and ensure the ordinary track widget does not offer an editor action when `editor: None`.
+- [x] Add round-trip, malformed-document, session replacement, recorded MIDI playback, generic selector, and no-editor regression tests for native and browser paths. Update the session-format and user/developer documentation, third-party attribution, and build/package descriptions.
 
 **Verification:** run session, app model/controller, and egui tests; load representative old Direct/External/Carla/Tiny sessions; save and reload an OxiSynth session on native and browser backends and compare topology, routing, and audible output.
+
+**Completed:** session document version 4 adds matched OxiSynth topology/chain variants while archive script dispatch retains the correct version-1/2 migration and version-3/4 bundle decoding paths. Validation requires the exact channel modes, empty state, and matching chain; app/backend conversion keeps `processor_state: None` and rejects unexpected state transactionally. The capability-driven selector uses the catalog constraints, snapshots expose no editor, and native/browser replacement rebuilds the processor before publication. All 28 session tests and the focused application save/decode/load/no-editor round trip pass; user, concept, session-format, asset provenance, and packaging-size documentation is updated.
 
 ### Stage 6 — End-to-end validation
 

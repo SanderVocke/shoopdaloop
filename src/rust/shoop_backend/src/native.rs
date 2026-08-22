@@ -837,8 +837,12 @@ impl NativeRuntime {
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let processor_state = if let Some(fx) = track.fx.as_mut() {
-                match fx.chain.try_get_state_str() {
+            let processor_state =
+                if let Some(fx) = track.fx.as_mut() {
+                    if fx.processor_type.as_str() == TrackProcessorTypeId::OXISYNTH {
+                        None
+                    } else {
+                        match fx.chain.try_get_state_str() {
                     Ok(state) => {
                         fx.last_confirmed_state = Some(state.clone());
                         Some(state)
@@ -847,9 +851,10 @@ impl NativeRuntime {
                         anyhow!("processor state is unavailable and no checkpoint exists: {error}")
                     })?),
                 }
-            } else {
-                None
-            };
+                    }
+                } else {
+                    None
+                };
             let tiny_synth_midi_cc_assignments = track
                 .fx
                 .as_ref()
@@ -935,11 +940,23 @@ impl NativeRuntime {
                 BackendTrackTopology::DryWetExternal { .. } => {
                     self.create_external_track(request)?
                 }
+                BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                    if processor_type == TrackProcessorTypeId::OXISYNTH =>
+                {
+                    if source_track.processor_state.is_some()
+                        || !source_track.tiny_synth_midi_cc_assignments.is_empty()
+                    {
+                        return Err(anyhow!("OxiSynth track contains unexpected state"));
+                    }
+                    self.create_processed_track(request)?
+                }
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     self.create_processed_track(request)?
                 }
             };
             match &source_track.topology {
+                BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                    if processor_type == TrackProcessorTypeId::OXISYNTH => {}
                 BackendTrackTopology::DryWetProcessor { .. } => {
                     let state = source_track
                         .processor_state

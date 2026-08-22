@@ -2993,6 +2993,12 @@ impl EngineBackend {
                 {
                     track.processor_state.is_some()
                 }
+                BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                    if processor_type == TrackProcessorTypeId::OXISYNTH =>
+                {
+                    track.processor_state.is_none()
+                        && track.tiny_synth_midi_cc_assignments.is_empty()
+                }
                 _ => false,
             };
             track.state.topology != track.topology || !processor_state_valid

@@ -233,7 +233,7 @@ pub fn decode_session_with_limits(
     }
     let mut declared_paths = BTreeSet::from([MANIFEST_PATH.to_owned()]);
     declared_paths.extend(manifest.media.iter().map(|record| record.path.clone()));
-    if manifest.document_version == SESSION_DOCUMENT_VERSION {
+    if manifest.document_version >= 3 {
         declared_paths.extend(manifest.scripts.iter().map(|record| record.path.clone()));
     }
     if archive_paths != declared_paths {
@@ -247,7 +247,7 @@ pub fn decode_session_with_limits(
                 .collect::<Vec<_>>()
         )));
     }
-    let script_bundles = if manifest.document_version < SESSION_DOCUMENT_VERSION {
+    let script_bundles = if manifest.document_version < 3 {
         migrate_legacy_script_bundles(&manifest_value, &mut manifest.document)?
     } else {
         decode_script_bundles(&mut archive, &manifest.document, manifest.scripts, limits)?
@@ -929,6 +929,20 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
         (TrackTopologyDocument::TinySynthFx { .. }, None) => Err(SessionError::Validation(
             format!("Tiny Synth/FX track {} is missing its FX chain", track.id),
         )),
+        (TrackTopologyDocument::OxiSynth, Some(chain))
+            if chain.chain_type != FxChainTypeDocument::OxiSynth
+                || !chain.internal_state.is_empty()
+                || !chain.midi_cc_assignments.is_empty() =>
+        {
+            Err(SessionError::Validation(format!(
+                "OxiSynth track {} contains mismatched or persistent processor state",
+                track.id
+            )))
+        }
+        (TrackTopologyDocument::OxiSynth, None) => Err(SessionError::Validation(format!(
+            "OxiSynth track {} is missing its FX chain",
+            track.id
+        ))),
         (TrackTopologyDocument::Trigger, Some(_)) => Err(SessionError::Validation(format!(
             "trigger track {} must not contain an FX chain",
             track.id
@@ -1001,6 +1015,18 @@ fn validate_track_channel_shape(
         TrackTopologyDocument::TinySynthFx { audio_channels } => {
             count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == audio_channels
                 && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == audio_channels
+                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 1
+                && channels.iter().all(|channel| {
+                    matches!(
+                        channel.mode,
+                        ChannelModeDocument::Dry | ChannelModeDocument::Wet
+                    ) && !(channel.mode == ChannelModeDocument::Wet
+                        && channel.data_type == DataTypeDocument::Midi)
+                })
+        }
+        TrackTopologyDocument::OxiSynth => {
+            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == 0
+                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == 2
                 && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 1
                 && channels.iter().all(|channel| {
                     matches!(
