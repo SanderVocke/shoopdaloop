@@ -12,7 +12,8 @@ use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::chunked_samples::ChunkedSamples;
 use crate::content_snapshot::AudioProcessSnapshotWriter;
 use crate::latency_runtime::{
-    cyclic_render_dispatch_position, LatchedLatencyRecipe, RuntimeLatencyRecipe,
+    cyclic_render_dispatch_position, LatchedLatencyRecipe, RetainedLatencySelection,
+    RuntimeLatencyRecipe,
 };
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
@@ -183,6 +184,7 @@ pub struct AudioChannel {
     latency_retention_incomplete: bool,
     pending_latency_recipe: Option<RuntimeLatencyRecipe>,
     latched_latency_recipe: Option<LatchedLatencyRecipe>,
+    grab_latency_selection: RetainedLatencySelection,
 }
 
 impl AudioChannel {
@@ -262,6 +264,7 @@ impl AudioChannel {
             latency_retention_incomplete: false,
             pending_latency_recipe: None,
             latched_latency_recipe: None,
+            grab_latency_selection: RetainedLatencySelection::Unavailable,
         };
         channel.publish_state();
         channel
@@ -420,6 +423,34 @@ impl AudioChannel {
     pub fn latency_retention_incomplete(&self) -> bool {
         self.latency_retention_incomplete
     }
+    pub fn grab_latency_selection(&self) -> RetainedLatencySelection {
+        self.grab_latency_selection
+    }
+    pub fn apply_grab_latency_mapping(
+        &mut self,
+        media_layout_offset: i32,
+        capture_alignment_frames: i32,
+        selection: RetainedLatencySelection,
+    ) -> Result<(), LatencyDomainError> {
+        if media_layout_offset.unsigned_abs() > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(
+                media_layout_offset.unsigned_abs(),
+            ));
+        }
+        self.set_capture_alignment_frames(capture_alignment_frames)?;
+        self.start_offset = media_layout_offset;
+        self.grab_latency_selection = selection;
+        self.latency_retention_incomplete = false;
+        self.state.publish_latency_retention_incomplete(false);
+        let (variable, revisions) = match selection {
+            RetainedLatencySelection::Stable(_) => (false, 1),
+            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
+            RetainedLatencySelection::Unavailable => (false, 0),
+        };
+        self.state.publish_latency_history(variable, revisions);
+        self.publish_state();
+        Ok(())
+    }
     pub fn compensated_take_ready(&self, logical_length: u32) -> bool {
         let Some(raw_start) = self.raw_position_for_logical(0) else {
             return false;
@@ -522,6 +553,11 @@ impl AudioChannel {
         self.buffers.get(position).copied()
     }
 
+    fn reset_grab_latency_selection(&mut self) {
+        self.grab_latency_selection = RetainedLatencySelection::Unavailable;
+        self.state.publish_latency_history(false, 0);
+    }
+
     fn data_changed(&mut self) {
         self.data_seq_nr = self.data_seq_nr.wrapping_add(1);
         self.publish_state();
@@ -546,6 +582,7 @@ impl AudioChannel {
         self.buffers.set_contents(samples);
         self.data_length = samples.len();
         self.start_offset = 0;
+        self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Loading);
@@ -568,6 +605,7 @@ impl AudioChannel {
         }
         self.data_length = length;
         self.start_offset = 0;
+        self.reset_grab_latency_selection();
     }
 
     pub(crate) fn write_bounded_load(&mut self, mut offset: usize, mut samples: &[f32]) {
@@ -585,6 +623,7 @@ impl AudioChannel {
     }
 
     pub(crate) fn finish_bounded_load(&mut self) {
+        self.publish_all_data();
         self.data_changed();
     }
 
@@ -592,6 +631,7 @@ impl AudioChannel {
         std::mem::swap(&mut self.buffers, &mut prepared.buffers);
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
+        self.reset_grab_latency_selection();
         self.publish_all_data();
         self.data_changed();
     }
@@ -604,6 +644,7 @@ impl AudioChannel {
         std::mem::swap(&mut self.buffers, &mut prepared.buffers);
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
+        self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.install_prepared(snapshot);
         }
@@ -618,6 +659,7 @@ impl AudioChannel {
         self.buffers.ensure_available(length);
         self.data_length = length;
         self.start_offset = 0;
+        self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
@@ -635,6 +677,7 @@ impl AudioChannel {
         self.buffers.fill(length, 0.0);
         self.data_length = length;
         self.start_offset = 0;
+        self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);

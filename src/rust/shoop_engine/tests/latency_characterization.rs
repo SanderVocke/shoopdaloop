@@ -1,13 +1,19 @@
 use shoop_engine::audio_channel::AudioChannel;
 use shoop_engine::audio_midi_loop::AudioMidiLoop;
 use shoop_engine::channel_mode::ChannelMode;
+use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
+use shoop_engine::latency_runtime::{RetainedLatencySelection, RuntimeLatencyObservation};
 use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi;
 use shoop_engine::midi_channel::MidiChannel;
 use shoop_engine::midi_storage::MidiStorageElem;
 use shoop_engine::port::PortDirection;
-use shoop_engine::session::{Port, Session};
+use shoop_engine::session::{
+    AudioRingbufferAdoption, GrabLatencyPolicy, LatencyAwareAudioRingbufferAdoption,
+    LatencyAwareMidiRingbufferAdoption, Port, PreparedMidiLatencyGrabChannel, Session,
+    SessionError,
+};
 
 mod latency_support;
 use latency_support::{
@@ -200,6 +206,308 @@ fn current_grab_adopts_raw_history_across_callback_boundaries() {
     assert_eq!(grabbed.mode(), LoopMode::Playing);
     assert_eq!(grabbed.length(), source.len() as u32);
     assert_eq!(grabbed.audio_channel(0).unwrap().data(), source);
+}
+
+fn latency_grab_fixture(
+    role: ChannelMode,
+    policy: GrabLatencyPolicy,
+    variable: bool,
+) -> (Vec<f32>, RetainedLatencySelection) {
+    let mut session = Session::default();
+    session.set_buffer_size(4);
+    let input = session.add_port(Port::Dummy(DummyAudioPort::new(
+        PortId(30),
+        "latency-grab-input",
+        PortDirection::Input,
+        4,
+    )));
+    let output = session.add_port(Port::Dummy(DummyAudioPort::new(
+        PortId(31),
+        "latency-grab-output",
+        PortDirection::Output,
+        4,
+    )));
+    session
+        .port_mut(input)
+        .unwrap()
+        .audio_mut()
+        .unwrap()
+        .set_ringbuffer_n_samples(16);
+    let loop_ = session.create_loop();
+    let channel = session
+        .add_audio_channel_with_bounded_capacity(loop_, 4, 16, role)
+        .unwrap();
+    session.connect_channel_input(channel, input).unwrap();
+    session.connect_channel_output(channel, output).unwrap();
+    session.apply_graph_changes().unwrap();
+
+    let mut source = vec![0.0; 20];
+    source[14] = 1.0;
+    for start in [0, 4, 8, 12, 16] {
+        let observation = if variable && start < 16 {
+            RuntimeLatencyObservation::exact(2, 48_000, 1).unwrap()
+        } else {
+            RuntimeLatencyObservation::exact(3, 48_000, 2).unwrap()
+        };
+        session
+            .port_mut(input)
+            .unwrap()
+            .audio()
+            .unwrap()
+            .publish_capture_latency(observation);
+        session
+            .port_mut(input)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&source[start..start + 4]);
+        session.process(4);
+    }
+    session.loop_mut(loop_).unwrap().set_sync_source(Some(
+        shoop_engine::basic_loop::SyncSourceState {
+            mode: LoopMode::Playing,
+            triggering_now: false,
+            next_trigger_eta: Some(8),
+            position: 0,
+            length: 8,
+        },
+    ));
+    session
+        .adopt_audio_ringbuffers_with_latency(&[LatencyAwareAudioRingbufferAdoption {
+            request: AudioRingbufferAdoption {
+                loop_idx: loop_,
+                reverse_start_cycle: None,
+                cycles_length: Some(1),
+                go_to_cycle: Some(0),
+                go_to_mode: playback_mode(role),
+            },
+            latency_policy: policy,
+        }])
+        .unwrap();
+    let selection = session
+        .loop_(loop_)
+        .unwrap()
+        .audio_channel(0)
+        .unwrap()
+        .grab_latency_selection();
+    session
+        .port_mut(output)
+        .unwrap()
+        .as_dummy_mut()
+        .unwrap()
+        .request_data(8);
+    session.process(8);
+    let rendered = session
+        .port_mut(output)
+        .unwrap()
+        .as_dummy_mut()
+        .unwrap()
+        .dequeue_data(8)
+        .unwrap();
+    (rendered, selection)
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn stable_latency_grab_applies_policy_without_mutating_raw_identity() {
+    for role in [ChannelMode::Direct, ChannelMode::Dry, ChannelMode::Wet] {
+        let (automatic, selection) =
+            latency_grab_fixture(role, GrabLatencyPolicy::Automatic, false);
+        assert_eq!(automatic, vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        assert!(matches!(selection, RetainedLatencySelection::Stable(_)));
+
+        let (disabled, _) = latency_grab_fixture(role, GrabLatencyPolicy::Disabled, false);
+        assert_eq!(disabled, vec![0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        let (manual, _) = latency_grab_fixture(role, GrabLatencyPolicy::Manual(1), false);
+        assert_eq!(manual, vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn variable_latency_grab_uses_newest_revision_and_keeps_warning() {
+    let (rendered, selection) =
+        latency_grab_fixture(ChannelMode::Direct, GrabLatencyPolicy::Automatic, true);
+    assert_eq!(rendered, vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    assert!(matches!(
+        selection,
+        RetainedLatencySelection::Variable { revisions: 2, .. }
+    ));
+}
+
+fn midi_latency_grab_fixture(role: ChannelMode) -> (Vec<(u32, u8)>, RetainedLatencySelection) {
+    let mut session = Session::default();
+    session.set_buffer_size(4);
+    let input = session.add_port(Port::DummyMidi(DummyMidiPort::new(
+        PortId(33),
+        "midi-grab-input",
+        PortDirection::Input,
+    )));
+    let output = session.add_port(Port::DummyMidi(DummyMidiPort::new(
+        PortId(34),
+        "midi-grab-output",
+        PortDirection::Output,
+    )));
+    session
+        .port_mut(input)
+        .unwrap()
+        .midi_mut()
+        .unwrap()
+        .set_ringbuffer_n_samples(16);
+    let loop_ = session.create_loop();
+    let channel = session.add_midi_channel(loop_, 64, role).unwrap();
+    session.connect_channel_input(channel, input).unwrap();
+    session.connect_channel_output(channel, output).unwrap();
+    session.apply_graph_changes().unwrap();
+    session
+        .port_mut(input)
+        .unwrap()
+        .midi()
+        .unwrap()
+        .publish_capture_latency(RuntimeLatencyObservation::exact(3, 48_000, 1).unwrap());
+    for (time, note) in [(2, 65), (14, 68)] {
+        session
+            .port_mut(input)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(time, &midi::note_on(0, note, 100));
+        session
+            .port_mut(input)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(time, &midi::note_off(0, note, 0));
+    }
+    for _ in 0..5 {
+        session.process(4);
+    }
+    session.loop_mut(loop_).unwrap().set_sync_source(Some(
+        shoop_engine::basic_loop::SyncSourceState {
+            mode: LoopMode::Playing,
+            triggering_now: false,
+            next_trigger_eta: Some(8),
+            position: 0,
+            length: 8,
+        },
+    ));
+    let mut prepared = [PreparedMidiLatencyGrabChannel::new(loop_, 0, 64)];
+    session
+        .adopt_midi_ringbuffers_with_latency(
+            &[LatencyAwareMidiRingbufferAdoption {
+                request: AudioRingbufferAdoption {
+                    loop_idx: loop_,
+                    reverse_start_cycle: None,
+                    cycles_length: Some(1),
+                    go_to_cycle: Some(0),
+                    go_to_mode: playback_mode(role),
+                },
+                latency_policy: GrabLatencyPolicy::Automatic,
+            }],
+            &mut prepared,
+        )
+        .unwrap();
+    let selection = session
+        .loop_(loop_)
+        .unwrap()
+        .midi_channel(0)
+        .unwrap()
+        .grab_latency_selection();
+    session
+        .port_mut(output)
+        .unwrap()
+        .as_dummy_midi_mut()
+        .unwrap()
+        .request_data(8)
+        .unwrap();
+    session.process(8);
+    let pair = session
+        .port_mut(output)
+        .unwrap()
+        .as_dummy_midi_mut()
+        .unwrap()
+        .take_written_requested_msgs()
+        .iter()
+        .filter(|event| event.data().get(1) == Some(&68))
+        .map(|event| (event.time, event.data()[0] & 0xf0))
+        .collect::<Vec<_>>();
+    (pair, selection)
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn stable_midi_latency_grab_preserves_equal_frame_order_and_alignment() {
+    for role in [ChannelMode::Direct, ChannelMode::Dry] {
+        let (pair, selection) = midi_latency_grab_fixture(role);
+        assert!(matches!(selection, RetainedLatencySelection::Stable(_)));
+        assert_eq!(pair, vec![(2, 0x90), (2, 0x80)]);
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn insufficient_latency_grab_margin_fails_before_target_mutation() {
+    let mut session = Session::default();
+    let input = session.add_port(Port::Dummy(DummyAudioPort::new(
+        PortId(32),
+        "short-grab-input",
+        PortDirection::Input,
+        4,
+    )));
+    session
+        .port_mut(input)
+        .unwrap()
+        .audio_mut()
+        .unwrap()
+        .set_ringbuffer_n_samples(12);
+    let loop_ = session.create_loop();
+    let channel = session
+        .add_audio_channel_with_bounded_capacity(loop_, 4, 16, ChannelMode::Direct)
+        .unwrap();
+    session.connect_channel_input(channel, input).unwrap();
+    session.apply_graph_changes().unwrap();
+    session
+        .port_mut(input)
+        .unwrap()
+        .audio()
+        .unwrap()
+        .publish_capture_latency(RuntimeLatencyObservation::exact(7, 48_000, 1).unwrap());
+    session
+        .port_mut(input)
+        .unwrap()
+        .as_dummy_mut()
+        .unwrap()
+        .queue_data(&[0.0; 12]);
+    session.process(12);
+    let target = session.loop_mut(loop_).unwrap();
+    target.set_length(1);
+    target.audio_channel_mut(0).unwrap().load_data(&[9.0]);
+    target.set_sync_source(Some(shoop_engine::basic_loop::SyncSourceState {
+        mode: LoopMode::Playing,
+        triggering_now: false,
+        next_trigger_eta: Some(8),
+        position: 0,
+        length: 8,
+    }));
+
+    let result =
+        session.adopt_audio_ringbuffers_with_latency(&[LatencyAwareAudioRingbufferAdoption {
+            request: AudioRingbufferAdoption {
+                loop_idx: loop_,
+                reverse_start_cycle: None,
+                cycles_length: Some(1),
+                go_to_cycle: None,
+                go_to_mode: LoopMode::Playing,
+            },
+            latency_policy: GrabLatencyPolicy::Automatic,
+        }]);
+    assert_eq!(result, Err(SessionError::LatencyGrabHistoryUnavailable));
+    assert_eq!(session.loop_(loop_).unwrap().length(), 1);
+    assert_eq!(
+        session
+            .loop_(loop_)
+            .unwrap()
+            .audio_channel(0)
+            .unwrap()
+            .data(),
+        vec![9.0]
+    );
 }
 
 #[shoop_wasm_test_support::shoop_test]

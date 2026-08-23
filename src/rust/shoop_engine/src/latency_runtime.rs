@@ -90,6 +90,21 @@ impl Default for RuntimeLatencyObservation {
     }
 }
 
+/// Result of resolving the latency revisions that overlap retained media.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RetainedLatencySelection {
+    /// The bounded history does not cover the entire requested media interval.
+    Unavailable,
+    /// Every retained frame was captured under one coherent observation.
+    Stable(RuntimeLatencyObservation),
+    /// Several observations overlap; callers use the newest deterministically and
+    /// retain the revision count as visible variable-history provenance.
+    Variable {
+        newest: RuntimeLatencyObservation,
+        revisions: u32,
+    },
+}
+
 /// Seqlock publication for a complete runtime latency observation.
 ///
 /// There is one writer per provider/control surface. Callback readers retry if they overlap the

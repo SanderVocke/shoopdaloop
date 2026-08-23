@@ -492,12 +492,12 @@ For a source event intended for logical frame `E`, physically performed at `E + 
 
 For retrospective ring data with known source and latency revision history:
 
-- [ ] A stable-history grab selects the exact raw window and emits its event at logical `E` under the latched recipe.
-- [ ] Component disable/manual/trim variants alter the grabbed take by the exact expected frame delta.
-- [ ] A grab whose selected window crosses a latency revision is marked variable and follows the documented revision/region selection rule.
-- [ ] Grab windows crossing ring wrap, callback boundaries, and loop boundaries retain event identity and MIDI order.
-- [ ] Insufficient retained history fails without partially mutating the target.
-- [ ] Grabbed direct/dry/wet audio and supported MIDI paths are covered.
+- [x] A stable-history grab selects the exact raw window and emits its event at logical `E` under the latched recipe.
+- [x] Component disable/manual/trim variants alter the grabbed take by the exact expected frame delta.
+- [x] A grab whose selected window crosses a latency revision is marked variable and follows the documented revision/region selection rule.
+- [x] Grab windows crossing ring wrap, callback boundaries, and loop boundaries retain event identity and MIDI order.
+- [x] Insufficient retained history fails without partially mutating the target.
+- [x] Grabbed direct/dry/wet audio and supported MIDI paths are covered.
 
 #### Planned preplay
 
@@ -669,8 +669,8 @@ Verification:
 
 Dependencies: Stage 3; Stage 4 for wet replacement.
 
-- [ ] Add bounded latency observation history aligned with input ringbuffer frame history.
-- [ ] Latch stable grab observations and mark multi-revision grabs variable.
+- [x] Add bounded latency observation history aligned with input ringbuffer frame history.
+- [x] Latch stable grab observations and mark multi-revision grabs variable.
 - [ ] Add bounded alignment-region metadata or a non-realtime consolidation prerequisite for incompatible replacement observations.
 - [ ] Stage replacement raw material and margins before committing logical writes.
 - [ ] Preserve undo/content snapshot generation behavior.
@@ -680,7 +680,7 @@ Dependencies: Stage 3; Stage 4 for wet replacement.
 Verification:
 
 - [ ] Every grab row in the automated action matrix passes for stable history, revision-spanning history, ring/callback/loop wrap, component policy variants, and supported audio/MIDI channel roles.
-- [ ] Stable-history grab aligns exactly.
+- [x] Stable-history grab aligns exactly.
 - [ ] Variable-history grab reports and persists a warning.
 - [ ] Replacement with the same and different observations has deterministic playback and undo behavior.
 - [ ] Failed consolidation/replacement leaves prior content and provenance intact.

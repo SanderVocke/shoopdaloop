@@ -38,9 +38,10 @@ use crate::graph_build::{
     ChannelDesc, GraphDesc, LoopDesc, LoopIdx, NodeMap, PortDesc, PortIdx, ProcessorDesc,
 };
 use crate::internal_audio_port::InternalAudioPort;
+use crate::latency_runtime::RetainedLatencySelection;
 use crate::loop_mode::LoopMode;
-use crate::midi_state::MAX_DIFF_MESSAGES;
-use crate::midi_storage::MidiStorageElem;
+use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
+use crate::midi_storage::{MidiStorage, MidiStorageElem};
 use crate::oxisynth::OxiSynthProcessor;
 use crate::profiling::{Profiler, ProfilingReport, ProfilingReportItem, Stage};
 use crate::state_mirror::{
@@ -81,6 +82,44 @@ pub struct AudioRingbufferAdoption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrabLatencyPolicy {
+    Automatic,
+    Disabled,
+    Manual(i32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LatencyAwareAudioRingbufferAdoption {
+    pub request: AudioRingbufferAdoption,
+    pub latency_policy: GrabLatencyPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LatencyAwareMidiRingbufferAdoption {
+    pub request: AudioRingbufferAdoption,
+    pub latency_policy: GrabLatencyPolicy,
+}
+
+#[derive(Debug)]
+pub struct PreparedMidiLatencyGrabChannel {
+    pub loop_idx: usize,
+    pub channel_idx: usize,
+    pub data: MidiStorage,
+    pub start_state: MidiStateTracker,
+}
+
+impl PreparedMidiLatencyGrabChannel {
+    pub fn new(loop_idx: usize, channel_idx: usize, capacity_elems: usize) -> Self {
+        Self {
+            loop_idx,
+            channel_idx,
+            data: MidiStorage::with_capacity_elems(capacity_elems),
+            start_state: MidiStateTracker::new(TrackWhat::ALL),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AudioRingbufferAdoptionChannelShape {
     pub loop_idx: usize,
     pub channel_idx: usize,
@@ -107,6 +146,30 @@ pub struct PreparedAudioRingbufferAdoptionChannel {
     pub data: PreparedAudioChannelData,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct LatencyGrabDecision {
+    loop_idx: usize,
+    channel_idx: usize,
+    source_port: usize,
+    raw_start: usize,
+    raw_end: usize,
+    raw_length: usize,
+    media_layout_offset: i32,
+    capture_alignment_frames: i32,
+    selection: RetainedLatencySelection,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MidiLatencyGrabDecision {
+    prepared_index: usize,
+    loop_idx: usize,
+    channel_idx: usize,
+    raw_length: u32,
+    media_layout_offset: i32,
+    capture_alignment_frames: i32,
+    selection: RetainedLatencySelection,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SessionError {
     #[error("graph could not be scheduled: {0}")]
@@ -123,6 +186,12 @@ pub enum SessionError {
     NoSuchChannel(usize),
     #[error("audio ringbuffer adoption exceeds its bounded request or destination capacity")]
     AudioRingbufferAdoptionCapacity,
+    #[error("latency-aware grab history does not cover the complete requested window and margin")]
+    LatencyGrabHistoryUnavailable,
+    #[error("latency-aware grab cannot resolve an automatic observation")]
+    LatencyGrabUnresolved,
+    #[error("latency-aware grab alignment exceeds the supported bound")]
+    LatencyGrabAlignment,
     #[error("the composite timeline references stale or missing primitive slot {0}")]
     StaleCompositeTarget(u32),
     #[error("the composite/session propagation topology is invalid: {0}")]
@@ -1925,6 +1994,324 @@ impl Session {
                 }
             }
         }
+    }
+
+    /// Stages and commits MIDI retrospective adoption without allocating or partially
+    /// mutating loop content when a history, margin, or capacity check fails.
+    pub fn adopt_midi_ringbuffers_with_latency(
+        &mut self,
+        requests: &[LatencyAwareMidiRingbufferAdoption],
+        prepared: &mut [PreparedMidiLatencyGrabChannel],
+    ) -> Result<(), SessionError> {
+        if requests.len() > MAX_AUDIO_RINGBUFFER_ADOPTIONS {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        self.refresh_sync_snapshots();
+        let expected_channels = requests
+            .iter()
+            .map(|request| {
+                self.channels
+                    .iter()
+                    .filter(|mapping| {
+                        mapping.loop_idx == request.request.loop_idx
+                            && mapping.kind == ChannelKind::Midi
+                    })
+                    .count()
+            })
+            .sum::<usize>();
+        if prepared.len() != expected_channels
+            || expected_channels > MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS
+        {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+
+        let mut decisions = [None; MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS];
+        let mut n_decisions = 0;
+        let mut logical_lengths = [0_u32; MAX_AUDIO_RINGBUFFER_ADOPTIONS];
+        for (request_index, latency_request) in requests.iter().enumerate() {
+            let request = &latency_request.request;
+            if request.loop_idx >= self.loops.len() {
+                return Err(SessionError::NoSuchLoop(request.loop_idx));
+            }
+            if requests[..request_index]
+                .iter()
+                .any(|previous| previous.request.loop_idx == request.loop_idx)
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            for mapping in self.channels.iter().filter(|mapping| {
+                mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Midi
+            }) {
+                let prepared_index = prepared
+                    .iter()
+                    .position(|slot| {
+                        slot.loop_idx == request.loop_idx && slot.channel_idx == mapping.channel_idx
+                    })
+                    .ok_or(SessionError::AudioRingbufferAdoptionCapacity)?;
+                let source_port = mapping
+                    .input_port
+                    .ok_or(SessionError::NoSuchPort(usize::MAX))?;
+                let source = self
+                    .ports
+                    .get(source_port)
+                    .and_then(Port::midi)
+                    .ok_or(SessionError::NoSuchPort(source_port))?;
+                let data_len = source.ringbuffer_retained_frames() as usize;
+                let (wanted, start, end) = adoption_window(request, cycle_len, sync_pos, data_len);
+                if wanted == 0 || end.saturating_sub(start) != wanted {
+                    return Err(SessionError::LatencyGrabHistoryUnavailable);
+                }
+                logical_lengths[request_index] = wanted.min(u32::MAX as usize) as u32;
+                let selection = source.ringbuffer_latency_selection(start as u32, end as u32);
+                let newest = match selection {
+                    RetainedLatencySelection::Stable(observation) => observation,
+                    RetainedLatencySelection::Variable { newest, .. } => newest,
+                    RetainedLatencySelection::Unavailable => {
+                        return Err(SessionError::LatencyGrabHistoryUnavailable)
+                    }
+                };
+                let observed = newest.range.map(|range| range.max());
+                let selected = match latency_request.latency_policy {
+                    GrabLatencyPolicy::Automatic => {
+                        i32::try_from(observed.ok_or(SessionError::LatencyGrabUnresolved)?)
+                            .map_err(|_| SessionError::LatencyGrabAlignment)?
+                    }
+                    GrabLatencyPolicy::Disabled => 0,
+                    GrabLatencyPolicy::Manual(frames) => frames,
+                };
+                if selected.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
+                    return Err(SessionError::LatencyGrabAlignment);
+                }
+                let observed = observed.unwrap_or(0);
+                let margin = observed.max(selected.unsigned_abs()) as usize;
+                let raw_start = start
+                    .checked_sub(margin)
+                    .ok_or(SessionError::LatencyGrabHistoryUnavailable)?;
+                let raw_length = wanted
+                    .checked_add(margin)
+                    .and_then(|length| u32::try_from(length).ok())
+                    .ok_or(SessionError::AudioRingbufferAdoptionCapacity)?;
+                let media_layout_offset = i32::try_from(margin.saturating_sub(observed as usize))
+                    .map_err(|_| SessionError::LatencyGrabAlignment)?;
+                let slot = &mut prepared[prepared_index];
+                slot.data.clear();
+                slot.start_state.clear();
+                if !source.snapshot_ringbuffer_range_into(
+                    &mut slot.data,
+                    raw_start as u32,
+                    end as u32,
+                    &mut slot.start_state,
+                ) {
+                    return Err(SessionError::AudioRingbufferAdoptionCapacity);
+                }
+                let channel = self.loops[request.loop_idx]
+                    .midi_channel(mapping.channel_idx)
+                    .ok_or(SessionError::NoSuchChannel(mapping.channel_idx))?;
+                if !channel.can_commit_grab(slot.data.n_events()) {
+                    return Err(SessionError::AudioRingbufferAdoptionCapacity);
+                }
+                decisions[n_decisions] = Some(MidiLatencyGrabDecision {
+                    prepared_index,
+                    loop_idx: request.loop_idx,
+                    channel_idx: mapping.channel_idx,
+                    raw_length,
+                    media_layout_offset,
+                    capture_alignment_frames: selected,
+                    selection,
+                });
+                n_decisions += 1;
+            }
+        }
+
+        for decision in decisions[..n_decisions].iter().flatten().copied() {
+            let slot = &prepared[decision.prepared_index];
+            self.loops[decision.loop_idx]
+                .midi_channel_mut(decision.channel_idx)
+                .expect("MIDI latency grab target was validated")
+                .commit_latency_grab(
+                    &slot.data,
+                    decision.raw_length,
+                    &slot.start_state,
+                    decision.media_layout_offset,
+                    decision.capture_alignment_frames,
+                    decision.selection,
+                )
+                .expect("MIDI latency grab mapping was validated");
+        }
+        for (request_index, latency_request) in requests.iter().enumerate() {
+            let request = &latency_request.request;
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+            let loop_ = &mut self.loops[request.loop_idx];
+            loop_.set_length(logical_lengths[request_index]);
+            match request.go_to_mode {
+                LoopMode::Unknown => loop_.set_mode(LoopMode::Stopped),
+                mode => {
+                    loop_.set_mode(mode);
+                    if cycle_len > 0 && mode != LoopMode::Recording {
+                        loop_.set_position(
+                            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos),
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Latency-aware retrospective adoption. Validation, history resolution, margin
+    /// checks, and destination-capacity checks all finish before any channel mutates.
+    pub fn adopt_audio_ringbuffers_with_latency(
+        &mut self,
+        requests: &[LatencyAwareAudioRingbufferAdoption],
+    ) -> Result<(), SessionError> {
+        if requests.len() > MAX_AUDIO_RINGBUFFER_ADOPTIONS {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        for (index, request) in requests.iter().enumerate() {
+            if request.request.loop_idx >= self.loops.len() {
+                return Err(SessionError::NoSuchLoop(request.request.loop_idx));
+            }
+            if requests[..index]
+                .iter()
+                .any(|previous| previous.request.loop_idx == request.request.loop_idx)
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+        }
+
+        self.refresh_sync_snapshots();
+        let mut decisions = [None; MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS];
+        let mut n_decisions = 0;
+        let mut logical_lengths = [0_u32; MAX_AUDIO_RINGBUFFER_ADOPTIONS];
+        for (request_index, latency_request) in requests.iter().enumerate() {
+            let request = &latency_request.request;
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            for mapping in self.channels.iter().filter(|mapping| {
+                mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+            }) {
+                if n_decisions == decisions.len() {
+                    return Err(SessionError::AudioRingbufferAdoptionCapacity);
+                }
+                let source_port = mapping
+                    .input_port
+                    .ok_or(SessionError::NoSuchPort(usize::MAX))?;
+                let source = self
+                    .ports
+                    .get(source_port)
+                    .and_then(Port::audio)
+                    .ok_or(SessionError::NoSuchPort(source_port))?;
+                let data_len = source.ringbuffer_n_samples();
+                let (wanted, start, end) = adoption_window(request, cycle_len, sync_pos, data_len);
+                if wanted == 0 || end.saturating_sub(start) != wanted {
+                    return Err(SessionError::LatencyGrabHistoryUnavailable);
+                }
+                logical_lengths[request_index] = wanted.min(u32::MAX as usize) as u32;
+                let selection = source.ringbuffer_latency_selection(start, end);
+                let newest = match selection {
+                    RetainedLatencySelection::Stable(observation) => observation,
+                    RetainedLatencySelection::Variable { newest, .. } => newest,
+                    RetainedLatencySelection::Unavailable => {
+                        return Err(SessionError::LatencyGrabHistoryUnavailable)
+                    }
+                };
+                let observed = newest.range.map(|range| range.max());
+                let selected = match latency_request.latency_policy {
+                    GrabLatencyPolicy::Automatic => {
+                        i32::try_from(observed.ok_or(SessionError::LatencyGrabUnresolved)?)
+                            .map_err(|_| SessionError::LatencyGrabAlignment)?
+                    }
+                    GrabLatencyPolicy::Disabled => 0,
+                    GrabLatencyPolicy::Manual(frames) => frames,
+                };
+                if selected.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
+                    return Err(SessionError::LatencyGrabAlignment);
+                }
+                let observed = observed.unwrap_or(0);
+                let margin = observed.max(selected.unsigned_abs()) as usize;
+                let raw_start = start
+                    .checked_sub(margin)
+                    .ok_or(SessionError::LatencyGrabHistoryUnavailable)?;
+                let raw_length = wanted
+                    .checked_add(margin)
+                    .ok_or(SessionError::AudioRingbufferAdoptionCapacity)?;
+                let media_layout_offset = i32::try_from(margin.saturating_sub(observed as usize))
+                    .map_err(|_| SessionError::LatencyGrabAlignment)?;
+                let channel = self.loops[request.loop_idx]
+                    .audio_channel(mapping.channel_idx)
+                    .ok_or(SessionError::NoSuchChannel(mapping.channel_idx))?;
+                if !channel.can_load_without_allocation(raw_length) {
+                    return Err(SessionError::AudioRingbufferAdoptionCapacity);
+                }
+                decisions[n_decisions] = Some(LatencyGrabDecision {
+                    loop_idx: request.loop_idx,
+                    channel_idx: mapping.channel_idx,
+                    source_port,
+                    raw_start,
+                    raw_end: end,
+                    raw_length,
+                    media_layout_offset,
+                    capture_alignment_frames: selected,
+                    selection,
+                });
+                n_decisions += 1;
+            }
+        }
+
+        let ports = &self.ports;
+        let loops = &mut self.loops;
+        for decision in decisions[..n_decisions].iter().flatten().copied() {
+            let source = ports[decision.source_port]
+                .audio()
+                .expect("latency grab source was validated");
+            let channel = loops[decision.loop_idx]
+                .audio_channel_mut(decision.channel_idx)
+                .expect("latency grab destination was validated");
+            channel.begin_bounded_load(decision.raw_length);
+            let mut destination_offset = 0;
+            source.visit_ringbuffer_range(decision.raw_start, decision.raw_end, |samples| {
+                channel.write_bounded_load(destination_offset, samples);
+                destination_offset += samples.len();
+            });
+            channel.finish_bounded_load();
+            channel
+                .apply_grab_latency_mapping(
+                    decision.media_layout_offset,
+                    decision.capture_alignment_frames,
+                    decision.selection,
+                )
+                .expect("latency grab mapping was validated");
+        }
+
+        for (request_index, latency_request) in requests.iter().enumerate() {
+            let request = &latency_request.request;
+            let sync = loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+            let loop_ = &mut loops[request.loop_idx];
+            let logical_length = logical_lengths[request_index];
+            loop_.set_length(logical_length);
+            match request.go_to_mode {
+                LoopMode::Unknown => loop_.set_mode(LoopMode::Stopped),
+                mode => {
+                    loop_.set_mode(mode);
+                    if cycle_len > 0 && mode != LoopMode::Recording {
+                        loop_.set_position(
+                            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos),
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Retroactively fills loops' audio channels from their input ports' rolling

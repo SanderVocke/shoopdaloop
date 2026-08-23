@@ -461,6 +461,8 @@ pub struct AudioChannelStateMirror {
     dispatch_position: AtomicI32,
     n_preplay_samples: AtomicU32,
     latency_retention_incomplete: AtomicBool,
+    latency_history_variable: AtomicBool,
+    latency_history_revisions: AtomicU32,
     data_sequence: AtomicU64,
     current_latency_recipe: AtomicLatencyRecipePublication,
     latched_latency_recipe: AtomicLatencyRecipePublication,
@@ -480,6 +482,8 @@ impl Default for AudioChannelStateMirror {
             dispatch_position: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
             latency_retention_incomplete: AtomicBool::new(false),
+            latency_history_variable: AtomicBool::new(false),
+            latency_history_revisions: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
             current_latency_recipe: AtomicLatencyRecipePublication::default(),
             latched_latency_recipe: AtomicLatencyRecipePublication::default(),
@@ -548,6 +552,13 @@ impl AudioChannelStateMirror {
             .store(incomplete, Ordering::Relaxed);
     }
 
+    pub fn publish_latency_history(&self, variable: bool, revisions: u32) {
+        self.latency_history_variable
+            .store(variable, Ordering::Relaxed);
+        self.latency_history_revisions
+            .store(revisions, Ordering::Relaxed);
+    }
+
     pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
         self.current_latency_recipe.publish_pending(recipe);
     }
@@ -574,6 +585,8 @@ impl AudioChannelStateMirror {
             dispatch_position: (dispatch != NO_SAMPLE).then_some(dispatch),
             n_preplay_samples: self.n_preplay_samples.load(Ordering::Relaxed),
             latency_retention_incomplete: self.latency_retention_incomplete.load(Ordering::Relaxed),
+            latency_history_variable: self.latency_history_variable.load(Ordering::Relaxed),
+            latency_history_revisions: self.latency_history_revisions.load(Ordering::Relaxed),
             data_dirty: self.data_sequence.load(Ordering::Relaxed) != acknowledged_data_sequence,
             current_latency_recipe: self.current_latency_recipe.read(),
             latched_latency_recipe: self.latched_latency_recipe.read(),
@@ -598,6 +611,8 @@ pub struct MidiChannelStateMirror {
     dispatch_position: AtomicI32,
     n_preplay_samples: AtomicU32,
     latency_retention_incomplete: AtomicBool,
+    latency_history_variable: AtomicBool,
+    latency_history_revisions: AtomicU32,
     data_sequence: AtomicU64,
     current_latency_recipe: AtomicLatencyRecipePublication,
     latched_latency_recipe: AtomicLatencyRecipePublication,
@@ -617,6 +632,8 @@ impl Default for MidiChannelStateMirror {
             dispatch_position: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
             latency_retention_incomplete: AtomicBool::new(false),
+            latency_history_variable: AtomicBool::new(false),
+            latency_history_revisions: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
             current_latency_recipe: AtomicLatencyRecipePublication::default(),
             latched_latency_recipe: AtomicLatencyRecipePublication::default(),
@@ -681,6 +698,13 @@ impl MidiChannelStateMirror {
             .store(incomplete, Ordering::Relaxed);
     }
 
+    pub fn publish_latency_history(&self, variable: bool, revisions: u32) {
+        self.latency_history_variable
+            .store(variable, Ordering::Relaxed);
+        self.latency_history_revisions
+            .store(revisions, Ordering::Relaxed);
+    }
+
     pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
         self.current_latency_recipe.publish_pending(recipe);
     }
@@ -707,6 +731,8 @@ impl MidiChannelStateMirror {
             dispatch_position: (dispatch != NO_SAMPLE).then_some(dispatch),
             n_preplay_samples: self.n_preplay_samples.load(Ordering::Relaxed),
             latency_retention_incomplete: self.latency_retention_incomplete.load(Ordering::Relaxed),
+            latency_history_variable: self.latency_history_variable.load(Ordering::Relaxed),
+            latency_history_revisions: self.latency_history_revisions.load(Ordering::Relaxed),
             data_dirty: self.data_sequence.load(Ordering::Relaxed) != acknowledged_data_sequence,
             current_latency_recipe: self.current_latency_recipe.read(),
             latched_latency_recipe: self.latched_latency_recipe.read(),

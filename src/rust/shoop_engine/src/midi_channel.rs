@@ -18,7 +18,8 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::content_snapshot::MidiProcessSnapshotWriter;
 use crate::latency_runtime::{
-    cyclic_render_dispatch_position, LatchedLatencyRecipe, RuntimeLatencyRecipe,
+    cyclic_render_dispatch_position, LatchedLatencyRecipe, RetainedLatencySelection,
+    RuntimeLatencyRecipe,
 };
 use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
@@ -175,6 +176,7 @@ pub struct MidiChannel {
     latency_retention_incomplete: bool,
     pending_latency_recipe: Option<RuntimeLatencyRecipe>,
     latched_latency_recipe: Option<LatchedLatencyRecipe>,
+    grab_latency_selection: RetainedLatencySelection,
 }
 
 impl MidiChannel {
@@ -239,6 +241,7 @@ impl MidiChannel {
             latency_retention_incomplete: false,
             pending_latency_recipe: None,
             latched_latency_recipe: None,
+            grab_latency_selection: RetainedLatencySelection::Unavailable,
         };
         channel.publish_state();
         channel
@@ -374,6 +377,49 @@ impl MidiChannel {
     }
     pub fn latency_retention_incomplete(&self) -> bool {
         self.latency_retention_incomplete
+    }
+    pub fn grab_latency_selection(&self) -> RetainedLatencySelection {
+        self.grab_latency_selection
+    }
+    pub(crate) fn can_commit_grab(&self, events: u32) -> bool {
+        events as usize <= self.storage.capacity_elems()
+    }
+    pub(crate) fn commit_latency_grab(
+        &mut self,
+        source: &MidiStorage,
+        raw_length: u32,
+        start_state: &MidiStateTracker,
+        media_layout_offset: i32,
+        capture_alignment_frames: i32,
+        selection: RetainedLatencySelection,
+    ) -> Result<(), LatencyDomainError> {
+        if media_layout_offset.unsigned_abs() > MAX_COMPENSATION_FRAMES
+            || !self.can_commit_grab(source.n_events())
+        {
+            return Err(LatencyDomainError::ValueExceedsMaximum(
+                media_layout_offset.unsigned_abs(),
+            ));
+        }
+        self.set_capture_alignment_frames(capture_alignment_frames)?;
+        source.copy_into(&mut self.storage);
+        self.data_length = raw_length;
+        self.start_offset = media_layout_offset;
+        self.playback_cursor = self.storage.create_cursor();
+        self.recording_start_state.copy_relevant_state(start_state);
+        self.recording_start_valid = true;
+        self.loaded_contents = true;
+        self.grab_latency_selection = selection;
+        let (variable, revisions) = match selection {
+            RetainedLatencySelection::Stable(_) => (false, 1),
+            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
+            RetainedLatencySelection::Unavailable => (false, 0),
+        };
+        self.state.publish_latency_history(variable, revisions);
+        self.publish_snapshot_contents(
+            crate::content_snapshot::ContentMutation::RingbufferAdoption,
+        );
+        self.data_changed();
+        Ok(())
     }
     pub fn compensated_take_ready(&self, logical_length: u32) -> bool {
         let Some(raw_start) = self.raw_position_for_logical(0) else {
