@@ -3283,6 +3283,9 @@ mod tests {
             .set_track_fx_control(created.track_id, BackendTrackFxControl::SetActive(true))
             .unwrap();
         backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
             .set_track_fx_control(created.track_id, BackendTrackFxControl::SetVisible(true))
             .unwrap();
         backend
@@ -3314,6 +3317,42 @@ mod tests {
         assert_eq!(editor.reverb_send, 0.25);
         assert_eq!(editor.chorus_send, 0.5);
         assert_eq!(editor.midi_cc_assignments.len(), 1);
+
+        backend
+            .runtime_mut()
+            .unwrap()
+            .driver
+            .dummy_enter_controlled_mode();
+        backend
+            .inject_midi_input(
+                created.track_id,
+                &[BackendMidiEvent {
+                    time: 0,
+                    data: vec![0xb3, 74, 127],
+                }],
+            )
+            .unwrap();
+        {
+            let runtime = backend.runtime_mut().unwrap();
+            runtime.driver.dummy_request_controlled_frames(128);
+            runtime.driver.dummy_run_requested_frames();
+        }
+        let snapshot = backend.poll().unwrap();
+        let Some(TrackProcessorEditorState::OxiSynth(editor)) = snapshot.tracks[&created.track_id]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.editor.as_ref())
+        else {
+            panic!("missing OxiSynth editor state after learned MIDI CC");
+        };
+        assert_eq!(editor.reverb_send, 1.0);
+        backend
+            .set_track_fx_control(
+                created.track_id,
+                BackendTrackFxControl::OxiSynth(OxiSynthControl::SetReverbSend(0.25)),
+            )
+            .unwrap();
+
         let state = backend
             .track_fx_state_string(created.track_id)
             .unwrap()

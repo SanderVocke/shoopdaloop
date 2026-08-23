@@ -3,13 +3,17 @@ use crate::{
     TrackProcessorDescriptor, TrackProcessorEditorDescriptor, TrackProcessorEditorState,
     TrackState, MAX_OXISYNTH_SEND, MIN_OXISYNTH_SEND,
 };
+use egui_material_icons::icons::ICON_INFO;
 
 const OXISYNTH_LOGO_BYTES: &[u8] = include_bytes!("../../../../third_party/oxisynth/logo.png");
 const OXISYNTH_URL: &str = "https://github.com/PolyMeilex/oxisynth";
+const TIMGM6MB_URL: &str = "https://timbrechbill.com/saxguru/Timidity.php";
+const POWERED_BY_TEXT: &str = "Powered by OxiSynth and TimGM6mb.sf2";
 
 pub(crate) struct OxiSynthEditor {
     filter: String,
     midi_learn_open: bool,
+    info_open: bool,
     selected_midi_parameter: OxiSynthParameter,
     logo: Option<egui::TextureHandle>,
     #[cfg(test)]
@@ -29,9 +33,13 @@ pub(crate) struct OxiSynthEditor {
     #[cfg(test)]
     midi_assign_rect: Option<egui::Rect>,
     #[cfg(test)]
-    attribution_rect: Option<egui::Rect>,
+    info_button_rect: Option<egui::Rect>,
     #[cfg(test)]
-    opened_url: Option<String>,
+    info_logo_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    oxisynth_url_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    timgm6mb_url_rect: Option<egui::Rect>,
 }
 
 impl std::fmt::Debug for OxiSynthEditor {
@@ -40,6 +48,7 @@ impl std::fmt::Debug for OxiSynthEditor {
             .debug_struct("OxiSynthEditor")
             .field("filter", &self.filter)
             .field("midi_learn_open", &self.midi_learn_open)
+            .field("info_open", &self.info_open)
             .field("selected_midi_parameter", &self.selected_midi_parameter)
             .finish_non_exhaustive()
     }
@@ -50,6 +59,7 @@ impl Default for OxiSynthEditor {
         Self {
             filter: String::new(),
             midi_learn_open: false,
+            info_open: false,
             selected_midi_parameter: OxiSynthParameter::ReverbSend,
             logo: None,
             #[cfg(test)]
@@ -69,9 +79,13 @@ impl Default for OxiSynthEditor {
             #[cfg(test)]
             midi_assign_rect: None,
             #[cfg(test)]
-            attribution_rect: None,
+            info_button_rect: None,
             #[cfg(test)]
-            opened_url: None,
+            info_logo_rect: None,
+            #[cfg(test)]
+            oxisynth_url_rect: None,
+            #[cfg(test)]
+            timgm6mb_url_rect: None,
         }
     }
 }
@@ -109,30 +123,16 @@ impl OxiSynthEditor {
             .resizable(true)
             .show(context, |ui| {
                 ui.horizontal(|ui| {
-                    ui.weak("Powered by");
-                    if let Some(logo) = &self.logo {
-                        let size = logo.size_vec2();
-                        let width = 84.0;
-                        let response = ui
-                            .add(
-                                egui::Image::new((
-                                    logo.id(),
-                                    egui::vec2(width, width * size.y / size.x),
-                                ))
-                                .sense(egui::Sense::click()),
-                            )
-                            .on_hover_text(OXISYNTH_URL);
-                        #[cfg(test)]
-                        {
-                            self.attribution_rect = Some(response.rect);
-                        }
-                        if response.clicked() {
-                            #[cfg(test)]
-                            {
-                                self.opened_url = Some(OXISYNTH_URL.to_owned());
-                            }
-                            context.open_url(egui::OpenUrl::new_tab(OXISYNTH_URL));
-                        }
+                    ui.weak(POWERED_BY_TEXT);
+                    let info = ui
+                        .small_button(ICON_INFO.rich_text().size(14.0))
+                        .on_hover_text("About OxiSynth and TimGM6mb.sf2");
+                    #[cfg(test)]
+                    {
+                        self.info_button_rect = Some(info.rect);
+                    }
+                    if info.clicked() {
+                        self.info_open = true;
                     }
                 });
                 ui.separator();
@@ -227,6 +227,50 @@ impl OxiSynthEditor {
                     )));
                 }
             });
+
+        if self.info_open {
+            let mut info_open = self.info_open;
+            egui::Window::new("Built-in Synth information")
+                .id(egui::Id::new(("oxisynth_info", state.id)))
+                .open(&mut info_open)
+                .collapsible(false)
+                .resizable(false)
+                .show(context, |ui| {
+                    if let Some(logo) = &self.logo {
+                        let size = logo.size_vec2();
+                        let width = 320.0;
+                        let _response = ui.add(egui::Image::new((
+                            logo.id(),
+                            egui::vec2(width, width * size.y / size.x),
+                        )));
+                        #[cfg(test)]
+                        {
+                            self.info_logo_rect = Some(_response.rect);
+                        }
+                    }
+                    ui.label("OxiSynth GitHub page (copy and paste into your browser):");
+                    let _oxisynth_url = ui.add(
+                        egui::Label::new(egui::RichText::new(OXISYNTH_URL).monospace())
+                            .selectable(true),
+                    );
+                    #[cfg(test)]
+                    {
+                        self.oxisynth_url_rect = Some(_oxisynth_url.rect);
+                    }
+                    ui.separator();
+                    ui.label("TimGM6mb.sf2 is a sound font by Tim Brechbill.");
+                    ui.label("SoundFont information (copy and paste into your browser):");
+                    let _timgm6mb_url = ui.add(
+                        egui::Label::new(egui::RichText::new(TIMGM6MB_URL).monospace())
+                            .selectable(true),
+                    );
+                    #[cfg(test)]
+                    {
+                        self.timgm6mb_url_rect = Some(_timgm6mb_url.rect);
+                    }
+                });
+            self.info_open = info_open;
+        }
 
         if self.midi_learn_open {
             let latest_cc = state
@@ -473,7 +517,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn sends_midi_learn_and_attribution_are_typed() {
+    fn sends_midi_learn_and_synth_information_are_typed() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let (state, processor) = fixture();
@@ -509,9 +553,19 @@ mod tests {
             ))]
         );
 
-        let attribution = editor.attribution_rect.unwrap().center();
-        assert!(click(&context, &mut editor, &state, &processor, attribution).is_empty());
-        assert_eq!(editor.opened_url.as_deref(), Some(OXISYNTH_URL));
+        assert_eq!(POWERED_BY_TEXT, "Powered by OxiSynth and TimGM6mb.sf2");
+        let info = editor.info_button_rect.unwrap().center();
+        assert!(click(&context, &mut editor, &state, &processor, info).is_empty());
+        frame(&context, &mut editor, &state, &processor, Vec::new());
+        assert!(editor.info_open);
+        assert!(editor.info_logo_rect.unwrap().width() > 84.0);
+        assert!(editor.oxisynth_url_rect.is_some());
+        assert!(editor.timgm6mb_url_rect.is_some());
+        assert_eq!(OXISYNTH_URL, "https://github.com/PolyMeilex/oxisynth");
+        assert_eq!(
+            TIMGM6MB_URL,
+            "https://timbrechbill.com/saxguru/Timidity.php"
+        );
         let logo = editor.logo.as_ref().unwrap();
         assert_eq!(logo.size()[0] / logo.size()[1], 4);
     }

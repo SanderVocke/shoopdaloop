@@ -6253,8 +6253,8 @@ impl FXChain {
         let FXChainBackendKind::OxiSynth(control) = &self.backend else {
             return Err(anyhow!("FX chain is not OxiSynth"));
         };
-        let mut updated = control.lock().unwrap().clone();
-        updated.set_send(parameter, value)?;
+        let mut candidate = control.lock().unwrap().clone();
+        candidate.set_send(parameter, value)?;
         let title = self.title.clone();
         self.shared.send_control(move |session| {
             if let Some(processor) = session.oxisynth_processor_mut(&title) {
@@ -6263,7 +6263,7 @@ impl FXChain {
                 }
             }
         })?;
-        *control.lock().unwrap() = updated;
+        control.lock().unwrap().set_send(parameter, value)?;
         Ok(())
     }
 
@@ -6274,8 +6274,8 @@ impl FXChain {
         let FXChainBackendKind::OxiSynth(control) = &self.backend else {
             return Err(anyhow!("FX chain is not OxiSynth"));
         };
-        let mut updated = control.lock().unwrap().clone();
-        if !updated.assign_midi_cc(assignment) {
+        let mut candidate = control.lock().unwrap().clone();
+        if !candidate.assign_midi_cc(assignment) {
             return Err(anyhow!("invalid OxiSynth MIDI CC assignment"));
         }
         let title = self.title.clone();
@@ -6284,7 +6284,7 @@ impl FXChain {
                 processor.assign_midi_cc(assignment);
             }
         })?;
-        *control.lock().unwrap() = updated;
+        control.lock().unwrap().assign_midi_cc(assignment);
         Ok(())
     }
 

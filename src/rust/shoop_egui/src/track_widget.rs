@@ -750,6 +750,7 @@ impl TrackWidget {
                         }
                     }
                 });
+                let track_context_button_size = menu.response.rect.size();
                 #[cfg(test)]
                 {
                     self.test_options_rect = Some(menu.response.rect);
@@ -779,10 +780,13 @@ impl TrackWidget {
                     let controllable =
                         features.external_ui || features.embedded_ui || features.recovery;
                     let fx_button = ui
-                        .add_enabled(
-                            controllable,
-                            egui::Button::new(egui::RichText::new("FX").color(color)),
-                        )
+                        .add_enabled_ui(controllable, |ui| {
+                            ui.add_sized(
+                                track_context_button_size,
+                                egui::Button::new(egui::RichText::new("FX").color(color)),
+                            )
+                        })
+                        .inner
                         .on_hover_text(format!(
                             "{}: {:?}{}",
                             fx.processor_type,
@@ -1090,6 +1094,10 @@ mod tests {
         };
         let mut widget = TrackWidget::default();
         let _ = processor_frame(&context, &mut widget, &state, &processor, Vec::new());
+        assert_eq!(
+            widget.test_fx_rect.unwrap().size(),
+            widget.test_options_rect.unwrap().size()
+        );
         let fx = widget.test_fx_rect.unwrap().center();
         let _ = processor_frame(
             &context,
