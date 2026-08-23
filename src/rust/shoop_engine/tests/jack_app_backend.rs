@@ -43,7 +43,18 @@ fn wait_until(mut done: impl FnMut() -> bool) -> bool {
 }
 
 /// A raw JACK client used as the other end of the connection under test.
+fn skip_optional_pipewire_jack() -> bool {
+    std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some()
+        && std::env::var("SHOOP_JACK_PROVIDER").as_deref() == Ok("pipewire")
+}
+
 fn peer_client(name: &str) -> Option<jack::Client> {
+    if skip_optional_pipewire_jack() {
+        eprintln!(
+            "skipping optional JACK test on PipeWire provider; dedicated real-JACK validation runs separately"
+        );
+        return None;
+    }
     match jack::Client::new(name, jack::ClientOptions::NO_START_SERVER) {
         Ok((client, _status)) => Some(client),
         Err(e) => {
@@ -55,6 +66,12 @@ fn peer_client(name: &str) -> Option<jack::Client> {
 
 /// Starts the application's JACK driver and an attached session.
 fn app_jack(client_name: &str) -> Option<(AudioDriver, BackendSession)> {
+    if skip_optional_pipewire_jack() {
+        eprintln!(
+            "skipping optional JACK test on PipeWire provider; dedicated real-JACK validation runs separately"
+        );
+        return None;
+    }
     let driver = AudioDriver::new(AudioDriverType::Jack, None).expect("create driver");
     let settings = AudioDriverSettings::Jack(JackAudioDriverSettings {
         client_name_hint: client_name.to_string(),
