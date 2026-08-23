@@ -215,6 +215,13 @@ struct BrowserEphemeralFile {
     bytes: Vec<u8>,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum StartupSessionAction {
+    LoadPath(String),
+    ConfirmUrl(String),
+    FetchUrl(String),
+}
+
 struct UnifiedApp {
     runtime: Runtime,
     widget: AppWidget,
@@ -226,7 +233,7 @@ struct UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     pending_tracing_action: Option<PendingTracingAction>,
     last_update: Instant,
-    startup_session: Option<String>,
+    startup_session: Option<(String, bool)>,
     session_url_input: String,
     session_url_error: Option<String>,
     session_url_prompt_open: bool,
@@ -325,7 +332,10 @@ impl UnifiedApp {
             #[cfg(not(target_arch = "wasm32"))]
             pending_tracing_action: None,
             last_update: Instant::now(),
-            startup_session: args.session.clone(),
+            startup_session: args
+                .session
+                .clone()
+                .map(|source| (source, args.force_url_session)),
             session_url_input: String::new(),
             session_url_error: None,
             session_url_prompt_open: false,
@@ -348,17 +358,30 @@ impl UnifiedApp {
     }
 }
 
-impl UnifiedApp {
-    fn process_session_source(&mut self, source: String) {
-        if is_http_url(&source) {
-            self.session_url_confirmation = Some(source);
-            return;
-        }
+fn startup_session_action(source: String, force_url_session: bool) -> StartupSessionAction {
+    if !is_http_url(&source) {
+        StartupSessionAction::LoadPath(source)
+    } else if force_url_session {
+        StartupSessionAction::FetchUrl(source)
+    } else {
+        StartupSessionAction::ConfirmUrl(source)
+    }
+}
 
-        #[cfg(not(target_arch = "wasm32"))]
-        load_session_path(source, self.pending_file_intent_tx.clone());
-        #[cfg(target_arch = "wasm32")]
-        tracing::warn!(source = %source, "frontend.session.filesystem_path_unavailable");
+impl UnifiedApp {
+    fn process_startup_session_source(&mut self, source: String, force_url_session: bool) {
+        match startup_session_action(source, force_url_session) {
+            StartupSessionAction::ConfirmUrl(source) => {
+                self.session_url_confirmation = Some(source);
+            }
+            StartupSessionAction::FetchUrl(source) => self.fetch_session_url(source),
+            StartupSessionAction::LoadPath(source) => {
+                #[cfg(not(target_arch = "wasm32"))]
+                load_session_path(source, self.pending_file_intent_tx.clone());
+                #[cfg(target_arch = "wasm32")]
+                tracing::warn!(source = %source, "frontend.session.filesystem_path_unavailable");
+            }
+        }
     }
 
     fn show_session_url_dialogs(&mut self, context: &egui::Context) {
@@ -818,8 +841,8 @@ impl UnifiedApp {
     }
 
     fn show(&mut self, ui: &mut egui::Ui) {
-        if let Some(source) = self.startup_session.take() {
-            self.process_session_source(source);
+        if let Some((source, force_url_session)) = self.startup_session.take() {
+            self.process_startup_session_source(source, force_url_session);
         }
         let _span = tracing::trace_span!("frontend.egui.update").entered();
         self.settings.poll();
@@ -4926,6 +4949,23 @@ mod tests {
         assert_eq!(
             session_source_name("https://example.com/sessions/demo.shoop?download=1#top"),
             "demo.shoop"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn forced_startup_url_skips_only_its_confirmation() {
+        let url = "https://example.com/session.shoop";
+        assert_eq!(
+            startup_session_action(url.to_owned(), false),
+            StartupSessionAction::ConfirmUrl(url.to_owned())
+        );
+        assert_eq!(
+            startup_session_action(url.to_owned(), true),
+            StartupSessionAction::FetchUrl(url.to_owned())
+        );
+        assert_eq!(
+            startup_session_action("session.shoop".to_owned(), true),
+            StartupSessionAction::LoadPath("session.shoop".to_owned())
         );
     }
 
