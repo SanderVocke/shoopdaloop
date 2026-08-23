@@ -1754,6 +1754,32 @@ mod tests {
             command(
                 &mut host,
                 9,
+                Command::InjectTrackMidiInput {
+                    track_id: 1,
+                    events: vec![shoop_audio_protocol::WireMidiEvent {
+                        frame: 0,
+                        data: vec![0xbf, 91, 127],
+                    }],
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(host.process(2, 2, 128));
+        let Event::Snapshot(snapshot) = command(&mut host, 10, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        let unmapped = snapshot.tracks[0]
+            .fx
+            .as_ref()
+            .and_then(|fx| fx.oxisynth.as_ref())
+            .unwrap();
+        assert_eq!(unmapped.reverb_send, 0.25);
+        assert!(unmapped.midi_cc_assignments.is_empty());
+        assert!(matches!(
+            command(
+                &mut host,
+                11,
                 Command::SetTrackFxControl {
                     track_id: 1,
                     control: WireTrackFxControl::OxiAssignMidiCc(WireOxiSynthMidiCcAssignment {
@@ -1769,7 +1795,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                10,
+                12,
                 Command::InjectTrackMidiInput {
                     track_id: 1,
                     events: vec![shoop_audio_protocol::WireMidiEvent {
@@ -1782,7 +1808,7 @@ mod tests {
             Event::Ack
         ));
         assert!(host.process(2, 2, 128));
-        let Event::Snapshot(snapshot) = command(&mut host, 11, Command::Poll).event else {
+        let Event::Snapshot(snapshot) = command(&mut host, 13, Command::Poll).event else {
             panic!("expected snapshot");
         };
         let editor = snapshot.tracks[0]
@@ -1802,7 +1828,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                12,
+                14,
                 Command::SetTrackFxControl {
                     track_id: 1,
                     control: WireTrackFxControl::OxiPanic,

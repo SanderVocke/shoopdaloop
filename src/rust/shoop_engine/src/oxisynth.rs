@@ -958,7 +958,7 @@ mod tests {
         assert!(control.assign_midi_cc(OxiSynthMidiCcAssignment {
             parameter: OxiSynthParameter::ChorusSend,
             channel: 2,
-            controller: 74,
+            controller: 93,
         }));
         let mut processor = control.prepare_processor(48_000.0, 128).unwrap();
 
@@ -978,9 +978,12 @@ mod tests {
             200.0
         );
         assert_eq!(processor.synth.cc(0, 91).unwrap(), 0);
+        let learned_chorus = MidiStorageElem::new(0, &[0xb2, 93, 64]).unwrap();
+        assert_no_alloc::assert_no_alloc(|| processor.process(128, &[learned_chorus]));
+        assert_eq!(processor.synth.cc(0, 93).unwrap(), 0);
         let editor = control.editor_state();
         assert_eq!(editor.reverb_send, 1.0);
-        assert_eq!(editor.chorus_send, 0.5);
+        assert_eq!(editor.chorus_send, 64.0 / 127.0);
         assert_eq!(editor.midi_cc_assignments.len(), 2);
     }
 
