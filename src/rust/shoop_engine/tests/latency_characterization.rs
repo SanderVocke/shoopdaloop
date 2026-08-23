@@ -333,7 +333,11 @@ fn variable_latency_grab_uses_newest_revision_and_keeps_warning() {
     ));
 }
 
-fn midi_latency_grab_fixture(role: ChannelMode) -> (Vec<(u32, u8)>, RetainedLatencySelection) {
+fn midi_latency_grab_fixture(
+    role: ChannelMode,
+    policy: GrabLatencyPolicy,
+    variable: bool,
+) -> (Vec<(u32, u8)>, RetainedLatencySelection) {
     let mut session = Session::default();
     session.set_buffer_size(4);
     let input = session.add_port(Port::DummyMidi(DummyMidiPort::new(
@@ -357,12 +361,6 @@ fn midi_latency_grab_fixture(role: ChannelMode) -> (Vec<(u32, u8)>, RetainedLate
     session.connect_channel_input(channel, input).unwrap();
     session.connect_channel_output(channel, output).unwrap();
     session.apply_graph_changes().unwrap();
-    session
-        .port_mut(input)
-        .unwrap()
-        .midi()
-        .unwrap()
-        .publish_capture_latency(RuntimeLatencyObservation::exact(3, 48_000, 1).unwrap());
     for (time, note) in [(2, 65), (14, 68)] {
         session
             .port_mut(input)
@@ -377,7 +375,18 @@ fn midi_latency_grab_fixture(role: ChannelMode) -> (Vec<(u32, u8)>, RetainedLate
             .unwrap()
             .queue_msg(time, &midi::note_off(0, note, 0));
     }
-    for _ in 0..5 {
+    for start in [0, 4, 8, 12, 16] {
+        let observation = if variable && start < 16 {
+            RuntimeLatencyObservation::exact(2, 48_000, 1).unwrap()
+        } else {
+            RuntimeLatencyObservation::exact(3, 48_000, 2).unwrap()
+        };
+        session
+            .port_mut(input)
+            .unwrap()
+            .midi()
+            .unwrap()
+            .publish_capture_latency(observation);
         session.process(4);
     }
     session.loop_mut(loop_).unwrap().set_sync_source(Some(
@@ -400,7 +409,7 @@ fn midi_latency_grab_fixture(role: ChannelMode) -> (Vec<(u32, u8)>, RetainedLate
                     go_to_cycle: Some(0),
                     go_to_mode: playback_mode(role),
                 },
-                latency_policy: GrabLatencyPolicy::Automatic,
+                latency_policy: policy,
             }],
             &mut prepared,
         )
@@ -435,9 +444,21 @@ fn midi_latency_grab_fixture(role: ChannelMode) -> (Vec<(u32, u8)>, RetainedLate
 #[shoop_wasm_test_support::shoop_test]
 fn stable_midi_latency_grab_preserves_equal_frame_order_and_alignment() {
     for role in [ChannelMode::Direct, ChannelMode::Dry] {
-        let (pair, selection) = midi_latency_grab_fixture(role);
+        let (pair, selection) =
+            midi_latency_grab_fixture(role, GrabLatencyPolicy::Automatic, false);
         assert!(matches!(selection, RetainedLatencySelection::Stable(_)));
         assert_eq!(pair, vec![(2, 0x90), (2, 0x80)]);
+        let (disabled, _) = midi_latency_grab_fixture(role, GrabLatencyPolicy::Disabled, false);
+        assert_eq!(disabled, vec![(5, 0x90), (5, 0x80)]);
+        let (manual, _) = midi_latency_grab_fixture(role, GrabLatencyPolicy::Manual(1), false);
+        assert_eq!(manual, vec![(4, 0x90), (4, 0x80)]);
+        let (variable, selection) =
+            midi_latency_grab_fixture(role, GrabLatencyPolicy::Automatic, true);
+        assert_eq!(variable, vec![(2, 0x90), (2, 0x80)]);
+        assert!(matches!(
+            selection,
+            RetainedLatencySelection::Variable { revisions: 2, .. }
+        ));
     }
 }
 

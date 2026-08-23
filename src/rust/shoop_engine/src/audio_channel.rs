@@ -185,6 +185,7 @@ pub struct AudioChannel {
     pending_latency_recipe: Option<RuntimeLatencyRecipe>,
     latched_latency_recipe: Option<LatchedLatencyRecipe>,
     grab_latency_selection: RetainedLatencySelection,
+    prepared_replacement_alignment: Option<i32>,
 }
 
 impl AudioChannel {
@@ -265,6 +266,7 @@ impl AudioChannel {
             pending_latency_recipe: None,
             latched_latency_recipe: None,
             grab_latency_selection: RetainedLatencySelection::Unavailable,
+            prepared_replacement_alignment: None,
         };
         channel.publish_state();
         channel
@@ -425,6 +427,13 @@ impl AudioChannel {
     }
     pub fn grab_latency_selection(&self) -> RetainedLatencySelection {
         self.grab_latency_selection
+    }
+    pub fn can_prepare_latency_replacement(&self, capture_alignment_frames: i32) -> bool {
+        self.capture_alignment_frames == capture_alignment_frames
+    }
+    pub fn prepare_latency_replacement(&mut self, capture_alignment_frames: i32) {
+        debug_assert!(self.can_prepare_latency_replacement(capture_alignment_frames));
+        self.prepared_replacement_alignment = Some(capture_alignment_frames);
     }
     pub fn apply_grab_latency_mapping(
         &mut self,
@@ -913,20 +922,18 @@ impl AudioChannel {
             self.process_record(n_samples, from, false)?;
         }
         if flags.contains(ProcessFlags::REPLACE) {
-            let replacement_alignment = if mode == LoopMode::RecordingDryIntoWet {
-                0
-            } else {
-                self.capture_alignment_frames
-            };
-            let raw_position = params
-                .position
-                .checked_add(replacement_alignment)
-                .ok_or(ChannelError::LatencyPositionOverflow)?;
-            self.process_replace(raw_position, n_samples)?;
+            // Live replacement input already arrives on the raw capture timeline.
+            // Adding the take's playback alignment here would apply it twice.
+            self.process_replace(params.position, n_samples)?;
         }
         if flags.contains(ProcessFlags::PRE_RECORD) {
             let from = self.prerecord_data_length;
             self.process_record(n_samples, from, true)?;
+        }
+        if self.prev_process_flags.contains(ProcessFlags::REPLACE)
+            && !flags.contains(ProcessFlags::REPLACE)
+        {
+            self.prepared_replacement_alignment = None;
         }
         self.prev_process_flags = if self.postroll_remaining_frames > 0 {
             flags.with(ProcessFlags::RECORD)
@@ -1222,6 +1229,14 @@ mod tests {
         AudioChannel::with_chunk_size(4, C::Direct)
     }
 
+    fn playback_mode_for_test(role: ChannelMode) -> LoopMode {
+        if role == C::Dry {
+            L::PlayingDryThroughWet
+        } else {
+            L::Playing
+        }
+    }
+
     /// Runs one cycle: sizes the port buffers, processes, finalizes.
     fn cycle(
         ch: &mut AudioChannel,
@@ -1421,6 +1436,19 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn latency_compatible_replacement_writes_raw_timeline_once() {
+        for role in [C::Direct, C::Dry, C::Wet] {
+            let mut ch = AudioChannel::with_chunk_size(4, role);
+            ch.load_data(&[0.0; 8]);
+            ch.set_capture_alignment_frames(3).unwrap();
+            ch.prepare_latency_replacement(3);
+            cycle(&mut ch, L::Replacing, 1, 5, 8, &[1.0]);
+            check!(ch.data()[5] == 1.0);
+            check!(cycle(&mut ch, playback_mode_for_test(role), 1, 2, 8, &[]) == vec![1.0]);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn replace_overwrites_in_place_without_growing() {
         let mut ch = channel();
         ch.load_data(&[1.0, 2.0, 3.0, 4.0]);
@@ -1518,6 +1546,58 @@ mod tests {
         };
         check!(snapshot.metadata.length == 7);
         check!(snapshot.contiguous() == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn bounded_grab_load_publishes_a_complete_new_snapshot_generation() {
+        use crate::content_snapshot::ContentSnapshotRuntime;
+        use std::time::{Duration, Instant};
+
+        let runtime = ContentSnapshotRuntime::new();
+        let (writer, _control, reader) = runtime.create_audio_channel(4, 8);
+        let mut ch = AudioChannel::with_chunk_size_state_and_snapshots(
+            4,
+            C::Direct,
+            Arc::new(AudioChannelStateMirror::default()),
+            Some(writer),
+        );
+        ch.load_data(&[9.0]);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let previous_revision = loop {
+            if let Ok(snapshot) = reader.try_current() {
+                break snapshot.revision;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "initial snapshot publication timed out"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+
+        ch.begin_bounded_load(4);
+        ch.write_bounded_load(0, &[1.0, 2.0, 3.0, 4.0]);
+        ch.finish_bounded_load();
+        let observation =
+            crate::latency_runtime::RuntimeLatencyObservation::exact(1, 48_000, 2).unwrap();
+        ch.apply_grab_latency_mapping(0, 1, RetainedLatencySelection::Stable(observation))
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let snapshot = loop {
+            if let Ok(snapshot) = reader.try_current() {
+                if snapshot.revision > previous_revision {
+                    break snapshot;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "grab snapshot publication timed out"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        check!(snapshot.metadata.length == 4);
+        check!(snapshot.contiguous() == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]

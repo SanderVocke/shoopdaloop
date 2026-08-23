@@ -108,6 +108,18 @@ pub struct PreparedMidiLatencyGrabChannel {
     pub start_state: MidiStateTracker,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LatencyReplacementChannel {
+    Audio {
+        channel_idx: usize,
+        capture_alignment_frames: i32,
+    },
+    Midi {
+        channel_idx: usize,
+        capture_alignment_frames: i32,
+    },
+}
+
 impl PreparedMidiLatencyGrabChannel {
     pub fn new(loop_idx: usize, channel_idx: usize, capacity_elems: usize) -> Self {
         Self {
@@ -192,6 +204,8 @@ pub enum SessionError {
     LatencyGrabUnresolved,
     #[error("latency-aware grab alignment exceeds the supported bound")]
     LatencyGrabAlignment,
+    #[error("replacement latency differs from the take and requires non-realtime consolidation")]
+    ReplacementRequiresConsolidation,
     #[error("the composite timeline references stale or missing primitive slot {0}")]
     StaleCompositeTarget(u32),
     #[error("the composite/session propagation topology is invalid: {0}")]
@@ -1777,6 +1791,61 @@ impl Session {
             });
         }
         self.note_graph_change();
+    }
+
+    /// Validates all replacement mappings before arming any channel. A numerically
+    /// incompatible observation requires explicit non-realtime consolidation rather
+    /// than creating callback-time alignment regions or partially changing content.
+    pub fn prepare_latency_replacement(
+        &mut self,
+        loop_idx: usize,
+        channels: &[LatencyReplacementChannel],
+    ) -> Result<(), SessionError> {
+        let loop_ = self
+            .loops
+            .get(loop_idx)
+            .ok_or(SessionError::NoSuchLoop(loop_idx))?;
+        for target in channels {
+            let compatible = match *target {
+                LatencyReplacementChannel::Audio {
+                    channel_idx,
+                    capture_alignment_frames,
+                } => loop_
+                    .audio_channel(channel_idx)
+                    .ok_or(SessionError::NoSuchChannel(channel_idx))?
+                    .can_prepare_latency_replacement(capture_alignment_frames),
+                LatencyReplacementChannel::Midi {
+                    channel_idx,
+                    capture_alignment_frames,
+                } => loop_
+                    .midi_channel(channel_idx)
+                    .ok_or(SessionError::NoSuchChannel(channel_idx))?
+                    .can_prepare_latency_replacement(capture_alignment_frames),
+            };
+            if !compatible {
+                return Err(SessionError::ReplacementRequiresConsolidation);
+            }
+        }
+        let loop_ = &mut self.loops[loop_idx];
+        for target in channels {
+            match *target {
+                LatencyReplacementChannel::Audio {
+                    channel_idx,
+                    capture_alignment_frames,
+                } => loop_
+                    .audio_channel_mut(channel_idx)
+                    .expect("replacement target was validated")
+                    .prepare_latency_replacement(capture_alignment_frames),
+                LatencyReplacementChannel::Midi {
+                    channel_idx,
+                    capture_alignment_frames,
+                } => loop_
+                    .midi_channel_mut(channel_idx)
+                    .expect("replacement target was validated")
+                    .prepare_latency_replacement(capture_alignment_frames),
+            }
+        }
+        Ok(())
     }
 
     pub fn describe_audio_ringbuffer_adoption(
@@ -4147,6 +4216,87 @@ mod tests {
             .dequeue_data(8)
             .unwrap();
         assert_eq!(playback, vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn incompatible_latency_replacement_requires_consolidation_before_mutation() {
+        let mut session = Session::default();
+        let loop_ = session.create_loop();
+        session
+            .add_audio_channel(loop_, 4, ChannelMode::Direct)
+            .unwrap();
+        session
+            .add_midi_channel(loop_, 16, ChannelMode::Direct)
+            .unwrap();
+        let target = session.loop_mut(loop_).unwrap();
+        target.audio_channel_mut(0).unwrap().load_data(&[9.0; 8]);
+        target
+            .audio_channel_mut(0)
+            .unwrap()
+            .set_capture_alignment_frames(3)
+            .unwrap();
+        target
+            .midi_channel_mut(0)
+            .unwrap()
+            .set_capture_alignment_frames(4)
+            .unwrap();
+
+        let result = session.prepare_latency_replacement(
+            loop_,
+            &[
+                LatencyReplacementChannel::Audio {
+                    channel_idx: 0,
+                    capture_alignment_frames: 3,
+                },
+                LatencyReplacementChannel::Midi {
+                    channel_idx: 0,
+                    capture_alignment_frames: 3,
+                },
+            ],
+        );
+        assert_eq!(result, Err(SessionError::ReplacementRequiresConsolidation));
+        assert_eq!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(0)
+                .unwrap()
+                .data(),
+            vec![9.0; 8]
+        );
+        assert_eq!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(0)
+                .unwrap()
+                .capture_alignment_frames(),
+            3
+        );
+        assert_eq!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .midi_channel(0)
+                .unwrap()
+                .capture_alignment_frames(),
+            4
+        );
+        session
+            .prepare_latency_replacement(
+                loop_,
+                &[
+                    LatencyReplacementChannel::Audio {
+                        channel_idx: 0,
+                        capture_alignment_frames: 3,
+                    },
+                    LatencyReplacementChannel::Midi {
+                        channel_idx: 0,
+                        capture_alignment_frames: 4,
+                    },
+                ],
+            )
+            .unwrap();
     }
 
     #[shoop_wasm_test_support::shoop_test]

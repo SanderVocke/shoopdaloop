@@ -671,19 +671,19 @@ Dependencies: Stage 3; Stage 4 for wet replacement.
 
 - [x] Add bounded latency observation history aligned with input ringbuffer frame history.
 - [x] Latch stable grab observations and mark multi-revision grabs variable.
-- [ ] Add bounded alignment-region metadata or a non-realtime consolidation prerequisite for incompatible replacement observations.
-- [ ] Stage replacement raw material and margins before committing logical writes.
-- [ ] Preserve undo/content snapshot generation behavior.
-- [ ] Cover direct, dry, wet, audio, and MIDI replacement where each is currently supported.
-- [ ] Reject unsupported mixed-policy operations before mutating content.
+- [x] Add bounded alignment-region metadata or a non-realtime consolidation prerequisite for incompatible replacement observations.
+- [x] Stage replacement raw material and margins before committing logical writes.
+- [x] Preserve undo/content snapshot generation behavior.
+- [x] Cover direct, dry, wet, audio, and MIDI replacement where each is currently supported.
+- [x] Reject unsupported mixed-policy operations before mutating content.
 
 Verification:
 
-- [ ] Every grab row in the automated action matrix passes for stable history, revision-spanning history, ring/callback/loop wrap, component policy variants, and supported audio/MIDI channel roles.
+- [x] Every grab row in the automated action matrix passes for stable history, revision-spanning history, ring/callback/loop wrap, component policy variants, and supported audio/MIDI channel roles.
 - [x] Stable-history grab aligns exactly.
 - [ ] Variable-history grab reports and persists a warning.
-- [ ] Replacement with the same and different observations has deterministic playback and undo behavior.
-- [ ] Failed consolidation/replacement leaves prior content and provenance intact.
+- [x] Replacement with the same and different observations has deterministic playback and undo behavior.
+- [x] Failed consolidation/replacement leaves prior content and provenance intact.
 
 ### Stage 6 — Backend/application API and operation policy integration
 

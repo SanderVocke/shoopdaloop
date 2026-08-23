@@ -177,6 +177,7 @@ pub struct MidiChannel {
     pending_latency_recipe: Option<RuntimeLatencyRecipe>,
     latched_latency_recipe: Option<LatchedLatencyRecipe>,
     grab_latency_selection: RetainedLatencySelection,
+    prepared_replacement_alignment: Option<i32>,
 }
 
 impl MidiChannel {
@@ -242,6 +243,7 @@ impl MidiChannel {
             pending_latency_recipe: None,
             latched_latency_recipe: None,
             grab_latency_selection: RetainedLatencySelection::Unavailable,
+            prepared_replacement_alignment: None,
         };
         channel.publish_state();
         channel
@@ -380,6 +382,13 @@ impl MidiChannel {
     }
     pub fn grab_latency_selection(&self) -> RetainedLatencySelection {
         self.grab_latency_selection
+    }
+    pub fn can_prepare_latency_replacement(&self, capture_alignment_frames: i32) -> bool {
+        self.capture_alignment_frames == capture_alignment_frames
+    }
+    pub fn prepare_latency_replacement(&mut self, capture_alignment_frames: i32) {
+        debug_assert!(self.can_prepare_latency_replacement(capture_alignment_frames));
+        self.prepared_replacement_alignment = Some(capture_alignment_frames);
     }
     pub(crate) fn can_commit_grab(&self, events: u32) -> bool {
         events as usize <= self.storage.capacity_elems()
@@ -934,16 +943,7 @@ impl MidiChannel {
             processed_input = true;
         } else if flags.contains(ProcessFlags::REPLACE) {
             self.loaded_contents = false;
-            let replacement_alignment = if mode == LoopMode::RecordingDryIntoWet {
-                0
-            } else {
-                self.capture_alignment_frames
-            };
-            let raw_position = params
-                .position
-                .checked_add(replacement_alignment)
-                .ok_or(MidiChannelError::LatencyPositionOverflow)?;
-            self.process_replace(raw_position, n_samples, length_before, input)?;
+            self.process_replace(params.position, n_samples, length_before, input)?;
             processed_input = true;
         } else if flags.contains(ProcessFlags::PRE_RECORD) {
             self.loaded_contents = false;
@@ -952,6 +952,11 @@ impl MidiChannel {
             processed_input = true;
         }
         self.prev_pos_after = pos_after;
+        if self.prev_process_flags.contains(ProcessFlags::REPLACE)
+            && !flags.contains(ProcessFlags::REPLACE)
+        {
+            self.prepared_replacement_alignment = None;
+        }
         self.prev_process_flags = if self.postroll_remaining_frames > 0 {
             flags.with(ProcessFlags::RECORD)
         } else {
@@ -1353,6 +1358,14 @@ mod tests {
         MidiChannel::with_capacity_elems(64, C::Direct)
     }
 
+    fn playback_mode_for_test(role: ChannelMode) -> LoopMode {
+        if role == C::Dry {
+            L::PlayingDryThroughWet
+        } else {
+            L::Playing
+        }
+    }
+
     fn ev(time: u32, data: &[u8]) -> MidiStorageElem {
         MidiStorageElem::new(time, data).unwrap()
     }
@@ -1583,6 +1596,26 @@ mod tests {
         check!(out.iter().any(|event| {
             event.time == 1 && event.data() == midi::note_on(0, 60, 100).as_slice()
         }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_compatible_midi_replacement_writes_raw_timeline_once() {
+        for role in [C::Direct, C::Dry, C::Wet] {
+            let mut ch = MidiChannel::with_capacity_elems(64, role);
+            ch.set_contents(&[], 8, Some(&[]));
+            ch.set_capture_alignment_frames(3).unwrap();
+            ch.prepare_latency_replacement(3);
+            let replacement = [ev(0, &midi::note_on(0, 60, 100))];
+            cycle(&mut ch, L::Replacing, 1, 5, 8, &replacement);
+            check!(ch
+                .contents()
+                .iter()
+                .any(|event| event.time == 5 && midi::is_note_on(event.data())));
+            let playback = cycle(&mut ch, playback_mode_for_test(role), 1, 2, 8, &[]);
+            check!(playback
+                .iter()
+                .any(|event| event.time == 0 && midi::is_note_on(event.data())));
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
