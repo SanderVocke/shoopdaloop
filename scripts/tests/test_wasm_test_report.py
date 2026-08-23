@@ -35,7 +35,7 @@ class ReportTests(unittest.TestCase):
                 elapsed_seconds=1.25,
                 output=output,
                 extra_properties={
-                    "tool.node": "22.22.2",
+                    "tool.node": "22.23.2",
                     "filters": "[]",
                     "raw_log": "target/wasm-tests/pilot.log",
                 },
@@ -52,7 +52,7 @@ class ReportTests(unittest.TestCase):
             item.attrib["name"]: item.attrib["value"]
             for item in xml.find("properties")
         }
-        self.assertEqual(properties["tool.node"], "22.22.2")
+        self.assertEqual(properties["tool.node"], "22.23.2")
         self.assertEqual(properties["filters"], "[]")
         self.assertEqual(properties["raw_log"], "target/wasm-tests/pilot.log")
         self.assertEqual(properties["expected"], "3")

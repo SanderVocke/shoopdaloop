@@ -1868,7 +1868,15 @@ impl NativeRuntime {
 
 impl Backend for NativeBackend {
     fn latency_capability(&self) -> BackendLatencyCapability {
-        BackendLatencyCapability::Observed
+        match self
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.configured.kind())
+        {
+            Some(AudioDriverKind::Cpal) => BackendLatencyCapability::Manual,
+            Some(_) => BackendLatencyCapability::Observed,
+            None => BackendLatencyCapability::Unsupported,
+        }
     }
 
     fn set_track_latency_policy(
@@ -2820,6 +2828,9 @@ impl Backend for NativeBackend {
                         capture_alignment_frames: capture,
                         render_advance_frames: render,
                         certainty: LatencyCertaintyState::Unknown,
+                        observation_min_frames: None,
+                        observation_max_frames: None,
+                        observation_sample_rate: 0,
                         observation_revision: 0,
                         variable_history: variable,
                         history_revisions: revisions,

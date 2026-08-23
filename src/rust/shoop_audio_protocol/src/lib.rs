@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 13;
+pub const PROTOCOL_VERSION: u16 = 14;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -12,6 +12,72 @@ pub const MAX_DEVICE_AUDIO_CHANNELS: usize = 2;
 pub const MIDI_BATCH_CAPACITY: usize = 128;
 pub const MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
 pub const TRACK_MIDI_MESSAGE_BYTES: usize = 4;
+pub const LATENCY_COMPONENT_CAPACITY: usize = 8;
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireLatencyCertainty {
+    Exact,
+    Range,
+    Estimated,
+    ManualOnly,
+    #[default]
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireLatencyObservation {
+    pub minimum_frames: Option<u32>,
+    pub maximum_frames: Option<u32>,
+    pub certainty: WireLatencyCertainty,
+    pub sample_rate: u32,
+    pub revision: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireLatencyComponentKind {
+    ExternalCapture,
+    Processor,
+    CuePlayback,
+    BackendBuffering,
+    Manual,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireLatencyValueMode {
+    Automatic,
+    Manual(u32),
+    AutomaticPlusTrim(i32),
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireLatencyComponentPolicy {
+    pub kind: WireLatencyComponentKind,
+    pub enabled: bool,
+    pub value_mode: WireLatencyValueMode,
+}
+
+#[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireTrackLatencyPolicy {
+    pub cue_followed: bool,
+    pub components: Vec<WireLatencyComponentPolicy>,
+    pub revision: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireTakeLatencyState {
+    pub capture_alignment_frames: i32,
+    pub render_advance_frames: u32,
+    pub observation: WireLatencyObservation,
+    pub variable_history: bool,
+    pub history_revisions: u32,
+    pub changed_during_operation: bool,
+    pub incomplete: bool,
+    pub finalizing: bool,
+    pub error: Option<String>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CommandEnvelope {
@@ -36,6 +102,23 @@ pub enum Command {
     ConfigureDeviceChannels {
         input_channels: u32,
         output_channels: u32,
+    },
+    ConfigureBackendLatency {
+        base_latency_frames: Option<u32>,
+        output_latency_frames: Option<u32>,
+        sample_rate: u32,
+        revision: u64,
+    },
+    SetTrackLatencyPolicy {
+        track_id: u64,
+        policy: WireTrackLatencyPolicy,
+    },
+    SetTakeLatencyPolicy {
+        loop_id: u64,
+        capture_alignment_frames: i32,
+    },
+    ConsolidateTakeLatency {
+        loop_id: u64,
     },
     ConfigureMidiEndpoints {
         endpoints: Vec<WireHostPort>,
@@ -493,6 +576,8 @@ pub struct WireSnapshot {
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
+    pub backend_capture_latency: WireLatencyObservation,
+    pub backend_playback_latency: WireLatencyObservation,
     pub tracks: Vec<WireTrackState>,
     pub loops: Vec<WireLoopState>,
     pub composites: Vec<WireCompositeState>,
@@ -597,6 +682,8 @@ pub struct WireTrackState {
     pub id: u64,
     pub topology: WireTrackTopology,
     pub fx: Option<WireTrackFxState>,
+    #[serde(default)]
+    pub latency_policy: WireTrackLatencyPolicy,
     pub audio_channels: u32,
     pub midi: bool,
     pub output_gain_db: f32,
@@ -617,6 +704,8 @@ pub struct WireTrackFxState {
     pub active: bool,
     pub visible: bool,
     #[serde(default)]
+    pub latency: WireLatencyObservation,
+    #[serde(default)]
     pub oxisynth: Option<WireOxiSynthState>,
 }
 
@@ -632,6 +721,8 @@ pub struct WireOxiSynthState {
 pub struct WireLoopState {
     pub id: u64,
     pub mode: WireLoopMode,
+    #[serde(default)]
+    pub latency: WireTakeLatencyState,
     pub length: u32,
     pub position: u32,
     pub next_mode: Option<WireLoopMode>,
@@ -941,7 +1032,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":13,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":14,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -952,8 +1043,56 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":13,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":14,"sequence":17,"event":{"kind":"ack"}}"#
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn bounded_latency_messages_fit_command_capacity_and_round_trip() {
+        let command = CommandEnvelope::new(
+            99,
+            Command::SetTrackLatencyPolicy {
+                track_id: 7,
+                policy: WireTrackLatencyPolicy {
+                    cue_followed: true,
+                    components: (0..LATENCY_COMPONENT_CAPACITY)
+                        .map(|index| WireLatencyComponentPolicy {
+                            kind: if index % 2 == 0 {
+                                WireLatencyComponentKind::ExternalCapture
+                            } else {
+                                WireLatencyComponentKind::Processor
+                            },
+                            enabled: true,
+                            value_mode: WireLatencyValueMode::AutomaticPlusTrim(index as i32 - 4),
+                        })
+                        .collect(),
+                    revision: 8,
+                },
+            },
+        );
+        let encoded = serde_json::to_vec(&command).unwrap();
+        assert!(encoded.len() < COMMAND_MAX_BYTES);
+        assert_eq!(
+            serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+            command
+        );
+
+        let snapshot = EventEnvelope {
+            version: PROTOCOL_VERSION,
+            sequence: 100,
+            event: Event::Snapshot(WireSnapshot {
+                backend_capture_latency: WireLatencyObservation::default(),
+                backend_playback_latency: WireLatencyObservation {
+                    minimum_frames: Some(720),
+                    maximum_frames: Some(720),
+                    certainty: WireLatencyCertainty::Estimated,
+                    sample_rate: 48_000,
+                    revision: 3,
+                },
+                ..Default::default()
+            }),
+        };
+        assert!(serde_json::to_vec(&snapshot).unwrap().len() < COMMAND_MAX_BYTES);
     }
 
     #[shoop_wasm_test_support::shoop_test]

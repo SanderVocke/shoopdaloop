@@ -1,14 +1,20 @@
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+use shoop_app_api::{
+    LatencyComponentKind, LatencyComponentPolicyState, LatencyObservationState, LatencyValueMode,
+    TakeLatencyProvenanceState, TrackLatencyPolicyState,
+};
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
     WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
-    WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
-    WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl,
-    WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
+    WireConfirmedLink, WireHostPort, WireLatencyCertainty, WireLatencyComponentKind,
+    WireLatencyComponentPolicy, WireLatencyObservation, WireLatencyValueMode,
+    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
+    WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState, WirePortDataType,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl, WireTrackFxControl,
+    WireTrackFxState, WireTrackLatencyPolicy, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
     MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
     SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
     WAVEFORM_CHUNK_SAMPLES,
@@ -180,6 +186,52 @@ impl WorkletHost {
             } => {
                 self.backend
                     .configure_web_audio_channels(input_channels, output_channels)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::ConfigureBackendLatency {
+                base_latency_frames,
+                output_latency_frames,
+                sample_rate,
+                revision,
+            } => {
+                self.backend
+                    .configure_web_audio_latency(
+                        base_latency_frames,
+                        output_latency_frames,
+                        sample_rate,
+                        revision,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetTrackLatencyPolicy { track_id, policy } => {
+                if policy.components.len() > shoop_audio_protocol::LATENCY_COMPONENT_CAPACITY {
+                    return Err("latency component capacity exceeded".to_owned());
+                }
+                self.backend
+                    .set_track_latency_policy(
+                        BackendTrackId::from_raw(track_id),
+                        &from_wire_latency_policy(policy),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetTakeLatencyPolicy {
+                loop_id,
+                capture_alignment_frames,
+            } => {
+                self.backend
+                    .set_take_latency_policy(
+                        BackendLoopId::from_raw(loop_id),
+                        capture_alignment_frames,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::ConsolidateTakeLatency { loop_id } => {
+                self.backend
+                    .consolidate_take_latency(BackendLoopId::from_raw(loop_id))
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
@@ -742,6 +794,119 @@ impl WorkletHost {
     }
 }
 
+fn from_wire_latency_policy(policy: WireTrackLatencyPolicy) -> TrackLatencyPolicyState {
+    TrackLatencyPolicyState {
+        cue_followed: policy.cue_followed,
+        components: policy
+            .components
+            .into_iter()
+            .map(|component| LatencyComponentPolicyState {
+                kind: match component.kind {
+                    WireLatencyComponentKind::ExternalCapture => {
+                        LatencyComponentKind::ExternalCapture
+                    }
+                    WireLatencyComponentKind::Processor => LatencyComponentKind::Processor,
+                    WireLatencyComponentKind::CuePlayback => LatencyComponentKind::CuePlayback,
+                    WireLatencyComponentKind::BackendBuffering => {
+                        LatencyComponentKind::BackendBuffering
+                    }
+                    WireLatencyComponentKind::Manual => LatencyComponentKind::Manual,
+                },
+                enabled: component.enabled,
+                value_mode: match component.value_mode {
+                    WireLatencyValueMode::Automatic => LatencyValueMode::Automatic,
+                    WireLatencyValueMode::Manual(frames) => LatencyValueMode::Manual(frames),
+                    WireLatencyValueMode::AutomaticPlusTrim(frames) => {
+                        LatencyValueMode::AutomaticPlusTrim(frames)
+                    }
+                },
+            })
+            .collect::<Vec<_>>()
+            .into(),
+        revision: policy.revision,
+        pending: false,
+        error: None,
+    }
+}
+
+fn to_wire_latency_policy(policy: TrackLatencyPolicyState) -> WireTrackLatencyPolicy {
+    WireTrackLatencyPolicy {
+        cue_followed: policy.cue_followed,
+        components: policy
+            .components
+            .iter()
+            .map(|component| WireLatencyComponentPolicy {
+                kind: match component.kind {
+                    LatencyComponentKind::ExternalCapture => {
+                        WireLatencyComponentKind::ExternalCapture
+                    }
+                    LatencyComponentKind::Processor => WireLatencyComponentKind::Processor,
+                    LatencyComponentKind::CuePlayback => WireLatencyComponentKind::CuePlayback,
+                    LatencyComponentKind::BackendBuffering => {
+                        WireLatencyComponentKind::BackendBuffering
+                    }
+                    LatencyComponentKind::Manual => WireLatencyComponentKind::Manual,
+                },
+                enabled: component.enabled,
+                value_mode: match component.value_mode {
+                    LatencyValueMode::Automatic => WireLatencyValueMode::Automatic,
+                    LatencyValueMode::Manual(frames) => WireLatencyValueMode::Manual(frames),
+                    LatencyValueMode::AutomaticPlusTrim(frames) => {
+                        WireLatencyValueMode::AutomaticPlusTrim(frames)
+                    }
+                },
+            })
+            .collect(),
+        revision: policy.revision,
+    }
+}
+
+fn to_wire_latency_observation(observation: LatencyObservationState) -> WireLatencyObservation {
+    WireLatencyObservation {
+        minimum_frames: observation.minimum_frames,
+        maximum_frames: observation.maximum_frames,
+        certainty: match observation.certainty {
+            shoop_app_api::LatencyCertaintyState::Exact => WireLatencyCertainty::Exact,
+            shoop_app_api::LatencyCertaintyState::Range => WireLatencyCertainty::Range,
+            shoop_app_api::LatencyCertaintyState::Estimated => WireLatencyCertainty::Estimated,
+            shoop_app_api::LatencyCertaintyState::ManualOnly => WireLatencyCertainty::ManualOnly,
+            shoop_app_api::LatencyCertaintyState::Unknown => WireLatencyCertainty::Unknown,
+        },
+        sample_rate: observation.sample_rate,
+        revision: observation.revision,
+    }
+}
+
+fn to_wire_take_latency(
+    latency: TakeLatencyProvenanceState,
+) -> shoop_audio_protocol::WireTakeLatencyState {
+    shoop_audio_protocol::WireTakeLatencyState {
+        capture_alignment_frames: latency.capture_alignment_frames,
+        render_advance_frames: latency.render_advance_frames,
+        observation: WireLatencyObservation {
+            minimum_frames: latency.observation_min_frames,
+            maximum_frames: latency.observation_max_frames,
+            certainty: match latency.certainty {
+                shoop_app_api::LatencyCertaintyState::Exact => WireLatencyCertainty::Exact,
+                shoop_app_api::LatencyCertaintyState::Range => WireLatencyCertainty::Range,
+                shoop_app_api::LatencyCertaintyState::Estimated => WireLatencyCertainty::Estimated,
+                shoop_app_api::LatencyCertaintyState::ManualOnly => {
+                    WireLatencyCertainty::ManualOnly
+                }
+                shoop_app_api::LatencyCertaintyState::Unknown => WireLatencyCertainty::Unknown,
+            },
+            sample_rate: latency.observation_sample_rate,
+            revision: latency.observation_revision,
+        },
+        variable_history: latency.variable_history,
+        history_revisions: latency.history_revisions,
+        changed_during_operation: latency.changed_during_operation,
+        incomplete: latency.incomplete,
+        finalizing: latency.finalizing,
+        error: latency.error,
+    }
+}
+
 fn from_wire_track_control(control: WireTrackControl) -> BackendTrackControl {
     match control {
         WireTrackControl::OutputGainDb(value) => BackendTrackControl::OutputGainDb(value),
@@ -995,17 +1160,25 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         command_overflows: snapshot.status.command_overflows,
         storage_low_channels: snapshot.status.storage_low_channels,
         storage_exhaustions: snapshot.status.storage_exhaustions,
+        backend_capture_latency: to_wire_latency_observation(
+            snapshot.status.backend_capture_latency,
+        ),
+        backend_playback_latency: to_wire_latency_observation(
+            snapshot.status.backend_playback_latency,
+        ),
         tracks: snapshot
             .tracks
             .into_iter()
             .map(|(id, track)| WireTrackState {
                 id: id.raw(),
                 topology: to_wire_track_topology(&track.topology),
+                latency_policy: to_wire_latency_policy(track.latency_policy),
                 fx: track.fx.and_then(|fx| match fx.editor? {
                     TrackProcessorEditorState::OxiSynth(editor) => Some(WireTrackFxState {
                         processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                         active: fx.active,
                         visible: fx.visible,
+                        latency: to_wire_latency_observation(fx.latency),
                         oxisynth: Some(WireOxiSynthState {
                             selected_preset_id: editor.selected_preset_id,
                             reverb_send: editor.reverb_send,
@@ -1046,6 +1219,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             .map(|(id, loop_)| WireLoopState {
                 id: id.raw(),
                 mode: to_wire_loop_mode(loop_.mode),
+                latency: to_wire_take_latency(loop_.latency),
                 length: loop_.length,
                 position: loop_.position,
                 next_mode: loop_.next_mode.map(to_wire_loop_mode),
@@ -1173,6 +1347,133 @@ mod tests {
     fn command(host: &mut WorkletHost, sequence: u64, command: Command) -> EventEnvelope {
         let json = serde_json::to_vec(&CommandEnvelope::new(sequence, command)).unwrap();
         serde_json::from_str(host.handle_json(&json)).unwrap()
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn browser_latency_messages_cover_missing_values_restart_and_frozen_take_state() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureBackendLatency {
+                    base_latency_frames: None,
+                    output_latency_frames: None,
+                    sample_rate: 48_000,
+                    revision: 1,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(missing) = command(&mut host, 2, Command::Poll).event else {
+            panic!("expected latency snapshot");
+        };
+        assert_eq!(
+            missing.backend_playback_latency.certainty,
+            WireLatencyCertainty::Unknown
+        );
+
+        assert!(matches!(
+            command(
+                &mut host,
+                3,
+                Command::ConfigureBackendLatency {
+                    base_latency_frames: Some(480),
+                    output_latency_frames: Some(240),
+                    sample_rate: 48_000,
+                    revision: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "latency".to_owned(),
+                    topology: WireTrackTopology::Direct {
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
+                Command::SetTakeLatencyPolicy {
+                    loop_id: 1,
+                    capture_alignment_frames: 9,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(observed) = command(&mut host, 6, Command::Poll).event else {
+            panic!("expected observed latency snapshot");
+        };
+        assert_eq!(
+            observed.backend_playback_latency,
+            WireLatencyObservation {
+                minimum_frames: Some(720),
+                maximum_frames: Some(720),
+                certainty: WireLatencyCertainty::Estimated,
+                sample_rate: 48_000,
+                revision: 2,
+            }
+        );
+        assert_eq!(observed.loops[0].latency.capture_alignment_frames, 9);
+
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::ConfigureBackendLatency {
+                    base_latency_frames: None,
+                    output_latency_frames: None,
+                    sample_rate: 48_000,
+                    revision: 3,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(restarted) = command(&mut host, 8, Command::Poll).event else {
+            panic!("expected restarted snapshot");
+        };
+        assert_eq!(
+            restarted.backend_playback_latency.certainty,
+            WireLatencyCertainty::Unknown
+        );
+        assert_eq!(restarted.loops[0].latency.capture_alignment_frames, 9);
+        let overflow = command(
+            &mut host,
+            9,
+            Command::SetTrackLatencyPolicy {
+                track_id: 1,
+                policy: WireTrackLatencyPolicy {
+                    cue_followed: false,
+                    components: vec![
+                        WireLatencyComponentPolicy {
+                            kind: WireLatencyComponentKind::ExternalCapture,
+                            enabled: true,
+                            value_mode: WireLatencyValueMode::Automatic,
+                        };
+                        shoop_audio_protocol::LATENCY_COMPONENT_CAPACITY + 1
+                    ],
+                    revision: 4,
+                },
+            },
+        );
+        assert!(matches!(overflow.event, Event::Error { .. }));
     }
 
     #[shoop_wasm_test_support::shoop_test]

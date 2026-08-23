@@ -1316,6 +1316,8 @@ pub struct EngineBackend {
     callback_count: u64,
     input_peak: f32,
     output_peak: f32,
+    backend_capture_latency: shoop_engine::RuntimeLatencyObservation,
+    backend_playback_latency: shoop_engine::RuntimeLatencyObservation,
     last_quantum: u32,
     route_scratch: Vec<f32>,
     web_midi_output: VecDeque<(BackendPortId, shoop_engine::MidiStorageElem)>,
@@ -1462,6 +1464,16 @@ impl EngineBackend {
             callback_count: 0,
             input_peak: 0.0,
             output_peak: 0.0,
+            backend_capture_latency: shoop_engine::RuntimeLatencyObservation::exact(
+                0,
+                sample_rate,
+                1,
+            )?,
+            backend_playback_latency: shoop_engine::RuntimeLatencyObservation::exact(
+                0,
+                sample_rate,
+                1,
+            )?,
             last_quantum: buffer_size,
             route_scratch: vec![0.0; buffer_size as usize],
             web_midi_output: VecDeque::with_capacity(WEB_MIDI_OUTPUT_QUEUE_CAPACITY),
@@ -1479,6 +1491,10 @@ impl EngineBackend {
         }
         let mut backend = Self::new_dummy_runtime(sample_rate, max_quantum)?;
         backend.port_model = EnginePortModel::Physical;
+        backend.backend_capture_latency =
+            shoop_engine::RuntimeLatencyObservation::unknown(sample_rate, 1);
+        backend.backend_playback_latency =
+            shoop_engine::RuntimeLatencyObservation::unknown(sample_rate, 1);
         backend.external_connections.remove_all_mock_ports();
         let global = ExternalMidiPort::new("global_fx_control_midi_in", PortDirection::Input);
         backend.session.remove_port(backend.global_fx_midi)?;
@@ -1492,6 +1508,36 @@ impl EngineBackend {
             .unwrap()
             .registry_id = PortId(backend.global_fx_midi as u64);
         Ok(backend)
+    }
+
+    pub fn configure_web_audio_latency(
+        &mut self,
+        base_latency_frames: Option<u32>,
+        output_latency_frames: Option<u32>,
+        sample_rate: u32,
+        revision: u64,
+    ) -> Result<()> {
+        if self.port_model != EnginePortModel::Physical || sample_rate == 0 {
+            return Err(anyhow!("Web Audio latency is unavailable for this backend"));
+        }
+        self.backend_capture_latency =
+            shoop_engine::RuntimeLatencyObservation::unknown(sample_rate, revision);
+        self.backend_playback_latency = match (base_latency_frames, output_latency_frames) {
+            (None, None) => shoop_engine::RuntimeLatencyObservation::unknown(sample_rate, revision),
+            (base, output) => {
+                let total = base
+                    .unwrap_or(0)
+                    .checked_add(output.unwrap_or(0))
+                    .ok_or_else(|| anyhow!("Web Audio latency total overflow"))?;
+                shoop_engine::RuntimeLatencyObservation::new(
+                    shoop_latency::LatencyRangeFrames::new(total, total).ok(),
+                    shoop_latency::LatencyCertainty::Estimated,
+                    sample_rate,
+                    revision,
+                )?
+            }
+        };
+        Ok(())
     }
 
     fn composite_target_identity(
@@ -3388,7 +3434,13 @@ fn engine_oxisynth_fx_state(fx: &EngineOxiFx, sample_rate: u32) -> TrackFxState 
 
 impl Backend for EngineBackend {
     fn latency_capability(&self) -> BackendLatencyCapability {
-        BackendLatencyCapability::Observed
+        if self.port_model == EnginePortModel::Physical
+            && self.backend_playback_latency.range.is_none()
+        {
+            BackendLatencyCapability::Manual
+        } else {
+            BackendLatencyCapability::Observed
+        }
     }
 
     fn set_track_latency_policy(
@@ -4859,30 +4911,39 @@ impl Backend for EngineBackend {
                 })
                 .map(
                     |(capture, render, selection, changed, incomplete, finalizing)| {
-                        let (certainty, revision, variable, revisions) = match selection {
-                            shoop_engine::RetainedLatencySelection::Stable(observation) => (
-                                app_latency_certainty(observation.certainty),
-                                observation.revision,
-                                false,
-                                1,
-                            ),
-                            shoop_engine::RetainedLatencySelection::Variable {
-                                newest,
-                                revisions,
-                            } => (
-                                app_latency_certainty(newest.certainty),
-                                newest.revision,
-                                true,
-                                revisions,
-                            ),
-                            shoop_engine::RetainedLatencySelection::Unavailable => {
-                                (LatencyCertaintyState::Unknown, 0, false, 0)
-                            }
-                        };
+                        let (observation, certainty, revision, variable, revisions) =
+                            match selection {
+                                shoop_engine::RetainedLatencySelection::Stable(observation) => (
+                                    Some(observation),
+                                    app_latency_certainty(observation.certainty),
+                                    observation.revision,
+                                    false,
+                                    1,
+                                ),
+                                shoop_engine::RetainedLatencySelection::Variable {
+                                    newest,
+                                    revisions,
+                                } => (
+                                    Some(newest),
+                                    app_latency_certainty(newest.certainty),
+                                    newest.revision,
+                                    true,
+                                    revisions,
+                                ),
+                                shoop_engine::RetainedLatencySelection::Unavailable => {
+                                    (None, LatencyCertaintyState::Unknown, 0, false, 0)
+                                }
+                            };
                         TakeLatencyProvenanceState {
                             capture_alignment_frames: capture,
                             render_advance_frames: render,
                             certainty,
+                            observation_min_frames: observation
+                                .and_then(|observation| observation.range.map(|range| range.min())),
+                            observation_max_frames: observation
+                                .and_then(|observation| observation.range.map(|range| range.max())),
+                            observation_sample_rate: observation
+                                .map_or(0, |observation| observation.sample_rate),
                             observation_revision: revision,
                             variable_history: variable,
                             history_revisions: revisions,
@@ -4960,19 +5021,8 @@ impl Backend for EngineBackend {
                 })
             })
             .collect();
-        let backend_latency = if self.port_model == EnginePortModel::Dummy {
-            app_latency_observation(
-                shoop_engine::RuntimeLatencyObservation::exact(0, self.sample_rate, 1)
-                    .unwrap_or_else(|_| {
-                        shoop_engine::RuntimeLatencyObservation::unknown(self.sample_rate, 1)
-                    }),
-            )
-        } else {
-            app_latency_observation(shoop_engine::RuntimeLatencyObservation::unknown(
-                self.sample_rate,
-                1,
-            ))
-        };
+        let backend_capture_latency = app_latency_observation(self.backend_capture_latency);
+        let backend_playback_latency = app_latency_observation(self.backend_playback_latency);
         let port_latency = self
             .connection_ports
             .iter()
@@ -5037,8 +5087,8 @@ impl Backend for EngineBackend {
                     .filter_map(|channel| self.session.audio_channel(*channel))
                     .map(|channel| channel.storage_exhaustions())
                     .sum(),
-                backend_capture_latency: backend_latency,
-                backend_playback_latency: backend_latency,
+                backend_capture_latency,
+                backend_playback_latency,
             },
             audio_drivers: self.audio_driver_runtime_state(),
             tracks,

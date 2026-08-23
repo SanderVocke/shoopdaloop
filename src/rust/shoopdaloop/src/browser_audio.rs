@@ -649,6 +649,18 @@ async fn start_audio_graph(
             .map_err(|error| {
                 JsValue::from_str(&format!("could not initialize worklet protocol: {error}"))
             })?;
+        let sample_rate = context.sample_rate() as u32;
+        inner
+            .transport
+            .configure_backend_latency(
+                context_latency_frames(&context, "baseLatency", sample_rate),
+                context_latency_frames(&context, "outputLatency", sample_rate),
+                sample_rate,
+                generation,
+            )
+            .map_err(|error| {
+                JsValue::from_str(&format!("could not publish browser latency: {error}"))
+            })?;
         let state = if context.state() == AudioContextState::Running {
             inner.startup_started = None;
             BackendDriverState::Running
@@ -711,6 +723,17 @@ fn microphone_constraints() -> MediaStreamConstraints {
     let constraints = MediaStreamConstraints::new();
     constraints.set_audio(&raw.into());
     constraints
+}
+
+fn context_latency_frames(context: &AudioContext, property: &str, sample_rate: u32) -> Option<u32> {
+    let seconds = Reflect::get(context.as_ref(), &JsValue::from_str(property))
+        .ok()?
+        .as_f64()?;
+    if !seconds.is_finite() || seconds < 0.0 || sample_rate == 0 {
+        return None;
+    }
+    let frames = (seconds * f64::from(sample_rate)).round();
+    (frames <= f64::from(u32::MAX)).then_some(frames as u32)
 }
 
 fn js_error_name(error: &JsValue) -> String {

@@ -137,7 +137,7 @@ Generated `dist`, worklet, staging, and artifact files are not committed.
 
 ## Cross-target CI
 
-`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a complete hosted bundle archive and a separately downloadable core-only HTML file that is explicitly not a built-ins distribution. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
+`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a complete hosted bundle archive and a separately downloadable core-only HTML file that is explicitly not a built-ins distribution. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.23.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
 
 For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
 
@@ -155,7 +155,7 @@ The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local work
 
 ## Cross-target test workflow
 
-Install Node 22.22.2, wasm-pack 0.15.0, the repository Rust toolchain, and the `wasm32-unknown-unknown` target. From the repository root:
+Install Node 22.23.2, wasm-pack 0.15.0, the repository Rust toolchain, and the `wasm32-unknown-unknown` target. From the repository root:
 
 ```sh
 # Complete shared suite in one runtime.

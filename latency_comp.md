@@ -764,18 +764,18 @@ Verification:
 
 Dependencies: Stage 6; Stage 9 for browser synth.
 
-- [ ] Publish truthful CPAL/midir manual/estimated capabilities.
-- [ ] Add browser AudioContext latency observations where supported and unknown states where absent.
-- [ ] Extend audio worker/worklet protocol messages with bounded latency policy, observations, take state, and errors.
-- [ ] Bump protocol versions and update raw host fixtures, worker fixtures, capacity validation, and stale-generation handling.
-- [ ] Preserve Web MIDI coarse-timing documentation and behavior.
-- [ ] Ensure browser permission/device loss changes current observations without moving frozen takes.
+- [x] Publish truthful CPAL/midir manual/estimated capabilities.
+- [x] Add browser AudioContext latency observations where supported and unknown states where absent.
+- [x] Extend audio worker/worklet protocol messages with bounded latency policy, observations, take state, and errors.
+- [x] Bump protocol versions and update raw host fixtures, worker fixtures, capacity validation, and stale-generation handling.
+- [x] Preserve Web MIDI coarse-timing documentation and behavior.
+- [x] Ensure browser permission/device loss changes current observations without moving frozen takes.
 
 Verification:
 
-- [ ] Shared Wasm tests cover policy resolution, protocol roundtrip, unknown/manual capability, and built-in synth compensation.
-- [ ] Browser fixture tests cover missing `baseLatency`/`outputLatency`, device restart, and worklet continuation.
-- [ ] Message sizes remain under protocol maxima and overflow is explicit.
+- [x] Shared Wasm tests cover policy resolution, protocol roundtrip, unknown/manual capability, and built-in synth compensation.
+- [x] Browser fixture tests cover missing `baseLatency`/`outputLatency`, device restart, and worklet continuation.
+- [x] Message sizes remain under protocol maxima and overflow is explicit.
 
 ### Stage 11 — Session, exact media, resampling, and I/O
 

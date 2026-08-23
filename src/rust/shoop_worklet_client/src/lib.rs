@@ -19,17 +19,21 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    FxLifecycle, OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState,
-    ResolvedAudioDriverConfig, TrackFxState, TrackProcessorDescriptor, TrackProcessorEditorState,
+    FxLifecycle, LatencyCertaintyState, LatencyComponentKind, LatencyComponentPolicyState,
+    LatencyObservationState, LatencyProviderState, LatencyValueMode, OxiSynthMidiCcAssignment,
+    OxiSynthParameter, OxiSynthState, ResolvedAudioDriverConfig, TakeLatencyProvenanceState,
+    TrackFxState, TrackLatencyPolicyState, TrackProcessorDescriptor, TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
     Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
-    WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment,
-    WireOxiSynthParameter, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
-    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireGrabRequest, WireHostPort, WireLatencyCertainty, WireLatencyComponentKind,
+    WireLatencyComponentPolicy, WireLatencyObservation, WireLatencyValueMode, WireLoopMode,
+    WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTakeLatencyState, WireTrackControl,
+    WireTrackFxControl, WireTrackLatencyPolicy, WireTrackTopology, COMMAND_CAPACITY,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
@@ -232,6 +236,35 @@ impl RemoteWorkletBackend {
 
     fn submit(&mut self, command: Command) -> Result<()> {
         self.transport.borrow_mut().journal(command)
+    }
+
+    pub fn configure_audio_context_latency(
+        &mut self,
+        base_latency_seconds: Option<f64>,
+        output_latency_seconds: Option<f64>,
+        sample_rate: u32,
+        revision: u64,
+    ) -> Result<()> {
+        let frames = |seconds: Option<f64>| -> Result<Option<u32>> {
+            seconds
+                .map(|seconds| {
+                    if !seconds.is_finite() || seconds < 0.0 || sample_rate == 0 {
+                        return Err(anyhow!("invalid browser latency observation"));
+                    }
+                    let frames = (seconds * f64::from(sample_rate)).round();
+                    if frames > f64::from(u32::MAX) {
+                        return Err(anyhow!("browser latency observation exceeds frame range"));
+                    }
+                    Ok(frames as u32)
+                })
+                .transpose()
+        };
+        self.submit(Command::ConfigureBackendLatency {
+            base_latency_frames: frames(base_latency_seconds)?,
+            output_latency_frames: frames(output_latency_seconds)?,
+            sample_rate,
+            revision,
+        })
     }
 
     fn submit_ephemeral(&mut self, command: Command) -> Result<()> {
@@ -692,6 +725,109 @@ impl RemoteWorkletBackend {
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
     }
 
+    fn latency_observation(wire: WireLatencyObservation) -> LatencyObservationState {
+        LatencyObservationState {
+            minimum_frames: wire.minimum_frames,
+            maximum_frames: wire.maximum_frames,
+            certainty: match wire.certainty {
+                WireLatencyCertainty::Exact => LatencyCertaintyState::Exact,
+                WireLatencyCertainty::Range => LatencyCertaintyState::Range,
+                WireLatencyCertainty::Estimated => LatencyCertaintyState::Estimated,
+                WireLatencyCertainty::ManualOnly => LatencyCertaintyState::ManualOnly,
+                WireLatencyCertainty::Unknown => LatencyCertaintyState::Unknown,
+            },
+            sample_rate: wire.sample_rate,
+            revision: wire.revision,
+        }
+    }
+
+    fn latency_policy(wire: WireTrackLatencyPolicy) -> TrackLatencyPolicyState {
+        TrackLatencyPolicyState {
+            cue_followed: wire.cue_followed,
+            components: wire
+                .components
+                .into_iter()
+                .map(|component| LatencyComponentPolicyState {
+                    kind: match component.kind {
+                        WireLatencyComponentKind::ExternalCapture => {
+                            LatencyComponentKind::ExternalCapture
+                        }
+                        WireLatencyComponentKind::Processor => LatencyComponentKind::Processor,
+                        WireLatencyComponentKind::CuePlayback => LatencyComponentKind::CuePlayback,
+                        WireLatencyComponentKind::BackendBuffering => {
+                            LatencyComponentKind::BackendBuffering
+                        }
+                        WireLatencyComponentKind::Manual => LatencyComponentKind::Manual,
+                    },
+                    enabled: component.enabled,
+                    value_mode: match component.value_mode {
+                        WireLatencyValueMode::Automatic => LatencyValueMode::Automatic,
+                        WireLatencyValueMode::Manual(frames) => LatencyValueMode::Manual(frames),
+                        WireLatencyValueMode::AutomaticPlusTrim(frames) => {
+                            LatencyValueMode::AutomaticPlusTrim(frames)
+                        }
+                    },
+                })
+                .collect::<Vec<_>>()
+                .into(),
+            revision: wire.revision,
+            pending: false,
+            error: None,
+        }
+    }
+
+    fn wire_latency_policy(policy: &TrackLatencyPolicyState) -> WireTrackLatencyPolicy {
+        WireTrackLatencyPolicy {
+            cue_followed: policy.cue_followed,
+            components: policy
+                .components
+                .iter()
+                .map(|component| WireLatencyComponentPolicy {
+                    kind: match component.kind {
+                        LatencyComponentKind::ExternalCapture => {
+                            WireLatencyComponentKind::ExternalCapture
+                        }
+                        LatencyComponentKind::Processor => WireLatencyComponentKind::Processor,
+                        LatencyComponentKind::CuePlayback => WireLatencyComponentKind::CuePlayback,
+                        LatencyComponentKind::BackendBuffering => {
+                            WireLatencyComponentKind::BackendBuffering
+                        }
+                        LatencyComponentKind::Manual => WireLatencyComponentKind::Manual,
+                    },
+                    enabled: component.enabled,
+                    value_mode: match component.value_mode {
+                        LatencyValueMode::Automatic => WireLatencyValueMode::Automatic,
+                        LatencyValueMode::Manual(frames) => WireLatencyValueMode::Manual(frames),
+                        LatencyValueMode::AutomaticPlusTrim(frames) => {
+                            WireLatencyValueMode::AutomaticPlusTrim(frames)
+                        }
+                    },
+                })
+                .collect(),
+            revision: policy.revision,
+        }
+    }
+
+    fn take_latency(wire: WireTakeLatencyState) -> TakeLatencyProvenanceState {
+        let observation = Self::latency_observation(wire.observation);
+        TakeLatencyProvenanceState {
+            capture_alignment_frames: wire.capture_alignment_frames,
+            render_advance_frames: wire.render_advance_frames,
+            certainty: observation.certainty,
+            observation_min_frames: observation.minimum_frames,
+            observation_max_frames: observation.maximum_frames,
+            observation_sample_rate: observation.sample_rate,
+            observation_revision: observation.revision,
+            variable_history: wire.variable_history,
+            history_revisions: wire.history_revisions,
+            changed_during_operation: wire.changed_during_operation,
+            incomplete: wire.incomplete,
+            deferred_mode: None,
+            finalizing: wire.finalizing,
+            error: wire.error,
+        }
+    }
+
     fn apply_wire_snapshot(&mut self, wire: WireSnapshot) {
         let state = self.transport.borrow().driver_state();
         let xruns = if wire.xruns >= self.last_wire_xruns {
@@ -717,6 +853,8 @@ impl RemoteWorkletBackend {
                 .saturating_add(self.transport.borrow().overflows()),
             storage_low_channels: wire.storage_low_channels,
             storage_exhaustions: wire.storage_exhaustions,
+            backend_capture_latency: Self::latency_observation(wire.backend_capture_latency),
+            backend_playback_latency: Self::latency_observation(wire.backend_playback_latency),
             driver_state: state,
             ..Default::default()
         };
@@ -801,6 +939,7 @@ impl RemoteWorkletBackend {
                                 dry_midi: true,
                             },
                         },
+                        latency_policy: Self::latency_policy(track.latency_policy),
                         fx: track.fx.map(|fx| {
                             let oxisynth = fx.oxisynth.map(|oxisynth| {
                                 TrackProcessorEditorState::OxiSynth(OxiSynthState {
@@ -829,8 +968,8 @@ impl RemoteWorkletBackend {
                                 generation: 0,
                                 crash_summary: None,
                                 logs: Arc::from([]),
-                                latency: Default::default(),
-                                latency_provider: Default::default(),
+                                latency: Self::latency_observation(fx.latency),
+                                latency_provider: LatencyProviderState::BuiltInSynthPhaseRange,
                                 editor: oxisynth,
                             }
                         }),
@@ -863,7 +1002,7 @@ impl RemoteWorkletBackend {
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
                         mode: from_wire_loop_mode(loop_.mode),
-                        latency: Default::default(),
+                        latency: Self::take_latency(loop_.latency),
                         length: loop_.length,
                         position: loop_.position,
                         next_mode: loop_.next_mode.map(from_wire_loop_mode),
@@ -1064,8 +1203,19 @@ fn browser_oxisynth_port_descriptors(
 
 fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, Option<u64>)> {
     Some(match command {
-        Command::ConfigureDeviceChannels { .. } | Command::ConfigureMidiEndpoints { .. } => {
+        Command::ConfigureDeviceChannels { .. }
+        | Command::ConfigureBackendLatency { .. }
+        | Command::ConfigureMidiEndpoints { .. } => {
             (BackendMutationKind::DriverConfiguration, None)
+        }
+        Command::SetTrackLatencyPolicy { track_id, .. } => {
+            (BackendMutationKind::TrackControl, Some(*track_id))
+        }
+        Command::SetTakeLatencyPolicy { loop_id, .. } => {
+            (BackendMutationKind::LoopControl, Some(*loop_id))
+        }
+        Command::ConsolidateTakeLatency { loop_id } => {
+            (BackendMutationKind::LoopContent, Some(*loop_id))
         }
         Command::CreateTrack {
             expected_track_id, ..
@@ -1243,7 +1393,38 @@ fn transfer_identity(command: &Command) -> Option<(BackendOperationKind, u64)> {
 
 impl Backend for RemoteWorkletBackend {
     fn latency_capability(&self) -> BackendLatencyCapability {
-        BackendLatencyCapability::Unsupported
+        BackendLatencyCapability::Observed
+    }
+
+    fn set_track_latency_policy(
+        &mut self,
+        track_id: BackendTrackId,
+        policy: &TrackLatencyPolicyState,
+    ) -> Result<()> {
+        if policy.components.len() > shoop_audio_protocol::LATENCY_COMPONENT_CAPACITY {
+            return Err(anyhow!("latency component capacity exceeded"));
+        }
+        self.submit(Command::SetTrackLatencyPolicy {
+            track_id: track_id.raw(),
+            policy: Self::wire_latency_policy(policy),
+        })
+    }
+
+    fn set_take_latency_policy(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        self.submit(Command::SetTakeLatencyPolicy {
+            loop_id: loop_id.raw(),
+            capture_alignment_frames,
+        })
+    }
+
+    fn consolidate_take_latency(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        self.submit(Command::ConsolidateTakeLatency {
+            loop_id: loop_id.raw(),
+        })
     }
 
     fn supports_composite_loops(&self) -> bool {
@@ -2447,15 +2628,25 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn worklet_backend_reports_latency_as_unsupported_instead_of_zero() {
+    fn worklet_backend_exposes_observed_capability_without_inventing_zero() {
         let (mut backend, _control) = RemoteWorkletBackend::new(NullHostMidiBridge);
         assert_eq!(
             backend.latency_capability(),
-            BackendLatencyCapability::Unsupported
+            BackendLatencyCapability::Observed
         );
         assert!(backend
-            .set_take_latency_policy(BackendLoopId::from_raw(1), 0)
+            .configure_audio_context_latency(Some(0.01), Some(0.005), 48_000, 2)
+            .is_ok());
+        assert!(backend
+            .configure_audio_context_latency(Some(f64::NAN), None, 48_000, 3)
             .is_err());
+        assert!(backend
+            .set_take_latency_policy(BackendLoopId::from_raw(1), 0)
+            .is_ok());
+        assert_eq!(
+            backend.snapshot.status.backend_playback_latency,
+            LatencyObservationState::default()
+        );
     }
 
     #[derive(Default)]
@@ -2694,6 +2885,7 @@ mod tests {
             id,
             topology,
             fx,
+            latency_policy: Default::default(),
             audio_channels: 2,
             midi: true,
             output_gain_db: -3.0,
@@ -2746,6 +2938,8 @@ mod tests {
                 command_overflows: 6,
                 storage_low_channels: 7,
                 storage_exhaustions: 8,
+                backend_capture_latency: Default::default(),
+                backend_playback_latency: Default::default(),
                 tracks: vec![
                     track(
                         1,
@@ -2762,6 +2956,7 @@ mod tests {
                             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                             active: true,
                             visible: false,
+                            latency: Default::default(),
                             oxisynth: Some(WireOxiSynthState {
                                 selected_preset_id: "0:40".to_owned(),
                                 reverb_send: 0.25,
@@ -2777,6 +2972,7 @@ mod tests {
                     .map(|(index, mode)| WireLoopState {
                         id: index as u64 + 1,
                         mode,
+                        latency: Default::default(),
                         length: 256,
                         position: 64,
                         next_mode: Some(WireLoopMode::Playing),
