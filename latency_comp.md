@@ -626,7 +626,7 @@ Dependencies: Stages 1–2.
 - [x] Support positive, zero, and bounded negative effective alignment.
 - [x] Preserve MIDI start state and events crossing retained window boundaries.
 - [x] Publish logical and raw played positions independently.
-- [ ] Integrate content snapshots so finalization remains an unsettled mutation while safe play-after-record can consume already available frames.
+- [x] Integrate content snapshots so finalization remains an unsettled mutation while safe play-after-record can consume already available frames.
 - [x] Define readiness/defer behavior when advance is greater than or equal to loop length.
 
 Verification:
@@ -634,11 +634,11 @@ Verification:
 - [ ] The ordinary `Recording` followed by ordinary `Playing` rows of the automated action matrix pass for direct/dry/wet audio and supported MIDI, including every relevant component toggle and exact raw/logical frame oracle.
 - [ ] The ordinary `Playing` rows pass for start/stop/restart, play-after-record, callback boundaries, loop wrap, and frozen-take stability.
 - [ ] Exact delayed impulse and MIDI fixtures satisfy capture acceptance criteria at all mandatory boundary values in the common parameter set.
-- [ ] End-of-take impulses/events survive positive compensation due to postroll.
-- [ ] Loop wrap repeats the selected logical window, not raw startup material.
-- [ ] Play-after-record is gapless when data readiness permits and defers visibly otherwise.
+- [x] End-of-take impulses/events survive positive compensation due to postroll.
+- [x] Loop wrap repeats the selected logical window, not raw startup material.
+- [x] Play-after-record is gapless when data readiness permits and defers visibly otherwise.
 - [ ] Saving/editing during finalization follows the existing wait/retry/reject contract.
-- [ ] No callback allocations or storage growth occur after arming.
+- [x] No callback allocations or storage growth occur after arming.
 
 ### Stage 4 — Dry render-ahead and dry/wet mode semantics
 

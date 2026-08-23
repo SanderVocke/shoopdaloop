@@ -361,7 +361,9 @@ impl MidiChannel {
         let Some(raw_start) = self.raw_position_for_logical(0) else {
             return false;
         };
-        if self.capture_alignment_frames <= 0 {
+        if self.capture_alignment_frames <= 0
+            || (self.capture_alignment_frames as u32) < logical_length
+        {
             return raw_start >= 0;
         }
         let Some(raw_end) = raw_start.checked_add(logical_length.min(i32::MAX as u32) as i32)
@@ -752,6 +754,19 @@ impl MidiChannel {
 
         let mut processed_input = false;
 
+        if postroll_samples > 0 {
+            self.process_record(false, self.data_length, postroll_samples, input)?;
+            self.postroll_remaining_frames = self
+                .postroll_remaining_frames
+                .saturating_sub(postroll_samples);
+            processed_input = true;
+            if self.postroll_remaining_frames == 0 {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    snapshots.finish_mutation(false);
+                }
+            }
+        }
+
         if flags.contains(ProcessFlags::PLAYBACK) {
             let raw_position = params
                 .position
@@ -804,19 +819,6 @@ impl MidiChannel {
             self.process_record(true, from, n_samples, input)?;
             processed_input = true;
         }
-        if postroll_samples > 0 {
-            self.process_record(false, self.data_length, postroll_samples, input)?;
-            self.postroll_remaining_frames = self
-                .postroll_remaining_frames
-                .saturating_sub(postroll_samples);
-            processed_input = true;
-            if self.postroll_remaining_frames == 0 {
-                if let Some(snapshots) = self.content_snapshots.as_mut() {
-                    snapshots.finish_mutation(false);
-                }
-            }
-        }
-
         self.prev_pos_after = pos_after;
         self.prev_process_flags = if self.postroll_remaining_frames > 0 {
             flags.with(ProcessFlags::RECORD)
@@ -1289,6 +1291,52 @@ mod tests {
         check!(!ch.is_finalizing_latency_postroll());
         check!(ch.length() == 7);
         check!(times(&ch.contents()) == vec![1, 5, 6]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn armed_midi_latency_record_and_postroll_allocate_nothing() {
+        let mut ch = channel();
+        ch.prepare_latency_retention(0, 3).unwrap();
+        let recording = [ev(1, &midi::note_on(0, 60, 100))];
+        let postroll = [ev(0, &midi::note_off(0, 60, 0))];
+        let mut output = Vec::with_capacity(16);
+
+        ch.set_recording_buffer(4);
+        ch.set_playback_buffer(4);
+        assert_no_alloc::assert_no_alloc(|| {
+            ch.process(
+                L::Recording,
+                L::Unknown,
+                None,
+                None,
+                4,
+                0,
+                4,
+                0,
+                &recording,
+                &mut output,
+            )
+            .unwrap();
+        });
+        ch.set_recording_buffer(3);
+        ch.set_playback_buffer(3);
+        output.clear();
+        assert_no_alloc::assert_no_alloc(|| {
+            ch.process(
+                L::Stopped,
+                L::Unknown,
+                None,
+                None,
+                3,
+                0,
+                0,
+                4,
+                &postroll,
+                &mut output,
+            )
+            .unwrap();
+        });
+        check!(ch.length() == 7);
     }
 
     #[shoop_wasm_test_support::shoop_test]

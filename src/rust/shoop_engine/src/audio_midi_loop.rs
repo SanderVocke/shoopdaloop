@@ -830,6 +830,24 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn play_after_record_consumes_safe_postroll_prefix_without_a_gap() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel_with_bounded_capacity(4, 6, C::Direct);
+        let channel = l.audio_channel_mut(0).unwrap();
+        channel.prepare_latency_retention(4, 0, 2).unwrap();
+        channel.set_capture_alignment_frames(2).unwrap();
+
+        l.set_mode(L::Recording);
+        cycle(&mut l, 4, &[0.0; 4]);
+        l.set_mode(L::Playing);
+        check!(l.mode() == L::Playing);
+        check!(l.deferred_latency_mode().is_none());
+        let output = cycle(&mut l, 4, &[0.0, 1.0, 0.0, 0.0]);
+        check!(output == vec![0.0, 0.0, 0.0, 1.0]);
+        check!(!l.audio_channel(0).unwrap().is_finalizing_latency_postroll());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn play_after_record_defers_until_compensated_postroll_is_ready() {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel_with_bounded_capacity(4, 8, C::Direct);

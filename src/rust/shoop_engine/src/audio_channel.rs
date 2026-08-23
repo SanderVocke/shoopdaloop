@@ -404,7 +404,9 @@ impl AudioChannel {
         let Some(raw_start) = self.raw_position_for_logical(0) else {
             return false;
         };
-        if self.capture_alignment_frames <= 0 {
+        if self.capture_alignment_frames <= 0
+            || (self.capture_alignment_frames as u32) < logical_length
+        {
             return raw_start >= 0;
         }
         let Some(raw_end) = raw_start.checked_add(logical_length.min(i32::MAX as u32) as i32)
@@ -785,6 +787,14 @@ impl AudioChannel {
             self.prerecord_data_length = 0;
         }
 
+        if postroll_samples > 0 {
+            self.process_record(postroll_samples, self.data_length, false)?;
+            self.postroll_remaining_frames = self
+                .postroll_remaining_frames
+                .saturating_sub(postroll_samples as u32);
+            self.finish_recording_after_finalize = self.postroll_remaining_frames == 0;
+        }
+
         if flags.contains(ProcessFlags::PLAYBACK) {
             self.last_played_back_sample = Some(params.position);
             let raw_position = params
@@ -819,14 +829,6 @@ impl AudioChannel {
             let from = self.prerecord_data_length;
             self.process_record(n_samples, from, true)?;
         }
-        if postroll_samples > 0 {
-            self.process_record(postroll_samples, self.data_length, false)?;
-            self.postroll_remaining_frames = self
-                .postroll_remaining_frames
-                .saturating_sub(postroll_samples as u32);
-            self.finish_recording_after_finalize = self.postroll_remaining_frames == 0;
-        }
-
         self.prev_process_flags = if self.postroll_remaining_frames > 0 {
             flags.with(ProcessFlags::RECORD)
         } else {
@@ -1321,6 +1323,46 @@ mod tests {
         check!(cycle(&mut ch, L::Playing, 2, 2, 4, &[]) == vec![0.0, 1.0]);
         check!(cycle(&mut ch, L::Playing, 2, 0, 4, &[]) == vec![0.0, 0.0]);
         check!(cycle(&mut ch, L::Playing, 2, 2, 4, &[]) == vec![0.0, 1.0]);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn snapshot_stays_unsettled_through_latency_postroll_then_publishes_complete_take() {
+        use crate::content_snapshot::{ContentSnapshotRuntime, CurrentDataError};
+        use std::time::{Duration, Instant};
+
+        let runtime = ContentSnapshotRuntime::new();
+        let (writer, _control, reader) = runtime.create_audio_channel(4, 8);
+        let mut ch = AudioChannel::with_chunk_size_state_and_snapshots(
+            4,
+            C::Direct,
+            Arc::new(AudioChannelStateMirror::default()),
+            Some(writer),
+        );
+        ch.prepare_latency_retention(4, 0, 3).unwrap();
+
+        cycle(&mut ch, L::Recording, 4, 0, 0, &[1.0, 2.0, 3.0, 4.0]);
+        check!(matches!(
+            reader.try_current(),
+            Err(CurrentDataError::MutationActive(_))
+        ));
+        cycle(&mut ch, L::Stopped, 2, 0, 4, &[5.0, 6.0]);
+        check!(matches!(
+            reader.try_current(),
+            Err(CurrentDataError::MutationActive(_))
+        ));
+        cycle(&mut ch, L::Stopped, 1, 0, 4, &[7.0]);
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let snapshot = loop {
+            if let Ok(snapshot) = reader.try_current() {
+                break snapshot;
+            }
+            assert!(Instant::now() < deadline, "snapshot publication timed out");
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        check!(snapshot.metadata.length == 7);
+        check!(snapshot.contiguous() == vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]
