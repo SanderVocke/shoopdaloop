@@ -1062,6 +1062,252 @@ mod bridge {
 #[cfg(not(target_arch = "wasm32"))]
 pub use bridge::{spawn_processor_bridge, CarlaControlHandle, CarlaRealtimeProcessor};
 
+#[derive(Clone, Copy, Debug)]
+struct PendingDelayedMidi {
+    due_frame: u64,
+    event: crate::midi_storage::MidiStorageElem,
+}
+
+#[derive(Debug)]
+pub struct DeterministicDelayProcessor {
+    info: CarlaProcessorInfo,
+    audio_inputs: Vec<Vec<f32>>,
+    audio_outputs: Vec<Vec<f32>>,
+    history: Vec<Vec<f32>>,
+    history_cursor: usize,
+    processed_frames: u64,
+    max_frames: usize,
+    max_delay_frames: u32,
+    delay_frames: u32,
+    latency: ProcessorLatencyObservation,
+    midi_inputs: Vec<crate::midi_storage::MidiStorageElem>,
+    pending_midi: Vec<PendingDelayedMidi>,
+    midi_outputs: Vec<crate::midi_storage::MidiStorageElem>,
+    active: bool,
+    visible: bool,
+}
+
+impl DeterministicDelayProcessor {
+    pub fn new(
+        audio_channels: usize,
+        max_frames: usize,
+        max_delay_frames: u32,
+        midi_capacity: usize,
+        sample_rate: u32,
+    ) -> Result<Self> {
+        let max_frames = max_frames.max(1);
+        let history_frames = max_delay_frames as usize + 1;
+        Ok(Self {
+            info: CarlaProcessorInfo {
+                chain_type: FXChainType::CarlaRack,
+                audio_inputs: audio_channels,
+                audio_outputs: audio_channels,
+                midi_inputs: 1,
+                midi_outputs: 1,
+            },
+            audio_inputs: vec![vec![0.0; max_frames]; audio_channels],
+            audio_outputs: vec![vec![0.0; max_frames]; audio_channels],
+            history: vec![vec![0.0; history_frames]; audio_channels],
+            history_cursor: 0,
+            processed_frames: 0,
+            max_frames,
+            max_delay_frames,
+            delay_frames: 0,
+            latency: ProcessorLatencyObservation::exact(0, sample_rate, 1)?,
+            midi_inputs: Vec::with_capacity(midi_capacity),
+            pending_midi: Vec::with_capacity(midi_capacity),
+            midi_outputs: Vec::with_capacity(midi_capacity),
+            active: false,
+            visible: false,
+        })
+    }
+
+    pub fn set_delay_frames(&mut self, delay_frames: u32) -> Result<(), LatencyDomainError> {
+        if delay_frames > self.max_delay_frames {
+            return Err(LatencyDomainError::ValueExceedsMaximum(delay_frames));
+        }
+        if delay_frames == self.delay_frames {
+            return Ok(());
+        }
+        self.delay_frames = delay_frames;
+        self.latency = ProcessorLatencyObservation::exact(
+            delay_frames,
+            self.latency.sample_rate,
+            self.latency.revision.saturating_add(1),
+        )?;
+        Ok(())
+    }
+
+    fn insert_pending_midi(
+        &mut self,
+        event: crate::midi_storage::MidiStorageElem,
+        due_frame: u64,
+    ) -> Result<()> {
+        if self.pending_midi.len() == self.pending_midi.capacity() {
+            anyhow::bail!("deterministic MIDI delay capacity exceeded");
+        }
+        let insert_at = self
+            .pending_midi
+            .partition_point(|pending| pending.due_frame <= due_frame);
+        self.pending_midi
+            .push(PendingDelayedMidi { due_frame, event });
+        self.pending_midi[insert_at..].rotate_right(1);
+        Ok(())
+    }
+}
+
+impl CarlaProcessor for DeterministicDelayProcessor {
+    fn info(&self) -> CarlaProcessorInfo {
+        self.info
+    }
+
+    fn latency(&self) -> ProcessorLatencyObservation {
+        self.latency
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn set_visible(&mut self, visible: bool) -> Result<()> {
+        self.visible = visible;
+        Ok(())
+    }
+
+    fn is_visible(&mut self) -> bool {
+        self.visible
+    }
+
+    fn save_state(&mut self) -> Result<String> {
+        Ok(self.delay_frames.to_string())
+    }
+
+    fn restore_state(&mut self, state: &str) -> Result<()> {
+        let delay = state.parse::<u32>()?;
+        self.set_delay_frames(delay)?;
+        Ok(())
+    }
+
+    fn audio_input_mut(&mut self, index: usize) -> Option<&mut [f32]> {
+        self.audio_inputs.get_mut(index).map(Vec::as_mut_slice)
+    }
+
+    fn audio_output(&self, index: usize) -> Option<&[f32]> {
+        self.audio_outputs.get(index).map(Vec::as_slice)
+    }
+
+    fn set_midi_input_events(&mut self, index: usize, events: &[(u32, &[u8])]) -> Result<()> {
+        if index != 0 {
+            anyhow::bail!("no deterministic MIDI input {index}");
+        }
+        if events.len() > self.midi_inputs.capacity() {
+            anyhow::bail!("deterministic MIDI input capacity exceeded");
+        }
+        self.midi_inputs.clear();
+        for (offset, data) in events {
+            self.midi_inputs.push(
+                crate::midi_storage::MidiStorageElem::new(*offset, data)
+                    .ok_or_else(|| anyhow::anyhow!("invalid deterministic MIDI event"))?,
+            );
+        }
+        Ok(())
+    }
+
+    fn midi_output_events(&mut self, index: usize) -> Result<Vec<(u32, Vec<u8>)>> {
+        if index != 0 {
+            anyhow::bail!("no deterministic MIDI output {index}");
+        }
+        Ok(self
+            .midi_outputs
+            .iter()
+            .map(|event| (event.time, event.data().to_vec()))
+            .collect())
+    }
+
+    fn fill_midi_output_events(
+        &mut self,
+        index: usize,
+        destination: &mut CarlaMidiBuffer,
+    ) -> Result<()> {
+        if index != 0 {
+            anyhow::bail!("no deterministic MIDI output {index}");
+        }
+        destination.clear();
+        for event in &self.midi_outputs {
+            destination.push(event.time, event.data())?;
+        }
+        Ok(())
+    }
+
+    fn process(&mut self, frames: usize) -> Result<()> {
+        if frames > self.max_frames {
+            anyhow::bail!("deterministic delay block exceeds maximum");
+        }
+        self.midi_outputs.clear();
+        if !self.active {
+            for output in &mut self.audio_outputs {
+                output[..frames].fill(0.0);
+            }
+            return Ok(());
+        }
+
+        let block_start = self.processed_frames;
+        let block_end = block_start
+            .checked_add(frames as u64)
+            .ok_or_else(|| anyhow::anyhow!("deterministic delay frame overflow"))?;
+        let midi_inputs = std::mem::take(&mut self.midi_inputs);
+        for event in &midi_inputs {
+            if event.time as usize >= frames {
+                self.midi_inputs = midi_inputs;
+                anyhow::bail!("deterministic MIDI event is outside its block");
+            }
+            let due_frame = block_start
+                .checked_add(u64::from(event.time))
+                .and_then(|frame| frame.checked_add(u64::from(self.delay_frames)))
+                .ok_or_else(|| anyhow::anyhow!("deterministic MIDI delay overflow"))?;
+            self.insert_pending_midi(*event, due_frame)?;
+        }
+        self.midi_inputs = midi_inputs;
+        self.midi_inputs.clear();
+
+        let delay = self.delay_frames as usize;
+        let history_frames = self.max_delay_frames as usize + 1;
+        for frame in 0..frames {
+            for channel in 0..self.audio_inputs.len() {
+                let input = self.audio_inputs[channel][frame];
+                self.history[channel][self.history_cursor] = input;
+                self.audio_outputs[channel][frame] = if self.processed_frames + frame as u64
+                    >= u64::from(self.delay_frames)
+                {
+                    let delayed = (self.history_cursor + history_frames - delay) % history_frames;
+                    self.history[channel][delayed]
+                } else {
+                    0.0
+                };
+            }
+            self.history_cursor = (self.history_cursor + 1) % history_frames;
+        }
+
+        let outputs = &mut self.midi_outputs;
+        self.pending_midi.retain(|pending| {
+            if pending.due_frame >= block_start && pending.due_frame < block_end {
+                let mut event = pending.event;
+                event.time = (pending.due_frame - block_start) as u32;
+                outputs.push(event);
+                false
+            } else {
+                true
+            }
+        });
+        self.processed_frames = block_end;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FakeProcessorBehavior {
     pub process_delay: Duration,
@@ -1234,6 +1480,66 @@ mod tests {
     use super::*;
     #[cfg(not(target_arch = "wasm32"))]
     use shoop_plugin_protocol::MAX_BLOCK_FRAMES;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn deterministic_processor_delays_audio_and_midi_across_arbitrary_blocks() {
+        let mut processor = DeterministicDelayProcessor::new(1, 8, 16, 8, 48_000).unwrap();
+        processor.set_delay_frames(5).unwrap();
+        processor.set_active(true);
+
+        let mut rendered_audio = Vec::new();
+        let mut rendered_midi = Vec::new();
+        for (block, frames) in [3_usize, 4, 6].into_iter().enumerate() {
+            processor.audio_input_mut(0).unwrap()[..frames].fill(0.0);
+            if block == 0 {
+                processor.audio_input_mut(0).unwrap()[2] = 1.0;
+                processor
+                    .set_midi_input_events(0, &[(2, &[0x90, 60, 100])])
+                    .unwrap();
+            } else {
+                processor.set_midi_input_events(0, &[]).unwrap();
+            }
+            processor.process(frames).unwrap();
+            rendered_audio.extend_from_slice(&processor.audio_output(0).unwrap()[..frames]);
+            let block_start = [0_u32, 3, 7][block];
+            rendered_midi.extend(
+                processor
+                    .midi_output_events(0)
+                    .unwrap()
+                    .into_iter()
+                    .map(|(offset, data)| (block_start + offset, data)),
+            );
+        }
+
+        assert_eq!(
+            rendered_audio.iter().position(|sample| *sample == 1.0),
+            Some(7)
+        );
+        assert_eq!(rendered_midi, vec![(7, vec![0x90, 60, 100])]);
+        assert_eq!(processor.latency().range.unwrap().min(), 5);
+        assert_eq!(processor.latency().revision, 2);
+
+        processor.set_delay_frames(2).unwrap();
+        assert_eq!(processor.latency().range.unwrap().min(), 2);
+        assert_eq!(processor.latency().revision, 3);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn deterministic_processor_callback_is_allocation_free() {
+        let mut processor = DeterministicDelayProcessor::new(2, 64, 32, 16, 48_000).unwrap();
+        processor.set_delay_frames(17).unwrap();
+        processor.set_active(true);
+        processor.audio_input_mut(0).unwrap()[..64].fill(0.25);
+        processor.audio_input_mut(1).unwrap()[..64].fill(0.5);
+        processor
+            .set_midi_input_events(0, &[(3, &[0x90, 64, 100])])
+            .unwrap();
+        assert_no_alloc::assert_no_alloc(|| processor.process(64).unwrap());
+        assert_eq!(processor.audio_output(0).unwrap()[17], 0.25);
+        let mut midi = CarlaMidiBuffer::new(16, crate::midi_storage::MAX_MSG_BYTES);
+        processor.fill_midi_output_events(0, &mut midi).unwrap();
+        assert_eq!(midi.as_slice()[0].frame_offset, 20);
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn fake_processor_round_trips_audio_midi_state_and_visibility() {
