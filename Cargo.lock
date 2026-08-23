@@ -4144,6 +4144,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_latency"
+version = "0.3.0"
+dependencies = [
+ "shoop_wasm_test_support",
+ "thiserror 2.0.20",
+ "tracy-nextest-capture",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "shoop_plugin_protocol"
 version = "0.3.0"
 dependencies = [

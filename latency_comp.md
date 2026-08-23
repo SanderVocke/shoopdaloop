@@ -584,19 +584,19 @@ Verification:
 
 Dependencies: Stage 0 bounds and terminology.
 
-- [ ] Add shared exact/range/estimated/manual/unknown observation types with checked constructors.
-- [ ] Add component kinds, policy modes, range selection, signed trim, source identity, and revision.
-- [ ] Add pure operation recipe resolution for direct/dry record, live wet record, dry-through-wet, wet rerecord, grab, and replacement.
-- [ ] Encode conditional cue/output semantics in the resolver rather than scattered callers.
-- [ ] Add checked summation and maximum enforcement.
-- [ ] Add take snapshot and changed/incomplete status domain types independent of UI/backend representations.
-- [ ] Add per-path aggregation rules and explicit ambiguity results.
+- [x] Add shared exact/range/estimated/manual/unknown observation types with checked constructors.
+- [x] Add component kinds, policy modes, range selection, signed trim, source identity, and revision.
+- [x] Add pure operation recipe resolution for direct/dry record, live wet record, dry-through-wet, wet rerecord, grab, and replacement.
+- [x] Encode conditional cue/output semantics in the resolver rather than scattered callers.
+- [x] Add checked summation and maximum enforcement.
+- [x] Add take snapshot and changed/incomplete status domain types independent of UI/backend representations.
+- [x] Add per-path aggregation rules and explicit ambiguity results.
 
 Verification:
 
-- [ ] Table-driven tests cover every component toggle/mode, unknown/manual behavior, range strategy, signed trim, overflow, and output-latency condition.
-- [ ] Property tests or exhaustive bounded tests prove `min <= selected <= max` where automatic selection resolves.
-- [ ] Wasm-compatible tests pass for the shared types.
+- [x] Table-driven tests cover every component toggle/mode, unknown/manual behavior, range strategy, signed trim, overflow, and output-latency condition.
+- [x] Property tests or exhaustive bounded tests prove `min <= selected <= max` where automatic selection resolves.
+- [x] Wasm-compatible tests pass for the shared types.
 
 ### Stage 2 — Engine and processor latency contracts
 
