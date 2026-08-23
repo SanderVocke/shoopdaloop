@@ -16,6 +16,9 @@ pub struct AppArgs {
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]
     pub session: Option<String>,
+    /// Fetch a startup session URL without asking for confirmation.
+    #[arg(long, requires = "session")]
+    pub force_url_session: bool,
     #[cfg(not(target_arch = "wasm32"))]
     /// Capture Tracy profiling data to ./traces.
     #[arg(long)]
@@ -138,13 +141,19 @@ mod native_tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn cli_parses_session_source() {
-        let args =
-            AppArgs::try_parse_from(["shoopdaloop", "--session", "https://example.com/demo.shoop"])
-                .unwrap();
+        let args = AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--session",
+            "https://example.com/demo.shoop",
+            "--force-url-session",
+        ])
+        .unwrap();
         assert_eq!(
             args.session.as_deref(),
             Some("https://example.com/demo.shoop")
         );
+        assert!(args.force_url_session);
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--force-url-session"]).is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -160,7 +169,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn web_query_parses_flags_and_typed_values() {
         let args = parse_web_query(
-            "?offline=1&settings-test=verify&session-only=true&instance=2&session=https%3A%2F%2Fexample.com%2Fdemo.shoop",
+            "?offline=1&settings-test=verify&session-only=true&instance=2&session=https%3A%2F%2Fexample.com%2Fdemo.shoop&force-url-session=1",
         )
         .unwrap();
         assert!(args.offline);
@@ -171,6 +180,7 @@ mod tests {
             args.session.as_deref(),
             Some("https://example.com/demo.shoop")
         );
+        assert!(args.force_url_session);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -182,6 +192,7 @@ mod tests {
         assert_eq!(args.settings_test, Some(SettingsTest::SaveFailure));
         assert!(!args.worker);
         assert!(parse_web_query("?offline=maybe").is_err());
+        assert!(parse_web_query("?force-url-session=1").is_err());
         assert!(parse_web_query("?settings-test=write&settings-test=verify").is_err());
     }
 }

@@ -18,6 +18,16 @@ cargo run -p shoopdaloop
 cargo run -p shoopdaloop --no-default-features
 ```
 
+A startup session URL normally requires confirmation before it is fetched. Pass `--force-url-session` together with `--session` only when the URL is trusted to bypass that startup confirmation:
+
+```sh
+cargo run -p shoopdaloop -- \
+  --session https://example.com/demo.shoop \
+  --force-url-session
+```
+
+URL sessions opened later from the application still require confirmation.
+
 Native Cargo builds place a `SHOOP_SRC_TREE` marker beside the executable. The marker contains the relative path back to the repository root, so binaries run directly from `target/debug` or `target/release` load `resources/builtins` from the checkout. Runtime resolution checks only that exact sibling marker; it does not search parent directories. Packaged applications omit the marker and use their packaged `builtins` directory instead.
 
 `--tracing` captures Tracy 0.13.1-compatible profiling data in process and writes a numbered file below `./traces` after the application exits normally. It does not expose a live TCP profiler endpoint or require an external capture tool:
@@ -71,6 +81,8 @@ Serve the application from localhost:
 cd src/rust/shoopdaloop
 trunk serve --open
 ```
+
+The same startup options are available as query parameters. For example, `?session=https%3A%2F%2Fexample.com%2Fdemo.shoop&force-url-session=1` fetches that trusted startup URL without confirmation. URL sessions opened later from the application still require confirmation.
 
 For reliable browser behavior, use HTTPS or `localhost`, which browsers treat as a secure context. The browser permissions dialog opens at app startup, reports the current audio, microphone, and Web MIDI permission state, and can be reopened from **Settings → Audio**. Click **Enable microphone audio** to create one `AudioContext`, request the default microphone, and configure microphone and destination channels as visible host ports around the AudioWorklet. Click **Enable output-only audio** to skip microphone capture; destination host ports remain available while capture inventory is empty, and microphone access can be requested later from the dialog. Click **Enable Web MIDI + SysEx** independently to request MIDI and SysEx access. Permission denial, unsupported APIs, and driver failure leave the application responsive and expose truthful retry or unavailable state.
 
