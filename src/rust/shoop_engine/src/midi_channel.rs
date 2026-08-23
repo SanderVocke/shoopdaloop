@@ -43,6 +43,8 @@ pub enum MidiChannelError {
     InvalidReplacement,
     #[error("latency mapping exceeds the supported signed media position")]
     LatencyPositionOverflow,
+    #[error("retained latency margin {frames} exceeds the supported maximum")]
+    RetentionExceedsMaximum { frames: u32 },
 }
 
 /// How much of the cycle's input buffer has been consumed.
@@ -165,6 +167,10 @@ pub struct MidiChannel {
     replace_scratch: Vec<MidiStorageElem>,
     state: Arc<MidiChannelStateMirror>,
     content_snapshots: Option<MidiProcessSnapshotWriter>,
+    retained_before_frames: u32,
+    retained_after_frames: u32,
+    postroll_remaining_frames: u32,
+    latency_retention_incomplete: bool,
     pending_latency_recipe: Option<RuntimeLatencyRecipe>,
     latched_latency_recipe: Option<LatchedLatencyRecipe>,
 }
@@ -225,6 +231,10 @@ impl MidiChannel {
             replace_scratch: Vec::with_capacity(capacity),
             state,
             content_snapshots,
+            retained_before_frames: 0,
+            retained_after_frames: 0,
+            postroll_remaining_frames: 0,
+            latency_retention_incomplete: false,
             pending_latency_recipe: None,
             latched_latency_recipe: None,
         };
@@ -286,7 +296,25 @@ impl MidiChannel {
         self.state.publish_current_latency_recipe(recipe);
     }
     pub fn set_latched_latency_recipe(&mut self, recipe: LatchedLatencyRecipe) {
+        if let Some(total) = recipe.recipe.total_frames {
+            match recipe.recipe.operation {
+                shoop_latency::LatencyOperationKind::RecordDirect
+                | shoop_latency::LatencyOperationKind::RecordDry
+                | shoop_latency::LatencyOperationKind::RecordWet => {
+                    self.capture_alignment_frames = total as i32;
+                    self.latency_retention_incomplete = total > self.retained_after_frames;
+                }
+                shoop_latency::LatencyOperationKind::DryThroughWet
+                | shoop_latency::LatencyOperationKind::RecordDryIntoWet => {
+                    self.render_advance_frames = total;
+                }
+                shoop_latency::LatencyOperationKind::Grab(_)
+                | shoop_latency::LatencyOperationKind::Replacement(_) => {}
+            }
+        }
         self.latched_latency_recipe = Some(recipe);
+        self.state
+            .publish_latency_retention_incomplete(self.latency_retention_incomplete);
         self.state.publish_latched_latency_recipe(Some(recipe));
     }
     pub fn set_mode(&mut self, mode: ChannelMode) {
@@ -316,6 +344,34 @@ impl MidiChannel {
     }
     pub fn render_advance_frames(&self) -> u32 {
         self.render_advance_frames
+    }
+    pub fn retained_before_frames(&self) -> u32 {
+        self.retained_before_frames
+    }
+    pub fn retained_after_frames(&self) -> u32 {
+        self.retained_after_frames
+    }
+    pub fn is_finalizing_latency_postroll(&self) -> bool {
+        self.postroll_remaining_frames > 0
+    }
+    pub fn latency_retention_incomplete(&self) -> bool {
+        self.latency_retention_incomplete
+    }
+    pub fn prepare_latency_retention(
+        &mut self,
+        retained_before_frames: u32,
+        retained_after_frames: u32,
+    ) -> Result<(), MidiChannelError> {
+        for frames in [retained_before_frames, retained_after_frames] {
+            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
+                return Err(MidiChannelError::RetentionExceedsMaximum { frames });
+            }
+        }
+        self.retained_before_frames = retained_before_frames;
+        self.retained_after_frames = retained_after_frames;
+        self.latency_retention_incomplete = false;
+        self.state.publish_latency_retention_incomplete(false);
+        Ok(())
     }
     pub fn set_render_advance_frames(&mut self, frames: u32) -> Result<(), LatencyDomainError> {
         if frames > MAX_COMPENSATION_FRAMES {
@@ -596,8 +652,22 @@ impl MidiChannel {
             flags = ProcessFlags(flags.0 & !ProcessFlags::PLAYBACK.0);
         }
 
+        if self.prev_process_flags.contains(ProcessFlags::RECORD)
+            && !flags.contains(ProcessFlags::RECORD)
+            && self.postroll_remaining_frames == 0
+        {
+            self.postroll_remaining_frames = self.retained_after_frames;
+        }
+        let postroll_samples = if !flags.contains(ProcessFlags::RECORD) && self.rec.is_some() {
+            n_samples.min(self.postroll_remaining_frames)
+        } else {
+            0
+        };
+
         let previous_mutation = snapshot_mutation(self.prev_process_flags);
-        let current_mutation = snapshot_mutation(flags);
+        let current_mutation = snapshot_mutation(flags).or_else(|| {
+            (postroll_samples > 0).then_some(crate::content_snapshot::ContentMutation::Recording)
+        });
         if previous_mutation != current_mutation {
             if let Some(previous) = previous_mutation {
                 if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -721,9 +791,25 @@ impl MidiChannel {
             self.process_record(true, from, n_samples, input)?;
             processed_input = true;
         }
+        if postroll_samples > 0 {
+            self.process_record(false, self.data_length, postroll_samples, input)?;
+            self.postroll_remaining_frames = self
+                .postroll_remaining_frames
+                .saturating_sub(postroll_samples);
+            processed_input = true;
+            if self.postroll_remaining_frames == 0 {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    snapshots.finish_mutation(false);
+                }
+            }
+        }
 
         self.prev_pos_after = pos_after;
-        self.prev_process_flags = flags;
+        self.prev_process_flags = if self.postroll_remaining_frames > 0 {
+            flags.with(ProcessFlags::RECORD)
+        } else {
+            flags
+        };
 
         if adopted_prerecording {
             self.data_changed();
@@ -1156,6 +1242,40 @@ mod tests {
         check!(ch.n_events() == 2);
         check!(times(&ch.contents()) == vec![2, 5]);
         check!(ch.length() == 8);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn prepared_midi_latency_postroll_retains_final_events() {
+        let mut ch = channel();
+        ch.prepare_latency_retention(2, 3).unwrap();
+        cycle(
+            &mut ch,
+            L::Recording,
+            4,
+            0,
+            0,
+            &[ev(1, &midi::note_on(0, 60, 100))],
+        );
+        cycle(
+            &mut ch,
+            L::Stopped,
+            2,
+            0,
+            4,
+            &[ev(1, &midi::note_on(0, 61, 100))],
+        );
+        check!(ch.is_finalizing_latency_postroll());
+        cycle(
+            &mut ch,
+            L::Stopped,
+            2,
+            0,
+            4,
+            &[ev(0, &midi::note_on(0, 62, 100))],
+        );
+        check!(!ch.is_finalizing_latency_postroll());
+        check!(ch.length() == 7);
+        check!(times(&ch.contents()) == vec![1, 5, 6]);
     }
 
     #[shoop_wasm_test_support::shoop_test]
