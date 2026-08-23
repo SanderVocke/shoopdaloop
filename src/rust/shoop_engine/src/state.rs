@@ -4,6 +4,7 @@
 //! strings and are supplied when a mirror is read, so the process thread never clones them.
 
 use crate::channel_mode::ChannelMode;
+use crate::latency_runtime::RuntimeLatencyObservation;
 use crate::loop_mode::LoopMode;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -72,6 +73,8 @@ pub struct AudioPortState {
     /// Samples currently retained for retroactive recording, not the window that was
     /// requested.
     pub ringbuffer_n_samples: u32,
+    pub capture_latency: RuntimeLatencyObservation,
+    pub playback_latency: RuntimeLatencyObservation,
     pub name: String,
 }
 
@@ -109,6 +112,8 @@ pub struct MidiPortState {
     pub muted: bool,
     pub passthrough_muted: bool,
     pub ringbuffer_n_samples: u32,
+    pub capture_latency: RuntimeLatencyObservation,
+    pub playback_latency: RuntimeLatencyObservation,
     pub latest_input_message: Option<LatestMidiMessage>,
     pub name: String,
 }

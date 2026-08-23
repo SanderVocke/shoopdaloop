@@ -3,6 +3,7 @@ use crate::composite_plan::{LoopIdentity, LoopTargetKind, MAX_COMPOSITE_TARGETS}
 use crate::composite_runtime::{
     ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
 };
+use crate::latency_runtime::{AtomicLatencyObservation, RuntimeLatencyObservation};
 use crate::loop_mode::LoopMode;
 use crate::state::{
     AudioChannelState, AudioPortState, LatestMidiMessage, LoopState, MidiChannelState,
@@ -600,6 +601,8 @@ pub struct AudioPortStateMirror {
     input_peak: AtomicU32,
     output_peak: AtomicU32,
     ringbuffer_n_samples: AtomicU32,
+    capture_latency: AtomicLatencyObservation,
+    playback_latency: AtomicLatencyObservation,
 }
 
 impl Default for AudioPortStateMirror {
@@ -611,6 +614,8 @@ impl Default for AudioPortStateMirror {
             input_peak: AtomicU32::new(0.0f32.to_bits()),
             output_peak: AtomicU32::new(0.0f32.to_bits()),
             ringbuffer_n_samples: AtomicU32::new(0),
+            capture_latency: AtomicLatencyObservation::default(),
+            playback_latency: AtomicLatencyObservation::default(),
         }
     }
 }
@@ -646,6 +651,22 @@ impl AudioPortStateMirror {
         atomic_max_f32(&self.output_peak, output);
     }
 
+    pub fn publish_capture_latency(&self, observation: RuntimeLatencyObservation) {
+        self.capture_latency.publish(observation);
+    }
+
+    pub fn publish_playback_latency(&self, observation: RuntimeLatencyObservation) {
+        self.playback_latency.publish(observation);
+    }
+
+    pub fn capture_latency(&self) -> RuntimeLatencyObservation {
+        self.capture_latency.read()
+    }
+
+    pub fn playback_latency(&self) -> RuntimeLatencyObservation {
+        self.playback_latency.read()
+    }
+
     pub fn read(&self, name: String) -> AudioPortState {
         AudioPortState {
             input_peak: f32::from_bits(self.input_peak.swap(0, Ordering::Relaxed)),
@@ -654,6 +675,8 @@ impl AudioPortStateMirror {
             muted: self.muted.load(Ordering::Relaxed),
             passthrough_muted: self.passthrough_muted.load(Ordering::Relaxed),
             ringbuffer_n_samples: self.ringbuffer_n_samples.load(Ordering::Relaxed),
+            capture_latency: self.capture_latency.read(),
+            playback_latency: self.playback_latency.read(),
             name,
         }
     }
@@ -668,6 +691,8 @@ pub struct MidiPortStateMirror {
     muted: AtomicBool,
     passthrough_muted: AtomicBool,
     ringbuffer_n_samples: AtomicU32,
+    capture_latency: AtomicLatencyObservation,
+    playback_latency: AtomicLatencyObservation,
     latest_input_message: AtomicU64,
 }
 
@@ -707,6 +732,22 @@ impl MidiPortStateMirror {
         self.n_output_events.fetch_add(output, Ordering::Relaxed);
     }
 
+    pub fn publish_capture_latency(&self, observation: RuntimeLatencyObservation) {
+        self.capture_latency.publish(observation);
+    }
+
+    pub fn publish_playback_latency(&self, observation: RuntimeLatencyObservation) {
+        self.playback_latency.publish(observation);
+    }
+
+    pub fn capture_latency(&self) -> RuntimeLatencyObservation {
+        self.capture_latency.read()
+    }
+
+    pub fn playback_latency(&self) -> RuntimeLatencyObservation {
+        self.playback_latency.read()
+    }
+
     pub fn publish_latest_input_message(&self, message: LatestMidiMessage) {
         let bytes = u32::from_le_bytes(message.bytes) as u64;
         self.latest_input_message
@@ -728,6 +769,8 @@ impl MidiPortStateMirror {
             muted: self.muted.load(Ordering::Relaxed),
             passthrough_muted: self.passthrough_muted.load(Ordering::Relaxed),
             ringbuffer_n_samples: self.ringbuffer_n_samples.load(Ordering::Relaxed),
+            capture_latency: self.capture_latency.read(),
+            playback_latency: self.playback_latency.read(),
             latest_input_message,
             name,
         }
@@ -873,6 +916,28 @@ mod tests {
         let second = midi.read("midi".to_string());
         check!(second.n_input_events == 0);
         check!(second.latest_input_message.unwrap().data() == [0xb3, 17, 99]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn port_latency_observations_publish_with_independent_revisions() {
+        let capture = RuntimeLatencyObservation::exact(17, 48_000, 3).unwrap();
+        let playback = RuntimeLatencyObservation::exact(29, 48_000, 8).unwrap();
+
+        let audio = AudioPortStateMirror::default();
+        audio.publish_capture_latency(capture);
+        audio.publish_playback_latency(playback);
+        let state = audio.read("audio".to_string());
+        check!(state.capture_latency == capture);
+        check!(state.playback_latency == playback);
+
+        let midi = MidiPortStateMirror::default();
+        midi.publish_capture_latency(capture);
+        midi.publish_playback_latency(playback);
+        check!(midi.capture_latency() == capture);
+        check!(midi.playback_latency() == playback);
+        let state = midi.read("midi".to_string());
+        check!(state.capture_latency.revision == 3);
+        check!(state.playback_latency.revision == 8);
     }
 
     #[shoop_wasm_test_support::shoop_test]

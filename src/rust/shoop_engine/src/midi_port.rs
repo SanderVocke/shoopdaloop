@@ -8,6 +8,7 @@
 //! behind at the tail of the capture window, fed by messages as they age out. The
 //! lagging one is what lets a retroactive recording know the state it began in.
 
+use crate::latency_runtime::RuntimeLatencyObservation;
 use crate::midi_ringbuffer::MidiRingbuffer;
 use crate::midi_sorting_buffer::MidiSortingBuffer;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
@@ -86,6 +87,22 @@ impl MidiPort {
 
     pub fn data_type(&self) -> PortDataType {
         PortDataType::Midi
+    }
+
+    pub fn publish_capture_latency(&self, observation: RuntimeLatencyObservation) {
+        self.state.publish_capture_latency(observation);
+    }
+
+    pub fn publish_playback_latency(&self, observation: RuntimeLatencyObservation) {
+        self.state.publish_playback_latency(observation);
+    }
+
+    pub fn capture_latency(&self) -> RuntimeLatencyObservation {
+        self.state.capture_latency()
+    }
+
+    pub fn playback_latency(&self) -> RuntimeLatencyObservation {
+        self.state.playback_latency()
     }
 
     pub fn muted(&self) -> bool {

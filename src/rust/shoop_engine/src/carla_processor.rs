@@ -1,10 +1,13 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::latency_runtime::AtomicLatencyObservation;
+use crate::latency_runtime::RuntimeLatencyObservation;
 use crate::FXChainType;
 use anyhow::Result;
-use shoop_latency::{LatencyCertainty, LatencyDomainError, LatencyRangeFrames};
+use shoop_latency::LatencyDomainError;
 use std::fmt::Debug;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::time::Duration;
+
+pub type ProcessorLatencyObservation = RuntimeLatencyObservation;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CarlaProcessorInfo {
@@ -13,165 +16,6 @@ pub struct CarlaProcessorInfo {
     pub audio_outputs: usize,
     pub midi_inputs: usize,
     pub midi_outputs: usize,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ProcessorLatencyObservation {
-    pub range: Option<LatencyRangeFrames>,
-    pub certainty: LatencyCertainty,
-    pub sample_rate: u32,
-    pub revision: u64,
-}
-
-impl ProcessorLatencyObservation {
-    pub fn new(
-        range: Option<LatencyRangeFrames>,
-        certainty: LatencyCertainty,
-        sample_rate: u32,
-        revision: u64,
-    ) -> Result<Self, LatencyDomainError> {
-        match (certainty, range) {
-            (LatencyCertainty::Exact, Some(range)) if range.min() == range.max() => {}
-            (LatencyCertainty::Range, Some(range)) if range.min() < range.max() => {}
-            (LatencyCertainty::Estimated, Some(_)) => {}
-            (LatencyCertainty::ManualOnly | LatencyCertainty::Unknown, None) => {}
-            _ => return Err(LatencyDomainError::CertaintyRangeMismatch),
-        }
-        if range.is_some() && sample_rate == 0 {
-            return Err(LatencyDomainError::ZeroSampleRate);
-        }
-        Ok(Self {
-            range,
-            certainty,
-            sample_rate,
-            revision,
-        })
-    }
-
-    pub fn exact(frames: u32, sample_rate: u32, revision: u64) -> Result<Self, LatencyDomainError> {
-        Self::new(
-            Some(LatencyRangeFrames::new(frames, frames)?),
-            LatencyCertainty::Exact,
-            sample_rate,
-            revision,
-        )
-    }
-
-    pub const fn unknown(sample_rate: u32, revision: u64) -> Self {
-        Self {
-            range: None,
-            certainty: LatencyCertainty::Unknown,
-            sample_rate,
-            revision,
-        }
-    }
-}
-
-impl Default for ProcessorLatencyObservation {
-    fn default() -> Self {
-        Self::unknown(0, 0)
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug)]
-struct AtomicProcessorLatency {
-    generation: AtomicU64,
-    minimum: AtomicU32,
-    maximum: AtomicU32,
-    certainty: AtomicU8,
-    sample_rate: AtomicU32,
-    revision: AtomicU64,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl AtomicProcessorLatency {
-    fn new(observation: ProcessorLatencyObservation) -> Self {
-        let range = observation.range;
-        Self {
-            generation: AtomicU64::new(0),
-            minimum: AtomicU32::new(range.map(LatencyRangeFrames::min).unwrap_or(0)),
-            maximum: AtomicU32::new(range.map(LatencyRangeFrames::max).unwrap_or(0)),
-            certainty: AtomicU8::new(certainty_to_u8(observation.certainty)),
-            sample_rate: AtomicU32::new(observation.sample_rate),
-            revision: AtomicU64::new(observation.revision),
-        }
-    }
-
-    fn publish(&self, observation: ProcessorLatencyObservation) {
-        self.generation.fetch_add(1, Ordering::AcqRel);
-        let range = observation.range;
-        self.minimum.store(
-            range.map(LatencyRangeFrames::min).unwrap_or(0),
-            Ordering::Relaxed,
-        );
-        self.maximum.store(
-            range.map(LatencyRangeFrames::max).unwrap_or(0),
-            Ordering::Relaxed,
-        );
-        self.sample_rate
-            .store(observation.sample_rate, Ordering::Relaxed);
-        self.certainty
-            .store(certainty_to_u8(observation.certainty), Ordering::Relaxed);
-        self.revision.store(observation.revision, Ordering::Relaxed);
-        self.generation.fetch_add(1, Ordering::Release);
-    }
-
-    fn read(&self) -> ProcessorLatencyObservation {
-        loop {
-            let before = self.generation.load(Ordering::Acquire);
-            if before & 1 != 0 {
-                std::hint::spin_loop();
-                continue;
-            }
-            let certainty = certainty_from_u8(self.certainty.load(Ordering::Relaxed));
-            let sample_rate = self.sample_rate.load(Ordering::Relaxed);
-            let minimum = self.minimum.load(Ordering::Relaxed);
-            let maximum = self.maximum.load(Ordering::Relaxed);
-            let revision = self.revision.load(Ordering::Relaxed);
-            let after = self.generation.load(Ordering::Acquire);
-            if before != after {
-                std::hint::spin_loop();
-                continue;
-            }
-            let range = matches!(
-                certainty,
-                LatencyCertainty::Exact | LatencyCertainty::Range | LatencyCertainty::Estimated
-            )
-            .then(|| {
-                LatencyRangeFrames::new(minimum, maximum)
-                    .expect("published processor latency is validated")
-            });
-            return ProcessorLatencyObservation {
-                range,
-                certainty,
-                sample_rate,
-                revision,
-            };
-        }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-const fn certainty_to_u8(certainty: LatencyCertainty) -> u8 {
-    match certainty {
-        LatencyCertainty::Exact => 0,
-        LatencyCertainty::Range => 1,
-        LatencyCertainty::Estimated => 2,
-        LatencyCertainty::ManualOnly => 3,
-        LatencyCertainty::Unknown => 4,
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-const fn certainty_from_u8(certainty: u8) -> LatencyCertainty {
-    match certainty {
-        0 => LatencyCertainty::Exact,
-        1 => LatencyCertainty::Range,
-        2 => LatencyCertainty::Estimated,
-        3 => LatencyCertainty::ManualOnly,
-        _ => LatencyCertainty::Unknown,
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -318,7 +162,7 @@ mod bridge {
     struct BridgeSnapshot {
         ready: AtomicBool,
         active: Arc<AtomicBool>,
-        latency: Arc<AtomicProcessorLatency>,
+        latency: Arc<AtomicLatencyObservation>,
         visible: AtomicBool,
         lifecycle: AtomicU8,
         generation: AtomicU64,
@@ -335,7 +179,7 @@ mod bridge {
             Self {
                 ready: AtomicBool::new(host.is_ready()),
                 active: Arc::new(AtomicBool::new(host.is_active())),
-                latency: Arc::new(AtomicProcessorLatency::new(host.latency())),
+                latency: Arc::new(AtomicLatencyObservation::new(host.latency())),
                 visible: AtomicBool::new(host.is_visible()),
                 lifecycle: AtomicU8::new(host.lifecycle() as u8),
                 generation: AtomicU64::new(host.generation()),
@@ -608,7 +452,7 @@ mod bridge {
         info: CarlaProcessorInfo,
         transport: SharedBlockTransport,
         active: Arc<AtomicBool>,
-        latency: Arc<AtomicProcessorLatency>,
+        latency: Arc<AtomicLatencyObservation>,
         wake: std::thread::Thread,
         sequence: u64,
         timeout: Duration,
@@ -1478,6 +1322,7 @@ impl CarlaProcessor for FakeCarlaProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shoop_latency::{LatencyCertainty, LatencyRangeFrames};
     #[cfg(not(target_arch = "wasm32"))]
     use shoop_plugin_protocol::MAX_BLOCK_FRAMES;
 
