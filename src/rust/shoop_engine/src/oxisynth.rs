@@ -275,10 +275,10 @@ impl OxiSynthProcessor {
 
     pub fn select_preset(&mut self, preset: OxiSynthPresetId) -> Result<()> {
         validate_preset(preset).context("validate OxiSynth preset")?;
+        self.reset();
         self.synth
             .select_program(0, self.soundfont_id, u32::from(preset.bank), preset.program)
             .context("select OxiSynth preset")?;
-        self.reset();
         self.selected_preset = preset;
         Ok(())
     }
@@ -304,6 +304,12 @@ impl OxiSynthProcessor {
 
     pub fn reset(&mut self) {
         let _ = self.synth.send_event(MidiEvent::SystemReset);
+        let _ = self.synth.select_program(
+            0,
+            self.soundfont_id,
+            u32::from(self.selected_preset.bank),
+            self.selected_preset.program,
+        );
     }
 
     pub fn panic(&mut self) {
@@ -319,7 +325,12 @@ impl OxiSynthProcessor {
             let offset = (event.time as usize).min(frames).max(cursor);
             self.render(cursor, offset);
             if let Some(event) = translate_midi(event.data()) {
-                let _ = self.synth.send_event(event);
+                match event {
+                    MidiEvent::SystemReset => self.reset(),
+                    event => {
+                        let _ = self.synth.send_event(event);
+                    }
+                }
             }
             cursor = offset;
         }
@@ -645,6 +656,47 @@ mod tests {
         assert!(
             difference > 1.0e-6,
             "preset render difference was {difference}"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn selected_preset_remains_loaded_after_switch_and_reset() {
+        let mut processor =
+            OxiSynthProcessor::new(48_000.0, 128, OxiSynthState::default()).unwrap();
+        let violin = OxiSynthPresetId {
+            bank: 0,
+            program: 40,
+        };
+
+        processor.select_preset(violin).unwrap();
+        assert_eq!(
+            processor
+                .synth
+                .program(0)
+                .map(|(_, bank, program)| (bank, program))
+                .unwrap(),
+            (0, 40)
+        );
+
+        processor.reset();
+        assert_eq!(
+            processor
+                .synth
+                .program(0)
+                .map(|(_, bank, program)| (bank, program))
+                .unwrap(),
+            (0, 40)
+        );
+
+        let system_reset = MidiStorageElem::new(0, &[0xff]).unwrap();
+        processor.process(128, &[system_reset]);
+        assert_eq!(
+            processor
+                .synth
+                .program(0)
+                .map(|(_, bank, program)| (bank, program))
+                .unwrap(),
+            (0, 40)
         );
     }
 
