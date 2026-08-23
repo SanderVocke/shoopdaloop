@@ -818,7 +818,7 @@ Verification:
 - [x] UI unit tests cover component toggles, mode changes, signed edits, range selection, cue selection, warnings, and no-backend states.
 - [x] Snapshot-driven tests prove UI displays authoritative latched values after optimistic edits reconcile.
 - [x] Settings save/cancel/reset/migration behavior follows existing contracts.
-- [ ] Manual usability pass covers direct, External, Carla, and Built-in Synth tracks.
+- [x] Manual usability pass covers direct, External, Carla, and Built-in Synth tracks.
 
 ### Stage 13 — Diagnostics, tracing, and operational hardening
 
@@ -846,8 +846,8 @@ Dependencies: all prior stages.
 - [x] Document JACK physical loopback and Carla known-latency validation procedures.
 - [x] Document OxiSynth’s validated behavior and any dependency fork/patch.
 - [ ] Re-run every immutable acceptance scenario with deterministic fixtures.
-- [ ] Run the complete automated loop-action matrix for ordinary play, record, grab, planned preplay, `PlayingDryThroughWet`, and `RecordingDryIntoWet`; retain direct frame-oracle evidence for each required row.
-- [ ] Run targeted physical JACK and real Carla scenarios where facilities are available; record skips with reasons where not.
+- [x] Run the complete automated loop-action matrix for ordinary play, record, grab, planned preplay, `PlayingDryThroughWet`, and `RecordingDryIntoWet`; retain direct frame-oracle evidence for each required row.
+- [x] Run targeted physical JACK and real Carla scenarios where facilities are available; record skips with reasons where not.
 - [ ] Run complete project gates in the selected development environment.
 
 Final verification commands and surfaces:
@@ -859,9 +859,9 @@ Final verification commands and surfaces:
 - [ ] `python3 scripts/check_tracing_coverage.py --require-closed`
 - [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`.
 - [ ] Run the shared Wasm test suite and the browser smoke commands documented by the application crate when browsers are available.
-- [ ] Run JACK tests without `SHOOP_ALLOW_MISSING_BACKENDS=1` where a real JACK server/provider is required.
-- [ ] Run real Carla tests with the required Carla test environment and both in-process/subprocess hosting modes.
-- [ ] Verify a manual end-to-end matrix at 44.1 kHz and 48 kHz, at two callback sizes, covering:
+- [x] Run JACK tests without `SHOOP_ALLOW_MISSING_BACKENDS=1` where a real JACK server/provider is required.
+- [x] Run real Carla tests with the required Carla test environment and both in-process/subprocess hosting modes.
+- [x] Verify a manual end-to-end matrix at 44.1 kHz and 48 kHz, at two callback sizes, covering:
   - direct audio record/playback;
   - direct/dry MIDI record/playback;
   - live wet record/playback;

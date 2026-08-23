@@ -17,23 +17,23 @@ const COMPONENTS: [LatencyComponentKind; 5] = [
 ];
 
 #[derive(Clone, Copy)]
-pub(crate) struct LatencyPanelContext<'a> {
+pub struct LatencyPanelContext<'a> {
     pub status: &'a StatusState,
     pub connections: &'a ConnectionViewState,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct LatencyPanel {
+pub struct LatencyPanel {
     open: bool,
     take_edits: BTreeMap<LoopId, i32>,
 }
 
 impl LatencyPanel {
-    pub(crate) fn open(&mut self) {
+    pub fn open(&mut self) {
         self.open = true;
     }
 
-    pub(crate) fn show(
+    pub fn show(
         &mut self,
         context: &egui::Context,
         track: &TrackState,
@@ -914,6 +914,72 @@ mod tests {
         });
         assert!(!output.shapes.is_empty());
         output.textures_delta.clear();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn usability_layout_covers_direct_external_carla_and_built_in_tracks() {
+        let (status, connections) = runtime();
+        let runtime = LatencyPanelContext {
+            status: &status,
+            connections: &connections,
+        };
+        let topologies = [
+            crate::TrackTopology::Direct,
+            crate::TrackTopology::DryWet {
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: true,
+                processor_type: crate::TrackProcessorTypeId::new(
+                    crate::TrackProcessorTypeId::EXTERNAL,
+                ),
+            },
+            crate::TrackTopology::DryWet {
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: true,
+                processor_type: crate::TrackProcessorTypeId::new(
+                    crate::TrackProcessorTypeId::CARLA_RACK,
+                ),
+            },
+            crate::TrackTopology::DryWet {
+                dry_audio_channels: 2,
+                wet_audio_channels: 2,
+                dry_midi: true,
+                processor_type: crate::TrackProcessorTypeId::new(
+                    crate::TrackProcessorTypeId::OXISYNTH,
+                ),
+            },
+        ];
+        for (index, topology) in topologies.into_iter().enumerate() {
+            for size in [egui::vec2(600.0, 400.0), egui::vec2(1000.0, 700.0)] {
+                let context = egui::Context::default();
+                let mut panel = LatencyPanel::default();
+                panel.open();
+                let track = TrackState {
+                    id: crate::TrackId::from_raw(index as u64 + 1),
+                    name: format!("Topology {index}"),
+                    topology: topology.clone(),
+                    port_ids: Arc::from([PortId::from_raw(1), PortId::from_raw(2)]),
+                    loops: vec![crate::LoopState {
+                        id: LoopId::from_raw(index as u64 + 10),
+                        name: "Take".to_owned(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                };
+                let mut output = context.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        assert!(panel.show(ui.ctx(), &track, Some(runtime)).is_empty());
+                    },
+                );
+                assert!(output.shapes.len() > 20);
+                output.textures_delta.clear();
+            }
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -50,6 +50,8 @@ pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;
 pub(crate) use details_pane::MediaView;
 pub use global_controls::GlobalControls;
+#[doc(hidden)]
+pub use latency_panel::{LatencyPanel, LatencyPanelContext};
 pub use loop_widget::{LoopWidget, LoopWidgetResponse};
 pub use midi_sequence_widget::MidiSequenceWidget;
 pub use piano_pane::{c_label, is_black, PianoLayout, PianoPane, MIDDLE_C, MIDI_NOTE_COUNT};

@@ -1790,5 +1790,89 @@ fn record_then_play_matrix_matches_raw_and_logical_audio_midi_oracles() {
     }
 }
 
+#[shoop_wasm_test_support::shoop_test]
+fn end_to_end_rate_and_callback_matrix_covers_performance_modes() {
+    for sample_rate in [44_100_u32, 48_000] {
+        for callback_size in [64_u32, 127] {
+            let loop_length = callback_size + 17;
+            let event_frame = loop_length - 1;
+            let input_delay = 5;
+            let processor_delay = 7;
+            let cue_delay = 11;
+            let config = DeterministicTimingConfig {
+                loop_length,
+                callback_size,
+                input_delay,
+                processor_delay,
+                cue_output_delay: cue_delay,
+                backend_hop_delay: 2,
+                manual_trim: -1,
+                performance_reference_offset: cue_delay,
+            };
+            assert_eq!(config.direct_capture_advance(true), Some(15));
+            assert_eq!(config.direct_capture_advance(false), Some(4));
+            assert_eq!(config.render_advance(), Some(8));
+            assert!((callback_size as f64 * 1000.0 / sample_rate as f64).is_finite());
+
+            let (_, direct) = record_and_render_audio_oracle(
+                ChannelMode::Direct,
+                callback_size,
+                loop_length,
+                event_frame,
+                input_delay,
+                input_delay as i32,
+            );
+            assert_eq!(direct, vec![event_frame, loop_length + event_frame]);
+            let (_, dry_midi) = record_and_render_midi_oracle(
+                ChannelMode::Dry,
+                callback_size,
+                loop_length,
+                event_frame,
+                input_delay,
+                input_delay as i32,
+            );
+            assert_eq!(dry_midi, vec![event_frame, loop_length + event_frame]);
+
+            let wet = dry_through_wet_audio_oracle(
+                callback_size,
+                loop_length,
+                event_frame,
+                processor_delay,
+                processor_delay,
+                input_delay,
+                3,
+            );
+            assert!(wet.iter().all(|frame| {
+                (*frame - u64::from(processor_delay)) % u64::from(loop_length)
+                    == u64::from(event_frame)
+            }));
+            let (written, applied, remaining) = dry_into_wet_audio_oracle(
+                callback_size,
+                loop_length,
+                event_frame,
+                processor_delay,
+                processor_delay,
+            );
+            assert_eq!(written, vec![event_frame as usize]);
+            assert!(applied);
+            assert_eq!(remaining, 0);
+
+            let disabled = dry_through_wet_audio_oracle(
+                callback_size,
+                loop_length,
+                event_frame,
+                processor_delay,
+                0,
+                input_delay,
+                2,
+            );
+            assert!(disabled.iter().all(|frame| {
+                *frame % u64::from(loop_length)
+                    == u64::from(event_frame + processor_delay) % u64::from(loop_length)
+            }));
+        }
+    }
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
