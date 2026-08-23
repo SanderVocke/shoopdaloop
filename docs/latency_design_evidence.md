@@ -23,6 +23,23 @@ Verification command:
 cargo test -p shoop_engine oxisynth::tests
 ```
 
+## JACK external send/return cycle behavior
+
+The application JACK client, a deterministic external copy client, and a sink were connected as a cycle:
+
+```text
+source -> Shoop input -> Shoop send -> external copy -> Shoop return -> Shoop output -> sink
+```
+
+`external_send_return_adds_one_callback_period_at_two_buffer_sizes` timestamps one unique pulse with JACK frame time at the source and sink. Against a dedicated JACK2 1.9.22 dummy server, it measured exactly one callback period at both tested sizes:
+
+| JACK period | Measured source-to-sink frame delta attributable to the cyclic send/return |
+| ---: | ---: |
+| 64 frames | 64 frames |
+| 128 frames | 128 frames |
+
+The test changes the dedicated server period between measurements, restores it on exit, and serializes the JACK integration-test binary because period size is server-global. The result is evidence for one separately identified backend-hop/callback-cycle component on this external route; it is not a claim about plugin or physical-device latency.
+
 ## Carla 2.5.10 latency surfaces
 
 The bundled runtime is pinned by `third_party/carla/runtime-lock.json` to Carla 2.5.10, revision `ad09259060a4e660a5033024406a1c3cc9f9c198`. The checked Native header digest is `c1b1a806a95ee2e4935eec9699c233e6a3ee27fcc8da37002bb0034c9d81854f`.
@@ -87,4 +104,3 @@ The following characterization is intentionally still open:
 
 - a deterministic common audio/MIDI action harness with independent `I`, `P`, `O`, `H`, `T`, `Q`, `B`, and `L`;
 - focused baseline tests for all action/mode transitions and callback boundaries;
-- measured JACK external send/return cycle behavior at two buffer sizes.

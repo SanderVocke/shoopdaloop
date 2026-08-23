@@ -22,6 +22,10 @@ threads-required = "num-test-threads"
 filter = 'test(/carla_processor::tests::bridge_/)'
 threads-required = "num-test-threads"
 
+[[profile.default.overrides]]
+filter = 'binary_id(/shoop_engine::jack_app_backend/)'
+threads-required = "num-test-threads"
+
 [[profile.ci.overrides]]
 filter = 'binary_id(/shoopdaloop::carla_worker/)'
 test-group = 'carla-worker'
@@ -29,6 +33,10 @@ threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]
 filter = 'test(/carla_processor::tests::bridge_/)'
+threads-required = "num-test-threads"
+
+[[profile.ci.overrides]]
+filter = 'binary_id(/shoop_engine::jack_app_backend/)'
 threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]

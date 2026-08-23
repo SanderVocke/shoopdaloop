@@ -158,6 +158,80 @@ impl jack::ProcessHandler for AtomicAudioConsumer {
     }
 }
 
+const TIMING_PULSE: f32 = 0.812_345;
+const UNSEEN_FRAME: u32 = u32::MAX;
+
+struct TimedPulseSource {
+    port: jack::Port<jack::AudioOut>,
+    armed: Arc<AtomicBool>,
+    sent_frame: Arc<AtomicU32>,
+}
+impl jack::ProcessHandler for TimedPulseSource {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        let output = self.port.as_mut_slice(ps);
+        output.fill(0.0);
+        if self.armed.swap(false, Ordering::AcqRel) {
+            let offset = 3.min(output.len().saturating_sub(1));
+            output[offset] = TIMING_PULSE;
+            self.sent_frame.store(
+                ps.last_frame_time().wrapping_add(offset as u32),
+                Ordering::Release,
+            );
+        }
+        jack::Control::Continue
+    }
+}
+
+struct CycleCopyProcessor {
+    input: jack::Port<jack::AudioIn>,
+    output: jack::Port<jack::AudioOut>,
+}
+impl jack::ProcessHandler for CycleCopyProcessor {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        self.output
+            .as_mut_slice(ps)
+            .copy_from_slice(self.input.as_slice(ps));
+        jack::Control::Continue
+    }
+}
+
+struct TimedPulseSink {
+    port: jack::Port<jack::AudioIn>,
+    received_frame: Arc<AtomicU32>,
+}
+impl jack::ProcessHandler for TimedPulseSink {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        if self.received_frame.load(Ordering::Acquire) != UNSEEN_FRAME {
+            return jack::Control::Continue;
+        }
+        if let Some(offset) = self
+            .port
+            .as_slice(ps)
+            .iter()
+            .position(|sample| *sample == TIMING_PULSE)
+        {
+            let _ = self.received_frame.compare_exchange(
+                UNSEEN_FRAME,
+                ps.last_frame_time().wrapping_add(offset as u32),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
+        }
+        jack::Control::Continue
+    }
+}
+
+struct JackBufferSizeRestore<'a> {
+    client: &'a jack::Client,
+    buffer_size: u32,
+}
+
+impl Drop for JackBufferSizeRestore<'_> {
+    fn drop(&mut self) {
+        let _ = self.client.set_buffer_size(self.buffer_size);
+    }
+}
+
 struct MidiSource {
     port: jack::Port<jack::MidiOut>,
 }
@@ -599,6 +673,164 @@ fn external_dry_wet_audio_round_trip_reaches_jack_output() {
         received_processed,
         "expected transformed sample 2.0 at wet output, observed max {observed_max}"
     );
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn external_send_return_adds_one_callback_period_at_two_buffer_sizes() {
+    let suffix = std::process::id();
+    let Some(source_client) = peer_client(&format!("shoop-latency-source-{suffix}")) else {
+        return;
+    };
+    let source = source_client
+        .register_port("source", jack::AudioOut::default())
+        .expect("source port");
+    let source_name = source.name().expect("source name");
+    let Some(processor_client) = peer_client(&format!("shoop-latency-processor-{suffix}")) else {
+        return;
+    };
+    let processor_input = processor_client
+        .register_port("input", jack::AudioIn::default())
+        .expect("processor input");
+    let processor_input_name = processor_input.name().expect("processor input name");
+    let processor_output = processor_client
+        .register_port("output", jack::AudioOut::default())
+        .expect("processor output");
+    let processor_output_name = processor_output.name().expect("processor output name");
+    let Some(sink_client) = peer_client(&format!("shoop-latency-sink-{suffix}")) else {
+        return;
+    };
+    let sink = sink_client
+        .register_port("sink", jack::AudioIn::default())
+        .expect("sink port");
+    let sink_name = sink.name().expect("sink name");
+
+    let Some((driver, session)) = app_jack(&format!("shoop-latency-app-{suffix}")) else {
+        return;
+    };
+    let app_name = driver.get_state().maybe_instance_name;
+    let initial_buffer_size = source_client.buffer_size();
+    let ring = initial_buffer_size.max(1);
+    let app_input =
+        AudioPort::new_driver_port(&session, &driver, "send_input", &PortDirection::Input, ring)
+            .expect("application send input");
+    let app_send =
+        AudioPort::new_driver_port(&session, &driver, "send_output", &PortDirection::Output, 0)
+            .expect("application send output");
+    let app_return = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "return_input",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("application return input");
+    let app_output = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "return_output",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("application return output");
+    app_input
+        .connect_internal(&app_send)
+        .expect("application send route");
+    app_return
+        .connect_internal(&app_output)
+        .expect("application return route");
+    driver.wait_process();
+
+    let armed = Arc::new(AtomicBool::new(false));
+    let sent_frame = Arc::new(AtomicU32::new(UNSEEN_FRAME));
+    let received_frame = Arc::new(AtomicU32::new(UNSEEN_FRAME));
+    let source_active = source_client
+        .activate_async(
+            (),
+            TimedPulseSource {
+                port: source,
+                armed: armed.clone(),
+                sent_frame: sent_frame.clone(),
+            },
+        )
+        .expect("activate source");
+    let processor_active = processor_client
+        .activate_async(
+            (),
+            CycleCopyProcessor {
+                input: processor_input,
+                output: processor_output,
+            },
+        )
+        .expect("activate processor");
+    let sink_active = sink_client
+        .activate_async(
+            (),
+            TimedPulseSink {
+                port: sink,
+                received_frame: received_frame.clone(),
+            },
+        )
+        .expect("activate sink");
+
+    let connector = source_active.as_client();
+    let restore_buffer_size = JackBufferSizeRestore {
+        client: connector,
+        buffer_size: initial_buffer_size,
+    };
+    connect_checked(connector, &source_name, &format!("{app_name}:send_input"));
+    connect_checked(
+        connector,
+        &format!("{app_name}:send_output"),
+        &processor_input_name,
+    );
+    connect_checked(
+        connector,
+        &processor_output_name,
+        &format!("{app_name}:return_input"),
+    );
+    connect_checked(connector, &format!("{app_name}:return_output"), &sink_name);
+    driver.wait_process();
+
+    for buffer_size in [64, 128] {
+        connector
+            .set_buffer_size(buffer_size)
+            .unwrap_or_else(|error| panic!("set JACK buffer size to {buffer_size}: {error}"));
+        if !wait_until(|| {
+            connector.buffer_size() == buffer_size
+                && driver.get_state().last_processed == buffer_size
+        }) {
+            require_backend(
+                "JACK variable buffer size",
+                &format!(
+                    "requested {buffer_size}, server remained {}, app processed {} (initial={initial_buffer_size})",
+                    connector.buffer_size(),
+                    driver.get_state().last_processed,
+                ),
+            );
+            return;
+        }
+        driver.wait_process();
+        sent_frame.store(UNSEEN_FRAME, Ordering::Release);
+        received_frame.store(UNSEEN_FRAME, Ordering::Release);
+        armed.store(true, Ordering::Release);
+        assert!(
+            wait_until(|| received_frame.load(Ordering::Acquire) != UNSEEN_FRAME),
+            "timing pulse did not complete the external route at {buffer_size} frames"
+        );
+        let sent = sent_frame.load(Ordering::Acquire);
+        let received = received_frame.load(Ordering::Acquire);
+        assert_ne!(sent, UNSEEN_FRAME);
+        assert_eq!(
+            received.wrapping_sub(sent),
+            buffer_size,
+            "external send/return callback delay at buffer size {buffer_size}"
+        );
+    }
+
+    drop(restore_buffer_size);
+    let _ = sink_active.deactivate();
+    let _ = processor_active.deactivate();
+    let _ = source_active.deactivate();
 }
 
 // Purpose: Verify one JACK MIDI source reaches only the external track with passthrough enabled.
