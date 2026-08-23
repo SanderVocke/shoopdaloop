@@ -7,10 +7,11 @@ const module = await WebAssembly.compile(bytes);
 if (WebAssembly.Module.imports(module).length !== 0) {
   throw new Error('raw host contract requires an import-free Wasm artifact');
 }
+const protocolVersion = 14;
 const host = new ShoopRawWasmHost(module, 48000, 2048, 262144);
-const poll = JSON.stringify({ version: 13, sequence: 1, command: { kind: 'poll' } });
+const poll = JSON.stringify({ version: protocolVersion, sequence: 1, command: { kind: 'poll' } });
 const first = JSON.parse(host.command(poll));
-if (first.version !== 14 || first.sequence !== 1 || first.event?.kind !== 'snapshot') {
+if (first.version !== protocolVersion || first.sequence !== 1 || first.event?.kind !== 'snapshot') {
   throw new Error(`unexpected raw host response: ${JSON.stringify(first)}`);
 }
 const malformed = JSON.parse(host.command('{'));
@@ -24,7 +25,7 @@ try {
 if (!capacityRejected) throw new Error('oversized raw host command was not rejected');
 host.process([], [], 128);
 host.exports.memory.grow(1);
-host.command(JSON.stringify({ version: 13, sequence: 2, command: { kind: 'poll' } }));
+host.command(JSON.stringify({ version: protocolVersion, sequence: 2, command: { kind: 'poll' } }));
 if (host.diagnostics().memoryGrowths < 1) throw new Error('memory growth was not diagnosed');
 host.destroy();
 host.destroy();
