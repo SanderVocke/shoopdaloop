@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 4;
+pub const SESSION_DOCUMENT_VERSION: u16 = 6;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -144,9 +144,6 @@ pub enum TrackTopologyDocument {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wet_audio_channels: Option<u32>,
     },
-    TinySynthFx {
-        audio_channels: u32,
-    },
     OxiSynth,
     Trigger,
 }
@@ -264,26 +261,21 @@ pub struct FxChainDocument {
     pub ports: Vec<PortDocument>,
     pub internal_state: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub midi_cc_assignments: Vec<TinySynthFxMidiCcAssignmentDocument>,
+    pub midi_cc_assignments: Vec<OxiSynthMidiCcAssignmentDocument>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct TinySynthFxMidiCcAssignmentDocument {
-    pub parameter: TinySynthFxParameterDocument,
+pub struct OxiSynthMidiCcAssignmentDocument {
+    pub parameter: OxiSynthParameterDocument,
     pub channel: u8,
     pub controller: u8,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(rename_all = "snake_case")]
-pub enum TinySynthFxParameterDocument {
-    MasterGain,
-    ReverbAmount,
-    DistortionDrive,
-    CompressorAmount,
-    EqLow,
-    EqMid,
-    EqHigh,
+pub enum OxiSynthParameterDocument {
+    ReverbSend,
+    ChorusSend,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -292,7 +284,6 @@ pub enum FxChainTypeDocument {
     CarlaRack,
     CarlaPatchbay,
     CarlaPatchbay16x,
-    TinySynthFx,
     OxiSynth,
     Test,
 }

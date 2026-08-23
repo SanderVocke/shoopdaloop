@@ -1182,25 +1182,26 @@ impl AppWidget {
 
     #[cfg(target_arch = "wasm32")]
     #[doc(hidden)]
-    pub fn browser_test_open_tiny_dry_wet_form(
+    pub fn browser_test_open_builtin_synth_form(
         &mut self,
         processors: &[TrackProcessorDescriptor],
     ) -> bool {
         let Some(processor) = processors
             .iter()
-            .find(|processor| processor.id.as_str() == TrackProcessorTypeId::TINY_SYNTH_FX)
+            .find(|processor| processor.id.as_str() == TrackProcessorTypeId::OXISYNTH)
         else {
             return false;
         };
-        self.add_track_name = "Browser Tiny Synth/FX capability check".to_owned();
+        self.add_track_name = "Browser Built-in Synth capability check".to_owned();
         self.add_track_mode = AddTrackMode::DryWet;
         self.add_track_open = true;
         self.add_track_processor = Some(processor.id.clone());
         self.add_track_audio_channels = 2;
         self.add_track_dry_midi = true;
         self.add_track_open
-            && processor.label == "Tiny Synth/FX"
-            && processor.constraints.matching_audio_channels
+            && processor.label == "Built-in Synth"
+            && processor.constraints.min_dry_audio_channels == Some(2)
+            && processor.constraints.max_dry_audio_channels == Some(2)
             && processor.constraints.midi == crate::TrackProcessorMidiPolicy::Required
             && self.add_track_spec().is_some()
     }

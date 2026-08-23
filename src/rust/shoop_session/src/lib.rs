@@ -226,32 +226,38 @@ mod tests {
         }
     }
 
-    fn tiny_synth_fx_bundle() -> SessionBundle {
-        let mut bundle = direct_bundle(0);
+    fn oxisynth_bundle() -> SessionBundle {
+        let mut bundle = direct_bundle(2);
         let track = &mut bundle.document.track_groups[0].tracks[0];
-        track.name = "Tiny Synth/FX".to_owned();
-        track.port_name_base = "tiny".to_owned();
-        track.topology = TrackTopologyDocument::TinySynthFx { audio_channels: 0 };
+        track.name = "OxiSynth".to_owned();
+        track.port_name_base = "oxisynth".to_owned();
+        track.topology = TrackTopologyDocument::OxiSynth;
         track.fx_chain = Some(FxChainDocument {
             id: 800,
-            title: "Tiny Synth/FX".to_owned(),
-            chain_type: FxChainTypeDocument::TinySynthFx,
+            title: "OxiSynth".to_owned(),
+            chain_type: FxChainTypeDocument::OxiSynth,
             ports: Vec::new(),
-            internal_state: "shoop-tiny-synth-fx:1:c0c00000:VEFT".to_owned(),
-            midi_cc_assignments: vec![TinySynthFxMidiCcAssignmentDocument {
-                parameter: TinySynthFxParameterDocument::EqMid,
-                channel: 4,
-                controller: 18,
-            }],
+            internal_state: "shoop-oxisynth:2:timgm6mb:0:40:00000000:00000000".to_owned(),
+            midi_cc_assignments: Vec::new(),
         });
-        let midi = &mut track.loops[0].channels[0];
-        midi.mode = ChannelModeDocument::Dry;
-        midi.recording_fx_state_id = Some(900);
-        bundle.document.fx_states[0] = FxStateDocument {
-            id: 900,
-            chain_type: FxChainTypeDocument::TinySynthFx,
-            internal_state: "shoop-tiny-synth-fx:1:c1000000:VEFT".to_owned(),
-        };
+        let channels = &mut track.loops[0].channels;
+        for channel in channels.iter_mut() {
+            channel.mode = ChannelModeDocument::Dry;
+            channel.recording_fx_state_id = None;
+        }
+        let wet = channels[..2]
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, mut channel)| {
+                channel.id = 200 + index as u64;
+                channel.mode = ChannelModeDocument::Wet;
+                channel.connected_port_ids.clear();
+                channel
+            })
+            .collect::<Vec<_>>();
+        channels.splice(2..2, wet);
+        bundle.document.fx_states.clear();
         bundle
     }
 
@@ -457,92 +463,74 @@ mod tests {
         })
     }
 
-    fn legacy_source_only_archive(bytes: Vec<u8>, version: u16, source: &str) -> Vec<u8> {
-        let mut input = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let mut output = ZipWriter::new(Cursor::new(Vec::new()));
-        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        for index in 0..input.len() {
-            let mut entry = input.by_index(index).unwrap();
-            let name = entry.name().to_owned();
-            if name.starts_with("scripts/") {
-                continue;
-            }
-            let mut payload = Vec::new();
-            entry.read_to_end(&mut payload).unwrap();
-            if name == "manifest.json" {
-                let mut manifest: serde_json::Value = serde_json::from_slice(&payload).unwrap();
-                manifest["document_version"] = serde_json::json!(version);
-                manifest["scripts"] = serde_json::json!([]);
-                let script = manifest["document"]["scripts"][0].as_object_mut().unwrap();
-                script.remove("entrypoint");
-                script.insert("source".to_owned(), serde_json::json!(source));
-                payload = serde_json::to_vec(&manifest).unwrap();
-            }
-            output.start_file(name, options).unwrap();
-            output.write_all(&payload).unwrap();
-        }
-        output.finish().unwrap().into_inner()
-    }
-
     #[shoop_wasm_test_support::shoop_test]
-    fn tiny_synth_fx_current_and_recorded_state_round_trip_and_validate_shape() {
-        let bundle = tiny_synth_fx_bundle();
-        let encoded = encode_session(&bundle, "tiny-test").unwrap();
-        assert_eq!(decode_session(&encoded).unwrap(), bundle);
-
-        let mut mismatched = bundle.clone();
-        let mismatched_chain = mismatched.document.track_groups[0].tracks[0]
+    fn oxisynth_state_and_assignments_round_trip_with_exact_version() {
+        let mut bundle = oxisynth_bundle();
+        bundle.document.track_groups[0].tracks[0]
             .fx_chain
             .as_mut()
-            .unwrap();
-        mismatched_chain.chain_type = FxChainTypeDocument::CarlaRack;
-        mismatched_chain.midi_cc_assignments.clear();
+            .unwrap()
+            .midi_cc_assignments
+            .push(OxiSynthMidiCcAssignmentDocument {
+                parameter: OxiSynthParameterDocument::ReverbSend,
+                channel: 0,
+                controller: 91,
+            });
+        let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
+        assert_eq!(decode_session(&encoded).unwrap(), bundle);
+
+        for unsupported in [5, 7] {
+            let invalid = rewrite_manifest(encoded.clone(), |manifest| {
+                manifest["document_version"] = serde_json::json!(unsupported);
+            });
+            assert!(matches!(
+                decode_session(&invalid),
+                Err(SessionError::UnsupportedVersion { .. })
+            ));
+        }
+        let removed_tiny = rewrite_manifest(encoded, |manifest| {
+            manifest["document"]["track_groups"][0]["tracks"][0]["topology"] =
+                serde_json::json!({"kind": "tiny_synth_fx", "audio_channels": 2});
+        });
         assert!(matches!(
-            validate_bundle(&mismatched),
-            Err(SessionError::Validation(message))
-                if message.contains("chain type does not match")
+            decode_session(&removed_tiny),
+            Err(SessionError::Manifest(_))
         ));
 
-        let mut duplicate = bundle.clone();
+        let mut mismatched = bundle.clone();
+        mismatched.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .chain_type = FxChainTypeDocument::CarlaRack;
+        assert!(validate_bundle(&mismatched).is_err());
+
+        let mut empty = bundle.clone();
+        empty.document.track_groups[0].tracks[0]
+            .fx_chain
+            .as_mut()
+            .unwrap()
+            .internal_state
+            .clear();
+        assert!(validate_bundle(&empty).is_err());
+
+        let mut duplicate = bundle;
         duplicate.document.track_groups[0].tracks[0]
             .fx_chain
             .as_mut()
             .unwrap()
             .midi_cc_assignments
-            .push(TinySynthFxMidiCcAssignmentDocument {
-                parameter: TinySynthFxParameterDocument::EqHigh,
-                channel: 4,
-                controller: 18,
+            .push(OxiSynthMidiCcAssignmentDocument {
+                parameter: OxiSynthParameterDocument::ChorusSend,
+                channel: 0,
+                controller: 91,
             });
-        assert!(matches!(
-            validate_bundle(&duplicate),
-            Err(SessionError::Validation(message))
-                if message.contains("invalid or duplicate MIDI CC assignments")
-        ));
-
-        let mut out_of_range = bundle.clone();
-        out_of_range.document.track_groups[0].tracks[0]
-            .fx_chain
-            .as_mut()
-            .unwrap()
-            .midi_cc_assignments[0]
-            .channel = 16;
-        assert!(validate_bundle(&out_of_range).is_err());
-
-        let mut missing_midi = bundle;
-        missing_midi.document.track_groups[0].tracks[0].loops[0]
-            .channels
-            .clear();
-        assert!(matches!(
-            validate_bundle(&missing_midi),
-            Err(SessionError::Validation(message))
-                if message.contains("channel shape does not match")
-        ));
+        assert!(validate_bundle(&duplicate).is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]
     fn legacy_fx_chain_without_midi_assignments_defaults_to_empty() {
-        let chain = tiny_synth_fx_bundle().document.track_groups[0].tracks[0]
+        let chain = oxisynth_bundle().document.track_groups[0].tracks[0]
             .fx_chain
             .clone()
             .unwrap();
@@ -697,24 +685,6 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn source_only_legacy_sessions_migrate_to_one_entry_bundle() {
-        let source = "return 'legacy'";
-        for version in [1, 2] {
-            let encoded = legacy_source_only_archive(
-                encode_session(&direct_bundle(1), "legacy-script").unwrap(),
-                version,
-                source,
-            );
-            let decoded = decode_session(&encoded).unwrap();
-            assert_eq!(decoded.document.scripts[0].entrypoint, "main.lua");
-            assert_eq!(
-                decoded.scripts[&700].entrypoint_resource().bytes.as_ref(),
-                source.as_bytes()
-            );
-        }
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
     fn undeclared_and_cross_owner_script_resources_are_rejected() {
         let encoded = encode_session(&direct_bundle(1), "script-adversarial").unwrap();
         let undeclared = rewrite_manifest(encoded.clone(), |manifest| {
@@ -763,41 +733,6 @@ mod tests {
                 ..
             }
         ));
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn version_three_composite_playlists_migrate_to_positioned_instances() {
-        let bundle = deferred_feature_bundle();
-        let encoded = encode_session(&bundle, "legacy-composite").unwrap();
-        let legacy = rewrite_manifest(encoded, |manifest| {
-            manifest["document_version"] = serde_json::json!(3);
-            let composite = manifest["document"]["track_groups"][0]["tracks"][2]["loops"][0]
-                ["composite"]
-                .as_object_mut()
-                .unwrap();
-            composite.remove("instances");
-            composite.insert(
-                "playlists".to_owned(),
-                serde_json::json!([[[{
-                    "delay": 2,
-                    "loop_id": 10,
-                    "mode": "playing",
-                    "n_cycles": 2
-                }]]]),
-            );
-        });
-
-        let decoded = decode_session(&legacy).unwrap();
-        let instances = &decoded.document.track_groups[0].tracks[2].loops[0]
-            .composite
-            .as_ref()
-            .unwrap()
-            .instances;
-        assert_eq!(instances.len(), 1);
-        assert_eq!(instances[0].instance_id, 1);
-        assert_eq!(instances[0].start_cycle, 2);
-        assert_eq!(instances[0].n_cycles, Some(2));
-        assert_eq!(instances[0].mode.as_deref(), Some("playing"));
     }
 
     #[shoop_wasm_test_support::shoop_test]

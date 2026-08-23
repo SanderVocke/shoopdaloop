@@ -2812,22 +2812,9 @@ impl BackendSession {
         title: &str,
         output_ringbuffer_n_samples: u32,
     ) -> Result<FXChain> {
-        self.create_fx_chain_with_channels(chain_type, title, None, output_ringbuffer_n_samples)
+        self.create_fx_chain_with_channels(chain_type, title, output_ringbuffer_n_samples)
     }
 
-    pub fn create_tiny_synth_fx_chain(
-        &self,
-        title: &str,
-        channel_count: usize,
-        output_ringbuffer_n_samples: u32,
-    ) -> Result<FXChain> {
-        self.create_fx_chain_with_channels(
-            FXChainType::TinySynthFx,
-            title,
-            Some(channel_count),
-            output_ringbuffer_n_samples,
-        )
-    }
     pub fn create_oxisynth_chain(
         &self,
         title: &str,
@@ -2836,7 +2823,6 @@ impl BackendSession {
         self.create_fx_chain_with_channels(
             FXChainType::OxiSynth,
             title,
-            Some(2),
             output_ringbuffer_n_samples,
         )
     }
@@ -2845,46 +2831,23 @@ impl BackendSession {
         &self,
         chain_type: FXChainType,
         title: &str,
-        tiny_channels: Option<usize>,
         output_ringbuffer_n_samples: u32,
     ) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
-            FXChainType::TinySynthFx => {
-                let channels = tiny_channels
-                    .ok_or_else(|| anyhow!("Tiny Synth/FX requires an explicit channel count"))?;
-                let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
-                let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
-                let control =
-                    engine::tiny_synth_fx::TinySynthFxControlState::new(sample_rate as f32)?;
-                let processor = control.prepare_processor(
-                    sample_rate as f32,
-                    channels,
-                    buffer_size as usize,
-                )?;
-                let mut pending = Some((title.to_owned(), processor));
-                self.shared
-                    .send_topology(move |session: &mut engine::Session| {
-                        if let Some((title, processor)) = pending.take() {
-                            let _ = session.set_tiny_synth_fx_processor(title, processor);
-                        }
-                    })?;
-                FXChainBackendKind::Tiny(Mutex::new(control))
-            }
             FXChainType::OxiSynth => {
                 let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
                 let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
-                let processor = engine::oxisynth::OxiSynthProcessor::new(
-                    sample_rate as f32,
-                    buffer_size as usize,
-                )?;
+                let control = engine::oxisynth::OxiSynthControlState::default();
+                let processor =
+                    control.prepare_processor(sample_rate as f32, buffer_size as usize)?;
                 let mut pending = Some((title.to_owned(), processor));
                 self.shared.send_topology(move |session| {
                     if let Some((title, processor)) = pending.take() {
                         let _ = session.set_oxisynth_processor(title, processor);
                     }
                 })?;
-                FXChainBackendKind::OxiSynth
+                FXChainBackendKind::OxiSynth(Mutex::new(control))
             }
             FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
                 #[cfg(feature = "carla")]
@@ -2976,7 +2939,6 @@ impl BackendSession {
             title: title.to_string(),
             backend,
             state: Arc::new(Mutex::new(FXChainState::default())),
-            tiny_channels: tiny_channels.unwrap_or(0),
             output_ringbuffer_n_samples: output_ringbuffer_n_samples as usize,
             audio_inputs: Vec::new(),
             audio_outputs: Vec::new(),
@@ -6090,8 +6052,7 @@ pub type FXChainState = engine::FXChainState;
 
 enum FXChainBackendKind {
     Test2x2x1,
-    Tiny(Mutex<engine::tiny_synth_fx::TinySynthFxControlState>),
-    OxiSynth,
+    OxiSynth(Mutex<engine::oxisynth::OxiSynthControlState>),
     #[cfg(feature = "carla")]
     Carla(engine::carla_processor::CarlaControlHandle),
     Unavailable {
@@ -6104,7 +6065,6 @@ pub struct FXChain {
     title: String,
     backend: FXChainBackendKind,
     state: Arc<Mutex<FXChainState>>,
-    tiny_channels: usize,
     output_ringbuffer_n_samples: usize,
     audio_inputs: Vec<AudioPort>,
     audio_outputs: Vec<AudioPort>,
@@ -6136,15 +6096,7 @@ impl FXChain {
                     log::error!("could not queue FX active state: {error}");
                 }
             }
-            FXChainBackendKind::Tiny(_) => {
-                let title = self.title.clone();
-                if let Err(error) = self.shared.send_control(move |session| {
-                    session.set_tiny_synth_fx_active(&title, active);
-                }) {
-                    log::error!("could not queue Tiny Synth/FX active state: {error}");
-                }
-            }
-            FXChainBackendKind::OxiSynth => {
+            FXChainBackendKind::OxiSynth(_) => {
                 let title = self.title.clone();
                 if let Err(error) = self.shared.send_control(move |session| {
                     session.set_oxisynth_active(&title, active);
@@ -6173,9 +6125,7 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.toggle_or_recover(),
-            FXChainBackendKind::Test2x2x1
-            | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => {
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::OxiSynth(_) => {
                 self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
                 Ok(())
             }
@@ -6187,9 +6137,7 @@ impl FXChain {
         match &self.backend {
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.lifecycle(),
-            FXChainBackendKind::Test2x2x1
-            | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => {
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::OxiSynth(_) => {
                 engine::carla_processor::CarlaProcessorLifecycle::Running
             }
             FXChainBackendKind::Unavailable { .. } => {
@@ -6233,7 +6181,7 @@ impl FXChain {
     pub fn try_get_state_str(&self) -> Result<String> {
         match &self.backend {
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
-            FXChainBackendKind::Tiny(control) => Ok(control.lock().unwrap().encode()),
+            FXChainBackendKind::OxiSynth(control) => Ok(control.lock().unwrap().encode()),
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.save_state(),
             _ => Ok(String::new()),
@@ -6245,34 +6193,26 @@ impl FXChain {
     }
 
     pub fn try_restore_state(&self, state: &str) -> Result<()> {
-        #[cfg(not(feature = "carla"))]
-        let _ = state;
         match &self.backend {
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.restore_state(state),
-            FXChainBackendKind::Tiny(control) => {
-                let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+            FXChainBackendKind::OxiSynth(control) => {
                 let assignments = control.lock().unwrap().midi_cc_assignments();
-                let mut replacement = engine::tiny_synth_fx::TinySynthFxControlState::from_encoded(
-                    sample_rate as f32,
-                    state,
-                )?;
+                let mut replacement = engine::oxisynth::OxiSynthControlState::from_encoded(state)?;
                 replacement.set_midi_cc_assignments(assignments);
                 let processor = replacement.prepare_processor(
-                    sample_rate as f32,
-                    self.tiny_channels,
+                    self.shared.sample_rate.load(Ordering::Relaxed).max(1) as f32,
                     self.shared.buffer_size.load(Ordering::Relaxed).max(1) as usize,
                 )?;
                 let title = self.title.clone();
                 let displaced = self.shared.query_graph_scheduler_response(move |session| {
-                    session.set_tiny_synth_fx_processor(title, processor)
+                    session.set_oxisynth_processor(title, processor)
                 })?;
                 drop(displaced);
                 *control.lock().unwrap() = replacement;
                 Ok(())
             }
             FXChainBackendKind::Test2x2x1 => Ok(()),
-            FXChainBackendKind::OxiSynth => Err(anyhow!("OxiSynth has no persistent state")),
             FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
         }
     }
@@ -6281,227 +6221,66 @@ impl FXChain {
         let _ = self.try_restore_state(state);
     }
 
-    pub fn tiny_editor_state(&self) -> Option<engine::tiny_synth_fx::TinySynthFxEditorState> {
+    pub fn oxisynth_editor_state(&self) -> Option<engine::oxisynth::OxiSynthEditorState> {
         match &self.backend {
-            FXChainBackendKind::Tiny(control) => Some(control.lock().unwrap().editor_state()),
+            FXChainBackendKind::OxiSynth(control) => Some(control.lock().unwrap().editor_state()),
             _ => None,
         }
     }
 
-    pub fn tiny_select_preset(&self, id: &str) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+    pub fn oxisynth_select_preset(&self, id: &str) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
         };
-        if !engine::tiny_synth_fx::available_presets().any(|(preset_id, _)| preset_id == id) {
-            return Err(anyhow!("unknown Tiny Synth/FX preset {id}"));
-        }
+        let preset = engine::oxisynth::OxiSynthPresetId::from_stable_id(id)?;
         let title = self.title.clone();
-        let id = id.to_owned();
-        let callback_id = id.clone();
         self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.select_preset(&callback_id);
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
+                if let Err(error) = processor.select_preset(preset) {
+                    log::error!("could not select OxiSynth preset: {error}");
+                }
             }
         })?;
-        control.lock().unwrap().select_preset(&id)?;
+        control.lock().unwrap().select_preset(preset)?;
         Ok(())
     }
 
-    pub fn tiny_set_master_gain_db(&self, gain_db: f32) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
-        };
-        if !gain_db.is_finite()
-            || !(engine::tiny_synth_fx::MIN_MASTER_GAIN_DB
-                ..=engine::tiny_synth_fx::MAX_MASTER_GAIN_DB)
-                .contains(&gain_db)
-        {
-            return Err(anyhow!("invalid Tiny Synth/FX master gain"));
-        }
-        let title = self.title.clone();
-        self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.set_master_gain_db(gain_db);
-            }
-        })?;
-        control.lock().unwrap().set_master_gain_db(gain_db)?;
-        Ok(())
-    }
-
-    pub fn tiny_set_reverb_enabled(&self, enabled: bool) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
-        };
-        let title = self.title.clone();
-        self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.set_reverb_enabled(enabled);
-            }
-        })?;
-        control.lock().unwrap().set_reverb_enabled(enabled);
-        Ok(())
-    }
-
-    pub fn tiny_set_reverb_amount(&self, amount: f32) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
-        };
-        if !amount.is_finite() || !(0.0..=1.0).contains(&amount) {
-            return Err(anyhow!("invalid Tiny Synth/FX reverb amount"));
-        }
-        let title = self.title.clone();
-        self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.set_reverb_amount(amount);
-            }
-        })?;
-        control.lock().unwrap().set_reverb_amount(amount)?;
-        Ok(())
-    }
-
-    pub fn tiny_set_distortion_enabled(&self, enabled: bool) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
-        };
-        let title = self.title.clone();
-        self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.set_distortion_enabled(enabled);
-            }
-        })?;
-        control.lock().unwrap().set_distortion_enabled(enabled);
-        Ok(())
-    }
-
-    pub fn tiny_set_distortion_drive(&self, drive: f32) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
-        };
-        if !drive.is_finite() || !(1.0..=20.0).contains(&drive) {
-            return Err(anyhow!("invalid Tiny Synth/FX distortion drive"));
-        }
-        let title = self.title.clone();
-        self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.set_distortion_drive(drive);
-            }
-        })?;
-        control.lock().unwrap().set_distortion_drive(drive)?;
-        Ok(())
-    }
-
-    pub fn tiny_set_compressor_enabled(&self, enabled: bool) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
-        };
-        let title = self.title.clone();
-        self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.set_compressor_enabled(enabled);
-            }
-        })?;
-        control.lock().unwrap().set_compressor_enabled(enabled);
-        Ok(())
-    }
-
-    pub fn tiny_set_compressor_amount(&self, amount: f32) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
-        };
-        if !amount.is_finite() || !(0.0..=1.0).contains(&amount) {
-            return Err(anyhow!("invalid Tiny Synth/FX compressor amount"));
-        }
-        let title = self.title.clone();
-        self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.set_compressor_amount(amount);
-            }
-        })?;
-        control.lock().unwrap().set_compressor_amount(amount)?;
-        Ok(())
-    }
-
-    pub fn tiny_set_eq_enabled(&self, enabled: bool) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
-        };
-        let title = self.title.clone();
-        self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                processor.set_eq_enabled(enabled);
-            }
-        })?;
-        control.lock().unwrap().set_eq_enabled(enabled);
-        Ok(())
-    }
-
-    pub fn tiny_set_eq_low_db(&self, gain_db: f32) -> Result<()> {
-        self.tiny_set_eq_gain(
-            gain_db,
-            |processor, value| processor.set_eq_low_db(value),
-            |control, value| control.set_eq_low_db(value),
-        )
-    }
-
-    pub fn tiny_set_eq_mid_db(&self, gain_db: f32) -> Result<()> {
-        self.tiny_set_eq_gain(
-            gain_db,
-            |processor, value| processor.set_eq_mid_db(value),
-            |control, value| control.set_eq_mid_db(value),
-        )
-    }
-
-    pub fn tiny_set_eq_high_db(&self, gain_db: f32) -> Result<()> {
-        self.tiny_set_eq_gain(
-            gain_db,
-            |processor, value| processor.set_eq_high_db(value),
-            |control, value| control.set_eq_high_db(value),
-        )
-    }
-
-    fn tiny_set_eq_gain(
+    pub fn oxisynth_set_send(
         &self,
-        gain_db: f32,
-        mut update_processor: impl FnMut(&mut engine::tiny_synth_fx::TinySynthFxProcessor, f32)
-            + Send
-            + 'static,
-        update_control: impl FnOnce(
-            &mut engine::tiny_synth_fx::TinySynthFxControlState,
-            f32,
-        ) -> Result<(), tinyviolin::ProcessError>,
+        parameter: engine::oxisynth::OxiSynthParameter,
+        value: f32,
     ) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
         };
-        if !gain_db.is_finite()
-            || !(engine::tiny_synth_fx::MIN_EQ_GAIN_DB..=engine::tiny_synth_fx::MAX_EQ_GAIN_DB)
-                .contains(&gain_db)
-        {
-            return Err(anyhow!("invalid Tiny Synth/FX EQ gain"));
-        }
+        let mut candidate = control.lock().unwrap().clone();
+        candidate.set_send(parameter, value)?;
         let title = self.title.clone();
         self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
-                update_processor(processor, gain_db);
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
+                if let Err(error) = processor.set_send(parameter, value) {
+                    log::error!("could not set OxiSynth send: {error}");
+                }
             }
         })?;
-        update_control(&mut control.lock().unwrap(), gain_db)?;
+        control.lock().unwrap().set_send(parameter, value)?;
         Ok(())
     }
 
-    pub fn tiny_assign_midi_cc(
+    pub fn oxisynth_assign_midi_cc(
         &self,
-        assignment: engine::tiny_synth_fx::TinySynthFxMidiCcAssignment,
+        assignment: engine::oxisynth::OxiSynthMidiCcAssignment,
     ) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
         };
-        if assignment.channel > 15 || assignment.controller > 127 {
-            return Err(anyhow!("invalid Tiny Synth/FX MIDI CC assignment"));
+        let mut candidate = control.lock().unwrap().clone();
+        if !candidate.assign_midi_cc(assignment) {
+            return Err(anyhow!("invalid OxiSynth MIDI CC assignment"));
         }
         let title = self.title.clone();
         self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
                 processor.assign_midi_cc(assignment);
             }
         })?;
@@ -6509,16 +6288,16 @@ impl FXChain {
         Ok(())
     }
 
-    pub fn tiny_remove_midi_cc(
+    pub fn oxisynth_remove_midi_cc(
         &self,
-        parameter: engine::tiny_synth_fx::TinySynthFxParameter,
+        parameter: engine::oxisynth::OxiSynthParameter,
     ) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
         };
         let title = self.title.clone();
         self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
                 processor.remove_midi_cc(parameter);
             }
         })?;
@@ -6526,13 +6305,13 @@ impl FXChain {
         Ok(())
     }
 
-    pub fn tiny_clear_midi_cc_assignments(&self) -> Result<()> {
-        let FXChainBackendKind::Tiny(control) = &self.backend else {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+    pub fn oxisynth_clear_midi_cc_assignments(&self) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
         };
         let title = self.title.clone();
         self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
                 processor.clear_midi_cc_assignments();
             }
         })?;
@@ -6540,13 +6319,13 @@ impl FXChain {
         Ok(())
     }
 
-    pub fn tiny_panic(&self) -> Result<()> {
-        if !matches!(&self.backend, FXChainBackendKind::Tiny(_)) {
-            return Err(anyhow!("FX chain is not Tiny Synth/FX"));
+    pub fn oxisynth_panic(&self) -> Result<()> {
+        if !matches!(&self.backend, FXChainBackendKind::OxiSynth(_)) {
+            return Err(anyhow!("FX chain is not OxiSynth"));
         }
         let title = self.title.clone();
         self.shared.send_control(move |session| {
-            if let Some(processor) = session.tiny_synth_fx_processor_mut(&title) {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
                 processor.panic();
             }
         })?;
@@ -6556,8 +6335,7 @@ impl FXChain {
     fn n_audio_input_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
-            FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            FXChainBackendKind::OxiSynth => 0,
+            FXChainBackendKind::OxiSynth(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6567,8 +6345,7 @@ impl FXChain {
     fn n_audio_output_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
-            FXChainBackendKind::Tiny(_) => self.tiny_channels,
-            FXChainBackendKind::OxiSynth => 2,
+            FXChainBackendKind::OxiSynth(_) => 2,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().audio_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6576,9 +6353,7 @@ impl FXChain {
     }
     fn n_midi_input_ports(&self) -> usize {
         match &self.backend {
-            FXChainBackendKind::Test2x2x1
-            | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => 1,
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::OxiSynth(_) => 1,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
@@ -6587,9 +6362,7 @@ impl FXChain {
 
     fn n_midi_output_ports(&self) -> usize {
         match &self.backend {
-            FXChainBackendKind::Test2x2x1
-            | FXChainBackendKind::Tiny(_)
-            | FXChainBackendKind::OxiSynth => 0,
+            FXChainBackendKind::Test2x2x1 | FXChainBackendKind::OxiSynth(_) => 0,
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.info().midi_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,

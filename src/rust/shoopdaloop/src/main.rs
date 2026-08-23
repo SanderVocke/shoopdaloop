@@ -2897,9 +2897,9 @@ impl BrowserSelfTest {
                 if !runtime.audio_running() {
                     return;
                 }
-                if !widget.browser_test_open_tiny_dry_wet_form(&snapshot.track_processors) {
+                if !widget.browser_test_open_builtin_synth_form(&snapshot.track_processors) {
                     return self.fail(
-                        "browser dry/wet form did not expose the Tiny Synth/FX processor contract",
+                        "browser dry/wet form did not expose the Built-in Synth processor contract",
                     );
                 }
                 mark_browser_dry_wet_capability_check();
@@ -2908,9 +2908,9 @@ impl BrowserSelfTest {
             Self::WaitForDryWetForm => {
                 if snapshot.track_processors.len() != 1
                     || snapshot.track_processors[0].id.as_str()
-                        != shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                        != shoop_egui::TrackProcessorTypeId::OXISYNTH
                 {
-                    return self.fail("browser Tiny Synth/FX catalog changed unexpectedly");
+                    return self.fail("browser Built-in Synth catalog changed unexpectedly");
                 }
                 widget.browser_test_close_add_track();
                 widget.browser_test_open_global_connections();
@@ -2974,7 +2974,7 @@ impl BrowserSelfTest {
                             wet_audio_channels: 0,
                             dry_midi: true,
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
-                                shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX,
+                                shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
                         },
                     }))
@@ -3007,7 +3007,7 @@ impl BrowserSelfTest {
                 let Some(tiny) = snapshot.tracks.iter().find(|candidate| {
                     candidate.fx.as_ref().is_some_and(|fx| {
                         fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                            == shoop_egui::TrackProcessorTypeId::OXISYNTH
                     })
                 }) else {
                     return;
@@ -3041,8 +3041,8 @@ impl BrowserSelfTest {
                     .and_then(|()| {
                         runtime.dispatch(AppIntent::Track {
                             track_id: tiny.id,
-                            action: shoop_egui::TrackAction::TinySynthFx(
-                                shoop_egui::TinySynthFxControl::SelectPreset("pad".to_owned()),
+                            action: shoop_egui::TrackAction::OxiSynth(
+                                shoop_egui::OxiSynthControl::SelectPreset("0:40".to_owned()),
                             ),
                         })
                     })
@@ -3448,13 +3448,13 @@ impl BrowserSelfTest {
                 })
                 .and_then(|()| {
                     runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
-                        name: "Browser Tiny Synth/FX".to_owned(),
+                        name: "Browser Built-in Synth".to_owned(),
                         topology: shoop_egui::TrackSpecTopology::DryWet {
                             dry_audio_channels: 2,
                             wet_audio_channels: 2,
                             dry_midi: true,
                             processor_type: shoop_egui::TrackProcessorTypeId::new(
-                                shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX,
+                                shoop_egui::TrackProcessorTypeId::OXISYNTH,
                             ),
                         },
                     }))
@@ -3470,7 +3470,7 @@ impl BrowserSelfTest {
                 let Some(tiny) = snapshot.tracks.iter().find(|track| {
                     track.fx.as_ref().is_some_and(|fx| {
                         fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                            == shoop_egui::TrackProcessorTypeId::OXISYNTH
                     })
                 }) else {
                     return;
@@ -3480,43 +3480,16 @@ impl BrowserSelfTest {
                         enabled: true,
                         respect_auto_mute: false,
                     },
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SelectPreset("pad".to_owned()),
+                    shoop_egui::TrackAction::OxiSynth(
+                        shoop_egui::OxiSynthControl::SelectPreset("0:40".to_owned()),
                     ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetMasterGainDb(-12.0),
+                    shoop_egui::TrackAction::OxiSynth(
+                        shoop_egui::OxiSynthControl::SetReverbSend(0.4),
                     ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetReverbEnabled(true),
+                    shoop_egui::TrackAction::OxiSynth(
+                        shoop_egui::OxiSynthControl::SetChorusSend(0.6),
                     ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetReverbAmount(0.4),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetDistortionEnabled(true),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetDistortionDrive(7.0),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetCompressorEnabled(true),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetCompressorAmount(0.6),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetEqEnabled(true),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetEqLowDb(3.0),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetEqMidDb(-2.0),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(
-                        shoop_egui::TinySynthFxControl::SetEqHighDb(1.5),
-                    ),
-                    shoop_egui::TrackAction::TinySynthFx(shoop_egui::TinySynthFxControl::Panic),
+                    shoop_egui::TrackAction::OxiSynth(shoop_egui::OxiSynthControl::Panic),
                     shoop_egui::TrackAction::FxVisibilityChanged(true),
                     shoop_egui::TrackAction::FxVisibilityChanged(false),
                     shoop_egui::TrackAction::FxVisibilityChanged(true),
@@ -3607,7 +3580,7 @@ impl BrowserSelfTest {
                 let Some(tiny) = snapshot.tracks.iter().find(|candidate| {
                     candidate.fx.as_ref().is_some_and(|fx| {
                         fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                            == shoop_egui::TrackProcessorTypeId::OXISYNTH
                     })
                 }) else {
                     return;
@@ -3637,7 +3610,7 @@ impl BrowserSelfTest {
                         connected: false,
                     }) {
                         return self.fail(&format!(
-                            "could not isolate browser Tiny Synth/FX audio input: {error}"
+                            "could not isolate browser Built-in Synth audio input: {error}"
                         ));
                     }
                     return;
@@ -3852,7 +3825,7 @@ impl BrowserSelfTest {
                 let Some(tiny) = snapshot.tracks.iter().find(|track| {
                     track.fx.as_ref().is_some_and(|fx| {
                         fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
+                            == shoop_egui::TrackProcessorTypeId::OXISYNTH
                     })
                 }) else {
                     return;
@@ -3929,39 +3902,29 @@ impl BrowserSelfTest {
                 {
                     return self.fail("loaded browser session lost tracks");
                 }
-                let tiny_state = snapshot.tracks.iter().find_map(|track| {
+                let synth_state = snapshot.tracks.iter().find_map(|track| {
                     let fx = track.fx.as_ref()?;
-                    if fx.processor_type.as_str() != shoop_egui::TrackProcessorTypeId::TINY_SYNTH_FX
-                    {
+                    if fx.processor_type.as_str() != shoop_egui::TrackProcessorTypeId::OXISYNTH {
                         return None;
                     }
                     match fx.editor.as_ref()? {
-                        shoop_egui::TrackProcessorEditorState::TinySynthFx(editor) => {
+                        shoop_egui::TrackProcessorEditorState::OxiSynth(editor) => {
                             Some((fx.visible, editor))
                         }
                     }
                 });
-                let Some((tiny_visible, tiny_state)) = tiny_state else {
+                let Some((synth_visible, synth_state)) = synth_state else {
                     return;
                 };
-                if tiny_visible {
-                    return self.fail("loaded browser Tiny Synth/FX editor visibility persisted");
+                if synth_visible {
+                    return self.fail("loaded browser Built-in Synth editor visibility persisted");
                 }
-                if tiny_state.selected_preset_id.as_deref() != Some("pad")
-                    || tiny_state.master_gain_db != -12.0
-                    || !tiny_state.reverb_enabled
-                    || tiny_state.reverb_amount != 0.4
-                    || !tiny_state.distortion_enabled
-                    || tiny_state.distortion_drive != 7.0
-                    || !tiny_state.compressor_enabled
-                    || tiny_state.compressor_amount != 0.6
-                    || !tiny_state.eq_enabled
-                    || tiny_state.eq_low_db != 3.0
-                    || tiny_state.eq_mid_db != -2.0
-                    || tiny_state.eq_high_db != 1.5
+                if synth_state.selected_preset_id != "0:40"
+                    || synth_state.reverb_send != 0.4
+                    || synth_state.chorus_send != 0.6
                 {
                     return self.fail(&format!(
-                        "loaded browser Tiny Synth/FX state changed: {tiny_state:?}"
+                        "loaded browser Built-in Synth state changed: {synth_state:?}"
                     ));
                 }
                 if !snapshot.scripting.scripts.iter().any(|script| {
@@ -4757,7 +4720,7 @@ fn mark_browser_dry_wet_capability_check() {
         .and_then(|window| window.document())
         .and_then(|document| document.get_element_by_id("runtime_status"))
     {
-        let _ = element.set_attribute("data-dry-wet-form", "tiny-synth-fx");
+        let _ = element.set_attribute("data-dry-wet-form", "built-in-synth");
     }
 }
 

@@ -4133,9 +4133,9 @@ dependencies = [
  "shoop_settings",
  "shoop_tracing",
  "shoop_wasm_test_support",
+ "soundfont",
  "tempfile",
  "thiserror 2.0.20",
- "tinyviolin",
  "tracing",
  "tracy-client",
  "tracy-nextest-capture",
@@ -4766,12 +4766,6 @@ dependencies = [
  "displaydoc",
  "zerovec",
 ]
-
-[[package]]
-name = "tinyviolin"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e69cf6c01e440dc464f648f0a5cb20ac525d32e854f628456083d2ffbc875dbb"
 
 [[package]]
 name = "toml"

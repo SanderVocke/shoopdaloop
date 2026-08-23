@@ -9,8 +9,9 @@ use js_sys::{Array, Function, Promise};
 use shoop_app::CooperativeApplicationRuntime;
 use shoop_app_api::{
     AppIntent, AppSnapshot, ClickTrackRequest, DirectTrackSpec, GlobalControlAction, IoTaskKind,
-    IoTaskStatus, LoopAction, LoopMode, TinySynthFxControl, TrackAction, TrackProcessorEditorState,
-    TrackProcessorTypeId, TrackSpec, TrackSpecTopology,
+    IoTaskStatus, LoopAction, LoopMode, OxiSynthControl, OxiSynthMidiCcAssignment,
+    OxiSynthParameter, TrackAction, TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec,
+    TrackSpecTopology,
 };
 use shoop_backend::BackendDriverState;
 use shoop_worklet_client::{MessageEndpoint, NullHostMidiBridge, RemoteBackendControl};
@@ -535,33 +536,35 @@ async fn remote_loop_content_get_and_set_round_trips_through_session() {
 #[shoop_wasm_test_support::shoop_test(
     wasm_only = "requires the production WebAssembly Worker runtime"
 )]
-async fn remote_tiny_synth_fx_state_round_trips_through_session() {
+async fn remote_builtin_synth_state_round_trips_through_session() {
     let mut harness = RemoteAppHarness::start().await;
     harness.dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
-        name: "Remote Tiny Synth/FX".to_owned(),
+        name: "Remote Built-in Synth".to_owned(),
         topology: TrackSpecTopology::DryWet {
             dry_audio_channels: 2,
             wet_audio_channels: 2,
             dry_midi: true,
-            processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::TINY_SYNTH_FX),
+            processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
         },
     }));
     harness
-        .drive_until("created Tiny Synth/FX track", |snapshot| {
+        .drive_until("created Built-in Synth track", |snapshot| {
             snapshot.tracks.len() == 2 && snapshot.tracks[1].fx.is_some()
         })
         .await;
     let track_id = harness.snapshot().tracks[1].id;
     for control in [
-        TinySynthFxControl::SetMasterGainDb(-12.0),
-        TinySynthFxControl::SetReverbEnabled(true),
-        TinySynthFxControl::SetReverbAmount(0.4),
-        TinySynthFxControl::SetEqEnabled(true),
-        TinySynthFxControl::SetEqHighDb(2.5),
+        OxiSynthControl::SetReverbSend(0.4),
+        OxiSynthControl::SetChorusSend(0.6),
+        OxiSynthControl::AssignMidiCc(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ReverbSend,
+            channel: 3,
+            controller: 74,
+        }),
     ] {
         harness.dispatch(AppIntent::Track {
             track_id,
-            action: TrackAction::TinySynthFx(control),
+            action: TrackAction::OxiSynth(control),
         });
     }
     harness.dispatch(AppIntent::Track {
@@ -569,17 +572,15 @@ async fn remote_tiny_synth_fx_state_round_trips_through_session() {
         action: TrackAction::FxVisibilityChanged(true),
     });
     harness
-        .drive_until("published Tiny Synth/FX state", |snapshot| {
+        .drive_until("published Built-in Synth state", |snapshot| {
             snapshot.tracks[1].fx.as_ref().is_some_and(|fx| {
                 fx.visible
                     && matches!(
                         fx.editor.as_ref(),
-                        Some(TrackProcessorEditorState::TinySynthFx(editor))
-                            if (editor.master_gain_db + 12.0).abs() < f32::EPSILON
-                                && editor.reverb_enabled
-                                && (editor.reverb_amount - 0.4).abs() < f32::EPSILON
-                                && editor.eq_enabled
-                                && (editor.eq_high_db - 2.5).abs() < f32::EPSILON
+                        Some(TrackProcessorEditorState::OxiSynth(editor))
+                            if (editor.reverb_send - 0.4).abs() < f32::EPSILON
+                                && (editor.chorus_send - 0.6).abs() < f32::EPSILON
+                                && editor.midi_cc_assignments.len() == 1
                     )
             })
         })
@@ -587,33 +588,19 @@ async fn remote_tiny_synth_fx_state_round_trips_through_session() {
     let saved = save_session(&mut harness).await;
     load_session(&mut harness, saved).await;
     harness
-        .drive_until("published loaded Tiny Synth/FX state", |snapshot| {
+        .drive_until("published loaded Built-in Synth state", |snapshot| {
             snapshot.tracks.get(1).is_some_and(|track| {
                 track.fx.as_ref().is_some_and(|fx| {
                     matches!(
                         fx.editor.as_ref(),
-                        Some(TrackProcessorEditorState::TinySynthFx(editor))
-                            if (editor.master_gain_db + 12.0).abs() < f32::EPSILON
-                                && editor.reverb_enabled
-                                && (editor.reverb_amount - 0.4).abs() < f32::EPSILON
-                                && editor.eq_enabled
-                                && (editor.eq_high_db - 2.5).abs() < f32::EPSILON
+                        Some(TrackProcessorEditorState::OxiSynth(editor))
+                            if (editor.reverb_send - 0.4).abs() < f32::EPSILON
+                                && (editor.chorus_send - 0.6).abs() < f32::EPSILON
+                                && editor.midi_cc_assignments.len() == 1
                     )
                 })
             })
         })
         .await;
-    let fx = harness.snapshot().tracks[1]
-        .fx
-        .clone()
-        .expect("loaded FX state");
-    let Some(TrackProcessorEditorState::TinySynthFx(editor)) = fx.editor else {
-        panic!("missing loaded Tiny Synth/FX editor state");
-    };
-    assert!((editor.master_gain_db + 12.0).abs() < f32::EPSILON);
-    assert!(editor.reverb_enabled);
-    assert!((editor.reverb_amount - 0.4).abs() < f32::EPSILON);
-    assert!(editor.eq_enabled);
-    assert!((editor.eq_high_db - 2.5).abs() < f32::EPSILON);
     harness.shutdown().await;
 }

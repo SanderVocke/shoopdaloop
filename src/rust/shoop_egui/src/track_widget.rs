@@ -7,7 +7,7 @@ use crate::{
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
-use crate::tiny_synth_fx_editor::TinySynthFxEditor;
+use crate::oxisynth_editor::OxiSynthEditor;
 
 const DEFAULT_TRACK_WIDTH: f32 = 120.0;
 const MIN_TRACK_WIDTH: f32 = 100.0;
@@ -43,7 +43,7 @@ pub struct TrackWidget {
     pending_clone_confirmation: Option<(LoopId, LoopId)>,
     controls: TrackControls,
     fx_logs_open: bool,
-    tiny_synth_fx_editor: TinySynthFxEditor,
+    oxisynth_editor: OxiSynthEditor,
     width: f32,
     rendered_content_width: f32,
     width_drag_start: Option<f32>,
@@ -97,7 +97,7 @@ impl Default for TrackWidget {
             pending_clone_confirmation: None,
             controls: TrackControls::default(),
             fx_logs_open: false,
-            tiny_synth_fx_editor: TinySynthFxEditor::default(),
+            oxisynth_editor: OxiSynthEditor::default(),
             width: DEFAULT_TRACK_WIDTH,
             rendered_content_width: DEFAULT_TRACK_WIDTH,
             width_drag_start: None,
@@ -415,7 +415,7 @@ impl TrackWidget {
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
         result
             .actions
-            .extend(self.tiny_synth_fx_editor.show(ui.ctx(), state, processor));
+            .extend(self.oxisynth_editor.show(ui.ctx(), state, processor));
         if !result.actions.is_empty()
             || !result.loop_actions.is_empty()
             || !result.io_intents.is_empty()
@@ -750,6 +750,7 @@ impl TrackWidget {
                         }
                     }
                 });
+                let track_context_button_size = menu.response.rect.size();
                 #[cfg(test)]
                 {
                     self.test_options_rect = Some(menu.response.rect);
@@ -779,10 +780,13 @@ impl TrackWidget {
                     let controllable =
                         features.external_ui || features.embedded_ui || features.recovery;
                     let fx_button = ui
-                        .add_enabled(
-                            controllable,
-                            egui::Button::new(egui::RichText::new("FX").color(color)),
-                        )
+                        .add_enabled_ui(controllable, |ui| {
+                            ui.add_sized(
+                                track_context_button_size,
+                                egui::Button::new(egui::RichText::new("FX").color(color)),
+                            )
+                        })
+                        .inner
                         .on_hover_text(format!(
                             "{}: {:?}{}",
                             fx.processor_type,
@@ -1090,6 +1094,10 @@ mod tests {
         };
         let mut widget = TrackWidget::default();
         let _ = processor_frame(&context, &mut widget, &state, &processor, Vec::new());
+        assert_eq!(
+            widget.test_fx_rect.unwrap().size(),
+            widget.test_options_rect.unwrap().size()
+        );
         let fx = widget.test_fx_rect.unwrap().center();
         let _ = processor_frame(
             &context,
