@@ -14,6 +14,7 @@ use crate::content_snapshot::AudioProcessSnapshotWriter;
 use crate::latency_runtime::{LatchedLatencyRecipe, RuntimeLatencyRecipe};
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
+use shoop_latency::{LatencyDomainError, MAX_COMPENSATION_FRAMES};
 
 /// At most two copy commands (record and playback) per session sub-block.
 /// The session processes no more than 16 sub-blocks in one callback.
@@ -32,6 +33,8 @@ pub enum ChannelError {
     ReplaceOutOfBounds { position: usize, length: usize },
     #[error("playing {n_samples} samples exceeds the {available} available in the output buffer")]
     PlaybackOutOfBounds { n_samples: usize, available: usize },
+    #[error("latency mapping exceeds the supported signed media position")]
+    LatencyPositionOverflow,
     #[error("recording storage is exhausted at its prepared capacity of {capacity} samples")]
     StorageExhausted { capacity: usize },
 }
@@ -143,7 +146,12 @@ pub struct AudioChannel {
     prerecord_buffers: ChunkedSamples<f32>,
     prerecord_data_length: usize,
 
+    /// Raw media layout offset retained for legacy lead-in/preplay semantics.
     start_offset: i32,
+    /// Frozen raw-take to logical-timeline mapping. Positive values select later raw media.
+    capture_alignment_frames: i32,
+    /// Ephemeral early dispatch for current processor rendering; never persisted into the take.
+    render_advance_frames: u32,
     pre_play_samples: u32,
     output_peak: f32,
     gain: f32,
@@ -217,6 +225,8 @@ impl AudioChannel {
             prerecord_buffers: ChunkedSamples::with_chunk_size(chunk_size),
             prerecord_data_length: 0,
             start_offset: 0,
+            capture_alignment_frames: 0,
+            render_advance_frames: 0,
             pre_play_samples: 0,
             output_peak: 0.0,
             gain: 1.0,
@@ -325,6 +335,40 @@ impl AudioChannel {
     }
     pub fn start_offset(&self) -> i32 {
         self.start_offset
+    }
+    pub fn media_layout_offset(&self) -> i32 {
+        self.start_offset
+    }
+    pub fn capture_alignment_frames(&self) -> i32 {
+        self.capture_alignment_frames
+    }
+    pub fn set_capture_alignment_frames(&mut self, frames: i32) -> Result<(), LatencyDomainError> {
+        if frames.unsigned_abs() > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(
+                frames.unsigned_abs(),
+            ));
+        }
+        self.capture_alignment_frames = frames;
+        Ok(())
+    }
+    pub fn render_advance_frames(&self) -> u32 {
+        self.render_advance_frames
+    }
+    pub fn set_render_advance_frames(&mut self, frames: u32) -> Result<(), LatencyDomainError> {
+        if frames > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(frames));
+        }
+        self.render_advance_frames = frames;
+        Ok(())
+    }
+    pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
+        logical_position
+            .checked_add(self.start_offset)?
+            .checked_add(self.capture_alignment_frames)
+    }
+    pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
+        self.raw_position_for_logical(logical_position)?
+            .checked_add(i32::try_from(self.render_advance_frames).ok()?)
     }
     pub fn set_start_offset(&mut self, offset: i32) {
         self.start_offset = offset;
@@ -633,16 +677,33 @@ impl AudioChannel {
 
         if flags.contains(ProcessFlags::PLAYBACK) {
             self.last_played_back_sample = Some(params.position);
-            self.process_playback(params.position, n_samples)?;
+            let raw_position = params
+                .position
+                .checked_add(self.capture_alignment_frames)
+                .ok_or(ChannelError::LatencyPositionOverflow)?;
+            let dispatch_position = raw_position
+                .checked_add(self.render_advance_frames as i32)
+                .ok_or(ChannelError::LatencyPositionOverflow)?;
+            self.state.publish_playback_positions(
+                params.position.checked_sub(self.start_offset),
+                Some(raw_position),
+                Some(dispatch_position),
+            );
+            self.process_playback(dispatch_position, n_samples)?;
         } else {
             self.last_played_back_sample = None;
+            self.state.publish_playback_positions(None, None, None);
         }
         if flags.contains(ProcessFlags::RECORD) {
             let from = (length_before as i64 + self.start_offset as i64).max(0) as usize;
             self.process_record(n_samples, from, false)?;
         }
         if flags.contains(ProcessFlags::REPLACE) {
-            self.process_replace(params.position, n_samples)?;
+            let raw_position = params
+                .position
+                .checked_add(self.capture_alignment_frames)
+                .ok_or(ChannelError::LatencyPositionOverflow)?;
+            self.process_replace(raw_position, n_samples)?;
         }
         if flags.contains(ProcessFlags::PRE_RECORD) {
             let from = self.prerecord_data_length;
@@ -811,7 +872,11 @@ impl AudioChannel {
         let mut dst = buf.cursor;
 
         // Playback may not start before the pre-play window opens.
-        let starting = (self.start_offset - self.pre_play_samples as i32).max(0);
+        let starting = self
+            .start_offset
+            .saturating_add(self.capture_alignment_frames)
+            .saturating_sub(self.pre_play_samples as i32)
+            .max(0);
         let skip = (starting - pos).max(0);
         if skip > 0 {
             let skip = skip as usize;
@@ -1013,6 +1078,31 @@ mod tests {
         // the copy within it. So the whole first chunk sounds even though only
         // 2 samples are "recorded", and the second chunk is never entered.
         check!(out == vec![1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn media_layout_capture_alignment_and_render_advance_are_independent() {
+        let state = Arc::new(AudioChannelStateMirror::default());
+        let mut ch = AudioChannel::with_chunk_size_and_state(4, C::Direct, Arc::clone(&state));
+        ch.load_data(&(0..12).map(|sample| sample as f32).collect::<Vec<_>>());
+        ch.set_start_offset(2);
+        ch.set_capture_alignment_frames(3).unwrap();
+        ch.set_render_advance_frames(2).unwrap();
+        check!(ch.media_layout_offset() == 2);
+        check!(ch.raw_position_for_logical(0) == Some(5));
+        check!(ch.dispatch_raw_position_for_logical(0) == Some(7));
+        check!(cycle(&mut ch, L::Playing, 2, 0, 2, &[]) == vec![7.0, 8.0]);
+        let published = state.read(ch.data_seq_nr() as u64);
+        check!(published.logical_played_position == Some(0));
+        check!(published.raw_played_position == Some(5));
+        check!(published.dispatch_position == Some(7));
+
+        ch.set_capture_alignment_frames(-2).unwrap();
+        ch.set_render_advance_frames(0).unwrap();
+        check!(cycle(&mut ch, L::Playing, 2, 0, 2, &[]) == vec![0.0, 1.0]);
+        check!(ch
+            .set_capture_alignment_frames(-(MAX_COMPENSATION_FRAMES as i32) - 1)
+            .is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

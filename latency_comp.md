@@ -619,13 +619,13 @@ Verification:
 
 Dependencies: Stages 1–2.
 
-- [ ] Separate media-layout offset, take capture alignment, and ephemeral render advance in audio and MIDI channel processing.
+- [x] Separate media-layout offset, take capture alignment, and ephemeral render advance in audio and MIDI channel processing.
 - [ ] Reserve bounded retained-preroll/postroll storage before arming.
 - [ ] Continue recording finalization after the logical stop until required postroll is captured.
 - [ ] Map logical playback to the selected raw take window across callbacks and loop wraps.
 - [ ] Support positive, zero, and bounded negative effective alignment.
 - [ ] Preserve MIDI start state and events crossing retained window boundaries.
-- [ ] Publish logical and raw played positions independently.
+- [x] Publish logical and raw played positions independently.
 - [ ] Integrate content snapshots so finalization remains an unsettled mutation while safe play-after-record can consume already available frames.
 - [ ] Define readiness/defer behavior when advance is greater than or equal to loop length.
 
