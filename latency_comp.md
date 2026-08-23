@@ -569,10 +569,10 @@ Dependencies: none.
 - [ ] Add the common deterministic action-matrix harness described above, including uniquely identified audio impulses/MIDI events, raw/logical/dispatch observation, and configurable `I`, `P`, `O`, `H`, `T`, `Q`, `B`, and `L`.
 - [ ] Add an engine-level deterministic delayed audio/MIDI source and processor fixture without exposing production settings yet.
 - [ ] Measure current external JACK send/return callback behavior with a small test client at at least two buffer sizes; record whether an unavoidable callback-period delay exists.
-- [ ] Add OxiSynth off-boundary characterization tests before changing its wrapper.
-- [ ] Confirm Carla 2.5.10’s available Native/internal aggregate-latency surfaces for Rack and Patchbay and capture the chosen adapter boundary in a focused design note or test helper documentation.
-- [ ] Inventory every serialized and wire type that carries channel timing, processor state, or backend status.
-- [ ] Establish explicit maximum supported compensation, retained margin, latency path count, and observation-history count from existing recording/storage bounds.
+- [x] Add OxiSynth off-boundary characterization tests before changing its wrapper.
+- [x] Confirm Carla 2.5.10’s available Native/internal aggregate-latency surfaces for Rack and Patchbay and capture the chosen adapter boundary in a focused design note or test helper documentation.
+- [x] Inventory every serialized and wire type that carries channel timing, processor state, or backend status.
+- [x] Establish explicit maximum supported compensation, retained margin, latency path count, and observation-history count from existing recording/storage bounds.
 
 Verification:
 
