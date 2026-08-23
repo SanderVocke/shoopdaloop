@@ -2379,6 +2379,54 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn negative_midi_take_alignment_selects_retained_prerecord_material() {
+        let mut ch = channel();
+        ch.set_recording_buffer(2);
+        ch.set_playback_buffer(2);
+        let prerecord = [
+            ev(0, &midi::note_on(0, 60, 100)),
+            ev(0, &midi::note_off(0, 60, 0)),
+        ];
+        let mut out = Vec::with_capacity(16);
+        ch.process(
+            L::Stopped,
+            L::Recording,
+            Some(0),
+            Some(2),
+            2,
+            0,
+            0,
+            0,
+            &prerecord,
+            &mut out,
+        )
+        .unwrap();
+
+        ch.set_recording_buffer(4);
+        ch.set_playback_buffer(4);
+        out.clear();
+        ch.process(
+            L::Recording,
+            L::Unknown,
+            None,
+            None,
+            4,
+            0,
+            4,
+            0,
+            &[],
+            &mut out,
+        )
+        .unwrap();
+        check!(ch.start_offset() == 2);
+        ch.set_capture_alignment_frames(-2).unwrap();
+        let playback = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        check!(playback.iter().any(|event| {
+            event.time == 0 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_record_discarded_when_recording_does_not_follow() {
         let mut ch = channel();
         ch.set_recording_buffer(4);

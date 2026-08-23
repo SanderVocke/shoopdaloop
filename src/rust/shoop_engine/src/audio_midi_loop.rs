@@ -42,6 +42,8 @@ pub struct AudioMidiLoop {
     processed_latency_frames: u64,
     deferred_latency_mode: Option<LoopMode>,
     deferred_render_preroll_remaining: u32,
+    deferred_for_finalization: bool,
+    deferred_finalization_has_processed: bool,
 }
 
 impl AudioMidiLoop {
@@ -260,14 +262,43 @@ impl AudioMidiLoop {
         })
     }
 
+    pub fn latency_finalization_active(&self) -> bool {
+        self.audio_channels
+            .iter()
+            .any(AudioChannel::is_finalizing_latency_postroll)
+            || self
+                .midi_channels
+                .iter()
+                .any(MidiChannel::is_finalizing_latency_postroll)
+    }
+
+    fn record_finalization_required_on_exit(&self) -> bool {
+        self.mode() == LoopMode::Recording
+            && (self
+                .audio_channels
+                .iter()
+                .any(|channel| channel.retained_after_frames() > 0)
+                || self
+                    .midi_channels
+                    .iter()
+                    .any(|channel| channel.retained_after_frames() > 0))
+    }
+
     fn defer_latency_mode(&mut self, mode: LoopMode) {
         self.deferred_latency_mode = Some(mode);
         self.deferred_render_preroll_remaining = 0;
+        self.deferred_for_finalization = false;
+        self.deferred_finalization_has_processed = false;
         self.loop_.set_mode(LoopMode::Stopped);
         self.loop_
             .state_mirror()
             .publish_deferred_latency_mode(Some(mode));
         self.last_latency_mode = LoopMode::Stopped;
+    }
+
+    fn defer_content_edit_mode(&mut self, mode: LoopMode) {
+        self.defer_latency_mode(mode);
+        self.deferred_for_finalization = true;
     }
 
     fn required_render_preroll(&self, mode: LoopMode) -> u32 {
@@ -312,6 +343,8 @@ impl AudioMidiLoop {
     fn defer_render_mode(&mut self, mode: LoopMode, frames: u32) {
         self.deferred_latency_mode = Some(mode);
         self.deferred_render_preroll_remaining = frames;
+        self.deferred_for_finalization = false;
+        self.deferred_finalization_has_processed = false;
         self.loop_
             .state_mirror()
             .publish_deferred_latency_mode(Some(mode));
@@ -458,7 +491,16 @@ impl AudioMidiLoop {
         self.resync_poi();
     }
     pub fn set_mode(&mut self, mode: LoopMode) {
-        if self.mode() == LoopMode::Recording
+        let content_edit = matches!(
+            mode,
+            LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+        );
+        if content_edit
+            && mode != self.mode()
+            && (self.latency_finalization_active() || self.record_finalization_required_on_exit())
+        {
+            self.defer_content_edit_mode(mode);
+        } else if self.mode() == LoopMode::Recording
             && mode == LoopMode::Playing
             && !self.compensated_playback_ready()
         {
@@ -473,6 +515,8 @@ impl AudioMidiLoop {
             } else {
                 self.deferred_latency_mode = None;
                 self.deferred_render_preroll_remaining = 0;
+                self.deferred_for_finalization = false;
+                self.deferred_finalization_has_processed = false;
                 self.loop_
                     .state_mirror()
                     .publish_deferred_latency_mode(None);
@@ -498,7 +542,17 @@ impl AudioMidiLoop {
         let is_immediate = (self.sync_source().is_none() && self.mode() != LoopMode::Playing)
             || n_cycles_delay.is_none()
             || to_sync_cycle.is_some();
+        let content_edit = matches!(
+            mode,
+            LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+        );
         if is_immediate
+            && content_edit
+            && mode != self.mode()
+            && (self.latency_finalization_active() || self.record_finalization_required_on_exit())
+        {
+            self.defer_content_edit_mode(mode);
+        } else if is_immediate
             && self.mode() == LoopMode::Recording
             && mode == LoopMode::Playing
             && !self.compensated_playback_ready()
@@ -628,8 +682,18 @@ impl AudioMidiLoop {
         midi_out: &mut [Vec<MidiStorageElem>],
     ) -> Result<(), LoopError> {
         if let Some(mode) = self.deferred_latency_mode {
-            if self.deferred_render_preroll_remaining == 0 && self.compensated_playback_ready() {
+            let playback_ready = mode != LoopMode::Playing || self.compensated_playback_ready();
+            let finalization_ready = !self.deferred_for_finalization
+                || (self.deferred_finalization_has_processed
+                    && !self.latency_finalization_active());
+            if self.deferred_render_preroll_remaining == 0
+                && finalization_ready
+                && !self.latency_finalization_active()
+                && playback_ready
+            {
                 self.deferred_latency_mode = None;
+                self.deferred_for_finalization = false;
+                self.deferred_finalization_has_processed = false;
                 self.loop_
                     .state_mirror()
                     .publish_deferred_latency_mode(None);
@@ -728,9 +792,14 @@ impl AudioMidiLoop {
             *deferred_render_preroll_remaining =
                 deferred_render_preroll_remaining.saturating_sub(params.n_samples);
         });
+        if self.deferred_for_finalization {
+            self.deferred_finalization_has_processed = true;
+        }
         if processing_render_preroll && self.deferred_render_preroll_remaining == 0 {
             if let Some(mode) = self.deferred_latency_mode {
                 self.deferred_latency_mode = None;
+                self.deferred_for_finalization = false;
+                self.deferred_finalization_has_processed = false;
                 self.loop_
                     .state_mirror()
                     .publish_deferred_latency_mode(None);
@@ -1015,6 +1084,24 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn immediate_render_preroll_supports_advance_larger_than_loop_and_callback() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(4, C::Dry);
+        l.set_length(4);
+        let channel = l.audio_channel_mut(0).unwrap();
+        channel.load_data(&[1.0, 0.0, 0.0, 0.0]);
+        channel.set_render_advance_frames(11).unwrap();
+
+        l.set_mode(L::PlayingDryThroughWet);
+        check!(cycle(&mut l, 5, &[]) == vec![1.0, 0.0, 0.0, 0.0, 1.0]);
+        check!(l.mode() == L::Stopped);
+        check!(cycle(&mut l, 4, &[]) == vec![0.0, 0.0, 0.0, 1.0]);
+        check!(l.mode() == L::Stopped);
+        check!(cycle(&mut l, 2, &[]) == vec![0.0, 0.0]);
+        check!(l.mode() == L::PlayingDryThroughWet);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn planned_dry_through_wet_starts_at_render_boundary() {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel(8, C::Dry);
@@ -1129,6 +1216,32 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn content_edit_waits_until_latency_finalization_finishes() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel_with_bounded_capacity(4, 6, C::Direct);
+        l.audio_channel_mut(0)
+            .unwrap()
+            .prepare_latency_retention(4, 0, 2)
+            .unwrap();
+        l.set_mode(L::Recording);
+        cycle(&mut l, 4, &[1.0, 2.0, 3.0, 4.0]);
+
+        l.set_mode(L::Replacing);
+        check!(l.mode() == L::Stopped);
+        check!(l.deferred_latency_mode() == Some(L::Replacing));
+        cycle(&mut l, 1, &[5.0]);
+        check!(l.mode() == L::Stopped);
+        check!(l.latency_finalization_active());
+        cycle(&mut l, 1, &[6.0]);
+        check!(l.mode() == L::Stopped);
+        check!(!l.latency_finalization_active());
+        cycle(&mut l, 1, &[7.0]);
+        check!(l.mode() == L::Replacing);
+        check!(l.deferred_latency_mode().is_none());
+        check!(l.audio_channel(0).unwrap().data()[0] == 7.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn play_after_record_consumes_safe_postroll_prefix_without_a_gap() {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel_with_bounded_capacity(4, 6, C::Direct);
@@ -1144,6 +1257,21 @@ mod tests {
         let output = cycle(&mut l, 4, &[0.0, 1.0, 0.0, 0.0]);
         check!(output == vec![0.0, 0.0, 0.0, 1.0]);
         check!(!l.audio_channel(0).unwrap().is_finalizing_latency_postroll());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn play_after_record_defers_when_negative_alignment_lacks_prerecord_margin() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel_with_bounded_capacity(4, 4, C::Direct);
+        l.set_mode(L::Recording);
+        cycle(&mut l, 4, &[1.0, 0.0, 0.0, 0.0]);
+        l.audio_channel_mut(0)
+            .unwrap()
+            .set_capture_alignment_frames(-1)
+            .unwrap();
+        l.set_mode(L::Playing);
+        check!(l.mode() == L::Stopped);
+        check!(l.deferred_latency_mode() == Some(L::Playing));
     }
 
     #[shoop_wasm_test_support::shoop_test]

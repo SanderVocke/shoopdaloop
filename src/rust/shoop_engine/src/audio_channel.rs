@@ -1584,6 +1584,25 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn negative_take_alignment_selects_retained_prerecord_material() {
+        let mut ch = channel();
+        ch.set_recording_buffer_size(2);
+        ch.set_playback_buffer_size(2);
+        ch.process(L::Stopped, L::Recording, Some(0), Some(2), 2, 0, 0)
+            .unwrap();
+        ch.finalize_process(&[1.0, 0.0], &mut [0.0; 2]);
+
+        ch.set_recording_buffer_size(4);
+        ch.set_playback_buffer_size(4);
+        ch.process(L::Recording, L::Unknown, None, None, 4, 0, 0)
+            .unwrap();
+        ch.finalize_process(&[0.0; 4], &mut [0.0; 4]);
+        check!(ch.start_offset() == 2);
+        ch.set_capture_alignment_frames(-2).unwrap();
+        check!(cycle(&mut ch, L::Playing, 4, 0, 4, &[]) == vec![1.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn pre_record_discarded_when_recording_does_not_follow() {
         let mut ch = channel();
         ch.set_recording_buffer_size(2);

@@ -466,27 +466,27 @@ Use table-driven tests to cover the full action/component contract. Pairwise red
 
 Given raw take data whose event is at `E + A`, where `A` is the frozen resolved take capture advance:
 
-- [ ] With take compensation enabled, direct or wet playback emits the event at logical frame `E`.
-- [ ] Disabling one frozen component of value `C` emits it at `E + C`, with checked wrap semantics.
-- [ ] Manual replacement and signed trim move playback by exactly the selected delta.
-- [ ] Current device, cue, or processor observations do not change the take’s ordinary playback frame.
-- [ ] Playback across callback boundaries and loop wrap emits one event per cycle in stable order.
-- [ ] Starting, stopping, restarting, and play-after-record do not lose the first or last compensated frame.
-- [ ] Audio and MIDI tests use the same logical mapping, including equal-frame MIDI ordering and state restoration.
+- [x] With take compensation enabled, direct or wet playback emits the event at logical frame `E`.
+- [x] Disabling one frozen component of value `C` emits it at `E + C`, with checked wrap semantics.
+- [x] Manual replacement and signed trim move playback by exactly the selected delta.
+- [x] Current device, cue, or processor observations do not change the take’s ordinary playback frame.
+- [x] Playback across callback boundaries and loop wrap emits one event per cycle in stable order.
+- [x] Starting, stopping, restarting, and play-after-record do not lose the first or last compensated frame.
+- [x] Audio and MIDI tests use the same logical mapping, including equal-frame MIDI ordering and state restoration.
 
 #### Record (`Recording` followed by `Playing`)
 
 For a source event intended for logical frame `E`, physically performed at `E + Q`:
 
-- [ ] Direct/dry raw capture records it at `E + Q + I`; wet raw capture records it at `E + Q + I + P + H` for the deterministic live processor path.
-- [ ] In the cue-followed case, `Q = O` and the latched direct/dry recipe resolves `I + O + T`, while the live wet recipe resolves `I + P + H + O + T`. In the external/world-timed case, `Q = 0`, cue compensation is disabled, and `O` contributes zero. Both cases enforce non-overlapping path validation.
-- [ ] Subsequent compensated playback emits each event at `E`; disabling each component leaves exactly that component’s delay audible.
-- [ ] In the cue-followed scenario, cue/output enabled removes exactly the simulated `Q = O` performance-reference offset. In the external/world-timed scenario, cue/output disabled contributes exactly zero. A deliberately mismatched toggle produces the expected `O`-frame early/late result.
-- [ ] A final event requiring postroll is retained and aligned, including when total advance crosses a callback or exceeds one loop.
-- [ ] Prerecord material needed by a negative/manual alignment is retained; out-of-margin requests produce the specified visible incomplete/error state.
-- [ ] Latency changes during record/finalization preserve the latched value and set the changed warning.
-- [ ] Play-after-record reads available compensated data on time or deterministically defers according to readiness policy.
-- [ ] Direct audio, dry audio, wet audio, direct MIDI, and dry MIDI are covered where present.
+- [x] Direct/dry raw capture records it at `E + Q + I`; wet raw capture records it at `E + Q + I + P + H` for the deterministic live processor path.
+- [x] In the cue-followed case, `Q = O` and the latched direct/dry recipe resolves `I + O + T`, while the live wet recipe resolves `I + P + H + O + T`. In the external/world-timed case, `Q = 0`, cue compensation is disabled, and `O` contributes zero. Both cases enforce non-overlapping path validation.
+- [x] Subsequent compensated playback emits each event at `E`; disabling each component leaves exactly that component’s delay audible.
+- [x] In the cue-followed scenario, cue/output enabled removes exactly the simulated `Q = O` performance-reference offset. In the external/world-timed scenario, cue/output disabled contributes exactly zero. A deliberately mismatched toggle produces the expected `O`-frame early/late result.
+- [x] A final event requiring postroll is retained and aligned, including when total advance crosses a callback or exceeds one loop.
+- [x] Prerecord material needed by a negative/manual alignment is retained; out-of-margin requests produce the specified visible incomplete/error state.
+- [x] Latency changes during record/finalization preserve the latched value and set the changed warning.
+- [x] Play-after-record reads available compensated data on time or deterministically defers according to readiness policy.
+- [x] Direct audio, dry audio, wet audio, direct MIDI, and dry MIDI are covered where present.
 
 #### Grab
 
@@ -508,7 +508,7 @@ Preplay tests must distinguish existing media lead-in from processor render-ahea
 - [x] The processor’s first valid wet event lands exactly on the target transition frame; no uncompensated duplicate or unintended audible pre-echo is emitted.
 - [x] Zero-latency preplay performs no unnecessary early dispatch.
 - [x] Exactly sufficient lead time succeeds; insufficient immediate lead time deterministically defers or warns according to policy.
-- [ ] Preplay crossing callback boundaries, sync-cycle boundaries, loop wrap, and advances greater than one loop is covered.
+- [x] Preplay crossing callback boundaries, sync-cycle boundaries, loop wrap, and advances greater than one loop is covered.
 - [x] Audio and MIDI preplay restore the correct first sample/event and MIDI controller/note state.
 
 #### Play dry through wet (`PlayingDryThroughWet`)
@@ -533,7 +533,7 @@ For a dry logical event intended at wet frame `E`:
 - [ ] Disabling processor compensation during the rerecord operation writes the wet event late by exactly `P + H`; later playback preserves that chosen result without inventing compensation.
 - [ ] First-frame pre-render, last-frame completion, callback boundaries, loop wrap, replacement range boundaries, and repeated rerecord cycles are covered.
 - [ ] Dry MIDI state, note-on/off, sustain, equal-frame order, and generated wet audio timing are covered.
-- [ ] Monitoring is forced/routed according to existing mode semantics without adding a duplicate live path.
+- [x] Monitoring is forced/routed according to existing mode semantics without adding a duplicate live path.
 - [x] A processor-latency change during preread/rerecord marks the operation changed and follows the latched policy.
 
 ### Cross-action invariants
@@ -541,7 +541,7 @@ For a dry logical event intended at wet frame `E`:
 - [ ] The same frozen take played by `Playing` and used as the source of `PlayingDryThroughWet` has identical logical event times before the additional current processor render advance.
 - [ ] Record then play, record then dry-through-wet, grab then play, and dry-into-wet then wet play round trips preserve event identity and expected frame.
 - [ ] Component totals are not double counted when JACK/provider observations already cover backend/device intervals.
-- [ ] Enabling compensation while only monitoring changes no monitored frame/sample.
+- [x] Enabling compensation while only monitoring changes no monitored frame/sample.
 - [ ] Audio and MIDI state mirrors publish raw/logical/dispatch positions consistent with rendered data.
 - [ ] Save/load and sample-rate conversion preserve each action’s expected timing when the same action is replayed after restoration.
 - [ ] Native dummy and Wasm test backends run the same shared action matrix wherever their declared capabilities overlap.
@@ -631,13 +631,13 @@ Dependencies: Stages 1–2.
 
 Verification:
 
-- [ ] The ordinary `Recording` followed by ordinary `Playing` rows of the automated action matrix pass for direct/dry/wet audio and supported MIDI, including every relevant component toggle and exact raw/logical frame oracle.
-- [ ] The ordinary `Playing` rows pass for start/stop/restart, play-after-record, callback boundaries, loop wrap, and frozen-take stability.
-- [ ] Exact delayed impulse and MIDI fixtures satisfy capture acceptance criteria at all mandatory boundary values in the common parameter set.
+- [x] The ordinary `Recording` followed by ordinary `Playing` rows of the automated action matrix pass for direct/dry/wet audio and supported MIDI, including every relevant component toggle and exact raw/logical frame oracle.
+- [x] The ordinary `Playing` rows pass for start/stop/restart, play-after-record, callback boundaries, loop wrap, and frozen-take stability.
+- [x] Exact delayed impulse and MIDI fixtures satisfy capture acceptance criteria at all mandatory boundary values in the common parameter set.
 - [x] End-of-take impulses/events survive positive compensation due to postroll.
 - [x] Loop wrap repeats the selected logical window, not raw startup material.
 - [x] Play-after-record is gapless when data readiness permits and defers visibly otherwise.
-- [ ] Saving/editing during finalization follows the existing wait/retry/reject contract.
+- [x] Saving/editing during finalization follows the existing wait/retry/reject contract.
 - [x] No callback allocations or storage growth occur after arming.
 
 ### Stage 4 — Dry render-ahead and dry/wet mode semantics
@@ -652,7 +652,7 @@ Dependencies: Stage 3 and processor fixture from Stage 2.
 - [x] Handle note-off/sustain cleanup when stopping or changing render advance.
 - [x] Implement `RecordingDryIntoWet` canonical wet writes and `applied_during_render` provenance.
 - [ ] Continue bounded processor work around transition boundaries for declared latency and separately named warm-up/tail policy.
-- [ ] Ensure live monitoring still uses the uncompensated current input path while dry-loop rendering uses lookahead.
+- [x] Ensure live monitoring still uses the uncompensated current input path while dry-loop rendering uses lookahead.
 
 Verification:
 
@@ -661,9 +661,9 @@ Verification:
 - [ ] Every `RecordingDryIntoWet` row passes, including canonical wet writes, first/last frames, replacement boundaries, and subsequent ordinary wet playback proving no double compensation.
 - [ ] Exact `P`-frame processor fixtures emerge on target frames at start, steady loop, wrap, stop, and restart.
 - [x] `RecordingDryIntoWet` round-trips without double applying `P`.
-- [ ] MIDI state and note cleanup tests pass at loop boundaries.
-- [ ] Advances larger than one callback and one loop are either correctly mapped or rejected/deferred according to the documented bound.
-- [ ] Monitoring equivalence acceptance test remains green.
+- [x] MIDI state and note cleanup tests pass at loop boundaries.
+- [x] Advances larger than one callback and one loop are either correctly mapped or rejected/deferred according to the documented bound.
+- [x] Monitoring equivalence acceptance test remains green.
 
 ### Stage 5 — Grab and replacement semantics
 

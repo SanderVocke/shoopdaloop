@@ -3852,6 +3852,55 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn dry_render_lookahead_does_not_retime_live_monitoring() {
+        let mut observations = Vec::new();
+        for render_advance in [0, 3] {
+            let (mut session, loop_, output) = test_processor_session(true);
+            let loop_state = session.loop_mut(loop_).unwrap();
+            loop_state.set_length(4);
+            loop_state
+                .audio_channel_mut(0)
+                .unwrap()
+                .load_data(&[0.0; 4]);
+            loop_state
+                .audio_channel_mut(0)
+                .unwrap()
+                .set_render_advance_frames(render_advance)
+                .unwrap();
+            session
+                .set_loop_mode(loop_, LoopMode::PlayingDryThroughWet)
+                .unwrap();
+            if render_advance > 0 {
+                session.process(render_advance as usize);
+            }
+            session
+                .port_mut(0)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .queue_data(&[0.0, 2.0, 0.0, 0.0]);
+            session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(4);
+            session.process(4);
+            observations.push(
+                session
+                    .port_mut(output)
+                    .unwrap()
+                    .as_dummy_mut()
+                    .unwrap()
+                    .dequeue_data(4)
+                    .unwrap(),
+            );
+        }
+        assert_eq!(observations[0], vec![0.0, 1.0, 0.0, 0.0]);
+        assert_eq!(observations[1], observations[0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn test_processor_mode_matrix_routes_exact_wet_samples() {
         let (mut session, loop_, output) = test_processor_session(true);
         session
