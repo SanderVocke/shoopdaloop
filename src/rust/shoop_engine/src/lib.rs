@@ -128,7 +128,11 @@ pub use fx_chain::{FXChainState, FXChainType};
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
 pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;
-pub use latency_runtime::{AtomicLatencyObservation, RuntimeLatencyObservation};
+pub use latency_runtime::{
+    AtomicLatencyObservation, AtomicLatencyRecipePublication, LatchedLatencyRecipe,
+    PublishedLatencyRecipe, RuntimeLatencyComponent, RuntimeLatencyObservation,
+    RuntimeLatencyRecipe,
+};
 pub use loop_mode::LoopMode;
 pub use midi_buffering_input_port::MidiBufferingInputPort;
 #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]

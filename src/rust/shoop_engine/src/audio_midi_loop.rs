@@ -10,10 +10,14 @@ use crate::audio_channel::{AudioChannel, ChannelError};
 use crate::basic_loop::{BasicLoop, SyncSourceState};
 use crate::channel_mode::ChannelMode;
 use crate::content_snapshot::{AudioProcessSnapshotWriter, MidiProcessSnapshotWriter};
+use crate::latency_runtime::{
+    LatchedLatencyRecipe, RuntimeLatencyObservation, RuntimeLatencyRecipe,
+};
 use crate::loop_mode::LoopMode;
 use crate::midi_channel::{MidiChannel, MidiChannelError};
 use crate::midi_storage::MidiStorageElem;
 use crate::state_mirror::{AudioChannelStateMirror, LoopStateMirror, MidiChannelStateMirror};
+use shoop_latency::{LatencyComponentKind, LatencyOperationKind};
 
 use std::sync::Arc;
 use thiserror::Error;
@@ -32,6 +36,10 @@ pub struct AudioMidiLoop {
     loop_: BasicLoop,
     audio_channels: Vec<AudioChannel>,
     midi_channels: Vec<MidiChannel>,
+    pending_latency_recipe: Option<RuntimeLatencyRecipe>,
+    latched_latency_recipe: Option<LatchedLatencyRecipe>,
+    last_latency_mode: LoopMode,
+    processed_latency_frames: u64,
 }
 
 impl AudioMidiLoop {
@@ -72,6 +80,9 @@ impl AudioMidiLoop {
             .push(AudioChannel::with_bounded_capacity(
                 chunk_size, capacity, mode,
             ));
+        if let Some(channel) = self.audio_channels.last_mut() {
+            channel.set_pending_latency_recipe(self.pending_latency_recipe);
+        }
         self.resync_poi();
         self.audio_channels.len() - 1
     }
@@ -86,6 +97,9 @@ impl AudioMidiLoop {
             .push(AudioChannel::with_bounded_capacity_unprepared(
                 chunk_size, capacity, mode,
             ));
+        if let Some(channel) = self.audio_channels.last_mut() {
+            channel.set_pending_latency_recipe(self.pending_latency_recipe);
+        }
         self.resync_poi();
         self.audio_channels.len() - 1
     }
@@ -101,6 +115,9 @@ impl AudioMidiLoop {
             .push(AudioChannel::with_chunk_size_state_and_snapshots(
                 chunk_size, mode, state, snapshots,
             ));
+        if let Some(channel) = self.audio_channels.last_mut() {
+            channel.set_pending_latency_recipe(self.pending_latency_recipe);
+        }
         self.resync_poi();
         self.audio_channels.len() - 1
     }
@@ -156,6 +173,9 @@ impl AudioMidiLoop {
                 state,
                 snapshots,
             ));
+        if let Some(channel) = self.midi_channels.last_mut() {
+            channel.set_pending_latency_recipe(self.pending_latency_recipe);
+        }
         self.resync_poi();
         self.midi_channels.len() - 1
     }
@@ -215,12 +235,141 @@ impl AudioMidiLoop {
         self.loop_.n_planned_transitions()
     }
 
+    pub fn pending_latency_recipe(&self) -> Option<RuntimeLatencyRecipe> {
+        self.pending_latency_recipe
+    }
+
+    pub fn latched_latency_recipe(&self) -> Option<LatchedLatencyRecipe> {
+        self.latched_latency_recipe
+    }
+
+    pub fn set_pending_latency_recipe(&mut self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.pending_latency_recipe = recipe;
+        self.loop_
+            .state_mirror()
+            .publish_current_latency_recipe(recipe);
+        for channel in &mut self.audio_channels {
+            channel.set_pending_latency_recipe(recipe);
+        }
+        for channel in &mut self.midi_channels {
+            channel.set_pending_latency_recipe(recipe);
+        }
+    }
+
+    pub fn set_audio_channel_latency_recipe(
+        &mut self,
+        channel: usize,
+        recipe: Option<RuntimeLatencyRecipe>,
+    ) -> bool {
+        let Some(channel) = self.audio_channels.get_mut(channel) else {
+            return false;
+        };
+        channel.set_pending_latency_recipe(recipe);
+        true
+    }
+
+    pub fn set_midi_channel_latency_recipe(
+        &mut self,
+        channel: usize,
+        recipe: Option<RuntimeLatencyRecipe>,
+    ) -> bool {
+        let Some(channel) = self.midi_channels.get_mut(channel) else {
+            return false;
+        };
+        channel.set_pending_latency_recipe(recipe);
+        true
+    }
+
+    pub fn observe_latency(
+        &mut self,
+        kind: LatencyComponentKind,
+        observation: RuntimeLatencyObservation,
+    ) {
+        if let Some(latched) = self.latched_latency_recipe.as_mut() {
+            latched.observe(kind, observation);
+            self.loop_
+                .state_mirror()
+                .publish_latched_latency_recipe(Some(*latched));
+        }
+        for channel in &mut self.audio_channels {
+            if let Some(mut latched) = channel.latched_latency_recipe() {
+                latched.observe(kind, observation);
+                channel.set_latched_latency_recipe(latched);
+            }
+        }
+        for channel in &mut self.midi_channels {
+            if let Some(mut latched) = channel.latched_latency_recipe() {
+                latched.observe(kind, observation);
+                channel.set_latched_latency_recipe(latched);
+            }
+        }
+    }
+
+    pub fn latch_latency_recipes(&mut self, operation_frame: u64) {
+        if let Some(recipe) = self.pending_latency_recipe {
+            let latched = LatchedLatencyRecipe::new(recipe, operation_frame);
+            self.latched_latency_recipe = Some(latched);
+            self.loop_
+                .state_mirror()
+                .publish_latched_latency_recipe(Some(latched));
+        }
+        for channel in &mut self.audio_channels {
+            if let Some(recipe) = channel.pending_latency_recipe() {
+                channel
+                    .set_latched_latency_recipe(LatchedLatencyRecipe::new(recipe, operation_frame));
+            }
+        }
+        for channel in &mut self.midi_channels {
+            if let Some(recipe) = channel.pending_latency_recipe() {
+                channel
+                    .set_latched_latency_recipe(LatchedLatencyRecipe::new(recipe, operation_frame));
+            }
+        }
+    }
+
+    fn latch_latency_recipes_for_mode(&mut self, mode: LoopMode, operation_frame: u64) {
+        let operation_matches = |operation| latency_operation_matches_mode(operation, mode);
+        if self
+            .pending_latency_recipe
+            .is_some_and(|recipe| operation_matches(recipe.operation))
+        {
+            self.latched_latency_recipe = self
+                .pending_latency_recipe
+                .map(|recipe| LatchedLatencyRecipe::new(recipe, operation_frame));
+            self.loop_
+                .state_mirror()
+                .publish_latched_latency_recipe(self.latched_latency_recipe);
+        }
+        for channel in &mut self.audio_channels {
+            if let Some(recipe) = channel
+                .pending_latency_recipe()
+                .filter(|recipe| operation_matches(recipe.operation))
+            {
+                channel
+                    .set_latched_latency_recipe(LatchedLatencyRecipe::new(recipe, operation_frame));
+            }
+        }
+        for channel in &mut self.midi_channels {
+            if let Some(recipe) = channel
+                .pending_latency_recipe()
+                .filter(|recipe| operation_matches(recipe.operation))
+            {
+                channel
+                    .set_latched_latency_recipe(LatchedLatencyRecipe::new(recipe, operation_frame));
+            }
+        }
+        self.last_latency_mode = mode;
+    }
+
     pub fn set_sync_source(&mut self, src: Option<SyncSourceState>) {
         self.loop_.set_sync_source(src);
         self.resync_poi();
     }
     pub fn set_mode(&mut self, mode: LoopMode) {
         self.loop_.set_mode(mode);
+        if mode != self.last_latency_mode {
+            self.latch_latency_recipes_for_mode(mode, self.processed_latency_frames);
+        }
         self.resync_poi();
     }
     pub fn set_length(&mut self, length: u32) {
@@ -337,8 +486,25 @@ impl AudioMidiLoop {
     ) -> Result<(), LoopError> {
         let audio = &mut self.audio_channels;
         let midi = &mut self.midi_channels;
+        let pending_latency_recipe = self.pending_latency_recipe;
+        let latency_state = Arc::clone(self.loop_.state_mirror());
+        let latched_latency_recipe = &mut self.latched_latency_recipe;
+        let last_latency_mode = &mut self.last_latency_mode;
+        let processed_latency_frames = &mut self.processed_latency_frames;
         let mut err: Option<LoopError> = None;
         self.loop_.process_with(n_samples, |params| {
+            if params.mode != *last_latency_mode {
+                latch_recipes_for_mode(
+                    pending_latency_recipe,
+                    latched_latency_recipe,
+                    audio,
+                    midi,
+                    params.mode,
+                    *processed_latency_frames,
+                );
+                latency_state.publish_latched_latency_recipe(*latched_latency_recipe);
+                *last_latency_mode = params.mode;
+            }
             for c in audio.iter_mut() {
                 let r = c.process(
                     params.mode,
@@ -373,6 +539,8 @@ impl AudioMidiLoop {
                     err = Some(e.into());
                 }
             }
+            *processed_latency_frames =
+                processed_latency_frames.saturating_add(u64::from(params.n_samples));
         });
         if matches!(
             err,
@@ -407,10 +575,57 @@ impl AudioMidiLoop {
     }
 }
 
+fn latency_operation_matches_mode(operation: LatencyOperationKind, mode: LoopMode) -> bool {
+    match operation {
+        LatencyOperationKind::RecordDirect
+        | LatencyOperationKind::RecordDry
+        | LatencyOperationKind::RecordWet => mode == LoopMode::Recording,
+        LatencyOperationKind::DryThroughWet => mode == LoopMode::PlayingDryThroughWet,
+        LatencyOperationKind::RecordDryIntoWet => mode == LoopMode::RecordingDryIntoWet,
+        LatencyOperationKind::Replacement(_) => mode == LoopMode::Replacing,
+        LatencyOperationKind::Grab(_) => false,
+    }
+}
+
+fn latch_recipes_for_mode(
+    pending_loop: Option<RuntimeLatencyRecipe>,
+    latched_loop: &mut Option<LatchedLatencyRecipe>,
+    audio_channels: &mut [AudioChannel],
+    midi_channels: &mut [MidiChannel],
+    mode: LoopMode,
+    operation_frame: u64,
+) {
+    if let Some(recipe) =
+        pending_loop.filter(|recipe| latency_operation_matches_mode(recipe.operation, mode))
+    {
+        *latched_loop = Some(LatchedLatencyRecipe::new(recipe, operation_frame));
+    }
+    for channel in audio_channels {
+        if let Some(recipe) = channel
+            .pending_latency_recipe()
+            .filter(|recipe| latency_operation_matches_mode(recipe.operation, mode))
+        {
+            channel.set_latched_latency_recipe(LatchedLatencyRecipe::new(recipe, operation_frame));
+        }
+    }
+    for channel in midi_channels {
+        if let Some(recipe) = channel
+            .pending_latency_recipe()
+            .filter(|recipe| latency_operation_matches_mode(recipe.operation, mode))
+        {
+            channel.set_latched_latency_recipe(LatchedLatencyRecipe::new(recipe, operation_frame));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use assert2::check;
+    use shoop_latency::{
+        resolve_latency_recipe, LatencyComponentInput, LatencyComponentPolicy,
+        LatencyIntervalIdentity, LatencyObservation, RecordingReference, SourceIdentity,
+    };
 
     use ChannelMode as C;
     use LoopMode as L;
@@ -419,6 +634,32 @@ mod tests {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel(4, C::Direct);
         l
+    }
+
+    fn runtime_recipe(
+        frames: u32,
+        observation_revision: u64,
+        recipe_revision: u64,
+    ) -> RuntimeLatencyRecipe {
+        let observation = LatencyObservation::exact(
+            frames,
+            48_000,
+            observation_revision,
+            SourceIdentity::new("test capture").unwrap(),
+            LatencyIntervalIdentity::new("physical input -> application input").unwrap(),
+        )
+        .unwrap();
+        let resolved = resolve_latency_recipe(
+            LatencyOperationKind::RecordDirect,
+            RecordingReference::ExternalWorld,
+            &[LatencyComponentInput {
+                kind: LatencyComponentKind::ExternalCapture,
+                observation,
+                policy: LatencyComponentPolicy::default(),
+            }],
+        )
+        .unwrap();
+        RuntimeLatencyRecipe::from_resolved(&resolved, recipe_revision)
     }
 
     /// One cycle: size the channel's port buffers, process, finalize.
@@ -446,6 +687,89 @@ mod tests {
         assert2::assert!(let Ok(()) = l.process::<Vec<MidiStorageElem>>(1000, &[], &mut []));
         check!(l.length() == 0);
         check!(l.position() == 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_recipes_latch_only_on_matching_operation_boundaries_and_mark_changes() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(8, C::Direct);
+        l.add_midi_channel(8, C::Direct);
+        l.audio_channel_mut(0).unwrap().set_recording_buffer_size(5);
+        l.audio_channel_mut(0).unwrap().set_playback_buffer_size(5);
+        l.resync_poi();
+        let midi_in = [Vec::<MidiStorageElem>::new()];
+        let mut midi_out = [Vec::<MidiStorageElem>::with_capacity(8)];
+        l.process(5, &midi_in, &mut midi_out).unwrap();
+
+        let first = runtime_recipe(17, 3, 11);
+        l.set_pending_latency_recipe(Some(first));
+        l.set_mode(L::Recording);
+        check!(l.latched_latency_recipe().unwrap().operation_frame == 5);
+        check!(
+            l.audio_channel(0)
+                .unwrap()
+                .latched_latency_recipe()
+                .unwrap()
+                .recipe
+                == first
+        );
+        check!(
+            l.midi_channel(0)
+                .unwrap()
+                .latched_latency_recipe()
+                .unwrap()
+                .recipe
+                == first
+        );
+
+        l.observe_latency(
+            LatencyComponentKind::ExternalCapture,
+            RuntimeLatencyObservation::exact(19, 48_000, 4).unwrap(),
+        );
+        check!(l.latched_latency_recipe().unwrap().changed);
+        check!(
+            l.audio_channel(0)
+                .unwrap()
+                .latched_latency_recipe()
+                .unwrap()
+                .changed
+        );
+        check!(
+            l.midi_channel(0)
+                .unwrap()
+                .latched_latency_recipe()
+                .unwrap()
+                .changed
+        );
+        check!(l.state_mirror().read().latched_latency_recipe.changed);
+
+        let second = runtime_recipe(23, 5, 12);
+        l.set_pending_latency_recipe(Some(second));
+        l.set_mode(L::Recording);
+        check!(l.latched_latency_recipe().unwrap().recipe == first);
+
+        assert_no_alloc::assert_no_alloc(|| {
+            l.set_mode(L::Stopped);
+            l.set_mode(L::Recording);
+        });
+        check!(l.latched_latency_recipe().unwrap().recipe == second);
+        check!(!l.latched_latency_recipe().unwrap().changed);
+        let state = l.state_mirror().read();
+        check!(state.current_latency_recipe.recipe == Some(second));
+        check!(state.latched_latency_recipe.recipe == Some(second));
+        check!(state.latched_latency_recipe.operation_frame == Some(5));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn planned_transition_latches_recipe_inside_callback_processing() {
+        let mut l = AudioMidiLoop::default();
+        let recipe = runtime_recipe(7, 1, 2);
+        l.set_pending_latency_recipe(Some(recipe));
+        l.plan_transition(L::Recording, Some(0), None);
+        l.process::<Vec<MidiStorageElem>>(1, &[], &mut []).unwrap();
+        let latched = l.latched_latency_recipe().unwrap();
+        check!(latched.recipe == recipe);
+        check!(latched.operation_frame == 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

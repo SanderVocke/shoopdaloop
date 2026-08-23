@@ -3,7 +3,10 @@ use crate::composite_plan::{LoopIdentity, LoopTargetKind, MAX_COMPOSITE_TARGETS}
 use crate::composite_runtime::{
     ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
 };
-use crate::latency_runtime::{AtomicLatencyObservation, RuntimeLatencyObservation};
+use crate::latency_runtime::{
+    AtomicLatencyObservation, AtomicLatencyRecipePublication, LatchedLatencyRecipe,
+    RuntimeLatencyObservation, RuntimeLatencyRecipe,
+};
 use crate::loop_mode::LoopMode;
 use crate::state::{
     AudioChannelState, AudioPortState, LatestMidiMessage, LoopState, MidiChannelState,
@@ -24,6 +27,8 @@ pub struct LoopStateMirror {
     cycle_count: AtomicU64,
     next_mode: AtomicI32,
     next_delay: AtomicU64,
+    current_latency_recipe: AtomicLatencyRecipePublication,
+    latched_latency_recipe: AtomicLatencyRecipePublication,
 }
 
 impl Default for LoopStateMirror {
@@ -35,6 +40,8 @@ impl Default for LoopStateMirror {
             cycle_count: AtomicU64::new(0),
             next_mode: AtomicI32::new(NO_MODE),
             next_delay: AtomicU64::new(NO_DELAY),
+            current_latency_recipe: AtomicLatencyRecipePublication::default(),
+            latched_latency_recipe: AtomicLatencyRecipePublication::default(),
         }
     }
 }
@@ -76,6 +83,14 @@ impl LoopStateMirror {
         self.position.store(position, Ordering::Relaxed);
     }
 
+    pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.current_latency_recipe.publish_pending(recipe);
+    }
+
+    pub fn publish_latched_latency_recipe(&self, recipe: Option<LatchedLatencyRecipe>) {
+        self.latched_latency_recipe.publish_latched(recipe);
+    }
+
     pub fn read(&self) -> LoopState {
         let next_mode = self.next_mode.load(Ordering::Relaxed);
         let next_delay = self.next_delay.load(Ordering::Relaxed);
@@ -88,6 +103,8 @@ impl LoopStateMirror {
             maybe_next_mode: (next_mode != NO_MODE)
                 .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
             maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
+            current_latency_recipe: self.current_latency_recipe.read(),
+            latched_latency_recipe: self.latched_latency_recipe.read(),
         }
     }
 }
@@ -429,6 +446,8 @@ pub struct AudioChannelStateMirror {
     played_back_sample: AtomicI32,
     n_preplay_samples: AtomicU32,
     data_sequence: AtomicU64,
+    current_latency_recipe: AtomicLatencyRecipePublication,
+    latched_latency_recipe: AtomicLatencyRecipePublication,
 }
 
 impl Default for AudioChannelStateMirror {
@@ -442,6 +461,8 @@ impl Default for AudioChannelStateMirror {
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
+            current_latency_recipe: AtomicLatencyRecipePublication::default(),
+            latched_latency_recipe: AtomicLatencyRecipePublication::default(),
         }
     }
 }
@@ -488,6 +509,14 @@ impl AudioChannelStateMirror {
         atomic_max_f32(&self.output_peak, peak);
     }
 
+    pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.current_latency_recipe.publish_pending(recipe);
+    }
+
+    pub fn publish_latched_latency_recipe(&self, recipe: Option<LatchedLatencyRecipe>) {
+        self.latched_latency_recipe.publish_latched(recipe);
+    }
+
     pub fn read(&self, acknowledged_data_sequence: u64) -> AudioChannelState {
         let played = self.played_back_sample.load(Ordering::Relaxed);
         AudioChannelState {
@@ -500,6 +529,8 @@ impl AudioChannelStateMirror {
             played_back_sample: (played != NO_SAMPLE).then_some(played),
             n_preplay_samples: self.n_preplay_samples.load(Ordering::Relaxed),
             data_dirty: self.data_sequence.load(Ordering::Relaxed) != acknowledged_data_sequence,
+            current_latency_recipe: self.current_latency_recipe.read(),
+            latched_latency_recipe: self.latched_latency_recipe.read(),
         }
     }
 
@@ -518,6 +549,8 @@ pub struct MidiChannelStateMirror {
     played_back_sample: AtomicI32,
     n_preplay_samples: AtomicU32,
     data_sequence: AtomicU64,
+    current_latency_recipe: AtomicLatencyRecipePublication,
+    latched_latency_recipe: AtomicLatencyRecipePublication,
 }
 
 impl Default for MidiChannelStateMirror {
@@ -531,6 +564,8 @@ impl Default for MidiChannelStateMirror {
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
+            current_latency_recipe: AtomicLatencyRecipePublication::default(),
+            latched_latency_recipe: AtomicLatencyRecipePublication::default(),
         }
     }
 }
@@ -573,6 +608,14 @@ impl MidiChannelStateMirror {
         self.n_events_triggered.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.current_latency_recipe.publish_pending(recipe);
+    }
+
+    pub fn publish_latched_latency_recipe(&self, recipe: Option<LatchedLatencyRecipe>) {
+        self.latched_latency_recipe.publish_latched(recipe);
+    }
+
     pub fn read(&self, acknowledged_data_sequence: u64) -> MidiChannelState {
         let played = self.played_back_sample.load(Ordering::Relaxed);
         MidiChannelState {
@@ -585,6 +628,8 @@ impl MidiChannelStateMirror {
             played_back_sample: (played != NO_SAMPLE).then_some(played),
             n_preplay_samples: self.n_preplay_samples.load(Ordering::Relaxed),
             data_dirty: self.data_sequence.load(Ordering::Relaxed) != acknowledged_data_sequence,
+            current_latency_recipe: self.current_latency_recipe.read(),
+            latched_latency_recipe: self.latched_latency_recipe.read(),
         }
     }
 

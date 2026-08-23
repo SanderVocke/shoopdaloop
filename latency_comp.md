@@ -605,15 +605,15 @@ Dependencies: Stage 1.
 - [x] Add latency observation to generic processor routes and the Carla processor trait.
 - [x] Add a test processor that delays audio and MIDI by exact or dynamically changing frame counts while remaining allocation-free.
 - [x] Add per-port latency observation storage and callback-readable revisions in engine port/state mirror types.
-- [ ] Add callback-latched latency recipes to channels/loops without changing playback yet.
-- [ ] Publish current and latched observations through state mirrors.
+- [x] Add callback-latched latency recipes to channels/loops without changing playback yet.
+- [x] Publish current and latched observations through state mirrors.
 - [x] Ensure numeric latency updates do not invalidate/rebuild graph topology.
 
 Verification:
 
-- [ ] Processor/port observations update atomically and latch only at defined operation boundaries.
-- [ ] Dynamic changes increment revisions and mark active test operations changed.
-- [ ] Realtime no-allocation/no-lock tests include observation reads/publication.
+- [x] Processor/port observations update atomically and latch only at defined operation boundaries.
+- [x] Dynamic changes increment revisions and mark active test operations changed.
+- [x] Realtime no-allocation/no-lock tests include observation reads/publication.
 
 ### Stage 3 — Raw capture windows and non-destructive playback alignment
 

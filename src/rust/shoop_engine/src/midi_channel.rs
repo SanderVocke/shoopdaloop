@@ -17,6 +17,7 @@
 
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::content_snapshot::MidiProcessSnapshotWriter;
+use crate::latency_runtime::{LatchedLatencyRecipe, RuntimeLatencyRecipe};
 use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
@@ -156,6 +157,8 @@ pub struct MidiChannel {
     replace_scratch: Vec<MidiStorageElem>,
     state: Arc<MidiChannelStateMirror>,
     content_snapshots: Option<MidiProcessSnapshotWriter>,
+    pending_latency_recipe: Option<RuntimeLatencyRecipe>,
+    latched_latency_recipe: Option<LatchedLatencyRecipe>,
 }
 
 impl MidiChannel {
@@ -212,6 +215,8 @@ impl MidiChannel {
             replace_scratch: Vec::with_capacity(capacity),
             state,
             content_snapshots,
+            pending_latency_recipe: None,
+            latched_latency_recipe: None,
         };
         channel.publish_state();
         channel
@@ -259,6 +264,20 @@ impl MidiChannel {
 
     pub fn mode(&self) -> ChannelMode {
         self.mode
+    }
+    pub fn pending_latency_recipe(&self) -> Option<RuntimeLatencyRecipe> {
+        self.pending_latency_recipe
+    }
+    pub fn latched_latency_recipe(&self) -> Option<LatchedLatencyRecipe> {
+        self.latched_latency_recipe
+    }
+    pub fn set_pending_latency_recipe(&mut self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.pending_latency_recipe = recipe;
+        self.state.publish_current_latency_recipe(recipe);
+    }
+    pub fn set_latched_latency_recipe(&mut self, recipe: LatchedLatencyRecipe) {
+        self.latched_latency_recipe = Some(recipe);
+        self.state.publish_latched_latency_recipe(Some(recipe));
     }
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;

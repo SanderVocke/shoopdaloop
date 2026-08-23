@@ -11,6 +11,7 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::chunked_samples::ChunkedSamples;
 use crate::content_snapshot::AudioProcessSnapshotWriter;
+use crate::latency_runtime::{LatchedLatencyRecipe, RuntimeLatencyRecipe};
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
 
@@ -159,6 +160,8 @@ pub struct AudioChannel {
     publish_snapshot_updates: bool,
     storage_capacity: Option<usize>,
     storage_exhaustions: u32,
+    pending_latency_recipe: Option<RuntimeLatencyRecipe>,
+    latched_latency_recipe: Option<LatchedLatencyRecipe>,
 }
 
 impl AudioChannel {
@@ -229,6 +232,8 @@ impl AudioChannel {
             publish_snapshot_updates: true,
             storage_capacity: None,
             storage_exhaustions: 0,
+            pending_latency_recipe: None,
+            latched_latency_recipe: None,
         };
         channel.publish_state();
         channel
@@ -292,6 +297,20 @@ impl AudioChannel {
     }
     pub fn mode(&self) -> ChannelMode {
         self.mode
+    }
+    pub fn pending_latency_recipe(&self) -> Option<RuntimeLatencyRecipe> {
+        self.pending_latency_recipe
+    }
+    pub fn latched_latency_recipe(&self) -> Option<LatchedLatencyRecipe> {
+        self.latched_latency_recipe
+    }
+    pub fn set_pending_latency_recipe(&mut self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.pending_latency_recipe = recipe;
+        self.state.publish_current_latency_recipe(recipe);
+    }
+    pub fn set_latched_latency_recipe(&mut self, recipe: LatchedLatencyRecipe) {
+        self.latched_latency_recipe = Some(recipe);
+        self.state.publish_latched_latency_recipe(Some(recipe));
     }
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
