@@ -1719,6 +1719,44 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn compensated_window_restores_midi_start_state_and_equal_frame_order() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &[0xb0, 7, 99]),
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(3, &midi::note_off(0, 60, 0)),
+                ev(3, &[0xb0, 10, 1]),
+                ev(3, &[0xb0, 11, 2]),
+            ],
+            6,
+            Some(&[]),
+        );
+        ch.set_capture_alignment_frames(2).unwrap();
+        let out = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+
+        check!(out.iter().any(|event| {
+            event.time == 0 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
+        check!(out
+            .iter()
+            .any(|event| event.time == 0 && event.data() == [0xb0, 7, 99]));
+        let at_one = out
+            .iter()
+            .filter(|event| event.time == 1)
+            .map(|event| event.data().to_vec())
+            .collect::<Vec<_>>();
+        check!(
+            at_one
+                == vec![
+                    midi::note_off(0, 60, 0).to_vec(),
+                    vec![0xb0, 10, 1],
+                    vec![0xb0, 11, 2],
+                ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn playback_updates_output_state() {
         let mut ch = channel();
         cycle(

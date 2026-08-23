@@ -624,7 +624,7 @@ Dependencies: Stages 1–2.
 - [x] Continue recording finalization after the logical stop until required postroll is captured.
 - [x] Map logical playback to the selected raw take window across callbacks and loop wraps.
 - [x] Support positive, zero, and bounded negative effective alignment.
-- [ ] Preserve MIDI start state and events crossing retained window boundaries.
+- [x] Preserve MIDI start state and events crossing retained window boundaries.
 - [x] Publish logical and raw played positions independently.
 - [ ] Integrate content snapshots so finalization remains an unsettled mutation while safe play-after-record can consume already available frames.
 - [ ] Define readiness/defer behavior when advance is greater than or equal to loop length.
