@@ -3545,6 +3545,223 @@ mod tests {
         (session, loop_, output)
     }
 
+    #[cfg(feature = "carla")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn delayed_processor_emerges_on_dry_through_wet_transition_frame() {
+        let mut processor = crate::carla_processor::DeterministicDelayProcessor::new(
+            1,
+            8,
+            16,
+            MAX_MIDI_EVENTS_PER_BLOCK,
+            48_000,
+        )
+        .unwrap();
+        processor.set_delay_frames(3).unwrap();
+        processor.set_active(true);
+
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_buffer_size(8);
+        session.set_carla_fx_host("delay", Box::new(processor));
+        let send = session.add_port(internal("delay:audio_in_0", 8));
+        let return_ = session.add_port(internal("delay:audio_out_0", 8));
+        let output = session.add_port(dummy(12, "wet-output", PortDirection::Output));
+        session.connect_ports_internal(return_, output).unwrap();
+        session
+            .set_processor_ports("delay", vec![send], vec![return_], vec![])
+            .unwrap();
+        let loop_ = session.create_loop();
+        let dry = session
+            .add_audio_channel(loop_, 8, ChannelMode::Dry)
+            .unwrap();
+        let wet = session
+            .add_audio_channel(loop_, 8, ChannelMode::Wet)
+            .unwrap();
+        session.connect_channel_output(dry, send).unwrap();
+        session.connect_channel_input(wet, return_).unwrap();
+        session.connect_channel_output(wet, output).unwrap();
+        session
+            .port_mut(return_)
+            .unwrap()
+            .audio_mut()
+            .unwrap()
+            .set_passthrough_muted(false);
+        let loop_state = session.loop_mut(loop_).unwrap();
+        loop_state.set_length(8);
+        loop_state
+            .audio_channel_mut(0)
+            .unwrap()
+            .load_data(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        loop_state
+            .audio_channel_mut(0)
+            .unwrap()
+            .set_render_advance_frames(3)
+            .unwrap();
+        loop_state
+            .audio_channel_mut(1)
+            .unwrap()
+            .load_data(&[9.0; 8]);
+        session.apply_graph_changes().unwrap();
+
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(3);
+        session
+            .set_loop_mode(loop_, LoopMode::PlayingDryThroughWet)
+            .unwrap();
+        assert_eq!(session.loop_(loop_).unwrap().mode(), LoopMode::Stopped);
+        session.process(3);
+        let preroll = session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(3)
+            .unwrap();
+        assert_eq!(preroll, vec![0.0; 3]);
+        assert_eq!(
+            session.loop_(loop_).unwrap().mode(),
+            LoopMode::PlayingDryThroughWet
+        );
+
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(8);
+        session.process(8);
+        let wet_output = session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(8)
+            .unwrap();
+        assert_eq!(wet_output, vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[cfg(feature = "carla")]
+    fn delayed_dry_wet_session(delay: u32) -> (Session, usize, usize) {
+        let mut processor = crate::carla_processor::DeterministicDelayProcessor::new(
+            1,
+            8,
+            16,
+            MAX_MIDI_EVENTS_PER_BLOCK,
+            48_000,
+        )
+        .unwrap();
+        processor.set_delay_frames(delay).unwrap();
+        processor.set_active(true);
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_buffer_size(8);
+        session.set_carla_fx_host("delay", Box::new(processor));
+        let send = session.add_port(internal("delay:audio_in_0", 8));
+        let return_ = session.add_port(internal("delay:audio_out_0", 8));
+        let output = session.add_port(dummy(13, "wet-output", PortDirection::Output));
+        session.connect_ports_internal(return_, output).unwrap();
+        session
+            .set_processor_ports("delay", vec![send], vec![return_], vec![])
+            .unwrap();
+        let loop_ = session.create_loop();
+        let dry = session
+            .add_audio_channel(loop_, 8, ChannelMode::Dry)
+            .unwrap();
+        let wet = session
+            .add_audio_channel(loop_, 8, ChannelMode::Wet)
+            .unwrap();
+        session.connect_channel_output(dry, send).unwrap();
+        session.connect_channel_input(wet, return_).unwrap();
+        session.connect_channel_output(wet, output).unwrap();
+        session
+            .port_mut(return_)
+            .unwrap()
+            .audio_mut()
+            .unwrap()
+            .set_passthrough_muted(false);
+        let loop_state = session.loop_mut(loop_).unwrap();
+        loop_state.set_length(8);
+        loop_state
+            .audio_channel_mut(0)
+            .unwrap()
+            .load_data(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        loop_state
+            .audio_channel_mut(0)
+            .unwrap()
+            .set_render_advance_frames(delay)
+            .unwrap();
+        loop_state
+            .audio_channel_mut(1)
+            .unwrap()
+            .load_data(&[9.0; 8]);
+        session.apply_graph_changes().unwrap();
+        (session, loop_, output)
+    }
+
+    #[cfg(feature = "carla")]
+    #[shoop_wasm_test_support::shoop_test]
+    fn delayed_dry_into_wet_writes_canonical_take_without_double_compensation() {
+        let (mut session, loop_, output) = delayed_dry_wet_session(3);
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(3);
+        session
+            .set_loop_mode(loop_, LoopMode::RecordingDryIntoWet)
+            .unwrap();
+        session.process(3);
+        let preroll = session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(3)
+            .unwrap();
+        assert_eq!(preroll, vec![0.0; 3]);
+
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(8);
+        session.process(8);
+        assert_eq!(
+            session
+                .loop_(loop_)
+                .unwrap()
+                .audio_channel(1)
+                .unwrap()
+                .data(),
+            vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        );
+
+        session.remove_processor("delay");
+        session.apply_graph_changes().unwrap();
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(8);
+        session.set_loop_mode(loop_, LoopMode::Playing).unwrap();
+        session.process(8);
+        let playback = session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .dequeue_data(8)
+            .unwrap();
+        assert_eq!(playback, vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn processor_latency_updates_do_not_rebuild_graph_topology() {
         let mut session = Session::default();

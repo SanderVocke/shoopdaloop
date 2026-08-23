@@ -505,36 +505,36 @@ Preplay tests must distinguish existing media lead-in from processor render-ahea
 
 - [ ] Ordinary compensated play with a retained media lead-in starts reading at the exact existing `start_offset`/preplay boundary, then applies take alignment independently.
 - [ ] Planned dry-through-wet begins dry processor dispatch exactly `P + H + T` frames before the audible transition while the loop’s public mode remains in the expected pre-transition state.
-- [ ] The processor’s first valid wet event lands exactly on the target transition frame; no uncompensated duplicate or unintended audible pre-echo is emitted.
-- [ ] Zero-latency preplay performs no unnecessary early dispatch.
-- [ ] Exactly sufficient lead time succeeds; insufficient immediate lead time deterministically defers or warns according to policy.
+- [x] The processor’s first valid wet event lands exactly on the target transition frame; no uncompensated duplicate or unintended audible pre-echo is emitted.
+- [x] Zero-latency preplay performs no unnecessary early dispatch.
+- [x] Exactly sufficient lead time succeeds; insufficient immediate lead time deterministically defers or warns according to policy.
 - [ ] Preplay crossing callback boundaries, sync-cycle boundaries, loop wrap, and advances greater than one loop is covered.
-- [ ] Audio and MIDI preplay restore the correct first sample/event and MIDI controller/note state.
+- [x] Audio and MIDI preplay restore the correct first sample/event and MIDI controller/note state.
 
 #### Play dry through wet (`PlayingDryThroughWet`)
 
 For a dry take event with frozen capture advance `A` and current processor path `P + H`:
 
-- [ ] The logical dry event is dispatched to the processor at target wet frame `E - (P + H + T)` and emerges wet at `E`.
-- [ ] Frozen take alignment `A` selects the correct raw dry frame independently of current render advance.
+- [x] The logical dry event is dispatched to the processor at target wet frame `E - (P + H + T)` and emerges wet at `E`.
+- [x] Frozen take alignment `A` selects the correct raw dry frame independently of current render advance.
 - [ ] Disabling processor compensation makes wet output late by exactly `P + H`; manual and trim values shift by exactly their selected delta.
-- [ ] Current processor latency changes before a new operation affect that operation; changes during an active operation latch and warn without mid-cycle retiming.
+- [x] Current processor latency changes before a new operation affect that operation; changes during an active operation latch and warn without mid-cycle retiming.
 - [ ] Start from stopped, steady cycling, loop wrap, stop, restart, and multiple simultaneous loops are covered.
 - [ ] Dry audio and dry MIDI through deterministic audio/MIDI processors are covered, including notes held across wrap and state cleanup on stop.
-- [ ] Recorded wet channels remain silent in this mode while the current processor return is audible exactly once.
+- [x] Recorded wet channels remain silent in this mode while the current processor return is audible exactly once.
 
 #### Record dry into wet (`RecordingDryIntoWet`)
 
 For a dry logical event intended at wet frame `E`:
 
-- [ ] Dry media is dispatched at `E - (P + H + T)` and deterministic wet output is written/replaced at canonical logical frame `E`.
+- [x] Dry media is dispatched at `E - (P + H + T)` and deterministic wet output is written/replaced at canonical logical frame `E`.
 - [ ] The wet operation snapshot records processor observation/provenance as applied during render, with zero remaining processor playback contribution.
-- [ ] Subsequent ordinary wet playback emits at `E`, proving processor delay was not double compensated.
+- [x] Subsequent ordinary wet playback emits at `E`, proving processor delay was not double compensated.
 - [ ] Disabling processor compensation during the rerecord operation writes the wet event late by exactly `P + H`; later playback preserves that chosen result without inventing compensation.
 - [ ] First-frame pre-render, last-frame completion, callback boundaries, loop wrap, replacement range boundaries, and repeated rerecord cycles are covered.
 - [ ] Dry MIDI state, note-on/off, sustain, equal-frame order, and generated wet audio timing are covered.
 - [ ] Monitoring is forced/routed according to existing mode semantics without adding a duplicate live path.
-- [ ] A processor-latency change during preread/rerecord marks the operation changed and follows the latched policy.
+- [x] A processor-latency change during preread/rerecord marks the operation changed and follows the latched policy.
 
 ### Cross-action invariants
 
@@ -660,7 +660,7 @@ Verification:
 - [ ] Every `PlayingDryThroughWet` row passes for audio and MIDI, component toggles/manual/trim, start, steady loop, wrap, stop, restart, and dynamic-latency latching.
 - [ ] Every `RecordingDryIntoWet` row passes, including canonical wet writes, first/last frames, replacement boundaries, and subsequent ordinary wet playback proving no double compensation.
 - [ ] Exact `P`-frame processor fixtures emerge on target frames at start, steady loop, wrap, stop, and restart.
-- [ ] `RecordingDryIntoWet` round-trips without double applying `P`.
+- [x] `RecordingDryIntoWet` round-trips without double applying `P`.
 - [ ] MIDI state and note cleanup tests pass at loop boundaries.
 - [ ] Advances larger than one callback and one loop are either correctly mapped or rejected/deferred according to the documented bound.
 - [ ] Monitoring equivalence acceptance test remains green.
