@@ -9,10 +9,9 @@ Trigger tracks have no audio or MIDI channels. The dialog configures the display
 name, audio-channel counts, optional MIDI, and, for processed tracks, the
 processor kind.
 
-Native processor choices are External, Tiny Synth/FX, OxiSynth, and feature-dependent
-Carla modes. Browser builds offer Tiny Synth/FX and OxiSynth. New Dry + Wet tracks use one
-shared audio-channel count for their matched dry inputs and wet outputs. Tiny
-Synth/FX additionally requires one MIDI input.
+Native processor choices are External, **Built-in Synth**, and feature-dependent
+Carla modes. Browser builds offer Built-in Synth. Its channel shape is fixed at
+two dry inputs, two wet outputs, and one MIDI input.
 
 Track controls
 ~~~~~~~~~~~~~~
@@ -53,16 +52,20 @@ the same hardware endpoint twice; in that case the failed connection remains
 unconfirmed and is reported in the matrix.
 
 Control interpretation remains processor-owned. Configure Carla parameter
-mappings in Carla. Tiny Synth/FX and External chains respond only to controls
-they already support; the global port does not add a mapping editor or fixed CC
-assignments.
+mappings in Carla. External chains respond only to controls they already support.
+Built-in Synth provides MIDI Learn for its reverb-send and chorus-send controls.
 
 Processed-track controls show only capabilities advertised by the selected
-processor. Tiny Synth/FX uses an embedded editor. Carla tracks expose lifecycle,
+processor. Built-in Synth uses an embedded editor. Carla tracks expose lifecycle,
 UI, recovery, state, and bounded process-log controls when available.
 
-OxiSynth is an embedded SoundFont instrument. Its track shape is fixed at two
-dry audio inputs, two wet audio outputs, and one MIDI input; the synth ignores
-the dry audio samples. Choose one preset in its embedded editor. OxiSynth merges
-all source MIDI channels into one instrument, ignores MIDI bank/program changes,
-and saves the selected preset with the session.
+Built-in Synth is powered by OxiSynth and the embedded SoundFont. Its track shape
+is fixed at two dry audio inputs, two wet audio outputs, and one MIDI input; the
+synth ignores the dry audio samples. Choose one preset in its embedded editor.
+Preset-authored reverb and chorus sends remain active, while the two send controls
+add up to the standard CC 91/93 modulation range and can learn any exact source
+channel/CC pair. Only modulation (CC 1), expression (CC 11), sustain (CC 64),
+pitch bend, and supported non-CC note/pressure messages reach OxiSynth itself;
+other CC, bank, and program messages are filtered after MIDI Learn observes them.
+All accepted source channels feed one logical instrument. The selected preset,
+sends, and assignments are saved with the session.

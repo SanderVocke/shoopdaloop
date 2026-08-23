@@ -850,15 +850,6 @@ impl NativeRuntime {
             } else {
                 None
             };
-            let tiny_synth_midi_cc_assignments = track
-                .fx
-                .as_ref()
-                .and_then(|fx| fx.chain.tiny_editor_state())
-                .into_iter()
-                .flat_map(|editor| editor.midi_cc_assignments)
-                .map(app_midi_cc_assignment)
-                .map(backend_midi_cc_assignment)
-                .collect();
             let oxisynth_midi_cc_assignments = track
                 .fx
                 .as_ref()
@@ -876,7 +867,6 @@ impl NativeRuntime {
                 loops,
                 ports,
                 processor_state,
-                tiny_synth_midi_cc_assignments,
                 oxisynth_midi_cc_assignments,
             });
         }
@@ -961,11 +951,6 @@ impl NativeRuntime {
                         .and_then(|track| track.fx.as_mut())
                         .ok_or_else(|| anyhow!("restored track has no processor"))?;
                     fx.chain.try_restore_state(state)?;
-                    for assignment in &source_track.tiny_synth_midi_cc_assignments {
-                        fx.chain.tiny_assign_midi_cc(engine_midi_cc_assignment(
-                            app_backend_midi_cc_assignment(*assignment),
-                        ))?;
-                    }
                     for assignment in &source_track.oxisynth_midi_cc_assignments {
                         fx.chain
                             .oxisynth_assign_midi_cc(engine_oxisynth_midi_cc_assignment(
@@ -1400,13 +1385,6 @@ impl NativeRuntime {
         };
         let chain_type = processor_chain_type(&processor_type)
             .ok_or_else(|| anyhow!("unknown track processor {processor_type}"))?;
-        if chain_type == FXChainType::TinySynthFx
-            && (dry_audio_channels != wet_audio_channels || !dry_midi)
-        {
-            return Err(anyhow!(
-                "Tiny Synth/FX requires matched audio channels and one MIDI input"
-            ));
-        }
         if chain_type == FXChainType::OxiSynth
             && (dry_audio_channels != 2 || wet_audio_channels != 2 || !dry_midi)
         {
@@ -1420,11 +1398,6 @@ impl NativeRuntime {
             .saturating_mul(INPUT_CAPTURE_CAPACITY_SECONDS);
         let capture_block_size = ring.div_ceil(32).max(self.resolved.buffer_size);
         let chain = match chain_type {
-            FXChainType::TinySynthFx => self.session.create_tiny_synth_fx_chain(
-                &request.port_name_base,
-                dry_audio_channels as usize,
-                ring,
-            )?,
             FXChainType::OxiSynth => self
                 .session
                 .create_oxisynth_chain(&request.port_name_base, ring)?,
@@ -1629,53 +1602,6 @@ impl NativeRuntime {
                 fx.last_confirmed_state = Some(state);
             }
             BackendTrackFxControl::ClearLogs => fx.chain.clear_logs(),
-            BackendTrackFxControl::TinySynthFx(control) => {
-                if fx.processor_type.as_str() != TrackProcessorTypeId::TINY_SYNTH_FX {
-                    return Err(anyhow!("track is not a Tiny Synth/FX processor"));
-                }
-                match control {
-                    TinySynthFxControl::SelectPreset(id) => fx.chain.tiny_select_preset(&id)?,
-                    TinySynthFxControl::SetMasterGainDb(value) => {
-                        fx.chain.tiny_set_master_gain_db(value)?
-                    }
-                    TinySynthFxControl::SetReverbEnabled(value) => {
-                        fx.chain.tiny_set_reverb_enabled(value)?
-                    }
-                    TinySynthFxControl::SetReverbAmount(value) => {
-                        fx.chain.tiny_set_reverb_amount(value)?
-                    }
-                    TinySynthFxControl::SetDistortionEnabled(value) => {
-                        fx.chain.tiny_set_distortion_enabled(value)?
-                    }
-                    TinySynthFxControl::SetDistortionDrive(value) => {
-                        fx.chain.tiny_set_distortion_drive(value)?
-                    }
-                    TinySynthFxControl::SetCompressorEnabled(value) => {
-                        fx.chain.tiny_set_compressor_enabled(value)?
-                    }
-                    TinySynthFxControl::SetCompressorAmount(value) => {
-                        fx.chain.tiny_set_compressor_amount(value)?
-                    }
-                    TinySynthFxControl::SetEqEnabled(value) => {
-                        fx.chain.tiny_set_eq_enabled(value)?
-                    }
-                    TinySynthFxControl::SetEqLowDb(value) => fx.chain.tiny_set_eq_low_db(value)?,
-                    TinySynthFxControl::SetEqMidDb(value) => fx.chain.tiny_set_eq_mid_db(value)?,
-                    TinySynthFxControl::SetEqHighDb(value) => {
-                        fx.chain.tiny_set_eq_high_db(value)?
-                    }
-                    TinySynthFxControl::AssignMidiCc(assignment) => fx
-                        .chain
-                        .tiny_assign_midi_cc(engine_midi_cc_assignment(assignment))?,
-                    TinySynthFxControl::RemoveMidiCc(parameter) => fx
-                        .chain
-                        .tiny_remove_midi_cc(engine_tiny_synth_parameter(parameter))?,
-                    TinySynthFxControl::ClearMidiCcAssignments => {
-                        fx.chain.tiny_clear_midi_cc_assignments()?
-                    }
-                    TinySynthFxControl::Panic => fx.chain.tiny_panic()?,
-                }
-            }
             BackendTrackFxControl::OxiSynth(control) => {
                 if fx.processor_type.as_str() != TrackProcessorTypeId::OXISYNTH {
                     return Err(anyhow!("track is not an OxiSynth processor"));
@@ -2142,7 +2068,6 @@ impl Backend for NativeBackend {
                 features: TrackProcessorFeatures::default(),
                 editor: None,
             },
-            tiny_synth_fx_descriptor(),
             oxisynth_descriptor(),
         ];
         #[cfg(feature = "native-fx")]
@@ -2682,44 +2607,19 @@ impl Backend for NativeBackend {
                         })
                         .collect::<Vec<_>>()
                         .into(),
-                    editor: if fx.processor_type.as_str() == TrackProcessorTypeId::TINY_SYNTH_FX {
-                        fx.chain.tiny_editor_state().map(|editor| {
-                            TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
-                                selected_preset_id: editor.selected_preset_id,
-                                master_gain_db: editor.master_gain_db,
-                                reverb_enabled: editor.reverb_enabled,
-                                reverb_amount: editor.reverb_amount,
-                                distortion_enabled: editor.distortion_enabled,
-                                distortion_drive: editor.distortion_drive,
-                                compressor_enabled: editor.compressor_enabled,
-                                compressor_amount: editor.compressor_amount,
-                                eq_enabled: editor.eq_enabled,
-                                eq_low_db: editor.eq_low_db,
-                                eq_mid_db: editor.eq_mid_db,
-                                eq_high_db: editor.eq_high_db,
-                                midi_cc_assignments: editor
-                                    .midi_cc_assignments
-                                    .into_iter()
-                                    .map(app_midi_cc_assignment)
-                                    .collect::<Vec<_>>()
-                                    .into(),
-                            })
+                    editor: fx.chain.oxisynth_editor_state().map(|editor| {
+                        TrackProcessorEditorState::OxiSynth(OxiSynthState {
+                            selected_preset_id: editor.selected_preset.stable_id(),
+                            reverb_send: editor.reverb_send,
+                            chorus_send: editor.chorus_send,
+                            midi_cc_assignments: editor
+                                .midi_cc_assignments
+                                .into_iter()
+                                .map(app_oxisynth_midi_cc_assignment)
+                                .collect::<Vec<_>>()
+                                .into(),
                         })
-                    } else {
-                        fx.chain.oxisynth_editor_state().map(|editor| {
-                            TrackProcessorEditorState::OxiSynth(OxiSynthState {
-                                selected_preset_id: editor.selected_preset.stable_id(),
-                                reverb_send: editor.reverb_send,
-                                chorus_send: editor.chorus_send,
-                                midi_cc_assignments: editor
-                                    .midi_cc_assignments
-                                    .into_iter()
-                                    .map(app_oxisynth_midi_cc_assignment)
-                                    .collect::<Vec<_>>()
-                                    .into(),
-                            })
-                        })
-                    },
+                    }),
                 }
             });
             state.input_peaks = track
@@ -3057,7 +2957,6 @@ fn fx_lifecycle(lifecycle: shoop_engine::carla_processor::CarlaProcessorLifecycl
 
 fn processor_chain_type(processor_type: &str) -> Option<FXChainType> {
     match processor_type {
-        TrackProcessorTypeId::TINY_SYNTH_FX => Some(FXChainType::TinySynthFx),
         TrackProcessorTypeId::OXISYNTH => Some(FXChainType::OxiSynth),
         #[cfg(feature = "native-fx")]
         TrackProcessorTypeId::CARLA_RACK => Some(FXChainType::CarlaRack),
@@ -3392,6 +3291,19 @@ mod tests {
                 BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset("0:40".to_owned())),
             )
             .unwrap();
+        for control in [
+            OxiSynthControl::SetReverbSend(0.25),
+            OxiSynthControl::SetChorusSend(0.5),
+            OxiSynthControl::AssignMidiCc(OxiSynthMidiCcAssignment {
+                parameter: OxiSynthParameter::ReverbSend,
+                channel: 3,
+                controller: 74,
+            }),
+        ] {
+            backend
+                .set_track_fx_control(created.track_id, BackendTrackFxControl::OxiSynth(control))
+                .unwrap();
+        }
         let snapshot = backend.poll().unwrap();
         let fx = snapshot.tracks[&created.track_id].fx.as_ref().unwrap();
         assert!(fx.visible);
@@ -3399,11 +3311,14 @@ mod tests {
             panic!("missing OxiSynth editor state");
         };
         assert_eq!(editor.selected_preset_id, "0:40");
+        assert_eq!(editor.reverb_send, 0.25);
+        assert_eq!(editor.chorus_send, 0.5);
+        assert_eq!(editor.midi_cc_assignments.len(), 1);
         let state = backend
             .track_fx_state_string(created.track_id)
             .unwrap()
             .unwrap();
-        assert_eq!(state, "shoop-oxisynth:2:timgm6mb:0:40:00000000:00000000");
+        assert_eq!(state, "shoop-oxisynth:2:timgm6mb:0:40:3e800000:3f000000");
         assert!(backend
             .set_track_fx_control(
                 created.track_id,
@@ -3416,6 +3331,7 @@ mod tests {
         );
         let captured = backend.capture_session().unwrap();
         assert_eq!(captured.tracks[0].processor_state, Some(state));
+        assert_eq!(captured.tracks[0].oxisynth_midi_cc_assignments.len(), 1);
         backend
             .set_track_fx_control(
                 created.track_id,
@@ -3438,6 +3354,9 @@ mod tests {
             panic!("missing restored OxiSynth editor state");
         };
         assert_eq!(editor.selected_preset_id, "0:40");
+        assert_eq!(editor.reverb_send, 0.25);
+        assert_eq!(editor.chorus_send, 0.5);
+        assert_eq!(editor.midi_cc_assignments.len(), 1);
         backend.remove_track(restored_track).unwrap();
     }
 
@@ -3803,11 +3722,10 @@ mod tests {
         }))
         .unwrap();
         let catalog = backend.track_processor_catalog().unwrap();
-        assert_eq!(catalog.len(), 6);
-        assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::TINY_SYNTH_FX);
-        assert_eq!(catalog[2].id.as_str(), TrackProcessorTypeId::OXISYNTH);
+        assert_eq!(catalog.len(), 5);
+        assert_eq!(catalog[1].id.as_str(), TrackProcessorTypeId::OXISYNTH);
         let runtime_available = shoop_engine::carla_native::carla_runtime_availability().is_ok();
-        for descriptor in &catalog[3..] {
+        for descriptor in &catalog[2..] {
             assert_eq!(descriptor.available, runtime_available);
             assert_eq!(descriptor.unavailable_reason.is_none(), runtime_available);
             assert!(descriptor.features.state);
@@ -3842,10 +3760,10 @@ mod tests {
                     buffer_size: 128,
                 }))?;
             let catalog = backend.track_processor_catalog()?;
-            assert!(catalog[..3].iter().all(|descriptor| {
+            assert!(catalog[..2].iter().all(|descriptor| {
                 descriptor.available && !descriptor.id.as_str().starts_with("carla_")
             }));
-            assert!(catalog[3..].iter().all(|descriptor| {
+            assert!(catalog[2..].iter().all(|descriptor| {
                 !descriptor.available && descriptor.unavailable_reason.is_some()
             }));
             Ok::<_, anyhow::Error>(())
@@ -4121,248 +4039,6 @@ mod tests {
                 "right wet sample {frame}: expected {expected}, got {actual}"
             );
         }
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn native_dummy_tiny_synth_fx_processes_midi_and_round_trips_state() {
-        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
-            sample_rate: 48_000,
-            buffer_size: 128,
-        });
-        let mut backend = NativeBackend::new(config.clone()).unwrap();
-        let created = backend
-            .create_track(TrackRequest {
-                port_name_base: "tiny".to_owned(),
-                topology: BackendTrackTopology::DryWetProcessor {
-                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
-                    dry_audio_channels: 1,
-                    wet_audio_channels: 1,
-                    dry_midi: true,
-                },
-                initial_loops: 1,
-            })
-            .unwrap();
-        backend
-            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
-            .unwrap();
-        backend
-            .set_track_fx_control(
-                created.track_id,
-                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::SelectPreset(
-                    "pad".to_owned(),
-                )),
-            )
-            .unwrap();
-        let _ = backend.poll().unwrap();
-        backend
-            .set_track_fx_control(
-                created.track_id,
-                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
-                    TinySynthFxMidiCcAssignment {
-                        parameter: TinySynthFxParameter::ReverbAmount,
-                        channel: 3,
-                        controller: 21,
-                    },
-                )),
-            )
-            .unwrap();
-        {
-            let runtime = backend.runtime_mut().unwrap();
-            runtime.driver.dummy_enter_controlled_mode();
-            let midi = runtime.tracks[&created.track_id]
-                .midi_input
-                .as_ref()
-                .unwrap()
-                .clone();
-            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
-                time: 0,
-                data: vec![0xb3, 21, 127],
-            })
-            .unwrap();
-            runtime.driver.dummy_request_controlled_frames(128);
-            runtime.driver.dummy_run_requested_frames();
-        }
-        let snapshot = backend.poll().unwrap();
-        assert_eq!(
-            snapshot.tracks[&created.track_id]
-                .latest_input_midi_message
-                .unwrap(),
-            BackendLatestMidiMessage {
-                bytes: [0xb3, 21, 127, 0],
-                len: 3,
-            }
-        );
-        let Some(TrackProcessorEditorState::TinySynthFx(editor)) = snapshot.tracks
-            [&created.track_id]
-            .fx
-            .as_ref()
-            .and_then(|fx| fx.editor.as_ref())
-        else {
-            panic!("missing Tiny Synth/FX editor state");
-        };
-        assert_eq!(editor.reverb_amount, 1.0);
-
-        {
-            let runtime = backend.runtime_mut().unwrap();
-            runtime.driver.dummy_enter_controlled_mode();
-            let track = &runtime.tracks[&created.track_id];
-            track
-                .midi_input
-                .as_ref()
-                .unwrap()
-                .dummy_queue_msg(&shoop_engine::MidiEvent {
-                    time: 0,
-                    data: vec![0x90, 69, 127],
-                })
-                .unwrap();
-            let output = track.audio_outputs[0].clone();
-            output.dummy_request_data(128).unwrap();
-            runtime.driver.dummy_request_controlled_frames(128);
-            runtime.driver.dummy_run_requested_frames();
-            assert!(output
-                .dummy_dequeue_data(128)
-                .iter()
-                .any(|sample| sample.abs() > 0.001));
-        }
-        backend
-            .set_track_fx_control(
-                created.track_id,
-                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic),
-            )
-            .unwrap();
-        backend
-            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
-            .unwrap();
-        backend.poll().unwrap();
-        {
-            let runtime = backend.runtime_mut().unwrap();
-            let midi = runtime.tracks[&created.track_id]
-                .midi_input
-                .as_ref()
-                .unwrap()
-                .clone();
-            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
-                time: 0,
-                data: vec![0x90, 69, 127],
-            })
-            .unwrap();
-            for _ in 0..8 {
-                runtime.driver.dummy_request_controlled_frames(128);
-                runtime.driver.dummy_run_requested_frames();
-            }
-            midi.dummy_queue_msg(&shoop_engine::MidiEvent {
-                time: 0,
-                data: vec![0x80, 69, 0],
-            })
-            .unwrap();
-            for _ in 0..2 {
-                runtime.driver.dummy_request_controlled_frames(128);
-                runtime.driver.dummy_run_requested_frames();
-            }
-        }
-        backend
-            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
-            .unwrap();
-
-        let captured = backend.capture_session().unwrap();
-        let wet = &captured.tracks[0].loops[0].audio[1].samples;
-        assert!(wet.iter().filter(|sample| sample.abs() > 1.0e-7).count() > wet.len() / 2);
-        assert!(captured.tracks[0]
-            .processor_state
-            .as_deref()
-            .is_some_and(|state| state.starts_with("shoop-tiny-synth-fx:1:")));
-        assert_eq!(
-            captured.tracks[0].tiny_synth_midi_cc_assignments,
-            [BackendTinySynthFxMidiCcAssignment {
-                parameter: BackendTinySynthFxParameter::ReverbAmount,
-                channel: 3,
-                controller: 21,
-            }]
-        );
-        backend
-            .switch_audio_driver(
-                &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
-                    sample_rate: 48_000,
-                    buffer_size: 256,
-                }),
-                48_000,
-                &captured,
-            )
-            .unwrap();
-        let switched = backend.capture_session().unwrap();
-        assert_eq!(
-            switched.tracks[0].processor_state,
-            captured.tracks[0].processor_state
-        );
-        assert_eq!(
-            switched.tracks[0].tiny_synth_midi_cc_assignments,
-            captured.tracks[0].tiny_synth_midi_cc_assignments
-        );
-
-        let mut browser = EngineBackend::new_web_audio(48_000, 128).unwrap();
-        browser.replace_session(&captured).unwrap();
-        let browser_state = browser.capture_session().unwrap();
-        assert_eq!(
-            browser_state.tracks[0].topology,
-            captured.tracks[0].topology
-        );
-        assert_eq!(
-            browser_state.tracks[0].processor_state,
-            captured.tracks[0].processor_state
-        );
-        assert_eq!(
-            browser_state.tracks[0].tiny_synth_midi_cc_assignments,
-            captured.tracks[0].tiny_synth_midi_cc_assignments
-        );
-
-        let mut restored = NativeBackend::new(config).unwrap();
-        let replacement = restored.replace_session(&browser_state).unwrap();
-        let restored_track = replacement.tracks[&captured.tracks[0].source_id].track_id;
-        let restored_state = restored.capture_session().unwrap();
-        assert_eq!(
-            restored_state.tracks[0].topology,
-            captured.tracks[0].topology
-        );
-        assert_eq!(
-            restored_state.tracks[0].processor_state,
-            captured.tracks[0].processor_state
-        );
-        assert_eq!(
-            restored_state.tracks[0].tiny_synth_midi_cc_assignments,
-            captured.tracks[0].tiny_synth_midi_cc_assignments
-        );
-        restored
-            .set_track_fx_control(
-                restored_track,
-                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
-                    TinySynthFxParameter::ReverbAmount,
-                )),
-            )
-            .unwrap();
-        assert!(restored.capture_session().unwrap().tracks[0]
-            .tiny_synth_midi_cc_assignments
-            .is_empty());
-        restored
-            .set_track_fx_control(
-                restored_track,
-                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
-                    TinySynthFxMidiCcAssignment {
-                        parameter: TinySynthFxParameter::EqLow,
-                        channel: 1,
-                        controller: 71,
-                    },
-                )),
-            )
-            .unwrap();
-        restored
-            .set_track_fx_control(
-                restored_track,
-                BackendTrackFxControl::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments),
-            )
-            .unwrap();
-        assert!(restored.capture_session().unwrap().tracks[0]
-            .tiny_synth_midi_cc_assignments
-            .is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

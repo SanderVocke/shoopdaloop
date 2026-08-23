@@ -43,7 +43,6 @@ shoop_settings = { path = "../shoop_settings" }
 tracing = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
-tinyviolin = { workspace = true }
 oxisynth = { workspace = true }
 sha2 = { workspace = true }
 

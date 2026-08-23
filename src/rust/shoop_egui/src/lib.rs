@@ -22,7 +22,6 @@ mod piano_pane;
 mod script_dialogs;
 mod script_resource_loader;
 mod settings_dialog;
-mod tiny_synth_fx_editor;
 mod track_controls;
 mod track_widget;
 mod tracks_widget;

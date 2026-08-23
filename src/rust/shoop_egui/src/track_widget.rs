@@ -8,7 +8,6 @@ use crate::{
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
 use crate::oxisynth_editor::OxiSynthEditor;
-use crate::tiny_synth_fx_editor::TinySynthFxEditor;
 
 const DEFAULT_TRACK_WIDTH: f32 = 120.0;
 const MIN_TRACK_WIDTH: f32 = 100.0;
@@ -44,7 +43,6 @@ pub struct TrackWidget {
     pending_clone_confirmation: Option<(LoopId, LoopId)>,
     controls: TrackControls,
     fx_logs_open: bool,
-    tiny_synth_fx_editor: TinySynthFxEditor,
     oxisynth_editor: OxiSynthEditor,
     width: f32,
     rendered_content_width: f32,
@@ -99,7 +97,6 @@ impl Default for TrackWidget {
             pending_clone_confirmation: None,
             controls: TrackControls::default(),
             fx_logs_open: false,
-            tiny_synth_fx_editor: TinySynthFxEditor::default(),
             oxisynth_editor: OxiSynthEditor::default(),
             width: DEFAULT_TRACK_WIDTH,
             rendered_content_width: DEFAULT_TRACK_WIDTH,
@@ -416,9 +413,6 @@ impl TrackWidget {
         }
         self.show_clone_confirmation(ui.ctx(), state, &mut result);
         self.show_fx_logs(ui.ctx(), state, processor, &mut result);
-        result
-            .actions
-            .extend(self.tiny_synth_fx_editor.show(ui.ctx(), state, processor));
         result
             .actions
             .extend(self.oxisynth_editor.show(ui.ctx(), state, processor));

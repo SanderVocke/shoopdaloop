@@ -32,7 +32,7 @@ Web MIDI, permission, restart, or stress assertions.
 | microphone permission denial and retry | Shared `shoop_app` active-I/O transition and preflight rejection tests; the retained smokes do not request microphone permission |
 | repeated start, suspend/resume, shutdown/restart, and media ownership | Shared `shoop_app` active-I/O lifecycle tests, `shoop_worklet_client::tests::driver_restart_cancels_active_transfer_and_releases_staged_bytes`, and the terminal-shutdown case in `shoop_wasm_runtime_tests::exact_production_worker_modules_process_and_isolate_instances` |
 | stress callback count, bounded overflow, and render diagnostics | Shared bounded queue/storage tests in `shoop_engine`, `shoop_backend::tests::saturated_web_midi_render_is_allocation_free_and_counts_refusal`, and Worker explicit-processing contracts; real callback progress remains in all three smokes |
-| waveform, MIDI-detail, connection-dialog, Tiny Synth FX, and session-shape assertions | Shared `shoop_egui::{waveform,waveform_widget,midi_sequence_widget,details_pane,connection_dialog,tiny_synth_fx_editor}::tests::*`, `shoop_backend::tests::tiny_synth_fx_processes_audio_midi_controls_and_session_state`, and `shoop_session::tests::*` |
+| waveform, MIDI-detail, connection-dialog, Built-in Synth, and session-shape assertions | Shared `shoop_egui::{waveform,waveform_widget,midi_sequence_widget,details_pane,connection_dialog,oxisynth_editor}::tests::*`, focused `shoop_backend` OxiSynth rendering/state tests, and `shoop_session::tests::*` |
 
 The replacement tests are emitted by `#[shoop_test]` and therefore retain the
 same native test identity while also running in the Node and Chromium Wasm

@@ -20,34 +20,30 @@ use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
     FxLifecycle, OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState,
-    ResolvedAudioDriverConfig, TinySynthFxState, TrackFxState, TrackProcessorDescriptor,
-    TrackProcessorEditorState,
+    ResolvedAudioDriverConfig, TrackFxState, TrackProcessorDescriptor, TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
     Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
     WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment,
     WireOxiSynthParameter, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTrackControl,
-    WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
+    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
     MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
     STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    encode_oxisynth_state, encode_tiny_synth_fx_state, oxisynth_descriptor,
-    tiny_synth_fx_descriptor, Backend, BackendActiveCompositeChild, BackendAsyncResult,
-    BackendAudioChannelData, BackendAudioData, BackendChannelMode, BackendCompositeConfig,
-    BackendCompositeId, BackendCompositeKind, BackendCompositeState, BackendCompositeTarget,
-    BackendConfirmedLink, BackendConnectionFailure, BackendDriverState, BackendGrabRequest,
-    BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
-    BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
+    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
+    BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
+    BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
+    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
     BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
     BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
     BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
     BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
     BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TinySynthFxControl,
-    TinySynthFxMidiCcAssignment, TinySynthFxParameter, TrackProcessorTypeId, TrackRequest,
+    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -796,14 +792,6 @@ impl RemoteWorkletBackend {
                                 audio_channels,
                                 midi,
                             },
-                            WireTrackTopology::TinySynthFx { audio_channels } => {
-                                BackendTrackTopology::DryWetProcessor {
-                                    processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
-                                    dry_audio_channels: audio_channels,
-                                    wet_audio_channels: audio_channels,
-                                    dry_midi: true,
-                                }
-                            }
                             WireTrackTopology::OxiSynth => BackendTrackTopology::DryWetProcessor {
                                 processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                                 dry_audio_channels: 2,
@@ -812,34 +800,6 @@ impl RemoteWorkletBackend {
                             },
                         },
                         fx: track.fx.map(|fx| {
-                            let tiny = fx.tiny.map(|tiny| {
-                                TrackProcessorEditorState::TinySynthFx(TinySynthFxState {
-                                    selected_preset_id: tiny.selected_preset_id,
-                                    master_gain_db: tiny.master_gain_db,
-                                    reverb_enabled: tiny.reverb_enabled,
-                                    reverb_amount: tiny.reverb_amount,
-                                    distortion_enabled: tiny.distortion_enabled,
-                                    distortion_drive: tiny.distortion_drive,
-                                    compressor_enabled: tiny.compressor_enabled,
-                                    compressor_amount: tiny.compressor_amount,
-                                    eq_enabled: tiny.eq_enabled,
-                                    eq_low_db: tiny.eq_low_db,
-                                    eq_mid_db: tiny.eq_mid_db,
-                                    eq_high_db: tiny.eq_high_db,
-                                    midi_cc_assignments: tiny
-                                        .midi_cc_assignments
-                                        .into_iter()
-                                        .map(|assignment| TinySynthFxMidiCcAssignment {
-                                            parameter: from_wire_tiny_parameter(
-                                                assignment.parameter,
-                                            ),
-                                            channel: assignment.channel,
-                                            controller: assignment.controller,
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .into(),
-                                })
-                            });
                             let oxisynth = fx.oxisynth.map(|oxisynth| {
                                 TrackProcessorEditorState::OxiSynth(OxiSynthState {
                                     selected_preset_id: oxisynth.selected_preset_id,
@@ -867,7 +827,7 @@ impl RemoteWorkletBackend {
                                 generation: 0,
                                 crash_summary: None,
                                 logs: Arc::from([]),
-                                editor: tiny.or(oxisynth),
+                                editor: oxisynth,
                             }
                         }),
                         audio_channels: track.audio_channels,
@@ -1055,50 +1015,6 @@ fn browser_port_descriptors(
     ports
 }
 
-fn browser_tiny_port_descriptors(
-    base: &str,
-    audio_channels: u32,
-    next_port_id: &mut u64,
-) -> Vec<BackendPortDescriptor> {
-    let mut ports = Vec::with_capacity(audio_channels as usize * 2 + 1);
-    let mut add = |name: String,
-                   data_type: BackendPortDataType,
-                   direction: BackendPortDirection,
-                   role: BackendPortRole| {
-        let id = BackendPortId::from_raw(*next_port_id);
-        *next_port_id = next_port_id.saturating_add(1);
-        ports.push(BackendPortDescriptor {
-            id,
-            owner: BackendPortOwner::Track,
-            name,
-            data_type,
-            direction,
-            role,
-        });
-    };
-    for index in 0..audio_channels {
-        add(
-            format!("{base}_audio_dry_in_{}", index + 1),
-            BackendPortDataType::Audio,
-            BackendPortDirection::Input,
-            BackendPortRole::AudioInput,
-        );
-        add(
-            format!("{base}_audio_wet_out_{}", index + 1),
-            BackendPortDataType::Audio,
-            BackendPortDirection::Output,
-            BackendPortRole::AudioOutput,
-        );
-    }
-    add(
-        format!("{base}_dry_midi_in"),
-        BackendPortDataType::Midi,
-        BackendPortDirection::Input,
-        BackendPortRole::MidiInput,
-    );
-    ports
-}
-
 fn browser_oxisynth_port_descriptors(
     base: &str,
     next_port_id: &mut u64,
@@ -1229,86 +1145,38 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
 }
 
 fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxControl {
-    BackendTrackFxControl::TinySynthFx(match control {
-        WireTrackFxControl::SetActive(value) => return BackendTrackFxControl::SetActive(*value),
-        WireTrackFxControl::SetVisible(value) => return BackendTrackFxControl::SetVisible(*value),
-        WireTrackFxControl::ToggleOrRecover => return BackendTrackFxControl::ToggleOrRecover,
+    match control {
+        WireTrackFxControl::SetActive(value) => BackendTrackFxControl::SetActive(*value),
+        WireTrackFxControl::SetVisible(value) => BackendTrackFxControl::SetVisible(*value),
+        WireTrackFxControl::ToggleOrRecover => BackendTrackFxControl::ToggleOrRecover,
         WireTrackFxControl::RestoreState(value) => {
-            return BackendTrackFxControl::RestoreState(value.clone());
+            BackendTrackFxControl::RestoreState(value.clone())
         }
-        WireTrackFxControl::ClearLogs => return BackendTrackFxControl::ClearLogs,
-        WireTrackFxControl::TinySelectPreset(value) => {
-            TinySynthFxControl::SelectPreset(value.clone())
-        }
-        WireTrackFxControl::TinySetMasterGainDb(value) => {
-            TinySynthFxControl::SetMasterGainDb(*value)
-        }
-        WireTrackFxControl::TinySetReverbEnabled(value) => {
-            TinySynthFxControl::SetReverbEnabled(*value)
-        }
-        WireTrackFxControl::TinySetReverbAmount(value) => {
-            TinySynthFxControl::SetReverbAmount(*value)
-        }
-        WireTrackFxControl::TinySetDistortionEnabled(value) => {
-            TinySynthFxControl::SetDistortionEnabled(*value)
-        }
-        WireTrackFxControl::TinySetDistortionDrive(value) => {
-            TinySynthFxControl::SetDistortionDrive(*value)
-        }
-        WireTrackFxControl::TinySetCompressorEnabled(value) => {
-            TinySynthFxControl::SetCompressorEnabled(*value)
-        }
-        WireTrackFxControl::TinySetCompressorAmount(value) => {
-            TinySynthFxControl::SetCompressorAmount(*value)
-        }
-        WireTrackFxControl::TinySetEqEnabled(value) => TinySynthFxControl::SetEqEnabled(*value),
-        WireTrackFxControl::TinySetEqLowDb(value) => TinySynthFxControl::SetEqLowDb(*value),
-        WireTrackFxControl::TinySetEqMidDb(value) => TinySynthFxControl::SetEqMidDb(*value),
-        WireTrackFxControl::TinySetEqHighDb(value) => TinySynthFxControl::SetEqHighDb(*value),
-        WireTrackFxControl::TinyAssignMidiCc(assignment) => {
-            TinySynthFxControl::AssignMidiCc(TinySynthFxMidiCcAssignment {
-                parameter: from_wire_tiny_parameter(assignment.parameter),
-                channel: assignment.channel,
-                controller: assignment.controller,
-            })
-        }
-        WireTrackFxControl::TinyRemoveMidiCc(parameter) => {
-            TinySynthFxControl::RemoveMidiCc(from_wire_tiny_parameter(*parameter))
-        }
-        WireTrackFxControl::TinyClearMidiCcAssignments => {
-            TinySynthFxControl::ClearMidiCcAssignments
-        }
-        WireTrackFxControl::TinyPanic => TinySynthFxControl::Panic,
+        WireTrackFxControl::ClearLogs => BackendTrackFxControl::ClearLogs,
         WireTrackFxControl::OxiSelectPreset(value) => {
-            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(value.clone()));
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(value.clone()))
         }
         WireTrackFxControl::OxiSetReverbSend(value) => {
-            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetReverbSend(*value));
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::SetReverbSend(*value))
         }
         WireTrackFxControl::OxiSetChorusSend(value) => {
-            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetChorusSend(*value));
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::SetChorusSend(*value))
         }
-        WireTrackFxControl::OxiAssignMidiCc(assignment) => {
-            return BackendTrackFxControl::OxiSynth(OxiSynthControl::AssignMidiCc(
-                OxiSynthMidiCcAssignment {
-                    parameter: from_wire_oxisynth_parameter(assignment.parameter),
-                    channel: assignment.channel,
-                    controller: assignment.controller,
-                },
-            ));
-        }
-        WireTrackFxControl::OxiRemoveMidiCc(parameter) => {
-            return BackendTrackFxControl::OxiSynth(OxiSynthControl::RemoveMidiCc(
-                from_wire_oxisynth_parameter(*parameter),
-            ));
-        }
+        WireTrackFxControl::OxiAssignMidiCc(assignment) => BackendTrackFxControl::OxiSynth(
+            OxiSynthControl::AssignMidiCc(OxiSynthMidiCcAssignment {
+                parameter: from_wire_oxisynth_parameter(assignment.parameter),
+                channel: assignment.channel,
+                controller: assignment.controller,
+            }),
+        ),
+        WireTrackFxControl::OxiRemoveMidiCc(parameter) => BackendTrackFxControl::OxiSynth(
+            OxiSynthControl::RemoveMidiCc(from_wire_oxisynth_parameter(*parameter)),
+        ),
         WireTrackFxControl::OxiClearMidiCcAssignments => {
-            return BackendTrackFxControl::OxiSynth(OxiSynthControl::ClearMidiCcAssignments);
+            BackendTrackFxControl::OxiSynth(OxiSynthControl::ClearMidiCcAssignments)
         }
-        WireTrackFxControl::OxiPanic => {
-            return BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic);
-        }
-    })
+        WireTrackFxControl::OxiPanic => BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic),
+    }
 }
 
 fn mutation_detail(command: &Command) -> Option<BackendMutationDetail> {
@@ -1374,7 +1242,7 @@ impl Backend for RemoteWorkletBackend {
     }
 
     fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
-        Ok(vec![tiny_synth_fx_descriptor(), oxisynth_descriptor()].into())
+        Ok(vec![oxisynth_descriptor()].into())
     }
 
     fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
@@ -1388,47 +1256,6 @@ impl Backend for RemoteWorkletBackend {
                 midi: *midi,
                 initial_loops: request.initial_loops,
             }),
-            BackendTrackTopology::DryWetProcessor {
-                processor_type,
-                dry_audio_channels,
-                wet_audio_channels,
-                dry_midi,
-            } if processor_type == TrackProcessorTypeId::TINY_SYNTH_FX
-                && dry_audio_channels == wet_audio_channels
-                && *dry_midi =>
-            {
-                let track_id = BackendTrackId::from_raw(self.next_track_id);
-                let ports = browser_tiny_port_descriptors(
-                    &request.port_name_base,
-                    *dry_audio_channels,
-                    &mut self.next_port_id,
-                );
-                let loops: Vec<_> = (0..request.initial_loops)
-                    .map(|offset| BackendLoopId::from_raw(self.next_loop_id + offset as u64))
-                    .collect();
-                self.submit(Command::CreateTrack {
-                    expected_track_id: track_id.raw(),
-                    expected_loop_ids: loops.iter().map(|id| id.raw()).collect(),
-                    port_name_base: request.port_name_base,
-                    topology: WireTrackTopology::TinySynthFx {
-                        audio_channels: *dry_audio_channels,
-                    },
-                })?;
-                self.next_track_id = self.next_track_id.saturating_add(1);
-                self.next_loop_id = self.next_loop_id.saturating_add(loops.len() as u64);
-                self.track_resources.insert(
-                    track_id,
-                    BrowserTrackResources {
-                        topology: request.topology.clone(),
-                        loops: loops.clone(),
-                    },
-                );
-                Ok(BackendTrackCreation {
-                    track_id,
-                    loops,
-                    ports,
-                })
-            }
             BackendTrackTopology::DryWetProcessor {
                 processor_type,
                 dry_audio_channels: 2,
@@ -1671,71 +1498,25 @@ impl Backend for RemoteWorkletBackend {
             ) {
                 return Err(anyhow!("track has no OxiSynth editor state"));
             }
-            if let OxiSynthControl::SelectPreset(id) = oxisynth {
-                if !matches!(
-                    oxisynth_descriptor().editor,
-                    Some(shoop_app_api::TrackProcessorEditorDescriptor::OxiSynth { presets })
-                        if presets.iter().any(|preset| preset.id == *id)
-                ) {
-                    return Err(anyhow!("unknown OxiSynth preset {id}"));
-                }
-            }
-        }
-        if let BackendTrackFxControl::TinySynthFx(tiny) = &control {
-            if !matches!(
-                fx.editor.as_ref(),
-                Some(TrackProcessorEditorState::TinySynthFx(_))
-            ) {
-                return Err(anyhow!("track has no Tiny Synth/FX editor state"));
-            }
-            match tiny {
-                TinySynthFxControl::SelectPreset(id)
+            match oxisynth {
+                OxiSynthControl::SelectPreset(id)
                     if !matches!(
-                        tiny_synth_fx_descriptor().editor,
-                        Some(shoop_app_api::TrackProcessorEditorDescriptor::TinySynthFx {
-                            presets
-                        }) if presets.iter().any(|preset| preset.id == *id)
+                        oxisynth_descriptor().editor,
+                        Some(shoop_app_api::TrackProcessorEditorDescriptor::OxiSynth { presets })
+                            if presets.iter().any(|preset| preset.id == *id)
                     ) =>
                 {
-                    return Err(anyhow!("unknown Tiny Synth/FX preset {id}"));
+                    return Err(anyhow!("unknown OxiSynth preset {id}"));
                 }
-                TinySynthFxControl::SetMasterGainDb(value)
-                    if !value.is_finite()
-                        || !(shoop_app_api::MIN_TINY_SYNTH_FX_GAIN_DB
-                            ..=shoop_app_api::MAX_TINY_SYNTH_FX_GAIN_DB)
-                            .contains(value) =>
-                {
-                    return Err(anyhow!("invalid Tiny Synth/FX master gain"));
-                }
-                TinySynthFxControl::SetReverbAmount(value)
+                OxiSynthControl::SetReverbSend(value) | OxiSynthControl::SetChorusSend(value)
                     if !value.is_finite() || !(0.0..=1.0).contains(value) =>
                 {
-                    return Err(anyhow!("invalid Tiny Synth/FX reverb amount"));
+                    return Err(anyhow!("invalid OxiSynth send"));
                 }
-                TinySynthFxControl::SetDistortionDrive(value)
-                    if !value.is_finite() || !(1.0..=20.0).contains(value) =>
-                {
-                    return Err(anyhow!("invalid Tiny Synth/FX distortion drive"));
-                }
-                TinySynthFxControl::SetCompressorAmount(value)
-                    if !value.is_finite() || !(0.0..=1.0).contains(value) =>
-                {
-                    return Err(anyhow!("invalid Tiny Synth/FX compressor amount"));
-                }
-                TinySynthFxControl::AssignMidiCc(assignment)
+                OxiSynthControl::AssignMidiCc(assignment)
                     if assignment.channel > 15 || assignment.controller > 127 =>
                 {
-                    return Err(anyhow!("invalid Tiny Synth/FX MIDI CC assignment"));
-                }
-                TinySynthFxControl::SetEqLowDb(value)
-                | TinySynthFxControl::SetEqMidDb(value)
-                | TinySynthFxControl::SetEqHighDb(value)
-                    if !value.is_finite()
-                        || !(shoop_app_api::MIN_TINY_SYNTH_FX_EQ_GAIN_DB
-                            ..=shoop_app_api::MAX_TINY_SYNTH_FX_EQ_GAIN_DB)
-                            .contains(value) =>
-                {
-                    return Err(anyhow!("invalid Tiny Synth/FX EQ gain"));
+                    return Err(anyhow!("invalid OxiSynth MIDI CC assignment"));
                 }
                 _ => {}
             }
@@ -1748,7 +1529,6 @@ impl Backend for RemoteWorkletBackend {
             &control,
             BackendTrackFxControl::ToggleOrRecover
                 | BackendTrackFxControl::ClearLogs
-                | BackendTrackFxControl::TinySynthFx(TinySynthFxControl::Panic)
                 | BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic)
         ) {
             self.submit_ephemeral(command)
@@ -1767,10 +1547,6 @@ impl Backend for RemoteWorkletBackend {
             return Ok(None);
         };
         match &fx.editor {
-            Some(TrackProcessorEditorState::TinySynthFx(editor)) => {
-                let sample_rate = self.snapshot.status.sample_rate.max(1) as f32;
-                Ok(Some(encode_tiny_synth_fx_state(sample_rate, editor)?))
-            }
             Some(TrackProcessorEditorState::OxiSynth(editor)) => {
                 Ok(Some(encode_oxisynth_state(editor)?))
             }
@@ -2568,30 +2344,6 @@ fn to_wire_oxisynth_parameter(parameter: OxiSynthParameter) -> WireOxiSynthParam
     }
 }
 
-fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxParameter {
-    match parameter {
-        WireTinySynthFxParameter::MasterGain => TinySynthFxParameter::MasterGain,
-        WireTinySynthFxParameter::ReverbAmount => TinySynthFxParameter::ReverbAmount,
-        WireTinySynthFxParameter::DistortionDrive => TinySynthFxParameter::DistortionDrive,
-        WireTinySynthFxParameter::CompressorAmount => TinySynthFxParameter::CompressorAmount,
-        WireTinySynthFxParameter::EqLow => TinySynthFxParameter::EqLow,
-        WireTinySynthFxParameter::EqMid => TinySynthFxParameter::EqMid,
-        WireTinySynthFxParameter::EqHigh => TinySynthFxParameter::EqHigh,
-    }
-}
-
-fn to_wire_tiny_parameter(parameter: TinySynthFxParameter) -> WireTinySynthFxParameter {
-    match parameter {
-        TinySynthFxParameter::MasterGain => WireTinySynthFxParameter::MasterGain,
-        TinySynthFxParameter::ReverbAmount => WireTinySynthFxParameter::ReverbAmount,
-        TinySynthFxParameter::DistortionDrive => WireTinySynthFxParameter::DistortionDrive,
-        TinySynthFxParameter::CompressorAmount => WireTinySynthFxParameter::CompressorAmount,
-        TinySynthFxParameter::EqLow => WireTinySynthFxParameter::EqLow,
-        TinySynthFxParameter::EqMid => WireTinySynthFxParameter::EqMid,
-        TinySynthFxParameter::EqHigh => WireTinySynthFxParameter::EqHigh,
-    }
-}
-
 fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxControl {
     match control {
         BackendTrackFxControl::SetActive(value) => WireTrackFxControl::SetActive(value),
@@ -2599,48 +2351,6 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
         BackendTrackFxControl::ToggleOrRecover => WireTrackFxControl::ToggleOrRecover,
         BackendTrackFxControl::RestoreState(value) => WireTrackFxControl::RestoreState(value),
         BackendTrackFxControl::ClearLogs => WireTrackFxControl::ClearLogs,
-        BackendTrackFxControl::TinySynthFx(control) => match control {
-            TinySynthFxControl::SelectPreset(value) => WireTrackFxControl::TinySelectPreset(value),
-            TinySynthFxControl::SetMasterGainDb(value) => {
-                WireTrackFxControl::TinySetMasterGainDb(value)
-            }
-            TinySynthFxControl::SetReverbEnabled(value) => {
-                WireTrackFxControl::TinySetReverbEnabled(value)
-            }
-            TinySynthFxControl::SetReverbAmount(value) => {
-                WireTrackFxControl::TinySetReverbAmount(value)
-            }
-            TinySynthFxControl::SetDistortionEnabled(value) => {
-                WireTrackFxControl::TinySetDistortionEnabled(value)
-            }
-            TinySynthFxControl::SetDistortionDrive(value) => {
-                WireTrackFxControl::TinySetDistortionDrive(value)
-            }
-            TinySynthFxControl::SetCompressorEnabled(value) => {
-                WireTrackFxControl::TinySetCompressorEnabled(value)
-            }
-            TinySynthFxControl::SetCompressorAmount(value) => {
-                WireTrackFxControl::TinySetCompressorAmount(value)
-            }
-            TinySynthFxControl::SetEqEnabled(value) => WireTrackFxControl::TinySetEqEnabled(value),
-            TinySynthFxControl::SetEqLowDb(value) => WireTrackFxControl::TinySetEqLowDb(value),
-            TinySynthFxControl::SetEqMidDb(value) => WireTrackFxControl::TinySetEqMidDb(value),
-            TinySynthFxControl::SetEqHighDb(value) => WireTrackFxControl::TinySetEqHighDb(value),
-            TinySynthFxControl::AssignMidiCc(assignment) => {
-                WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
-                    parameter: to_wire_tiny_parameter(assignment.parameter),
-                    channel: assignment.channel,
-                    controller: assignment.controller,
-                })
-            }
-            TinySynthFxControl::RemoveMidiCc(parameter) => {
-                WireTrackFxControl::TinyRemoveMidiCc(to_wire_tiny_parameter(parameter))
-            }
-            TinySynthFxControl::ClearMidiCcAssignments => {
-                WireTrackFxControl::TinyClearMidiCcAssignments
-            }
-            TinySynthFxControl::Panic => WireTrackFxControl::TinyPanic,
-        },
         BackendTrackFxControl::OxiSynth(control) => match control {
             OxiSynthControl::SelectPreset(value) => WireTrackFxControl::OxiSelectPreset(value),
             OxiSynthControl::SetReverbSend(value) => WireTrackFxControl::OxiSetReverbSend(value),
@@ -2941,8 +2651,7 @@ mod tests {
         use shoop_audio_protocol::{
             WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner,
             WireCompositeState, WireConfirmedLink, WireHostPort, WireLatestMidiMessage,
-            WireLoopState, WireOxiSynthState, WireTinySynthFxMidiCcAssignment,
-            WireTinySynthFxParameter, WireTinySynthFxState, WireTrackFxState, WireTrackState,
+            WireLoopState, WireOxiSynthState, WireTrackFxState, WireTrackState,
         };
 
         let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
@@ -2958,25 +2667,6 @@ mod tests {
             .ephemeral(Command::Poll)
             .unwrap();
 
-        let tiny = WireTinySynthFxState {
-            selected_preset_id: Some("pad".to_owned()),
-            master_gain_db: -6.0,
-            reverb_enabled: true,
-            reverb_amount: 0.2,
-            distortion_enabled: true,
-            distortion_drive: 2.0,
-            compressor_enabled: true,
-            compressor_amount: 0.3,
-            eq_enabled: true,
-            eq_low_db: 1.0,
-            eq_mid_db: -1.0,
-            eq_high_db: 2.0,
-            midi_cc_assignments: vec![WireTinySynthFxMidiCcAssignment {
-                parameter: WireTinySynthFxParameter::EqHigh,
-                channel: 3,
-                controller: 74,
-            }],
-        };
         let track = |id, topology, fx| WireTrackState {
             id,
             topology,
@@ -3043,24 +2733,12 @@ mod tests {
                         None,
                     ),
                     track(
-                        2,
-                        WireTrackTopology::TinySynthFx { audio_channels: 2 },
-                        Some(WireTrackFxState {
-                            processor_type: TrackProcessorTypeId::TINY_SYNTH_FX.to_owned(),
-                            active: true,
-                            visible: true,
-                            tiny: Some(tiny),
-                            oxisynth: None,
-                        }),
-                    ),
-                    track(
                         3,
                         WireTrackTopology::OxiSynth,
                         Some(WireTrackFxState {
                             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                             active: true,
                             visible: false,
-                            tiny: None,
                             oxisynth: Some(WireOxiSynthState {
                                 selected_preset_id: "0:40".to_owned(),
                                 reverb_send: 0.25,
@@ -3166,7 +2844,7 @@ mod tests {
             }),
         );
         let snapshot = backend.poll().unwrap();
-        assert_eq!(snapshot.tracks.len(), 3);
+        assert_eq!(snapshot.tracks.len(), 2);
         let oxisynth_track = BackendTrackId::from_raw(3);
         let Some(TrackProcessorEditorState::OxiSynth(editor)) = snapshot.tracks[&oxisynth_track]
             .fx

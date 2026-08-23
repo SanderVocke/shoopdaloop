@@ -192,186 +192,6 @@ pub fn encode_session(
     encode_zip(&manifest, payloads)
 }
 
-fn migrate_legacy_oxisynth_state(manifest: &mut serde_json::Value) -> Result<(), SessionError> {
-    let groups = manifest
-        .pointer_mut("/document/track_groups")
-        .and_then(serde_json::Value::as_array_mut)
-        .ok_or_else(|| SessionError::Manifest("track_groups is not an array".to_owned()))?;
-    for track in groups
-        .iter_mut()
-        .flat_map(|group| {
-            group
-                .get_mut("tracks")
-                .and_then(serde_json::Value::as_array_mut)
-        })
-        .flat_map(|tracks| tracks.iter_mut())
-    {
-        if track
-            .pointer("/topology/kind")
-            .and_then(serde_json::Value::as_str)
-            != Some("oxi_synth")
-        {
-            continue;
-        }
-        let Some(state) = track.pointer_mut("/fx_chain/internal_state") else {
-            continue;
-        };
-        let Some(state) = state.as_str() else {
-            return Err(SessionError::Manifest(
-                "legacy OxiSynth state is not a string".to_owned(),
-            ));
-        };
-        if !state.is_empty() {
-            return Err(SessionError::Validation(
-                "legacy OxiSynth state must be empty".to_owned(),
-            ));
-        }
-        *track
-            .pointer_mut("/fx_chain/internal_state")
-            .expect("state was checked") =
-            serde_json::Value::String("shoop-oxisynth:1:timgm6mb:0:0".to_owned());
-    }
-    Ok(())
-}
-
-fn migrate_legacy_composites(manifest: &mut serde_json::Value) -> Result<(), SessionError> {
-    let groups = manifest
-        .pointer_mut("/document/track_groups")
-        .and_then(serde_json::Value::as_array_mut)
-        .ok_or_else(|| SessionError::Manifest("track_groups is not an array".to_owned()))?;
-    let mut lengths = BTreeMap::<u64, u64>::new();
-    let mut sync_length = 1_u64;
-    for group in groups.iter() {
-        for loop_ in group
-            .get("tracks")
-            .and_then(serde_json::Value::as_array)
-            .into_iter()
-            .flatten()
-            .flat_map(|track| {
-                track
-                    .get("loops")
-                    .and_then(serde_json::Value::as_array)
-                    .into_iter()
-                    .flatten()
-            })
-        {
-            let Some(id) = loop_.get("id").and_then(serde_json::Value::as_u64) else {
-                continue;
-            };
-            let length = loop_
-                .get("length_frames")
-                .and_then(serde_json::Value::as_u64)
-                .unwrap_or(0);
-            lengths.insert(id, length);
-            if loop_
-                .get("is_sync")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false)
-            {
-                sync_length = length.max(1);
-            }
-        }
-    }
-
-    for loop_ in groups
-        .iter_mut()
-        .flat_map(|group| {
-            group
-                .get_mut("tracks")
-                .and_then(serde_json::Value::as_array_mut)
-                .into_iter()
-                .flatten()
-        })
-        .flat_map(|track| {
-            track
-                .get_mut("loops")
-                .and_then(serde_json::Value::as_array_mut)
-                .into_iter()
-                .flatten()
-        })
-    {
-        let Some(composite) = loop_
-            .get_mut("composite")
-            .and_then(serde_json::Value::as_object_mut)
-        else {
-            continue;
-        };
-        let playlists = composite
-            .remove("playlists")
-            .and_then(|value| value.as_array().cloned())
-            .unwrap_or_default();
-        let mut instances = Vec::new();
-        let mut next_id = 1_u64;
-        for playlist in playlists {
-            let Some(sections) = playlist.as_array() else {
-                continue;
-            };
-            let mut section_origin = 0_u64;
-            for section in sections {
-                let Some(events) = section.as_array() else {
-                    continue;
-                };
-                let mut section_duration = 0_u64;
-                for event in events {
-                    let mut instance = event.as_object().cloned().ok_or_else(|| {
-                        SessionError::Manifest("legacy composite event is not an object".to_owned())
-                    })?;
-                    let delay = instance
-                        .remove("delay")
-                        .or_else(|| instance.remove("delay_frames"))
-                        .and_then(|value| value.as_u64())
-                        .unwrap_or(0);
-                    let loop_id = instance
-                        .get("loop_id")
-                        .and_then(serde_json::Value::as_u64)
-                        .ok_or_else(|| {
-                            SessionError::Manifest(
-                                "legacy composite event has no loop_id".to_owned(),
-                            )
-                        })?;
-                    let natural_cycles = lengths
-                        .get(&loop_id)
-                        .copied()
-                        .unwrap_or(0)
-                        .div_ceil(sync_length)
-                        .max(1);
-                    let duration = instance
-                        .get("n_cycles")
-                        .and_then(serde_json::Value::as_u64)
-                        .filter(|cycles| *cycles > 0)
-                        .unwrap_or(natural_cycles);
-                    let start_cycle = section_origin.checked_add(delay).ok_or_else(|| {
-                        SessionError::Validation(
-                            "legacy composite start cycle overflows".to_owned(),
-                        )
-                    })?;
-                    section_duration =
-                        section_duration.max(delay.checked_add(duration).ok_or_else(|| {
-                            SessionError::Validation(
-                                "legacy composite duration overflows".to_owned(),
-                            )
-                        })?);
-                    instance.insert("instance_id".to_owned(), next_id.into());
-                    instance.insert("start_cycle".to_owned(), start_cycle.into());
-                    next_id = next_id.checked_add(1).ok_or_else(|| {
-                        SessionError::Validation(
-                            "legacy composite contains too many instances".to_owned(),
-                        )
-                    })?;
-                    instances.push(serde_json::Value::Object(instance));
-                }
-                section_origin = section_origin
-                    .checked_add(section_duration)
-                    .ok_or_else(|| {
-                        SessionError::Validation("legacy composite timeline overflows".to_owned())
-                    })?;
-            }
-        }
-        composite.insert("instances".to_owned(), instances.into());
-    }
-    Ok(())
-}
-
 pub fn decode_session(bytes: &[u8]) -> Result<SessionBundle, SessionError> {
     decode_session_with_limits(bytes, DecodeLimits::default())
 }
@@ -387,13 +207,13 @@ pub fn decode_session_with_limits(
     let mut archive = ZipArchive::new(Cursor::new(bytes))?;
     let archive_paths = inspect_archive(&mut archive, limits)?;
     let manifest_bytes = read_entry(&mut archive, MANIFEST_PATH, limits.max_uncompressed_bytes)?;
-    let mut manifest_value: serde_json::Value = serde_json::from_slice(&manifest_bytes)
+    let manifest_value: serde_json::Value = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     let header: SessionManifestHeader = serde_json::from_value(manifest_value.clone())
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     if header.format_version.major != FORMAT_MAJOR
         || header.format_version.minor > FORMAT_MINOR
-        || !(1..=SESSION_DOCUMENT_VERSION).contains(&header.document_version)
+        || header.document_version != SESSION_DOCUMENT_VERSION
     {
         return Err(SessionError::UnsupportedVersion {
             format: header.format,
@@ -401,13 +221,7 @@ pub fn decode_session_with_limits(
             minor: header.format_version.minor,
         });
     }
-    if header.document_version < 4 {
-        migrate_legacy_composites(&mut manifest_value)?;
-    }
-    if header.document_version < 5 {
-        migrate_legacy_oxisynth_state(&mut manifest_value)?;
-    }
-    let mut manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
+    let manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
@@ -419,9 +233,7 @@ pub fn decode_session_with_limits(
     }
     let mut declared_paths = BTreeSet::from([MANIFEST_PATH.to_owned()]);
     declared_paths.extend(manifest.media.iter().map(|record| record.path.clone()));
-    if manifest.document_version >= 3 {
-        declared_paths.extend(manifest.scripts.iter().map(|record| record.path.clone()));
-    }
+    declared_paths.extend(manifest.scripts.iter().map(|record| record.path.clone()));
     if archive_paths != declared_paths {
         return Err(SessionError::Archive(format!(
             "archive entries do not match the manifest; undeclared={:?}, missing={:?}",
@@ -433,11 +245,8 @@ pub fn decode_session_with_limits(
                 .collect::<Vec<_>>()
         )));
     }
-    let script_bundles = if manifest.document_version < 3 {
-        migrate_legacy_script_bundles(&manifest_value, &mut manifest.document)?
-    } else {
-        decode_script_bundles(&mut archive, &manifest.document, manifest.scripts, limits)?
-    };
+    let script_bundles =
+        decode_script_bundles(&mut archive, &manifest.document, manifest.scripts, limits)?;
     let mut media = BTreeMap::new();
     let mut record_ids = BTreeSet::new();
     let mut record_paths = BTreeSet::new();
@@ -484,54 +293,6 @@ pub fn decode_session_with_limits(
     };
     validate_bundle(&bundle)?;
     Ok(bundle)
-}
-
-fn migrate_legacy_script_bundles(
-    manifest: &serde_json::Value,
-    document: &mut SessionDocument,
-) -> Result<BTreeMap<u64, Arc<ScriptResourceBundle>>, SessionError> {
-    #[derive(Deserialize)]
-    struct LegacyScript {
-        id: u64,
-        source: String,
-    }
-
-    let legacy: Vec<LegacyScript> = serde_json::from_value(
-        manifest
-            .get("document")
-            .and_then(|document| document.get("scripts"))
-            .cloned()
-            .unwrap_or_else(|| serde_json::Value::Array(Vec::new())),
-    )
-    .map_err(|error| SessionError::Manifest(format!("legacy scripts: {error}")))?;
-    if legacy.len() != document.scripts.len() {
-        return Err(SessionError::Validation(
-            "legacy script records do not match the session document".to_owned(),
-        ));
-    }
-    let sources = legacy
-        .into_iter()
-        .map(|script| (script.id, script.source))
-        .collect::<BTreeMap<_, _>>();
-    let mut bundles = BTreeMap::new();
-    for script in &mut document.scripts {
-        let source = sources.get(&script.id).ok_or_else(|| {
-            SessionError::Validation(format!("legacy script {} has no source", script.id))
-        })?;
-        script.entrypoint = "main.lua".to_owned();
-        let bundle = ScriptResourceBundle::source_only(
-            &script.entrypoint,
-            Arc::<[u8]>::from(source.as_bytes()),
-        )
-        .map_err(|error| SessionError::Validation(error.to_string()))?;
-        if bundles.insert(script.id, Arc::new(bundle)).is_some() {
-            return Err(SessionError::Validation(format!(
-                "duplicate script ID {}",
-                script.id
-            )));
-        }
-    }
-    Ok(bundles)
 }
 
 fn decode_script_bundles(
@@ -836,6 +597,11 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             "sample rate must be non-zero".to_owned(),
         ));
     }
+    if bundle.document.connection_model_version != crate::CONNECTION_MODEL_VERSION {
+        return Err(SessionError::Validation(
+            "unsupported connection model version".to_owned(),
+        ));
+    }
     let mut script_ids = BTreeSet::new();
     for script in &bundle.document.scripts {
         require_id(script.id, "script")?;
@@ -1123,11 +889,11 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
 
 fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
     if let Some(chain) = &track.fx_chain {
-        if chain.chain_type != FxChainTypeDocument::TinySynthFx
+        if chain.chain_type != FxChainTypeDocument::OxiSynth
             && !chain.midi_cc_assignments.is_empty()
         {
             return Err(SessionError::Validation(format!(
-                "non-Tiny FX chain {} contains MIDI CC assignments",
+                "non-OxiSynth FX chain {} contains MIDI CC assignments",
                 chain.id
             )));
         }
@@ -1165,21 +931,9 @@ fn validate_track_fx_shape(track: &TrackDocument) -> Result<(), SessionError> {
             "Carla track {} is missing its FX chain",
             track.id
         ))),
-        (TrackTopologyDocument::TinySynthFx { .. }, Some(chain))
-            if chain.chain_type != FxChainTypeDocument::TinySynthFx =>
-        {
-            Err(SessionError::Validation(format!(
-                "Tiny Synth/FX track {} chain type does not match its topology",
-                track.id
-            )))
-        }
-        (TrackTopologyDocument::TinySynthFx { .. }, None) => Err(SessionError::Validation(
-            format!("Tiny Synth/FX track {} is missing its FX chain", track.id),
-        )),
         (TrackTopologyDocument::OxiSynth, Some(chain))
             if chain.chain_type != FxChainTypeDocument::OxiSynth
-                || chain.internal_state.is_empty()
-                || !chain.midi_cc_assignments.is_empty() =>
+                || chain.internal_state.is_empty() =>
         {
             Err(SessionError::Validation(format!(
                 "OxiSynth track {} contains mismatched or invalid processor state",
@@ -1251,18 +1005,6 @@ fn validate_track_channel_shape(
             count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == dry_audio_channels
                 && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == wet_audio_channels
                 && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == u32::from(midi)
-                && channels.iter().all(|channel| {
-                    matches!(
-                        channel.mode,
-                        ChannelModeDocument::Dry | ChannelModeDocument::Wet
-                    ) && !(channel.mode == ChannelModeDocument::Wet
-                        && channel.data_type == DataTypeDocument::Midi)
-                })
-        }
-        TrackTopologyDocument::TinySynthFx { audio_channels } => {
-            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == audio_channels
-                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == audio_channels
-                && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == 1
                 && channels.iter().all(|channel| {
                     matches!(
                         channel.mode,

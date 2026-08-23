@@ -30,6 +30,8 @@ pub(crate) struct OxiSynthEditor {
     midi_assign_rect: Option<egui::Rect>,
     #[cfg(test)]
     attribution_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    opened_url: Option<String>,
 }
 
 impl std::fmt::Debug for OxiSynthEditor {
@@ -68,6 +70,8 @@ impl Default for OxiSynthEditor {
             midi_assign_rect: None,
             #[cfg(test)]
             attribution_rect: None,
+            #[cfg(test)]
+            opened_url: None,
         }
     }
 }
@@ -123,6 +127,10 @@ impl OxiSynthEditor {
                             self.attribution_rect = Some(response.rect);
                         }
                         if response.clicked() {
+                            #[cfg(test)]
+                            {
+                                self.opened_url = Some(OXISYNTH_URL.to_owned());
+                            }
                             context.open_url(egui::OpenUrl::new_tab(OXISYNTH_URL));
                         }
                     }
@@ -381,7 +389,7 @@ mod tests {
             },
             editor: Some(TrackProcessorEditorDescriptor::OxiSynth { presets }),
         };
-        let state = TrackState {
+        let mut state = TrackState {
             id: TrackId::from_raw(42),
             name: "Instrument".to_owned(),
             fx: Some(TrackFxState {
@@ -394,13 +402,15 @@ mod tests {
                 logs: Arc::from([]),
                 editor: Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
                     selected_preset_id: "0:0".to_owned(),
-                    reverb_send: 0.0,
+                    reverb_send: 0.25,
                     chorus_send: 0.0,
                     midi_cc_assignments: Arc::from([]),
                 })),
             }),
             ..TrackState::default()
         };
+        state.controls.latest_input_midi_message =
+            crate::LatestMidiMessage::new([0xb3, 74, 99, 0], 3);
         (state, processor)
     }
 
@@ -460,6 +470,50 @@ mod tests {
         }
         actions.dedup();
         actions
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn sends_midi_learn_and_attribution_are_typed() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let (state, processor) = fixture();
+        let mut editor = OxiSynthEditor::default();
+        frame(&context, &mut editor, &state, &processor, Vec::new());
+
+        let reverb = editor.reverb_send_rect.unwrap();
+        let actions = click(
+            &context,
+            &mut editor,
+            &state,
+            &processor,
+            egui::pos2(reverb.left() + 8.0, reverb.center().y),
+        );
+        assert!(actions.iter().any(|action| matches!(
+            action,
+            TrackAction::OxiSynth(OxiSynthControl::SetReverbSend(value))
+                if (0.0..=1.0).contains(value)
+        )));
+
+        let midi_learn = editor.midi_learn_rect.unwrap().center();
+        click(&context, &mut editor, &state, &processor, midi_learn);
+        frame(&context, &mut editor, &state, &processor, Vec::new());
+        let assign = editor.midi_assign_rect.unwrap().center();
+        assert_eq!(
+            click(&context, &mut editor, &state, &processor, assign),
+            [TrackAction::OxiSynth(OxiSynthControl::AssignMidiCc(
+                OxiSynthMidiCcAssignment {
+                    parameter: OxiSynthParameter::ReverbSend,
+                    channel: 3,
+                    controller: 74,
+                }
+            ))]
+        );
+
+        let attribution = editor.attribution_rect.unwrap().center();
+        assert!(click(&context, &mut editor, &state, &processor, attribution).is_empty());
+        assert_eq!(editor.opened_url.as_deref(), Some(OXISYNTH_URL));
+        let logo = editor.logo.as_ref().unwrap();
+        assert_eq!(logo.size()[0] / logo.size()[1], 4);
     }
 
     #[shoop_wasm_test_support::shoop_test]

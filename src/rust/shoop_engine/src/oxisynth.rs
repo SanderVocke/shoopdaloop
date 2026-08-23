@@ -1155,6 +1155,78 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn panic_and_preset_changes_preserve_effect_tails() {
+        let note = MidiStorageElem::new(0, &[0x90, 60, 127]).unwrap();
+        for change in [
+            None,
+            Some(OxiSynthPresetId {
+                bank: 0,
+                program: 40,
+            }),
+        ] {
+            let mut processor =
+                OxiSynthProcessor::new(48_000.0, 4096, OxiSynthState::default()).unwrap();
+            processor.process(4096, &[note]);
+            if let Some(preset) = change {
+                processor.select_preset(preset).unwrap();
+            } else {
+                processor.panic();
+            }
+            processor.process(4096, &[]);
+            let peak = processor
+                .output(0, 4096)
+                .unwrap()
+                .iter()
+                .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+            assert!(peak > 1.0e-6, "effect tail was cleared: {peak}");
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn sustain_holds_and_releases_a_note() {
+        let mut sustained =
+            OxiSynthProcessor::new(48_000.0, 2048, OxiSynthState::default()).unwrap();
+        let mut released =
+            OxiSynthProcessor::new(48_000.0, 2048, OxiSynthState::default()).unwrap();
+        let note_on = MidiStorageElem::new(0, &[0x90, 60, 127]).unwrap();
+        sustained.process(2048, &[note_on]);
+        released.process(2048, &[note_on]);
+        let sustain_on = MidiStorageElem::new(0, &[0xb0, 64, 127]).unwrap();
+        let note_off = MidiStorageElem::new(0, &[0x80, 60, 0]).unwrap();
+        sustained.process(2048, &[sustain_on, note_off]);
+        released.process(2048, &[note_off]);
+        for _ in 0..8 {
+            sustained.process(2048, &[]);
+            released.process(2048, &[]);
+        }
+        let sustained_peak = sustained
+            .output(0, 2048)
+            .unwrap()
+            .iter()
+            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+        let released_peak = released
+            .output(0, 2048)
+            .unwrap()
+            .iter()
+            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+        assert!(
+            sustained_peak > released_peak * 2.0,
+            "sustain did not retain the note: {sustained_peak} vs {released_peak}"
+        );
+        let sustain_off = MidiStorageElem::new(0, &[0xb0, 64, 0]).unwrap();
+        sustained.process(2048, &[sustain_off]);
+        for _ in 0..128 {
+            sustained.process(2048, &[]);
+        }
+        let final_peak = sustained
+            .output(0, 2048)
+            .unwrap()
+            .iter()
+            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+        assert!(final_peak < sustained_peak * 0.01);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn preset_selection_rejects_unknown_presets_without_mutating_state() {
         let mut processor =
             OxiSynthProcessor::new(48_000.0, 128, OxiSynthState::default()).unwrap();

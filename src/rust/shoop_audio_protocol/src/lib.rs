@@ -327,7 +327,6 @@ pub enum WireTrackControl {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WireTrackTopology {
     Direct { audio_channels: u32, midi: bool },
-    TinySynthFx { audio_channels: u32 },
     OxiSynth,
 }
 
@@ -339,22 +338,6 @@ pub enum WireTrackFxControl {
     ToggleOrRecover,
     RestoreState(String),
     ClearLogs,
-    TinySelectPreset(String),
-    TinySetMasterGainDb(f32),
-    TinySetReverbEnabled(bool),
-    TinySetReverbAmount(f32),
-    TinySetDistortionEnabled(bool),
-    TinySetDistortionDrive(f32),
-    TinySetCompressorEnabled(bool),
-    TinySetCompressorAmount(f32),
-    TinySetEqEnabled(bool),
-    TinySetEqLowDb(f32),
-    TinySetEqMidDb(f32),
-    TinySetEqHighDb(f32),
-    TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment),
-    TinyRemoveMidiCc(WireTinySynthFxParameter),
-    TinyClearMidiCcAssignments,
-    TinyPanic,
     OxiSelectPreset(String),
     OxiSetReverbSend(f32),
     OxiSetChorusSend(f32),
@@ -368,13 +351,6 @@ impl WireTrackFxControl {
     fn supersedable_parameter(&self) -> Option<u8> {
         Some(match self {
             Self::SetActive(_) => 0,
-            Self::TinySetMasterGainDb(_) => 1,
-            Self::TinySetReverbAmount(_) => 2,
-            Self::TinySetDistortionDrive(_) => 3,
-            Self::TinySetCompressorAmount(_) => 4,
-            Self::TinySetEqLowDb(_) => 5,
-            Self::TinySetEqMidDb(_) => 6,
-            Self::TinySetEqHighDb(_) => 7,
             Self::OxiSelectPreset(_) => 8,
             Self::OxiSetReverbSend(_) => 9,
             Self::OxiSetChorusSend(_) => 10,
@@ -382,15 +358,6 @@ impl WireTrackFxControl {
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
             | Self::ClearLogs
-            | Self::TinySelectPreset(_)
-            | Self::TinySetReverbEnabled(_)
-            | Self::TinySetDistortionEnabled(_)
-            | Self::TinySetCompressorEnabled(_)
-            | Self::TinySetEqEnabled(_)
-            | Self::TinyAssignMidiCc(_)
-            | Self::TinyRemoveMidiCc(_)
-            | Self::TinyClearMidiCcAssignments
-            | Self::TinyPanic
             | Self::OxiAssignMidiCc(_)
             | Self::OxiRemoveMidiCc(_)
             | Self::OxiClearMidiCcAssignments
@@ -606,25 +573,6 @@ pub struct WireOxiSynthMidiCcAssignment {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum WireTinySynthFxParameter {
-    MasterGain,
-    ReverbAmount,
-    DistortionDrive,
-    CompressorAmount,
-    EqLow,
-    EqMid,
-    EqHigh,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
-pub struct WireTinySynthFxMidiCcAssignment {
-    pub parameter: WireTinySynthFxParameter,
-    pub channel: u8,
-    pub controller: u8,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireLatestMidiMessage {
     pub bytes: [u8; 4],
     pub len: u8,
@@ -668,7 +616,6 @@ pub struct WireTrackFxState {
     pub processor_type: String,
     pub active: bool,
     pub visible: bool,
-    pub tiny: Option<WireTinySynthFxState>,
     #[serde(default)]
     pub oxisynth: Option<WireOxiSynthState>,
 }
@@ -679,24 +626,6 @@ pub struct WireOxiSynthState {
     pub reverb_send: f32,
     pub chorus_send: f32,
     pub midi_cc_assignments: Vec<WireOxiSynthMidiCcAssignment>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct WireTinySynthFxState {
-    pub selected_preset_id: Option<String>,
-    pub master_gain_db: f32,
-    pub reverb_enabled: bool,
-    pub reverb_amount: f32,
-    pub distortion_enabled: bool,
-    pub distortion_drive: f32,
-    pub compressor_enabled: bool,
-    pub compressor_amount: f32,
-    pub eq_enabled: bool,
-    pub eq_low_db: f32,
-    pub eq_mid_db: f32,
-    pub eq_high_db: f32,
-    #[serde(default)]
-    pub midi_cc_assignments: Vec<WireTinySynthFxMidiCcAssignment>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -847,20 +776,20 @@ mod tests {
             input_channels: 0,
             output_channels: 1,
         }));
-        let gain = Command::SetTrackFxControl {
+        let send = Command::SetTrackFxControl {
             track_id: 4,
-            control: WireTrackFxControl::TinySetMasterGainDb(-12.0),
+            control: WireTrackFxControl::OxiSetReverbSend(0.25),
         };
-        let replacement_gain = Command::SetTrackFxControl {
+        let replacement_send = Command::SetTrackFxControl {
             track_id: 4,
-            control: WireTrackFxControl::TinySetMasterGainDb(-18.0),
+            control: WireTrackFxControl::OxiSetReverbSend(0.75),
         };
         let panic = Command::SetTrackFxControl {
             track_id: 4,
-            control: WireTrackFxControl::TinyPanic,
+            control: WireTrackFxControl::OxiPanic,
         };
-        assert!(replacement_gain.supersedes_in_journal(&gain));
-        assert!(!panic.supersedes_in_journal(&gain));
+        assert!(replacement_send.supersedes_in_journal(&send));
+        assert!(!panic.supersedes_in_journal(&send));
         let oxisynth_preset = Command::SetTrackFxControl {
             track_id: 5,
             control: WireTrackFxControl::OxiSelectPreset("0:0".to_owned()),
@@ -885,11 +814,19 @@ mod tests {
         }));
         assert!(!Command::SetTrackFxControl {
             track_id: 4,
-            control: WireTrackFxControl::TinySetReverbEnabled(false),
+            control: WireTrackFxControl::OxiAssignMidiCc(WireOxiSynthMidiCcAssignment {
+                parameter: WireOxiSynthParameter::ReverbSend,
+                channel: 0,
+                controller: 91,
+            }),
         }
         .supersedes_in_journal(&Command::SetTrackFxControl {
             track_id: 4,
-            control: WireTrackFxControl::TinySetReverbEnabled(true),
+            control: WireTrackFxControl::OxiAssignMidiCc(WireOxiSynthMidiCcAssignment {
+                parameter: WireOxiSynthParameter::ReverbSend,
+                channel: 0,
+                controller: 74,
+            }),
         }));
 
         assert!(Command::ConfigureMidiEndpoints {
@@ -1081,19 +1018,6 @@ mod tests {
         let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, piano);
 
-        let tiny_topology = CommandEnvelope::new(
-            46,
-            Command::CreateTrack {
-                expected_track_id: 10,
-                expected_loop_ids: vec![11],
-                port_name_base: "tiny".to_owned(),
-                topology: WireTrackTopology::TinySynthFx { audio_channels: 7 },
-            },
-        );
-        let encoded = serde_json::to_string(&tiny_topology).unwrap();
-        let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(decoded, tiny_topology);
-
         let oxisynth_topology = CommandEnvelope::new(
             47,
             Command::CreateTrack {
@@ -1111,27 +1035,16 @@ mod tests {
             WireTrackFxControl::SetActive(false),
             WireTrackFxControl::SetVisible(true),
             WireTrackFxControl::RestoreState("state".to_owned()),
-            WireTrackFxControl::TinySelectPreset("pad".to_owned()),
-            WireTrackFxControl::TinySetMasterGainDb(-12.0),
-            WireTrackFxControl::TinySetReverbEnabled(true),
-            WireTrackFxControl::TinySetReverbAmount(0.4),
-            WireTrackFxControl::TinySetDistortionEnabled(true),
-            WireTrackFxControl::TinySetDistortionDrive(8.0),
-            WireTrackFxControl::TinySetCompressorEnabled(true),
-            WireTrackFxControl::TinySetCompressorAmount(0.6),
-            WireTrackFxControl::TinySetEqEnabled(true),
-            WireTrackFxControl::TinySetEqLowDb(3.0),
-            WireTrackFxControl::TinySetEqMidDb(-2.0),
-            WireTrackFxControl::TinySetEqHighDb(1.5),
-            WireTrackFxControl::TinyAssignMidiCc(WireTinySynthFxMidiCcAssignment {
-                parameter: WireTinySynthFxParameter::EqHigh,
+            WireTrackFxControl::OxiSelectPreset("0:40".to_owned()),
+            WireTrackFxControl::OxiSetReverbSend(0.25),
+            WireTrackFxControl::OxiSetChorusSend(0.5),
+            WireTrackFxControl::OxiAssignMidiCc(WireOxiSynthMidiCcAssignment {
+                parameter: WireOxiSynthParameter::ChorusSend,
                 channel: 3,
                 controller: 74,
             }),
-            WireTrackFxControl::TinyRemoveMidiCc(WireTinySynthFxParameter::EqHigh),
-            WireTrackFxControl::TinyClearMidiCcAssignments,
-            WireTrackFxControl::TinyPanic,
-            WireTrackFxControl::OxiSelectPreset("0:40".to_owned()),
+            WireTrackFxControl::OxiRemoveMidiCc(WireOxiSynthParameter::ChorusSend),
+            WireTrackFxControl::OxiClearMidiCcAssignments,
             WireTrackFxControl::OxiPanic,
         ]
         .into_iter()

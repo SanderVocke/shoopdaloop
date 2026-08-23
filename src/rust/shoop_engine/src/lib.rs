@@ -65,7 +65,6 @@ pub mod resample;
 pub mod session;
 pub mod state;
 pub mod state_mirror;
-pub mod tiny_synth_fx;
 pub mod wave_generator;
 
 pub use audio_channel::{AudioChannel, ChannelError, PreparedAudioChannelData};

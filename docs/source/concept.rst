@@ -31,9 +31,9 @@ be played through the shared processor or used to replace the wet recording.
 Processing
 ----------
 
-Native builds support external processing, built-in Tiny Synth/FX and OxiSynth, and Carla
-Rack/Patchbay modes when native FX support is enabled. Browser builds support
-Tiny Synth/FX and OxiSynth in the AudioWorklet. Available choices are capability-driven, so
+Native builds support external processing, Built-in Synth powered by OxiSynth,
+and Carla Rack/Patchbay modes when native FX support is enabled. Browser builds
+support Built-in Synth in the AudioWorklet. Available choices are capability-driven, so
 a session requiring an unavailable processor is rejected rather than loaded
 partially.
 

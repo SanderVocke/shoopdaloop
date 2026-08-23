@@ -69,7 +69,6 @@ impl TrackProcessorTypeId {
     pub const CARLA_RACK: &'static str = "carla_rack";
     pub const CARLA_PATCHBAY: &'static str = "carla_patchbay";
     pub const CARLA_PATCHBAY_16X: &'static str = "carla_patchbay_16x";
-    pub const TINY_SYNTH_FX: &'static str = "tiny_synth_fx";
     pub const OXISYNTH: &'static str = "oxisynth";
 
     pub fn new(value: impl Into<String>) -> Self {
@@ -144,9 +143,6 @@ pub struct TrackProcessorPresetDescriptor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrackProcessorEditorDescriptor {
-    TinySynthFx {
-        presets: Arc<[TrackProcessorPresetDescriptor]>,
-    },
     OxiSynth {
         presets: Arc<[TrackProcessorPresetDescriptor]>,
     },
@@ -183,48 +179,6 @@ pub struct FxGenerationLogState {
     pub dropped_stderr_bytes: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum TinySynthFxParameter {
-    MasterGain,
-    ReverbAmount,
-    DistortionDrive,
-    CompressorAmount,
-    EqLow,
-    EqMid,
-    EqHigh,
-}
-
-impl TinySynthFxParameter {
-    pub const ALL: [Self; 7] = [
-        Self::MasterGain,
-        Self::ReverbAmount,
-        Self::DistortionDrive,
-        Self::CompressorAmount,
-        Self::EqLow,
-        Self::EqMid,
-        Self::EqHigh,
-    ];
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::MasterGain => "Master gain",
-            Self::ReverbAmount => "Reverb amount",
-            Self::DistortionDrive => "Distortion drive",
-            Self::CompressorAmount => "Compressor amount",
-            Self::EqLow => "EQ low",
-            Self::EqMid => "EQ mid",
-            Self::EqHigh => "EQ high",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct TinySynthFxMidiCcAssignment {
-    pub parameter: TinySynthFxParameter,
-    pub channel: u8,
-    pub controller: u8,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LatestMidiMessage {
     pub bytes: [u8; 4],
@@ -255,23 +209,6 @@ impl LatestMidiMessage {
             None
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct TinySynthFxState {
-    pub selected_preset_id: Option<String>,
-    pub master_gain_db: f32,
-    pub reverb_enabled: bool,
-    pub reverb_amount: f32,
-    pub distortion_enabled: bool,
-    pub distortion_drive: f32,
-    pub compressor_enabled: bool,
-    pub compressor_amount: f32,
-    pub eq_enabled: bool,
-    pub eq_low_db: f32,
-    pub eq_mid_db: f32,
-    pub eq_high_db: f32,
-    pub midi_cc_assignments: Arc<[TinySynthFxMidiCcAssignment]>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -308,7 +245,6 @@ pub struct OxiSynthState {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrackProcessorEditorState {
-    TinySynthFx(TinySynthFxState),
     OxiSynth(OxiSynthState),
 }
 
@@ -326,10 +262,6 @@ pub struct TrackFxState {
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
-pub const MIN_TINY_SYNTH_FX_GAIN_DB: f32 = -60.0;
-pub const MAX_TINY_SYNTH_FX_GAIN_DB: f32 = 0.0;
-pub const MIN_TINY_SYNTH_FX_EQ_GAIN_DB: f32 = -12.0;
-pub const MAX_TINY_SYNTH_FX_EQ_GAIN_DB: f32 = 12.0;
 pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
 
@@ -1542,26 +1474,6 @@ pub enum LoopAction {
 pub type LoopWidgetAction = LoopAction;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TinySynthFxControl {
-    SelectPreset(String),
-    SetMasterGainDb(f32),
-    SetReverbEnabled(bool),
-    SetReverbAmount(f32),
-    SetDistortionEnabled(bool),
-    SetDistortionDrive(f32),
-    SetCompressorEnabled(bool),
-    SetCompressorAmount(f32),
-    SetEqEnabled(bool),
-    SetEqLowDb(f32),
-    SetEqMidDb(f32),
-    SetEqHighDb(f32),
-    AssignMidiCc(TinySynthFxMidiCcAssignment),
-    RemoveMidiCc(TinySynthFxParameter),
-    ClearMidiCcAssignments,
-    Panic,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub enum OxiSynthControl {
     SelectPreset(String),
     SetReverbSend(f32),
@@ -1591,7 +1503,6 @@ pub enum TrackAction {
     FxToggleOrRecover,
     FxRestoreState(String),
     FxClearLogs,
-    TinySynthFx(TinySynthFxControl),
     OxiSynth(OxiSynthControl),
 }
 
@@ -1868,29 +1779,6 @@ impl LoopAction {
     }
 }
 
-impl TinySynthFxControl {
-    pub const fn kind(&self) -> &'static str {
-        match self {
-            Self::SelectPreset(_) => "track.tiny_synth_fx.select_preset",
-            Self::SetMasterGainDb(_) => "track.tiny_synth_fx.master_gain",
-            Self::SetReverbEnabled(_) => "track.tiny_synth_fx.reverb_enabled",
-            Self::SetReverbAmount(_) => "track.tiny_synth_fx.reverb_amount",
-            Self::SetDistortionEnabled(_) => "track.tiny_synth_fx.distortion_enabled",
-            Self::SetDistortionDrive(_) => "track.tiny_synth_fx.distortion_drive",
-            Self::SetCompressorEnabled(_) => "track.tiny_synth_fx.compressor_enabled",
-            Self::SetCompressorAmount(_) => "track.tiny_synth_fx.compressor_amount",
-            Self::SetEqEnabled(_) => "track.tiny_synth_fx.eq_enabled",
-            Self::SetEqLowDb(_) => "track.tiny_synth_fx.eq_low",
-            Self::SetEqMidDb(_) => "track.tiny_synth_fx.eq_mid",
-            Self::SetEqHighDb(_) => "track.tiny_synth_fx.eq_high",
-            Self::AssignMidiCc(_) => "track.tiny_synth_fx.midi_cc_assign",
-            Self::RemoveMidiCc(_) => "track.tiny_synth_fx.midi_cc_remove",
-            Self::ClearMidiCcAssignments => "track.tiny_synth_fx.midi_cc_clear",
-            Self::Panic => "track.tiny_synth_fx.panic",
-        }
-    }
-}
-
 impl OxiSynthControl {
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -1922,7 +1810,6 @@ impl TrackAction {
             Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
-            Self::TinySynthFx(control) => control.kind(),
             Self::OxiSynth(control) => control.kind(),
         }
     }
@@ -2150,23 +2037,6 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn tiny_synth_fx_constraints_require_matched_audio_and_midi() {
-        let constraints = TrackProcessorConstraints {
-            min_dry_audio_channels: None,
-            max_dry_audio_channels: None,
-            min_wet_audio_channels: None,
-            max_wet_audio_channels: None,
-            matching_audio_channels: true,
-            midi: TrackProcessorMidiPolicy::Required,
-        };
-        for channels in [0, 1, 2, 7] {
-            assert!(constraints.accepts(channels, channels, true));
-        }
-        assert!(!constraints.accepts(2, 1, true));
-        assert!(!constraints.accepts(1, 1, false));
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
     fn processor_descriptors_preserve_future_ui_facets() {
         let processor = synthetic_processor();
         assert_eq!(processor.id.as_str(), "browser_native_test");
@@ -2337,40 +2207,31 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn tiny_synth_controls_have_stable_intent_kinds() {
+    fn oxisynth_controls_have_stable_intent_kinds() {
         assert_eq!(
-            TrackAction::TinySynthFx(TinySynthFxControl::SelectPreset("pad".to_owned())).kind(),
-            "track.tiny_synth_fx.select_preset"
+            TrackAction::OxiSynth(OxiSynthControl::SelectPreset("0:40".to_owned())).kind(),
+            "track.oxisynth.select_preset"
         );
         assert_eq!(
-            TrackAction::TinySynthFx(TinySynthFxControl::SetDistortionDrive(4.0)).kind(),
-            "track.tiny_synth_fx.distortion_drive"
+            TrackAction::OxiSynth(OxiSynthControl::SetReverbSend(0.5)).kind(),
+            "track.oxisynth.reverb_send"
         );
         assert_eq!(
-            TrackAction::TinySynthFx(TinySynthFxControl::AssignMidiCc(
-                TinySynthFxMidiCcAssignment {
-                    parameter: TinySynthFxParameter::EqLow,
-                    channel: 2,
-                    controller: 18,
-                }
-            ))
+            TrackAction::OxiSynth(OxiSynthControl::AssignMidiCc(OxiSynthMidiCcAssignment {
+                parameter: OxiSynthParameter::ChorusSend,
+                channel: 2,
+                controller: 18,
+            }))
             .kind(),
-            "track.tiny_synth_fx.midi_cc_assign"
+            "track.oxisynth.midi_cc_assign"
         );
         assert_eq!(
-            TrackAction::TinySynthFx(TinySynthFxControl::RemoveMidiCc(
-                TinySynthFxParameter::EqLow
-            ))
-            .kind(),
-            "track.tiny_synth_fx.midi_cc_remove"
+            TrackAction::OxiSynth(OxiSynthControl::ClearMidiCcAssignments).kind(),
+            "track.oxisynth.midi_cc_clear"
         );
         assert_eq!(
-            TrackAction::TinySynthFx(TinySynthFxControl::ClearMidiCcAssignments).kind(),
-            "track.tiny_synth_fx.midi_cc_clear"
-        );
-        assert_eq!(
-            TrackAction::TinySynthFx(TinySynthFxControl::Panic).kind(),
-            "track.tiny_synth_fx.panic"
+            TrackAction::OxiSynth(OxiSynthControl::Panic).kind(),
+            "track.oxisynth.panic"
         );
     }
 

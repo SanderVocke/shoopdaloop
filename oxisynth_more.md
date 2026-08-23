@@ -144,11 +144,11 @@ Depends on Stage 0.
 
 Verification:
 
-- [ ] Codec tests cover canonical round trip, zero/max sends, noncanonical floats, NaN/infinity, ranges, malformed envelopes, unknown versions/fonts, and unavailable presets.
-- [ ] Direct API tests prove zero preserves preset-authored sends, normalized one maps to 200 generator units, UI/MIDI changes affect existing and future voices, and no synthetic effect MIDI is sent.
-- [ ] MIDI tests cover every source channel, learned and unlearned CCs, CC 1/11/64 forwarding, blocked representative CCs including 0/7/10/32/91/93/120/123, pressure, pitch bend, malformed messages, ordering, and offsets.
-- [ ] Audio tests prove sustain/modulation/expression, send audibility, ignored dry inputs, surviving effect tails after Panic/preset change, and absence of old-preset dry voices.
-- [ ] Allocation guards cover steady rendering, mapped/filtered MIDI, direct send changes, Panic, preset selection, and control-only inactive processing.
+- [x] Codec tests cover canonical round trip, zero/max sends, noncanonical floats, NaN/infinity, ranges, malformed envelopes, unknown versions/fonts, and unavailable presets.
+- [x] Direct API tests prove zero preserves preset-authored sends, normalized one maps to 200 generator units, UI/MIDI changes affect existing and future voices, and no synthetic effect MIDI is sent.
+- [x] MIDI tests cover every source channel, learned and unlearned CCs, CC 1/11/64 forwarding, blocked representative CCs including 0/7/10/32/91/93/120/123, pressure, pitch bend, malformed messages, ordering, and offsets.
+- [x] Audio tests prove sustain/modulation/expression, send audibility, ignored dry inputs, surviving effect tails after Panic/preset change, and absence of old-preset dry voices.
+- [x] Allocation guards cover steady rendering, mapped/filtered MIDI, direct send changes, Panic, preset selection, and control-only inactive processing.
 - [ ] Run focused native and Node/Wasm `shoop_engine` tests, formatting, test-usage policy, and a warning-denying engine build.
 
 ### Stage 2 — Extend typed backend and application-domain controls
@@ -165,10 +165,10 @@ Depends on Stage 1.
 
 Verification:
 
-- [ ] Native and in-process backend tests cover defaults, direct controls, MIDI-driven controls, assignment lifecycle, active/inactive behavior, global controls, snapshot synchronization, state capture/restore, and malformed rollback.
-- [ ] Backend rendering tests prove identical generated output/send behavior and dry-input isolation in both backend models.
-- [ ] Rapid send changes are last-write-wins and authoritative snapshots converge after accepted/rejected mutations.
-- [ ] Driver/sample-rate replacement preserves exact preset, sends, and assignments while transient tails may restart.
+- [x] Native and in-process backend tests cover defaults, direct controls, MIDI-driven controls, assignment lifecycle, active/inactive behavior, global controls, snapshot synchronization, state capture/restore, and malformed rollback.
+- [x] Backend rendering tests prove identical generated output/send behavior and dry-input isolation in both backend models.
+- [x] Rapid send changes are last-write-wins and authoritative snapshots converge after accepted/rejected mutations.
+- [x] Driver/sample-rate replacement preserves exact preset, sends, and assignments while transient tails may restart.
 - [ ] Run focused `shoop_backend`, `shoop_engine` app-backend, and `shoop_app_api` tests plus formatting and warning-denying builds.
 
 ### Stage 3 — Update protocol, AudioWorklet, and remote client
@@ -178,13 +178,13 @@ Depends on Stage 2.
 - [x] Add wire send-parameter, assignment, editor-state, set/assign/remove/clear control representations for OxiSynth.
 - [x] Add unique coalescing keys for both continuous sends; keep assignment operations journaled/durable and Panic non-journaled.
 - [x] Implement complete conversions and validation in `shoop_audio_worklet` and `shoop_worklet_client`.
-- [ ] Publish MIDI-driven send changes through worklet snapshots and preserve desired-state overlays through stale acknowledgements, rejection, replay, restart, and generation changes.
-- [ ] Carry processor state and assignments through chunked remote session capture/replacement without a stateless special case.
-- [ ] Update Worker/dummy and AudioWorklet render fixtures for the CC allowlist, MIDI Learn, direct send behavior, and ignored audio input.
+- [x] Publish MIDI-driven send changes through worklet snapshots and preserve desired-state overlays through stale acknowledgements, rejection, replay, restart, and generation changes.
+- [x] Carry processor state and assignments through chunked remote session capture/replacement without a stateless special case.
+- [x] Update Worker/dummy and AudioWorklet render fixtures for the CC allowlist, MIDI Learn, direct send behavior, and ignored audio input.
 
 Verification:
 
-- [ ] Protocol JSON round-trip and coalescing tests cover every new OxiSynth variant and reject invalid values/assignments.
+- [x] Protocol JSON round-trip and coalescing tests cover every new OxiSynth variant and reject invalid values/assignments.
 - [ ] Native and Node/Wasm worklet/client tests cover preset, both sends, assignment lifecycle, track/global learned CC, CC 64 sustain, blocked CC 91/93 forwarding, snapshots, replay/restart, stale responses, and rollback.
 - [ ] Worklet audio tests prove mapped CC 91/93 changes the external control through the direct API while an unmapped CC 91/93 has no direct OxiSynth effect.
 - [ ] Run focused `shoop_audio_protocol`, `shoop_audio_worklet`, and `shoop_worklet_client` native/Wasm tests and warning-denying Wasm builds.
@@ -193,21 +193,21 @@ Verification:
 
 Depends on Stages 2 and 3.
 
-- [ ] Introduce one new `SESSION_DOCUMENT_VERSION`, require it exactly, and remove migrations/compatibility paths for older session documents.
-- [ ] Replace Tiny-specific assignment document/backend fields with typed OxiSynth reverb/chorus send assignments.
-- [ ] Require Built-in Synth tracks to have matching OxiSynth chain identity, canonical version-2 processor state, valid unique assignments, fixed topology, and no automatic take-state records.
-- [ ] Update application save/load conversion, optimistic state, action dispatch, capture, staged replacement, and driver-switch logic for preset, sends, and assignments.
-- [ ] Remove branches that accept empty/stateless OxiSynth state or migrate version-4/version-5 OxiSynth documents.
-- [ ] Keep semantic OxiSynth decoding in staged backend preparation so malformed state cannot replace the running session.
-- [ ] Update session fixtures and `docs/session_format_v1.md` to describe only the new supported document/state contract and explicit rejection of older files.
+- [x] Introduce one new `SESSION_DOCUMENT_VERSION`, require it exactly, and remove migrations/compatibility paths for older session documents.
+- [x] Replace Tiny-specific assignment document/backend fields with typed OxiSynth reverb/chorus send assignments.
+- [x] Require Built-in Synth tracks to have matching OxiSynth chain identity, canonical version-2 processor state, valid unique assignments, fixed topology, and no automatic take-state records.
+- [x] Update application save/load conversion, optimistic state, action dispatch, capture, staged replacement, and driver-switch logic for preset, sends, and assignments.
+- [x] Remove branches that accept empty/stateless OxiSynth state or migrate version-4/version-5 OxiSynth documents.
+- [x] Keep semantic OxiSynth decoding in staged backend preparation so malformed state cannot replace the running session.
+- [x] Update session fixtures and `docs/session_format_v1.md` to describe only the new supported document/state contract and explicit rejection of older files.
 
 Verification:
 
-- [ ] Archive tests cover exact-version acceptance, unsupported old/future versions, structural OxiSynth requirements, invalid assignments, malformed state, wrong chain identity, and transaction rollback.
-- [ ] Application tests cover native/in-process/remote save-load, nondefault sends and assignments, MIDI-driven values before save, browser replacement, and driver/sample-rate switching.
-- [ ] Saved manifests contain canonical nonempty OxiSynth state and current-chain assignments but no OxiSynth automatic recorded-take state.
-- [ ] Failed decode/preparation leaves the prior application/backend session and processing progress intact.
-- [ ] Run focused `shoop_session`, `shoop_app`, backend, protocol, and client tests plus the test-usage policy check.
+- [x] Archive tests cover exact-version acceptance, unsupported old/future versions, structural OxiSynth requirements, invalid assignments, malformed state, wrong chain identity, and transaction rollback.
+- [x] Application tests cover native/in-process/remote save-load, nondefault sends and assignments, MIDI-driven values before save, browser replacement, and driver/sample-rate switching.
+- [x] Saved manifests contain canonical nonempty OxiSynth state and current-chain assignments but no OxiSynth automatic recorded-take state.
+- [x] Failed decode/preparation leaves the prior application/backend session and processing progress intact.
+- [x] Run focused `shoop_session`, `shoop_app`, backend, protocol, and client tests plus the test-usage policy check.
 
 ### Stage 5 — Build the Built-in Synth editor and attribution
 
@@ -222,31 +222,31 @@ Depends on Stages 2 through 4.
 
 Verification:
 
-- [ ] Shared native/Wasm UI tests cover both knobs, rapid changes, MIDI Learn assignment/removal, preset selection, Panic, visibility, and authoritative convergence.
-- [ ] Descriptor/add-track tests show **Built-in Synth** and no user-facing OxiSynth processor label except the attribution/logo.
-- [ ] Attribution tests verify logo dimensions/aspect, clickable response, exact URL, and graceful rendering if texture creation fails.
-- [ ] Existing unrelated track header, connection, lifecycle, log, and recovery tests remain passing.
+- [x] Shared native/Wasm UI tests cover both knobs, rapid changes, MIDI Learn assignment/removal, preset selection, Panic, visibility, and authoritative convergence.
+- [x] Descriptor/add-track tests show **Built-in Synth** and no user-facing OxiSynth processor label except the attribution/logo.
+- [x] Attribution tests verify logo dimensions/aspect, clickable response, exact URL, and graceful rendering if texture creation fails.
+- [x] Existing unrelated track header, connection, lifecycle, log, and recovery tests remain passing.
 - [ ] Run focused `shoop_egui` and `shoop_app` native/Node-Wasm tests, formatting, warning-denying builds, and the test-usage policy check.
 
 ### Stage 6 — Remove Tiny Synth/FX and clean active surfaces
 
 Depends on Stages 1 through 5. This is a cross-workspace removal milestone and may be committed with adjacent schema/UI work if required to keep exhaustive enums buildable.
 
-- [ ] Delete `shoop_engine::tiny_synth_fx`, its session processor backend/routes/accessors, control queues, allocation tests, and app-backend chain kind.
-- [ ] Remove `tinyviolin` from workspace/engine manifests and regenerate `Cargo.lock` so the package is absent.
-- [ ] Remove Tiny processor IDs, topologies, controls, state, descriptors, backend fields, native chain mappings, application actions/keys, protocol variants, conversions, and remote/worklet support.
-- [ ] Delete the Tiny editor/module and remove it from track-widget composition.
-- [ ] Remove Tiny session topology/chain/parameter/assignment variants, validators, fixtures, and obsolete migration paths.
-- [ ] Rewrite native/browser smoke fixtures, Wasm runtime tests, browser capability probes, and scripted labels to exercise Built-in Synth instead.
-- [ ] Update active usage/concept documentation, browser README text, tracing inventory, and test descriptions; remove stale Tiny-specific claims from current documentation.
-- [ ] Review historical records separately and mark/retain them only when their historical status is unambiguous.
+- [x] Delete `shoop_engine::tiny_synth_fx`, its session processor backend/routes/accessors, control queues, allocation tests, and app-backend chain kind.
+- [x] Remove `tinyviolin` from workspace/engine manifests and regenerate `Cargo.lock` so the package is absent.
+- [x] Remove Tiny processor IDs, topologies, controls, state, descriptors, backend fields, native chain mappings, application actions/keys, protocol variants, conversions, and remote/worklet support.
+- [x] Delete the Tiny editor/module and remove it from track-widget composition.
+- [x] Remove Tiny session topology/chain/parameter/assignment variants, validators, fixtures, and obsolete migration paths.
+- [x] Rewrite native/browser smoke fixtures, Wasm runtime tests, browser capability probes, and scripted labels to exercise Built-in Synth instead.
+- [x] Update active usage/concept documentation, browser README text, tracing inventory, and test descriptions; remove stale Tiny-specific claims from current documentation.
+- [x] Review historical records separately and mark/retain them only when their historical status is unambiguous.
 
 Verification:
 
-- [ ] Repository searches find no `tinyviolin` dependency and no Tiny Synth/FX production symbol, catalog entry, session/wire variant, active smoke fixture, or current user documentation.
-- [ ] Workspace metadata and lockfile contain no `tinyviolin` package.
-- [ ] Processor catalogs on native and browser contain Built-in Synth exactly once and preserve feature-dependent External/Carla entries.
-- [ ] Session and wire decoding reject old Tiny-bearing artifacts rather than flattening or partially loading them.
+- [x] Repository searches find no `tinyviolin` dependency and no Tiny Synth/FX production symbol, catalog entry, session/wire variant, active smoke fixture, or current user documentation.
+- [x] Workspace metadata and lockfile contain no `tinyviolin` package.
+- [x] Processor catalogs on native and browser contain Built-in Synth exactly once and preserve feature-dependent External/Carla entries.
+- [x] Session and wire decoding reject old Tiny-bearing artifacts rather than flattening or partially loading them.
 - [ ] Run all packages affected by removal on native and Node/Wasm, plus formatting, test-usage policy, warning-denying workspace builds, and tracing coverage.
 
 ### Stage 7 — Final end-to-end validation

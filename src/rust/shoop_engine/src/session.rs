@@ -46,7 +46,6 @@ use crate::state_mirror::{
     AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
     MidiPortStateMirror,
 };
-use crate::tiny_synth_fx::TinySynthFxProcessor;
 
 use thiserror::Error;
 
@@ -407,7 +406,6 @@ pub struct Session {
 enum ProcessorBackend {
     External,
     Test2x2x1,
-    Tiny(TinySynthFxProcessor),
     OxiSynth(OxiSynthProcessor),
     #[cfg(feature = "carla")]
     Carla(Box<dyn CarlaProcessor>),
@@ -1579,54 +1577,6 @@ impl Session {
         Ok(())
     }
 
-    pub fn set_tiny_synth_fx_processor(
-        &mut self,
-        title: impl Into<String>,
-        processor: TinySynthFxProcessor,
-    ) -> Option<TinySynthFxProcessor> {
-        let title = title.into();
-        let displaced = if let Some(route) = self
-            .processors
-            .iter_mut()
-            .find(|route| route.title == title)
-        {
-            match std::mem::replace(&mut route.backend, ProcessorBackend::Tiny(processor)) {
-                ProcessorBackend::Tiny(previous) => Some(previous),
-                _ => None,
-            }
-        } else {
-            self.processors.push(ProcessorRoute {
-                title,
-                backend: ProcessorBackend::Tiny(processor),
-                active: false,
-                audio_inputs: Vec::new(),
-                audio_outputs: Vec::new(),
-                midi_inputs: Vec::new(),
-                midi_staging: Vec::new(),
-                global_pending: PendingMidiControlState::default(),
-                global_current: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
-                combined_midi: Vec::with_capacity(MAX_MIDI_EVENTS_PER_BLOCK),
-                global_rejected: 0,
-                global_pending_overwrites: 0,
-                global_pending_drained: 0,
-                global_capacity_deferrals: 0,
-            });
-            None
-        };
-        self.note_graph_change();
-        displaced
-    }
-
-    pub fn set_tiny_synth_fx_active(&mut self, title: &str, active: bool) {
-        if let Some(route) = self
-            .processors
-            .iter_mut()
-            .find(|route| route.title == title)
-        {
-            route.active = active;
-        }
-    }
-
     pub fn set_oxisynth_processor(
         &mut self,
         title: impl Into<String>,
@@ -1683,19 +1633,6 @@ impl Session {
     pub fn remove_processor(&mut self, title: &str) {
         self.processors.retain(|route| route.title != title);
         self.note_graph_change();
-    }
-
-    pub fn tiny_synth_fx_processor_mut(
-        &mut self,
-        title: &str,
-    ) -> Option<&mut TinySynthFxProcessor> {
-        self.processors
-            .iter_mut()
-            .find(|route| route.title == title)
-            .and_then(|route| match &mut route.backend {
-                ProcessorBackend::Tiny(processor) => Some(processor),
-                _ => None,
-            })
     }
 
     pub fn oxisynth_processor_mut(&mut self, title: &str) -> Option<&mut OxiSynthProcessor> {
@@ -2456,7 +2393,6 @@ impl Session {
             // never wake or silently process an inactive processor.
             let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
             match &mut route.backend {
-                ProcessorBackend::Tiny(processor) => processor.process_midi_controls_only(events),
                 ProcessorBackend::OxiSynth(processor) => {
                     processor.process_midi_controls_only(events);
                     for &port in &route.audio_outputs {
@@ -2554,30 +2490,6 @@ impl Session {
                     self.ports[route.audio_outputs[output_index]]
                         .buffer(n_frames)
                         .copy_from_slice(&self.scratch[..n_frames]);
-                }
-            }
-            ProcessorBackend::Tiny(processor) => {
-                if n_frames <= processor.max_frames() {
-                    for input_index in 0..processor.logical_channel_count() {
-                        let Some(destination) = processor.plane_mut(input_index, n_frames) else {
-                            continue;
-                        };
-                        if let Some(&port_index) = route.audio_inputs.get(input_index) {
-                            destination.copy_from_slice(self.ports[port_index].buffer(n_frames));
-                        } else {
-                            destination.fill(0.0);
-                        }
-                    }
-                    processor.clear_silent_plane(n_frames);
-                    processor.process(n_frames, &route.combined_midi);
-                    for (output_index, &port_index) in route.audio_outputs.iter().enumerate() {
-                        let Some(source) = processor.plane(output_index, n_frames) else {
-                            continue;
-                        };
-                        self.ports[port_index]
-                            .buffer(n_frames)
-                            .copy_from_slice(source);
-                    }
                 }
             }
             ProcessorBackend::OxiSynth(processor) => {
@@ -4878,27 +4790,25 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn global_fx_control_drives_tiny_synth_cc_mapping_while_track_lane_stays_additive() {
-        use crate::tiny_synth_fx::{
-            TinySynthFxControlState, TinySynthFxMidiCcAssignment, TinySynthFxParameter,
-        };
+    fn global_fx_control_drives_oxisynth_cc_mapping_while_track_lane_stays_additive() {
+        use crate::oxisynth::{OxiSynthControlState, OxiSynthMidiCcAssignment, OxiSynthParameter};
 
         let mut session = Session::default();
         session.set_sample_rate(48_000);
         session.set_buffer_size(4);
-        let mut control = TinySynthFxControlState::new(48_000.0).unwrap();
-        assert!(control.assign_midi_cc(TinySynthFxMidiCcAssignment {
-            parameter: TinySynthFxParameter::ReverbAmount,
+        let mut control = OxiSynthControlState::default();
+        assert!(control.assign_midi_cc(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ReverbSend,
             channel: 2,
             controller: 17,
         }));
-        let processor = control.prepare_processor(48_000.0, 0, 4).unwrap();
-        session.set_tiny_synth_fx_processor("tiny", processor);
-        session.set_tiny_synth_fx_active("tiny", true);
-        let track_midi = session.add_port(dummy_midi(88, "tiny:midi_in", PortDirection::Input));
+        let processor = control.prepare_processor(48_000.0, 4).unwrap();
+        session.set_oxisynth_processor("oxisynth", processor);
+        session.set_oxisynth_active("oxisynth", true);
+        let track_midi = session.add_port(dummy_midi(88, "oxisynth:midi_in", PortDirection::Input));
         let global = session.add_port(dummy_midi(89, "global:fx", PortDirection::Input));
         session
-            .set_processor_ports("tiny", vec![], vec![], vec![track_midi])
+            .set_processor_ports("oxisynth", vec![], vec![], vec![track_midi])
             .unwrap();
         session.set_global_fx_midi_input(global).unwrap();
         session
@@ -4916,7 +4826,7 @@ mod tests {
         session.apply_graph_changes().unwrap();
         session.process(4);
 
-        assert_eq!(control.editor_state().reverb_amount, 1.0);
+        assert_eq!(control.editor_state().reverb_send, 1.0);
         assert_eq!(
             session.processors[0]
                 .combined_midi
