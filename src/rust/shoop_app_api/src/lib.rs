@@ -1549,6 +1549,7 @@ pub enum PianoAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
+    SetLoopSmoothingMs(u32),
     SetLoopTimeline {
         loop_id: LoopId,
         start_offset: Option<i64>,
@@ -1846,6 +1847,7 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetLoopTimeline { .. } => "loop.timeline",
             Self::Loop { action, .. } => action.kind(),
             Self::Track { action, .. } => action.kind(),

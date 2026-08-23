@@ -686,6 +686,7 @@ pub enum BackendAsyncResult<T> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BackendMutationKind {
     DriverConfiguration,
+    AudioProcessing,
     TrackStructure,
     CompositeStructure,
     TrackControl,
@@ -960,6 +961,7 @@ pub trait Backend {
         self.replace_loop_content(loop_id, update)
             .map(BackendAsyncResult::Ready)
     }
+    fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()>;
     fn set_port_connected(
         &mut self,
         port_id: BackendPortId,
@@ -1312,6 +1314,10 @@ struct EngineOxiFx {
 }
 
 impl EngineBackend {
+    pub fn loop_smoothing_ms(&self) -> u32 {
+        self.session.loop_smoothing_ms()
+    }
+
     pub fn new_dummy(sample_rate: u32, buffer_size: u32) -> Result<LocalDummyBackend> {
         Ok(LocalDummyBackend {
             runtime: Self::new_dummy_runtime(sample_rate, buffer_size)?,
@@ -2759,6 +2765,9 @@ impl EngineBackend {
             EnginePortModel::Dummy => Self::new_dummy_runtime(self.sample_rate, self.buffer_size)?,
             EnginePortModel::Physical => Self::new_web_audio(self.sample_rate, self.buffer_size)?,
         };
+        staged
+            .session
+            .set_loop_smoothing_ms(self.session.loop_smoothing_ms());
         let source_global = data
             .global_ports
             .first()
@@ -3110,6 +3119,11 @@ fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
 }
 
 impl Backend for EngineBackend {
+    fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
+        self.session.set_loop_smoothing_ms(milliseconds);
+        Ok(())
+    }
+
     fn supports_composite_loops(&self) -> bool {
         true
     }
@@ -3167,6 +3181,9 @@ impl Backend for EngineBackend {
         }
         let mut target =
             EngineBackend::new_dummy_runtime(resolved.sample_rate, resolved.buffer_size)?;
+        target
+            .session
+            .set_loop_smoothing_ms(self.session.loop_smoothing_ms());
         target.external_connections = self.external_connections.clone();
         let (mut replacement, mapping) = target.build_replacement(session)?;
         replacement.processed_frames = self.processed_frames;
@@ -4555,6 +4572,10 @@ impl Backend for EngineBackend {
 }
 
 impl Backend for LocalDummyBackend {
+    fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
+        self.runtime.set_loop_smoothing_ms(milliseconds)
+    }
+
     fn supports_composite_loops(&self) -> bool {
         self.runtime.supports_composite_loops()
     }
@@ -5128,6 +5149,7 @@ pub enum FakeOperation {
     SetLoopLength(BackendLoopId, u32),
     InjectMidiInput(BackendTrackId, Vec<BackendMidiEvent>),
     SetPortConnected(BackendPortId, String, bool),
+    SetLoopSmoothingMs(u32),
 }
 
 impl Default for FakeBackend {
@@ -5189,6 +5211,16 @@ impl Default for FakeBackend {
 impl FakeBackend {
     pub fn operations(&self) -> &[FakeOperation] {
         &self.operations
+    }
+
+    pub fn loop_smoothing_ms(&self) -> Option<u32> {
+        self.operations
+            .iter()
+            .rev()
+            .find_map(|operation| match operation {
+                FakeOperation::SetLoopSmoothingMs(milliseconds) => Some(*milliseconds),
+                _ => None,
+            })
     }
 
     pub fn loop_sync_source(&self, loop_id: BackendLoopId) -> Option<BackendLoopId> {
@@ -5506,6 +5538,12 @@ impl FakeBackend {
 }
 
 impl Backend for FakeBackend {
+    fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
+        self.operations
+            .push(FakeOperation::SetLoopSmoothingMs(milliseconds));
+        Ok(())
+    }
+
     fn supports_composite_loops(&self) -> bool {
         self.composite_loops_supported
     }
@@ -9186,6 +9224,37 @@ mod tests {
         assert_eq!(backend.processed_frames(), 0);
         backend.advance(Duration::from_micros(500));
         assert_eq!(backend.processed_frames(), 1);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn global_loop_smoothing_survives_local_session_and_driver_replacement() {
+        let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
+        backend.set_loop_smoothing_ms(7).unwrap();
+        let session = backend.capture_session().unwrap();
+        assert!(!serde_json::to_string(&session).unwrap().contains("smooth"));
+        assert_eq!(backend.loop_smoothing_ms(), 7);
+        backend.replace_session(&session).unwrap();
+        assert_eq!(backend.loop_smoothing_ms(), 7);
+
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        backend
+            .switch_audio_driver(&config, 48_000, &session)
+            .unwrap();
+        assert_eq!(backend.loop_smoothing_ms(), 7);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn fake_backend_observes_loop_smoothing_requests() {
+        let mut backend = FakeBackend::default();
+        backend.set_loop_smoothing_ms(0).unwrap();
+        backend.set_loop_smoothing_ms(31).unwrap();
+        assert_eq!(backend.loop_smoothing_ms(), Some(31));
+        assert!(backend
+            .operations()
+            .contains(&FakeOperation::SetLoopSmoothingMs(0)));
     }
 
     #[shoop_wasm_test_support::shoop_test]

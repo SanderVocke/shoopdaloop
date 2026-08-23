@@ -40,10 +40,10 @@ use shoop_egui::register_script_settings;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use shoop_egui::register_settings;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_egui::{register_audio_settings, AudioDriverConfig};
+use shoop_egui::AudioDriverConfig;
 use shoop_egui::{
-    register_settings_with_appearance_defaults, AppIntent, AppSnapshot, AppWidget, ScriptKind,
-    SettingsAction, SettingsRegistryBuilder, UI_SCALE_FACTOR,
+    register_audio_settings, register_settings_with_appearance_defaults, AppIntent, AppSnapshot,
+    AppWidget, ScriptKind, SettingsAction, SettingsRegistryBuilder, UI_SCALE_FACTOR,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::{TracingStatus, TracingStopped};
@@ -298,7 +298,6 @@ impl UnifiedApp {
             ui_scale_default,
             touch_mode_default,
         )?;
-        #[cfg(not(target_arch = "wasm32"))]
         register_audio_settings(&mut settings_builder)?;
         #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
         register_carla_settings(&mut settings_builder)?;
@@ -823,6 +822,12 @@ impl UnifiedApp {
         }
         let _span = tracing::trace_span!("frontend.egui.update").entered();
         self.settings.poll();
+        if let Err(error) = self
+            .runtime
+            .reconcile_audio_settings(&self.settings.active())
+        {
+            self.settings.report_action_error(error.to_string());
+        }
         if let Err(error) = self
             .runtime
             .reconcile_script_settings(&self.settings.active())
@@ -1429,6 +1434,29 @@ fn script_kind_has_file_identity(kind: ScriptKind) -> bool {
     )
 }
 
+fn reconcile_loop_smoothing_settings(
+    settings: &shoop_settings::SettingsSnapshot,
+    applied_revision: &mut u64,
+    mut dispatch: impl FnMut(AppIntent) -> Result<(), shoop_app::DispatchError>,
+) -> anyhow::Result<()> {
+    if settings.revision() == *applied_revision {
+        return Ok(());
+    }
+    let milliseconds = match shoop_egui::loop_edge_smoothing_ms(settings) {
+        Ok(milliseconds) => milliseconds,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "frontend.audio.loop_smoothing_settings_fallback"
+            );
+            3
+        }
+    };
+    dispatch(AppIntent::SetLoopSmoothingMs(milliseconds))?;
+    *applied_revision = settings.revision();
+    Ok(())
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 struct Runtime {
     _runtime: ApplicationRuntime,
@@ -1439,6 +1467,7 @@ struct Runtime {
     catalog_scan_tx: std::sync::mpsc::Sender<CatalogScanCompletion>,
     catalog_scan_rx: std::sync::mpsc::Receiver<CatalogScanCompletion>,
     preview_player: native_preview::NativePreviewPlayer,
+    applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
 }
 
@@ -1477,9 +1506,21 @@ impl Runtime {
                 )),
             ),
         };
-        let (backend, backend_warning) = NativeBackend::new_with_fallback(configured_driver)?;
+        let (mut backend, backend_warning) = NativeBackend::new_with_fallback(configured_driver)?;
+        let (loop_smoothing_ms, loop_smoothing_warning) =
+            match shoop_egui::loop_edge_smoothing_ms(settings) {
+                Ok(milliseconds) => (milliseconds, None),
+                Err(error) => (
+                    3,
+                    Some(format!(
+                        "Could not use loop edge smoothing setting: {error}; using 3 ms"
+                    )),
+                ),
+            };
+        shoop_backend::Backend::set_loop_smoothing_ms(&mut backend, loop_smoothing_ms)?;
         let (startup_scripts, script_paths, mut warnings) = configured_startup_scripts(settings)?;
         warnings.extend(configuration_warning);
+        warnings.extend(loop_smoothing_warning);
         #[cfg(feature = "native-fx")]
         warnings.extend(carla_configuration_warning);
         warnings.extend(backend_warning);
@@ -1501,6 +1542,7 @@ impl Runtime {
             catalog_scan_tx,
             catalog_scan_rx,
             preview_player,
+            applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
         })
     }
@@ -1584,6 +1626,18 @@ impl Runtime {
             }
         }
         self.pending_script_paths = retained;
+    }
+
+    fn reconcile_audio_settings(
+        &mut self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<()> {
+        let handle = self.handle.clone();
+        reconcile_loop_smoothing_settings(
+            settings,
+            &mut self.applied_audio_settings_revision,
+            move |intent| handle.dispatch(intent),
+        )
     }
 
     fn reconcile_script_settings(
@@ -1968,6 +2022,7 @@ struct Runtime {
     preview_player: browser_preview::BrowserPreviewPlayer,
     catalog_scan_generation: u64,
     catalog_completions: Rc<RefCell<VecDeque<BrowserCatalogCompletion>>>,
+    applied_audio_settings_revision: u64,
     applied_settings_revision: u64,
 }
 
@@ -1990,7 +2045,18 @@ impl Runtime {
         let offline = args.offline;
         let worker = args.worker;
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
-        let (backend, transport) = shoop_worklet_client::RemoteWorkletBackend::new(midi.hub());
+        let (mut backend, transport) = shoop_worklet_client::RemoteWorkletBackend::new(midi.hub());
+        let loop_smoothing_ms = match shoop_egui::loop_edge_smoothing_ms(settings) {
+            Ok(milliseconds) => milliseconds,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "frontend.audio.loop_smoothing_settings_fallback"
+                );
+                3
+            }
+        };
+        shoop_backend::Backend::set_loop_smoothing_ms(&mut backend, loop_smoothing_ms)?;
         let mode = if worker || offline {
             set_offline_audio_permission_presentation();
             BrowserRuntimeMode::Worker(browser_worker::BrowserWorkerDriver::new(transport)?)
@@ -2008,6 +2074,7 @@ impl Runtime {
             preview_player: browser_preview::BrowserPreviewPlayer::default(),
             catalog_scan_generation: 0,
             catalog_completions: Rc::new(RefCell::new(VecDeque::new())),
+            applied_audio_settings_revision: settings.revision(),
             applied_settings_revision: settings.revision(),
         };
         runtime.request_builtin_rescan(settings);
@@ -2077,6 +2144,18 @@ impl Runtime {
                 &refused_control.to_string(),
             );
         }
+    }
+
+    fn reconcile_audio_settings(
+        &mut self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<()> {
+        let runtime = &mut self.runtime;
+        reconcile_loop_smoothing_settings(
+            settings,
+            &mut self.applied_audio_settings_revision,
+            |intent| runtime.dispatch(intent),
+        )
     }
 
     fn reconcile_script_settings(
@@ -4950,6 +5029,42 @@ mod tests {
             embedded_builtin_key("././builtins/catalog.json"),
             "builtins/catalog.json"
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_smoothing_settings_retry_failed_dispatch_and_apply_zero() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_audio_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut document = shoop_settings::SettingsDocument::empty("test");
+        document.values.insert(
+            shoop_egui::LOOP_EDGE_SMOOTHING_MS.id().to_owned(),
+            serde_json::json!(0),
+        );
+        let settings = registry.resolve(&document, 42).snapshot;
+        let mut applied_revision = 0;
+
+        assert!(
+            reconcile_loop_smoothing_settings(&settings, &mut applied_revision, |_| Err(
+                shoop_app::DispatchError::Full
+            ),)
+            .is_err()
+        );
+        assert_eq!(applied_revision, 0);
+
+        let mut received = None;
+        reconcile_loop_smoothing_settings(&settings, &mut applied_revision, |intent| {
+            received = Some(intent);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(received, Some(AppIntent::SetLoopSmoothingMs(0)));
+        assert_eq!(applied_revision, 42);
+
+        reconcile_loop_smoothing_settings(&settings, &mut applied_revision, |_| {
+            panic!("an applied revision must not dispatch again")
+        })
+        .unwrap();
     }
 
     #[cfg(not(target_arch = "wasm32"))]

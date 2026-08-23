@@ -77,49 +77,49 @@ Depends on Stage 1.
 
 Depends on Stage 2.
 
-- [ ] Add a global loop-smoothing setter to the `shoop_backend::Backend` contract and a corresponding `AppIntent`; route the intent through the application model to the backend.
-- [ ] Implement the setter for `EngineBackend` and `LocalDummyBackend`, retaining the value when a staged session replacement is built and committed.
-- [ ] Add a queued `BackendSession` control in `shoop_engine::app_backend` so native threaded engines update their `Session` at a callback command boundary without direct cross-thread mutation.
-- [ ] Make `NativeBackend` retain the global value outside `NativeRuntime`, apply it to a newly started runtime, and reapply it during driver switching, rollback, and session restoration.
-- [ ] Extend `FakeBackend` observability so application-routing tests can assert the requested duration.
-- [ ] Add backend and application tests for command routing, current/future loops, session replacement, driver replacement/rollback, and failure reporting.
+- [x] Add a global loop-smoothing setter to the `shoop_backend::Backend` contract and a corresponding `AppIntent`; route the intent through the application model to the backend.
+- [x] Implement the setter for `EngineBackend` and `LocalDummyBackend`, retaining the value when a staged session replacement is built and committed.
+- [x] Add a queued `BackendSession` control in `shoop_engine::app_backend` so native threaded engines update their `Session` at a callback command boundary without direct cross-thread mutation.
+- [x] Make `NativeBackend` retain the global value outside `NativeRuntime`, apply it to a newly started runtime, and reapply it during driver switching, rollback, and session restoration.
+- [x] Extend `FakeBackend` observability so application-routing tests can assert the requested duration.
+- [x] Add backend and application tests for command routing, current/future loops, session replacement, driver replacement/rollback, and failure reporting.
 
 **Stage verification**
 
-- [ ] Run targeted `shoop_engine`, `shoop_backend`, `shoop_app`, and `shoop_app_api` tests.
-- [ ] Confirm the setting is absent from captured/serialized session documents while replacement runtimes still inherit it.
+- [x] Run targeted `shoop_engine`, `shoop_backend`, `shoop_app`, and `shoop_app_api` tests.
+- [x] Confirm the setting is absent from captured/serialized session documents while replacement runtimes still inherit it.
 
 ## Stage 4 — Extend the browser/worklet control protocol
 
 Depends on Stage 3.
 
-- [ ] Add a global smoothing-duration command to `shoop_audio_protocol` and bump the protocol version.
-- [ ] Make a newer smoothing command supersede an older one in the worklet client's durable journal so reconnect/restart replays only the latest value.
-- [ ] Implement the `Backend` setter in `RemoteWorkletBackend`, classify failures as a global audio-processing mutation, and handle the command in `shoop_audio_worklet` by configuring its `EngineBackend`.
-- [ ] Update exhaustive command matching, protocol fixtures, worker fixtures, and transport/journal tests.
-- [ ] Add a worklet integration test proving `0 ms` and a nonzero duration reach the engine and survive journal replay.
+- [x] Add a global smoothing-duration command to `shoop_audio_protocol` and bump the protocol version.
+- [x] Make a newer smoothing command supersede an older one in the worklet client's durable journal so reconnect/restart replays only the latest value.
+- [x] Implement the `Backend` setter in `RemoteWorkletBackend`, classify failures as a global audio-processing mutation, and handle the command in `shoop_audio_worklet` by configuring its `EngineBackend`.
+- [x] Update exhaustive command matching, protocol fixtures, worker fixtures, and transport/journal tests.
+- [x] Add a worklet integration test proving `0 ms` and a nonzero duration reach the engine and survive journal replay.
 
 **Stage verification**
 
-- [ ] Run targeted audio-protocol, worklet-client, audio-worklet, and WASM runtime tests.
-- [ ] Build both `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`.
+- [x] Run targeted audio-protocol, worklet-client, audio-worklet, and WASM runtime tests.
+- [x] Build both `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`.
 
 ## Stage 5 — Add the persistent settings-dialog control and runtime reconciliation
 
 Depends on Stages 3 and 4.
 
-- [ ] Register `audio.loop_edge_smoothing_ms` as a cross-platform `u32` setting with default `3`, range `0..=100`, and help text explaining milliseconds and `0 = off`.
-- [ ] Adjust the custom Audio settings page to render generic loop-audio definitions before platform-specific driver controls, including in browser builds and native builds where driver switching is unavailable.
-- [ ] Add a settings helper that reads the value with a safe `3 ms` fallback and reports malformed settings consistently with existing startup fallbacks.
-- [ ] Configure the backend from the active settings snapshot during native and browser runtime creation, before ordinary loop use.
-- [ ] Reconcile later active-settings revisions independently of script-settings revision tracking, dispatching the global `AppIntent` after a save or settings recovery and retrying on dispatch failure rather than marking the value applied.
-- [ ] Ensure changing this setting does not trigger an audio-driver switch and does not become part of session save/load data.
-- [ ] Add registry, settings-dialog, persistence/recovery, native runtime, and browser runtime tests for the `3 ms` default, `0 ms`, another nonzero value, and asynchronous application.
+- [x] Register `audio.loop_edge_smoothing_ms` as a cross-platform `u32` setting with default `3`, range `0..=100`, and help text explaining milliseconds and `0 = off`.
+- [x] Adjust the custom Audio settings page to render generic loop-audio definitions before platform-specific driver controls, including in browser builds and native builds where driver switching is unavailable.
+- [x] Add a settings helper that reads the value with a safe `3 ms` fallback and reports malformed settings consistently with existing startup fallbacks.
+- [x] Configure the backend from the active settings snapshot during native and browser runtime creation, before ordinary loop use.
+- [x] Reconcile later active-settings revisions independently of script-settings revision tracking, dispatching the global `AppIntent` after a save or settings recovery and retrying on dispatch failure rather than marking the value applied.
+- [x] Ensure changing this setting does not trigger an audio-driver switch and does not become part of session save/load data.
+- [x] Add registry, settings-dialog, persistence/recovery, native runtime, and browser runtime tests for the `3 ms` default, `0 ms`, another nonzero value, and asynchronous application.
 
 **Stage verification**
 
-- [ ] Run targeted `shoop_settings`, `shoop_egui`, and `shoopdaloop` tests on native and WASM targets.
-- [ ] Verify in UI tests that the control remains visible and editable both with native driver controls and on the browser Audio page.
+- [x] Run targeted `shoop_settings`, `shoop_egui`, and `shoopdaloop` tests on native and WASM targets.
+- [x] Verify in UI tests that the control remains visible and editable both with native driver controls and on the browser Audio page.
 
 ## Stage 6 — End-to-end validation and listening comparison
 
@@ -130,10 +130,10 @@ Depends on all previous stages.
 - [ ] Manually run the native app, repeatedly start/stop and wrap a discontinuous waveform, and A/B `0 ms`, `3 ms`, and a longer duration from the settings dialog without restarting.
 - [ ] Repeat the A/B smoke test in a browser build when browser tooling is available.
 - [ ] Check short loops, stereo loops, dry/wet channel modes, pre-play/start offsets, gain changes, session load, and audio-driver switching for bounded, artifact-free behavior.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
 - [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests changed.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` because Rust tests changed.
 - [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
 - [ ] Run the documented browser builds and smoke checks where browsers are available.
-- [ ] Record any unavailable host/browser validation explicitly, including the missing facility and the remaining command or manual check.
+- [x] Record any unavailable host/browser validation explicitly, including the missing facility and the remaining command or manual check. Interactive browser and physical listening validation remain unavailable in this non-interactive agent run; the remaining work is the manual native/browser A/B and artifact smoke checks listed above.

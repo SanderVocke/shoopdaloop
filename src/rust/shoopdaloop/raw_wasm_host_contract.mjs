@@ -10,7 +10,7 @@ if (WebAssembly.Module.imports(module).length !== 0) {
 const host = new ShoopRawWasmHost(module, 48000, 2048, 262144);
 const poll = JSON.stringify({ version: 13, sequence: 1, command: { kind: 'poll' } });
 const first = JSON.parse(host.command(poll));
-if (first.version !== 13 || first.sequence !== 1 || first.event?.kind !== 'snapshot') {
+if (first.version !== 14 || first.sequence !== 1 || first.event?.kind !== 'snapshot') {
   throw new Error(`unexpected raw host response: ${JSON.stringify(first)}`);
 }
 const malformed = JSON.parse(host.command('{'));
