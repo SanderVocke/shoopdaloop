@@ -4129,6 +4129,7 @@ dependencies = [
  "rubato",
  "serde_json",
  "sha2 0.11.0",
+ "shoop_latency",
  "shoop_plugin_protocol",
  "shoop_settings",
  "shoop_tracing",
