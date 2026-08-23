@@ -4051,6 +4051,7 @@ dependencies = [
  "anyhow",
  "assert_no_alloc",
  "serde",
+ "serde_json",
  "shoop_app_api",
  "shoop_engine",
  "shoop_plugin_protocol",

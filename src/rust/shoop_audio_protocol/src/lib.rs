@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 13;
+pub const PROTOCOL_VERSION: u16 = 14;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -33,6 +33,9 @@ impl CommandEnvelope {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Command {
+    SetLoopSmoothingMs {
+        milliseconds: u32,
+    },
     ConfigureDeviceChannels {
         input_channels: u32,
         output_channels: u32,
@@ -293,7 +296,8 @@ impl Command {
                     && (existing_preplay.is_none() || replacement_preplay.is_some())
                     && (existing_length.is_none() || replacement_length.is_some())
             }
-            (Self::ConfigureDeviceChannels { .. }, Self::ConfigureDeviceChannels { .. })
+            (Self::SetLoopSmoothingMs { .. }, Self::SetLoopSmoothingMs { .. })
+            | (Self::ConfigureDeviceChannels { .. }, Self::ConfigureDeviceChannels { .. })
             | (Self::ConfigureMidiEndpoints { .. }, Self::ConfigureMidiEndpoints { .. }) => true,
             (
                 Self::SetPortConnected {
@@ -937,11 +941,26 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn loop_smoothing_command_round_trips_and_latest_value_supersedes() {
+        let zero = Command::SetLoopSmoothingMs { milliseconds: 0 };
+        let nonzero = Command::SetLoopSmoothingMs { milliseconds: 25 };
+        assert!(nonzero.supersedes_in_journal(&zero));
+        assert!(zero.supersedes_in_journal(&nonzero));
+
+        let envelope = CommandEnvelope::new(9, nonzero);
+        let encoded = serde_json::to_string(&envelope).unwrap();
+        assert_eq!(
+            serde_json::from_str::<CommandEnvelope>(&encoded).unwrap(),
+            envelope
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn production_envelopes_have_stable_json_bytes() {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":13,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":14,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -952,7 +971,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":13,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":14,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

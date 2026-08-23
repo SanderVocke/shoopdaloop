@@ -2763,6 +2763,15 @@ impl BackendSession {
         })?)
     }
 
+    pub fn set_loop_smoothing_ms(
+        &self,
+        milliseconds: u32,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.shared.send_control(move |session| {
+            session.set_loop_smoothing_ms(milliseconds);
+        })
+    }
+
     pub fn register_external_processor(
         &self,
         title: &str,
@@ -6559,6 +6568,22 @@ mod tests {
         sess.shared
             .query_for_test(|s: &mut engine::Session| s.graph_up_to_date())
             .expect("engine answered")
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_smoothing_control_applies_at_a_command_boundary_without_graph_change() {
+        let sess = BackendSession::new().expect("session");
+        let graph_before = sess
+            .shared
+            .query_for_test(|session| session.graph_request_id())
+            .unwrap();
+        sess.set_loop_smoothing_ms(12).unwrap();
+        let (milliseconds, graph_after) = sess
+            .shared
+            .query_for_test(|session| (session.loop_smoothing_ms(), session.graph_request_id()))
+            .unwrap();
+        assert_eq!(milliseconds, 12);
+        assert_eq!(graph_after, graph_before);
     }
 
     #[shoop_wasm_test_support::shoop_test]
