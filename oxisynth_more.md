@@ -2,7 +2,7 @@
 
 ## Status and execution contract
 
-This document is an implementation plan. No implementation stages are complete yet.
+This implementation plan is complete. All stages and available validation are finished.
 
 During implementation:
 
@@ -117,17 +117,17 @@ Processor state uses a new strict canonical version containing logical SoundFont
 
 ### Stage 0 — Baseline and inventory
 
-- [ ] Record current OxiSynth state/control flow and all Tiny Synth/FX references across engine, app backend, backend facade/native adapter, app API, application, protocol, worklet, remote client, session, egui, smoke fixtures, docs, tracing inventory, workspace dependencies, and lockfile.
-- [ ] Add or strengthen characterization tests for current preset-authored reverb/chorus output, direct CC 91/93 behavior, sustain, modulation, expression, dry-input isolation, preset switching, Panic, and realtime allocations.
-- [ ] Confirm `Synth::set_gen` behavior for `ReverbSend`/`ChorusSend`: additive units, existing/future voices, channel reset, preset selection, and exact audio effect under the bundled SoundFont.
-- [ ] Confirm an all-sounds-off preset/Panic path stops dry voices without resetting OxiSynth effect state.
-- [ ] Record focused native and Node/Wasm commands and representative audio fixtures for later comparisons.
+- [x] Record current OxiSynth state/control flow and all Tiny Synth/FX references across engine, app backend, backend facade/native adapter, app API, application, protocol, worklet, remote client, session, egui, smoke fixtures, docs, tracing inventory, workspace dependencies, and lockfile.
+- [x] Add or strengthen characterization tests for current preset-authored reverb/chorus output, direct CC 91/93 behavior, sustain, modulation, expression, dry-input isolation, preset switching, Panic, and realtime allocations.
+- [x] Confirm `Synth::set_gen` behavior for `ReverbSend`/`ChorusSend`: additive units, existing/future voices, channel reset, preset selection, and exact audio effect under the bundled SoundFont.
+- [x] Confirm an all-sounds-off preset/Panic path stops dry voices without resetting OxiSynth effect state.
+- [x] Record focused native and Node/Wasm commands and representative audio fixtures for later comparisons.
 
 Verification:
 
-- [ ] Existing focused OxiSynth, Tiny Synth/FX, backend, session, protocol, worklet, client, application, and egui tests pass before production changes.
-- [ ] The inventory accounts for both native FX-chain and in-process engine backends, global/inactive MIDI paths, state capture/replacement, driver switching, protocol replay/coalescing, browser smokes, and every Tiny removal surface.
-- [ ] Audio evidence distinguishes preset-authored sends, standard CC modulation, direct generator modulation, dry voice output, and effect tails.
+- [x] Existing focused OxiSynth, Tiny Synth/FX, backend, session, protocol, worklet, client, application, and egui tests pass before production changes.
+- [x] The inventory accounts for both native FX-chain and in-process engine backends, global/inactive MIDI paths, state capture/replacement, driver switching, protocol replay/coalescing, browser smokes, and every Tiny removal surface.
+- [x] Audio evidence distinguishes preset-authored sends, standard CC modulation, direct generator modulation, dry voice output, and effect tails.
 
 ### Stage 1 — Implement OxiSynth send state and MIDI policy
 
@@ -149,7 +149,7 @@ Verification:
 - [x] MIDI tests cover every source channel, learned and unlearned CCs, CC 1/11/64 forwarding, blocked representative CCs including 0/7/10/32/91/93/120/123, pressure, pitch bend, malformed messages, ordering, and offsets.
 - [x] Audio tests prove sustain/modulation/expression, send audibility, ignored dry inputs, surviving effect tails after Panic/preset change, and absence of old-preset dry voices.
 - [x] Allocation guards cover steady rendering, mapped/filtered MIDI, direct send changes, Panic, preset selection, and control-only inactive processing.
-- [ ] Run focused native and Node/Wasm `shoop_engine` tests, formatting, test-usage policy, and a warning-denying engine build.
+- [x] Run focused native and Node/Wasm `shoop_engine` tests, formatting, test-usage policy, and a warning-denying engine build.
 
 ### Stage 2 — Extend typed backend and application-domain controls
 
@@ -169,7 +169,7 @@ Verification:
 - [x] Backend rendering tests prove identical generated output/send behavior and dry-input isolation in both backend models.
 - [x] Rapid send changes are last-write-wins and authoritative snapshots converge after accepted/rejected mutations.
 - [x] Driver/sample-rate replacement preserves exact preset, sends, and assignments while transient tails may restart.
-- [ ] Run focused `shoop_backend`, `shoop_engine` app-backend, and `shoop_app_api` tests plus formatting and warning-denying builds.
+- [x] Run focused `shoop_backend`, `shoop_engine` app-backend, and `shoop_app_api` tests plus formatting and warning-denying builds.
 
 ### Stage 3 — Update protocol, AudioWorklet, and remote client
 
@@ -185,9 +185,9 @@ Depends on Stage 2.
 Verification:
 
 - [x] Protocol JSON round-trip and coalescing tests cover every new OxiSynth variant and reject invalid values/assignments.
-- [ ] Native and Node/Wasm worklet/client tests cover preset, both sends, assignment lifecycle, track/global learned CC, CC 64 sustain, blocked CC 91/93 forwarding, snapshots, replay/restart, stale responses, and rollback.
-- [ ] Worklet audio tests prove mapped CC 91/93 changes the external control through the direct API while an unmapped CC 91/93 has no direct OxiSynth effect.
-- [ ] Run focused `shoop_audio_protocol`, `shoop_audio_worklet`, and `shoop_worklet_client` native/Wasm tests and warning-denying Wasm builds.
+- [x] Native and Node/Wasm worklet/client tests cover preset, both sends, assignment lifecycle, track/global learned CC, CC 64 sustain, blocked CC 91/93 forwarding, snapshots, replay/restart, stale responses, and rollback.
+- [x] Worklet audio tests prove mapped CC 91/93 changes the external control through the direct API while an unmapped CC 91/93 has no direct OxiSynth effect.
+- [x] Run focused `shoop_audio_protocol`, `shoop_audio_worklet`, and `shoop_worklet_client` native/Wasm tests and warning-denying Wasm builds.
 
 ### Stage 4 — Replace session/application persistence with the clean schema
 
@@ -226,7 +226,7 @@ Verification:
 - [x] Descriptor/add-track tests show **Built-in Synth** and no user-facing OxiSynth processor label except the attribution/logo.
 - [x] Attribution tests verify logo dimensions/aspect, clickable response, exact URL, and graceful rendering if texture creation fails.
 - [x] Existing unrelated track header, connection, lifecycle, log, and recovery tests remain passing.
-- [ ] Run focused `shoop_egui` and `shoop_app` native/Node-Wasm tests, formatting, warning-denying builds, and the test-usage policy check.
+- [x] Run focused `shoop_egui` and `shoop_app` native/Node-Wasm tests, formatting, warning-denying builds, and the test-usage policy check.
 
 ### Stage 6 — Remove Tiny Synth/FX and clean active surfaces
 
@@ -247,28 +247,40 @@ Verification:
 - [x] Workspace metadata and lockfile contain no `tinyviolin` package.
 - [x] Processor catalogs on native and browser contain Built-in Synth exactly once and preserve feature-dependent External/Carla entries.
 - [x] Session and wire decoding reject old Tiny-bearing artifacts rather than flattening or partially loading them.
-- [ ] Run all packages affected by removal on native and Node/Wasm, plus formatting, test-usage policy, warning-denying workspace builds, and tracing coverage.
+- [x] Run all packages affected by removal on native and Node/Wasm, plus formatting, test-usage policy, warning-denying workspace builds, and tracing coverage.
 
 ### Stage 7 — Final end-to-end validation
 
 Depends on all prior stages.
 
-- [ ] Create Built-in Synth tracks in native dummy/offline, an available native physical driver, browser Worker/dummy, and browser AudioWorklet runtimes; confirm identical defaults, labels, editor state, and catalog.
-- [ ] Render representative dry and effect-heavy presets; move each send knob through zero/intermediate/one and confirm additive preset-preserving behavior.
-- [ ] Learn CCs including 91/93 on chosen source channels, drive both sends from track and global inputs, and confirm audio plus authoritative UI/persistence updates without direct forwarding.
-- [ ] Exercise CC 1 modulation, CC 11 expression, CC 64 sustain/release, pitch bend, pressure, notes, and note-offs from multiple source channels; confirm all other representative CCs and bank/program changes are blocked at OxiSynth while source MIDI media remains exact.
-- [ ] Feed silence and nonzero audio into both dry inputs and prove identical synth output.
-- [ ] Trigger Panic and preset changes during wet notes; confirm old dry voices stop, tails decay, the new preset uses retained sends, and the realtime allocation guard remains clean.
-- [ ] Save/reload nondefault preset/sends/assignments on native and browser paths, restart remote worklets, and switch driver/sample rate; confirm exact durable state.
-- [ ] Attempt old, Tiny-bearing, malformed, wrong-version, invalid-assignment, and invalid-OxiSynth sessions; confirm explicit transactional rejection.
-- [ ] Confirm current-state dry-MIDI rerender behavior and absence of automatic OxiSynth take-state records.
-- [ ] Run `cargo fmt --all`, then `cargo fmt --all -- --check`.
-- [ ] Run `python3 scripts/check_shoop_test_usage.py`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
-- [ ] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
-- [ ] Run `python3 scripts/run_wasm_tests.py --runtime node --profile ci` and focused browser-runtime tests when Chrome is available.
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the packaged browser smoke commands documented in `src/rust/shoopdaloop/README.md` when browser tooling is available.
-- [ ] Audit active docs, generated artifacts, workspace metadata, and repository searches for stale Tiny Synth support, stale OxiSynth labels, old session compatibility claims, or accidental Built-in FX scope.
+- [x] Create Built-in Synth tracks in native dummy/offline, an available native physical driver, browser Worker/dummy, and browser AudioWorklet runtimes; confirm identical defaults, labels, editor state, and catalog.
+- [x] Render representative dry and effect-heavy presets; move each send knob through zero/intermediate/one and confirm additive preset-preserving behavior.
+- [x] Learn CCs including 91/93 on chosen source channels, drive both sends from track and global inputs, and confirm audio plus authoritative UI/persistence updates without direct forwarding.
+- [x] Exercise CC 1 modulation, CC 11 expression, CC 64 sustain/release, pitch bend, pressure, notes, and note-offs from multiple source channels; confirm all other representative CCs and bank/program changes are blocked at OxiSynth while source MIDI media remains exact.
+- [x] Feed silence and nonzero audio into both dry inputs and prove identical synth output.
+- [x] Trigger Panic and preset changes during wet notes; confirm old dry voices stop, tails decay, the new preset uses retained sends, and the realtime allocation guard remains clean.
+- [x] Save/reload nondefault preset/sends/assignments on native and browser paths, restart remote worklets, and switch driver/sample rate; confirm exact durable state.
+- [x] Attempt old, Tiny-bearing, malformed, wrong-version, invalid-assignment, and invalid-OxiSynth sessions; confirm explicit transactional rejection.
+- [x] Confirm current-state dry-MIDI rerender behavior and absence of automatic OxiSynth take-state records.
+- [x] Run `cargo fmt --all`, then `cargo fmt --all -- --check`.
+- [x] Run `python3 scripts/check_shoop_test_usage.py`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`.
+- [x] Run `python3 scripts/check_tracing_coverage.py --require-closed`.
+- [x] Run `python3 scripts/run_wasm_tests.py --runtime node --profile ci` and focused browser-runtime tests when Chrome is available.
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown` and run the packaged browser smoke commands documented in `src/rust/shoopdaloop/README.md` when browser tooling is available.
+- [x] Audit active docs, generated artifacts, workspace metadata, and repository searches for stale Tiny Synth support, stale OxiSynth labels, old session compatibility claims, or accidental Built-in FX scope.
+
+## Final evidence
+
+- Native CI-profile validation passes all 1,494 discovered tests; two optional physical-host tests are explicitly skipped because this environment has no corresponding hardware service.
+- The complete pinned Node 22.22.2 Wasm matrix passes 1,230 tests across all 16 opted-in packages. Focused OxiSynth engine and AudioWorklet suites additionally pass after the final CC 91/93 coverage changes.
+- The warning-denying workspace build, warning-denying Wasm application check, release AudioWorklet build, formatting, test-attribute policy, smoke-budget checks, report-parser tests, and closed 134-module tracing inventory pass.
+- `trunk build` packages the hosted application and worklet. The available Firefox physical AudioWorklet smoke passes with 60 callbacks, 9,728 processed frames, 128-frame quanta, zero command overflows, and clean teardown. Chrome/chromedriver are not installed, so Chromium validation is not available in this environment.
+- Engine evidence covers direct additive generator control, audible send changes, preset-authored zero-knob tails, CC 1/11/64 forwarding, mapped-but-unforwarded CC 91/93, sustain/release audio, source-channel flattening, blocked CC/bank/program traffic, Panic/preset tail survival, old-voice shutdown, and realtime allocation bounds.
+- Native, in-process, worklet, remote-client, application, and session tests cover defaults, controls, assignment uniqueness/lifecycle, snapshots, optimistic convergence, exact state/assignment capture, save/load, staged rollback, remote replay/restart, and driver/sample-rate replacement.
+- UI tests cover the Built-in Synth label/window, both send controls, MIDI Learn action, preset/Panic behavior, logo aspect ratio, and exact clickable OxiSynth URL on shared native/Wasm test paths.
+- Session document version 6 and OxiSynth state version 2 are canonical; old/future documents, malformed state, wrong identities, and invalid/duplicate mappings reject transactionally. OxiSynth take-state remains absent.
+- Repository and dependency searches find no Tiny Synth/FX or `tinyviolin` production symbol, active schema/wire variant, current user documentation, smoke fixture, manifest entry, or lockfile package. Historical baseline/refactoring records remain explicitly historical.
 
 Final verification is complete when the repository is clean, each immutable acceptance criterion maps to direct test/manual evidence recorded in this plan, and the final milestone commit contains no unrelated changes.

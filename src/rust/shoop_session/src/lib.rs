@@ -488,6 +488,14 @@ mod tests {
                 Err(SessionError::UnsupportedVersion { .. })
             ));
         }
+        let removed_tiny = rewrite_manifest(encoded, |manifest| {
+            manifest["document"]["track_groups"][0]["tracks"][0]["topology"] =
+                serde_json::json!({"kind": "tiny_synth_fx", "audio_channels": 2});
+        });
+        assert!(matches!(
+            decode_session(&removed_tiny),
+            Err(SessionError::Manifest(_))
+        ));
 
         let mut mismatched = bundle.clone();
         mismatched.document.track_groups[0].tracks[0]
