@@ -27,6 +27,7 @@ pub struct LoopStateMirror {
     cycle_count: AtomicU64,
     next_mode: AtomicI32,
     next_delay: AtomicU64,
+    deferred_latency_mode: AtomicI32,
     current_latency_recipe: AtomicLatencyRecipePublication,
     latched_latency_recipe: AtomicLatencyRecipePublication,
 }
@@ -40,6 +41,7 @@ impl Default for LoopStateMirror {
             cycle_count: AtomicU64::new(0),
             next_mode: AtomicI32::new(NO_MODE),
             next_delay: AtomicU64::new(NO_DELAY),
+            deferred_latency_mode: AtomicI32::new(NO_MODE),
             current_latency_recipe: AtomicLatencyRecipePublication::default(),
             latched_latency_recipe: AtomicLatencyRecipePublication::default(),
         }
@@ -83,6 +85,13 @@ impl LoopStateMirror {
         self.position.store(position, Ordering::Relaxed);
     }
 
+    pub fn publish_deferred_latency_mode(&self, mode: Option<LoopMode>) {
+        self.deferred_latency_mode.store(
+            mode.map(|mode| mode as i32).unwrap_or(NO_MODE),
+            Ordering::Relaxed,
+        );
+    }
+
     pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
         self.current_latency_recipe.publish_pending(recipe);
     }
@@ -94,6 +103,7 @@ impl LoopStateMirror {
     pub fn read(&self) -> LoopState {
         let next_mode = self.next_mode.load(Ordering::Relaxed);
         let next_delay = self.next_delay.load(Ordering::Relaxed);
+        let deferred_latency_mode = self.deferred_latency_mode.load(Ordering::Relaxed);
         LoopState {
             mode: LoopMode::try_from(self.mode.load(Ordering::Relaxed))
                 .unwrap_or(LoopMode::Unknown),
@@ -103,6 +113,8 @@ impl LoopStateMirror {
             maybe_next_mode: (next_mode != NO_MODE)
                 .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
             maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
+            deferred_latency_mode: (deferred_latency_mode != NO_MODE)
+                .then(|| LoopMode::try_from(deferred_latency_mode).unwrap_or(LoopMode::Unknown)),
             current_latency_recipe: self.current_latency_recipe.read(),
             latched_latency_recipe: self.latched_latency_recipe.read(),
         }

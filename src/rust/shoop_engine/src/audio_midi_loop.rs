@@ -40,6 +40,7 @@ pub struct AudioMidiLoop {
     latched_latency_recipe: Option<LatchedLatencyRecipe>,
     last_latency_mode: LoopMode,
     processed_latency_frames: u64,
+    deferred_latency_mode: Option<LoopMode>,
 }
 
 impl AudioMidiLoop {
@@ -243,6 +244,30 @@ impl AudioMidiLoop {
         self.latched_latency_recipe
     }
 
+    pub fn deferred_latency_mode(&self) -> Option<LoopMode> {
+        self.deferred_latency_mode
+    }
+
+    pub fn compensated_playback_ready(&self) -> bool {
+        let logical_length = self.length();
+        self.audio_channels.iter().all(|channel| {
+            !matches!(channel.mode(), ChannelMode::Direct | ChannelMode::Wet)
+                || channel.compensated_take_ready(logical_length)
+        }) && self.midi_channels.iter().all(|channel| {
+            !matches!(channel.mode(), ChannelMode::Direct | ChannelMode::Wet)
+                || channel.compensated_take_ready(logical_length)
+        })
+    }
+
+    fn defer_latency_mode(&mut self, mode: LoopMode) {
+        self.deferred_latency_mode = Some(mode);
+        self.loop_.set_mode(LoopMode::Stopped);
+        self.loop_
+            .state_mirror()
+            .publish_deferred_latency_mode(Some(mode));
+        self.last_latency_mode = LoopMode::Stopped;
+    }
+
     pub fn set_pending_latency_recipe(&mut self, recipe: Option<RuntimeLatencyRecipe>) {
         self.pending_latency_recipe = recipe;
         self.loop_
@@ -366,9 +391,20 @@ impl AudioMidiLoop {
         self.resync_poi();
     }
     pub fn set_mode(&mut self, mode: LoopMode) {
-        self.loop_.set_mode(mode);
-        if mode != self.last_latency_mode {
-            self.latch_latency_recipes_for_mode(mode, self.processed_latency_frames);
+        if self.mode() == LoopMode::Recording
+            && mode == LoopMode::Playing
+            && !self.compensated_playback_ready()
+        {
+            self.defer_latency_mode(mode);
+        } else {
+            self.deferred_latency_mode = None;
+            self.loop_
+                .state_mirror()
+                .publish_deferred_latency_mode(None);
+            self.loop_.set_mode(mode);
+            if mode != self.last_latency_mode {
+                self.latch_latency_recipes_for_mode(mode, self.processed_latency_frames);
+            }
         }
         self.resync_poi();
     }
@@ -386,8 +422,19 @@ impl AudioMidiLoop {
         n_cycles_delay: Option<u32>,
         to_sync_cycle: Option<u32>,
     ) {
-        self.loop_
-            .plan_transition(mode, n_cycles_delay, to_sync_cycle);
+        let is_immediate = (self.sync_source().is_none() && self.mode() != LoopMode::Playing)
+            || n_cycles_delay.is_none()
+            || to_sync_cycle.is_some();
+        if is_immediate
+            && self.mode() == LoopMode::Recording
+            && mode == LoopMode::Playing
+            && !self.compensated_playback_ready()
+        {
+            self.defer_latency_mode(mode);
+        } else {
+            self.loop_
+                .plan_transition(mode, n_cycles_delay, to_sync_cycle);
+        }
         self.resync_poi();
     }
     /// Empties every channel and resets the loop to `length`, stopped.
@@ -484,6 +531,16 @@ impl AudioMidiLoop {
         midi_in: &[I],
         midi_out: &mut [Vec<MidiStorageElem>],
     ) -> Result<(), LoopError> {
+        if let Some(mode) = self.deferred_latency_mode {
+            if self.compensated_playback_ready() {
+                self.deferred_latency_mode = None;
+                self.loop_
+                    .state_mirror()
+                    .publish_deferred_latency_mode(None);
+                self.loop_.set_mode(mode);
+                self.latch_latency_recipes_for_mode(mode, self.processed_latency_frames);
+            }
+        }
         let audio = &mut self.audio_channels;
         let midi = &mut self.midi_channels;
         let pending_latency_recipe = self.pending_latency_recipe;
@@ -770,6 +827,32 @@ mod tests {
         let latched = l.latched_latency_recipe().unwrap();
         check!(latched.recipe == recipe);
         check!(latched.operation_frame == 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn play_after_record_defers_until_compensated_postroll_is_ready() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel_with_bounded_capacity(4, 8, C::Direct);
+        let channel = l.audio_channel_mut(0).unwrap();
+        channel.prepare_latency_retention(4, 0, 4).unwrap();
+        channel.set_capture_alignment_frames(4).unwrap();
+
+        l.set_mode(L::Recording);
+        cycle(&mut l, 4, &[0.0; 4]);
+        check!(l.length() == 4);
+        l.set_mode(L::Playing);
+        check!(l.mode() == L::Stopped);
+        check!(l.deferred_latency_mode() == Some(L::Playing));
+        check!(l.state_mirror().read().deferred_latency_mode == Some(L::Playing));
+
+        cycle(&mut l, 2, &[1.0, 0.0]);
+        check!(l.mode() == L::Stopped);
+        cycle(&mut l, 2, &[0.0, 0.0]);
+        check!(l.mode() == L::Stopped);
+        let output = cycle(&mut l, 4, &[0.0; 4]);
+        check!(l.mode() == L::Playing);
+        check!(l.deferred_latency_mode().is_none());
+        check!(output == vec![1.0, 0.0, 0.0, 0.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]

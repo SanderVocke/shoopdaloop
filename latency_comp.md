@@ -627,7 +627,7 @@ Dependencies: Stages 1–2.
 - [x] Preserve MIDI start state and events crossing retained window boundaries.
 - [x] Publish logical and raw played positions independently.
 - [ ] Integrate content snapshots so finalization remains an unsettled mutation while safe play-after-record can consume already available frames.
-- [ ] Define readiness/defer behavior when advance is greater than or equal to loop length.
+- [x] Define readiness/defer behavior when advance is greater than or equal to loop length.
 
 Verification:
 

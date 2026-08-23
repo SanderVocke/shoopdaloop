@@ -357,6 +357,19 @@ impl MidiChannel {
     pub fn latency_retention_incomplete(&self) -> bool {
         self.latency_retention_incomplete
     }
+    pub fn compensated_take_ready(&self, logical_length: u32) -> bool {
+        let Some(raw_start) = self.raw_position_for_logical(0) else {
+            return false;
+        };
+        if self.capture_alignment_frames <= 0 {
+            return raw_start >= 0;
+        }
+        let Some(raw_end) = raw_start.checked_add(logical_length.min(i32::MAX as u32) as i32)
+        else {
+            return false;
+        };
+        raw_start >= 0 && raw_end >= 0 && raw_end as u32 <= self.data_length
+    }
     pub fn prepare_latency_retention(
         &mut self,
         retained_before_frames: u32,
