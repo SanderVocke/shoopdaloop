@@ -2,7 +2,7 @@
 
 ## UI usability pass
 
-The native `latency_panel_smoke` preview was built and run under X11/Xvfb with software rendering. It cycles one authoritative panel fixture every three seconds. The direct, External, Carla Patchbay, and Built-in Synth captures were visually inspected for clipping, readable component/mode/range/cue controls, signed values, frame/ms totals, diagnostics, frozen/current comparison, warnings, and consolidate action:
+The native `latency_panel_smoke` preview (`cargo run -p shoop_egui --example latency_panel_smoke --features latency-panel-preview`) was built and run under X11/Xvfb with software rendering. It cycles one authoritative panel fixture every three seconds. The direct, External, Carla Patchbay, and Built-in Synth captures were visually inspected for clipping, readable component/mode/range/cue controls, signed values, frame/ms totals, diagnostics, frozen/current comparison, warnings, and consolidate action:
 
 - [`validation/latency-ui-direct.png`](validation/latency-ui-direct.png)
 - [`validation/latency-ui-external.png`](validation/latency-ui-external.png)
@@ -26,3 +26,11 @@ The dedicated real JACK software server/provider run executes without `SHOOP_ALL
 The pinned patched Carla 2.5.10 derivation was rebuilt from `shoop-latency-adapter.patch`. Zero-latency Audio Gain/MIDI Through fixtures pass in Rack, Patchbay, and Patchbay16. The Nix shell's RubberBand LADSPA fixture reports a fixed nonzero Rack latency; queried latency equals the impulse-response peak frame. A generated branched Patchbay routes one zero path and one RubberBand path; queried range is `0..Rack` and measured peaks match both endpoints. The real application worker repeats the nonzero Rack query/impulse comparison in subprocess mode. The unpatched compatibility runtime remains usable with unknown/manual latency.
 
 Commands and environment are documented in `third_party/carla/README.md`; the Nix shell supplies `SHOOP_CARLA_NONZERO_PLUGIN_BINARY` automatically.
+
+## Final cross-target run
+
+On 2026-08-23 in `nix develop`, both complete shared Wasm suites passed: pinned Node 22.23.2 and Chromium/ChromeDriver 147.0.7727.137 each ran 17 packages and 1336 tests with zero failures. The Wasm application and production worklet builds passed; the application build intentionally uses `--no-default-features` because its default `native-fx` feature is native-only.
+
+A Trunk 0.21.14 debug bundle and self-contained artifact were then exercised by the application crate's three documented browser invocations. Hosted and self-contained Chromium output-only smokes both reached genuine 128-frame AudioWorklet callback progress. Firefox 150.0.1 reached 36 callbacks/4608 frames at a 128-frame quantum with zero overflows and clean teardown. Geckodriver 0.36.0 warned that 0.37.1 is recommended for Firefox 150, but the smoke completed successfully.
+
+Chromium in this environment required an isolated writable `XDG_CONFIG_HOME` because the user's existing crash database caused startup rejection. `scripts/run_wasm_tests.py` now supplies a fresh per-package WebDriver profile/config directory and removes it after each package, preserving deterministic clean browser state.

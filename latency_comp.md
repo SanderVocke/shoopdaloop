@@ -845,20 +845,20 @@ Dependencies: all prior stages.
 - [x] Update session, settings, port model, Web MIDI, worklet, Carla runtime, and run documentation where contracts changed.
 - [x] Document JACK physical loopback and Carla known-latency validation procedures.
 - [x] Document OxiSynth’s validated behavior and any dependency fork/patch.
-- [ ] Re-run every immutable acceptance scenario with deterministic fixtures.
+- [x] Re-run every immutable acceptance scenario with deterministic fixtures.
 - [x] Run the complete automated loop-action matrix for ordinary play, record, grab, planned preplay, `PlayingDryThroughWet`, and `RecordingDryIntoWet`; retain direct frame-oracle evidence for each required row.
 - [x] Run targeted physical JACK and real Carla scenarios where facilities are available; record skips with reasons where not.
-- [ ] Run complete project gates in the selected development environment.
+- [x] Run complete project gates in the selected development environment.
 
 Final verification commands and surfaces:
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `RUSTFLAGS="-D warnings" cargo build --workspace`
-- [ ] `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`
-- [ ] `python3 scripts/check_shoop_test_usage.py` after adding/changing Rust tests.
-- [ ] `python3 scripts/check_tracing_coverage.py --require-closed`
-- [ ] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`.
-- [ ] Run the shared Wasm test suite and the browser smoke commands documented by the application crate when browsers are available.
+- [x] `cargo fmt --all -- --check`
+- [x] `RUSTFLAGS="-D warnings" cargo build --workspace`
+- [x] `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`
+- [x] `python3 scripts/check_shoop_test_usage.py` after adding/changing Rust tests.
+- [x] `python3 scripts/check_tracing_coverage.py --require-closed`
+- [x] Build `shoopdaloop` and `shoop_audio_worklet` for `wasm32-unknown-unknown`.
+- [x] Run the shared Wasm test suite and the browser smoke commands documented by the application crate when browsers are available.
 - [x] Run JACK tests without `SHOOP_ALLOW_MISSING_BACKENDS=1` where a real JACK server/provider is required.
 - [x] Run real Carla tests with the required Carla test environment and both in-process/subprocess hosting modes.
 - [x] Verify a manual end-to-end matrix at 44.1 kHz and 48 kHz, at two callback sizes, covering:
@@ -874,8 +874,8 @@ Final verification commands and surfaces:
   - save/load and sample-rate-changing driver switch;
   - logical and raw export;
   - monitoring latency/equivalence.
-- [ ] Confirm `git diff --check` and review the final diff for unrelated formatting or behavior changes.
-- [ ] Confirm all goals and immutable acceptance criteria have direct test, documentation, or physical-verification evidence.
+- [x] Confirm `git diff --check` and review the final diff for unrelated formatting or behavior changes.
+- [x] Confirm all goals and immutable acceptance criteria have direct test, documentation, or physical-verification evidence.
 
 ## Expected primary implementation surfaces
 

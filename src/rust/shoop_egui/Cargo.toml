@@ -10,6 +10,11 @@ browser-feature = "wasm-test-browser"
 [features]
 default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+latency-panel-preview = []
+
+[[example]]
+name = "latency_panel_smoke"
+required-features = ["latency-panel-preview"]
 
 [dependencies]
 shoop_app_api = { path = "../shoop_app_api" }

@@ -24,7 +24,7 @@ WASM_PACK_VERSION = "0.15.0"
 WASM_BINDGEN_VERSION = "0.2.127"
 WASM_BINDGEN_TEST_VERSION = "0.3.77"
 NODE_VERSION = "22.23.2"
-CHROME_VERSION = "147.0.7727.117"
+CHROME_VERSION = "147.0.7727.137"
 
 
 class AssetHandler(http.server.SimpleHTTPRequestHandler):
@@ -262,15 +262,25 @@ def invoke_package(
         command += ["--", *filters]
 
     webdriver_config = package["path"] / "webdriver.json" if runtime == "chrome" else None
+    webdriver_profile = (
+        reports / ".webdriver-profiles" / package["name"] if runtime == "chrome" else None
+    )
     if webdriver_config and webdriver_config.exists():
         raise RuntimeError(f"refusing to overwrite {webdriver_config}")
     if webdriver_config:
+        shutil.rmtree(webdriver_profile, ignore_errors=True)
+        webdriver_profile.mkdir(parents=True)
         webdriver_config.write_text(
             json.dumps(
                 {
                     "goog:chromeOptions": {
                         "binary": env["CHROME_BIN"],
-                        "args": ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                        "args": [
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                            f"--user-data-dir={webdriver_profile.resolve()}",
+                        ],
                     }
                 },
                 indent=2,
@@ -279,13 +289,17 @@ def invoke_package(
             + "\n"
         )
 
+    package_env = env.copy()
+    if webdriver_profile:
+        package_env["XDG_CONFIG_HOME"] = str((webdriver_profile / "xdg-config").resolve())
+
     started = time.monotonic()
     try:
         try:
             result = subprocess.run(
                 command,
                 cwd=ROOT,
-                env=env,
+                env=package_env,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -302,6 +316,8 @@ def invoke_package(
     finally:
         if webdriver_config:
             webdriver_config.unlink(missing_ok=True)
+        if webdriver_profile:
+            shutil.rmtree(webdriver_profile, ignore_errors=True)
     elapsed = time.monotonic() - started
     stem = f"{package['name']}-{runtime}"
     log = reports / f"{stem}.log"
