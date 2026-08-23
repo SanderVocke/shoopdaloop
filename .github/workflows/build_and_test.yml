@@ -71,7 +71,7 @@ jobs:
         run: |
           asset=tracy-embedded-native-linux-x86_64.tar.gz
           root="$RUNNER_TEMP/tracy-embedded-native"
-          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0
+          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.7.0
           rm -rf "$root"
           mkdir -p "$root/download" "$root/extracted"
           curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
@@ -330,7 +330,7 @@ jobs:
             *) exit 1 ;;
           esac
           root="$RUNNER_TEMP/tracy-embedded-native"
-          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0
+          base=https://github.com/SanderVocke/tracy-extensions/releases/download/v0.7.0
           rm -rf "$root"
           mkdir -p "$root/download" "$root/extracted"
           curl -L --fail --retry 3 "$base/$asset" -o "$root/download/$asset"
@@ -365,7 +365,7 @@ jobs:
           $Root = Join-Path $env:RUNNER_TEMP "tracy-embedded-native"
           $Download = Join-Path $Root "download"
           $Extracted = Join-Path $Root "extracted"
-          $Base = "https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0"
+          $Base = "https://github.com/SanderVocke/tracy-extensions/releases/download/v0.7.0"
           Remove-Item $Root -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force $Download, $Extracted | Out-Null
           curl.exe --fail --location --retry 3 "$Base/$Asset" --output (Join-Path $Download $Asset)
@@ -814,7 +814,7 @@ jobs:
           ! find "$TRACY_NEXTEST_OUTPUT_DIR" -name '*.partial' -print -quit | grep -q .
           curl -L --fail --retry 3 \
             -o "$RUNNER_TEMP/tracy-query" \
-            https://github.com/SanderVocke/tracy-extensions/releases/download/v0.6.0/tracy-query-linux-x86_64
+            https://github.com/SanderVocke/tracy-extensions/releases/download/v0.7.0/tracy-query-linux-x86_64
           chmod +x "$RUNNER_TEMP/tracy-query"
           "$RUNNER_TEMP/tracy-query" check "${traces[0]}"
           "$RUNNER_TEMP/tracy-query" range "${traces[0]}"
