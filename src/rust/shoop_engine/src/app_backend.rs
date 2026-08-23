@@ -270,6 +270,14 @@ fn observed_lifecycle<I: ObjectIdentity, M>(
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct BackendLatencyPolicyRequest {
+    pub operation: shoop_latency::LatencyOperationKind,
+    pub recording_reference: shoop_latency::RecordingReference,
+    pub components: Vec<shoop_latency::LatencyComponentInput>,
+    pub revision: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct ExternalPortDescriptor {
     pub name: String,
@@ -3660,15 +3668,28 @@ impl AudioDriver {
             } else {
                 (i.last_processed, 0, 0, 0.0)
             };
+        let sample_rate = i.dummy.sample_rate();
+        let backend_latency = if matches!(
+            i.driver_type,
+            AudioDriverType::Dummy | AudioDriverType::CpalTest | AudioDriverType::JackTest
+        ) && sample_rate > 0
+        {
+            engine::RuntimeLatencyObservation::exact(0, sample_rate, 1)
+                .unwrap_or_else(|_| engine::RuntimeLatencyObservation::unknown(sample_rate, 1))
+        } else {
+            engine::RuntimeLatencyObservation::unknown(sample_rate, 1)
+        };
         AudioDriverState {
             dsp_load_percent,
             xruns_since_last,
             stale_graph_cycles,
             maybe_instance_name: i.dummy.client_name().to_string(),
-            sample_rate: i.dummy.sample_rate(),
+            sample_rate,
             buffer_size: i.dummy.buffer_size(),
             active: i.dummy.active() as u32,
             last_processed,
+            capture_latency: backend_latency,
+            playback_latency: backend_latency,
         }
     }
     pub fn dummy_enter_controlled_mode(&self) {
@@ -4192,6 +4213,87 @@ impl Loop {
         }
     }
 
+    /// Resolves a complete operation policy on the control thread, then transfers
+    /// only the fixed-capacity runtime recipe to the callback command queue.
+    pub fn set_latency_policy(
+        &self,
+        request: BackendLatencyPolicyRequest,
+    ) -> Result<CommandSequence> {
+        let resolved = shoop_latency::resolve_latency_recipe(
+            request.operation,
+            request.recording_reference,
+            &request.components,
+        )?;
+        if let Some(warning) = resolved.warnings.iter().find(|warning| {
+            warning.reason != shoop_latency::UnresolvedReason::AutomaticValueUnavailable
+        }) {
+            return Err(anyhow!(
+                "latency policy resolution failed: {:?}",
+                warning.reason
+            ));
+        }
+        let recipe = engine::RuntimeLatencyRecipe::from_resolved(&resolved, request.revision);
+        let control = Arc::clone(&self.control);
+        let sequence = self.shared.send_control(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                if let Some(loop_) = session.loop_mut(index) {
+                    loop_.set_pending_latency_recipe(Some(recipe));
+                }
+            }
+        })?;
+        self.control
+            .mirror
+            .publish_current_latency_recipe(Some(recipe));
+        Ok(sequence)
+    }
+
+    pub fn observe_latency(
+        &self,
+        kind: shoop_latency::LatencyComponentKind,
+        observation: engine::RuntimeLatencyObservation,
+    ) -> Result<CommandSequence> {
+        let control = Arc::clone(&self.control);
+        Ok(self.shared.send_control(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                if let Some(loop_) = session.loop_mut(index) {
+                    loop_.observe_latency(kind, observation);
+                }
+            }
+        })?)
+    }
+
+    pub fn clear_latency_policy(&self) -> Result<CommandSequence> {
+        let control = Arc::clone(&self.control);
+        let sequence = self.shared.send_control(move |session| {
+            if let Some(index) = control.ready_id().map(ObjectIdentity::index) {
+                if let Some(loop_) = session.loop_mut(index) {
+                    loop_.set_pending_latency_recipe(None);
+                }
+            }
+        })?;
+        self.control.mirror.publish_current_latency_recipe(None);
+        Ok(sequence)
+    }
+
+    pub fn set_cue_latency_policy(
+        &self,
+        operation: shoop_latency::LatencyOperationKind,
+        cue_followed: bool,
+        components: Vec<shoop_latency::LatencyComponentInput>,
+        revision: u64,
+    ) -> Result<CommandSequence> {
+        self.set_latency_policy(BackendLatencyPolicyRequest {
+            operation,
+            recording_reference: if cue_followed {
+                shoop_latency::RecordingReference::ShoopCue
+            } else {
+                shoop_latency::RecordingReference::ExternalWorld
+            },
+            components,
+            revision,
+        })
+    }
+
     pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
         let control = Arc::clone(&self.control);
         let sequence = self.shared.send_control(move |s: &mut engine::Session| {
@@ -4557,6 +4659,72 @@ impl AudioChannel {
             self.control.mirror.set_start_offset(offset);
         }
         result
+    }
+
+    pub fn set_take_latency_policy(
+        &self,
+        capture_alignment_frames: i32,
+    ) -> Result<CommandSequence> {
+        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
+            return Err(anyhow!(
+                "take latency alignment exceeds the supported bound"
+            ));
+        }
+        let sequence = self.with_mut(move |channel| {
+            let _ = channel.set_capture_alignment_frames(capture_alignment_frames);
+        })?;
+        self.control
+            .mirror
+            .set_capture_alignment_frames(capture_alignment_frames);
+        Ok(sequence)
+    }
+
+    pub fn restore_take_latency_mapping(
+        &self,
+        media_layout_offset: i32,
+        capture_alignment_frames: i32,
+        selection: engine::RetainedLatencySelection,
+    ) -> Result<CommandSequence> {
+        let sequence = self.with_mut(move |channel| {
+            let _ = channel.apply_grab_latency_mapping(
+                media_layout_offset,
+                capture_alignment_frames,
+                selection,
+            );
+        })?;
+        self.control.mirror.set_start_offset(media_layout_offset);
+        self.control
+            .mirror
+            .set_capture_alignment_frames(capture_alignment_frames);
+        let (variable, revisions) = match selection {
+            engine::RetainedLatencySelection::Stable(_) => (false, 1),
+            engine::RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
+            engine::RetainedLatencySelection::Unavailable => (false, 0),
+        };
+        self.control
+            .mirror
+            .publish_latency_history(variable, revisions);
+        Ok(sequence)
+    }
+
+    pub fn consolidate_latency(&self) -> Result<CommandSequence> {
+        let state = self.get_state()?;
+        let logical_length = self.parent.mirror.read().length as usize;
+        let raw = self.get_data();
+        let mut consolidated = Vec::with_capacity(logical_length);
+        for logical in 0..logical_length {
+            let raw_position = i64::from(state.start_offset)
+                + i64::from(state.capture_alignment_frames)
+                + logical as i64;
+            consolidated.push(
+                usize::try_from(raw_position)
+                    .ok()
+                    .and_then(|position| raw.get(position).copied())
+                    .unwrap_or(0.0),
+            );
+        }
+        self.load_data(&consolidated)
+            .map_err(|error| anyhow!("could not queue latency consolidation: {error}"))
     }
 
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
@@ -4962,6 +5130,52 @@ impl MidiChannel {
             self.control.mirror.set_start_offset(offset);
         }
         result
+    }
+
+    pub fn set_take_latency_policy(
+        &self,
+        capture_alignment_frames: i32,
+    ) -> Result<CommandSequence> {
+        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
+            return Err(anyhow!(
+                "take latency alignment exceeds the supported bound"
+            ));
+        }
+        let sequence = self.with_mut(move |channel| {
+            let _ = channel.set_capture_alignment_frames(capture_alignment_frames);
+        })?;
+        self.control
+            .mirror
+            .set_capture_alignment_frames(capture_alignment_frames);
+        Ok(sequence)
+    }
+
+    pub fn restore_take_latency_mapping(
+        &self,
+        media_layout_offset: i32,
+        capture_alignment_frames: i32,
+        selection: engine::RetainedLatencySelection,
+    ) -> Result<CommandSequence> {
+        let sequence = self.with_mut(move |channel| {
+            let _ = channel.restore_take_latency_mapping(
+                media_layout_offset,
+                capture_alignment_frames,
+                selection,
+            );
+        })?;
+        self.control.mirror.set_start_offset(media_layout_offset);
+        self.control
+            .mirror
+            .set_capture_alignment_frames(capture_alignment_frames);
+        let (variable, revisions) = match selection {
+            engine::RetainedLatencySelection::Stable(_) => (false, 1),
+            engine::RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
+            engine::RetainedLatencySelection::Unavailable => (false, 0),
+        };
+        self.control
+            .mirror
+            .publish_latency_history(variable, revisions);
+        Ok(sequence)
     }
 
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
@@ -6111,6 +6325,18 @@ impl FXChain {
     }
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();
+        let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed);
+        s.latency = match &self.backend {
+            FXChainBackendKind::Test2x2x1 => {
+                engine::RuntimeLatencyObservation::exact(0, sample_rate.max(1), 1)
+                    .unwrap_or_else(|_| engine::RuntimeLatencyObservation::unknown(sample_rate, 1))
+            }
+            #[cfg(feature = "carla")]
+            FXChainBackendKind::Carla(host) => host.latency(),
+            FXChainBackendKind::OxiSynth(_) | FXChainBackendKind::Unavailable { .. } => {
+                engine::RuntimeLatencyObservation::unknown(sample_rate, 1)
+            }
+        };
         s.ready = self.available() as u32;
         #[cfg(feature = "carla")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
@@ -8224,6 +8450,174 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn latency_policy_command_reports_pending_latched_changed_and_failed_states() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        sess.wait_for_command(loop_.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let observation = shoop_latency::LatencyObservation::exact(
+            3,
+            48_000,
+            1,
+            shoop_latency::SourceIdentity::new("backend test input").unwrap(),
+            shoop_latency::LatencyIntervalIdentity::new("device -> app input").unwrap(),
+        )
+        .unwrap();
+        let component = shoop_latency::LatencyComponentInput {
+            kind: shoop_latency::LatencyComponentKind::ExternalCapture,
+            observation,
+            policy: shoop_latency::LatencyComponentPolicy::default(),
+        };
+        let sequence = loop_
+            .set_latency_policy(BackendLatencyPolicyRequest {
+                operation: shoop_latency::LatencyOperationKind::RecordDirect,
+                recording_reference: shoop_latency::RecordingReference::ExternalWorld,
+                components: vec![component],
+                revision: 11,
+            })
+            .unwrap();
+        let pending = loop_.get_state().unwrap().current_latency_recipe;
+        assert_eq!(pending.recipe.unwrap().total_frames, Some(3));
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+
+        let sequence = loop_.transition(LoopMode::Recording, -1, -1).unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let latched = loop_.get_state().unwrap().latched_latency_recipe;
+        assert_eq!(latched.recipe.unwrap().revision, 11);
+        assert!(!latched.changed);
+
+        let sequence = loop_
+            .observe_latency(
+                shoop_latency::LatencyComponentKind::ExternalCapture,
+                engine::RuntimeLatencyObservation::exact(7, 48_000, 2).unwrap(),
+            )
+            .unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let changed = loop_.get_state().unwrap().latched_latency_recipe;
+        assert!(changed.changed);
+        assert_eq!(changed.recipe.unwrap().total_frames, Some(3));
+
+        let invalid = shoop_latency::LatencyObservation::unknown(
+            48_000,
+            2,
+            shoop_latency::SourceIdentity::new("unsupported input").unwrap(),
+        )
+        .unwrap();
+        let sequence = loop_
+            .set_latency_policy(BackendLatencyPolicyRequest {
+                operation: shoop_latency::LatencyOperationKind::RecordDirect,
+                recording_reference: shoop_latency::RecordingReference::ExternalWorld,
+                components: vec![shoop_latency::LatencyComponentInput {
+                    kind: shoop_latency::LatencyComponentKind::ExternalCapture,
+                    observation: invalid.clone(),
+                    policy: shoop_latency::LatencyComponentPolicy::default(),
+                }],
+                revision: 12,
+            })
+            .unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        assert_eq!(
+            loop_
+                .get_state()
+                .unwrap()
+                .current_latency_recipe
+                .recipe
+                .unwrap()
+                .total_frames,
+            None
+        );
+
+        let failed = loop_.set_latency_policy(BackendLatencyPolicyRequest {
+            operation: shoop_latency::LatencyOperationKind::RecordDirect,
+            recording_reference: shoop_latency::RecordingReference::ExternalWorld,
+            components: vec![shoop_latency::LatencyComponentInput {
+                kind: shoop_latency::LatencyComponentKind::ExternalCapture,
+                observation: invalid,
+                policy: shoop_latency::LatencyComponentPolicy {
+                    enabled: true,
+                    value_mode: shoop_latency::LatencyValueMode::Manual(
+                        shoop_latency::MAX_COMPENSATION_FRAMES + 1,
+                    ),
+                    range_selection: shoop_latency::LatencyRangeSelection::Maximum,
+                },
+            }],
+            revision: 13,
+        });
+        assert!(failed.is_err());
+        assert_eq!(
+            loop_
+                .get_state()
+                .unwrap()
+                .current_latency_recipe
+                .recipe
+                .unwrap()
+                .revision,
+            12
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn take_policy_and_consolidation_reconcile_to_authoritative_channel_state() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        sess.wait_for_command(loop_.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let channel = loop_.add_audio_channel(ChannelMode::Direct).unwrap();
+        sess.wait_for_command(channel.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let sequence = loop_.set_length(3).unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let sequence = channel.load_data(&[0.0, 0.0, 1.0, 0.0, 0.0]).unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let sequence = channel.set_take_latency_policy(2).unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        assert_eq!(channel.get_state().unwrap().capture_alignment_frames, 2);
+        assert!(channel
+            .set_take_latency_policy(shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1)
+            .is_err());
+        assert_eq!(channel.get_state().unwrap().capture_alignment_frames, 2);
+
+        let observation = shoop_latency::LatencyObservation::exact(
+            4,
+            48_000,
+            1,
+            shoop_latency::SourceIdentity::new("future input").unwrap(),
+            shoop_latency::LatencyIntervalIdentity::new("device -> app").unwrap(),
+        )
+        .unwrap();
+        let sequence = loop_
+            .set_latency_policy(BackendLatencyPolicyRequest {
+                operation: shoop_latency::LatencyOperationKind::RecordDirect,
+                recording_reference: shoop_latency::RecordingReference::ExternalWorld,
+                components: vec![shoop_latency::LatencyComponentInput {
+                    kind: shoop_latency::LatencyComponentKind::ExternalCapture,
+                    observation,
+                    policy: shoop_latency::LatencyComponentPolicy::default(),
+                }],
+                revision: 20,
+            })
+            .unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        assert_eq!(channel.get_state().unwrap().capture_alignment_frames, 2);
+
+        let sequence = channel.consolidate_latency().unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        assert_eq!(channel.get_data(), vec![1.0, 0.0, 0.0]);
+        let state = channel.get_state().unwrap();
+        assert_eq!(state.start_offset, 0);
+        assert_eq!(state.capture_alignment_frames, 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn current_fx_chain_handle_controls_visibility_activity_and_ports() {
         let sess = BackendSession::new().expect("session");
         let chain = sess
@@ -8231,25 +8625,15 @@ mod tests {
             .expect("fx chain");
 
         assert!(chain.available());
-        assert_eq!(
-            chain.get_state().expect("state"),
-            FXChainState {
-                ready: 1,
-                active: 0,
-                visible: 0,
-            }
-        );
+        let state = chain.get_state().expect("state");
+        assert_eq!((state.ready, state.active, state.visible), (1, 0, 0));
+        assert_eq!(state.latency.range.unwrap().min(), 0);
 
         chain.set_visible(true);
         chain.set_active(true);
-        assert_eq!(
-            chain.get_state().expect("state"),
-            FXChainState {
-                ready: 1,
-                active: 1,
-                visible: 1,
-            }
-        );
+        let state = chain.get_state().expect("state");
+        assert_eq!((state.ready, state.active, state.visible), (1, 1, 1));
+        assert_eq!(state.latency.range.unwrap().max(), 0);
         assert!(chain.get_state_str().expect("state string").is_empty());
         chain.restore_state("");
 
@@ -8281,14 +8665,9 @@ mod tests {
             );
             return;
         }
-        assert_eq!(
-            chain.get_state().expect("state"),
-            FXChainState {
-                ready: 1,
-                active: 0,
-                visible: 0,
-            }
-        );
+        let state = chain.get_state().expect("state");
+        assert_eq!((state.ready, state.active, state.visible), (1, 0, 0));
+        assert!(state.latency.revision > 0);
         chain.set_active(true);
         assert_eq!(chain.get_state().expect("state").active, 1);
         let state = chain.get_state_str().expect("state string");
@@ -8379,6 +8758,8 @@ mod tests {
         assert_eq!(state.sample_rate, 48_000);
         assert_eq!(state.buffer_size, 128);
         assert_eq!(state.maybe_instance_name, "api-test");
+        assert_eq!(state.capture_latency.range.unwrap().min(), 0);
+        assert_eq!(state.playback_latency.range.unwrap().max(), 0);
     }
 
     /// Controlled mode advances the session by exactly what was asked for, in

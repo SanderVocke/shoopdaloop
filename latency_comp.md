@@ -689,19 +689,19 @@ Verification:
 
 Dependencies: Stages 1–5 engine semantics.
 
-- [ ] Extend backend snapshots with per-port, per-processor-path, and backend-buffering observations.
-- [ ] Add backend commands for track/operation latency policy, cue selection, take policy update, and optional consolidation/bake.
-- [ ] Extend backend session capture/restore types with take snapshots and alignment regions.
-- [ ] Resolve policy before arming and transfer a bounded prepared recipe to the callback.
-- [ ] Update native, dummy/test, and worklet client backend implementations without defaulting unsupported observations to zero.
-- [ ] Add application model state and intents for editing policies and inspecting take provenance.
-- [ ] Ensure optimistic UI state reconciles with authoritative callback-latched state and reports mutation failures.
+- [x] Extend backend snapshots with per-port, per-processor-path, and backend-buffering observations.
+- [x] Add backend commands for track/operation latency policy, cue selection, take policy update, and optional consolidation/bake.
+- [x] Extend backend session capture/restore types with take snapshots and alignment regions.
+- [x] Resolve policy before arming and transfer a bounded prepared recipe to the callback.
+- [x] Update native, dummy/test, and worklet client backend implementations without defaulting unsupported observations to zero.
+- [x] Add application model state and intents for editing policies and inspecting take provenance.
+- [x] Ensure optimistic UI state reconciles with authoritative callback-latched state and reports mutation failures.
 
 Verification:
 
-- [ ] Backend contract tests cover unsupported, pending, accepted, latched, changed, and failed policy updates.
-- [ ] Application tests prove settings affect future operations but not existing take observations.
-- [ ] Driver/processor changes during an operation produce warnings without silently retiming it.
+- [x] Backend contract tests cover unsupported, pending, accepted, latched, changed, and failed policy updates.
+- [x] Application tests prove settings affect future operations but not existing take observations.
+- [x] Driver/processor changes during an operation produce warnings without silently retiming it.
 
 ### Stage 7 — JACK observation and latency propagation
 

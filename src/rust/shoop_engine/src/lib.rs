@@ -130,8 +130,8 @@ pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;
 pub use latency_runtime::{
     AtomicLatencyObservation, AtomicLatencyRecipePublication, LatchedLatencyRecipe,
-    PublishedLatencyRecipe, RuntimeLatencyComponent, RuntimeLatencyObservation,
-    RuntimeLatencyRecipe,
+    PublishedLatencyRecipe, RetainedLatencySelection, RuntimeLatencyComponent,
+    RuntimeLatencyObservation, RuntimeLatencyRecipe,
 };
 pub use loop_mode::LoopMode;
 pub use midi_buffering_input_port::MidiBufferingInputPort;

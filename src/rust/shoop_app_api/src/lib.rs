@@ -248,6 +248,15 @@ pub enum TrackProcessorEditorState {
     OxiSynth(OxiSynthState),
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LatencyObservationState {
+    pub minimum_frames: Option<u32>,
+    pub maximum_frames: Option<u32>,
+    pub certainty: LatencyCertaintyState,
+    pub sample_rate: u32,
+    pub revision: u64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrackFxState {
     pub processor_type: TrackProcessorTypeId,
@@ -258,12 +267,72 @@ pub struct TrackFxState {
     pub crash_summary: Option<String>,
     pub logs: Arc<[FxGenerationLogState]>,
     pub editor: Option<TrackProcessorEditorState>,
+    pub latency: LatencyObservationState,
 }
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
 pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyComponentKind {
+    #[default]
+    ExternalCapture,
+    Processor,
+    CuePlayback,
+    BackendBuffering,
+    Manual,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyValueMode {
+    #[default]
+    Automatic,
+    Manual(u32),
+    AutomaticPlusTrim(i32),
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LatencyComponentPolicyState {
+    pub kind: LatencyComponentKind,
+    pub enabled: bool,
+    pub value_mode: LatencyValueMode,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TrackLatencyPolicyState {
+    pub cue_followed: bool,
+    pub components: Arc<[LatencyComponentPolicyState]>,
+    pub revision: u64,
+    pub pending: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyCertaintyState {
+    Exact,
+    Range,
+    Estimated,
+    ManualOnly,
+    #[default]
+    Unknown,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TakeLatencyProvenanceState {
+    pub capture_alignment_frames: i32,
+    pub render_advance_frames: u32,
+    pub certainty: LatencyCertaintyState,
+    pub observation_revision: u64,
+    pub variable_history: bool,
+    pub history_revisions: u32,
+    pub changed_during_operation: bool,
+    pub incomplete: bool,
+    pub deferred_mode: Option<LoopMode>,
+    pub finalizing: bool,
+    pub error: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DefaultRecordingAction {
@@ -515,6 +584,8 @@ pub struct StatusState {
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
+    pub backend_capture_latency: LatencyObservationState,
+    pub backend_playback_latency: LatencyObservationState,
 }
 
 impl StatusState {
@@ -623,6 +694,7 @@ pub struct LoopState {
     pub peak_right_db: f32,
     pub midi_activity: bool,
     pub has_recorded_fx_state: bool,
+    pub latency: TakeLatencyProvenanceState,
 }
 
 impl Default for LoopState {
@@ -656,6 +728,7 @@ impl Default for LoopState {
             peak_right_db: -200.0,
             midi_activity: false,
             has_recorded_fx_state: false,
+            latency: TakeLatencyProvenanceState::default(),
         }
     }
 }
@@ -841,6 +914,7 @@ pub struct TrackState {
     pub fx: Option<TrackFxState>,
     pub loops: Vec<LoopState>,
     pub controls: TrackControlState,
+    pub latency_policy: TrackLatencyPolicyState,
     pub port_ids: Arc<[PortId]>,
 }
 
@@ -1549,6 +1623,17 @@ pub enum PianoAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
+    SetTrackLatencyPolicy {
+        track_id: TrackId,
+        policy: TrackLatencyPolicyState,
+    },
+    SetTakeLatencyPolicy {
+        loop_id: LoopId,
+        capture_alignment_frames: i32,
+    },
+    ConsolidateTakeLatency {
+        loop_id: LoopId,
+    },
     SetLoopTimeline {
         loop_id: LoopId,
         start_offset: Option<i64>,
@@ -1846,6 +1931,9 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetTrackLatencyPolicy { .. } => "track.latency_policy",
+            Self::SetTakeLatencyPolicy { .. } => "loop.take_latency_policy",
+            Self::ConsolidateTakeLatency { .. } => "loop.take_latency_consolidate",
             Self::SetLoopTimeline { .. } => "loop.timeline",
             Self::Loop { action, .. } => action.kind(),
             Self::Track { action, .. } => action.kind(),
@@ -2468,6 +2556,35 @@ mod tests {
         assert_eq!(AudioDriverKind::Cpal.id(), "cpal");
         assert_eq!(AudioDriverKind::Jack.label(), "JACK");
         assert_ne!(dummy, jack);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_model_exposes_edit_intents_and_take_provenance() {
+        let policy = TrackLatencyPolicyState {
+            cue_followed: true,
+            components: Arc::from([LatencyComponentPolicyState {
+                kind: LatencyComponentKind::Processor,
+                enabled: true,
+                value_mode: LatencyValueMode::AutomaticPlusTrim(-2),
+            }]),
+            revision: 7,
+            pending: true,
+            error: None,
+        };
+        let intent = AppIntent::SetTrackLatencyPolicy {
+            track_id: TrackId::from_raw(3),
+            policy: policy.clone(),
+        };
+        assert_eq!(intent.kind(), "track.latency_policy");
+        let mut loop_state = LoopState::default();
+        loop_state.latency.capture_alignment_frames = 9;
+        loop_state.latency.variable_history = true;
+        loop_state.latency.history_revisions = 2;
+        loop_state.latency.deferred_mode = Some(LoopMode::Playing);
+        assert_eq!(loop_state.latency.capture_alignment_frames, 9);
+        assert!(loop_state.latency.variable_history);
+        assert_eq!(loop_state.latency.deferred_mode, Some(LoopMode::Playing));
+        assert!(policy.pending);
     }
 
     #[shoop_wasm_test_support::shoop_test]

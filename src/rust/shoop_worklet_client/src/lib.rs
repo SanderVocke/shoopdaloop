@@ -36,14 +36,15 @@ use shoop_backend::{
     BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
     BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
     BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
-    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
-    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
-    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLatencyCapability,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
+    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMutationDetail,
+    BackendMutationFailure, BackendMutationKind, BackendOperationKind, BackendOperationProgress,
+    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
+    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionReplacement,
+    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -439,6 +440,7 @@ impl RemoteWorkletBackend {
                 events: Vec::with_capacity(chunk.total_events),
                 start_offset: chunk.start_offset,
                 preplay: chunk.preplay,
+                latency: Default::default(),
             });
         }
         let Some(channel) = assembly.channels.get_mut(chunk.channel) else {
@@ -827,6 +829,7 @@ impl RemoteWorkletBackend {
                                 generation: 0,
                                 crash_summary: None,
                                 logs: Arc::from([]),
+                                latency: Default::default(),
                                 editor: oxisynth,
                             }
                         }),
@@ -859,6 +862,7 @@ impl RemoteWorkletBackend {
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
                         mode: from_wire_loop_mode(loop_.mode),
+                        latency: Default::default(),
                         length: loop_.length,
                         position: loop_.position,
                         next_mode: loop_.next_mode.map(from_wire_loop_mode),
@@ -1237,6 +1241,10 @@ fn transfer_identity(command: &Command) -> Option<(BackendOperationKind, u64)> {
 }
 
 impl Backend for RemoteWorkletBackend {
+    fn latency_capability(&self) -> BackendLatencyCapability {
+        BackendLatencyCapability::Unsupported
+    }
+
     fn supports_composite_loops(&self) -> bool {
         true
     }
@@ -1694,6 +1702,7 @@ impl Backend for RemoteWorkletBackend {
                         samples,
                         start_offset,
                         preplay,
+                        latency: Default::default(),
                     }
                 })
                 .collect(),
@@ -2436,6 +2445,18 @@ mod tests {
         );
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_backend_reports_latency_as_unsupported_instead_of_zero() {
+        let (mut backend, _control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        assert_eq!(
+            backend.latency_capability(),
+            BackendLatencyCapability::Unsupported
+        );
+        assert!(backend
+            .set_take_latency_policy(BackendLoopId::from_raw(1), 0)
+            .is_err());
+    }
+
     #[derive(Default)]
     struct MemoryEndpoint {
         sent: Rc<RefCell<Vec<String>>>,
@@ -2597,6 +2618,7 @@ mod tests {
                     events: Vec::new(),
                     start_offset: -4,
                     preplay: 6,
+                    latency: Default::default(),
                 }],
                 next_channel: 1,
                 next_offset: 0,

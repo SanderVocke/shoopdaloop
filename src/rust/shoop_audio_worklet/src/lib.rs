@@ -2436,6 +2436,7 @@ mod tests {
             }],
             start_offset: 0,
             preplay: 0,
+            latency: Default::default(),
         };
         let replacement = serde_json::to_vec(&session).unwrap();
         assert!(matches!(

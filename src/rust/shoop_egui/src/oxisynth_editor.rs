@@ -444,6 +444,7 @@ mod tests {
                 generation: 0,
                 crash_summary: None,
                 logs: Arc::from([]),
+                latency: Default::default(),
                 editor: Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
                     selected_preset_id: "0:0".to_owned(),
                     reverb_send: 0.25,

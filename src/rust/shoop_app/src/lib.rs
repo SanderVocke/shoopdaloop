@@ -642,6 +642,7 @@ struct TrackModel {
     loops: Vec<LoopId>,
     port_ids: Arc<[PortId]>,
     controls: TrackControlState,
+    latency_policy: shoop_app_api::TrackLatencyPolicyState,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1155,6 +1156,7 @@ impl ApplicationModel {
                 loops: vec![loop_id],
                 port_ids,
                 controls: Default::default(),
+                latency_policy: Default::default(),
             }],
             loops: BTreeMap::from([(loop_id, loop_model)]),
             connection_ports,
@@ -1261,6 +1263,81 @@ impl ApplicationModel {
         );
         let _entered = span.enter();
         let result = match intent {
+            AppIntent::SetTrackLatencyPolicy {
+                track_id,
+                mut policy,
+            } => {
+                let track = self
+                    .tracks
+                    .iter_mut()
+                    .find(|track| track.id == track_id)
+                    .ok_or_else(|| format!("stale track {track_id}"));
+                match track {
+                    Err(error) => Err(error),
+                    Ok(track) => {
+                        policy.pending = true;
+                        policy.error = None;
+                        track.latency_policy = policy.clone();
+                        match backend.set_track_latency_policy(track.backend_id, &policy) {
+                            Ok(()) => Ok(()),
+                            Err(error) => {
+                                track.latency_policy.pending = false;
+                                track.latency_policy.error = Some(error.to_string());
+                                Err(format!("could not set track latency policy: {error}"))
+                            }
+                        }
+                    }
+                }
+            }
+            AppIntent::SetTakeLatencyPolicy {
+                loop_id,
+                capture_alignment_frames,
+            } => {
+                let model = self
+                    .loops
+                    .get_mut(&loop_id)
+                    .ok_or_else(|| format!("stale loop {loop_id}"));
+                match model {
+                    Err(error) => Err(error),
+                    Ok(model) => {
+                        let previous = model.state.latency.capture_alignment_frames;
+                        model.state.latency.capture_alignment_frames = capture_alignment_frames;
+                        model.state.latency.error = None;
+                        match backend
+                            .set_take_latency_policy(model.backend_id, capture_alignment_frames)
+                        {
+                            Ok(()) => Ok(()),
+                            Err(error) => {
+                                model.state.latency.capture_alignment_frames = previous;
+                                model.state.latency.error = Some(error.to_string());
+                                Err(format!("could not set take latency policy: {error}"))
+                            }
+                        }
+                    }
+                }
+            }
+            AppIntent::ConsolidateTakeLatency { loop_id } => {
+                let model = self
+                    .loops
+                    .get_mut(&loop_id)
+                    .ok_or_else(|| format!("stale loop {loop_id}"));
+                match model {
+                    Err(error) => Err(error),
+                    Ok(model) => match backend.consolidate_take_latency(model.backend_id) {
+                        Ok(()) => {
+                            model.state.latency.capture_alignment_frames = 0;
+                            model.state.latency.variable_history = false;
+                            model.state.latency.history_revisions = 0;
+                            model.state.latency.error = None;
+                            Ok(())
+                        }
+                        Err(error) => {
+                            model.state.latency.error = Some(error.to_string());
+                            Err(format!("could not consolidate take latency: {error}"))
+                        }
+                    },
+                }
+            }
             AppIntent::SetLoopTimeline {
                 loop_id,
                 start_offset,
@@ -4104,6 +4181,7 @@ impl ApplicationModel {
             loops: loop_ids,
             port_ids,
             controls: Default::default(),
+            latency_policy: Default::default(),
         });
         Ok(())
     }
@@ -6478,6 +6556,8 @@ impl ApplicationModel {
         self.status.command_overflows = snapshot.status.command_overflows;
         self.status.storage_low_channels = snapshot.status.storage_low_channels;
         self.status.storage_exhaustions = snapshot.status.storage_exhaustions;
+        self.status.backend_capture_latency = snapshot.status.backend_capture_latency;
+        self.status.backend_playback_latency = snapshot.status.backend_playback_latency;
         self.desired_track_controls
             .retain(|(backend_id, _), desired| {
                 !snapshot
@@ -6527,6 +6607,9 @@ impl ApplicationModel {
                     } => (*dry_audio_channels, *wet_audio_channels, *dry_midi, false),
                 };
             track.fx.clone_from(&backend_state.fx);
+            track
+                .latency_policy
+                .clone_from(&backend_state.latency_policy);
             if let Some(fx) = track.fx.as_mut() {
                 for ((backend_id, _), desired) in &self.desired_fx_controls {
                     if *backend_id == track.backend_id {
@@ -6633,6 +6716,11 @@ impl ApplicationModel {
             (model.state.peak_left_db, model.state.peak_right_db) =
                 display_peaks(&backend_state.audio_peaks, model.state.stereo);
             model.state.midi_activity = backend_state.midi_activity;
+            let local_latency_error = model.state.latency.error.take();
+            model.state.latency.clone_from(&backend_state.latency);
+            if local_latency_error.is_some() {
+                model.state.latency.error = local_latency_error;
+            }
         }
         for track in &mut self.tracks {
             track.controls.output_midi_activity = combined_output_midi_activity(
@@ -7652,6 +7740,7 @@ impl ApplicationModel {
                     input_monitoring: track_document.controls.input_monitoring,
                     ..Default::default()
                 },
+                latency_policy: Default::default(),
             });
         }
         self.next_track_id = tracks
@@ -7790,6 +7879,7 @@ impl ApplicationModel {
                         })
                         .collect(),
                     controls: track.controls.clone(),
+                    latency_policy: track.latency_policy.clone(),
                     port_ids: Arc::clone(&track.port_ids),
                 })
                 .collect(),
@@ -8959,6 +9049,7 @@ fn session_bundle_to_backend(
                                 .map_err(|_| "audio offset exceeds engine range".to_owned())?,
                             preplay: u32::try_from(channel.preplay_frames)
                                 .map_err(|_| "audio preplay exceeds engine range".to_owned())?,
+                            latency: Default::default(),
                         });
                     }
                     DataTypeDocument::Midi => {
@@ -8996,6 +9087,7 @@ fn session_bundle_to_backend(
                                 .map_err(|_| "MIDI offset exceeds engine range".to_owned())?,
                             preplay: u32::try_from(channel.preplay_frames)
                                 .map_err(|_| "MIDI preplay exceeds engine range".to_owned())?,
+                            latency: Default::default(),
                         });
                     }
                 }
@@ -9010,6 +9102,7 @@ fn session_bundle_to_backend(
                         gain: 1.0,
                         start_offset: 0,
                         preplay: 0,
+                        latency: Default::default(),
                     })
                     .collect();
                 midi_channels = expected_midi_modes
@@ -9022,6 +9115,7 @@ fn session_bundle_to_backend(
                         events: Vec::new(),
                         start_offset: 0,
                         preplay: 0,
+                        latency: Default::default(),
                     })
                     .collect();
             }
@@ -9368,6 +9462,7 @@ mod tests {
             generation: 0,
             crash_summary: None,
             logs: Arc::from([]),
+            latency: Default::default(),
             editor: Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(
                 shoop_app_api::OxiSynthState {
                     selected_preset_id: "0:0".to_owned(),
@@ -14000,6 +14095,89 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         if track_id == snapshot.tracks[0].id
                 )
         }));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_intents_reconcile_optimistic_state_and_report_rejections() {
+        let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let handle = runtime.handle();
+        handle
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Latency".to_owned(),
+                audio_channels: 1,
+                midi: true,
+            }))
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| snapshot.tracks.len() == 2);
+        let track_id = snapshot.tracks[1].id;
+        let loop_id = snapshot.tracks[1].loops[0].id;
+        let policy = shoop_app_api::TrackLatencyPolicyState {
+            cue_followed: true,
+            components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
+                kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
+                enabled: true,
+                value_mode: shoop_app_api::LatencyValueMode::Manual(5),
+            }]),
+            revision: 4,
+            pending: false,
+            error: None,
+        };
+        handle
+            .dispatch(AppIntent::SetTrackLatencyPolicy {
+                track_id,
+                policy: policy.clone(),
+            })
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| {
+            snapshot.tracks[1].latency_policy.revision == 4
+                && !snapshot.tracks[1].latency_policy.pending
+        });
+        assert_eq!(
+            snapshot.tracks[1].latency_policy.components,
+            policy.components
+        );
+
+        handle
+            .dispatch(AppIntent::SetTakeLatencyPolicy {
+                loop_id,
+                capture_alignment_frames: 9,
+            })
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| {
+            snapshot.tracks[1].loops[0].latency.capture_alignment_frames == 9
+        });
+        assert_eq!(
+            snapshot.tracks[1].loops[0].latency.capture_alignment_frames,
+            9
+        );
+
+        handle
+            .dispatch(AppIntent::SetTakeLatencyPolicy {
+                loop_id,
+                capture_alignment_frames: shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1,
+            })
+            .unwrap();
+        let rejected = wait_for(&handle, |snapshot| {
+            snapshot.tracks[1].loops[0].latency.error.is_some()
+        });
+        assert_eq!(
+            rejected.tracks[1].loops[0].latency.capture_alignment_frames,
+            9
+        );
+
+        handle
+            .dispatch(AppIntent::ConsolidateTakeLatency { loop_id })
+            .unwrap();
+        let consolidated = wait_for(&handle, |snapshot| {
+            snapshot.tracks[1].loops[0].latency.capture_alignment_frames == 0
+        });
+        assert_eq!(
+            consolidated.tracks[1].loops[0]
+                .latency
+                .capture_alignment_frames,
+            0
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]

@@ -278,6 +278,8 @@ impl AudioChannel {
             self.gain,
             self.data_length,
             self.start_offset,
+            self.capture_alignment_frames,
+            self.render_advance_frames,
             self.last_played_back_sample,
             self.pre_play_samples,
             self.data_seq_nr as u64,
@@ -380,6 +382,7 @@ impl AudioChannel {
         self.state
             .publish_latency_retention_incomplete(self.latency_retention_incomplete);
         self.state.publish_latched_latency_recipe(Some(recipe));
+        self.publish_state();
     }
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
@@ -408,6 +411,7 @@ impl AudioChannel {
             ));
         }
         self.capture_alignment_frames = frames;
+        self.publish_state();
         Ok(())
     }
     pub fn render_advance_frames(&self) -> u32 {
@@ -516,6 +520,7 @@ impl AudioChannel {
             return Err(LatencyDomainError::ValueExceedsMaximum(frames));
         }
         self.render_advance_frames = frames;
+        self.publish_state();
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
@@ -591,6 +596,8 @@ impl AudioChannel {
         self.buffers.set_contents(samples);
         self.data_length = samples.len();
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
@@ -640,6 +647,8 @@ impl AudioChannel {
         std::mem::swap(&mut self.buffers, &mut prepared.buffers);
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         self.publish_all_data();
         self.data_changed();
@@ -653,6 +662,8 @@ impl AudioChannel {
         std::mem::swap(&mut self.buffers, &mut prepared.buffers);
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.install_prepared(snapshot);
@@ -668,6 +679,8 @@ impl AudioChannel {
         self.buffers.ensure_available(length);
         self.data_length = length;
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
@@ -686,6 +699,8 @@ impl AudioChannel {
         self.buffers.fill(length, 0.0);
         self.data_length = length;
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();

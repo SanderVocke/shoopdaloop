@@ -1088,6 +1088,7 @@ mod tests {
                     dropped_stdout_bytes: 1,
                     dropped_stderr_bytes: 2,
                 }]),
+                latency: Default::default(),
                 editor: None,
             }),
             ..Default::default()

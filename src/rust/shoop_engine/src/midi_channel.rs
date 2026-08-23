@@ -255,6 +255,8 @@ impl MidiChannel {
             self.output_state.n_notes_active(),
             self.data_length,
             self.start_offset,
+            self.capture_alignment_frames,
+            self.render_advance_frames,
             self.last_played_back_sample,
             self.pre_play_samples,
             self.data_seq_nr as u64,
@@ -339,6 +341,7 @@ impl MidiChannel {
         self.state
             .publish_latency_retention_incomplete(self.latency_retention_incomplete);
         self.state.publish_latched_latency_recipe(Some(recipe));
+        self.publish_state();
     }
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
@@ -363,6 +366,7 @@ impl MidiChannel {
             ));
         }
         self.capture_alignment_frames = frames;
+        self.publish_state();
         Ok(())
     }
     pub fn render_advance_frames(&self) -> u32 {
@@ -390,6 +394,30 @@ impl MidiChannel {
         debug_assert!(self.can_prepare_latency_replacement(capture_alignment_frames));
         self.prepared_replacement_alignment = Some(capture_alignment_frames);
     }
+    pub fn restore_take_latency_mapping(
+        &mut self,
+        media_layout_offset: i32,
+        capture_alignment_frames: i32,
+        selection: RetainedLatencySelection,
+    ) -> Result<(), LatencyDomainError> {
+        if media_layout_offset.unsigned_abs() > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(
+                media_layout_offset.unsigned_abs(),
+            ));
+        }
+        self.set_capture_alignment_frames(capture_alignment_frames)?;
+        self.start_offset = media_layout_offset;
+        self.grab_latency_selection = selection;
+        let (variable, revisions) = match selection {
+            RetainedLatencySelection::Stable(_) => (false, 1),
+            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
+            RetainedLatencySelection::Unavailable => (false, 0),
+        };
+        self.state.publish_latency_history(variable, revisions);
+        self.publish_state();
+        Ok(())
+    }
+
     pub(crate) fn can_commit_grab(&self, events: u32) -> bool {
         events as usize <= self.storage.capacity_elems()
     }
@@ -466,6 +494,7 @@ impl MidiChannel {
             return Err(LatencyDomainError::ValueExceedsMaximum(frames));
         }
         self.render_advance_frames = frames;
+        self.publish_state();
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
@@ -542,6 +571,10 @@ impl MidiChannel {
         self.pending_playback_valid = false;
         self.loaded_contents = false;
         self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.grab_latency_selection = RetainedLatencySelection::Unavailable;
+        self.state.publish_latency_history(false, 0);
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
@@ -576,6 +609,11 @@ impl MidiChannel {
             self.storage.append(m.time, m.data(), false, None);
         }
         self.data_length = length;
+        self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.grab_latency_selection = RetainedLatencySelection::Unavailable;
+        self.state.publish_latency_history(false, 0);
         self.playback_cursor = self.storage.create_cursor();
         self.recording_start_state.clear();
         self.recording_start_valid = start_state.is_some();
@@ -598,6 +636,11 @@ impl MidiChannel {
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         std::mem::swap(&mut self.recording_start_state, &mut prepared.start_state);
         self.recording_start_valid = prepared.start_state_valid;
+        self.start_offset = 0;
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.grab_latency_selection = RetainedLatencySelection::Unavailable;
+        self.state.publish_latency_history(false, 0);
         self.playback_cursor = self.storage.create_cursor();
         self.loaded_contents = true;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
