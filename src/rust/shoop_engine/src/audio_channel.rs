@@ -1296,6 +1296,21 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn compensated_record_then_play_maps_postroll_across_callbacks_and_wrap() {
+        let mut ch = AudioChannel::with_bounded_capacity(4, 6, C::Direct);
+        ch.prepare_latency_retention(4, 0, 2).unwrap();
+        ch.set_capture_alignment_frames(2).unwrap();
+        cycle(&mut ch, L::Recording, 4, 0, 0, &[0.0; 4]);
+        cycle(&mut ch, L::Stopped, 2, 0, 4, &[0.0, 1.0]);
+        check!(ch.length() == 6);
+
+        check!(cycle(&mut ch, L::Playing, 2, 0, 4, &[]) == vec![0.0, 0.0]);
+        check!(cycle(&mut ch, L::Playing, 2, 2, 4, &[]) == vec![0.0, 1.0]);
+        check!(cycle(&mut ch, L::Playing, 2, 0, 4, &[]) == vec![0.0, 0.0]);
+        check!(cycle(&mut ch, L::Playing, 2, 2, 4, &[]) == vec![0.0, 1.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn armed_latency_record_and_postroll_allocate_nothing() {
         let mut ch = AudioChannel::with_bounded_capacity(4, 9, C::Direct);
         ch.prepare_latency_retention(4, 2, 3).unwrap();

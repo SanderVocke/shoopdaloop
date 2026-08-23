@@ -1279,6 +1279,43 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn compensated_midi_record_then_play_maps_postroll_across_callbacks_and_wrap() {
+        let mut ch = channel();
+        ch.prepare_latency_retention(0, 2).unwrap();
+        ch.set_capture_alignment_frames(2).unwrap();
+        cycle(&mut ch, L::Recording, 4, 0, 0, &[]);
+        cycle(
+            &mut ch,
+            L::Stopped,
+            2,
+            0,
+            4,
+            &[ev(1, &midi::note_on(0, 67, 100))],
+        );
+        check!(ch.length() == 6);
+
+        let first_half = cycle(&mut ch, L::Playing, 2, 0, 4, &[]);
+        check!(!first_half.iter().any(|event| {
+            event.data().len() >= 3
+                && event.data()[0] & 0xf0 == 0x90
+                && event.data()[1] == 67
+                && event.data()[2] > 0
+        }));
+        let out = cycle(&mut ch, L::Playing, 2, 2, 4, &[]);
+        check!(out
+            .iter()
+            .any(|event| event.time == 1 && event.data()[1] == 67));
+        let wrap_cleanup = cycle(&mut ch, L::Playing, 2, 0, 4, &[]);
+        check!(wrap_cleanup
+            .iter()
+            .all(|event| !(event.data()[0] & 0xf0 == 0x90 && event.data()[2] > 0)));
+        let out = cycle(&mut ch, L::Playing, 2, 2, 4, &[]);
+        check!(out
+            .iter()
+            .any(|event| event.time == 1 && event.data()[1] == 67));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn recording_across_two_calls_offsets_times() {
         let mut ch = channel();
         ch.set_recording_buffer(8);
