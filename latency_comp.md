@@ -565,8 +565,8 @@ Stages are ordered. A later stage may begin only when its stated dependencies ar
 
 Dependencies: none.
 
-- [ ] Add focused tests that pin current uncompensated direct/dry/wet monitoring, ordinary play, record, play-after-record, planned preplay, `PlayingDryThroughWet`, `RecordingDryIntoWet`, prerecord, grab, and replacement timing across callback boundaries.
-- [ ] Add the common deterministic action-matrix harness described above, including uniquely identified audio impulses/MIDI events, raw/logical/dispatch observation, and configurable `I`, `P`, `O`, `H`, `T`, `Q`, `B`, and `L`.
+- [x] Add focused tests that pin current uncompensated direct/dry/wet monitoring, ordinary play, record, play-after-record, planned preplay, `PlayingDryThroughWet`, `RecordingDryIntoWet`, prerecord, grab, and replacement timing across callback boundaries.
+- [x] Add the common deterministic action-matrix harness described above, including uniquely identified audio impulses/MIDI events, raw/logical/dispatch observation, and configurable `I`, `P`, `O`, `H`, `T`, `Q`, `B`, and `L`.
 - [x] Add an engine-level deterministic delayed audio/MIDI source and processor fixture without exposing production settings yet.
 - [x] Measure current external JACK send/return callback behavior with a small test client at at least two buffer sizes; record whether an unavoidable callback-period delay exists.
 - [x] Add OxiSynth off-boundary characterization tests before changing its wrapper.
@@ -576,9 +576,9 @@ Dependencies: none.
 
 Verification:
 
-- [ ] Targeted engine/backend tests demonstrate current behavior and fail when the deterministic delay is incorrectly assumed zero.
-- [ ] Characterization results distinguish measured facts from intended behavior.
-- [ ] No production behavior changes in this stage.
+- [x] Targeted engine/backend tests demonstrate current behavior and fail when the deterministic delay is incorrectly assumed zero.
+- [x] Characterization results distinguish measured facts from intended behavior.
+- [x] No production behavior changes in this stage.
 
 ### Stage 1 — Shared latency domain and pure policy resolution
 

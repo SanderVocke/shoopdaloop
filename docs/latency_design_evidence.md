@@ -63,6 +63,25 @@ Chosen adapter boundary:
 
 Relevant upstream surfaces in the pinned source are `source/includes/CarlaNative.h`, `source/plugin/carla-native-plugin.cpp`, `source/backend/CarlaPlugin.hpp`, and `source/backend/engine/CarlaEngineGraph.cpp`.
 
+## Uncompensated action baseline
+
+The current behavior is pinned before compensation changes by the following focused tests:
+
+| Behavior | Evidence |
+| --- | --- |
+| Immediate audio monitoring | `current_monitoring_is_sample_identical_across_callback_sizes` passes twelve unique samples through callbacks of 3, 5, and 4 frames without recording or alteration. |
+| Immediate MIDI monitoring and cleanup | `muting_midi_passthrough_cleans_forwarded_notes_exactly_once` and the JACK MIDI fanout test pin timestamped passthrough and state cleanup. |
+| Direct/dry/wet recording and ordinary playback | `audio_record`, `audio_playback`, `midi_record`, `midi_playback`, and session end-to-end tests pin current raw frame placement and role routing. Session wrap tests cover callbacks that split at loop boundaries. |
+| Play after record | `recording_only_uses_first_occurrence_and_honors_both_pass_end_options` pins the record-pass boundary action and iteration-zero playback transition. |
+| Planned preplay | `audio_preplay`, `midi_preplay`, and the preplay MIDI state tests pin the stopped-to-playing boundary and media lead-in across sync/callback splits. |
+| `PlayingDryThroughWet` | Existing mode-matrix tests pin direct/dry/wet routing. `current_dry_through_wet_dispatches_without_render_ahead` proves the dry event is currently dispatched at logical frame `E` and a deterministic `P`-frame processor is audibly late by exactly `P`. |
+| `RecordingDryIntoWet` | Existing mode-matrix tests pin role routing. `current_dry_into_wet_records_the_uncompensated_delayed_return` proves current wet replacement lands at `E + P` across callback boundaries. |
+| Prerecord | `audio_prerecord`, `midi_prerecord`, and MIDI state edge tests pin adoption, `start_offset`, and event ordering around the transition. |
+| Grab | `current_grab_adopts_raw_history_across_callback_boundaries` pumps 3-, 5-, and 4-frame cycles and proves the retrospective raw window is adopted unchanged. The transactional no-allocation test pins all-or-nothing multi-loop adoption. |
+| Replacement | `audio_replace`, `audio_replace_onto_smaller`, `replacing_midi_through_a_session_overwrites_loaded_events`, and MIDI replacement allocation tests pin current in-place and wrap behavior. |
+
+These tests describe current uncompensated behavior. In particular, the dry processor tests intentionally assert lateness; later stages must replace those expectations with compensated target-frame oracles rather than treating the baseline as desired behavior.
+
 ## Existing timing and state transport inventory
 
 Every listed shape either carries channel timing, processor state, or backend/runtime status and must be reviewed when latency fields are introduced.
@@ -103,4 +122,3 @@ The existing session archive permits large media (`16 GiB` uncompressed by defau
 The following characterization is intentionally still open:
 
 - a deterministic common audio/MIDI action harness with independent `I`, `P`, `O`, `H`, `T`, `Q`, `B`, and `L`;
-- focused baseline tests for all action/mode transitions and callback boundaries;

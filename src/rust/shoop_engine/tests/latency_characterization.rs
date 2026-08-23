@@ -1,12 +1,15 @@
 use shoop_engine::audio_midi_loop::AudioMidiLoop;
 use shoop_engine::channel_mode::ChannelMode;
+use shoop_engine::dummy_port::{DummyAudioPort, PortId};
 use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi_storage::MidiStorageElem;
+use shoop_engine::port::PortDirection;
+use shoop_engine::session::{Port, Session};
 
 mod latency_support;
 use latency_support::{
-    identified_audio_sample, pump_callbacks, DeterministicDelayedProcessor,
-    DeterministicDelayedSource, DeterministicTimingConfig, IdentifiedAudioEvent,
+    identified_audio_sample, pump_callbacks, DeterministicActionHarness,
+    DeterministicDelayedProcessor, DeterministicTimingConfig, IdentifiedAudioEvent,
     IdentifiedMidiEvent,
 };
 
@@ -85,7 +88,7 @@ fn deterministic_fixture_tracks_all_frame_domain_components() {
 
     let audio_id = 0x3f80_0001;
     let midi_data = [0x90, 73, 101];
-    let source = DeterministicDelayedSource::new(
+    let mut harness = DeterministicActionHarness::new(
         config,
         &[IdentifiedAudioEvent {
             logical_frame: event_frame,
@@ -96,22 +99,104 @@ fn deterministic_fixture_tracks_all_frame_domain_components() {
             data: midi_data.to_vec(),
         }],
     );
-    let mut processor =
-        DeterministicDelayedProcessor::new(config.processor_delay, config.backend_hop_delay);
-    pump_callbacks(
-        u64::from(config.loop_length) * 2,
-        config.callback_size,
-        |start, frames| {
-            let (audio, midi) = source.process(start, frames);
-            processor.process(start, &audio, &midi);
-        },
-    );
+    harness.pump(u64::from(config.loop_length) * 2);
 
-    let observations = processor.observations();
+    let observations = harness.observations();
+    assert_eq!(observations.audio_logical, vec![(audio_id, 6)]);
+    assert_eq!(observations.audio_raw, vec![(audio_id, 20)]);
     assert_eq!(observations.audio_dispatch, vec![(audio_id, 20)]);
     assert_eq!(observations.audio_output, vec![(audio_id, 27)]);
+    assert_eq!(observations.midi_logical, vec![(midi_data.to_vec(), 6)]);
+    assert_eq!(observations.midi_raw, vec![(midi_data.to_vec(), 20)]);
     assert_eq!(observations.midi_dispatch, vec![(midi_data.to_vec(), 20)]);
     assert_eq!(observations.midi_output, vec![(midi_data.to_vec(), 27)]);
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn current_monitoring_is_sample_identical_across_callback_sizes() {
+    let mut session = Session::default();
+    let input = session.add_port(Port::Dummy(DummyAudioPort::new(
+        PortId(1),
+        "monitor-input",
+        PortDirection::Input,
+        5,
+    )));
+    let output = session.add_port(Port::Dummy(DummyAudioPort::new(
+        PortId(2),
+        "monitor-output",
+        PortDirection::Output,
+        5,
+    )));
+    session.connect_ports_internal(input, output).unwrap();
+    session.apply_graph_changes().unwrap();
+
+    let source: Vec<f32> = (1..=12).map(|frame| frame as f32).collect();
+    let mut offset = 0;
+    for frames in [3, 5, 4] {
+        let block = &source[offset..offset + frames];
+        session
+            .port_mut(input)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(block);
+        session
+            .port_mut(output)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .request_data(frames);
+        session.process(frames);
+        assert_eq!(
+            session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap(),
+            block
+        );
+        offset += frames;
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn current_grab_adopts_raw_history_across_callback_boundaries() {
+    let mut session = Session::default();
+    let input = session.add_port(Port::Dummy(DummyAudioPort::new(
+        PortId(3),
+        "grab-input",
+        PortDirection::Input,
+        4,
+    )));
+    let loop_ = session.create_loop();
+    let channel = session
+        .add_audio_channel_with_bounded_capacity(loop_, 4, 32, ChannelMode::Direct)
+        .unwrap();
+    session.connect_channel_input(channel, input).unwrap();
+    session.apply_graph_changes().unwrap();
+
+    let source: Vec<f32> = (1..=12).map(|frame| frame as f32).collect();
+    let mut offset = 0;
+    for frames in [3, 5, 4] {
+        session
+            .port_mut(input)
+            .unwrap()
+            .as_dummy_mut()
+            .unwrap()
+            .queue_data(&source[offset..offset + frames]);
+        session.process(frames);
+        offset += frames;
+    }
+    session
+        .adopt_audio_ringbuffers_for_loop(loop_, None, None, None, LoopMode::Playing)
+        .unwrap();
+
+    let grabbed = session.loop_(loop_).unwrap();
+    assert_eq!(grabbed.mode(), LoopMode::Playing);
+    assert_eq!(grabbed.length(), source.len() as u32);
+    assert_eq!(grabbed.audio_channel(0).unwrap().data(), source);
 }
 
 #[shoop_wasm_test_support::shoop_test]

@@ -119,8 +119,12 @@ impl DeterministicDelayedSource {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TimingObservations {
+    pub audio_logical: Vec<(u32, u64)>,
+    pub audio_raw: Vec<(u32, u64)>,
     pub audio_dispatch: Vec<(u32, u64)>,
     pub audio_output: Vec<(u32, u64)>,
+    pub midi_logical: Vec<(Vec<u8>, u64)>,
+    pub midi_raw: Vec<(Vec<u8>, u64)>,
     pub midi_dispatch: Vec<(Vec<u8>, u64)>,
     pub midi_output: Vec<(Vec<u8>, u64)>,
 }
@@ -200,6 +204,72 @@ impl DeterministicDelayedProcessor {
 
     pub fn observations(&self) -> &TimingObservations {
         &self.observations
+    }
+}
+
+#[derive(Debug)]
+pub struct DeterministicActionHarness {
+    config: DeterministicTimingConfig,
+    source: DeterministicDelayedSource,
+    processor: DeterministicDelayedProcessor,
+    source_observations: TimingObservations,
+}
+
+impl DeterministicActionHarness {
+    pub fn new(
+        config: DeterministicTimingConfig,
+        audio: &[IdentifiedAudioEvent],
+        midi: &[IdentifiedMidiEvent],
+    ) -> Self {
+        let mut source_observations = TimingObservations::default();
+        for event in audio {
+            source_observations
+                .audio_logical
+                .push((event.id, event.logical_frame));
+            source_observations
+                .audio_raw
+                .push((event.id, config.direct_raw_frame(event.logical_frame)));
+        }
+        for event in midi {
+            source_observations
+                .midi_logical
+                .push((event.data.clone(), event.frame));
+            source_observations
+                .midi_raw
+                .push((event.data.clone(), config.direct_raw_frame(event.frame)));
+        }
+        Self {
+            config,
+            source: DeterministicDelayedSource::new(config, audio, midi),
+            processor: DeterministicDelayedProcessor::new(
+                config.processor_delay,
+                config.backend_hop_delay,
+            ),
+            source_observations,
+        }
+    }
+
+    pub fn pump(&mut self, total_frames: u64) {
+        pump_callbacks(total_frames, self.config.callback_size, |start, frames| {
+            let (audio, midi) = self.source.process(start, frames);
+            self.processor.process(start, &audio, &midi);
+        });
+    }
+
+    pub fn observations(&self) -> TimingObservations {
+        let mut observations = self.source_observations.clone();
+        let processor = self.processor.observations();
+        observations
+            .audio_dispatch
+            .clone_from(&processor.audio_dispatch);
+        observations
+            .audio_output
+            .clone_from(&processor.audio_output);
+        observations
+            .midi_dispatch
+            .clone_from(&processor.midi_dispatch);
+        observations.midi_output.clone_from(&processor.midi_output);
+        observations
     }
 }
 
