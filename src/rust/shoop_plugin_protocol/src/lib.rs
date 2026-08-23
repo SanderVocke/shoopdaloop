@@ -223,6 +223,7 @@ pub enum WorkerLatencyCertainty {
 pub enum WorkerLatencyDiagnostic {
     CarlaRackAggregate,
     CarlaPatchbayGraphRange,
+    BuiltInSynthPhaseRange,
     Manual,
     VersionMismatch,
     #[default]

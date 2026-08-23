@@ -490,6 +490,11 @@ fn apply_send(
     synth.set_gen(0, generator, value * MAX_SEND_GENERATOR_UNITS)
 }
 
+/// OxiSynth applies queued events at 64-frame render phase boundaries. The
+/// characterized algorithmic residual is therefore phase-dependent in 0..=63
+/// frames; musical attack, chorus, and reverb tails are deliberately excluded.
+pub const OXISYNTH_EVENT_PHASE_FRAMES: u32 = 64;
+
 pub struct OxiSynthProcessor {
     synth: Synth,
     soundfont_id: SoundFontId,
@@ -514,6 +519,16 @@ impl std::fmt::Debug for OxiSynthProcessor {
 }
 
 impl OxiSynthProcessor {
+    pub fn latency_observation(sample_rate: u32) -> crate::RuntimeLatencyObservation {
+        crate::RuntimeLatencyObservation::new(
+            shoop_latency::LatencyRangeFrames::new(0, OXISYNTH_EVENT_PHASE_FRAMES - 1).ok(),
+            shoop_latency::LatencyCertainty::Range,
+            sample_rate.max(1),
+            1,
+        )
+        .expect("the characterized OxiSynth phase range is valid")
+    }
+
     pub fn new(sample_rate: f32, max_frames: usize, state: OxiSynthState) -> Result<Self> {
         let runtime_state = Arc::new(OxiSynthRuntimeState::new(state));
         Self::new_with_runtime(
@@ -1125,6 +1140,20 @@ mod tests {
             .zip(processor.output(1, frames).unwrap().iter().copied())
             .map(|(left, right)| [left, right])
             .collect()
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_contract_reports_only_the_characterized_event_phase_range() {
+        let observation = OxiSynthProcessor::latency_observation(48_000);
+        assert_eq!(
+            observation.certainty,
+            shoop_latency::LatencyCertainty::Range
+        );
+        assert_eq!(
+            observation.range.map(|range| (range.min(), range.max())),
+            Some((0, 63))
+        );
+        assert_eq!(observation.sample_rate, 48_000);
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -13,6 +13,7 @@ pub type ProcessorLatencyObservation = RuntimeLatencyObservation;
 pub enum ProcessorLatencyDiagnostic {
     CarlaRackAggregate,
     CarlaPatchbayGraphRange,
+    BuiltInSynthPhaseRange,
     Manual,
     VersionMismatch,
     #[default]
@@ -178,6 +179,9 @@ mod bridge {
             }
             value if value == ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange as u8 => {
                 ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange
+            }
+            value if value == ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange as u8 => {
+                ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange
             }
             value if value == ProcessorLatencyDiagnostic::Manual as u8 => {
                 ProcessorLatencyDiagnostic::Manual

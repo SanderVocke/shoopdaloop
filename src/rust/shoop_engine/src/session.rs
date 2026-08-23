@@ -500,9 +500,8 @@ impl ProcessorBackend {
         match self {
             Self::Test2x2x1 => ProcessorLatencyObservation::exact(0, sample_rate.max(1), 1)
                 .expect("zero test latency is valid"),
-            Self::External | Self::OxiSynth(_) => {
-                ProcessorLatencyObservation::unknown(sample_rate, 0)
-            }
+            Self::External => ProcessorLatencyObservation::unknown(sample_rate, 0),
+            Self::OxiSynth(_) => OxiSynthProcessor::latency_observation(sample_rate),
             #[cfg(feature = "carla")]
             Self::Carla(host) => host.latency(),
         }

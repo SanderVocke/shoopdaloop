@@ -46,6 +46,12 @@ When physical capture/playback ports are available, connect one application outp
 
 This development environment exposed a running software JACK server (the deterministic latency callback and send/return tests ran without the missing-backend allowance) but no enumerated physical capture/playback endpoints or ALSA enumeration tools (`aplay`/`arecord` were unavailable). The physical cable run is therefore recorded as not applicable here rather than represented by the software-client measurement.
 
+The production OxiSynth provider therefore publishes a phase-dependent `0..=63`
+frame range with maximum/minimum/midpoint selection and signed trim available
+through the shared latency policy. This is algorithmic event-application timing;
+SoundFont attack, reverb, and chorus behavior is not included. Native and Wasm
+engine routes use the same observation constructor.
+
 ## Carla 2.5.10 latency surfaces
 
 The bundled runtime is pinned by `third_party/carla/runtime-lock.json` to Carla 2.5.10, revision `ad09259060a4e660a5033024406a1c3cc9f9c198`. The checked Native header digest is `c1b1a806a95ee2e4935eec9699c233e6a3ee27fcc8da37002bb0034c9d81854f`.

@@ -2642,11 +2642,15 @@ impl EngineBackend {
 
     fn capture_session_data(&mut self) -> Result<BackendSessionData> {
         let connections = self.connection_snapshot();
+        let sample_rate = self.sample_rate;
         let mut tracks = Vec::with_capacity(self.tracks.len());
         for (track_id, track) in &mut self.tracks {
             let state = BackendTrackState {
                 topology: track.topology.clone(),
-                fx: track.oxisynth.as_ref().map(engine_oxisynth_fx_state),
+                fx: track
+                    .oxisynth
+                    .as_ref()
+                    .map(|fx| engine_oxisynth_fx_state(fx, sample_rate)),
                 audio_channels: track.audio_outputs.len() as u32,
                 midi: track.midi_input.is_some(),
                 output_gain_db: track.output_gain_db,
@@ -3309,6 +3313,9 @@ fn app_latency_provider(
         shoop_engine::carla_processor::ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange => {
             LatencyProviderState::CarlaPatchbayGraphRange
         }
+        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange => {
+            LatencyProviderState::BuiltInSynthPhaseRange
+        }
         shoop_engine::carla_processor::ProcessorLatencyDiagnostic::Manual => {
             LatencyProviderState::Manual
         }
@@ -3351,7 +3358,7 @@ fn amplitude_db(amplitude: f32) -> f32 {
     }
 }
 
-fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
+fn engine_oxisynth_fx_state(fx: &EngineOxiFx, sample_rate: u32) -> TrackFxState {
     let editor = fx.control.editor_state();
     TrackFxState {
         processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
@@ -3361,8 +3368,10 @@ fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
         generation: 0,
         crash_summary: None,
         logs: Arc::from([]),
-        latency: LatencyObservationState::default(),
-        latency_provider: LatencyProviderState::Unsupported,
+        latency: app_latency_observation(
+            shoop_engine::oxisynth::OxiSynthProcessor::latency_observation(sample_rate),
+        ),
+        latency_provider: LatencyProviderState::BuiltInSynthPhaseRange,
         editor: Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
             selected_preset_id: editor.selected_preset.stable_id(),
             reverb_send: editor.reverb_send,
@@ -4704,6 +4713,7 @@ impl Backend for EngineBackend {
             self.apply_engine_track_routing(track_id)?;
         }
         let mut tracks = BTreeMap::new();
+        let sample_rate = self.sample_rate;
         for (id, track) in &mut self.tracks {
             let input_peaks = track
                 .audio_inputs
@@ -4752,7 +4762,10 @@ impl Backend for EngineBackend {
                 BackendTrackState {
                     topology: track.topology.clone(),
                     latency_policy: track.latency_policy.clone(),
-                    fx: track.oxisynth.as_ref().map(engine_oxisynth_fx_state),
+                    fx: track
+                        .oxisynth
+                        .as_ref()
+                        .map(|fx| engine_oxisynth_fx_state(fx, sample_rate)),
                     audio_channels: track.audio_outputs.len() as u32,
                     midi: track.midi_input.is_some(),
                     output_gain_db: track.output_gain_db,
@@ -7542,7 +7555,14 @@ mod tests {
                 .unwrap()
                 .latency
                 .certainty,
-            LatencyCertaintyState::Unknown
+            LatencyCertaintyState::Range
+        );
+        let fx = snapshot.tracks[&processor.track_id].fx.as_ref().unwrap();
+        assert_eq!(fx.latency.minimum_frames, Some(0));
+        assert_eq!(fx.latency.maximum_frames, Some(63));
+        assert_eq!(
+            fx.latency_provider,
+            LatencyProviderState::BuiltInSynthPhaseRange
         );
     }
 

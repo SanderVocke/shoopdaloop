@@ -6751,7 +6751,10 @@ impl FXChain {
             }
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.latency_diagnostic(),
-            FXChainBackendKind::OxiSynth(_) | FXChainBackendKind::Unavailable { .. } => {
+            FXChainBackendKind::OxiSynth(_) => {
+                engine::carla_processor::ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange
+            }
+            FXChainBackendKind::Unavailable { .. } => {
                 engine::carla_processor::ProcessorLatencyDiagnostic::Unsupported
             }
         };
@@ -6762,7 +6765,10 @@ impl FXChain {
             }
             #[cfg(feature = "carla")]
             FXChainBackendKind::Carla(host) => host.latency(),
-            FXChainBackendKind::OxiSynth(_) | FXChainBackendKind::Unavailable { .. } => {
+            FXChainBackendKind::OxiSynth(_) => {
+                engine::oxisynth::OxiSynthProcessor::latency_observation(sample_rate)
+            }
+            FXChainBackendKind::Unavailable { .. } => {
                 engine::RuntimeLatencyObservation::unknown(sample_rate, 1)
             }
         };

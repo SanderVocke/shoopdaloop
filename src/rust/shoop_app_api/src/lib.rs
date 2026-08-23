@@ -252,6 +252,7 @@ pub enum TrackProcessorEditorState {
 pub enum LatencyProviderState {
     CarlaRackAggregate,
     CarlaPatchbayGraphRange,
+    BuiltInSynthPhaseRange,
     Manual,
     VersionMismatch,
     #[default]

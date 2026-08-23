@@ -56,6 +56,9 @@ fn worker_latency(host: &dyn CarlaProcessor) -> WorkerLatencyObservation {
             ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange => {
                 WorkerLatencyDiagnostic::CarlaPatchbayGraphRange
             }
+            ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange => {
+                WorkerLatencyDiagnostic::BuiltInSynthPhaseRange
+            }
             ProcessorLatencyDiagnostic::Manual => WorkerLatencyDiagnostic::Manual,
             ProcessorLatencyDiagnostic::VersionMismatch => WorkerLatencyDiagnostic::VersionMismatch,
             ProcessorLatencyDiagnostic::Unsupported => WorkerLatencyDiagnostic::Unsupported,
@@ -94,6 +97,9 @@ fn processor_latency(
         }
         WorkerLatencyDiagnostic::CarlaPatchbayGraphRange => {
             ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange
+        }
+        WorkerLatencyDiagnostic::BuiltInSynthPhaseRange => {
+            ProcessorLatencyDiagnostic::BuiltInSynthPhaseRange
         }
         WorkerLatencyDiagnostic::Manual => ProcessorLatencyDiagnostic::Manual,
         WorkerLatencyDiagnostic::VersionMismatch => ProcessorLatencyDiagnostic::VersionMismatch,

@@ -748,16 +748,16 @@ Verification:
 
 Dependencies: Stage 0 characterization and Stage 4 MIDI render-ahead.
 
-- [ ] Decide from tests whether to patch/fork for sample-accurate event application or publish a phase-dependent range.
-- [ ] If patched, add dependency/source provenance and prove exact behavior at every characterized offset.
-- [ ] If ranged, expose selection/trim and residual uncertainty through normal processor policy.
-- [ ] Keep musical attack/reverb/chorus behavior out of algorithmic latency.
-- [ ] Apply the same semantics in native and Wasm worklet builds.
+- [x] Decide from tests whether to patch/fork for sample-accurate event application or publish a phase-dependent range.
+- [x] If patched, add dependency/source provenance and prove exact behavior at every characterized offset. (Not applicable: the validated ranged path was selected.)
+- [x] If ranged, expose selection/trim and residual uncertainty through normal processor policy.
+- [x] Keep musical attack/reverb/chorus behavior out of algorithmic latency.
+- [x] Apply the same semantics in native and Wasm worklet builds.
 
 Verification:
 
-- [ ] Offset matrix tests pass across consecutive odd callback sizes.
-- [ ] No fixed 64-frame claim remains without exact proof.
+- [x] Offset matrix tests pass across consecutive odd callback sizes.
+- [x] No fixed 64-frame claim remains without exact proof.
 - [ ] OxiSynth dry MIDI through wet and wet recording tests report/apply the declared semantics consistently on native and Wasm.
 
 ### Stage 10 — CPAL, browser, and protocol capability completion
