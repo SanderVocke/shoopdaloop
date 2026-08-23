@@ -1155,6 +1155,27 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn additive_send_controls_change_rendered_audio() {
+        let mut dry = OxiSynthProcessor::new(48_000.0, 4096, OxiSynthState::default()).unwrap();
+        let mut wet = OxiSynthProcessor::new(48_000.0, 4096, OxiSynthState::default()).unwrap();
+        wet.set_send(OxiSynthParameter::ReverbSend, 1.0).unwrap();
+        wet.set_send(OxiSynthParameter::ChorusSend, 1.0).unwrap();
+        let note = MidiStorageElem::new(0, &[0x90, 60, 127]).unwrap();
+        dry.process(4096, &[note]);
+        wet.process(4096, &[note]);
+        let difference = dry
+            .output(0, 4096)
+            .unwrap()
+            .iter()
+            .zip(wet.output(0, 4096).unwrap())
+            .fold(0.0_f32, |peak, (dry, wet)| peak.max((dry - wet).abs()));
+        assert!(
+            difference > 1.0e-5,
+            "send controls were inaudible: {difference}"
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn panic_and_preset_changes_preserve_effect_tails() {
         let note = MidiStorageElem::new(0, &[0x90, 60, 127]).unwrap();
         for change in [
