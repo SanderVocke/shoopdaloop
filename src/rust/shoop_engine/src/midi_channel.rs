@@ -378,6 +378,22 @@ impl MidiChannel {
     pub fn retained_after_frames(&self) -> u32 {
         self.retained_after_frames
     }
+    pub fn restore_retained_margin_metadata(
+        &mut self,
+        retained_before_frames: u32,
+        retained_after_frames: u32,
+    ) -> Result<(), MidiChannelError> {
+        for frames in [retained_before_frames, retained_after_frames] {
+            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
+                return Err(MidiChannelError::RetentionExceedsMaximum { frames });
+            }
+        }
+        self.retained_before_frames = retained_before_frames;
+        self.retained_after_frames = retained_after_frames;
+        self.state
+            .publish_retained_margins(retained_before_frames, retained_after_frames);
+        Ok(())
+    }
     pub fn is_finalizing_latency_postroll(&self) -> bool {
         self.postroll_remaining_frames > 0
     }
@@ -485,6 +501,8 @@ impl MidiChannel {
         }
         self.retained_before_frames = retained_before_frames;
         self.retained_after_frames = retained_after_frames;
+        self.state
+            .publish_retained_margins(retained_before_frames, retained_after_frames);
         self.latency_retention_incomplete = false;
         self.state.publish_latency_retention_incomplete(false);
         Ok(())

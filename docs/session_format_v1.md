@@ -9,7 +9,7 @@ This document defines the first application persistence format. Predecessor `.sh
 - All Shoop-native files (`.shoop`, `.shoop-audio`, and `.shoop-midi`) are ZIP64 containers and use Deflate lossless compression. Standard `.wav` and `.mid` exports retain their standard container formats.
 - The root entry is `manifest.json`, UTF-8 JSON with deterministic object fields and sorted collections.
 - Every manifest has `format`, `format_version: { major, minor }`, and `document_version`.
-- Format-major 1 readers require session `document_version: 6` exactly. Older and newer document versions are rejected before session mutation; no pre-release migration contract is retained.
+- Format-major 1 session writers emit `document_version: 7`. Session readers accept version 6 and migrate missing latency fields to explicit zero/unknown defaults. Exact audio/MIDI writers emit document version 2; readers accept version 1 with the same latency defaults. Older and future versions are rejected before mutation.
 - Archive paths are relative, normalized ASCII paths. Duplicate names, traversal, undeclared payloads, mismatched lengths/hashes, and configured resource-limit violations are errors.
 - Payload records contain an uncompressed byte length and lowercase SHA-256. ZIP CRC remains an independent transport check.
 - Counts and indices are unsigned 32-bit values unless otherwise stated. The format imposes no lower channel-count ceiling; readers may apply explicit byte/resource budgets.
@@ -29,7 +29,10 @@ This document defines the first application persistence format. Predecessor `.sh
 - FX chain descriptors and exact processor-state strings for Carla and Built-in Synth;
 - a Built-in Synth topology, OxiSynth chain identity, selected preset, additive sends, and MIDI assignments;
 - captured FX-state records referenced by recorded channels;
-- a sorted media index.
+- a sorted media index;
+- per-track latency component policy and per-take frozen latency provenance, including signed capture alignment, observed range/certainty/revision/sample rate, variable-history and incomplete/change warnings, applied-during-render identity, and piecewise raw alignment regions.
+
+Latency values are bounded to 768,000 frames in magnitude, ranges must be ordered, region bounds must be ordered and inside raw media, regions must not overlap, and referenced observation revisions may not exceed the take revision. Invalid metadata fails validation before backend replacement. Version-6 sessions have none of these fields and migrate to disabled/default track policy and zero-alignment unknown take provenance.
 
 Transient loop mode/position, queued transitions, meters, driver/device handles, permissions, xruns, task state, dialogs, and machine-wide settings are not session data. Loaded loops start stopped.
 
@@ -49,7 +52,7 @@ When a filesystem script is included in a session, the application keeps the cur
 
 ### MIDI payload
 
-Each MIDI channel has a `media/midi/<content-id>.json` entry containing a `shoop-midi` document. Session channel metadata independently records loop length, start offset, preplay, mode, gain, and connected ports.
+Each MIDI channel has a `media/midi/<content-id>.json` entry containing a `shoop-midi` document. Session channel metadata independently records loop length, start offset, preplay, mode, gain, connected ports, and the take latency document. Raw event bytes and equal-frame order remain independent of the logical selected window.
 
 ## Exact loop MIDI (`.shoop-midi`)
 
@@ -58,23 +61,24 @@ The exact format is also a ZIP64 container. Its manifest uses `format: "shoop-mi
 - `sample_rate: u32`;
 - `length_frames: u64`, independent of the last event;
 - ordered `start_state` byte messages;
-- ordered timeline events `{ frame: u64, order: u32, data: byte-array }`.
+- ordered timeline events `{ frame: u64, order: u32, data: byte-array }`;
+- a defaultable take-latency document identifying the raw bounds and logical alignment.
 
 Events are relative to loop/channel time. Equal-frame event ordering is determined by `order`. Negative engine sentinel timestamps are never serialized. At the same sample rate, timestamps, duration, start state, ordering, and bytes are exact.
 
-Standard `.mid` is an interoperability format, not canonical session storage. Import resolves tempo maps to absolute time, merges tracks in stable source order, and preserves MIDI and SysEx bytes. Export uses SMPTE 30 fps with 255 subframes (7,650 ticks/second), includes duration/end-of-track information, and reports the measured maximum frame quantization. Select exact `.shoop-midi` when integer-frame identity is required.
+Standard `.mid` is an interoperability format, not canonical session storage. Import resolves tempo maps to absolute time, merges tracks in stable source order, preserves MIDI and SysEx bytes, and starts with zero/unknown latency provenance unless an explicit bounded manual import offset is supplied. Normal standard export selects the declared logical compensated window and canonicalizes retained-preroll MIDI state at frame zero. Explicit raw standard export includes retained events and raw duration. Both use SMPTE 30 fps with 255 subframes (7,650 ticks/second), include duration/end-of-track information, and report measured maximum frame quantization. Exact `.shoop-midi` preserves integer-frame raw identity and latency metadata.
 
 ## Exact loop audio (`.shoop-audio`)
 
-The exact audio format is a ZIP64 container with `format: "shoop-audio"`, version `{ major: 1, minor: 0 }`, sample rate, ordered channel labels/roles, and one exact `f32le` payload per channel. It supports any channel count representable by `u32` and available resources.
+The exact audio format is a ZIP64 container with `format: "shoop-audio"`, version `{ major: 1, minor: 0 }`, sample rate, ordered channel labels/roles, a defaultable take-latency document per channel, and one exact `f32le` raw payload per channel. It supports any channel count representable by `u32` and available resources. Same-rate decode/encode preserves raw `f32` bits and latency metadata exactly.
 
-Float WAV is the baseline standard cross-target audio format. The current native and browser adapter reads/writes float WAV and the exact Shoop format; no additional native sound-file adapter is selected in v1. Export presents an ordered channel selection, and import requires an explicit source-to-destination mapping (duplication is permitted). Direct channels are labeled `Direct N`; processed tracks expose ordered `Dry N` then `Wet N` audio destinations, and dry MIDI remains the only MIDI role. Dry-only, wet-only, and mixed/reordered exports are supported. Use `.shoop-audio` when exact arbitrary-channel output is required.
+Float WAV is the baseline standard cross-target audio format. Normal WAV and exact-audio export select the declared logical compensated loop; explicit raw variants include retained pre/post material, and only raw exact export carries the latency envelope. Standard imports receive zero/unknown provenance unless given an explicit bounded signed manual offset. The current native and browser adapter reads/writes float WAV and the exact Shoop format; no additional native sound-file adapter is selected in v1. Export presents an ordered channel selection, and import requires an explicit source-to-destination mapping (duplication is permitted). Direct channels are labeled `Direct N`; processed tracks expose ordered `Dry N` then `Wet N` audio destinations, and dry MIDI remains the only MIDI role. Dry-only, wet-only, and mixed/reordered exports are supported. Use `.shoop-audio` when exact arbitrary-channel output is required.
 
 ### Dry/wet processor topology
 
 `DryWetExternal` stores independent `dry_audio_channels`, `wet_audio_channels`, and `dry_midi`. Public ports preserve Audio input/send/return/output and MIDI input/send roles plus exact confirmed host IDs. `Carla` stores its chain type and legacy equal-count `audio_channels`/`midi` fields; optional `dry_audio_channels` and `wet_audio_channels` preserve new unequal shapes. When those optional fields are absent, readers interpret both counts as the legacy `audio_channels` value.
 
-`OxiSynth` stores no variable channel fields. It always means exactly two dry audio inputs, exactly two wet audio outputs, and one dry MIDI input. The dry audio inputs preserve the standard stereo track shape but their samples are ignored by the synth. Its chain type and stable runtime processor ID remain `OxiSynth`/`oxisynth`; **Built-in Synth** is the display label. The chain's `internal_state` must contain valid version-2 OxiSynth state, and no automatic recorded-take `fx_state` is written. Session document version 6 is the only accepted pre-release document schema.
+`OxiSynth` stores no variable channel fields. It always means exactly two dry audio inputs, exactly two wet audio outputs, and one dry MIDI input. The dry audio inputs preserve the standard stereo track shape but their samples are ignored by the synth. Its chain type and stable runtime processor ID remain `OxiSynth`/`oxisynth`; **Built-in Synth** is the display label. The chain's `internal_state` must contain valid version-2 OxiSynth state, and no automatic recorded-take `fx_state` is written. Session document versions 6 and 7 are accepted; version 6 receives the documented latency defaults and new saves use version 7.
 
 `global_ports` contains either no global FX control port in legacy version-1 documents or exactly one canonical **Global FX Control MIDI In** port. Its shape is MIDI input, external input/internal output connectability, unity gain, unmuted, passthrough-muted, no internal links, and zero capture frames. New saves include it with exact external endpoint identities. A legacy omission migrates to a disconnected canonical port; conflicting IDs, multiple ports, or another shape are rejected before backend mutation. Runtime pending controller values are transient and are not serialized.
 
@@ -95,6 +99,8 @@ A source-rate mismatch always requires confirmation before mutation.
 - MIDI events that collide retain original `order`; converted events are clamped below a non-zero converted duration only when required.
 - Audio channels are independently high-quality resampled to their declared converted frame count.
 - Preplay, ringbuffer sizes, composite delays, and every other sample-domain value use the documented category rule.
+- Observation bounds, retained margins, signed capture alignment, manual trims, and alignment-region positions are converted with checked nearest rounding (ties away from zero); interval ends and raw durations use checked ceiling where required to avoid truncation.
+- Certainty, component identity, revision identity, warning flags, and applied-during-render identity are unchanged by conversion. Converted ranges are normalized so `minimum <= maximum`, and regions are revalidated after conversion.
 - Conversion must not infer duration from media tails or introduce a spurious additional sync cycle.
 
 ## Transaction and safety contract

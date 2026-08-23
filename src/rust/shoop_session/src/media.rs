@@ -37,6 +37,8 @@ struct LoopAudioRecord {
     frames: u64,
     uncompressed_bytes: u64,
     sha256: String,
+    #[serde(default)]
+    latency: crate::document::TakeLatencyDocument,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,6 +49,7 @@ pub struct StandardMidiExport {
 
 pub fn encode_exact_midi(midi: &ExactMidi) -> Result<Vec<u8>, SessionError> {
     validate_exact_midi(midi)?;
+    crate::archive::validate_take_latency(&midi.latency, midi.length_frames, midi.sample_rate)?;
     let manifest = ExactMidiManifest {
         format: STANDALONE_MIDI_FORMAT.to_owned(),
         format_version: FormatVersion::default(),
@@ -69,6 +72,11 @@ pub fn decode_exact_midi(bytes: &[u8]) -> Result<ExactMidi, SessionError> {
         manifest.document_version,
     )?;
     validate_exact_midi(&manifest.midi)?;
+    crate::archive::validate_take_latency(
+        &manifest.midi.latency,
+        manifest.midi.length_frames,
+        manifest.midi.sample_rate,
+    )?;
     Ok(manifest.midi)
 }
 
@@ -81,6 +89,11 @@ pub fn encode_loop_audio(audio: &LoopAudio) -> Result<Vec<u8>, SessionError> {
     let mut payloads = BTreeMap::new();
     let mut records = Vec::with_capacity(audio.channels.len());
     for (index, channel) in audio.channels.iter().enumerate() {
+        crate::archive::validate_take_latency(
+            &channel.latency,
+            channel.samples.len() as u64,
+            audio.sample_rate,
+        )?;
         let path = format!("audio/{index:08}.f32le");
         let bytes = audio_to_bytes(&channel.samples);
         records.push(LoopAudioRecord {
@@ -90,6 +103,7 @@ pub fn encode_loop_audio(audio: &LoopAudio) -> Result<Vec<u8>, SessionError> {
             frames: channel.samples.len() as u64,
             uncompressed_bytes: bytes.len() as u64,
             sha256: payload_hash(&bytes),
+            latency: channel.latency.clone(),
         });
         payloads.insert(path, bytes);
     }
@@ -135,10 +149,16 @@ pub fn decode_loop_audio(bytes: &[u8]) -> Result<LoopAudio, SessionError> {
                 id: format!("audio channel {index}"),
             });
         }
+        crate::archive::validate_take_latency(
+            &record.latency,
+            samples.len() as u64,
+            manifest.sample_rate,
+        )?;
         channels.push(LoopAudioChannel {
             label: record.label,
             role: record.role,
             samples,
+            latency: record.latency,
         });
     }
     Ok(LoopAudio {
@@ -236,6 +256,7 @@ pub fn decode_wav(bytes: &[u8]) -> Result<LoopAudio, SessionError> {
             label: format!("Channel {}", index + 1),
             role: "direct".to_owned(),
             samples: Vec::with_capacity(frames),
+            latency: Default::default(),
         })
         .collect::<Vec<_>>();
     for frame in interleaved.chunks_exact(n_channels) {
@@ -365,6 +386,7 @@ pub fn decode_standard_midi(bytes: &[u8], sample_rate: u32) -> Result<ExactMidi,
         length_frames,
         start_state: Vec::new(),
         events,
+        latency: Default::default(),
     })
 }
 

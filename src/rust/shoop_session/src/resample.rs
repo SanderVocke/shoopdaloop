@@ -1,5 +1,7 @@
 use crate::archive::SessionError;
-use crate::document::{ExactMidi, LoopAudio, MediaPayload, SessionBundle};
+use crate::document::{
+    ExactMidi, LatencyValueDocument, LoopAudio, MediaPayload, SessionBundle, TakeLatencyDocument,
+};
 use rubato::{
     audioadapter_buffers::direct::SequentialSliceOfVecs, Async, FixedAsync, Resampler,
     SincInterpolationParameters, SincInterpolationType, WindowFunction,
@@ -43,6 +45,17 @@ pub fn resample_session(
                         scale_duration(port.ringbuffer_frames, source, target_sample_rate)?;
                 }
             }
+            for component in &mut track.latency_policy.components {
+                match &mut component.value {
+                    LatencyValueDocument::Manual { frames } => {
+                        *frames = scale_nearest(*frames, source, target_sample_rate)?;
+                    }
+                    LatencyValueDocument::AutomaticPlusTrim { frames } => {
+                        *frames = scale_signed_nearest(*frames, source, target_sample_rate)?;
+                    }
+                    LatencyValueDocument::Automatic => {}
+                }
+            }
             for loop_ in &mut track.loops {
                 loop_.length_frames =
                     scale_duration(loop_.length_frames, source, target_sample_rate)?;
@@ -56,6 +69,12 @@ pub fn resample_session(
                     )?;
                     channel.preplay_frames =
                         scale_duration(channel.preplay_frames, source, target_sample_rate)?;
+                    resample_take_latency(
+                        &mut channel.latency,
+                        source,
+                        target_sample_rate,
+                        channel.data_length_frames,
+                    )?;
                 }
             }
         }
@@ -99,11 +118,14 @@ pub fn resample_exact_midi(
         events.push(converted);
     }
     events.sort_by_key(|event| (event.frame, event.order));
+    let mut latency = midi.latency.clone();
+    resample_take_latency(&mut latency, midi.sample_rate, target_sample_rate, length)?;
     Ok(ExactMidi {
         sample_rate: target_sample_rate,
         length_frames: length,
         start_state: midi.start_state.clone(),
         events,
+        latency,
     })
 }
 
@@ -124,8 +146,49 @@ pub fn resample_loop_audio(
             target_sample_rate,
         )?;
         channel.samples = resample_mono(&channel.samples, target as usize)?;
+        resample_take_latency(
+            &mut channel.latency,
+            audio.sample_rate,
+            target_sample_rate,
+            target,
+        )?;
     }
     Ok(converted)
+}
+
+fn resample_take_latency(
+    latency: &mut TakeLatencyDocument,
+    source: u32,
+    target: u32,
+    raw_length: u64,
+) -> Result<(), SessionError> {
+    latency.capture_alignment_frames =
+        scale_signed_nearest(latency.capture_alignment_frames, source, target)?;
+    latency.retained_before_frames = scale_nearest(latency.retained_before_frames, source, target)?;
+    latency.retained_after_frames = scale_nearest(latency.retained_after_frames, source, target)?;
+    latency.observation.minimum_frames = latency
+        .observation
+        .minimum_frames
+        .map(|frames| scale_nearest(frames, source, target))
+        .transpose()?;
+    latency.observation.maximum_frames = latency
+        .observation
+        .maximum_frames
+        .map(|frames| scale_nearest(frames, source, target))
+        .transpose()?;
+    if latency.observation.minimum_frames.is_some() {
+        latency.observation.sample_rate = target;
+    }
+    for region in &mut latency.alignment_regions {
+        region.raw_start_frame = scale_nearest(region.raw_start_frame, source, target)?;
+        region.raw_end_frame = scale_nearest(region.raw_end_frame, source, target)?.min(raw_length);
+        region.capture_alignment_frames =
+            scale_signed_nearest(region.capture_alignment_frames, source, target)?;
+    }
+    latency
+        .alignment_regions
+        .retain(|region| region.raw_start_frame < region.raw_end_frame);
+    Ok(())
 }
 
 pub fn scale_duration(value: u64, from: u32, to: u32) -> Result<u64, SessionError> {

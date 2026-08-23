@@ -47,8 +47,11 @@ Files
 
 The main menu saves and loads versioned ``.shoop`` sessions. Loop context menus
 import or export exact ``.shoop-audio``/``.shoop-midi``, float WAV, and standard
-MIDI. Different sample rates require confirmation before deterministic timing
-and media conversion.
+MIDI. Normal exports use the logical latency-compensated loop. Explicitly
+labeled raw exports include retained latency margins; exact Shoop media also
+preserve take provenance. Different sample rates require confirmation before
+deterministic timing, provenance, and media conversion. Standard imports begin
+with zero/unknown latency provenance unless a bounded manual offset is supplied.
 
 Loop details
 ~~~~~~~~~~~~

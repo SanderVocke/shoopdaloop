@@ -1,7 +1,8 @@
 use crate::document::{
     AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
-    FxChainTypeDocument, MediaPayload, SessionBundle, SessionDocument, TrackDocument,
-    TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
+    FxChainTypeDocument, LatencyCertaintyDocument, MediaPayload, SessionBundle, SessionDocument,
+    TakeLatencyDocument, TrackDocument, TrackLatencyPolicyDocument, TrackTopologyDocument,
+    AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
     SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
@@ -213,7 +214,7 @@ pub fn decode_session_with_limits(
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     if header.format_version.major != FORMAT_MAJOR
         || header.format_version.minor > FORMAT_MINOR
-        || header.document_version != SESSION_DOCUMENT_VERSION
+        || !(6..=SESSION_DOCUMENT_VERSION).contains(&header.document_version)
     {
         return Err(SessionError::UnsupportedVersion {
             format: header.format,
@@ -572,6 +573,7 @@ fn read_entry(
     Ok(bytes)
 }
 
+#[cfg(test)]
 fn check_version(
     format: &str,
     version: FormatVersion,
@@ -688,6 +690,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                 }
             }
             validate_track_fx_shape(track)?;
+            validate_track_latency_policy(&track.latency_policy)?;
             for port in &track.ports {
                 require_id(port.id, "port")?;
                 if !port_ids.insert(port.id) {
@@ -730,6 +733,11 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         )));
                     }
                     validate_finite(channel.gain, "channel gain")?;
+                    validate_take_latency(
+                        &channel.latency,
+                        channel.data_length_frames,
+                        bundle.document.sample_rate,
+                    )?;
                     if let Some(state_id) = channel.recording_fx_state_id {
                         let state_type = fx_state_types.get(&state_id).ok_or_else(|| {
                             SessionError::Validation(format!(
@@ -1037,6 +1045,111 @@ fn validate_track_channel_shape(
     }
 }
 
+fn validate_track_latency_policy(policy: &TrackLatencyPolicyDocument) -> Result<(), SessionError> {
+    if policy.components.len() > shoop_latency::MAX_RECIPE_COMPONENTS {
+        return Err(SessionError::Validation(
+            "track latency policy exceeds component capacity".to_owned(),
+        ));
+    }
+    let mut kinds = BTreeSet::new();
+    for component in &policy.components {
+        if !kinds.insert(component.component) {
+            return Err(SessionError::Validation(
+                "track latency policy repeats a component".to_owned(),
+            ));
+        }
+        match component.value {
+            crate::document::LatencyValueDocument::Manual { frames }
+                if frames > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES) =>
+            {
+                return Err(SessionError::Validation(
+                    "manual latency exceeds the supported bound".to_owned(),
+                ));
+            }
+            crate::document::LatencyValueDocument::AutomaticPlusTrim { frames }
+                if frames.unsigned_abs() > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES) =>
+            {
+                return Err(SessionError::Validation(
+                    "latency trim exceeds the supported bound".to_owned(),
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_take_latency(
+    latency: &TakeLatencyDocument,
+    raw_length: u64,
+    session_sample_rate: u32,
+) -> Result<(), SessionError> {
+    if latency.capture_alignment_frames.unsigned_abs()
+        > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
+    {
+        return Err(SessionError::Validation(
+            "take latency alignment exceeds the supported bound".to_owned(),
+        ));
+    }
+    if latency.retained_before_frames > u64::from(shoop_latency::MAX_RETAINED_MARGIN_FRAMES)
+        || latency.retained_after_frames > u64::from(shoop_latency::MAX_RETAINED_MARGIN_FRAMES)
+    {
+        return Err(SessionError::Validation(
+            "take latency retained margin exceeds the supported bound".to_owned(),
+        ));
+    }
+    let observation = &latency.observation;
+    match (
+        observation.minimum_frames,
+        observation.maximum_frames,
+        observation.certainty,
+    ) {
+        (None, None, LatencyCertaintyDocument::Unknown | LatencyCertaintyDocument::ManualOnly) => {}
+        (Some(minimum), Some(maximum), certainty)
+            if minimum <= maximum
+                && maximum <= u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
+                && observation.sample_rate == session_sample_rate
+                && match certainty {
+                    LatencyCertaintyDocument::Exact => minimum == maximum,
+                    LatencyCertaintyDocument::Range => minimum < maximum,
+                    LatencyCertaintyDocument::Estimated => true,
+                    LatencyCertaintyDocument::ManualOnly | LatencyCertaintyDocument::Unknown => {
+                        false
+                    }
+                } => {}
+        _ => {
+            return Err(SessionError::Validation(
+                "take latency observation is inconsistent".to_owned(),
+            ));
+        }
+    }
+    if latency.variable_history && latency.history_revisions < 2 {
+        return Err(SessionError::Validation(
+            "variable take latency has fewer than two revisions".to_owned(),
+        ));
+    }
+    if latency.alignment_regions.len() > shoop_latency::MAX_OBSERVATION_HISTORY {
+        return Err(SessionError::Validation(
+            "take latency exceeds alignment-region capacity".to_owned(),
+        ));
+    }
+    let mut previous_end = 0;
+    for region in &latency.alignment_regions {
+        if region.raw_start_frame >= region.raw_end_frame
+            || region.raw_start_frame < previous_end
+            || region.raw_end_frame > raw_length
+            || region.capture_alignment_frames.unsigned_abs()
+                > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
+        {
+            return Err(SessionError::Validation(
+                "take latency alignment region is invalid".to_owned(),
+            ));
+        }
+        previous_end = region.raw_end_frame;
+    }
+    Ok(())
+}
+
 fn validate_midi(id: &str, midi: &crate::document::ExactMidi) -> Result<(), SessionError> {
     let mut previous = None;
     for event in &midi.events {
@@ -1127,7 +1240,14 @@ pub(crate) fn check_standalone_version(
     if format != expected {
         return Err(SessionError::UnsupportedFormat);
     }
-    check_version(format, version, document_version, DOCUMENT_VERSION)
+    if version != FormatVersion::default() || !(1..=DOCUMENT_VERSION).contains(&document_version) {
+        return Err(SessionError::UnsupportedVersion {
+            format: format.to_owned(),
+            major: version.major,
+            minor: version.minor,
+        });
+    }
+    Ok(())
 }
 
 pub(crate) fn inspect_standalone_archive(

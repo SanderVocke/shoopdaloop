@@ -334,6 +334,8 @@ pub enum LatencyCertaintyState {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TakeLatencyProvenanceState {
     pub capture_alignment_frames: i32,
+    pub retained_before_frames: u32,
+    pub retained_after_frames: u32,
     pub render_advance_frames: u32,
     pub certainty: LatencyCertaintyState,
     pub observation_min_frames: Option<u32>,
@@ -1498,6 +1500,15 @@ pub struct SelectionModifiers {
 pub enum LoopAudioExportFormat {
     Exact,
     FloatWav,
+    RawExact,
+    RawFloatWav,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LoopMidiExportFormat {
+    Exact,
+    Standard,
+    RawStandard,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1836,10 +1847,11 @@ pub enum AppIntent {
         name: String,
         bytes: Arc<[u8]>,
         update_loop_length: bool,
+        manual_offset_frames: Option<i32>,
     },
     RequestLoopMidiExport {
         loop_id: LoopId,
-        standard: bool,
+        format: LoopMidiExportFormat,
     },
     RequestLoopMidiImportPicker {
         loop_id: LoopId,
@@ -1849,6 +1861,7 @@ pub enum AppIntent {
         name: String,
         bytes: Arc<[u8]>,
         update_loop_length: bool,
+        manual_offset_frames: Option<i32>,
     },
 }
 

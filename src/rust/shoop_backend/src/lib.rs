@@ -524,14 +524,20 @@ pub struct BackendAlignmentRegion {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendTakeLatencySnapshot {
     pub capture_alignment_frames: i32,
+    #[serde(default)]
+    pub retained_before_frames: u32,
+    #[serde(default)]
+    pub retained_after_frames: u32,
     pub observation_min_frames: Option<u32>,
     pub observation_max_frames: Option<u32>,
     pub certainty: BackendLatencyCertainty,
+    pub observation_sample_rate: u32,
     pub observation_revision: u64,
     pub variable_history: bool,
     pub history_revisions: u32,
     pub changed_during_operation: bool,
     pub incomplete: bool,
+    pub applied_during_render: bool,
     pub alignment_regions: Vec<BackendAlignmentRegion>,
 }
 
@@ -637,6 +643,8 @@ pub struct BackendAudioChannelUpdate {
     pub samples: Vec<f32>,
     pub start_offset: Option<i32>,
     pub preplay: Option<u32>,
+    #[serde(default)]
+    pub latency: Option<BackendTakeLatencySnapshot>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -647,6 +655,8 @@ pub struct BackendMidiChannelUpdate {
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: Option<i32>,
     pub preplay: Option<u32>,
+    #[serde(default)]
+    pub latency: Option<BackendTakeLatencySnapshot>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -2744,6 +2754,8 @@ impl EngineBackend {
                             preplay: channel.pre_play_samples(),
                             latency: backend_take_latency_snapshot(
                                 channel.capture_alignment_frames(),
+                                channel.retained_before_frames(),
+                                channel.retained_after_frames(),
                                 channel.length().min(u32::MAX as usize) as u32,
                                 channel.grab_latency_selection(),
                                 channel.latched_latency_recipe(),
@@ -2777,6 +2789,8 @@ impl EngineBackend {
                             preplay: channel.pre_play_samples(),
                             latency: backend_take_latency_snapshot(
                                 channel.capture_alignment_frames(),
+                                channel.retained_before_frames(),
+                                channel.retained_after_frames(),
                                 channel.length(),
                                 channel.grab_latency_selection(),
                                 channel.latched_latency_recipe(),
@@ -2964,6 +2978,8 @@ impl EngineBackend {
             ] {
                 staged.set_track_control(created.track_id, control)?;
             }
+            staged
+                .set_track_latency_policy(created.track_id, &source_track.state.latency_policy)?;
             if created.loops.len() != source_track.loops.len()
                 || created.ports.len() != source_track.ports.len()
             {
@@ -2994,6 +3010,10 @@ impl EngineBackend {
                         content.latency.capture_alignment_frames,
                         runtime_take_latency_selection(&content.latency, staged.sample_rate)?,
                     )?;
+                    channel.restore_retained_margin_metadata(
+                        content.latency.retained_before_frames,
+                        content.latency.retained_after_frames,
+                    )?;
                     channel.set_pre_play_samples(content.preplay);
                 }
                 for (index, content) in midi_indices.iter().zip(&source_loop.midi) {
@@ -3014,6 +3034,10 @@ impl EngineBackend {
                         content.start_offset,
                         content.latency.capture_alignment_frames,
                         runtime_take_latency_selection(&content.latency, staged.sample_rate)?,
+                    )?;
+                    channel.restore_retained_margin_metadata(
+                        content.latency.retained_before_frames,
+                        content.latency.retained_after_frames,
                     )?;
                     channel.set_pre_play_samples(content.preplay);
                 }
@@ -3273,7 +3297,11 @@ fn runtime_take_latency_selection(
     let observation = shoop_engine::RuntimeLatencyObservation::new(
         range,
         certainty,
-        sample_rate,
+        if snapshot.observation_sample_rate > 0 {
+            snapshot.observation_sample_rate
+        } else {
+            sample_rate
+        },
         snapshot.observation_revision,
     )?;
     Ok(if snapshot.variable_history {
@@ -3288,6 +3316,8 @@ fn runtime_take_latency_selection(
 
 fn backend_take_latency_snapshot(
     capture_alignment_frames: i32,
+    retained_before_frames: u32,
+    retained_after_frames: u32,
     raw_length: u32,
     selection: shoop_engine::RetainedLatencySelection,
     latched: Option<shoop_engine::LatchedLatencyRecipe>,
@@ -3312,19 +3342,35 @@ fn backend_take_latency_snapshot(
     };
     let range = observation.and_then(|observation| observation.range);
     let revision = observation.map_or(0, |observation| observation.revision);
+    let has_provenance = capture_alignment_frames != 0
+        || retained_before_frames != 0
+        || retained_after_frames != 0
+        || observation.is_some()
+        || variable_history
+        || incomplete
+        || latched.is_some();
     BackendTakeLatencySnapshot {
         capture_alignment_frames,
+        retained_before_frames,
+        retained_after_frames,
         observation_min_frames: range.map(|range| range.min()),
         observation_max_frames: range.map(|range| range.max()),
         certainty: observation
             .map(|observation| backend_latency_certainty(observation.certainty))
             .unwrap_or_default(),
+        observation_sample_rate: observation.map_or(0, |observation| observation.sample_rate),
         observation_revision: revision,
         variable_history,
         history_revisions,
         changed_during_operation: latched.is_some_and(|latched| latched.changed),
         incomplete,
-        alignment_regions: (raw_length > 0)
+        applied_during_render: latched.is_some_and(|latched| {
+            latched
+                .recipe
+                .components()
+                .any(|component| component.applied_during_render)
+        }),
+        alignment_regions: (has_provenance && raw_length > 0)
             .then(|| BackendAlignmentRegion {
                 raw_start: 0,
                 raw_end: raw_length,
@@ -3383,6 +3429,33 @@ fn app_latency_observation(
         certainty: app_latency_certainty(observation.certainty),
         sample_rate: observation.sample_rate,
         revision: observation.revision,
+    }
+}
+
+fn app_take_latency_snapshot(snapshot: &BackendTakeLatencySnapshot) -> TakeLatencyProvenanceState {
+    TakeLatencyProvenanceState {
+        capture_alignment_frames: snapshot.capture_alignment_frames,
+        retained_before_frames: snapshot.retained_before_frames,
+        retained_after_frames: snapshot.retained_after_frames,
+        render_advance_frames: 0,
+        certainty: match snapshot.certainty {
+            BackendLatencyCertainty::Exact => LatencyCertaintyState::Exact,
+            BackendLatencyCertainty::Range => LatencyCertaintyState::Range,
+            BackendLatencyCertainty::Estimated => LatencyCertaintyState::Estimated,
+            BackendLatencyCertainty::ManualOnly => LatencyCertaintyState::ManualOnly,
+            BackendLatencyCertainty::Unknown => LatencyCertaintyState::Unknown,
+        },
+        observation_min_frames: snapshot.observation_min_frames,
+        observation_max_frames: snapshot.observation_max_frames,
+        observation_sample_rate: snapshot.observation_sample_rate,
+        observation_revision: snapshot.observation_revision,
+        variable_history: snapshot.variable_history,
+        history_revisions: snapshot.history_revisions,
+        changed_during_operation: snapshot.changed_during_operation,
+        incomplete: snapshot.incomplete,
+        deferred_mode: None,
+        finalizing: false,
+        error: None,
     }
 }
 
@@ -4354,6 +4427,8 @@ impl Backend for EngineBackend {
                     preplay: channel.pre_play_samples(),
                     latency: backend_take_latency_snapshot(
                         channel.capture_alignment_frames(),
+                        channel.retained_before_frames(),
+                        channel.retained_after_frames(),
                         channel.length().min(u32::MAX as usize) as u32,
                         channel.grab_latency_selection(),
                         channel.latched_latency_recipe(),
@@ -4395,6 +4470,8 @@ impl Backend for EngineBackend {
                     preplay: channel.pre_play_samples(),
                     latency: backend_take_latency_snapshot(
                         channel.capture_alignment_frames(),
+                        channel.retained_before_frames(),
+                        channel.retained_after_frames(),
                         channel.length(),
                         channel.grab_latency_selection(),
                         channel.latched_latency_recipe(),
@@ -4568,6 +4645,26 @@ impl Backend for EngineBackend {
         {
             return Err(anyhow!("loop content update contains a duplicate channel"));
         }
+        let audio_latency = update
+            .audio
+            .iter()
+            .map(|item| {
+                item.latency
+                    .as_ref()
+                    .map(|latency| runtime_take_latency_selection(latency, self.sample_rate))
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let midi_latency = update
+            .midi
+            .iter()
+            .map(|item| {
+                item.latency
+                    .as_ref()
+                    .map(|latency| runtime_take_latency_selection(latency, self.sample_rate))
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>>>()?;
         let midi_events = update
             .midi
             .iter()
@@ -4582,25 +4679,54 @@ impl Backend for EngineBackend {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        for (item, index) in update.audio.iter().zip(audio_indices) {
+        for ((item, latency), index) in update.audio.iter().zip(audio_latency).zip(audio_indices) {
             let channel = self
                 .session
                 .audio_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing audio channel"))?;
             let retained_offset = channel.start_offset();
             channel.load_data(&item.samples);
-            channel.set_start_offset(item.start_offset.unwrap_or(retained_offset));
+            let start_offset = item.start_offset.unwrap_or(retained_offset);
+            if let (Some(latency), Some(snapshot)) = (latency, item.latency.as_ref()) {
+                channel.apply_grab_latency_mapping(
+                    start_offset,
+                    snapshot.capture_alignment_frames,
+                    latency,
+                )?;
+                channel.restore_retained_margin_metadata(
+                    snapshot.retained_before_frames,
+                    snapshot.retained_after_frames,
+                )?;
+            } else {
+                channel.set_start_offset(start_offset);
+            }
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
             }
         }
-        for ((item, events), index) in update.midi.iter().zip(midi_events).zip(midi_indices) {
+        for (((item, events), latency), index) in update
+            .midi
+            .iter()
+            .zip(midi_events)
+            .zip(midi_latency)
+            .zip(midi_indices)
+        {
             let channel = self
                 .session
                 .midi_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?;
             channel.set_contents(&events, item.length, Some(&item.start_state));
-            if let Some(offset) = item.start_offset {
+            if let (Some(latency), Some(snapshot)) = (latency, item.latency.as_ref()) {
+                channel.restore_take_latency_mapping(
+                    item.start_offset.unwrap_or(0),
+                    snapshot.capture_alignment_frames,
+                    latency,
+                )?;
+                channel.restore_retained_margin_metadata(
+                    snapshot.retained_before_frames,
+                    snapshot.retained_after_frames,
+                )?;
+            } else if let Some(offset) = item.start_offset {
                 channel.set_start_offset(offset);
             }
             if let Some(preplay) = item.preplay {
@@ -4881,6 +5007,8 @@ impl Backend for EngineBackend {
                         .map(|channel| {
                             (
                                 channel.capture_alignment_frames(),
+                                channel.retained_before_frames(),
+                                channel.retained_after_frames(),
                                 channel.render_advance_frames(),
                                 channel.grab_latency_selection(),
                                 channel
@@ -4898,6 +5026,8 @@ impl Backend for EngineBackend {
                                 .map(|channel| {
                                     (
                                         channel.capture_alignment_frames(),
+                                        channel.retained_before_frames(),
+                                        channel.retained_after_frames(),
                                         channel.render_advance_frames(),
                                         channel.grab_latency_selection(),
                                         channel
@@ -4910,7 +5040,16 @@ impl Backend for EngineBackend {
                         })
                 })
                 .map(
-                    |(capture, render, selection, changed, incomplete, finalizing)| {
+                    |(
+                        capture,
+                        retained_before,
+                        retained_after,
+                        render,
+                        selection,
+                        changed,
+                        incomplete,
+                        finalizing,
+                    )| {
                         let (observation, certainty, revision, variable, revisions) =
                             match selection {
                                 shoop_engine::RetainedLatencySelection::Stable(observation) => (
@@ -4936,6 +5075,8 @@ impl Backend for EngineBackend {
                             };
                         TakeLatencyProvenanceState {
                             capture_alignment_frames: capture,
+                            retained_before_frames: retained_before,
+                            retained_after_frames: retained_after,
                             render_advance_frames: render,
                             certainty,
                             observation_min_frames: observation
@@ -6120,6 +6261,36 @@ impl Backend for FakeBackend {
             .ok_or_else(|| anyhow!("unknown fake loop"))?
             .latency
             .capture_alignment_frames = capture_alignment_frames;
+        let content = self
+            .loop_content
+            .get_mut(&loop_id)
+            .ok_or_else(|| anyhow!("missing fake loop content"))?;
+        for channel in &mut content.audio {
+            channel.latency.capture_alignment_frames = capture_alignment_frames;
+            channel.latency.certainty = BackendLatencyCertainty::ManualOnly;
+            channel.latency.alignment_regions = (!channel.samples.is_empty())
+                .then(|| BackendAlignmentRegion {
+                    raw_start: 0,
+                    raw_end: channel.samples.len().min(u32::MAX as usize) as u32,
+                    capture_alignment_frames,
+                    observation_revision: channel.latency.observation_revision,
+                })
+                .into_iter()
+                .collect();
+        }
+        for channel in &mut content.midi {
+            channel.latency.capture_alignment_frames = capture_alignment_frames;
+            channel.latency.certainty = BackendLatencyCertainty::ManualOnly;
+            channel.latency.alignment_regions = (channel.length > 0)
+                .then(|| BackendAlignmentRegion {
+                    raw_start: 0,
+                    raw_end: channel.length,
+                    capture_alignment_frames,
+                    observation_revision: channel.latency.observation_revision,
+                })
+                .into_iter()
+                .collect();
+        }
         Ok(())
     }
 
@@ -7015,6 +7186,9 @@ impl Backend for FakeBackend {
             if let Some(preplay) = item.preplay {
                 channel.preplay = preplay;
             }
+            if let Some(latency) = &item.latency {
+                channel.latency.clone_from(latency);
+            }
         }
         for item in &update.midi {
             let channel = &mut content.midi[item.channel];
@@ -7027,11 +7201,22 @@ impl Backend for FakeBackend {
             if let Some(preplay) = item.preplay {
                 channel.preplay = preplay;
             }
+            if let Some(latency) = &item.latency {
+                channel.latency.clone_from(latency);
+            }
         }
         if let Some(length) = update.length {
             content.length = length;
         }
+        let displayed_latency = content
+            .audio
+            .first()
+            .map(|channel| &channel.latency)
+            .or_else(|| content.midi.first().map(|channel| &channel.latency))
+            .map(app_take_latency_snapshot)
+            .unwrap_or_default();
         let state = self.loops.get_mut(&loop_id).expect("loop was validated");
+        state.latency = displayed_latency;
         state.mode = BackendLoopMode::Stopped;
         state.next_mode = None;
         state.next_transition_delay = None;
@@ -7311,6 +7496,8 @@ impl Backend for FakeBackend {
             ] {
                 staged.set_track_control(created.track_id, control)?;
             }
+            staged
+                .set_track_latency_policy(created.track_id, &source_track.state.latency_policy)?;
             for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
                 let target_loop = staged
                     .loop_content
@@ -7349,6 +7536,13 @@ impl Backend for FakeBackend {
                     },
                 );
                 if let Some(state) = staged.loops.get_mut(loop_id) {
+                    state.latency = source_loop
+                        .audio
+                        .first()
+                        .map(|channel| &channel.latency)
+                        .or_else(|| source_loop.midi.first().map(|channel| &channel.latency))
+                        .map(app_take_latency_snapshot)
+                        .unwrap_or_default();
                     state.length = source_loop.length;
                     state.gain = source_loop.gain;
                     state.balance = source_loop.balance;
@@ -8120,12 +8314,14 @@ mod tests {
                             samples: vec![1.0, 2.0, 3.0],
                             start_offset: Some(-1),
                             preplay: Some(4),
+                            latency: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![10.0, 20.0, 30.0],
                             start_offset: Some(-2),
                             preplay: Some(5),
+                            latency: None,
                         },
                     ],
                     midi: vec![BackendMidiChannelUpdate {
@@ -8138,6 +8334,7 @@ mod tests {
                         }],
                         start_offset: Some(-3),
                         preplay: Some(6),
+                        latency: None,
                     }],
                     length: Some(3),
                 },
@@ -8177,12 +8374,14 @@ mod tests {
                             samples: vec![1.0, 2.0, 3.0],
                             start_offset: None,
                             preplay: None,
+                            latency: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![10.0, 20.0, 30.0],
                             start_offset: None,
                             preplay: None,
+                            latency: None,
                         },
                     ],
                     ..Default::default()
@@ -8239,6 +8438,7 @@ mod tests {
                         samples: vec![99.0],
                         start_offset: None,
                         preplay: None,
+                        latency: None,
                     }],
                     ..Default::default()
                 },
@@ -8281,12 +8481,14 @@ mod tests {
                             samples: vec![99.0],
                             start_offset: None,
                             preplay: None,
+                            latency: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 0,
                             samples: vec![100.0],
                             start_offset: None,
                             preplay: None,
+                            latency: None,
                         },
                     ],
                     ..Default::default()
@@ -8336,6 +8538,8 @@ mod tests {
         loop_.audio[0].preplay = 3;
         loop_.audio[0].latency = BackendTakeLatencySnapshot {
             capture_alignment_frames: 2,
+            retained_before_frames: 3,
+            retained_after_frames: 4,
             observation_min_frames: Some(2),
             observation_max_frames: Some(2),
             certainty: BackendLatencyCertainty::Exact,
@@ -8360,6 +8564,8 @@ mod tests {
             preplay: 2,
             latency: BackendTakeLatencySnapshot {
                 capture_alignment_frames: 1,
+                retained_before_frames: 1,
+                retained_after_frames: 2,
                 observation_min_frames: Some(1),
                 observation_max_frames: Some(1),
                 certainty: BackendLatencyCertainty::Exact,
@@ -8402,9 +8608,13 @@ mod tests {
         assert_eq!(loop_.audio[0].start_offset, -2);
         assert_eq!(loop_.audio[0].preplay, 3);
         assert_eq!(loop_.audio[0].latency.capture_alignment_frames, 2);
+        assert_eq!(loop_.audio[0].latency.retained_before_frames, 3);
+        assert_eq!(loop_.audio[0].latency.retained_after_frames, 4);
         assert_eq!(loop_.audio[0].latency.observation_revision, 5);
         assert_eq!(loop_.audio[0].latency.alignment_regions.len(), 1);
         assert_eq!(loop_.midi[0].latency.capture_alignment_frames, 1);
+        assert_eq!(loop_.midi[0].latency.retained_before_frames, 1);
+        assert_eq!(loop_.midi[0].latency.retained_after_frames, 2);
         assert_eq!(loop_.midi[0].latency.observation_revision, 6);
         assert_eq!(loop_.midi[0].events[0].time, 2);
         assert!(loop_.midi[0]
@@ -9468,6 +9678,7 @@ mod tests {
                         events: preserved_midi.clone(),
                         start_offset: None,
                         preplay: None,
+                        latency: None,
                     }],
                     length: Some(128),
                     ..BackendLoopContentUpdate::default()
@@ -9950,6 +10161,7 @@ mod tests {
                         ],
                         start_offset: Some(-4),
                         preplay: Some(7),
+                        latency: None,
                     }],
                     length: Some(32),
                     ..Default::default()

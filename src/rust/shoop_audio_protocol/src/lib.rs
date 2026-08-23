@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 14;
+pub const PROTOCOL_VERSION: u16 = 15;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -69,6 +69,8 @@ pub struct WireTrackLatencyPolicy {
 #[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireTakeLatencyState {
     pub capture_alignment_frames: i32,
+    pub retained_before_frames: u32,
+    pub retained_after_frames: u32,
     pub render_advance_frames: u32,
     pub observation: WireLatencyObservation,
     pub variable_history: bool,
@@ -1032,7 +1034,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":14,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":15,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1043,7 +1045,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":14,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":15,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

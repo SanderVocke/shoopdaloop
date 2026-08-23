@@ -5126,6 +5126,28 @@ impl AudioChannel {
         Ok(sequence)
     }
 
+    pub fn restore_retained_margin_metadata(
+        &self,
+        retained_before_frames: u32,
+        retained_after_frames: u32,
+    ) -> Result<CommandSequence> {
+        for frames in [retained_before_frames, retained_after_frames] {
+            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
+                return Err(anyhow!(
+                    "retained latency margin exceeds the supported bound"
+                ));
+            }
+        }
+        let sequence = self.with_mut(move |channel| {
+            let _ = channel
+                .restore_retained_margin_metadata(retained_before_frames, retained_after_frames);
+        })?;
+        self.control
+            .mirror
+            .publish_retained_margins(retained_before_frames, retained_after_frames);
+        Ok(sequence)
+    }
+
     pub fn consolidate_latency(&self) -> Result<CommandSequence> {
         let state = self.get_state()?;
         let logical_length = self.parent.mirror.read().length as usize;
@@ -5594,6 +5616,28 @@ impl MidiChannel {
         self.control
             .mirror
             .publish_latency_history(variable, revisions);
+        Ok(sequence)
+    }
+
+    pub fn restore_retained_margin_metadata(
+        &self,
+        retained_before_frames: u32,
+        retained_after_frames: u32,
+    ) -> Result<CommandSequence> {
+        for frames in [retained_before_frames, retained_after_frames] {
+            if frames > shoop_latency::MAX_RETAINED_MARGIN_FRAMES {
+                return Err(anyhow!(
+                    "retained latency margin exceeds the supported bound"
+                ));
+            }
+        }
+        let sequence = self.with_mut(move |channel| {
+            let _ = channel
+                .restore_retained_margin_metadata(retained_before_frames, retained_after_frames);
+        })?;
+        self.control
+            .mirror
+            .publish_retained_margins(retained_before_frames, retained_after_frames);
         Ok(sequence)
     }
 

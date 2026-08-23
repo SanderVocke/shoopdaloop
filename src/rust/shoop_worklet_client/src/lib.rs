@@ -812,6 +812,8 @@ impl RemoteWorkletBackend {
         let observation = Self::latency_observation(wire.observation);
         TakeLatencyProvenanceState {
             capture_alignment_frames: wire.capture_alignment_frames,
+            retained_before_frames: wire.retained_before_frames,
+            retained_after_frames: wire.retained_after_frames,
             render_advance_frames: wire.render_advance_frames,
             certainty: observation.certainty,
             observation_min_frames: observation.minimum_frames,
@@ -3436,6 +3438,7 @@ mod tests {
                 samples: vec![0.25; 128],
                 start_offset: None,
                 preplay: None,
+                latency: None,
             }],
             length: Some(128),
             ..Default::default()

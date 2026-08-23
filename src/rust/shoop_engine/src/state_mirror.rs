@@ -456,6 +456,8 @@ pub struct AudioChannelStateMirror {
     length: AtomicU32,
     start_offset: AtomicI32,
     capture_alignment_frames: AtomicI32,
+    retained_before_frames: AtomicU32,
+    retained_after_frames: AtomicU32,
     render_advance_frames: AtomicU32,
     played_back_sample: AtomicI32,
     logical_played_position: AtomicI32,
@@ -479,6 +481,8 @@ impl Default for AudioChannelStateMirror {
             length: AtomicU32::new(0),
             start_offset: AtomicI32::new(0),
             capture_alignment_frames: AtomicI32::new(0),
+            retained_before_frames: AtomicU32::new(0),
+            retained_after_frames: AtomicU32::new(0),
             render_advance_frames: AtomicU32::new(0),
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             logical_played_position: AtomicI32::new(NO_SAMPLE),
@@ -562,6 +566,11 @@ impl AudioChannelStateMirror {
             .store(dispatch.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
     }
 
+    pub fn publish_retained_margins(&self, before: u32, after: u32) {
+        self.retained_before_frames.store(before, Ordering::Relaxed);
+        self.retained_after_frames.store(after, Ordering::Relaxed);
+    }
+
     pub fn publish_latency_retention_incomplete(&self, incomplete: bool) {
         self.latency_retention_incomplete
             .store(incomplete, Ordering::Relaxed);
@@ -595,6 +604,8 @@ impl AudioChannelStateMirror {
             length: self.length.load(Ordering::Relaxed),
             start_offset: self.start_offset.load(Ordering::Relaxed),
             capture_alignment_frames: self.capture_alignment_frames.load(Ordering::Relaxed),
+            retained_before_frames: self.retained_before_frames.load(Ordering::Relaxed),
+            retained_after_frames: self.retained_after_frames.load(Ordering::Relaxed),
             render_advance_frames: self.render_advance_frames.load(Ordering::Relaxed),
             played_back_sample: (played != NO_SAMPLE).then_some(played),
             logical_played_position: (logical != NO_SAMPLE).then_some(logical),
@@ -623,6 +634,8 @@ pub struct MidiChannelStateMirror {
     length: AtomicU32,
     start_offset: AtomicI32,
     capture_alignment_frames: AtomicI32,
+    retained_before_frames: AtomicU32,
+    retained_after_frames: AtomicU32,
     render_advance_frames: AtomicU32,
     played_back_sample: AtomicI32,
     logical_played_position: AtomicI32,
@@ -646,6 +659,8 @@ impl Default for MidiChannelStateMirror {
             length: AtomicU32::new(0),
             start_offset: AtomicI32::new(0),
             capture_alignment_frames: AtomicI32::new(0),
+            retained_before_frames: AtomicU32::new(0),
+            retained_after_frames: AtomicU32::new(0),
             render_advance_frames: AtomicU32::new(0),
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             logical_played_position: AtomicI32::new(NO_SAMPLE),
@@ -725,6 +740,11 @@ impl MidiChannelStateMirror {
             .store(dispatch.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
     }
 
+    pub fn publish_retained_margins(&self, before: u32, after: u32) {
+        self.retained_before_frames.store(before, Ordering::Relaxed);
+        self.retained_after_frames.store(after, Ordering::Relaxed);
+    }
+
     pub fn publish_latency_retention_incomplete(&self, incomplete: bool) {
         self.latency_retention_incomplete
             .store(incomplete, Ordering::Relaxed);
@@ -758,6 +778,8 @@ impl MidiChannelStateMirror {
             length: self.length.load(Ordering::Relaxed),
             start_offset: self.start_offset.load(Ordering::Relaxed),
             capture_alignment_frames: self.capture_alignment_frames.load(Ordering::Relaxed),
+            retained_before_frames: self.retained_before_frames.load(Ordering::Relaxed),
+            retained_after_frames: self.retained_after_frames.load(Ordering::Relaxed),
             render_advance_frames: self.render_advance_frames.load(Ordering::Relaxed),
             played_back_sample: (played != NO_SAMPLE).then_some(played),
             logical_played_position: (logical != NO_SAMPLE).then_some(logical),

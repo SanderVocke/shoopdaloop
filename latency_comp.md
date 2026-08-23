@@ -781,23 +781,23 @@ Verification:
 
 Dependencies: Stages 5–10 define all persisted state.
 
-- [ ] Bump session document version and add validated latency documents.
-- [ ] Update session archive encode/decode, media index, resource limits, deterministic ordering, and transactional replacement.
-- [ ] Update exact Shoop audio/MIDI formats or metadata envelopes to preserve raw/logical identity.
-- [ ] Implement deterministic resampling of observations, trims, margins, and alignment regions.
-- [ ] Make standard export render the logical compensated view and add explicit raw export.
-- [ ] Define import defaults and optional manual import offset.
-- [ ] Update duplicate/clone/composite/session-switch flows to preserve or intentionally reset provenance.
-- [ ] Ensure generated click tracks and source-only imports receive explicit no-capture provenance.
-- [ ] Update all session fixtures and format documentation.
+- [x] Bump session document version and add validated latency documents.
+- [x] Update session archive encode/decode, media index, resource limits, deterministic ordering, and transactional replacement.
+- [x] Update exact Shoop audio/MIDI formats or metadata envelopes to preserve raw/logical identity.
+- [x] Implement deterministic resampling of observations, trims, margins, and alignment regions.
+- [x] Make standard export render the logical compensated view and add explicit raw export.
+- [x] Define import defaults and optional manual import offset.
+- [x] Update duplicate/clone/composite/session-switch flows to preserve or intentionally reset provenance.
+- [x] Ensure generated click tracks and source-only imports receive explicit no-capture provenance.
+- [x] Update all session fixtures and format documentation.
 
 Verification:
 
-- [ ] Same-rate save/load gives exact raw bytes/events and identical compensated output.
-- [ ] Cross-rate save/load/driver switch follows documented rounding and retains valid ranges.
-- [ ] Malformed, overflowing, inconsistent, and unsupported latency metadata fails before mutation.
-- [ ] Logical and raw exports have expected lengths/timestamps and do not mutate the loop.
-- [ ] Clone/duplicate/composite tests preserve timing identity.
+- [x] Same-rate save/load gives exact raw bytes/events and identical compensated output.
+- [x] Cross-rate save/load/driver switch follows documented rounding and retains valid ranges.
+- [x] Malformed, overflowing, inconsistent, and unsupported latency metadata fails before mutation.
+- [x] Logical and raw exports have expected lengths/timestamps and do not mutate the loop.
+- [x] Clone/duplicate/composite tests preserve timing identity.
 
 ### Stage 12 — Settings and user interface
 

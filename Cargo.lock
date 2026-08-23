@@ -4208,6 +4208,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "shoop_latency",
  "shoop_script_resources",
  "shoop_wasm_test_support",
  "thiserror 2.0.20",

@@ -882,6 +882,8 @@ fn to_wire_take_latency(
 ) -> shoop_audio_protocol::WireTakeLatencyState {
     shoop_audio_protocol::WireTakeLatencyState {
         capture_alignment_frames: latency.capture_alignment_frames,
+        retained_before_frames: latency.retained_before_frames,
+        retained_after_frames: latency.retained_after_frames,
         render_advance_frames: latency.render_advance_frames,
         observation: WireLatencyObservation {
             minimum_frames: latency.observation_min_frames,
@@ -1860,6 +1862,7 @@ mod tests {
                         events,
                         start_offset: Some(-2),
                         preplay: Some(3),
+                        latency: None,
                     }],
                     length: Some(256),
                     ..Default::default()
@@ -2822,12 +2825,14 @@ mod tests {
                     samples: vec![0.25; 1024],
                     start_offset: Some(-1),
                     preplay: Some(2),
+                    latency: None,
                 },
                 shoop_backend::BackendAudioChannelUpdate {
                     channel: 1,
                     samples: vec![0.5; 1024],
                     start_offset: Some(-2),
                     preplay: Some(3),
+                    latency: None,
                 },
             ],
             midi: vec![shoop_backend::BackendMidiChannelUpdate {
@@ -2840,6 +2845,7 @@ mod tests {
                 }],
                 start_offset: Some(-3),
                 preplay: Some(4),
+                latency: None,
             }],
             length: Some(1024),
         };

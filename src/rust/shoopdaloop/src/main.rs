@@ -947,6 +947,7 @@ impl UnifiedApp {
                                 name: file_name(&path),
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
+                                manual_offset_frames: None,
                             });
                         }
                         Err(error) => {
@@ -973,6 +974,7 @@ impl UnifiedApp {
                                 name: file_name(&path),
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
+                                manual_offset_frames: None,
                             });
                         }
                         Err(error) => {
@@ -4166,7 +4168,7 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::RequestLoopMidiExport {
                         loop_id: loop_state.id,
-                        standard: false,
+                        format: shoop_egui::LoopMidiExportFormat::Exact,
                     })
                     .map(|()| Self::WaitForLoopMidiExport)
             }
@@ -4384,7 +4386,7 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::RequestLoopMidiExport {
                         loop_id: loop_state.id,
-                        standard: false,
+                        format: shoop_egui::LoopMidiExportFormat::Exact,
                     })
                     .map(|()| Self::WaitForClickMidiExport)
             }
