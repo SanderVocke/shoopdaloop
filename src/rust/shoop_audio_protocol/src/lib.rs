@@ -356,6 +356,11 @@ pub enum WireTrackFxControl {
     TinyClearMidiCcAssignments,
     TinyPanic,
     OxiSelectPreset(String),
+    OxiSetReverbSend(f32),
+    OxiSetChorusSend(f32),
+    OxiAssignMidiCc(WireOxiSynthMidiCcAssignment),
+    OxiRemoveMidiCc(WireOxiSynthParameter),
+    OxiClearMidiCcAssignments,
     OxiPanic,
 }
 
@@ -371,6 +376,8 @@ impl WireTrackFxControl {
             Self::TinySetEqMidDb(_) => 6,
             Self::TinySetEqHighDb(_) => 7,
             Self::OxiSelectPreset(_) => 8,
+            Self::OxiSetReverbSend(_) => 9,
+            Self::OxiSetChorusSend(_) => 10,
             Self::SetVisible(_)
             | Self::ToggleOrRecover
             | Self::RestoreState(_)
@@ -384,6 +391,9 @@ impl WireTrackFxControl {
             | Self::TinyRemoveMidiCc(_)
             | Self::TinyClearMidiCcAssignments
             | Self::TinyPanic
+            | Self::OxiAssignMidiCc(_)
+            | Self::OxiRemoveMidiCc(_)
+            | Self::OxiClearMidiCcAssignments
             | Self::OxiPanic => return None,
         })
     }
@@ -583,6 +593,20 @@ pub struct WireConfirmedLink {
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum WireOxiSynthParameter {
+    ReverbSend,
+    ChorusSend,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireOxiSynthMidiCcAssignment {
+    pub parameter: WireOxiSynthParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum WireTinySynthFxParameter {
     MasterGain,
     ReverbAmount,
@@ -649,9 +673,12 @@ pub struct WireTrackFxState {
     pub oxisynth: Option<WireOxiSynthState>,
 }
 
-#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireOxiSynthState {
     pub selected_preset_id: String,
+    pub reverb_send: f32,
+    pub chorus_send: f32,
+    pub midi_cc_assignments: Vec<WireOxiSynthMidiCcAssignment>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

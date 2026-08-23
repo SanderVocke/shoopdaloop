@@ -19,17 +19,19 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    FxLifecycle, OxiSynthState, ResolvedAudioDriverConfig, TinySynthFxState, TrackFxState,
-    TrackProcessorDescriptor, TrackProcessorEditorState,
+    FxLifecycle, OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState,
+    ResolvedAudioDriverConfig, TinySynthFxState, TrackFxState, TrackProcessorDescriptor,
+    TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
     Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
-    WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WirePortDataType,
-    WirePortDirection, WirePortRole, WireSnapshot, WireTinySynthFxMidiCcAssignment,
-    WireTinySynthFxParameter, WireTrackControl, WireTrackFxControl, WireTrackTopology,
-    COMMAND_CAPACITY, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment,
+    WireOxiSynthParameter, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
+    WireTinySynthFxMidiCcAssignment, WireTinySynthFxParameter, WireTrackControl,
+    WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
+    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, encode_tiny_synth_fx_state, oxisynth_descriptor,
@@ -841,6 +843,20 @@ impl RemoteWorkletBackend {
                             let oxisynth = fx.oxisynth.map(|oxisynth| {
                                 TrackProcessorEditorState::OxiSynth(OxiSynthState {
                                     selected_preset_id: oxisynth.selected_preset_id,
+                                    reverb_send: oxisynth.reverb_send,
+                                    chorus_send: oxisynth.chorus_send,
+                                    midi_cc_assignments: oxisynth
+                                        .midi_cc_assignments
+                                        .into_iter()
+                                        .map(|assignment| OxiSynthMidiCcAssignment {
+                                            parameter: from_wire_oxisynth_parameter(
+                                                assignment.parameter,
+                                            ),
+                                            channel: assignment.channel,
+                                            controller: assignment.controller,
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .into(),
                                 })
                             });
                             TrackFxState {
@@ -1265,6 +1281,29 @@ fn from_wire_track_fx_control(control: &WireTrackFxControl) -> BackendTrackFxCon
         WireTrackFxControl::TinyPanic => TinySynthFxControl::Panic,
         WireTrackFxControl::OxiSelectPreset(value) => {
             return BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(value.clone()));
+        }
+        WireTrackFxControl::OxiSetReverbSend(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetReverbSend(*value));
+        }
+        WireTrackFxControl::OxiSetChorusSend(value) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::SetChorusSend(*value));
+        }
+        WireTrackFxControl::OxiAssignMidiCc(assignment) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::AssignMidiCc(
+                OxiSynthMidiCcAssignment {
+                    parameter: from_wire_oxisynth_parameter(assignment.parameter),
+                    channel: assignment.channel,
+                    controller: assignment.controller,
+                },
+            ));
+        }
+        WireTrackFxControl::OxiRemoveMidiCc(parameter) => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::RemoveMidiCc(
+                from_wire_oxisynth_parameter(*parameter),
+            ));
+        }
+        WireTrackFxControl::OxiClearMidiCcAssignments => {
+            return BackendTrackFxControl::OxiSynth(OxiSynthControl::ClearMidiCcAssignments);
         }
         WireTrackFxControl::OxiPanic => {
             return BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic);
@@ -2515,6 +2554,20 @@ fn to_wire_track_control(control: BackendTrackControl) -> WireTrackControl {
     }
 }
 
+fn from_wire_oxisynth_parameter(parameter: WireOxiSynthParameter) -> OxiSynthParameter {
+    match parameter {
+        WireOxiSynthParameter::ReverbSend => OxiSynthParameter::ReverbSend,
+        WireOxiSynthParameter::ChorusSend => OxiSynthParameter::ChorusSend,
+    }
+}
+
+fn to_wire_oxisynth_parameter(parameter: OxiSynthParameter) -> WireOxiSynthParameter {
+    match parameter {
+        OxiSynthParameter::ReverbSend => WireOxiSynthParameter::ReverbSend,
+        OxiSynthParameter::ChorusSend => WireOxiSynthParameter::ChorusSend,
+    }
+}
+
 fn from_wire_tiny_parameter(parameter: WireTinySynthFxParameter) -> TinySynthFxParameter {
     match parameter {
         WireTinySynthFxParameter::MasterGain => TinySynthFxParameter::MasterGain,
@@ -2590,6 +2643,21 @@ fn to_wire_track_fx_control(control: BackendTrackFxControl) -> WireTrackFxContro
         },
         BackendTrackFxControl::OxiSynth(control) => match control {
             OxiSynthControl::SelectPreset(value) => WireTrackFxControl::OxiSelectPreset(value),
+            OxiSynthControl::SetReverbSend(value) => WireTrackFxControl::OxiSetReverbSend(value),
+            OxiSynthControl::SetChorusSend(value) => WireTrackFxControl::OxiSetChorusSend(value),
+            OxiSynthControl::AssignMidiCc(assignment) => {
+                WireTrackFxControl::OxiAssignMidiCc(WireOxiSynthMidiCcAssignment {
+                    parameter: to_wire_oxisynth_parameter(assignment.parameter),
+                    channel: assignment.channel,
+                    controller: assignment.controller,
+                })
+            }
+            OxiSynthControl::RemoveMidiCc(parameter) => {
+                WireTrackFxControl::OxiRemoveMidiCc(to_wire_oxisynth_parameter(parameter))
+            }
+            OxiSynthControl::ClearMidiCcAssignments => {
+                WireTrackFxControl::OxiClearMidiCcAssignments
+            }
             OxiSynthControl::Panic => WireTrackFxControl::OxiPanic,
         },
     }
@@ -2995,6 +3063,9 @@ mod tests {
                             tiny: None,
                             oxisynth: Some(WireOxiSynthState {
                                 selected_preset_id: "0:40".to_owned(),
+                                reverb_send: 0.25,
+                                chorus_send: 0.5,
+                                midi_cc_assignments: Vec::new(),
                             }),
                         }),
                     ),
@@ -3110,7 +3181,7 @@ mod tests {
                 .track_fx_state_string(oxisynth_track)
                 .unwrap()
                 .as_deref(),
-            Some("shoop-oxisynth:1:timgm6mb:0:40")
+            Some("shoop-oxisynth:2:timgm6mb:0:40:3e800000:3f000000")
         );
         backend
             .set_track_fx_control(

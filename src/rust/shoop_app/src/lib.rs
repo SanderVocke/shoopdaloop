@@ -713,6 +713,9 @@ enum FxControlKey {
     TinyEqHigh,
     TinyMidiAssignments,
     OxiPreset,
+    OxiReverbSend,
+    OxiChorusSend,
+    OxiMidiAssignments,
 }
 
 fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrackFxControl) {
@@ -788,6 +791,35 @@ fn apply_fx_control(fx: &mut shoop_app_api::TrackFxState, control: &BackendTrack
                 shoop_app_api::OxiSynthControl::SelectPreset(id) => {
                     editor.selected_preset_id.clone_from(id);
                 }
+                shoop_app_api::OxiSynthControl::SetReverbSend(value) => {
+                    editor.reverb_send = *value;
+                }
+                shoop_app_api::OxiSynthControl::SetChorusSend(value) => {
+                    editor.chorus_send = *value;
+                }
+                shoop_app_api::OxiSynthControl::AssignMidiCc(assignment) => {
+                    let mut assignments = editor.midi_cc_assignments.to_vec();
+                    assignments.retain(|current| {
+                        current.parameter != assignment.parameter
+                            && (current.channel, current.controller)
+                                != (assignment.channel, assignment.controller)
+                    });
+                    assignments.push(*assignment);
+                    assignments.sort_by_key(|assignment| assignment.parameter);
+                    editor.midi_cc_assignments = assignments.into();
+                }
+                shoop_app_api::OxiSynthControl::RemoveMidiCc(parameter) => {
+                    editor.midi_cc_assignments = editor
+                        .midi_cc_assignments
+                        .iter()
+                        .copied()
+                        .filter(|assignment| assignment.parameter != *parameter)
+                        .collect::<Vec<_>>()
+                        .into();
+                }
+                shoop_app_api::OxiSynthControl::ClearMidiCcAssignments => {
+                    editor.midi_cc_assignments = Arc::from([]);
+                }
                 shoop_app_api::OxiSynthControl::Panic => {}
             }
         }
@@ -845,6 +877,13 @@ fn fx_control_key(control: &BackendTrackFxControl) -> Option<FxControlKey> {
         },
         BackendTrackFxControl::OxiSynth(control) => match control {
             shoop_app_api::OxiSynthControl::SelectPreset(_) => FxControlKey::OxiPreset,
+            shoop_app_api::OxiSynthControl::SetReverbSend(_) => FxControlKey::OxiReverbSend,
+            shoop_app_api::OxiSynthControl::SetChorusSend(_) => FxControlKey::OxiChorusSend,
+            shoop_app_api::OxiSynthControl::AssignMidiCc(_)
+            | shoop_app_api::OxiSynthControl::RemoveMidiCc(_)
+            | shoop_app_api::OxiSynthControl::ClearMidiCcAssignments => {
+                FxControlKey::OxiMidiAssignments
+            }
             shoop_app_api::OxiSynthControl::Panic => return None,
         },
         BackendTrackFxControl::ToggleOrRecover
@@ -9200,6 +9239,7 @@ fn session_bundle_to_backend(
                 .flat_map(|chain| chain.midi_cc_assignments.iter().copied())
                 .map(backend_midi_cc_assignment)
                 .collect(),
+            oxisynth_midi_cc_assignments: Vec::new(),
         });
     }
     Ok(BackendSessionData {
@@ -9584,6 +9624,9 @@ mod tests {
             editor: Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(
                 shoop_app_api::OxiSynthState {
                     selected_preset_id: "0:0".to_owned(),
+                    reverb_send: 0.0,
+                    chorus_send: 0.0,
+                    midi_cc_assignments: Arc::from([]),
                 },
             )),
         };
@@ -10533,7 +10576,10 @@ mod tests {
         assert_eq!(saved_track.topology, TrackTopologyDocument::OxiSynth);
         let chain = saved_track.fx_chain.as_ref().unwrap();
         assert_eq!(chain.chain_type, FxChainTypeDocument::OxiSynth);
-        assert_eq!(chain.internal_state, "shoop-oxisynth:1:timgm6mb:0:40");
+        assert_eq!(
+            chain.internal_state,
+            "shoop-oxisynth:2:timgm6mb:0:40:00000000:00000000"
+        );
         assert!(saved
             .document
             .fx_states

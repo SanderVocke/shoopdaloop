@@ -11,8 +11,9 @@ pub use native::{
     run_carla_worker_if_requested, smoke_test_carla_runtime, smoke_test_carla_ui,
 };
 pub use shoop_app_api::{
-    OxiSynthControl, OxiSynthState, TinySynthFxControl, TinySynthFxMidiCcAssignment,
-    TinySynthFxParameter, TinySynthFxState, TrackProcessorEditorState, TrackProcessorTypeId,
+    OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState,
+    TinySynthFxControl, TinySynthFxMidiCcAssignment, TinySynthFxParameter, TinySynthFxState,
+    TrackProcessorEditorState, TrackProcessorTypeId,
 };
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -526,6 +527,19 @@ pub struct BackendLatestMidiMessage {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendOxiSynthMidiCcAssignment {
+    pub parameter: BackendOxiSynthParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum BackendOxiSynthParameter {
+    ReverbSend,
+    ChorusSend,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendTinySynthFxMidiCcAssignment {
     pub parameter: BackendTinySynthFxParameter,
     pub channel: u8,
@@ -636,6 +650,8 @@ pub struct BackendSessionTrack {
     pub processor_state: Option<String>,
     #[serde(default)]
     pub tiny_synth_midi_cc_assignments: Vec<BackendTinySynthFxMidiCcAssignment>,
+    #[serde(default)]
+    pub oxisynth_midi_cc_assignments: Vec<BackendOxiSynthMidiCcAssignment>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1001,6 +1017,72 @@ pub const RECORDING_CAPACITY_SECONDS: u32 = 120;
 pub const INPUT_CAPTURE_CAPACITY_SECONDS: u32 = 30;
 pub const WEB_MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
 
+fn engine_oxisynth_parameter(
+    parameter: OxiSynthParameter,
+) -> shoop_engine::oxisynth::OxiSynthParameter {
+    match parameter {
+        OxiSynthParameter::ReverbSend => shoop_engine::oxisynth::OxiSynthParameter::ReverbSend,
+        OxiSynthParameter::ChorusSend => shoop_engine::oxisynth::OxiSynthParameter::ChorusSend,
+    }
+}
+
+fn app_oxisynth_parameter(
+    parameter: shoop_engine::oxisynth::OxiSynthParameter,
+) -> OxiSynthParameter {
+    match parameter {
+        shoop_engine::oxisynth::OxiSynthParameter::ReverbSend => OxiSynthParameter::ReverbSend,
+        shoop_engine::oxisynth::OxiSynthParameter::ChorusSend => OxiSynthParameter::ChorusSend,
+    }
+}
+
+fn engine_oxisynth_midi_cc_assignment(
+    assignment: OxiSynthMidiCcAssignment,
+) -> shoop_engine::oxisynth::OxiSynthMidiCcAssignment {
+    shoop_engine::oxisynth::OxiSynthMidiCcAssignment {
+        parameter: engine_oxisynth_parameter(assignment.parameter),
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn app_oxisynth_midi_cc_assignment(
+    assignment: shoop_engine::oxisynth::OxiSynthMidiCcAssignment,
+) -> OxiSynthMidiCcAssignment {
+    OxiSynthMidiCcAssignment {
+        parameter: app_oxisynth_parameter(assignment.parameter),
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn backend_oxisynth_midi_cc_assignment(
+    assignment: OxiSynthMidiCcAssignment,
+) -> BackendOxiSynthMidiCcAssignment {
+    let parameter = match assignment.parameter {
+        OxiSynthParameter::ReverbSend => BackendOxiSynthParameter::ReverbSend,
+        OxiSynthParameter::ChorusSend => BackendOxiSynthParameter::ChorusSend,
+    };
+    BackendOxiSynthMidiCcAssignment {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
+fn app_backend_oxisynth_midi_cc_assignment(
+    assignment: BackendOxiSynthMidiCcAssignment,
+) -> OxiSynthMidiCcAssignment {
+    let parameter = match assignment.parameter {
+        BackendOxiSynthParameter::ReverbSend => OxiSynthParameter::ReverbSend,
+        BackendOxiSynthParameter::ChorusSend => OxiSynthParameter::ChorusSend,
+    };
+    OxiSynthMidiCcAssignment {
+        parameter,
+        channel: assignment.channel,
+        controller: assignment.controller,
+    }
+}
+
 fn engine_tiny_synth_parameter(
     parameter: TinySynthFxParameter,
 ) -> shoop_engine::tiny_synth_fx::TinySynthFxParameter {
@@ -1112,6 +1194,28 @@ fn validate_backend_midi_cc_assignments(track: &BackendSessionTrack) -> Result<(
             return Err(anyhow!("invalid or duplicate MIDI CC assignments"));
         }
     }
+    if !track.oxisynth_midi_cc_assignments.is_empty()
+        && !matches!(
+            &track.topology,
+            BackendTrackTopology::DryWetProcessor { processor_type, .. }
+                if processor_type == TrackProcessorTypeId::OXISYNTH
+        )
+    {
+        return Err(anyhow!(
+            "OxiSynth MIDI CC assignments belong to a non-OxiSynth processor"
+        ));
+    }
+    let mut parameters = BTreeSet::new();
+    let mut sources = BTreeSet::new();
+    for assignment in &track.oxisynth_midi_cc_assignments {
+        if assignment.channel > 15
+            || assignment.controller > 127
+            || !parameters.insert(assignment.parameter)
+            || !sources.insert((assignment.channel, assignment.controller))
+        {
+            return Err(anyhow!("invalid or duplicate OxiSynth MIDI CC assignments"));
+        }
+    }
     Ok(())
 }
 
@@ -1151,7 +1255,7 @@ pub fn tiny_synth_fx_descriptor() -> TrackProcessorDescriptor {
 pub fn oxisynth_descriptor() -> TrackProcessorDescriptor {
     TrackProcessorDescriptor {
         id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
-        label: "OxiSynth".to_owned(),
+        label: "Built-in Synth".to_owned(),
         available: true,
         unavailable_reason: None,
         constraints: shoop_app_api::TrackProcessorConstraints {
@@ -1188,7 +1292,7 @@ mod oxisynth_descriptor_tests {
     fn descriptor_is_fixed_stereo_midi_only_and_stateful() {
         let descriptor = oxisynth_descriptor();
         assert_eq!(descriptor.id.as_str(), TrackProcessorTypeId::OXISYNTH);
-        assert_eq!(descriptor.label, "OxiSynth");
+        assert_eq!(descriptor.label, "Built-in Synth");
         assert!(descriptor.available);
         assert!(descriptor.constraints.accepts(2, 2, true));
         assert!(!descriptor.constraints.accepts(0, 1, true));
@@ -1211,6 +1315,14 @@ pub fn encode_oxisynth_state(state: &OxiSynthState) -> Result<String> {
         shoop_engine::oxisynth::OxiSynthPresetId::from_stable_id(&state.selected_preset_id)?;
     let mut control = shoop_engine::oxisynth::OxiSynthControlState::default();
     control.select_preset(preset)?;
+    control.set_send(
+        shoop_engine::oxisynth::OxiSynthParameter::ReverbSend,
+        state.reverb_send,
+    )?;
+    control.set_send(
+        shoop_engine::oxisynth::OxiSynthParameter::ChorusSend,
+        state.chorus_send,
+    )?;
     Ok(control.encode())
 }
 
@@ -3057,6 +3169,15 @@ impl EngineBackend {
                     .map(app_midi_cc_assignment)
                     .map(backend_midi_cc_assignment)
                     .collect(),
+                oxisynth_midi_cc_assignments: track
+                    .oxisynth
+                    .as_ref()
+                    .map(|fx| fx.control.midi_cc_assignments())
+                    .into_iter()
+                    .flat_map(|assignments| assignments.iter().collect::<Vec<_>>())
+                    .map(app_oxisynth_midi_cc_assignment)
+                    .map(backend_oxisynth_midi_cc_assignment)
+                    .collect(),
                 processor_state: track
                     .fx
                     .as_mut()
@@ -3172,6 +3293,14 @@ impl EngineBackend {
                     created.track_id,
                     BackendTrackFxControl::TinySynthFx(TinySynthFxControl::AssignMidiCc(
                         app_backend_midi_cc_assignment(*assignment),
+                    )),
+                )?;
+            }
+            for assignment in &source_track.oxisynth_midi_cc_assignments {
+                staged.set_track_fx_control(
+                    created.track_id,
+                    BackendTrackFxControl::OxiSynth(OxiSynthControl::AssignMidiCc(
+                        app_backend_oxisynth_midi_cc_assignment(*assignment),
                     )),
                 )?;
             }
@@ -3500,6 +3629,14 @@ fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
         logs: Arc::from([]),
         editor: Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
             selected_preset_id: editor.selected_preset.stable_id(),
+            reverb_send: editor.reverb_send,
+            chorus_send: editor.chorus_send,
+            midi_cc_assignments: editor
+                .midi_cc_assignments
+                .into_iter()
+                .map(app_oxisynth_midi_cc_assignment)
+                .collect::<Vec<_>>()
+                .into(),
         })),
     }
 }
@@ -4133,8 +4270,10 @@ impl Backend for EngineBackend {
                 BackendTrackFxControl::SetVisible(visible) => fx.visible = visible,
                 BackendTrackFxControl::ToggleOrRecover => fx.visible = !fx.visible,
                 BackendTrackFxControl::RestoreState(state) => {
-                    let replacement =
+                    let assignments = fx.control.midi_cc_assignments();
+                    let mut replacement =
                         shoop_engine::oxisynth::OxiSynthControlState::from_encoded(&state)?;
+                    replacement.set_midi_cc_assignments(assignments);
                     let processor = replacement
                         .prepare_processor(self.sample_rate as f32, self.buffer_size as usize)?;
                     let displaced = self.session.set_oxisynth_processor(title, processor);
@@ -4142,21 +4281,64 @@ impl Backend for EngineBackend {
                     fx.control = replacement;
                 }
                 BackendTrackFxControl::ClearLogs => {}
-                BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(id)) => {
-                    let preset = shoop_engine::oxisynth::OxiSynthPresetId::from_stable_id(&id)?;
-                    let processor = self
-                        .session
-                        .oxisynth_processor_mut(&title)
-                        .ok_or_else(|| anyhow!("missing OxiSynth processor"))?;
-                    processor.select_preset(preset)?;
-                    fx.control.select_preset(preset)?;
-                }
-                BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic) => {
-                    self.session
-                        .oxisynth_processor_mut(&title)
-                        .ok_or_else(|| anyhow!("missing OxiSynth processor"))?
-                        .panic();
-                }
+                BackendTrackFxControl::OxiSynth(control) => match control {
+                    OxiSynthControl::SelectPreset(id) => {
+                        let preset = shoop_engine::oxisynth::OxiSynthPresetId::from_stable_id(&id)?;
+                        let processor = self
+                            .session
+                            .oxisynth_processor_mut(&title)
+                            .ok_or_else(|| anyhow!("missing OxiSynth processor"))?;
+                        processor.select_preset(preset)?;
+                        fx.control.select_preset(preset)?;
+                    }
+                    OxiSynthControl::SetReverbSend(value) => {
+                        let parameter = shoop_engine::oxisynth::OxiSynthParameter::ReverbSend;
+                        fx.control.set_send(parameter, value)?;
+                        self.session
+                            .oxisynth_processor_mut(&title)
+                            .ok_or_else(|| anyhow!("missing OxiSynth processor"))?
+                            .set_send(parameter, value)?;
+                    }
+                    OxiSynthControl::SetChorusSend(value) => {
+                        let parameter = shoop_engine::oxisynth::OxiSynthParameter::ChorusSend;
+                        fx.control.set_send(parameter, value)?;
+                        self.session
+                            .oxisynth_processor_mut(&title)
+                            .ok_or_else(|| anyhow!("missing OxiSynth processor"))?
+                            .set_send(parameter, value)?;
+                    }
+                    OxiSynthControl::AssignMidiCc(assignment) => {
+                        let assignment = engine_oxisynth_midi_cc_assignment(assignment);
+                        if !fx.control.assign_midi_cc(assignment) {
+                            return Err(anyhow!("invalid OxiSynth MIDI CC assignment"));
+                        }
+                        self.session
+                            .oxisynth_processor_mut(&title)
+                            .ok_or_else(|| anyhow!("missing OxiSynth processor"))?
+                            .assign_midi_cc(assignment);
+                    }
+                    OxiSynthControl::RemoveMidiCc(parameter) => {
+                        let parameter = engine_oxisynth_parameter(parameter);
+                        fx.control.remove_midi_cc(parameter);
+                        self.session
+                            .oxisynth_processor_mut(&title)
+                            .ok_or_else(|| anyhow!("missing OxiSynth processor"))?
+                            .remove_midi_cc(parameter);
+                    }
+                    OxiSynthControl::ClearMidiCcAssignments => {
+                        fx.control.clear_midi_cc_assignments();
+                        self.session
+                            .oxisynth_processor_mut(&title)
+                            .ok_or_else(|| anyhow!("missing OxiSynth processor"))?
+                            .clear_midi_cc_assignments();
+                    }
+                    OxiSynthControl::Panic => {
+                        self.session
+                            .oxisynth_processor_mut(&title)
+                            .ok_or_else(|| anyhow!("missing OxiSynth processor"))?
+                            .panic();
+                    }
+                },
                 BackendTrackFxControl::TinySynthFx(_) => {
                     return Err(anyhow!("OxiSynth does not support Tiny Synth/FX control"));
                 }
@@ -6599,13 +6781,39 @@ impl Backend for FakeBackend {
             BackendTrackFxControl::TinySynthFx(_) => {
                 return Err(anyhow!("Tiny Synth/FX controls are unavailable"));
             }
-            BackendTrackFxControl::OxiSynth(OxiSynthControl::SelectPreset(id)) => {
+            BackendTrackFxControl::OxiSynth(control) => {
                 let Some(TrackProcessorEditorState::OxiSynth(editor)) = fx.editor.as_mut() else {
                     return Err(anyhow!("OxiSynth editor state is unavailable"));
                 };
-                editor.selected_preset_id = id;
+                match control {
+                    OxiSynthControl::SelectPreset(id) => editor.selected_preset_id = id,
+                    OxiSynthControl::SetReverbSend(value) => editor.reverb_send = value,
+                    OxiSynthControl::SetChorusSend(value) => editor.chorus_send = value,
+                    OxiSynthControl::AssignMidiCc(assignment) => {
+                        let mut assignments = editor.midi_cc_assignments.to_vec();
+                        assignments.retain(|existing| {
+                            existing.parameter != assignment.parameter
+                                && (existing.channel, existing.controller)
+                                    != (assignment.channel, assignment.controller)
+                        });
+                        assignments.push(assignment);
+                        editor.midi_cc_assignments = assignments.into();
+                    }
+                    OxiSynthControl::RemoveMidiCc(parameter) => {
+                        editor.midi_cc_assignments = editor
+                            .midi_cc_assignments
+                            .iter()
+                            .copied()
+                            .filter(|assignment| assignment.parameter != parameter)
+                            .collect::<Vec<_>>()
+                            .into();
+                    }
+                    OxiSynthControl::ClearMidiCcAssignments => {
+                        editor.midi_cc_assignments = Arc::from([]);
+                    }
+                    OxiSynthControl::Panic => {}
+                }
             }
-            BackendTrackFxControl::OxiSynth(OxiSynthControl::Panic) => {}
         }
         Ok(())
     }
@@ -7026,6 +7234,7 @@ impl Backend for FakeBackend {
                     ports,
                     processor_state: track.fx_state_string.clone(),
                     tiny_synth_midi_cc_assignments: Vec::new(),
+                    oxisynth_midi_cc_assignments: Vec::new(),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -9330,7 +9539,7 @@ mod tests {
             .track_fx_state_string(created.track_id)
             .unwrap()
             .unwrap();
-        assert_eq!(state, "shoop-oxisynth:1:timgm6mb:0:40");
+        assert_eq!(state, "shoop-oxisynth:2:timgm6mb:0:40:00000000:00000000");
         let preserved_midi = vec![
             BackendMidiEvent {
                 time: 0,

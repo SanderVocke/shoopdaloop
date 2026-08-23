@@ -274,9 +274,36 @@ pub struct TinySynthFxState {
     pub midi_cc_assignments: Arc<[TinySynthFxMidiCcAssignment]>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum OxiSynthParameter {
+    ReverbSend,
+    ChorusSend,
+}
+
+impl OxiSynthParameter {
+    pub const ALL: [Self; 2] = [Self::ReverbSend, Self::ChorusSend];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ReverbSend => "Reverb send",
+            Self::ChorusSend => "Chorus send",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OxiSynthMidiCcAssignment {
+    pub parameter: OxiSynthParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct OxiSynthState {
     pub selected_preset_id: String,
+    pub reverb_send: f32,
+    pub chorus_send: f32,
+    pub midi_cc_assignments: Arc<[OxiSynthMidiCcAssignment]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -303,6 +330,8 @@ pub const MIN_TINY_SYNTH_FX_GAIN_DB: f32 = -60.0;
 pub const MAX_TINY_SYNTH_FX_GAIN_DB: f32 = 0.0;
 pub const MIN_TINY_SYNTH_FX_EQ_GAIN_DB: f32 = -12.0;
 pub const MAX_TINY_SYNTH_FX_EQ_GAIN_DB: f32 = 12.0;
+pub const MIN_OXISYNTH_SEND: f32 = 0.0;
+pub const MAX_OXISYNTH_SEND: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DefaultRecordingAction {
@@ -1535,6 +1564,11 @@ pub enum TinySynthFxControl {
 #[derive(Clone, Debug, PartialEq)]
 pub enum OxiSynthControl {
     SelectPreset(String),
+    SetReverbSend(f32),
+    SetChorusSend(f32),
+    AssignMidiCc(OxiSynthMidiCcAssignment),
+    RemoveMidiCc(OxiSynthParameter),
+    ClearMidiCcAssignments,
     Panic,
 }
 
@@ -1861,6 +1895,11 @@ impl OxiSynthControl {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::SelectPreset(_) => "track.oxisynth.select_preset",
+            Self::SetReverbSend(_) => "track.oxisynth.reverb_send",
+            Self::SetChorusSend(_) => "track.oxisynth.chorus_send",
+            Self::AssignMidiCc(_) => "track.oxisynth.midi_cc_assign",
+            Self::RemoveMidiCc(_) => "track.oxisynth.midi_cc_remove",
+            Self::ClearMidiCcAssignments => "track.oxisynth.midi_cc_clear",
             Self::Panic => "track.oxisynth.panic",
         }
     }

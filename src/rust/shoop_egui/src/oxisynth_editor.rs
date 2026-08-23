@@ -1,11 +1,17 @@
 use crate::{
-    OxiSynthControl, TrackAction, TrackProcessorDescriptor, TrackProcessorEditorDescriptor,
-    TrackProcessorEditorState, TrackState,
+    OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter, TrackAction,
+    TrackProcessorDescriptor, TrackProcessorEditorDescriptor, TrackProcessorEditorState,
+    TrackState, MAX_OXISYNTH_SEND, MIN_OXISYNTH_SEND,
 };
 
-#[derive(Debug, Default)]
+const OXISYNTH_LOGO_BYTES: &[u8] = include_bytes!("../../../../third_party/oxisynth/logo.png");
+const OXISYNTH_URL: &str = "https://github.com/PolyMeilex/oxisynth";
+
 pub(crate) struct OxiSynthEditor {
     filter: String,
+    midi_learn_open: bool,
+    selected_midi_parameter: OxiSynthParameter,
+    logo: Option<egui::TextureHandle>,
     #[cfg(test)]
     window_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -14,6 +20,56 @@ pub(crate) struct OxiSynthEditor {
     preset_item_rects: Vec<(String, egui::Rect)>,
     #[cfg(test)]
     panic_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    reverb_send_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    chorus_send_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    midi_learn_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    midi_assign_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    attribution_rect: Option<egui::Rect>,
+}
+
+impl std::fmt::Debug for OxiSynthEditor {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OxiSynthEditor")
+            .field("filter", &self.filter)
+            .field("midi_learn_open", &self.midi_learn_open)
+            .field("selected_midi_parameter", &self.selected_midi_parameter)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for OxiSynthEditor {
+    fn default() -> Self {
+        Self {
+            filter: String::new(),
+            midi_learn_open: false,
+            selected_midi_parameter: OxiSynthParameter::ReverbSend,
+            logo: None,
+            #[cfg(test)]
+            window_rect: None,
+            #[cfg(test)]
+            preset_rect: None,
+            #[cfg(test)]
+            preset_item_rects: Vec::new(),
+            #[cfg(test)]
+            panic_rect: None,
+            #[cfg(test)]
+            reverb_send_rect: None,
+            #[cfg(test)]
+            chorus_send_rect: None,
+            #[cfg(test)]
+            midi_learn_rect: None,
+            #[cfg(test)]
+            midi_assign_rect: None,
+            #[cfg(test)]
+            attribution_rect: None,
+        }
+    }
 }
 
 impl OxiSynthEditor {
@@ -38,15 +94,40 @@ impl OxiSynthEditor {
             return Vec::new();
         }
 
+        self.ensure_logo(context);
         #[cfg(test)]
         self.preset_item_rects.clear();
         let mut actions = Vec::new();
         let mut open = true;
-        let _shown = egui::Window::new(format!("{} — OxiSynth", state.name))
+        let _shown = egui::Window::new(format!("{} — Built-in Synth", state.name))
             .id(egui::Id::new(("oxisynth_editor", state.id)))
             .open(&mut open)
             .resizable(true)
             .show(context, |ui| {
+                ui.horizontal(|ui| {
+                    ui.weak("Powered by");
+                    if let Some(logo) = &self.logo {
+                        let size = logo.size_vec2();
+                        let width = 84.0;
+                        let response = ui
+                            .add(
+                                egui::Image::new((
+                                    logo.id(),
+                                    egui::vec2(width, width * size.y / size.x),
+                                ))
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text(OXISYNTH_URL);
+                        #[cfg(test)]
+                        {
+                            self.attribution_rect = Some(response.rect);
+                        }
+                        if response.clicked() {
+                            context.open_url(egui::OpenUrl::new_tab(OXISYNTH_URL));
+                        }
+                    }
+                });
+                ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("Preset");
                     let selected = presets
@@ -98,8 +179,134 @@ impl OxiSynthEditor {
                     if panic.clicked() {
                         actions.push(TrackAction::OxiSynth(OxiSynthControl::Panic));
                     }
+                    let midi_learn = ui.button("MIDI Learn…");
+                    #[cfg(test)]
+                    {
+                        self.midi_learn_rect = Some(midi_learn.rect);
+                    }
+                    if midi_learn.clicked() {
+                        self.midi_learn_open = true;
+                    }
                 });
+
+                let mut reverb_send = editor.reverb_send;
+                let reverb = ui.add(
+                    egui::Slider::new(&mut reverb_send, MIN_OXISYNTH_SEND..=MAX_OXISYNTH_SEND)
+                        .text("Reverb send"),
+                );
+                #[cfg(test)]
+                {
+                    self.reverb_send_rect = Some(reverb.rect);
+                }
+                if reverb.changed() {
+                    actions.push(TrackAction::OxiSynth(OxiSynthControl::SetReverbSend(
+                        reverb_send,
+                    )));
+                }
+
+                let mut chorus_send = editor.chorus_send;
+                let chorus = ui.add(
+                    egui::Slider::new(&mut chorus_send, MIN_OXISYNTH_SEND..=MAX_OXISYNTH_SEND)
+                        .text("Chorus send"),
+                );
+                #[cfg(test)]
+                {
+                    self.chorus_send_rect = Some(chorus.rect);
+                }
+                if chorus.changed() {
+                    actions.push(TrackAction::OxiSynth(OxiSynthControl::SetChorusSend(
+                        chorus_send,
+                    )));
+                }
             });
+
+        if self.midi_learn_open {
+            let latest_cc = state
+                .controls
+                .latest_input_midi_message
+                .and_then(|message| message.midi_cc());
+            let mut learn_open = self.midi_learn_open;
+            let mut selected_parameter = self.selected_midi_parameter;
+            egui::Window::new(format!("{} — MIDI Learn", state.name))
+                .id(egui::Id::new(("oxisynth_midi_learn", state.id)))
+                .open(&mut learn_open)
+                .resizable(true)
+                .show(context, |ui| {
+                    if let Some((channel, controller, value)) = latest_cc {
+                        ui.label(format!(
+                            "Channel {} · CC {} · Value {}",
+                            channel + 1,
+                            controller,
+                            value
+                        ));
+                    } else {
+                        ui.weak("No valid CC received");
+                    }
+                    ui.horizontal(|ui| {
+                        egui::ComboBox::from_id_salt("oxisynth_midi_cc_parameter")
+                            .selected_text(selected_parameter.label())
+                            .show_ui(ui, |ui| {
+                                for parameter in OxiSynthParameter::ALL {
+                                    ui.selectable_value(
+                                        &mut selected_parameter,
+                                        parameter,
+                                        parameter.label(),
+                                    );
+                                }
+                            });
+                        let assign =
+                            ui.add_enabled(latest_cc.is_some(), egui::Button::new("Assign"));
+                        #[cfg(test)]
+                        {
+                            self.midi_assign_rect = Some(assign.rect);
+                        }
+                        if assign.clicked() {
+                            let (channel, controller, _) = latest_cc.expect("button is enabled");
+                            actions.push(TrackAction::OxiSynth(OxiSynthControl::AssignMidiCc(
+                                OxiSynthMidiCcAssignment {
+                                    parameter: selected_parameter,
+                                    channel,
+                                    controller,
+                                },
+                            )));
+                        }
+                    });
+                    ui.separator();
+                    ui.label("Assignments");
+                    if editor.midi_cc_assignments.is_empty() {
+                        ui.weak("None");
+                    }
+                    for assignment in editor.midi_cc_assignments.iter() {
+                        ui.horizontal(|ui| {
+                            ui.label(format!(
+                                "{} — Channel {} · CC {}",
+                                assignment.parameter.label(),
+                                assignment.channel + 1,
+                                assignment.controller
+                            ));
+                            if ui.button("Remove").clicked() {
+                                actions.push(TrackAction::OxiSynth(OxiSynthControl::RemoveMidiCc(
+                                    assignment.parameter,
+                                )));
+                            }
+                        });
+                    }
+                    if ui
+                        .add_enabled(
+                            !editor.midi_cc_assignments.is_empty(),
+                            egui::Button::new("Remove all"),
+                        )
+                        .clicked()
+                    {
+                        actions.push(TrackAction::OxiSynth(
+                            OxiSynthControl::ClearMidiCcAssignments,
+                        ));
+                    }
+                });
+            self.midi_learn_open = learn_open;
+            self.selected_midi_parameter = selected_parameter;
+        }
+
         #[cfg(test)]
         {
             self.window_rect = _shown.map(|response| response.response.rect);
@@ -108,6 +315,19 @@ impl OxiSynthEditor {
             actions.push(TrackAction::FxVisibilityChanged(false));
         }
         actions
+    }
+
+    fn ensure_logo(&mut self, context: &egui::Context) {
+        if self.logo.is_some() {
+            return;
+        }
+        let Ok(image) = image::load_from_memory(OXISYNTH_LOGO_BYTES) else {
+            return;
+        };
+        let rgba = image.into_rgba8();
+        let size = [rgba.width() as usize, rgba.height() as usize];
+        let image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+        self.logo = Some(context.load_texture("oxisynth-logo", image, Default::default()));
     }
 }
 
@@ -143,7 +363,7 @@ mod tests {
         ]);
         let processor = TrackProcessorDescriptor {
             id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
-            label: "OxiSynth".to_owned(),
+            label: "Built-in Synth".to_owned(),
             available: true,
             unavailable_reason: None,
             constraints: TrackProcessorConstraints {
@@ -174,6 +394,9 @@ mod tests {
                 logs: Arc::from([]),
                 editor: Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
                     selected_preset_id: "0:0".to_owned(),
+                    reverb_send: 0.0,
+                    chorus_send: 0.0,
+                    midi_cc_assignments: Arc::from([]),
                 })),
             }),
             ..TrackState::default()

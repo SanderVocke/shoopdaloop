@@ -133,14 +133,14 @@ Verification:
 
 Depends on Stage 0.
 
-- [ ] Add typed `ReverbSend`/`ChorusSend` parameter identities, validated normalized values, MIDI assignments, editor state, and bounded runtime publication to `shoop_engine::oxisynth`.
-- [ ] Extend control state and the strict processor-state codec with preset plus both send values; choose and document one canonical version-2 encoding using exact finite float representation.
-- [ ] Configure both OxiSynth effect units explicitly active and apply normalized sends through `Synth::set_gen` on channel 0 during processor preparation and realtime control.
-- [ ] Process learned CCs before synthesis filtering, apply their normalized values at the event boundary, and publish MIDI-driven changes back to control-side snapshots without locks or allocations.
-- [ ] Replace generic CC forwarding with an explicit CC 1/11/64 allowlist while retaining pitch bend and accepted non-CC messages; continue dropping Program Change and bank select.
-- [ ] Replace System Reset in Panic/preset-switch paths with all-sounds-off plus direct program/send reassertion so effect tails survive and old dry voices do not.
-- [ ] Add a control-only MIDI path for inactive Built-in Synth tracks and preserve deferred global-control behavior.
-- [ ] Keep processor output independent of both routed dry audio inputs.
+- [x] Add typed `ReverbSend`/`ChorusSend` parameter identities, validated normalized values, MIDI assignments, editor state, and bounded runtime publication to `shoop_engine::oxisynth`.
+- [x] Extend control state and the strict processor-state codec with preset plus both send values; choose and document one canonical version-2 encoding using exact finite float representation.
+- [x] Configure both OxiSynth effect units explicitly active and apply normalized sends through `Synth::set_gen` on channel 0 during processor preparation and realtime control.
+- [x] Process learned CCs before synthesis filtering, apply their normalized values at the event boundary, and publish MIDI-driven changes back to control-side snapshots without locks or allocations.
+- [x] Replace generic CC forwarding with an explicit CC 1/11/64 allowlist while retaining pitch bend and accepted non-CC messages; continue dropping Program Change and bank select.
+- [x] Replace System Reset in Panic/preset-switch paths with all-sounds-off plus direct program/send reassertion so effect tails survive and old dry voices do not.
+- [x] Add a control-only MIDI path for inactive Built-in Synth tracks and preserve deferred global-control behavior.
+- [x] Keep processor output independent of both routed dry audio inputs.
 
 Verification:
 
@@ -155,13 +155,13 @@ Verification:
 
 Depends on Stage 1.
 
-- [ ] Add OxiSynth send parameters, assignments, editor fields, and set/assign/remove/clear controls to `shoop_app_api` and `shoop_backend` domain types.
-- [ ] Give preset and each send its own optimistic/supersedable control key; keep assignment mutations durable and Panic ephemeral.
-- [ ] Extend native `FXChainBackendKind::OxiSynth` control mirrors and scheduled render mutations for UI send changes, MIDI assignment changes, state capture/restore, snapshots, and Panic.
-- [ ] Extend in-process `EngineOxiFx` with the same behavior, including MIDI-driven runtime-to-control synchronization before snapshots and capture.
-- [ ] Carry OxiSynth assignments through backend session capture/replacement data with strict source/target uniqueness validation.
-- [ ] Ensure restore prepares a complete synth, send state, and assignments before publication, and that rejected controls cannot partially update mirrors or processors.
-- [ ] Preserve fixed 2-dry/2-wet/1-MIDI topology and update descriptor label to **Built-in Synth** without changing internal identity.
+- [x] Add OxiSynth send parameters, assignments, editor fields, and set/assign/remove/clear controls to `shoop_app_api` and `shoop_backend` domain types.
+- [x] Give preset and each send its own optimistic/supersedable control key; keep assignment mutations durable and Panic ephemeral.
+- [x] Extend native `FXChainBackendKind::OxiSynth` control mirrors and scheduled render mutations for UI send changes, MIDI assignment changes, state capture/restore, snapshots, and Panic.
+- [x] Extend in-process `EngineOxiFx` with the same behavior, including MIDI-driven runtime-to-control synchronization before snapshots and capture.
+- [x] Carry OxiSynth assignments through backend session capture/replacement data with strict source/target uniqueness validation.
+- [x] Ensure restore prepares a complete synth, send state, and assignments before publication, and that rejected controls cannot partially update mirrors or processors.
+- [x] Preserve fixed 2-dry/2-wet/1-MIDI topology and update descriptor label to **Built-in Synth** without changing internal identity.
 
 Verification:
 
@@ -175,9 +175,9 @@ Verification:
 
 Depends on Stage 2.
 
-- [ ] Add wire send-parameter, assignment, editor-state, set/assign/remove/clear control representations for OxiSynth.
-- [ ] Add unique coalescing keys for both continuous sends; keep assignment operations journaled/durable and Panic non-journaled.
-- [ ] Implement complete conversions and validation in `shoop_audio_worklet` and `shoop_worklet_client`.
+- [x] Add wire send-parameter, assignment, editor-state, set/assign/remove/clear control representations for OxiSynth.
+- [x] Add unique coalescing keys for both continuous sends; keep assignment operations journaled/durable and Panic non-journaled.
+- [x] Implement complete conversions and validation in `shoop_audio_worklet` and `shoop_worklet_client`.
 - [ ] Publish MIDI-driven send changes through worklet snapshots and preserve desired-state overlays through stale acknowledgements, rejection, replay, restart, and generation changes.
 - [ ] Carry processor state and assignments through chunked remote session capture/replacement without a stateless special case.
 - [ ] Update Worker/dummy and AudioWorklet render fixtures for the CC allowlist, MIDI Learn, direct send behavior, and ignored audio input.
@@ -213,12 +213,12 @@ Verification:
 
 Depends on Stages 2 through 4.
 
-- [ ] Rename the processor selector label and editor title to **Built-in Synth** while retaining stable internal IDs and typed OxiSynth variants.
-- [ ] Add authoritative/optimistic reverb-send and chorus-send knobs over `0.0..=1.0` without enable checkboxes.
-- [ ] Adapt the Tiny MIDI Learn interaction pattern for only the two OxiSynth send parameters: latest CC display, parameter selection, assign, per-assignment removal, and remove all.
-- [ ] Keep the existing filterable preset selector, Panic, visibility behavior, and stable per-track window identity.
-- [ ] Embed and cache `third_party/oxisynth/logo.png`, then render a small muted `Powered by` attribution whose logo opens the canonical OxiSynth GitHub URL on click.
-- [ ] Ensure native and Wasm image loading/link behavior uses the shared egui path and does not require runtime filesystem access.
+- [x] Rename the processor selector label and editor title to **Built-in Synth** while retaining stable internal IDs and typed OxiSynth variants.
+- [x] Add authoritative/optimistic reverb-send and chorus-send knobs over `0.0..=1.0` without enable checkboxes.
+- [x] Adapt the Tiny MIDI Learn interaction pattern for only the two OxiSynth send parameters: latest CC display, parameter selection, assign, per-assignment removal, and remove all.
+- [x] Keep the existing filterable preset selector, Panic, visibility behavior, and stable per-track window identity.
+- [x] Embed and cache `third_party/oxisynth/logo.png`, then render a small muted `Powered by` attribution whose logo opens the canonical OxiSynth GitHub URL on click.
+- [x] Ensure native and Wasm image loading/link behavior uses the shared egui path and does not require runtime filesystem access.
 
 Verification:
 

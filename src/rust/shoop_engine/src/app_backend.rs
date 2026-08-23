@@ -6270,7 +6270,9 @@ impl FXChain {
                 Ok(())
             }
             FXChainBackendKind::OxiSynth(control) => {
-                let replacement = engine::oxisynth::OxiSynthControlState::from_encoded(state)?;
+                let assignments = control.lock().unwrap().midi_cc_assignments();
+                let mut replacement = engine::oxisynth::OxiSynthControlState::from_encoded(state)?;
+                replacement.set_midi_cc_assignments(assignments);
                 let processor = replacement.prepare_processor(
                     self.shared.sample_rate.load(Ordering::Relaxed).max(1) as f32,
                     self.shared.buffer_size.load(Ordering::Relaxed).max(1) as usize,
@@ -6320,6 +6322,80 @@ impl FXChain {
             }
         })?;
         control.lock().unwrap().select_preset(preset)?;
+        Ok(())
+    }
+
+    pub fn oxisynth_set_send(
+        &self,
+        parameter: engine::oxisynth::OxiSynthParameter,
+        value: f32,
+    ) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
+        };
+        let mut updated = control.lock().unwrap().clone();
+        updated.set_send(parameter, value)?;
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
+                if let Err(error) = processor.set_send(parameter, value) {
+                    log::error!("could not set OxiSynth send: {error}");
+                }
+            }
+        })?;
+        *control.lock().unwrap() = updated;
+        Ok(())
+    }
+
+    pub fn oxisynth_assign_midi_cc(
+        &self,
+        assignment: engine::oxisynth::OxiSynthMidiCcAssignment,
+    ) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
+        };
+        let mut updated = control.lock().unwrap().clone();
+        if !updated.assign_midi_cc(assignment) {
+            return Err(anyhow!("invalid OxiSynth MIDI CC assignment"));
+        }
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
+                processor.assign_midi_cc(assignment);
+            }
+        })?;
+        *control.lock().unwrap() = updated;
+        Ok(())
+    }
+
+    pub fn oxisynth_remove_midi_cc(
+        &self,
+        parameter: engine::oxisynth::OxiSynthParameter,
+    ) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
+                processor.remove_midi_cc(parameter);
+            }
+        })?;
+        control.lock().unwrap().remove_midi_cc(parameter);
+        Ok(())
+    }
+
+    pub fn oxisynth_clear_midi_cc_assignments(&self) -> Result<()> {
+        let FXChainBackendKind::OxiSynth(control) = &self.backend else {
+            return Err(anyhow!("FX chain is not OxiSynth"));
+        };
+        let title = self.title.clone();
+        self.shared.send_control(move |session| {
+            if let Some(processor) = session.oxisynth_processor_mut(&title) {
+                processor.clear_midi_cc_assignments();
+            }
+        })?;
+        control.lock().unwrap().clear_midi_cc_assignments();
         Ok(())
     }
 

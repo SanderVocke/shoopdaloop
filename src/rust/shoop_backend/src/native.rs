@@ -859,6 +859,15 @@ impl NativeRuntime {
                 .map(app_midi_cc_assignment)
                 .map(backend_midi_cc_assignment)
                 .collect();
+            let oxisynth_midi_cc_assignments = track
+                .fx
+                .as_ref()
+                .and_then(|fx| fx.chain.oxisynth_editor_state())
+                .into_iter()
+                .flat_map(|editor| editor.midi_cc_assignments)
+                .map(app_oxisynth_midi_cc_assignment)
+                .map(backend_oxisynth_midi_cc_assignment)
+                .collect();
             tracks.push(BackendSessionTrack {
                 source_id: track_id.raw(),
                 port_name_base: track.port_name_base.clone(),
@@ -868,6 +877,7 @@ impl NativeRuntime {
                 ports,
                 processor_state,
                 tiny_synth_midi_cc_assignments,
+                oxisynth_midi_cc_assignments,
             });
         }
         let global_ports = vec![BackendSessionPort {
@@ -955,6 +965,12 @@ impl NativeRuntime {
                         fx.chain.tiny_assign_midi_cc(engine_midi_cc_assignment(
                             app_backend_midi_cc_assignment(*assignment),
                         ))?;
+                    }
+                    for assignment in &source_track.oxisynth_midi_cc_assignments {
+                        fx.chain
+                            .oxisynth_assign_midi_cc(engine_oxisynth_midi_cc_assignment(
+                                app_backend_oxisynth_midi_cc_assignment(*assignment),
+                            ))?;
                     }
                     fx.last_confirmed_state = Some(state.to_owned());
                 }
@@ -1667,6 +1683,23 @@ impl NativeRuntime {
                 match control {
                     OxiSynthControl::SelectPreset(id) => {
                         fx.chain.oxisynth_select_preset(&id)?;
+                    }
+                    OxiSynthControl::SetReverbSend(value) => fx.chain.oxisynth_set_send(
+                        shoop_engine::oxisynth::OxiSynthParameter::ReverbSend,
+                        value,
+                    )?,
+                    OxiSynthControl::SetChorusSend(value) => fx.chain.oxisynth_set_send(
+                        shoop_engine::oxisynth::OxiSynthParameter::ChorusSend,
+                        value,
+                    )?,
+                    OxiSynthControl::AssignMidiCc(assignment) => fx
+                        .chain
+                        .oxisynth_assign_midi_cc(engine_oxisynth_midi_cc_assignment(assignment))?,
+                    OxiSynthControl::RemoveMidiCc(parameter) => fx
+                        .chain
+                        .oxisynth_remove_midi_cc(engine_oxisynth_parameter(parameter))?,
+                    OxiSynthControl::ClearMidiCcAssignments => {
+                        fx.chain.oxisynth_clear_midi_cc_assignments()?
                     }
                     OxiSynthControl::Panic => fx.chain.oxisynth_panic()?,
                 }
@@ -2676,6 +2709,14 @@ impl Backend for NativeBackend {
                         fx.chain.oxisynth_editor_state().map(|editor| {
                             TrackProcessorEditorState::OxiSynth(OxiSynthState {
                                 selected_preset_id: editor.selected_preset.stable_id(),
+                                reverb_send: editor.reverb_send,
+                                chorus_send: editor.chorus_send,
+                                midi_cc_assignments: editor
+                                    .midi_cc_assignments
+                                    .into_iter()
+                                    .map(app_oxisynth_midi_cc_assignment)
+                                    .collect::<Vec<_>>()
+                                    .into(),
                             })
                         })
                     },
@@ -3362,7 +3403,7 @@ mod tests {
             .track_fx_state_string(created.track_id)
             .unwrap()
             .unwrap();
-        assert_eq!(state, "shoop-oxisynth:1:timgm6mb:0:40");
+        assert_eq!(state, "shoop-oxisynth:2:timgm6mb:0:40:00000000:00000000");
         assert!(backend
             .set_track_fx_control(
                 created.track_id,

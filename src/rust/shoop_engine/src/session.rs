@@ -2451,17 +2451,19 @@ impl Session {
                         route.global_pending_overwrites.saturating_add(1);
                 }
             }
-            // Tiny Synth's control-only path updates its explicit track MIDI CC
-            // mappings without running DSP. Global controls remain deferred above
-            // so they never wake or silently process an inactive FX processor.
-            if let ProcessorBackend::Tiny(processor) = &mut route.backend {
-                let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
-                processor.process_midi_controls_only(events);
-            }
-            if matches!(route.backend, ProcessorBackend::OxiSynth(_)) {
-                for &port in &route.audio_outputs {
-                    self.ports[port].buffer(n_frames).fill(0.0);
+            // Built-in control-only paths update explicit track MIDI CC mappings
+            // without running DSP. Global controls remain deferred above so they
+            // never wake or silently process an inactive processor.
+            let events = route.midi_staging.first().map(Vec::as_slice).unwrap_or(&[]);
+            match &mut route.backend {
+                ProcessorBackend::Tiny(processor) => processor.process_midi_controls_only(events),
+                ProcessorBackend::OxiSynth(processor) => {
+                    processor.process_midi_controls_only(events);
+                    for &port in &route.audio_outputs {
+                        self.ports[port].buffer(n_frames).fill(0.0);
+                    }
                 }
+                _ => {}
             }
             self.processors = processors;
             return;

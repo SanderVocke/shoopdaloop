@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
-use oxisynth::{MidiEvent, SoundFont, SoundFontId, Synth, SynthDescriptor};
+use oxisynth::{GeneratorType, MidiEvent, SoundFont, SoundFontId, Synth, SynthDescriptor};
 use std::io::Cursor;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 use thiserror::Error;
 
 use crate::midi_storage::MidiStorageElem;
@@ -18,7 +20,10 @@ pub const DEFAULT_PRESET: OxiSynthPresetId = OxiSynthPresetId {
     program: 0,
 };
 const STATE_FORMAT: &str = "shoop-oxisynth";
-const STATE_VERSION: &str = "1";
+const STATE_VERSION: &str = "2";
+pub const MIN_SEND: f32 = 0.0;
+pub const MAX_SEND: f32 = 1.0;
+const MAX_SEND_GENERATOR_UNITS: f32 = 200.0;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct OxiSynthPresetId {
@@ -75,15 +80,90 @@ pub fn preset_descriptor(id: OxiSynthPresetId) -> Option<&'static OxiSynthPreset
         .map(|index| &PRESETS[index])
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum OxiSynthParameter {
+    ReverbSend,
+    ChorusSend,
+}
+
+impl OxiSynthParameter {
+    pub const ALL: [Self; 2] = [Self::ReverbSend, Self::ChorusSend];
+
+    fn index(self) -> usize {
+        self as usize
+    }
+
+    pub fn value_from_cc(value: u8) -> f32 {
+        value as f32 / 127.0
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OxiSynthMidiCcAssignment {
+    pub parameter: OxiSynthParameter,
+    pub channel: u8,
+    pub controller: u8,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OxiSynthMidiCcAssignments {
+    sources: [Option<(u8, u8)>; 2],
+}
+
+impl OxiSynthMidiCcAssignments {
+    pub fn assign(&mut self, assignment: OxiSynthMidiCcAssignment) -> bool {
+        if assignment.channel > 15 || assignment.controller > 127 {
+            return false;
+        }
+        for source in &mut self.sources {
+            if *source == Some((assignment.channel, assignment.controller)) {
+                *source = None;
+            }
+        }
+        self.sources[assignment.parameter.index()] =
+            Some((assignment.channel, assignment.controller));
+        true
+    }
+
+    pub fn remove(&mut self, parameter: OxiSynthParameter) {
+        self.sources[parameter.index()] = None;
+    }
+
+    pub fn clear(&mut self) {
+        self.sources.fill(None);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = OxiSynthMidiCcAssignment> + '_ {
+        OxiSynthParameter::ALL.into_iter().filter_map(|parameter| {
+            self.sources[parameter.index()].map(|(channel, controller)| OxiSynthMidiCcAssignment {
+                parameter,
+                channel,
+                controller,
+            })
+        })
+    }
+
+    fn matching_parameter(&self, channel: u8, controller: u8) -> Option<OxiSynthParameter> {
+        OxiSynthParameter::ALL
+            .into_iter()
+            .find(|parameter| self.sources[parameter.index()] == Some((channel, controller)))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OxiSynthState {
     pub preset: OxiSynthPresetId,
+    pub reverb_send: f32,
+    pub chorus_send: f32,
 }
 
 impl Default for OxiSynthState {
     fn default() -> Self {
         Self {
             preset: DEFAULT_PRESET,
+            reverb_send: 0.0,
+            chorus_send: 0.0,
         }
     }
 }
@@ -104,30 +184,86 @@ pub enum OxiSynthStateError {
     InvalidProgram,
     #[error("unknown OxiSynth preset {bank}:{program}")]
     UnknownPreset { bank: u16, program: u8 },
+    #[error("invalid OxiSynth send value")]
+    InvalidSend,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OxiSynthEditorState {
     pub selected_preset: OxiSynthPresetId,
+    pub reverb_send: f32,
+    pub chorus_send: f32,
+    pub midi_cc_assignments: Vec<OxiSynthMidiCcAssignment>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
+struct OxiSynthRuntimeState {
+    values: [AtomicU32; 2],
+    revision: AtomicU64,
+}
+
+impl OxiSynthRuntimeState {
+    fn new(state: OxiSynthState) -> Self {
+        Self {
+            values: [
+                AtomicU32::new(state.reverb_send.to_bits()),
+                AtomicU32::new(state.chorus_send.to_bits()),
+            ],
+            revision: AtomicU64::new(1),
+        }
+    }
+
+    fn publish(&self, parameter: OxiSynthParameter, value: f32) -> u64 {
+        self.values[parameter.index()].store(value.to_bits(), Ordering::Relaxed);
+        self.revision.fetch_add(1, Ordering::Release) + 1
+    }
+
+    fn revision(&self) -> u64 {
+        self.revision.load(Ordering::Acquire)
+    }
+
+    fn value(&self, parameter: OxiSynthParameter) -> f32 {
+        f32::from_bits(self.values[parameter.index()].load(Ordering::Relaxed))
+    }
+}
+
+#[derive(Debug)]
 pub struct OxiSynthControlState {
     state: OxiSynthState,
+    midi_cc_assignments: OxiSynthMidiCcAssignments,
+    runtime_state: Arc<OxiSynthRuntimeState>,
+}
+
+impl Clone for OxiSynthControlState {
+    fn clone(&self) -> Self {
+        let state = self.current_state();
+        Self {
+            state,
+            midi_cc_assignments: self.midi_cc_assignments,
+            runtime_state: Arc::new(OxiSynthRuntimeState::new(state)),
+        }
+    }
 }
 
 impl Default for OxiSynthControlState {
     fn default() -> Self {
+        let state = OxiSynthState::default();
         Self {
-            state: OxiSynthState::default(),
+            state,
+            midi_cc_assignments: OxiSynthMidiCcAssignments::default(),
+            runtime_state: Arc::new(OxiSynthRuntimeState::new(state)),
         }
     }
 }
 
 impl OxiSynthControlState {
     pub fn from_state(state: OxiSynthState) -> Result<Self, OxiSynthStateError> {
-        validate_preset(state.preset)?;
-        Ok(Self { state })
+        validate_state(state)?;
+        Ok(Self {
+            state,
+            midi_cc_assignments: OxiSynthMidiCcAssignments::default(),
+            runtime_state: Arc::new(OxiSynthRuntimeState::new(state)),
+        })
     }
 
     pub fn from_encoded(encoded: &str) -> Result<Self, OxiSynthStateError> {
@@ -153,6 +289,8 @@ impl OxiSynthControlState {
             .ok_or(OxiSynthStateError::InvalidEnvelope)?
             .parse::<u8>()
             .map_err(|_| OxiSynthStateError::InvalidProgram)?;
+        let reverb_send = decode_send(fields.next())?;
+        let chorus_send = decode_send(fields.next())?;
         if fields.next().is_some() {
             return Err(OxiSynthStateError::InvalidEnvelope);
         }
@@ -161,6 +299,8 @@ impl OxiSynthControlState {
         }
         let control = Self::from_state(OxiSynthState {
             preset: OxiSynthPresetId { bank, program },
+            reverb_send,
+            chorus_send,
         })?;
         if control.encode() != encoded {
             return Err(OxiSynthStateError::InvalidEnvelope);
@@ -169,7 +309,7 @@ impl OxiSynthControlState {
     }
 
     pub fn state(&self) -> OxiSynthState {
-        self.state
+        self.current_state()
     }
 
     pub fn selected_preset(&self) -> OxiSynthPresetId {
@@ -177,8 +317,12 @@ impl OxiSynthControlState {
     }
 
     pub fn editor_state(&self) -> OxiSynthEditorState {
+        let state = self.current_state();
         OxiSynthEditorState {
-            selected_preset: self.state.preset,
+            selected_preset: state.preset,
+            reverb_send: state.reverb_send,
+            chorus_send: state.chorus_send,
+            midi_cc_assignments: self.midi_cc_assignments.iter().collect(),
         }
     }
 
@@ -188,10 +332,48 @@ impl OxiSynthControlState {
         Ok(())
     }
 
+    pub fn set_send(
+        &mut self,
+        parameter: OxiSynthParameter,
+        value: f32,
+    ) -> Result<(), OxiSynthStateError> {
+        validate_send(value)?;
+        match parameter {
+            OxiSynthParameter::ReverbSend => self.state.reverb_send = value,
+            OxiSynthParameter::ChorusSend => self.state.chorus_send = value,
+        }
+        self.runtime_state.publish(parameter, value);
+        Ok(())
+    }
+
+    pub fn assign_midi_cc(&mut self, assignment: OxiSynthMidiCcAssignment) -> bool {
+        self.midi_cc_assignments.assign(assignment)
+    }
+
+    pub fn remove_midi_cc(&mut self, parameter: OxiSynthParameter) {
+        self.midi_cc_assignments.remove(parameter);
+    }
+
+    pub fn clear_midi_cc_assignments(&mut self) {
+        self.midi_cc_assignments.clear();
+    }
+
+    pub fn midi_cc_assignments(&self) -> OxiSynthMidiCcAssignments {
+        self.midi_cc_assignments
+    }
+
+    pub fn set_midi_cc_assignments(&mut self, assignments: OxiSynthMidiCcAssignments) {
+        self.midi_cc_assignments = assignments;
+    }
+
     pub fn encode(&self) -> String {
+        let state = self.current_state();
         format!(
-            "{STATE_FORMAT}:{STATE_VERSION}:{SOUNDFONT_ID}:{}:{}",
-            self.state.preset.bank, self.state.preset.program
+            "{STATE_FORMAT}:{STATE_VERSION}:{SOUNDFONT_ID}:{}:{}:{:08x}:{:08x}",
+            state.preset.bank,
+            state.preset.program,
+            state.reverb_send.to_bits(),
+            state.chorus_send.to_bits()
         )
     }
 
@@ -200,7 +382,46 @@ impl OxiSynthControlState {
         sample_rate: f32,
         max_frames: usize,
     ) -> Result<OxiSynthProcessor> {
-        OxiSynthProcessor::new(sample_rate, max_frames, self.state)
+        OxiSynthProcessor::new_with_runtime(
+            sample_rate,
+            max_frames,
+            self.current_state(),
+            self.midi_cc_assignments,
+            Arc::clone(&self.runtime_state),
+        )
+    }
+
+    fn current_state(&self) -> OxiSynthState {
+        OxiSynthState {
+            preset: self.state.preset,
+            reverb_send: self.runtime_state.value(OxiSynthParameter::ReverbSend),
+            chorus_send: self.runtime_state.value(OxiSynthParameter::ChorusSend),
+        }
+    }
+}
+
+fn decode_send(value: Option<&str>) -> Result<f32, OxiSynthStateError> {
+    let value = value.ok_or(OxiSynthStateError::InvalidEnvelope)?;
+    if value.len() != 8 {
+        return Err(OxiSynthStateError::InvalidEnvelope);
+    }
+    let bits = u32::from_str_radix(value, 16).map_err(|_| OxiSynthStateError::InvalidEnvelope)?;
+    let value = f32::from_bits(bits);
+    validate_send(value)?;
+    Ok(value)
+}
+
+fn validate_state(state: OxiSynthState) -> Result<(), OxiSynthStateError> {
+    validate_preset(state.preset)?;
+    validate_send(state.reverb_send)?;
+    validate_send(state.chorus_send)
+}
+
+fn validate_send(value: f32) -> Result<(), OxiSynthStateError> {
+    if value.is_finite() && (MIN_SEND..=MAX_SEND).contains(&value) {
+        Ok(())
+    } else {
+        Err(OxiSynthStateError::InvalidSend)
     }
 }
 
@@ -217,14 +438,16 @@ fn validate_preset(preset: OxiSynthPresetId) -> Result<(), OxiSynthStateError> {
     Ok(())
 }
 
-fn create_synth(sample_rate: f32, preset: OxiSynthPresetId) -> Result<(Synth, SoundFontId)> {
-    validate_preset(preset).context("validate OxiSynth preset")?;
+fn create_synth(sample_rate: f32, state: OxiSynthState) -> Result<(Synth, SoundFontId)> {
+    validate_state(state).context("validate OxiSynth state")?;
     let mut bytes = Cursor::new(SOUNDFONT_BYTES);
     let font = SoundFont::load(&mut bytes).context("parse embedded TimGM6mb SoundFont")?;
     let mut synth = Synth::new(SynthDescriptor {
         sample_rate,
         polyphony: POLYPHONY,
         midi_channels: 16,
+        reverb_active: true,
+        chorus_active: true,
         drums_channel_active: false,
         audio_channels: 1,
         audio_groups: 1,
@@ -233,15 +456,41 @@ fn create_synth(sample_rate: f32, preset: OxiSynthPresetId) -> Result<(Synth, So
     .context("configure OxiSynth")?;
     let soundfont_id = synth.add_font(font, false);
     synth
-        .select_program(0, soundfont_id, u32::from(preset.bank), preset.program)
+        .select_program(
+            0,
+            soundfont_id,
+            u32::from(state.preset.bank),
+            state.preset.program,
+        )
         .context("select OxiSynth preset")?;
+    apply_send(&mut synth, OxiSynthParameter::ReverbSend, state.reverb_send)
+        .context("set OxiSynth reverb send")?;
+    apply_send(&mut synth, OxiSynthParameter::ChorusSend, state.chorus_send)
+        .context("set OxiSynth chorus send")?;
     Ok((synth, soundfont_id))
+}
+
+fn apply_send(
+    synth: &mut Synth,
+    parameter: OxiSynthParameter,
+    value: f32,
+) -> Result<(), oxisynth::OxiError> {
+    let generator = match parameter {
+        OxiSynthParameter::ReverbSend => GeneratorType::ReverbSend,
+        OxiSynthParameter::ChorusSend => GeneratorType::ChorusSend,
+    };
+    synth.set_gen(0, generator, value * MAX_SEND_GENERATOR_UNITS)
 }
 
 pub struct OxiSynthProcessor {
     synth: Synth,
     soundfont_id: SoundFontId,
     selected_preset: OxiSynthPresetId,
+    reverb_send: f32,
+    chorus_send: f32,
+    midi_cc_assignments: OxiSynthMidiCcAssignments,
+    runtime_state: Arc<OxiSynthRuntimeState>,
+    synchronized_revision: u64,
     left: Vec<f32>,
     right: Vec<f32>,
 }
@@ -258,12 +507,34 @@ impl std::fmt::Debug for OxiSynthProcessor {
 
 impl OxiSynthProcessor {
     pub fn new(sample_rate: f32, max_frames: usize, state: OxiSynthState) -> Result<Self> {
+        let runtime_state = Arc::new(OxiSynthRuntimeState::new(state));
+        Self::new_with_runtime(
+            sample_rate,
+            max_frames,
+            state,
+            OxiSynthMidiCcAssignments::default(),
+            runtime_state,
+        )
+    }
+
+    fn new_with_runtime(
+        sample_rate: f32,
+        max_frames: usize,
+        state: OxiSynthState,
+        midi_cc_assignments: OxiSynthMidiCcAssignments,
+        runtime_state: Arc<OxiSynthRuntimeState>,
+    ) -> Result<Self> {
         let max_frames = max_frames.max(1);
-        let (synth, soundfont_id) = create_synth(sample_rate, state.preset)?;
+        let (synth, soundfont_id) = create_synth(sample_rate, state)?;
         Ok(Self {
             synth,
             soundfont_id,
             selected_preset: state.preset,
+            reverb_send: state.reverb_send,
+            chorus_send: state.chorus_send,
+            midi_cc_assignments,
+            runtime_state,
+            synchronized_revision: 1,
             left: vec![0.0; max_frames],
             right: vec![0.0; max_frames],
         })
@@ -275,12 +546,36 @@ impl OxiSynthProcessor {
 
     pub fn select_preset(&mut self, preset: OxiSynthPresetId) -> Result<()> {
         validate_preset(preset).context("validate OxiSynth preset")?;
-        self.reset();
+        self.stop_voices();
         self.synth
             .select_program(0, self.soundfont_id, u32::from(preset.bank), preset.program)
             .context("select OxiSynth preset")?;
         self.selected_preset = preset;
+        self.reapply_sends();
         Ok(())
+    }
+
+    pub fn set_send(
+        &mut self,
+        parameter: OxiSynthParameter,
+        value: f32,
+    ) -> Result<(), OxiSynthStateError> {
+        validate_send(value)?;
+        self.apply_send_value(parameter, value);
+        self.synchronized_revision = self.runtime_state.publish(parameter, value);
+        Ok(())
+    }
+
+    pub fn assign_midi_cc(&mut self, assignment: OxiSynthMidiCcAssignment) -> bool {
+        self.midi_cc_assignments.assign(assignment)
+    }
+
+    pub fn remove_midi_cc(&mut self, parameter: OxiSynthParameter) {
+        self.midi_cc_assignments.remove(parameter);
+    }
+
+    pub fn clear_midi_cc_assignments(&mut self) {
+        self.midi_cc_assignments.clear();
     }
 
     pub fn max_frames(&self) -> usize {
@@ -303,27 +598,30 @@ impl OxiSynthProcessor {
     }
 
     pub fn reset(&mut self) {
-        let _ = self.synth.send_event(MidiEvent::SystemReset);
+        self.stop_voices();
         let _ = self.synth.select_program(
             0,
             self.soundfont_id,
             u32::from(self.selected_preset.bank),
             self.selected_preset.program,
         );
+        self.reapply_sends();
     }
 
     pub fn panic(&mut self) {
-        self.reset();
+        self.stop_voices();
     }
 
     pub fn process(&mut self, frames: usize, events: &[MidiStorageElem]) {
         let _span =
             shoop_tracing::realtime_span_detail!("engine.rt.fx.oxisynth_process", value = frames);
+        self.synchronize_runtime_values();
         let frames = frames.min(self.max_frames());
         let mut cursor = 0;
         for event in events {
             let offset = (event.time as usize).min(frames).max(cursor);
             self.render(cursor, offset);
+            self.apply_midi_cc(event.data());
             if let Some(event) = translate_midi(event.data()) {
                 match event {
                     MidiEvent::SystemReset => self.reset(),
@@ -335,6 +633,65 @@ impl OxiSynthProcessor {
             cursor = offset;
         }
         self.render(cursor, frames);
+    }
+
+    pub fn process_midi_controls_only(&mut self, events: &[MidiStorageElem]) {
+        self.synchronize_runtime_values();
+        for event in events {
+            self.apply_midi_cc(event.data());
+        }
+    }
+
+    fn stop_voices(&mut self) {
+        let _ = self.synth.send_event(MidiEvent::AllSoundOff { channel: 0 });
+    }
+
+    fn reapply_sends(&mut self) {
+        let _ = apply_send(
+            &mut self.synth,
+            OxiSynthParameter::ReverbSend,
+            self.reverb_send,
+        );
+        let _ = apply_send(
+            &mut self.synth,
+            OxiSynthParameter::ChorusSend,
+            self.chorus_send,
+        );
+    }
+
+    fn apply_send_value(&mut self, parameter: OxiSynthParameter, value: f32) {
+        let _ = apply_send(&mut self.synth, parameter, value);
+        match parameter {
+            OxiSynthParameter::ReverbSend => self.reverb_send = value,
+            OxiSynthParameter::ChorusSend => self.chorus_send = value,
+        }
+    }
+
+    fn synchronize_runtime_values(&mut self) {
+        let revision = self.runtime_state.revision();
+        if revision == self.synchronized_revision {
+            return;
+        }
+        for parameter in OxiSynthParameter::ALL {
+            let value = self.runtime_state.value(parameter);
+            self.apply_send_value(parameter, value);
+        }
+        self.synchronized_revision = revision;
+    }
+
+    fn apply_midi_cc(&mut self, data: &[u8]) {
+        if data.len() != 3 || data[0] & 0xf0 != 0xb0 || data[1] > 127 || data[2] > 127 {
+            return;
+        }
+        let Some(parameter) = self
+            .midi_cc_assignments
+            .matching_parameter(data[0] & 0x0f, data[1])
+        else {
+            return;
+        };
+        let value = OxiSynthParameter::value_from_cc(data[2]);
+        self.apply_send_value(parameter, value);
+        self.synchronized_revision = self.runtime_state.publish(parameter, value);
     }
 
     fn render(&mut self, start: usize, end: usize) {
@@ -379,14 +736,12 @@ fn translate_midi(data: &[u8]) -> Option<MidiEvent> {
             })
         }
         0xb0 if data.len() == 3 && data[1] <= 127 && data[2] <= 127 => match data[1] {
-            0 | 32 => None,
-            120 => Some(MidiEvent::AllSoundOff { channel }),
-            123 => Some(MidiEvent::AllNotesOff { channel }),
-            _ => Some(MidiEvent::ControlChange {
+            1 | 11 | 64 => Some(MidiEvent::ControlChange {
                 channel,
                 ctrl: data[1],
                 value: data[2],
             }),
+            _ => None,
         },
         0xc0 if data.len() == 2 && data[1] <= 127 => None,
         0xd0 if data.len() == 2 && data[1] <= 127 => Some(MidiEvent::ChannelPressure {
@@ -416,7 +771,7 @@ mod tests {
             .collect::<String>();
         assert_eq!(digest, SOUNDFONT_SHA256);
 
-        let (mut synth, _) = create_synth(48_000.0, DEFAULT_PRESET).unwrap();
+        let (mut synth, _) = create_synth(48_000.0, OxiSynthState::default()).unwrap();
         synth
             .send_event(MidiEvent::NoteOn {
                 channel: 0,
@@ -435,7 +790,7 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn embedded_soundfont_defaults_to_bank_zero_program_zero() {
-        let (synth, _) = create_synth(48_000.0, DEFAULT_PRESET).unwrap();
+        let (synth, _) = create_synth(48_000.0, OxiSynthState::default()).unwrap();
         assert_eq!(synth.channel_count(), 16);
         let (_, bank, program) = synth.program(0).unwrap();
         assert_eq!((bank, program), (0, 0));
@@ -479,42 +834,52 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn state_codec_is_canonical_and_strict() {
         let mut control = OxiSynthControlState::default();
-        assert_eq!(control.encode(), "shoop-oxisynth:1:timgm6mb:0:0");
+        assert_eq!(
+            control.encode(),
+            "shoop-oxisynth:2:timgm6mb:0:0:00000000:00000000"
+        );
         let preset = OxiSynthPresetId {
             bank: 128,
             program: 0,
         };
         control.select_preset(preset).unwrap();
+        control
+            .set_send(OxiSynthParameter::ReverbSend, 0.5)
+            .unwrap();
+        control
+            .set_send(OxiSynthParameter::ChorusSend, 1.0)
+            .unwrap();
         let encoded = control.encode();
-        assert_eq!(
-            OxiSynthControlState::from_encoded(&encoded)
-                .unwrap()
-                .selected_preset(),
-            preset
-        );
+        let decoded = OxiSynthControlState::from_encoded(&encoded).unwrap();
+        assert_eq!(decoded.selected_preset(), preset);
+        assert_eq!(decoded.state().reverb_send, 0.5);
+        assert_eq!(decoded.state().chorus_send, 1.0);
 
         assert!(matches!(
-            OxiSynthControlState::from_encoded("shoop-oxisynth:2:timgm6mb:0:0"),
+            OxiSynthControlState::from_encoded("shoop-oxisynth:1:timgm6mb:0:0:00000000:00000000"),
             Err(OxiSynthStateError::UnsupportedVersion(_))
         ));
         assert!(matches!(
-            OxiSynthControlState::from_encoded("shoop-oxisynth:1:other:0:0"),
+            OxiSynthControlState::from_encoded("shoop-oxisynth:2:other:0:0:00000000:00000000"),
             Err(OxiSynthStateError::UnknownSoundFont(_))
         ));
         assert!(matches!(
-            OxiSynthControlState::from_encoded("shoop-oxisynth:1:timgm6mb:0:128"),
+            OxiSynthControlState::from_encoded("shoop-oxisynth:2:timgm6mb:0:128:00000000:00000000"),
             Err(OxiSynthStateError::InvalidProgram)
         ));
         assert!(matches!(
-            OxiSynthControlState::from_encoded("shoop-oxisynth:1:timgm6mb:1:0"),
+            OxiSynthControlState::from_encoded("shoop-oxisynth:2:timgm6mb:1:0:00000000:00000000"),
             Err(OxiSynthStateError::UnknownPreset { .. })
         ));
         for malformed in [
             "",
             "not-state",
-            "shoop-oxisynth:1:timgm6mb:0",
-            "shoop-oxisynth:1:timgm6mb:0:0:extra",
-            "shoop-oxisynth:1:timgm6mb:00:0",
+            "shoop-oxisynth:2:timgm6mb:0",
+            "shoop-oxisynth:2:timgm6mb:0:0:00000000",
+            "shoop-oxisynth:2:timgm6mb:0:0:00000000:00000000:extra",
+            "shoop-oxisynth:2:timgm6mb:00:0:00000000:00000000",
+            "shoop-oxisynth:2:timgm6mb:0:0:7fc00000:00000000",
+            "shoop-oxisynth:2:timgm6mb:0:0:3f800001:00000000",
         ] {
             assert!(OxiSynthControlState::from_encoded(malformed).is_err());
         }
@@ -550,18 +915,19 @@ mod tests {
             translate_midi(&[0x90, 60, 0]),
             Some(MidiEvent::NoteOff { channel: 0, .. })
         ));
-        assert!(matches!(
-            translate_midi(&[0xb4, 1, 20]),
-            Some(MidiEvent::ControlChange { channel: 0, .. })
-        ));
-        assert!(matches!(
-            translate_midi(&[0xb0, 120, 0]),
-            Some(MidiEvent::AllSoundOff { channel: 0 })
-        ));
-        assert!(matches!(
-            translate_midi(&[0xb0, 123, 0]),
-            Some(MidiEvent::AllNotesOff { channel: 0 })
-        ));
+        for controller in [1, 11, 64] {
+            assert!(matches!(
+                translate_midi(&[0xb4, controller, 20]),
+                Some(MidiEvent::ControlChange {
+                    channel: 0,
+                    ctrl,
+                    value: 20,
+                }) if ctrl == controller
+            ));
+        }
+        for controller in [0, 7, 10, 32, 91, 93, 120, 123] {
+            assert!(translate_midi(&[0xb4, controller, 20]).is_none());
+        }
         assert!(matches!(
             translate_midi(&[0xff]),
             Some(MidiEvent::SystemReset)
@@ -579,6 +945,94 @@ mod tests {
                 "accepted {malformed:?}"
             );
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn direct_send_controls_and_midi_learn_publish_without_forwarding_cc() {
+        let mut control = OxiSynthControlState::default();
+        assert!(control.assign_midi_cc(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ReverbSend,
+            channel: 15,
+            controller: 91,
+        }));
+        assert!(control.assign_midi_cc(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ChorusSend,
+            channel: 2,
+            controller: 74,
+        }));
+        let mut processor = control.prepare_processor(48_000.0, 128).unwrap();
+
+        control
+            .set_send(OxiSynthParameter::ChorusSend, 0.5)
+            .unwrap();
+        processor.process(128, &[]);
+        assert_eq!(
+            processor.synth.gen(0, GeneratorType::ChorusSend).unwrap(),
+            100.0
+        );
+
+        let learned = MidiStorageElem::new(0, &[0xbf, 91, 127]).unwrap();
+        assert_no_alloc::assert_no_alloc(|| processor.process(128, &[learned]));
+        assert_eq!(
+            processor.synth.gen(0, GeneratorType::ReverbSend).unwrap(),
+            200.0
+        );
+        assert_eq!(processor.synth.cc(0, 91).unwrap(), 0);
+        let editor = control.editor_state();
+        assert_eq!(editor.reverb_send, 1.0);
+        assert_eq!(editor.chorus_send, 0.5);
+        assert_eq!(editor.midi_cc_assignments.len(), 2);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_assignments_are_unique_and_validated() {
+        let mut assignments = OxiSynthMidiCcAssignments::default();
+        assert!(assignments.assign(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ReverbSend,
+            channel: 1,
+            controller: 20,
+        }));
+        assert!(assignments.assign(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ChorusSend,
+            channel: 1,
+            controller: 20,
+        }));
+        assert_eq!(assignments.iter().count(), 1);
+        assert!(!assignments.assign(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ReverbSend,
+            channel: 16,
+            controller: 20,
+        }));
+        assert!(!assignments.assign(OxiSynthMidiCcAssignment {
+            parameter: OxiSynthParameter::ReverbSend,
+            channel: 1,
+            controller: 128,
+        }));
+        assignments.remove(OxiSynthParameter::ChorusSend);
+        assert_eq!(assignments.iter().count(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn only_modulation_expression_and_sustain_cc_reach_oxisynth() {
+        let mut processor =
+            OxiSynthProcessor::new(48_000.0, 128, OxiSynthState::default()).unwrap();
+        let events = [
+            MidiStorageElem::new(0, &[0xb7, 1, 12]).unwrap(),
+            MidiStorageElem::new(0, &[0xb7, 11, 34]).unwrap(),
+            MidiStorageElem::new(0, &[0xb7, 64, 127]).unwrap(),
+            MidiStorageElem::new(0, &[0xb7, 7, 1]).unwrap(),
+            MidiStorageElem::new(0, &[0xb7, 10, 2]).unwrap(),
+            MidiStorageElem::new(0, &[0xb7, 91, 3]).unwrap(),
+            MidiStorageElem::new(0, &[0xb7, 93, 4]).unwrap(),
+        ];
+        processor.process(128, &events);
+        assert_eq!(processor.synth.cc(0, 1).unwrap(), 12);
+        assert_eq!(processor.synth.cc(0, 11).unwrap(), 34);
+        assert_eq!(processor.synth.cc(0, 64).unwrap(), 127);
+        assert_eq!(processor.synth.cc(0, 7).unwrap(), 100);
+        assert_eq!(processor.synth.cc(0, 10).unwrap(), 64);
+        assert_eq!(processor.synth.cc(0, 91).unwrap(), 0);
+        assert_eq!(processor.synth.cc(0, 93).unwrap(), 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]
