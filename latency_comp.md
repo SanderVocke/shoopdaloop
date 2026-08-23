@@ -728,21 +728,21 @@ Verification:
 
 Dependencies: Stages 2, 6, and Stage 0 Carla evidence.
 
-- [ ] Implement the version-gated Carla aggregate latency adapter for the pinned runtime.
-- [ ] Represent Rack and Patchbay/Patchbay16x path semantics separately.
-- [ ] Return range/unknown for feedback or unsupported graph cases.
-- [ ] Publish latency and revision through in-process Carla control/realtime endpoints.
-- [ ] Extend subprocess shared/control protocol and worker status; bump protocol version and update validation/fixtures.
-- [ ] Refresh after all graph/state/parameter/buffer lifecycle events that can change latency.
-- [ ] Preserve manual operation on unsupported Carla runtime versions.
-- [ ] Add diagnostics identifying Carla-derived versus manual values.
+- [x] Implement the version-gated Carla aggregate latency adapter for the pinned runtime.
+- [x] Represent Rack and Patchbay/Patchbay16x path semantics separately.
+- [x] Return range/unknown for feedback or unsupported graph cases.
+- [x] Publish latency and revision through in-process Carla control/realtime endpoints.
+- [x] Extend subprocess shared/control protocol and worker status; bump protocol version and update validation/fixtures.
+- [x] Refresh after all graph/state/parameter/buffer lifecycle events that can change latency.
+- [x] Preserve manual operation on unsupported Carla runtime versions.
+- [x] Add diagnostics identifying Carla-derived versus manual values.
 
 Verification:
 
-- [ ] Fake Carla dynamic-latency tests cover both hosting modes.
+- [x] Fake Carla dynamic-latency tests cover both hosting modes.
 - [ ] Real Carla tests load known zero- and nonzero-latency plugins in Rack and branched Patchbay arrangements and compare queried path totals with impulse output.
-- [ ] Worker restart preserves/re-publishes latency revision and does not apply stale generation data.
-- [ ] Unsupported runtime test reports unknown/manual while Carla audio remains usable.
+- [x] Worker restart preserves/re-publishes latency revision and does not apply stale generation data.
+- [x] Unsupported runtime test reports unknown/manual while Carla audio remains usable.
 
 ### Stage 9 — OxiSynth timing provider or correction
 

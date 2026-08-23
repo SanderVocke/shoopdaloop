@@ -9463,6 +9463,7 @@ mod tests {
             crash_summary: None,
             logs: Arc::from([]),
             latency: Default::default(),
+            latency_provider: Default::default(),
             editor: Some(shoop_app_api::TrackProcessorEditorState::OxiSynth(
                 shoop_app_api::OxiSynthState {
                     selected_preset_id: "0:0".to_owned(),

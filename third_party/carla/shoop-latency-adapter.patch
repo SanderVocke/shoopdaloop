@@ -1,0 +1,108 @@
+--- a/source/plugin/carla-native-plugin.cpp
++++ b/source/plugin/carla-native-plugin.cpp
+@@ -19,6 +19,7 @@
+ #include "CarlaHostImpl.hpp"
+ 
+ #include "CarlaEngine.hpp"
++#include "CarlaPlugin.hpp"
+ #include "CarlaString.hpp"
+ 
+ #include "water/files/File.h"
+@@ -73,6 +74,84 @@
+ }
+ 
+ // --------------------------------------------------------------------------------------------------------------------
++// ShoopDaLoop versioned aggregate-latency adapter.
++//
++// This ABI deliberately lives inside the pinned Carla build. CarlaPlugin latency
++// and patchbay graph internals are not exported by upstream's public C API, and
++// using C++ vtable layout from an independently linked library is not defensible.
++
++enum ShoopCarlaLatencyStatus {
++    SHOOP_CARLA_LATENCY_EXACT = 0,
++    SHOOP_CARLA_LATENCY_RANGE = 1,
++    SHOOP_CARLA_LATENCY_UNSUPPORTED_GRAPH = 2,
++    SHOOP_CARLA_LATENCY_OVERFLOW = 3
++};
++
++struct ShoopCarlaLatencyResult {
++    uint32_t structSize;
++    uint32_t abiVersion;
++    uint32_t status;
++    uint32_t minimumFrames;
++    uint32_t maximumFrames;
++    uint32_t pathCount;
++};
++
++extern "C" CARLA_API_EXPORT uint32_t shoop_carla_latency_adapter_version() noexcept
++{
++    return 1;
++}
++
++extern "C" CARLA_API_EXPORT bool shoop_carla_query_native_latency(const NativePluginDescriptor* const desc,
++                                                        const NativePluginHandle handle,
++                                                        ShoopCarlaLatencyResult* const result) noexcept
++{
++    CARLA_SAFE_ASSERT_RETURN(desc != nullptr, false);
++    CARLA_SAFE_ASSERT_RETURN(handle != nullptr, false);
++    CARLA_SAFE_ASSERT_RETURN(result != nullptr, false);
++    CARLA_SAFE_ASSERT_RETURN(result->structSize >= sizeof(ShoopCarlaLatencyResult), false);
++
++    result->abiVersion = 1;
++    result->status = SHOOP_CARLA_LATENCY_UNSUPPORTED_GRAPH;
++    result->minimumFrames = 0;
++    result->maximumFrames = 0;
++    result->pathCount = 0;
++
++    // Rack is a single enabled-plugin serial path. Patchbay and Patchbay16x are
++    // intentionally reported as graph-dependent until their reachable route graph
++    // can be exported without guessing about branches or feedback.
++    if (desc != carla_get_native_rack_plugin())
++        return true;
++
++    CarlaEngine* const engine = carla_get_native_plugin_engine(desc, handle);
++    CARLA_SAFE_ASSERT_RETURN(engine != nullptr, false);
++
++    if (engine->getCurrentPluginCount() == 0) {
++        result->status = SHOOP_CARLA_LATENCY_EXACT;
++        result->pathCount = 1;
++        return true;
++    }
++
++    uint64_t total = 0;
++    const uint maximumPlugin = engine->getCurrentPluginCount();
++    for (uint id = 0; id < maximumPlugin; ++id) {
++        const CarlaPluginPtr plugin = engine->getPlugin(id);
++        if (! plugin || ! plugin->isEnabled())
++            continue;
++        total += plugin->getLatencyInFrames();
++        if (total > UINT32_MAX) {
++            result->status = SHOOP_CARLA_LATENCY_OVERFLOW;
++            return true;
++        }
++    }
++
++    result->status = SHOOP_CARLA_LATENCY_EXACT;
++    result->minimumFrames = static_cast<uint32_t>(total);
++    result->maximumFrames = static_cast<uint32_t>(total);
++    result->pathCount = 1;
++    return true;
++}
++
++// --------------------------------------------------------------------------------------------------------------------
+ 
+ // testing purposes only
+ #if 0
+
+diff --git a/source/plugin/symbols/carla-native-plugin.version b/source/plugin/symbols/carla-native-plugin.version
+index 1d3f41aa..cf2e7f9a 100644
+--- a/source/plugin/symbols/carla-native-plugin.version
++++ b/source/plugin/symbols/carla-native-plugin.version
+@@ -17,6 +17,8 @@
+             carla_get_supported_features;
+             carla_get_library_filename;
+             carla_get_library_folder;
++            shoop_carla_latency_adapter_version;
++            shoop_carla_query_native_latency;
+     local: *;
+ };

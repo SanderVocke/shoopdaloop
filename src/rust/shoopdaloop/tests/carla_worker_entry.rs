@@ -1,7 +1,7 @@
 #![cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
 
 use shoop_engine::carla_native::carla_runtime_availability;
-use shoop_engine::carla_processor::CarlaProcessor;
+use shoop_engine::carla_processor::{CarlaProcessor, ProcessorLatencyDiagnostic};
 use shoop_engine::carla_subprocess::{
     CarlaWorkerTestMode, SubprocessCarlaProcessor, SupervisedCarlaProcessor,
 };
@@ -24,6 +24,11 @@ fn application_executable_serves_the_hidden_fake_carla_worker_entry() {
     )
     .expect("application executable should complete the worker handshake");
     assert!(worker.is_ready());
+    assert_eq!(worker.latency().range.unwrap().min(), 0);
+    assert_eq!(
+        worker.latency_diagnostic(),
+        ProcessorLatencyDiagnostic::Manual
+    );
     worker.set_active(true);
     worker.set_visible(true).unwrap();
     assert!(worker.is_visible());
@@ -46,6 +51,7 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
     .unwrap();
     worker.restore_state("checkpoint").unwrap();
     worker.set_active(true);
+    let latency_before_restart = worker.latency();
     worker.terminate_worker_for_test().unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     while worker.is_ready() && std::time::Instant::now() < deadline {
@@ -60,6 +66,11 @@ fn application_supervisor_recovers_checkpoint_activity_and_logs() {
     assert!(worker.is_ready());
     assert!(worker.is_active());
     assert!(worker.is_visible());
+    assert_eq!(worker.latency(), latency_before_restart);
+    assert_eq!(
+        worker.latency_diagnostic(),
+        ProcessorLatencyDiagnostic::Manual
+    );
     assert_eq!(worker.save_state().unwrap(), "checkpoint");
     assert!(!worker.generation_logs().is_empty());
     worker.clear_logs();
@@ -90,6 +101,11 @@ fn application_worker_hosts_the_real_carla_native_runtime_when_available() {
         ProcessGeneration(1),
     )
     .expect("application executable should host Carla Native in its worker");
+    assert_eq!(
+        worker.latency_diagnostic(),
+        ProcessorLatencyDiagnostic::CarlaRackAggregate
+    );
+    assert_eq!(worker.latency().range.unwrap().min(), 0);
     worker.set_active(true);
     let mut processed = false;
     for _ in 0..8 {

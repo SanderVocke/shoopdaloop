@@ -249,6 +249,16 @@ pub enum TrackProcessorEditorState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyProviderState {
+    CarlaRackAggregate,
+    CarlaPatchbayGraphRange,
+    Manual,
+    VersionMismatch,
+    #[default]
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct LatencyObservationState {
     pub minimum_frames: Option<u32>,
     pub maximum_frames: Option<u32>,
@@ -268,6 +278,7 @@ pub struct TrackFxState {
     pub logs: Arc<[FxGenerationLogState]>,
     pub editor: Option<TrackProcessorEditorState>,
     pub latency: LatencyObservationState,
+    pub latency_provider: LatencyProviderState,
 }
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;

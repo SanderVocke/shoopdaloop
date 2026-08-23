@@ -830,6 +830,7 @@ impl RemoteWorkletBackend {
                                 crash_summary: None,
                                 logs: Arc::from([]),
                                 latency: Default::default(),
+                                latency_provider: Default::default(),
                                 editor: oxisynth,
                             }
                         }),

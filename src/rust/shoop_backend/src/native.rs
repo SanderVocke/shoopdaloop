@@ -2722,6 +2722,7 @@ impl Backend for NativeBackend {
                     generation: fx.chain.generation(),
                     crash_summary: fx.chain.crash_summary(),
                     latency: app_latency_observation(chain_state.latency),
+                    latency_provider: app_latency_provider(chain_state.latency_diagnostic),
                     logs: fx
                         .chain
                         .generation_logs()

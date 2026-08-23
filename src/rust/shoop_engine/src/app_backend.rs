@@ -6745,6 +6745,16 @@ impl FXChain {
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();
         let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed);
+        s.latency_diagnostic = match &self.backend {
+            FXChainBackendKind::Test2x2x1 => {
+                engine::carla_processor::ProcessorLatencyDiagnostic::Manual
+            }
+            #[cfg(feature = "carla")]
+            FXChainBackendKind::Carla(host) => host.latency_diagnostic(),
+            FXChainBackendKind::OxiSynth(_) | FXChainBackendKind::Unavailable { .. } => {
+                engine::carla_processor::ProcessorLatencyDiagnostic::Unsupported
+            }
+        };
         s.latency = match &self.backend {
             FXChainBackendKind::Test2x2x1 => {
                 engine::RuntimeLatencyObservation::exact(0, sample_rate.max(1), 1)

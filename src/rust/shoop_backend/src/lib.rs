@@ -24,8 +24,8 @@ use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
     DummyAudioDriverConfig, FxLifecycle, LatencyCertaintyState, LatencyObservationState,
-    LoopMode as AppLoopMode, ResolvedAudioDriverConfig, TakeLatencyProvenanceState, TrackFxState,
-    TrackLatencyPolicyState, TrackProcessorDescriptor,
+    LatencyProviderState, LoopMode as AppLoopMode, ResolvedAudioDriverConfig,
+    TakeLatencyProvenanceState, TrackFxState, TrackLatencyPolicyState, TrackProcessorDescriptor,
 };
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
@@ -3298,6 +3298,29 @@ fn app_loop_mode(mode: BackendLoopMode) -> AppLoopMode {
     }
 }
 
+#[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
+fn app_latency_provider(
+    diagnostic: shoop_engine::carla_processor::ProcessorLatencyDiagnostic,
+) -> LatencyProviderState {
+    match diagnostic {
+        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::CarlaRackAggregate => {
+            LatencyProviderState::CarlaRackAggregate
+        }
+        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange => {
+            LatencyProviderState::CarlaPatchbayGraphRange
+        }
+        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::Manual => {
+            LatencyProviderState::Manual
+        }
+        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::VersionMismatch => {
+            LatencyProviderState::VersionMismatch
+        }
+        shoop_engine::carla_processor::ProcessorLatencyDiagnostic::Unsupported => {
+            LatencyProviderState::Unsupported
+        }
+    }
+}
+
 fn app_latency_observation(
     observation: shoop_engine::RuntimeLatencyObservation,
 ) -> LatencyObservationState {
@@ -3339,6 +3362,7 @@ fn engine_oxisynth_fx_state(fx: &EngineOxiFx) -> TrackFxState {
         crash_summary: None,
         logs: Arc::from([]),
         latency: LatencyObservationState::default(),
+        latency_provider: LatencyProviderState::Unsupported,
         editor: Some(TrackProcessorEditorState::OxiSynth(OxiSynthState {
             selected_preset_id: editor.selected_preset.stable_id(),
             reverb_send: editor.reverb_send,
@@ -5966,6 +5990,7 @@ impl FakeBackend {
                         crash_summary: None,
                         logs: Arc::from([]),
                         latency: LatencyObservationState::default(),
+                        latency_provider: LatencyProviderState::Unsupported,
                         editor: None,
                     }),
                     audio_channels: wet_audio_channels,

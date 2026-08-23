@@ -9,6 +9,16 @@ use std::time::Duration;
 
 pub type ProcessorLatencyObservation = RuntimeLatencyObservation;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ProcessorLatencyDiagnostic {
+    CarlaRackAggregate,
+    CarlaPatchbayGraphRange,
+    Manual,
+    VersionMismatch,
+    #[default]
+    Unsupported,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CarlaProcessorInfo {
     pub chain_type: FXChainType,
@@ -91,6 +101,9 @@ pub trait CarlaProcessor: Send + Debug {
     fn latency(&self) -> ProcessorLatencyObservation {
         ProcessorLatencyObservation::default()
     }
+    fn latency_diagnostic(&self) -> ProcessorLatencyDiagnostic {
+        ProcessorLatencyDiagnostic::Unsupported
+    }
     fn is_ready(&mut self) -> bool {
         true
     }
@@ -158,11 +171,30 @@ mod bridge {
 
     const BRIDGE_COMMAND_CAPACITY: usize = 32;
 
+    fn diagnostic_from_u8(value: u8) -> ProcessorLatencyDiagnostic {
+        match value {
+            value if value == ProcessorLatencyDiagnostic::CarlaRackAggregate as u8 => {
+                ProcessorLatencyDiagnostic::CarlaRackAggregate
+            }
+            value if value == ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange as u8 => {
+                ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange
+            }
+            value if value == ProcessorLatencyDiagnostic::Manual as u8 => {
+                ProcessorLatencyDiagnostic::Manual
+            }
+            value if value == ProcessorLatencyDiagnostic::VersionMismatch as u8 => {
+                ProcessorLatencyDiagnostic::VersionMismatch
+            }
+            _ => ProcessorLatencyDiagnostic::Unsupported,
+        }
+    }
+
     #[derive(Debug)]
     struct BridgeSnapshot {
         ready: AtomicBool,
         active: Arc<AtomicBool>,
         latency: Arc<AtomicLatencyObservation>,
+        latency_diagnostic: Arc<AtomicU8>,
         visible: AtomicBool,
         lifecycle: AtomicU8,
         generation: AtomicU64,
@@ -180,6 +212,7 @@ mod bridge {
                 ready: AtomicBool::new(host.is_ready()),
                 active: Arc::new(AtomicBool::new(host.is_active())),
                 latency: Arc::new(AtomicLatencyObservation::new(host.latency())),
+                latency_diagnostic: Arc::new(AtomicU8::new(host.latency_diagnostic() as u8)),
                 visible: AtomicBool::new(host.is_visible()),
                 lifecycle: AtomicU8::new(host.lifecycle() as u8),
                 generation: AtomicU64::new(host.generation()),
@@ -195,6 +228,8 @@ mod bridge {
         fn publish_health(&self, host: &mut dyn CarlaProcessor) {
             self.ready.store(host.is_ready(), Ordering::Release);
             self.latency.publish(host.latency());
+            self.latency_diagnostic
+                .store(host.latency_diagnostic() as u8, Ordering::Release);
             self.visible.store(host.is_visible(), Ordering::Release);
             self.lifecycle
                 .store(host.lifecycle() as u8, Ordering::Release);
@@ -269,6 +304,15 @@ mod bridge {
 
         pub fn latency(&self) -> ProcessorLatencyObservation {
             self.control.snapshot.latency.read()
+        }
+
+        pub fn latency_diagnostic(&self) -> ProcessorLatencyDiagnostic {
+            diagnostic_from_u8(
+                self.control
+                    .snapshot
+                    .latency_diagnostic
+                    .load(Ordering::Acquire),
+            )
         }
 
         pub fn is_ready(&self) -> bool {
@@ -453,6 +497,7 @@ mod bridge {
         transport: SharedBlockTransport,
         active: Arc<AtomicBool>,
         latency: Arc<AtomicLatencyObservation>,
+        latency_diagnostic: Arc<AtomicU8>,
         wake: std::thread::Thread,
         sequence: u64,
         timeout: Duration,
@@ -476,6 +521,9 @@ mod bridge {
         }
         fn latency(&self) -> ProcessorLatencyObservation {
             self.latency.read()
+        }
+        fn latency_diagnostic(&self) -> ProcessorLatencyDiagnostic {
+            diagnostic_from_u8(self.latency_diagnostic.load(Ordering::Acquire))
         }
         fn is_ready(&mut self) -> bool {
             true
@@ -839,6 +887,7 @@ mod bridge {
         let snapshot = Arc::new(BridgeSnapshot::new(host.as_mut()));
         let active = Arc::clone(&snapshot.active);
         let latency = Arc::clone(&snapshot.latency);
+        let latency_diagnostic = Arc::clone(&snapshot.latency_diagnostic);
         let deadline_misses = Arc::clone(&snapshot.deadline_misses);
         let midi_input_overflows = Arc::clone(&snapshot.midi_input_overflows);
         let midi_output_overflows = Arc::clone(&snapshot.midi_output_overflows);
@@ -864,6 +913,7 @@ mod bridge {
             transport: parent_transport,
             active,
             latency,
+            latency_diagnostic,
             wake,
             sequence: 0,
             timeout: Duration::from_secs_f64(
@@ -1174,6 +1224,7 @@ pub struct FakeCarlaProcessor {
     state: String,
     behavior: FakeProcessorBehavior,
     latency: ProcessorLatencyObservation,
+    latency_diagnostic: ProcessorLatencyDiagnostic,
 }
 
 impl FakeCarlaProcessor {
@@ -1195,6 +1246,7 @@ impl FakeCarlaProcessor {
             state: "{}".to_owned(),
             behavior: FakeProcessorBehavior::default(),
             latency: ProcessorLatencyObservation::default(),
+            latency_diagnostic: ProcessorLatencyDiagnostic::Unsupported,
         }
     }
 
@@ -1205,6 +1257,10 @@ impl FakeCarlaProcessor {
     pub fn set_latency(&mut self, latency: ProcessorLatencyObservation) {
         self.latency = latency;
     }
+
+    pub fn set_latency_diagnostic(&mut self, diagnostic: ProcessorLatencyDiagnostic) {
+        self.latency_diagnostic = diagnostic;
+    }
 }
 
 impl CarlaProcessor for FakeCarlaProcessor {
@@ -1214,6 +1270,10 @@ impl CarlaProcessor for FakeCarlaProcessor {
 
     fn latency(&self) -> ProcessorLatencyObservation {
         self.latency
+    }
+
+    fn latency_diagnostic(&self) -> ProcessorLatencyDiagnostic {
+        self.latency_diagnostic
     }
 
     fn set_active(&mut self, active: bool) {
@@ -1445,6 +1505,7 @@ mod tests {
         )
         .unwrap();
         fake.set_latency(initial);
+        fake.set_latency_diagnostic(ProcessorLatencyDiagnostic::CarlaRackAggregate);
         fake.set_behavior(FakeProcessorBehavior {
             latency_after_process: Some(changed),
             ..Default::default()
@@ -1452,6 +1513,14 @@ mod tests {
         let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 1_000, 100).unwrap();
         assert_eq!(control.latency(), initial);
         assert_eq!(endpoint.latency(), initial);
+        assert_eq!(
+            control.latency_diagnostic(),
+            ProcessorLatencyDiagnostic::CarlaRackAggregate
+        );
+        assert_eq!(
+            endpoint.latency_diagnostic(),
+            ProcessorLatencyDiagnostic::CarlaRackAggregate
+        );
         control.set_active(true);
         control.set_visible(false).unwrap();
         endpoint.process(4).unwrap();
