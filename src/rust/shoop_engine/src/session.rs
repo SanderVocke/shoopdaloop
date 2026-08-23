@@ -38,7 +38,7 @@ use crate::graph_build::{
     ChannelDesc, GraphDesc, LoopDesc, LoopIdx, NodeMap, PortDesc, PortIdx, ProcessorDesc,
 };
 use crate::internal_audio_port::InternalAudioPort;
-use crate::latency_runtime::RetainedLatencySelection;
+use crate::latency_runtime::{RetainedLatencySelection, RuntimeLatencyObservation};
 use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{MidiStorage, MidiStorageElem};
@@ -1573,11 +1573,116 @@ impl Session {
         self.sync_sources.get(loop_idx).copied().flatten()
     }
 
+    pub fn set_processor_latency_observation(
+        &mut self,
+        title: &str,
+        observation: ProcessorLatencyObservation,
+    ) -> Result<(), SessionError> {
+        let route = self
+            .processors
+            .iter_mut()
+            .find(|route| route.title == title)
+            .ok_or(SessionError::NoSuchProcessor)?;
+        route.latency = observation;
+        Ok(())
+    }
+
     pub fn processor_latency(&self, title: &str) -> Option<ProcessorLatencyObservation> {
         self.processors
             .iter()
             .find(|route| route.title == title)
             .map(|route| route.latency)
+    }
+
+    /// Internal processor/backend contribution reaching an application-facing port.
+    /// Uses fixed local storage so JACK route snapshots can refresh from the callback
+    /// without allocating. External processors include the characterized callback hop.
+    pub fn port_internal_latency_observation(
+        &self,
+        target_port: usize,
+    ) -> RuntimeLatencyObservation {
+        const MAX_VISITED_PORTS: usize = 256;
+        let reaches = |source: usize, target: usize| {
+            let mut stack = [usize::MAX; MAX_VISITED_PORTS];
+            let mut visited = [usize::MAX; MAX_VISITED_PORTS];
+            let mut stack_len = 1;
+            let mut visited_len = 0;
+            stack[0] = source;
+            while stack_len > 0 {
+                stack_len -= 1;
+                let current = stack[stack_len];
+                if current == target {
+                    return true;
+                }
+                if visited[..visited_len].contains(&current) {
+                    continue;
+                }
+                if visited_len == visited.len() {
+                    return false;
+                }
+                visited[visited_len] = current;
+                visited_len += 1;
+                if let Some(next) = self.port_connections.get(&current) {
+                    for destination in next.iter().copied() {
+                        if stack_len == stack.len() {
+                            return false;
+                        }
+                        stack[stack_len] = destination;
+                        stack_len += 1;
+                    }
+                }
+            }
+            false
+        };
+
+        let mut aggregate: Option<(u32, u32)> = None;
+        let mut revision = 1_u64;
+        for route in self.processors.iter().filter(|route| route.active) {
+            let reaches_target = route
+                .audio_outputs
+                .iter()
+                .copied()
+                .any(|output| reaches(output, target_port));
+            let target_reaches_processor = route
+                .audio_inputs
+                .iter()
+                .copied()
+                .any(|input| reaches(target_port, input));
+            if !reaches_target && !target_reaches_processor {
+                continue;
+            }
+            let Some(range) = route.latency.range else {
+                return RuntimeLatencyObservation::unknown(
+                    self.sample_rate,
+                    route.latency.revision,
+                );
+            };
+            let hop = matches!(route.backend, ProcessorBackend::External)
+                .then_some(self.buffer_size)
+                .unwrap_or(0);
+            let path = (
+                range.min().saturating_add(hop),
+                range.max().saturating_add(hop),
+            );
+            aggregate = Some(match aggregate {
+                Some((minimum, maximum)) => (minimum.min(path.0), maximum.max(path.1)),
+                None => path,
+            });
+            revision = revision.max(route.latency.revision);
+        }
+        let (minimum, maximum) = aggregate.unwrap_or((0, 0));
+        let certainty = if minimum == maximum {
+            shoop_latency::LatencyCertainty::Exact
+        } else {
+            shoop_latency::LatencyCertainty::Range
+        };
+        RuntimeLatencyObservation::new(
+            shoop_latency::LatencyRangeFrames::new(minimum, maximum).ok(),
+            certainty,
+            self.sample_rate.max(1),
+            revision,
+        )
+        .unwrap_or_else(|_| RuntimeLatencyObservation::unknown(self.sample_rate, revision))
     }
 
     pub fn set_test_fx_active(&mut self, title: impl Into<String>, active: bool) {
@@ -4297,6 +4402,48 @@ mod tests {
                 ],
             )
             .unwrap();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn internal_latency_routes_filter_unrelated_ports_and_include_external_hop() {
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_buffer_size(64);
+        let processor_input = session.add_port(internal("external:send", 64));
+        let processor_output = session.add_port(internal("external:return", 64));
+        let source = session.add_port(dummy(13, "source", PortDirection::Input));
+        let target = session.add_port(dummy(14, "target", PortDirection::Output));
+        let unrelated = session.add_port(dummy(15, "unrelated", PortDirection::Output));
+        session
+            .connect_ports_internal(source, processor_input)
+            .unwrap();
+        session
+            .connect_ports_internal(processor_output, target)
+            .unwrap();
+        session.set_external_processor("external");
+        session
+            .set_processor_ports(
+                "external",
+                vec![processor_input],
+                vec![processor_output],
+                vec![],
+            )
+            .unwrap();
+        session
+            .set_processor_latency_observation(
+                "external",
+                ProcessorLatencyObservation::exact(5, 48_000, 9).unwrap(),
+            )
+            .unwrap();
+
+        let capture_route = session.port_internal_latency_observation(source);
+        assert_eq!(capture_route.range.unwrap().min(), 69);
+        let routed = session.port_internal_latency_observation(target);
+        assert_eq!(routed.range.unwrap().min(), 69);
+        assert_eq!(routed.range.unwrap().max(), 69);
+        let direct = session.port_internal_latency_observation(unrelated);
+        assert_eq!(direct.range.unwrap().min(), 0);
+        assert_eq!(direct.range.unwrap().max(), 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

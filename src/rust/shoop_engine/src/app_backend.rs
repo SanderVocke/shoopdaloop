@@ -314,10 +314,360 @@ enum JackRegisteredPort {
     },
 }
 
+const MAX_JACK_LATENCY_ROUTES: usize = 512;
+const JACK_LATENCY_AUDIO_IN: u8 = 1;
+const JACK_LATENCY_AUDIO_OUT: u8 = 2;
+const JACK_LATENCY_MIDI_IN: u8 = 3;
+const JACK_LATENCY_MIDI_OUT: u8 = 4;
+
+struct JackLatencySlot {
+    port: AtomicUsize,
+    mirror: AtomicUsize,
+    engine_index: AtomicUsize,
+    kind: AtomicU8,
+    internal_min: AtomicU32,
+    internal_max: AtomicU32,
+    last_capture_min: AtomicU32,
+    last_capture_max: AtomicU32,
+    last_playback_min: AtomicU32,
+    last_playback_max: AtomicU32,
+    revision: AtomicU64,
+}
+
+impl Default for JackLatencySlot {
+    fn default() -> Self {
+        Self {
+            port: AtomicUsize::new(0),
+            mirror: AtomicUsize::new(0),
+            engine_index: AtomicUsize::new(0),
+            kind: AtomicU8::new(0),
+            internal_min: AtomicU32::new(0),
+            internal_max: AtomicU32::new(0),
+            last_capture_min: AtomicU32::new(u32::MAX),
+            last_capture_max: AtomicU32::new(u32::MAX),
+            last_playback_min: AtomicU32::new(u32::MAX),
+            last_playback_max: AtomicU32::new(u32::MAX),
+            revision: AtomicU64::new(1),
+        }
+    }
+}
+
+struct JackLatencyContext {
+    slots: [JackLatencySlot; MAX_JACK_LATENCY_ROUTES],
+    sample_rate: AtomicU32,
+    callbacks_active: AtomicU32,
+    backend_capture_min: AtomicU32,
+    backend_capture_max: AtomicU32,
+    backend_capture_revision: AtomicU64,
+    backend_playback_min: AtomicU32,
+    backend_playback_max: AtomicU32,
+    backend_playback_revision: AtomicU64,
+    dirty: AtomicBool,
+}
+
+impl JackLatencyContext {
+    fn new(sample_rate: u32) -> Self {
+        Self {
+            slots: std::array::from_fn(|_| JackLatencySlot::default()),
+            sample_rate: AtomicU32::new(sample_rate),
+            callbacks_active: AtomicU32::new(0),
+            backend_capture_min: AtomicU32::new(0),
+            backend_capture_max: AtomicU32::new(0),
+            backend_capture_revision: AtomicU64::new(1),
+            backend_playback_min: AtomicU32::new(0),
+            backend_playback_max: AtomicU32::new(0),
+            backend_playback_revision: AtomicU64::new(1),
+            dirty: AtomicBool::new(false),
+        }
+    }
+
+    fn register(
+        &self,
+        port: *mut jack_sys::jack_port_t,
+        mirror: usize,
+        engine_index: usize,
+        kind: u8,
+    ) -> Result<()> {
+        let slot = self
+            .slots
+            .iter()
+            .find(|slot| {
+                slot.port
+                    .compare_exchange(0, usize::MAX, Ordering::AcqRel, Ordering::Relaxed)
+                    .is_ok()
+            })
+            .ok_or_else(|| anyhow!("JACK latency route capacity exhausted"))?;
+        slot.mirror.store(mirror, Ordering::Relaxed);
+        slot.engine_index.store(engine_index, Ordering::Relaxed);
+        slot.kind.store(kind, Ordering::Relaxed);
+        slot.internal_min.store(0, Ordering::Relaxed);
+        slot.internal_max.store(0, Ordering::Relaxed);
+        slot.port.store(port as usize, Ordering::Release);
+        Ok(())
+    }
+
+    fn unregister(&self, port: *mut jack_sys::jack_port_t) {
+        if let Some(slot) = self
+            .slots
+            .iter()
+            .find(|slot| slot.port.load(Ordering::Acquire) == port as usize)
+        {
+            slot.port.store(0, Ordering::Release);
+            while self.callbacks_active.load(Ordering::Acquire) != 0 {
+                std::thread::yield_now();
+            }
+            slot.mirror.store(0, Ordering::Relaxed);
+            slot.engine_index.store(0, Ordering::Relaxed);
+            slot.kind.store(0, Ordering::Relaxed);
+        }
+    }
+
+    fn refresh_internal_ranges(&self, session: &engine::Session) {
+        for slot in &self.slots {
+            if matches!(slot.port.load(Ordering::Acquire), 0 | usize::MAX) {
+                continue;
+            }
+            let index_pointer = slot.engine_index.load(Ordering::Relaxed);
+            if index_pointer == 0 {
+                continue;
+            }
+            let index = unsafe { &*(index_pointer as *const AtomicUsize) }.load(Ordering::Acquire);
+            if index == INVALID_OBJECT_INDEX {
+                continue;
+            }
+            let observation = session.port_internal_latency_observation(index);
+            let (minimum, maximum) = observation
+                .range
+                .map(|range| (range.min(), range.max()))
+                .unwrap_or((0, 0));
+            let changed = slot.internal_min.swap(minimum, Ordering::Release) != minimum
+                || slot.internal_max.swap(maximum, Ordering::Release) != maximum;
+            if changed {
+                self.dirty.store(true, Ordering::Release);
+            }
+        }
+    }
+
+    fn backend_observation(&self, capture: bool) -> engine::RuntimeLatencyObservation {
+        let (minimum, maximum, revision) = if capture {
+            (
+                self.backend_capture_min.load(Ordering::Acquire),
+                self.backend_capture_max.load(Ordering::Acquire),
+                self.backend_capture_revision.load(Ordering::Acquire),
+            )
+        } else {
+            (
+                self.backend_playback_min.load(Ordering::Acquire),
+                self.backend_playback_max.load(Ordering::Acquire),
+                self.backend_playback_revision.load(Ordering::Acquire),
+            )
+        };
+        runtime_latency_from_range(
+            minimum,
+            maximum,
+            self.sample_rate.load(Ordering::Acquire),
+            revision,
+        )
+    }
+}
+
+fn aggregate_parallel_latency(
+    aggregate: Option<(u32, u32)>,
+    range: (u32, u32),
+) -> Option<(u32, u32)> {
+    Some(match aggregate {
+        Some((minimum, maximum)) => (minimum.min(range.0), maximum.max(range.1)),
+        None => range,
+    })
+}
+
+fn add_serial_latency(range: (u32, u32), internal: (u32, u32)) -> (u32, u32) {
+    (
+        range.0.saturating_add(internal.0),
+        range.1.saturating_add(internal.1),
+    )
+}
+
+fn runtime_latency_from_range(
+    minimum: u32,
+    maximum: u32,
+    sample_rate: u32,
+    revision: u64,
+) -> engine::RuntimeLatencyObservation {
+    let certainty = if minimum == maximum {
+        shoop_latency::LatencyCertainty::Exact
+    } else {
+        shoop_latency::LatencyCertainty::Range
+    };
+    engine::RuntimeLatencyObservation::new(
+        shoop_latency::LatencyRangeFrames::new(minimum, maximum).ok(),
+        certainty,
+        sample_rate.max(1),
+        revision,
+    )
+    .unwrap_or_else(|_| engine::RuntimeLatencyObservation::unknown(sample_rate, revision))
+}
+
+unsafe fn publish_jack_latency_slot(
+    slot: &JackLatencySlot,
+    capture: bool,
+    range: (u32, u32),
+    kind: u8,
+    sample_rate: u32,
+) {
+    let (last_min, last_max) = if capture {
+        (&slot.last_capture_min, &slot.last_capture_max)
+    } else {
+        (&slot.last_playback_min, &slot.last_playback_max)
+    };
+    let changed = last_min.swap(range.0, Ordering::Relaxed) != range.0
+        || last_max.swap(range.1, Ordering::Relaxed) != range.1;
+    let revision = if changed {
+        slot.revision
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1)
+    } else {
+        slot.revision.load(Ordering::Relaxed)
+    };
+    let observation = runtime_latency_from_range(range.0, range.1, sample_rate, revision);
+    let mirror = slot.mirror.load(Ordering::Relaxed);
+    if mirror == 0 {
+        return;
+    }
+    match kind {
+        JACK_LATENCY_AUDIO_IN | JACK_LATENCY_AUDIO_OUT => {
+            let mirror = &*(mirror as *const engine::AudioPortStateMirror);
+            if capture {
+                mirror.publish_capture_latency(observation);
+            } else {
+                mirror.publish_playback_latency(observation);
+            }
+        }
+        JACK_LATENCY_MIDI_IN | JACK_LATENCY_MIDI_OUT => {
+            let mirror = &*(mirror as *const engine::MidiPortStateMirror);
+            if capture {
+                mirror.publish_capture_latency(observation);
+            } else {
+                mirror.publish_playback_latency(observation);
+            }
+        }
+        _ => {}
+    }
+}
+
+unsafe extern "C" fn jack_latency_callback(
+    mode: jack_sys::jack_latency_callback_mode_t,
+    arg: *mut std::ffi::c_void,
+) {
+    let context = &*(arg as *const JackLatencyContext);
+    context.callbacks_active.fetch_add(1, Ordering::AcqRel);
+    let capture = mode == jack_sys::JackCaptureLatency;
+    let sample_rate = context.sample_rate.load(Ordering::Relaxed);
+    let mut aggregate = None;
+    for slot in &context.slots {
+        let port = slot.port.load(Ordering::Acquire);
+        if port == 0 || port == usize::MAX {
+            continue;
+        }
+        let kind = slot.kind.load(Ordering::Relaxed);
+        let query = if capture {
+            matches!(kind, JACK_LATENCY_AUDIO_IN | JACK_LATENCY_MIDI_IN)
+        } else {
+            matches!(kind, JACK_LATENCY_AUDIO_OUT | JACK_LATENCY_MIDI_OUT)
+        };
+        if !query {
+            continue;
+        }
+        let mut range = jack_sys::jack_latency_range_t { min: 0, max: 0 };
+        jack_sys::jack_port_get_latency_range(port as *mut _, mode, &mut range);
+        let range = (range.min, range.max);
+        aggregate = aggregate_parallel_latency(aggregate, range);
+        publish_jack_latency_slot(slot, capture, range, kind, sample_rate);
+    }
+    let aggregate = aggregate.unwrap_or((0, 0));
+    for slot in &context.slots {
+        let port = slot.port.load(Ordering::Acquire);
+        if port == 0 || port == usize::MAX {
+            continue;
+        }
+        let kind = slot.kind.load(Ordering::Relaxed);
+        let propagate = if capture {
+            matches!(kind, JACK_LATENCY_AUDIO_OUT | JACK_LATENCY_MIDI_OUT)
+        } else {
+            matches!(kind, JACK_LATENCY_AUDIO_IN | JACK_LATENCY_MIDI_IN)
+        };
+        if !propagate {
+            continue;
+        }
+        let range = add_serial_latency(
+            aggregate,
+            (
+                slot.internal_min.load(Ordering::Relaxed),
+                slot.internal_max.load(Ordering::Relaxed),
+            ),
+        );
+        let mut ffi_range = jack_sys::jack_latency_range_t {
+            min: range.0,
+            max: range.1,
+        };
+        jack_sys::jack_port_set_latency_range(port as *mut _, mode, &mut ffi_range);
+        publish_jack_latency_slot(slot, capture, range, kind, sample_rate);
+    }
+    let (minimum, maximum, revision) = if capture {
+        (
+            &context.backend_capture_min,
+            &context.backend_capture_max,
+            &context.backend_capture_revision,
+        )
+    } else {
+        (
+            &context.backend_playback_min,
+            &context.backend_playback_max,
+            &context.backend_playback_revision,
+        )
+    };
+    let changed = minimum.swap(aggregate.0, Ordering::Release) != aggregate.0
+        || maximum.swap(aggregate.1, Ordering::Release) != aggregate.1;
+    if changed {
+        revision.fetch_add(1, Ordering::Release);
+    }
+    context.callbacks_active.fetch_sub(1, Ordering::Release);
+}
+
 struct JackNotifications {
     xruns: Arc<AtomicU32>,
+    latency: Arc<JackLatencyContext>,
 }
 impl jack::NotificationHandler for JackNotifications {
+    fn sample_rate(&mut self, client: &jack::Client, sample_rate: jack::Frames) -> jack::Control {
+        self.latency
+            .sample_rate
+            .store(sample_rate, Ordering::Release);
+        unsafe {
+            jack_sys::jack_recompute_total_latencies(client.raw());
+        }
+        jack::Control::Continue
+    }
+
+    fn ports_connected(
+        &mut self,
+        client: &jack::Client,
+        _: jack::PortId,
+        _: jack::PortId,
+        _: bool,
+    ) {
+        unsafe {
+            jack_sys::jack_recompute_total_latencies(client.raw());
+        }
+    }
+
+    fn graph_reorder(&mut self, client: &jack::Client) -> jack::Control {
+        unsafe {
+            jack_sys::jack_recompute_total_latencies(client.raw());
+        }
+        jack::Control::Continue
+    }
+
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
         self.xruns.fetch_add(1, Ordering::Relaxed);
         jack::Control::Continue
@@ -337,6 +687,7 @@ struct JackProcess {
     /// Published from the callback and read by `get_state`, because logging here would
     /// allocate on the realtime thread.
     stale_graph_cycles: Arc<AtomicU32>,
+    latency: Arc<JackLatencyContext>,
     sample_rate: u32,
     maybe_process_callback: Option<ProcessCallback>,
 }
@@ -364,6 +715,7 @@ impl JackProcess {
             ports,
             last_processed,
             stale_graph_cycles,
+            latency,
             sample_rate,
             ..
         } = self;
@@ -421,6 +773,7 @@ impl JackProcess {
         engine.run_cycle(n_frames);
         let session = engine.session();
         stale_graph_cycles.store(session.n_stale_cycles(), Ordering::Relaxed);
+        latency.refresh_internal_ranges(session);
 
         for p in ports.iter_mut() {
             match p {
@@ -488,6 +841,7 @@ struct JackBackend {
     last_processed: Arc<AtomicU32>,
     xruns: Arc<AtomicU32>,
     stale_graph_cycles: Arc<AtomicU32>,
+    latency: Arc<JackLatencyContext>,
     maybe_process_callback: Option<ProcessCallback>,
 }
 
@@ -551,14 +905,31 @@ impl JackBackend {
         let engine = shared
             .take_engine()
             .ok_or_else(|| anyhow!("the engine has already been taken by another driver"))?;
+        self.latency
+            .sample_rate
+            .store(client.sample_rate(), Ordering::Release);
+        let callback_result = unsafe {
+            jack_sys::jack_set_latency_callback(
+                client.raw(),
+                Some(jack_latency_callback),
+                Arc::as_ptr(&self.latency) as *mut std::ffi::c_void,
+            )
+        };
+        if callback_result != 0 {
+            shared.return_engine(engine);
+            self.client = Some(client);
+            return Err(anyhow!("Failed to register JACK latency callback"));
+        }
         let notifications = JackNotifications {
             xruns: self.xruns.clone(),
+            latency: Arc::clone(&self.latency),
         };
         let process = JackProcess {
             engine,
             ports: self.ports.clone(),
             last_processed: self.last_processed.clone(),
             stale_graph_cycles: self.stale_graph_cycles.clone(),
+            latency: Arc::clone(&self.latency),
             sample_rate: client.sample_rate(),
             maybe_process_callback: self.maybe_process_callback,
         };
@@ -3304,6 +3675,7 @@ impl AudioDriver {
             resolved.client_name = client.name().to_string();
             resolved.sample_rate = client.sample_rate();
             resolved.buffer_size = client.buffer_size();
+            let latency = Arc::new(JackLatencyContext::new(client.sample_rate()));
             i.jack = Some(Arc::new(Mutex::new(JackBackend {
                 client: Some(client),
                 active_client: None,
@@ -3311,6 +3683,7 @@ impl AudioDriver {
                 last_processed: Arc::new(AtomicU32::new(0)),
                 xruns: Arc::new(AtomicU32::new(0)),
                 stale_graph_cycles: Arc::new(AtomicU32::new(0)),
+                latency,
                 maybe_process_callback: i.maybe_process_callback,
             })));
         } else {
@@ -3442,6 +3815,12 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::AudioIn::default())
                         .map_err(|e| anyhow!("Failed to register JACK audio input {name}: {e}"))?;
+                    j.latency.register(
+                        p.raw(),
+                        Arc::as_ptr(&control.mirror) as usize,
+                        Arc::as_ptr(&control.engine_index) as usize,
+                        JACK_LATENCY_AUDIO_IN,
+                    )?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::AudioIn {
                             control: Arc::clone(&control),
@@ -3454,6 +3833,12 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::AudioOut::default())
                         .map_err(|e| anyhow!("Failed to register JACK audio output {name}: {e}"))?;
+                    j.latency.register(
+                        p.raw(),
+                        Arc::as_ptr(&control.mirror) as usize,
+                        Arc::as_ptr(&control.engine_index) as usize,
+                        JACK_LATENCY_AUDIO_OUT,
+                    )?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::AudioOut {
                             control: Arc::clone(&control),
@@ -3485,9 +3870,11 @@ impl AudioDriver {
         };
         match registered {
             Some(JackRegisteredPort::AudioIn { jack: port, .. }) => {
+                jack.latency.unregister(port.raw());
                 jack.client().unregister_port(port)?;
             }
             Some(JackRegisteredPort::AudioOut { jack: port, .. }) => {
+                jack.latency.unregister(port.raw());
                 jack.client().unregister_port(port)?;
             }
             _ => {}
@@ -3515,9 +3902,11 @@ impl AudioDriver {
         };
         match registered {
             Some(JackRegisteredPort::MidiIn { jack: port, .. }) => {
+                jack.latency.unregister(port.raw());
                 jack.client().unregister_port(port)?;
             }
             Some(JackRegisteredPort::MidiOut { jack: port, .. }) => {
+                jack.latency.unregister(port.raw());
                 jack.client().unregister_port(port)?;
             }
             _ => {}
@@ -3539,6 +3928,12 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::MidiIn::default())
                         .map_err(|e| anyhow!("Failed to register JACK MIDI input {name}: {e}"))?;
+                    j.latency.register(
+                        p.raw(),
+                        Arc::as_ptr(&control.mirror) as usize,
+                        Arc::as_ptr(&control.engine_index) as usize,
+                        JACK_LATENCY_MIDI_IN,
+                    )?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::MidiIn {
                             control: Arc::clone(&control),
@@ -3551,6 +3946,12 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::MidiOut::default())
                         .map_err(|e| anyhow!("Failed to register JACK MIDI output {name}: {e}"))?;
+                    j.latency.register(
+                        p.raw(),
+                        Arc::as_ptr(&control.mirror) as usize,
+                        Arc::as_ptr(&control.engine_index) as usize,
+                        JACK_LATENCY_MIDI_OUT,
+                    )?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::MidiOut {
                             control: Arc::clone(&control),
@@ -3588,6 +3989,7 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::MidiIn::default())
                         .map_err(|e| anyhow!("Failed to register JACK MIDI input {name}: {e}"))?;
+                    j.latency.register(p.raw(), 0, 0, JACK_LATENCY_MIDI_IN)?;
                     j.ports
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -3598,6 +4000,7 @@ impl AudioDriver {
                         .client()
                         .register_port(name, jack::MidiOut::default())
                         .map_err(|e| anyhow!("Failed to register JACK MIDI output {name}: {e}"))?;
+                    j.latency.register(p.raw(), 0, 0, JACK_LATENCY_MIDI_OUT)?;
                     j.ports
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -3669,7 +4072,7 @@ impl AudioDriver {
                 (i.last_processed, 0, 0, 0.0)
             };
         let sample_rate = i.dummy.sample_rate();
-        let backend_latency = if matches!(
+        let fallback_latency = if matches!(
             i.driver_type,
             AudioDriverType::Dummy | AudioDriverType::CpalTest | AudioDriverType::JackTest
         ) && sample_rate > 0
@@ -3679,6 +4082,22 @@ impl AudioDriver {
         } else {
             engine::RuntimeLatencyObservation::unknown(sample_rate, 1)
         };
+        let (capture_latency, playback_latency) = i
+            .jack
+            .as_ref()
+            .map(|jack| {
+                let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
+                if jack.latency.dirty.swap(false, Ordering::AcqRel) {
+                    unsafe {
+                        jack_sys::jack_recompute_total_latencies(jack.client().raw());
+                    }
+                }
+                (
+                    jack.latency.backend_observation(true),
+                    jack.latency.backend_observation(false),
+                )
+            })
+            .unwrap_or((fallback_latency, fallback_latency));
         AudioDriverState {
             dsp_load_percent,
             xruns_since_last,
@@ -3688,8 +4107,8 @@ impl AudioDriver {
             buffer_size: i.dummy.buffer_size(),
             active: i.dummy.active() as u32,
             last_processed,
-            capture_latency: backend_latency,
-            playback_latency: backend_latency,
+            capture_latency,
+            playback_latency,
         }
     }
     pub fn dummy_enter_controlled_mode(&self) {
@@ -8447,6 +8866,28 @@ mod tests {
         engine.session_mut().process(1);
         assert!(midi_input.dummy_dequeue_data().is_empty());
         sess.shared.return_engine(engine);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn jack_latency_range_aggregation_and_publication_are_bounded_and_allocation_free() {
+        assert_eq!(
+            aggregate_parallel_latency(Some((4, 8)), (2, 12)),
+            Some((2, 12))
+        );
+        assert_eq!(
+            add_serial_latency((u32::MAX - 1, u32::MAX - 1), (8, 9)),
+            (u32::MAX, u32::MAX)
+        );
+        let mirror = Arc::new(engine::AudioPortStateMirror::default());
+        let slot = JackLatencySlot::default();
+        slot.mirror
+            .store(Arc::as_ptr(&mirror) as usize, Ordering::Relaxed);
+        assert_no_alloc::assert_no_alloc(|| unsafe {
+            publish_jack_latency_slot(&slot, true, (3, 7), JACK_LATENCY_AUDIO_IN, 48_000);
+        });
+        let observation = mirror.capture_latency();
+        assert_eq!(observation.range.unwrap().min(), 3);
+        assert_eq!(observation.range.unwrap().max(), 7);
     }
 
     #[shoop_wasm_test_support::shoop_test]

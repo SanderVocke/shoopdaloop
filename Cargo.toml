@@ -47,6 +47,7 @@ assert_no_alloc = "1.1"
 arc-swap = "1.7"
 rtrb = "0.3"
 jack = "0.13"
+jack-sys = { version = "0.5", features = ["dynamic_loading"] }
 # Pinned to what rodio (used by the application) already brings in: cpal declares
 # links = "alsa", so two versions cannot coexist in one workspace.
 # Enable all known cross-platform CPAL host features so that `--list-cpal-hosts`

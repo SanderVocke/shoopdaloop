@@ -707,22 +707,22 @@ Verification:
 
 Dependencies: Stages 2 and 6.
 
-- [ ] Implement the narrowly scoped JACK latency callback integration.
-- [ ] Build and atomically publish fixed-capacity callback route snapshots for live internal paths.
-- [ ] Query application input capture and output playback ranges.
-- [ ] Propagate internal direct/monitor/processor min/max latency in both JACK callback modes.
-- [ ] Safely retire callback-visible port handles during dynamic track/port removal.
-- [ ] React to graph reorder, connection, sample-rate, buffer-size, and processor-latency revisions.
-- [ ] Publish observations to backend state without callback logging/locking.
-- [ ] Include verified external send/return callback buffering.
+- [x] Implement the narrowly scoped JACK latency callback integration.
+- [x] Build and atomically publish fixed-capacity callback route snapshots for live internal paths.
+- [x] Query application input capture and output playback ranges.
+- [x] Propagate internal direct/monitor/processor min/max latency in both JACK callback modes.
+- [x] Safely retire callback-visible port handles during dynamic track/port removal.
+- [x] React to graph reorder, connection, sample-rate, buffer-size, and processor-latency revisions.
+- [x] Publish observations to backend state without callback logging/locking.
+- [x] Include verified external send/return callback buffering.
 
 Verification:
 
-- [ ] Unit tests cover range aggregation and route filtering.
-- [ ] JACK integration tests with deterministic source/sink/processor clients observe expected capture/playback totals.
-- [ ] Port add/remove stress does not expose stale handles or deadlock.
-- [ ] JACK latency callback path passes realtime allocation/lock checks.
-- [ ] Physical loopback test procedure and expected tolerance are documented and executed where JACK hardware is available.
+- [x] Unit tests cover range aggregation and route filtering.
+- [x] JACK integration tests with deterministic source/sink/processor clients observe expected capture/playback totals.
+- [x] Port add/remove stress does not expose stale handles or deadlock.
+- [x] JACK latency callback path passes realtime allocation/lock checks.
+- [x] Physical loopback test procedure and expected tolerance are documented and executed where JACK hardware is available.
 
 ### Stage 8 — Carla latency provider
 

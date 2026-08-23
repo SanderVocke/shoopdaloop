@@ -4118,6 +4118,7 @@ dependencies = [
  "cpal",
  "enum-iterator",
  "jack",
+ "jack-sys",
  "libc",
  "libloading 0.8.9",
  "log",

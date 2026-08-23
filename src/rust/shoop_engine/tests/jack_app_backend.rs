@@ -13,7 +13,7 @@
 #![cfg(all(feature = "jack", feature = "app_backend"))]
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use shoop_engine::app_backend::{
@@ -23,6 +23,13 @@ use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, PortDirection};
 
 mod backend_availability;
 use backend_availability::require_backend;
+
+fn jack_test_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
 
 fn wait_until(mut done: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + Duration::from_millis(2000);
@@ -273,6 +280,41 @@ impl jack::ProcessHandler for MidiSinks {
     }
 }
 
+struct DeclaredPeerLatency {
+    source: *mut jack_sys::jack_port_t,
+    sink: *mut jack_sys::jack_port_t,
+}
+
+struct DeclaredPeerLatencyProcess {
+    source: jack::Port<jack::AudioOut>,
+    sink: jack::Port<jack::AudioIn>,
+}
+
+impl jack::ProcessHandler for DeclaredPeerLatencyProcess {
+    fn process(&mut self, _: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
+        let _ = self.sink.as_slice(scope);
+        self.source.as_mut_slice(scope).fill(0.0);
+        jack::Control::Continue
+    }
+}
+
+unsafe extern "C" fn declared_peer_latency_callback(
+    mode: jack_sys::jack_latency_callback_mode_t,
+    arg: *mut std::ffi::c_void,
+) {
+    let ports = &*(arg as *const DeclaredPeerLatency);
+    let (port, minimum, maximum) = if mode == jack_sys::JackCaptureLatency {
+        (ports.source, 11, 13)
+    } else {
+        (ports.sink, 17, 19)
+    };
+    let mut range = jack_sys::jack_latency_range_t {
+        min: minimum,
+        max: maximum,
+    };
+    jack_sys::jack_port_set_latency_range(port, mode, &mut range);
+}
+
 fn connect_checked(client: &jack::Client, source: &str, destination: &str) {
     client
         .connect_ports_by_name(source, destination)
@@ -291,6 +333,7 @@ fn connect_checked(client: &jack::Client, source: &str, destination: &str) {
 
 #[shoop_wasm_test_support::shoop_test]
 fn registered_ports_are_visible_to_jack_with_direction_flags() {
+    let _exclusive = jack_test_lock();
     let suffix = std::process::id();
     let name = format!("shoop-app-flags-{suffix}");
     let Some((driver, session)) = app_jack(&name) else {
@@ -326,7 +369,119 @@ fn registered_ports_are_visible_to_jack_with_direction_flags() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn jack_latency_callback_publishes_connected_port_ranges() {
+    let _exclusive = jack_test_lock();
+    let suffix = std::process::id();
+    let Some((driver, session)) = app_jack(&format!("shoop-app-latency-{suffix}")) else {
+        return;
+    };
+    let input =
+        AudioPort::new_driver_port(&session, &driver, "in", &PortDirection::Input, 64).unwrap();
+    let output =
+        AudioPort::new_driver_port(&session, &driver, "out", &PortDirection::Output, 64).unwrap();
+    let Some(peer) = peer_client(&format!("shoop-app-latency-peer-{suffix}")) else {
+        return;
+    };
+    let source = peer
+        .register_port("source", jack::AudioOut::default())
+        .unwrap();
+    let sink = peer
+        .register_port("sink", jack::AudioIn::default())
+        .unwrap();
+    let declared = Box::new(DeclaredPeerLatency {
+        source: source.raw(),
+        sink: sink.raw(),
+    });
+    assert_eq!(
+        unsafe {
+            jack_sys::jack_set_latency_callback(
+                peer.raw(),
+                Some(declared_peer_latency_callback),
+                (&*declared as *const DeclaredPeerLatency).cast_mut().cast(),
+            )
+        },
+        0
+    );
+    let source_name = source.name().unwrap();
+    let sink_name = sink.name().unwrap();
+    let active_peer = peer
+        .activate_async((), DeclaredPeerLatencyProcess { source, sink })
+        .unwrap();
+    connect_checked(
+        active_peer.as_client(),
+        &source_name,
+        &format!("{}:in", driver.get_state().maybe_instance_name),
+    );
+    connect_checked(
+        active_peer.as_client(),
+        &format!("{}:out", driver.get_state().maybe_instance_name),
+        &sink_name,
+    );
+    unsafe {
+        jack_sys::jack_recompute_total_latencies(active_peer.as_client().raw());
+    }
+    assert!(wait_until(|| {
+        input.get_state().is_ok_and(|state| {
+            state
+                .capture_latency
+                .range
+                .is_some_and(|range| (range.min(), range.max()) == (11, 13))
+        }) && output.get_state().is_ok_and(|state| {
+            state
+                .playback_latency
+                .range
+                .is_some_and(|range| (range.min(), range.max()) == (17, 19))
+        })
+    }));
+    let capture = input.get_state().unwrap().capture_latency;
+    let playback = output.get_state().unwrap().playback_latency;
+    assert_eq!(
+        capture.range.map(|range| (range.min(), range.max())),
+        Some((11, 13))
+    );
+    assert_eq!(
+        playback.range.map(|range| (range.min(), range.max())),
+        Some((17, 19))
+    );
+    assert!(driver.get_state().capture_latency.range.is_some());
+    assert!(driver.get_state().playback_latency.range.is_some());
+    let (peer, _, _) = active_peer.deactivate().unwrap();
+    unsafe {
+        jack_sys::jack_set_latency_callback(peer.raw(), None, std::ptr::null_mut());
+    }
+    drop(declared);
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn jack_latency_port_add_remove_stress_retires_callback_handles() {
+    let _exclusive = jack_test_lock();
+    let suffix = std::process::id();
+    let Some((driver, session)) = app_jack(&format!("shoop-app-latency-churn-{suffix}")) else {
+        return;
+    };
+    for index in 0..128 {
+        let port = AudioPort::new_driver_port(
+            &session,
+            &driver,
+            &format!("churn-{index}"),
+            if index % 2 == 0 {
+                &PortDirection::Input
+            } else {
+                &PortDirection::Output
+            },
+            64,
+        )
+        .unwrap();
+        if index % 2 == 0 {
+            driver.unregister_audio_port(&port).unwrap();
+        }
+    }
+    assert!(driver.get_state().capture_latency.range.is_some());
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn jack_audio_input_reaches_a_recording_channel() {
+    let _exclusive = jack_test_lock();
     let suffix = std::process::id();
     let Some(producer_client) = peer_client(&format!("shoop-app-producer-{suffix}")) else {
         return;
@@ -383,6 +538,7 @@ fn jack_audio_input_reaches_a_recording_channel() {
 /// The one that matters: this is the path that was silently producing nothing.
 #[shoop_wasm_test_support::shoop_test]
 fn session_output_reaches_a_jack_consumer() {
+    let _exclusive = jack_test_lock();
     let suffix = std::process::id();
     let Some(consumer_client) = peer_client(&format!("shoop-app-consumer-{suffix}")) else {
         return;
@@ -440,6 +596,7 @@ fn session_output_reaches_a_jack_consumer() {
 /// went permanently quiet with nothing logged. Audio must survive a live rewire.
 #[shoop_wasm_test_support::shoop_test]
 fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
+    let _exclusive = jack_test_lock();
     let suffix = std::process::id();
     let Some(consumer_client) = peer_client(&format!("shoop-app-rewire-peer-{suffix}")) else {
         return;
@@ -520,6 +677,7 @@ fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
 // Use case: A user connects an external effects client and hears transformed input at wet out.
 #[shoop_wasm_test_support::shoop_test]
 fn external_dry_wet_audio_round_trip_reaches_jack_output() {
+    let _exclusive = jack_test_lock();
     let suffix = std::process::id();
     let Some(source_client) = peer_client(&format!("shoop-dry-source-{suffix}")) else {
         return;
@@ -677,6 +835,7 @@ fn external_dry_wet_audio_round_trip_reaches_jack_output() {
 
 #[shoop_wasm_test_support::shoop_test]
 fn external_send_return_adds_one_callback_period_at_two_buffer_sizes() {
+    let _exclusive = jack_test_lock();
     let suffix = std::process::id();
     let Some(source_client) = peer_client(&format!("shoop-latency-source-{suffix}")) else {
         return;
@@ -837,6 +996,7 @@ fn external_send_return_adds_one_callback_period_at_two_buffer_sizes() {
 // Use case: A shared controller feeds several external synth tracks but only the monitored one sounds.
 #[shoop_wasm_test_support::shoop_test]
 fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
+    let _exclusive = jack_test_lock();
     let suffix = std::process::id();
     let Some(source_client) = peer_client(&format!("shoop-midi-source-{suffix}")) else {
         return;

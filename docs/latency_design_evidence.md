@@ -40,6 +40,12 @@ source -> Shoop input -> Shoop send -> external copy -> Shoop return -> Shoop ou
 
 The test changes the dedicated server period between measurements, restores it on exit, and serializes the JACK integration-test binary because period size is server-global. The result is evidence for one separately identified backend-hop/callback-cycle component on this external route; it is not a claim about plugin or physical-device latency.
 
+### Physical JACK loopback procedure
+
+When physical capture/playback ports are available, connect one application output to a hardware output and the corresponding hardware input to one application input with a direct cable. Disable monitoring, resampling, and device effects. At 44.1 kHz and 48 kHz, and at two JACK periods, emit isolated identified impulses at least four periods apart. Record JACK frame time at dispatch and at capture, subtract the callback-route contribution reported by the JACK latency callback, and report minimum/maximum residual over at least 32 impulses. The accepted residual tolerance is the hardware converter's published or repeatedly measured range plus one frame; an unexplained callback-period residual fails validation. Repeat after graph reorder and port remove/re-add, and retain JACK port latency ranges with the measurements.
+
+This development environment exposed a running software JACK server (the deterministic latency callback and send/return tests ran without the missing-backend allowance) but no enumerated physical capture/playback endpoints or ALSA enumeration tools (`aplay`/`arecord` were unavailable). The physical cable run is therefore recorded as not applicable here rather than represented by the software-client measurement.
+
 ## Carla 2.5.10 latency surfaces
 
 The bundled runtime is pinned by `third_party/carla/runtime-lock.json` to Carla 2.5.10, revision `ad09259060a4e660a5033024406a1c3cc9f9c198`. The checked Native header digest is `c1b1a806a95ee2e4935eec9699c233e6a3ee27fcc8da37002bb0034c9d81854f`.
