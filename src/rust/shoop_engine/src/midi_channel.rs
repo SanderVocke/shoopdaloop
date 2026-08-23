@@ -17,7 +17,9 @@
 
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::content_snapshot::MidiProcessSnapshotWriter;
-use crate::latency_runtime::{LatchedLatencyRecipe, RuntimeLatencyRecipe};
+use crate::latency_runtime::{
+    cyclic_render_dispatch_position, LatchedLatencyRecipe, RuntimeLatencyRecipe,
+};
 use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
@@ -296,6 +298,15 @@ impl MidiChannel {
         self.state.publish_current_latency_recipe(recipe);
     }
     pub fn set_latched_latency_recipe(&mut self, recipe: LatchedLatencyRecipe) {
+        if recipe.recipe.total_frames.is_none()
+            && matches!(
+                recipe.recipe.operation,
+                shoop_latency::LatencyOperationKind::DryThroughWet
+                    | shoop_latency::LatencyOperationKind::RecordDryIntoWet
+            )
+        {
+            self.render_advance_frames = 0;
+        }
         if let Some(total) = recipe.recipe.total_frames {
             match recipe.recipe.operation {
                 shoop_latency::LatencyOperationKind::RecordDirect
@@ -304,9 +315,16 @@ impl MidiChannel {
                     self.capture_alignment_frames = total as i32;
                     self.latency_retention_incomplete = total > self.retained_after_frames;
                 }
-                shoop_latency::LatencyOperationKind::DryThroughWet
-                | shoop_latency::LatencyOperationKind::RecordDryIntoWet => {
+                shoop_latency::LatencyOperationKind::DryThroughWet => {
                     self.render_advance_frames = total;
+                }
+                shoop_latency::LatencyOperationKind::RecordDryIntoWet => {
+                    if self.mode == ChannelMode::Dry {
+                        self.render_advance_frames = total;
+                    } else {
+                        self.capture_alignment_frames = 0;
+                        self.render_advance_frames = 0;
+                    }
                 }
                 shoop_latency::LatencyOperationKind::Grab(_)
                 | shoop_latency::LatencyOperationKind::Replacement(_) => {}
@@ -772,9 +790,26 @@ impl MidiChannel {
                 .position
                 .checked_add(self.capture_alignment_frames)
                 .ok_or(MidiChannelError::LatencyPositionOverflow)?;
-            let dispatch_position = raw_position
-                .checked_add(self.render_advance_frames as i32)
-                .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+            let render_advance_frames = if matches!(
+                mode,
+                LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+            ) || (params.flags.contains(ProcessFlags::PLAYBACK)
+                && matches!(
+                    next_mode,
+                    LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+                )) {
+                self.render_advance_frames
+            } else {
+                0
+            };
+            let dispatch_position = cyclic_render_dispatch_position(
+                params.position,
+                self.start_offset,
+                self.capture_alignment_frames,
+                render_advance_frames,
+                length_before,
+            )
+            .ok_or(MidiChannelError::LatencyPositionOverflow)?;
             self.state.publish_playback_positions(
                 params.position.checked_sub(self.start_offset),
                 Some(raw_position),
@@ -785,16 +820,62 @@ impl MidiChannel {
                     .last_played_back_sample
                     .is_some_and(|last| last > dispatch_position);
             if restarting {
-                self.playback_cursor.reset(&self.storage);
-                let MidiChannel {
-                    pending_playback_state,
-                    recording_start_state,
-                    ..
-                } = self;
-                pending_playback_state.copy_relevant_state(recording_start_state);
-                self.pending_playback_valid = self.recording_start_valid;
+                let crossed_source_wrap = self.prev_process_flags.contains(ProcessFlags::PLAYBACK)
+                    && self
+                        .last_played_back_sample
+                        .is_some_and(|last| last > dispatch_position);
+                if crossed_source_wrap {
+                    let time = self.play.map(|play| play.n_frames_processed).unwrap_or(0);
+                    self.stop_active_playback_notes(out, time);
+                }
+                self.reset_playback_cursor_and_pending_state();
             }
-            self.process_playback(dispatch_position, n_samples, false, out)?;
+
+            let cyclic_window = (render_advance_frames > 0 && length_before > 0)
+                .then(|| {
+                    let start = self
+                        .start_offset
+                        .checked_add(self.capture_alignment_frames)
+                        .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+                    let end = start
+                        .checked_add(
+                            i32::try_from(length_before)
+                                .map_err(|_| MidiChannelError::LatencyPositionOverflow)?,
+                        )
+                        .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+                    Ok::<_, MidiChannelError>((start, end))
+                })
+                .transpose()?;
+            let mut source_position = dispatch_position;
+            let mut remaining = n_samples;
+            let mut output_offset = 0;
+            while remaining > 0 {
+                let segment = cyclic_window
+                    .map(|(_, end)| remaining.min((end - source_position).max(0) as u32))
+                    .unwrap_or(remaining);
+                if segment == 0 {
+                    break;
+                }
+                self.process_playback(source_position, segment, false, out, output_offset)?;
+                source_position = source_position
+                    .checked_add(segment as i32)
+                    .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+                remaining -= segment;
+                output_offset += segment;
+                if remaining > 0 {
+                    if let Some((start, end)) = cyclic_window {
+                        if source_position == end {
+                            let time = self
+                                .play
+                                .map(|play| play.n_frames_processed + output_offset)
+                                .unwrap_or(output_offset);
+                            self.stop_active_playback_notes(out, time);
+                            self.reset_playback_cursor_and_pending_state();
+                            source_position = start;
+                        }
+                    }
+                }
+            }
         } else {
             self.last_played_back_sample = None;
             self.state.publish_playback_positions(None, None, None);
@@ -807,9 +888,14 @@ impl MidiChannel {
             processed_input = true;
         } else if flags.contains(ProcessFlags::REPLACE) {
             self.loaded_contents = false;
+            let replacement_alignment = if mode == LoopMode::RecordingDryIntoWet {
+                0
+            } else {
+                self.capture_alignment_frames
+            };
             let raw_position = params
                 .position
-                .checked_add(self.capture_alignment_frames)
+                .checked_add(replacement_alignment)
                 .ok_or(MidiChannelError::LatencyPositionOverflow)?;
             self.process_replace(raw_position, n_samples, length_before, input)?;
             processed_input = true;
@@ -1077,19 +1163,32 @@ impl MidiChannel {
         Ok(())
     }
 
+    fn reset_playback_cursor_and_pending_state(&mut self) {
+        self.playback_cursor.reset(&self.storage);
+        let MidiChannel {
+            pending_playback_state,
+            recording_start_state,
+            ..
+        } = self;
+        pending_playback_state.copy_relevant_state(recording_start_state);
+        self.pending_playback_valid = self.recording_start_valid;
+    }
+
     fn process_playback(
         &mut self,
         our_pos: i32,
         n_samples: u32,
         muted: bool,
         out: &mut Vec<MidiStorageElem>,
+        output_offset: u32,
     ) -> Result<(), MidiChannelError> {
         let Some(play) = self.play else {
             return Err(MidiChannelError::NoPlaybackBuffer);
         };
-        if play.frames_left() < n_samples {
+        let required = output_offset.saturating_add(n_samples);
+        if play.frames_left() < required {
             return Err(MidiChannelError::PlaybackOutOfBounds {
-                n_samples,
+                n_samples: required,
                 available: play.frames_left(),
             });
         }
@@ -1140,7 +1239,7 @@ impl MidiChannel {
                 && our_pos + n_samples as i32 > valid_from
             {
                 self.pending_playback_valid = false;
-                let time = play.n_frames_processed;
+                let time = play.n_frames_processed + output_offset;
                 let mut restore = std::mem::take(&mut self.restore_scratch);
                 restore.clear();
                 // Undo the drift of the *input*, not of what this channel sent. While
@@ -1159,7 +1258,8 @@ impl MidiChannel {
                 break;
             }
             if t >= valid_from && !muted {
-                let buffer_time = (t - our_pos) + play.n_frames_processed as i32;
+                let buffer_time =
+                    (t - our_pos) + play.n_frames_processed as i32 + output_offset as i32;
                 // `event` is an owned copy, so its payload can be passed straight
                 // through without copying it again.
                 self.send(out, buffer_time.max(0) as u32, event.data());
@@ -1418,6 +1518,25 @@ mod tests {
         // The second message lands at its absolute recorded position.
         check!(times(&ch.contents()) == vec![1, 6]);
         check!(ch.length() == 8);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_into_wet_midi_replacement_writes_canonical_logical_frames() {
+        let mut ch = MidiChannel::with_capacity_elems(64, C::Wet);
+        ch.set_contents(&[ev(3, &midi::note_on(0, 70, 100))], 4, Some(&[]));
+        ch.set_capture_alignment_frames(2).unwrap();
+        let input = [ev(1, &midi::note_on(0, 60, 100))];
+        cycle(&mut ch, L::RecordingDryIntoWet, 4, 0, 4, &input);
+        check!(ch.contents().iter().any(|event| {
+            event.time == 1 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
+        check!(!ch.contents().iter().any(|event| event.data()[1] == 70));
+
+        ch.set_capture_alignment_frames(0).unwrap();
+        let out = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        check!(out.iter().any(|event| {
+            event.time == 1 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1747,7 +1866,7 @@ mod tests {
         ch.set_render_advance_frames(2).unwrap();
         check!(ch.raw_position_for_logical(0) == Some(5));
         check!(ch.dispatch_raw_position_for_logical(0) == Some(7));
-        let out = cycle(&mut ch, L::Playing, 2, 0, 2, &[]);
+        let out = cycle(&mut ch, L::PlayingDryThroughWet, 2, 0, 8, &[]);
         check!(out
             .iter()
             .any(|event| event.time == 0 && event.data()[1] == 57));
@@ -1756,6 +1875,88 @@ mod tests {
         check!(published.logical_played_position == Some(0));
         check!(published.raw_played_position == Some(5));
         check!(published.dispatch_position == Some(7));
+
+        let ordinary = cycle(&mut ch, L::Playing, 2, 0, 8, &[]);
+        check!(!ordinary
+            .iter()
+            .any(|event| midi::is_note_on(event.data()) && event.data()[1] == 57));
+        let published = state.read(ch.data_seq_nr() as u64);
+        check!(published.raw_played_position == Some(5));
+        check!(published.dispatch_position == Some(5));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn planned_midi_render_preroll_restores_state_at_dispatch_start() {
+        let mut ch = MidiChannel::with_capacity_elems(64, C::Dry);
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(0, &midi::note_off(0, 60, 0)),
+            ],
+            8,
+            Some(&[midi::cc(0, 7, 99).to_vec()]),
+        );
+        ch.set_render_advance_frames(3).unwrap();
+        ch.set_playback_buffer(3);
+        ch.set_recording_buffer(3);
+        let mut out = Vec::with_capacity(16);
+        ch.process(
+            L::Stopped,
+            L::PlayingDryThroughWet,
+            Some(0),
+            Some(3),
+            3,
+            0,
+            0,
+            8,
+            &[],
+            &mut out,
+        )
+        .unwrap();
+
+        check!(out
+            .iter()
+            .any(|event| { event.time == 0 && event.data() == midi::cc(0, 7, 99).as_slice() }));
+        check!(out.iter().any(|event| {
+            event.time == 0 && event.data() == midi::note_on(0, 60, 100).as_slice()
+        }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_render_advance_cycles_inside_selected_midi_take() {
+        let mut ch = MidiChannel::with_capacity_elems(64, C::Dry);
+        let mut events = Vec::new();
+        for (raw_frame, note) in [(3, 60), (4, 61), (5, 62), (6, 63)] {
+            events.push(ev(raw_frame, &midi::note_on(0, note, 100)));
+            events.push(ev(raw_frame, &midi::note_off(0, note, 0)));
+        }
+        ch.set_contents(&events, 8, Some(&[]));
+        ch.set_start_offset(2);
+        ch.set_capture_alignment_frames(1).unwrap();
+        ch.set_render_advance_frames(11).unwrap();
+
+        let out = cycle(&mut ch, L::PlayingDryThroughWet, 4, 0, 4, &[]);
+        let notes = out
+            .iter()
+            .filter(|event| midi::is_note_on(event.data()))
+            .map(|event| (event.time, event.data()[1]))
+            .collect::<Vec<_>>();
+        check!(notes == vec![(0, 63), (1, 60), (2, 61), (3, 62)]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_render_wrap_cleans_up_held_notes_at_callback_boundary() {
+        let mut ch = MidiChannel::with_capacity_elems(64, C::Dry);
+        ch.set_contents(&[ev(3, &midi::note_on(0, 60, 100))], 4, Some(&[]));
+        ch.set_render_advance_frames(3).unwrap();
+
+        let first = cycle(&mut ch, L::PlayingDryThroughWet, 1, 0, 4, &[]);
+        check!(first.iter().any(|event| midi::is_note_on(event.data())));
+        let wrapped = cycle(&mut ch, L::PlayingDryThroughWet, 1, 1, 4, &[]);
+        check!(wrapped
+            .iter()
+            .any(|event| event.time == 0 && midi::is_note_off(event.data())));
+        check!(ch.n_notes_active() == 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

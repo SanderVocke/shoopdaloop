@@ -644,13 +644,13 @@ Verification:
 
 Dependencies: Stage 3 and processor fixture from Stage 2.
 
-- [ ] Add cyclic dry source render-ahead independent of media `start_offset`.
-- [ ] Start processor input early for planned `PlayingDryThroughWet` transitions.
-- [ ] Implement the configured defer/warn behavior for immediate transitions lacking pre-render time.
-- [ ] Compose take capture alignment with current processor render advance.
-- [ ] Restore MIDI state early enough for processor output to be valid at the target boundary.
-- [ ] Handle note-off/sustain cleanup when stopping or changing render advance.
-- [ ] Implement `RecordingDryIntoWet` canonical wet writes and `applied_during_render` provenance.
+- [x] Add cyclic dry source render-ahead independent of media `start_offset`.
+- [x] Start processor input early for planned `PlayingDryThroughWet` transitions.
+- [x] Implement the configured defer/warn behavior for immediate transitions lacking pre-render time.
+- [x] Compose take capture alignment with current processor render advance.
+- [x] Restore MIDI state early enough for processor output to be valid at the target boundary.
+- [x] Handle note-off/sustain cleanup when stopping or changing render advance.
+- [x] Implement `RecordingDryIntoWet` canonical wet writes and `applied_during_render` provenance.
 - [ ] Continue bounded processor work around transition boundaries for declared latency and separately named warm-up/tail policy.
 - [ ] Ensure live monitoring still uses the uncompensated current input path while dry-loop rendering uses lookahead.
 

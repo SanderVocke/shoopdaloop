@@ -5,6 +5,28 @@ use shoop_latency::{
 use std::array;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 
+/// Maps a loop-relative source read through independent media, take-alignment, and
+/// processor-render offsets. Render-ahead is cyclic within the selected logical take;
+/// media lead-in remains outside that cycle and is never folded into the advance.
+pub(crate) fn cyclic_render_dispatch_position(
+    media_position: i32,
+    media_layout_offset: i32,
+    capture_alignment_frames: i32,
+    render_advance_frames: u32,
+    logical_length: u32,
+) -> Option<i32> {
+    let raw_position = media_position.checked_add(capture_alignment_frames)?;
+    if render_advance_frames == 0 || logical_length == 0 {
+        return Some(raw_position);
+    }
+
+    let selected_start = i64::from(media_layout_offset) + i64::from(capture_alignment_frames);
+    let logical_position = i64::from(media_position) - i64::from(media_layout_offset);
+    let dispatch_logical =
+        (logical_position + i64::from(render_advance_frames)).rem_euclid(i64::from(logical_length));
+    i32::try_from(selected_start + dispatch_logical).ok()
+}
+
 /// Bounded, allocation-free latency value used by callback-facing engine surfaces.
 ///
 /// Source and interval identities remain in control-path policy snapshots; this value is the

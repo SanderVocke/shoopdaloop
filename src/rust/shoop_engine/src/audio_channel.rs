@@ -11,7 +11,9 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::chunked_samples::ChunkedSamples;
 use crate::content_snapshot::AudioProcessSnapshotWriter;
-use crate::latency_runtime::{LatchedLatencyRecipe, RuntimeLatencyRecipe};
+use crate::latency_runtime::{
+    cyclic_render_dispatch_position, LatchedLatencyRecipe, RuntimeLatencyRecipe,
+};
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
 use shoop_latency::{LatencyDomainError, MAX_COMPENSATION_FRAMES};
@@ -335,6 +337,15 @@ impl AudioChannel {
         self.state.publish_current_latency_recipe(recipe);
     }
     pub fn set_latched_latency_recipe(&mut self, recipe: LatchedLatencyRecipe) {
+        if recipe.recipe.total_frames.is_none()
+            && matches!(
+                recipe.recipe.operation,
+                shoop_latency::LatencyOperationKind::DryThroughWet
+                    | shoop_latency::LatencyOperationKind::RecordDryIntoWet
+            )
+        {
+            self.render_advance_frames = 0;
+        }
         if let Some(total) = recipe.recipe.total_frames {
             match recipe.recipe.operation {
                 shoop_latency::LatencyOperationKind::RecordDirect
@@ -343,9 +354,18 @@ impl AudioChannel {
                     self.capture_alignment_frames = total as i32;
                     self.latency_retention_incomplete = total > self.retained_after_frames;
                 }
-                shoop_latency::LatencyOperationKind::DryThroughWet
-                | shoop_latency::LatencyOperationKind::RecordDryIntoWet => {
+                shoop_latency::LatencyOperationKind::DryThroughWet => {
                     self.render_advance_frames = total;
+                }
+                shoop_latency::LatencyOperationKind::RecordDryIntoWet => {
+                    if self.mode == ChannelMode::Dry {
+                        self.render_advance_frames = total;
+                    } else {
+                        // The processor delay was consumed while rendering. The wet
+                        // destination is canonical logical media, not a newly delayed take.
+                        self.capture_alignment_frames = 0;
+                        self.render_advance_frames = 0;
+                    }
                 }
                 shoop_latency::LatencyOperationKind::Grab(_)
                 | shoop_latency::LatencyOperationKind::Replacement(_) => {}
@@ -801,15 +821,46 @@ impl AudioChannel {
                 .position
                 .checked_add(self.capture_alignment_frames)
                 .ok_or(ChannelError::LatencyPositionOverflow)?;
-            let dispatch_position = raw_position
-                .checked_add(self.render_advance_frames as i32)
-                .ok_or(ChannelError::LatencyPositionOverflow)?;
+            let render_advance_frames = if matches!(
+                mode,
+                LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+            ) || (params.flags.contains(ProcessFlags::PLAYBACK)
+                && matches!(
+                    next_mode,
+                    LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+                )) {
+                self.render_advance_frames
+            } else {
+                0
+            };
+            let dispatch_position = cyclic_render_dispatch_position(
+                params.position,
+                self.start_offset,
+                self.capture_alignment_frames,
+                render_advance_frames,
+                length_before.min(u32::MAX as usize) as u32,
+            )
+            .ok_or(ChannelError::LatencyPositionOverflow)?;
             self.state.publish_playback_positions(
                 params.position.checked_sub(self.start_offset),
                 Some(raw_position),
                 Some(dispatch_position),
             );
-            self.process_playback(dispatch_position, n_samples)?;
+            let cyclic_window = (render_advance_frames > 0 && length_before > 0)
+                .then(|| {
+                    let start = self
+                        .start_offset
+                        .checked_add(self.capture_alignment_frames)
+                        .ok_or(ChannelError::LatencyPositionOverflow)?;
+                    let length = i32::try_from(length_before)
+                        .map_err(|_| ChannelError::LatencyPositionOverflow)?;
+                    let end = start
+                        .checked_add(length)
+                        .ok_or(ChannelError::LatencyPositionOverflow)?;
+                    Ok::<_, ChannelError>((start, end))
+                })
+                .transpose()?;
+            self.process_playback(dispatch_position, n_samples, cyclic_window)?;
         } else {
             self.last_played_back_sample = None;
             self.state.publish_playback_positions(None, None, None);
@@ -819,9 +870,14 @@ impl AudioChannel {
             self.process_record(n_samples, from, false)?;
         }
         if flags.contains(ProcessFlags::REPLACE) {
+            let replacement_alignment = if mode == LoopMode::RecordingDryIntoWet {
+                0
+            } else {
+                self.capture_alignment_frames
+            };
             let raw_position = params
                 .position
-                .checked_add(self.capture_alignment_frames)
+                .checked_add(replacement_alignment)
                 .ok_or(ChannelError::LatencyPositionOverflow)?;
             self.process_replace(raw_position, n_samples)?;
         }
@@ -981,6 +1037,7 @@ impl AudioChannel {
         &mut self,
         data_position: i32,
         n_samples: usize,
+        cyclic_window: Option<(i32, i32)>,
     ) -> Result<(), ChannelError> {
         let buf = self.playback.unwrap_or_default();
         if buf.remaining < n_samples {
@@ -994,23 +1051,37 @@ impl AudioChannel {
         let mut left = n_samples;
         let mut dst = buf.cursor;
 
-        // Playback may not start before the pre-play window opens.
-        let starting = self
-            .start_offset
-            .saturating_add(self.capture_alignment_frames)
-            .saturating_sub(self.pre_play_samples as i32)
-            .max(0);
-        let skip = (starting - pos).max(0);
-        if skip > 0 {
-            let skip = skip as usize;
-            pos += skip as i32;
-            left = left.saturating_sub(skip);
-            dst += skip.min(buf.remaining);
+        if cyclic_window.is_none() {
+            // Playback may not start before the pre-play window opens.
+            let starting = self
+                .start_offset
+                .saturating_add(self.capture_alignment_frames)
+                .saturating_sub(self.pre_play_samples as i32)
+                .max(0);
+            let skip = (starting - pos).max(0);
+            if skip > 0 {
+                let skip = skip as usize;
+                pos += skip as i32;
+                left = left.saturating_sub(skip);
+                dst += skip.min(buf.remaining);
+            }
         }
 
-        while left > 0 && (pos as usize) < self.data_length {
+        while left > 0 && pos >= 0 && (pos as usize) < self.data_length {
             let p = pos as usize;
-            let n = left.min(self.buffers.space_for_sample(p));
+            let until_wrap = cyclic_window
+                .map(|(_, end)| (end - pos).max(0) as usize)
+                .unwrap_or(usize::MAX);
+            let available = cyclic_window
+                .map(|_| self.data_length - p)
+                .unwrap_or(usize::MAX);
+            let n = left
+                .min(self.buffers.space_for_sample(p))
+                .min(available)
+                .min(until_wrap);
+            if n == 0 {
+                break;
+            }
             self.queue.push(CopyCmd::OutOfMain {
                 src: p,
                 dst,
@@ -1020,6 +1091,11 @@ impl AudioChannel {
             pos += n as i32;
             dst += n;
             left -= n;
+            if let Some((start, end)) = cyclic_window {
+                if pos == end {
+                    pos = start;
+                }
+            }
         }
         Ok(())
     }
@@ -1220,11 +1296,16 @@ mod tests {
         check!(ch.media_layout_offset() == 2);
         check!(ch.raw_position_for_logical(0) == Some(5));
         check!(ch.dispatch_raw_position_for_logical(0) == Some(7));
-        check!(cycle(&mut ch, L::Playing, 2, 0, 2, &[]) == vec![7.0, 8.0]);
+        check!(cycle(&mut ch, L::PlayingDryThroughWet, 2, 0, 8, &[]) == vec![7.0, 8.0]);
         let published = state.read(ch.data_seq_nr() as u64);
         check!(published.logical_played_position == Some(0));
         check!(published.raw_played_position == Some(5));
         check!(published.dispatch_position == Some(7));
+
+        check!(cycle(&mut ch, L::Playing, 2, 0, 8, &[]) == vec![5.0, 6.0]);
+        let published = state.read(ch.data_seq_nr() as u64);
+        check!(published.raw_played_position == Some(5));
+        check!(published.dispatch_position == Some(5));
 
         ch.set_capture_alignment_frames(-2).unwrap();
         ch.set_render_advance_frames(0).unwrap();
@@ -1232,6 +1313,18 @@ mod tests {
         check!(ch
             .set_capture_alignment_frames(-(MAX_COMPENSATION_FRAMES as i32) - 1)
             .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_render_advance_cycles_inside_selected_take() {
+        let mut ch = AudioChannel::with_chunk_size(2, C::Dry);
+        ch.load_data(&[100.0, 101.0, 102.0, 10.0, 11.0, 12.0, 13.0, 103.0]);
+        ch.set_start_offset(2);
+        ch.set_capture_alignment_frames(1).unwrap();
+        ch.set_render_advance_frames(11).unwrap();
+
+        let out = cycle(&mut ch, L::PlayingDryThroughWet, 4, 0, 4, &[]);
+        check!(out == vec![13.0, 10.0, 11.0, 12.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1263,6 +1356,25 @@ mod tests {
         // Now playback may reach back to sample 0.
         let out = cycle(&mut ch, L::Playing, 4, -2, 4, &[]);
         check!(out == vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dry_into_wet_replacement_writes_canonical_logical_frames() {
+        let mut ch = AudioChannel::with_chunk_size(4, C::Wet);
+        ch.load_data(&[9.0, 9.0, 9.0, 9.0]);
+        ch.set_capture_alignment_frames(2).unwrap();
+        cycle(
+            &mut ch,
+            L::RecordingDryIntoWet,
+            4,
+            0,
+            4,
+            &[1.0, 2.0, 3.0, 4.0],
+        );
+        check!(ch.data() == vec![1.0, 2.0, 3.0, 4.0]);
+
+        ch.set_capture_alignment_frames(0).unwrap();
+        check!(cycle(&mut ch, L::Playing, 4, 0, 4, &[]) == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]
