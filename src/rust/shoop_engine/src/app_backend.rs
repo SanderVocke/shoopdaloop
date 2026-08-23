@@ -5080,6 +5080,28 @@ impl AudioChannel {
         result
     }
 
+    pub fn observe_latency(
+        &self,
+        kind: shoop_latency::LatencyComponentKind,
+        observation: engine::RuntimeLatencyObservation,
+    ) -> Result<CommandSequence> {
+        Ok(self.with_mut(move |channel| {
+            if let Some(mut latched) = channel.latched_latency_recipe() {
+                latched.observe(kind, observation);
+                channel.set_latched_latency_recipe(latched);
+            }
+        })?)
+    }
+
+    pub fn set_latency_recipe(
+        &self,
+        recipe: Option<engine::RuntimeLatencyRecipe>,
+    ) -> Result<CommandSequence> {
+        let sequence = self.with_mut(move |channel| channel.set_pending_latency_recipe(recipe))?;
+        self.control.mirror.publish_current_latency_recipe(recipe);
+        Ok(sequence)
+    }
+
     pub fn set_take_latency_policy(
         &self,
         capture_alignment_frames: i32,
@@ -5571,6 +5593,28 @@ impl MidiChannel {
             self.control.mirror.set_start_offset(offset);
         }
         result
+    }
+
+    pub fn observe_latency(
+        &self,
+        kind: shoop_latency::LatencyComponentKind,
+        observation: engine::RuntimeLatencyObservation,
+    ) -> Result<CommandSequence> {
+        Ok(self.with_mut(move |channel| {
+            if let Some(mut latched) = channel.latched_latency_recipe() {
+                latched.observe(kind, observation);
+                channel.set_latched_latency_recipe(latched);
+            }
+        })?)
+    }
+
+    pub fn set_latency_recipe(
+        &self,
+        recipe: Option<engine::RuntimeLatencyRecipe>,
+    ) -> Result<CommandSequence> {
+        let sequence = self.with_mut(move |channel| channel.set_pending_latency_recipe(recipe))?;
+        self.control.mirror.publish_current_latency_recipe(recipe);
+        Ok(sequence)
     }
 
     pub fn set_take_latency_policy(

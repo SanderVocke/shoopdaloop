@@ -29,6 +29,7 @@ src/rust/shoop_egui/src/dial.rs,application_ui_and_control,instrumented_indirect
 src/rust/shoop_egui/src/fonts.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/global_controls.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/key_input.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_egui/src/latency_panel.rs,application_ui_and_control,instrumented_direct,Contains a gated per-panel span with stable track and loop-count fields; diagnostic plotting stays on the UI thread.
 src/rust/shoop_egui/src/lib.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/loop_widget.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_egui/src/meter_ballistics.rs,application_ui_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -81,6 +82,7 @@ src/rust/shoop_engine/src/graph_build.rs,mixed_realtime_and_control,instrumented
 src/rust/shoop_engine/src/graph_scheduler.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/internal_audio_port.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/lib.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_engine/src/latency_runtime.rs,mixed_realtime_and_control,instrumented_indirect,"Fixed-capacity atomic latency publication runs inside already traced engine operations; callback logging or additional spans are forbidden."
 src/rust/shoop_engine/src/loop_mode.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/carla_native.rs,mixed_realtime_and_control,instrumented_direct,Contains gated tracing at a meaningful runtime boundary.
 src/rust/shoop_engine/src/midi.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
@@ -105,6 +107,7 @@ src/rust/shoop_engine/src/session.rs,mixed_realtime_and_control,instrumented_dir
 src/rust/shoop_engine/src/state.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/state_mirror.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_engine/src/wave_generator.rs,mixed_realtime_and_control,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
+src/rust/shoop_latency/src/lib.rs,non_realtime_support,instrumented_indirect,"Pure bounded policy resolution is called from traced backend/application operation boundaries and contains no runtime I/O."
 src/rust/shoop_plugin_protocol/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_script_resources/src/lib.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."
 src/rust/shoop_scripting/src/api_version.rs,non_realtime_support,instrumented_indirect,"Runs within traced application, engine, UI, or persistence orchestration; a separate span would duplicate its owning boundary."

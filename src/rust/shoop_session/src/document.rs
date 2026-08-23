@@ -257,16 +257,36 @@ pub enum LatencyValueDocument {
     },
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LatencyRangeSelectionDocument {
+    Minimum,
+    Midpoint,
+    #[default]
+    Maximum,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CueOutputSelectionDocument {
+    ApplicationPort { port_id: u64 },
+    HostPort { host_port_id: String },
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct LatencyComponentPolicyDocument {
     pub component: LatencyComponentDocument,
     pub enabled: bool,
     pub value: LatencyValueDocument,
+    #[serde(default)]
+    pub range_selection: LatencyRangeSelectionDocument,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct TrackLatencyPolicyDocument {
     pub cue_followed: bool,
+    #[serde(default)]
+    pub cue_output: Option<CueOutputSelectionDocument>,
     pub revision: u64,
     pub components: Vec<LatencyComponentPolicyDocument>,
 }

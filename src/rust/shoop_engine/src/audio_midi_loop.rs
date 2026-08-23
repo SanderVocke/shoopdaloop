@@ -405,6 +405,38 @@ impl AudioMidiLoop {
         true
     }
 
+    pub fn observe_audio_channel_latency(
+        &mut self,
+        channel: usize,
+        kind: LatencyComponentKind,
+        observation: RuntimeLatencyObservation,
+    ) -> bool {
+        let Some(channel) = self.audio_channels.get_mut(channel) else {
+            return false;
+        };
+        if let Some(mut latched) = channel.latched_latency_recipe() {
+            latched.observe(kind, observation);
+            channel.set_latched_latency_recipe(latched);
+        }
+        true
+    }
+
+    pub fn observe_midi_channel_latency(
+        &mut self,
+        channel: usize,
+        kind: LatencyComponentKind,
+        observation: RuntimeLatencyObservation,
+    ) -> bool {
+        let Some(channel) = self.midi_channels.get_mut(channel) else {
+            return false;
+        };
+        if let Some(mut latched) = channel.latched_latency_recipe() {
+            latched.observe(kind, observation);
+            channel.set_latched_latency_recipe(latched);
+        }
+        true
+    }
+
     pub fn observe_latency(
         &mut self,
         kind: LatencyComponentKind,

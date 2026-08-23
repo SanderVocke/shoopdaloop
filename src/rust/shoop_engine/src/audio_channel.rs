@@ -279,6 +279,7 @@ impl AudioChannel {
             self.data_length,
             self.start_offset,
             self.capture_alignment_frames,
+            self.postroll_remaining_frames,
             self.render_advance_frames,
             self.last_played_back_sample,
             self.pre_play_samples,
@@ -441,6 +442,9 @@ impl AudioChannel {
     }
     pub fn is_finalizing_latency_postroll(&self) -> bool {
         self.postroll_remaining_frames > 0 || self.finish_recording_after_finalize
+    }
+    pub fn latency_postroll_remaining_frames(&self) -> u32 {
+        self.postroll_remaining_frames
     }
     pub fn latency_retention_incomplete(&self) -> bool {
         self.latency_retention_incomplete

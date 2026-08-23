@@ -4098,6 +4098,7 @@ dependencies = [
  "image",
  "serde_json",
  "shoop_app_api",
+ "shoop_latency",
  "shoop_script_resources",
  "shoop_settings",
  "shoop_wasm_test_support",

@@ -1013,11 +1013,15 @@ mod tests {
         let track = &mut bundle.document.track_groups[0].tracks[0];
         track.latency_policy = TrackLatencyPolicyDocument {
             cue_followed: true,
+            cue_output: Some(CueOutputSelectionDocument::HostPort {
+                host_port_id: "system:playback_1".to_owned(),
+            }),
             revision: 7,
             components: vec![LatencyComponentPolicyDocument {
                 component: LatencyComponentDocument::ExternalCapture,
                 enabled: true,
                 value: LatencyValueDocument::AutomaticPlusTrim { frames: -1 },
+                range_selection: LatencyRangeSelectionDocument::Midpoint,
             }],
         };
         track.loops[0].channels[0].latency = TakeLatencyDocument {
@@ -1082,6 +1086,17 @@ mod tests {
             Err(SessionError::Validation(message)) if message.contains("latency observation")
         ));
         assert_eq!(decoded, bundle);
+
+        let mut stale_cue = bundle.clone();
+        stale_cue.document.track_groups[0].tracks[0]
+            .latency_policy
+            .cue_output = Some(CueOutputSelectionDocument::HostPort {
+            host_port_id: "missing:playback".to_owned(),
+        });
+        assert!(matches!(
+            validate_bundle(&stale_cue),
+            Err(SessionError::Validation(message)) if message.contains("cue output")
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1174,11 +1189,13 @@ mod tests {
                 component: LatencyComponentDocument::Manual,
                 enabled: true,
                 value: LatencyValueDocument::Manual { frames: 3 },
+                range_selection: LatencyRangeSelectionDocument::Maximum,
             },
             LatencyComponentPolicyDocument {
                 component: LatencyComponentDocument::Processor,
                 enabled: true,
                 value: LatencyValueDocument::AutomaticPlusTrim { frames: -3 },
+                range_selection: LatencyRangeSelectionDocument::Minimum,
             },
         ];
         let latency = &mut bundle.document.track_groups[0].tracks[0].loops[0].channels[0].latency;

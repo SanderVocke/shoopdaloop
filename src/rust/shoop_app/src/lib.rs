@@ -19,14 +19,14 @@ use shoop_app_api::{
     ClickTrackKind, ClickTrackPreviewStatus, ClickTrackRequest, ClickTrackState,
     CompositeDetailsState, CompositeEventDetailsState, CompositeEventId,
     CompositeTrackDetailsState, ConfirmedConnectionState, ConnectionErrorKind,
-    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultRecordingAction,
-    DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
-    IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
-    LoopId, LoopMidiExportFormat, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState,
-    PendingConnectionState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
-    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
-    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState,
-    TakeLatencyProvenanceState, TaskId, TrackAction, TrackControlState, TrackId,
+    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, CueOutputSelection,
+    DefaultRecordingAction, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
+    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LatencyRangeSelectionState,
+    LoopAction, LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMidiExportFormat, LoopMode,
+    LoopState, MidiEventState, MidiSequenceChannelState, PendingConnectionState, PianoAction,
+    PortDataType, PortDirection, PortId, PortRole, SampleRateWarning, ScriptDialogButtonId,
+    ScriptDialogId, ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState,
+    StructuralState, TakeLatencyProvenanceState, TaskId, TrackAction, TrackControlState, TrackId,
     TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState,
     TrackTopology, WaveformChannelState,
 };
@@ -57,15 +57,16 @@ use shoop_session::{
     resample_exact_midi, resample_loop_audio, resample_session, AlignmentRegionDocument,
     AudioClickTrackSpec, AudioPayload, ChannelDocument, ChannelModeDocument, ClickTrackTimingSpec,
     CompositeDocument, CompositeKindDocument, CompositeLoopInstanceDocument,
-    ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent, FxChainDocument,
-    FxChainTypeDocument, FxStateDocument, GlobalControlsDocument, LatencyCertaintyDocument,
-    LatencyComponentDocument, LatencyComponentPolicyDocument, LatencyObservationDocument,
-    LatencyValueDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
-    MidiClickTrackSpec, MidiControlDocument, OxiSynthMidiCcAssignmentDocument,
-    OxiSynthParameterDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
-    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument, TakeLatencyDocument,
-    TrackControlsDocument, TrackDocument, TrackGroupDocument, TrackLatencyPolicyDocument,
-    TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS, MAX_CLICK_TRACK_FRAMES,
+    ConnectabilityDocument, CueOutputSelectionDocument, DataTypeDocument, ExactMidi,
+    ExactMidiEvent, FxChainDocument, FxChainTypeDocument, FxStateDocument, GlobalControlsDocument,
+    LatencyCertaintyDocument, LatencyComponentDocument, LatencyComponentPolicyDocument,
+    LatencyObservationDocument, LatencyRangeSelectionDocument, LatencyValueDocument, LoopAudio,
+    LoopAudioChannel, LoopDocument, MediaPayload, MidiClickTrackSpec, MidiControlDocument,
+    OxiSynthMidiCcAssignmentDocument, OxiSynthParameterDocument, PortDirectionDocument,
+    PortDocument, PortRoleDocument, RecordingActionDocument, ScriptDocument, SessionBundle,
+    SessionDocument, TakeLatencyDocument, TrackControlsDocument, TrackDocument, TrackGroupDocument,
+    TrackLatencyPolicyDocument, TrackTopologyDocument, MAX_CLICK_TRACK_CLICKS,
+    MAX_CLICK_TRACK_FRAMES,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -809,6 +810,8 @@ struct ConnectionPortModel {
     data_type: PortDataType,
     direction: PortDirection,
     role: PortRole,
+    capture_latency: shoop_app_api::LatencyObservationState,
+    playback_latency: shoop_app_api::LatencyObservationState,
     candidates: BTreeMap<String, (bool, bool)>,
 }
 
@@ -918,6 +921,7 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
                 BackendChannelMode::Dry => "Dry MIDI",
                 BackendChannelMode::Wet => "Wet MIDI",
             };
+            let latency = app_backend_take_latency(&channel.latency);
             MidiSequenceChannelState {
                 id: ChannelId::from_raw(
                     model.id.raw().wrapping_shl(16) | 0x8000 | index as u64 + 1,
@@ -940,6 +944,7 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
                     LoopMode::Playing | LoopMode::PlayingDryThroughWet
                 )
                 .then_some(i64::from(model.position)),
+                latency,
             }
         })
         .collect()
@@ -1109,6 +1114,8 @@ impl ApplicationModel {
                     data_type: PortDataType::Midi,
                     direction: PortDirection::Input,
                     role: PortRole::MidiInput,
+                    capture_latency: Default::default(),
+                    playback_latency: Default::default(),
                     candidates: BTreeMap::new(),
                 },
             );
@@ -1271,18 +1278,19 @@ impl ApplicationModel {
                 track_id,
                 mut policy,
             } => {
+                let backend_policy = backend_track_latency_policy(&policy, &self.connection_ports);
                 let track = self
                     .tracks
                     .iter_mut()
                     .find(|track| track.id == track_id)
                     .ok_or_else(|| format!("stale track {track_id}"));
-                match track {
-                    Err(error) => Err(error),
-                    Ok(track) => {
+                match (track, backend_policy) {
+                    (Err(error), _) | (_, Err(error)) => Err(error),
+                    (Ok(track), Ok(backend_policy)) => {
                         policy.pending = true;
                         policy.error = None;
                         track.latency_policy = policy.clone();
-                        match backend.set_track_latency_policy(track.backend_id, &policy) {
+                        match backend.set_track_latency_policy(track.backend_id, &backend_policy) {
                             Ok(()) => Ok(()),
                             Err(error) => {
                                 track.latency_policy.pending = false;
@@ -1362,6 +1370,25 @@ impl ApplicationModel {
             }
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddTrackWithTopology(spec) => self.add_track_spec(backend, spec),
+            AppIntent::AddTrackWithLatencyPolicy { spec, mut policy } => {
+                self.add_track_spec(backend, spec).and_then(|()| {
+                    let track = self
+                        .tracks
+                        .last_mut()
+                        .ok_or_else(|| "new track was not published".to_owned())?;
+                    policy.pending = true;
+                    policy.error = None;
+                    let backend_policy =
+                        backend_track_latency_policy(&policy, &self.connection_ports)?;
+                    backend
+                        .set_track_latency_policy(track.backend_id, &backend_policy)
+                        .map_err(|error| {
+                            format!("could not set new track latency policy: {error}")
+                        })?;
+                    track.latency_policy = policy;
+                    Ok(())
+                })
+            }
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
             AppIntent::ComposeLoopSerial {
                 target_loop_id,
@@ -6580,6 +6607,18 @@ impl ApplicationModel {
         self.status.storage_exhaustions = snapshot.status.storage_exhaustions;
         self.status.backend_capture_latency = snapshot.status.backend_capture_latency;
         self.status.backend_playback_latency = snapshot.status.backend_playback_latency;
+        self.status.latency_diagnostics = snapshot.status.latency_diagnostics;
+        let diagnostics = self.status.latency_diagnostics;
+        self.status.latency_diagnostic_summary = format!(
+            "unresolved={} changes={} margins={} deferred={} finalization={} ambiguity={} providers={}",
+            diagnostics.unresolved_recipes,
+            diagnostics.observation_changes,
+            diagnostics.insufficient_margins,
+            diagnostics.deferred_transitions,
+            diagnostics.finalization_overruns,
+            diagnostics.path_ambiguities,
+            diagnostics.provider_failures,
+        );
         self.desired_track_controls
             .retain(|(backend_id, _), desired| {
                 !snapshot
@@ -6603,6 +6642,11 @@ impl ApplicationModel {
                         LoopControlKey::Balance => (state.balance - *desired).abs() <= f32::EPSILON,
                     })
             });
+        let backend_to_application_ports = self
+            .connection_ports
+            .values()
+            .map(|port| (port.backend_id.raw(), port.id))
+            .collect::<BTreeMap<_, _>>();
         for track in &mut self.tracks {
             let Some(backend_state) = snapshot.tracks.get(&track.backend_id) else {
                 continue;
@@ -6629,9 +6673,10 @@ impl ApplicationModel {
                     } => (*dry_audio_channels, *wet_audio_channels, *dry_midi, false),
                 };
             track.fx.clone_from(&backend_state.fx);
-            track
-                .latency_policy
-                .clone_from(&backend_state.latency_policy);
+            track.latency_policy = application_track_latency_policy(
+                &backend_state.latency_policy,
+                &backend_to_application_ports,
+            );
             if let Some(fx) = track.fx.as_mut() {
                 for ((backend_id, _), desired) in &self.desired_fx_controls {
                     if *backend_id == track.backend_id {
@@ -6879,6 +6924,12 @@ impl ApplicationModel {
                 }
             }
         }
+        for port in self.connection_ports.values_mut() {
+            if let Some(latency) = snapshot.port_latency.get(&port.backend_id) {
+                port.capture_latency = latency.capture;
+                port.playback_latency = latency.playback;
+            }
+        }
         self.apply_connection_snapshot(snapshot.connections);
     }
 
@@ -6906,6 +6957,8 @@ impl ApplicationModel {
                         data_type: PortDataType::Midi,
                         direction: PortDirection::Input,
                         role: PortRole::MidiInput,
+                        capture_latency: Default::default(),
+                        playback_latency: Default::default(),
                         candidates: BTreeMap::new(),
                     },
                 );
@@ -7012,6 +7065,8 @@ impl ApplicationModel {
                 direction: port.direction,
                 role: port.role,
                 connection_policy: ConnectionPolicy::UserManaged,
+                capture_latency: port.capture_latency,
+                playback_latency: port.playback_latency,
             })
             .collect();
         let mut normalized_hosts = self.host_ports.clone();
@@ -7054,6 +7109,8 @@ impl ApplicationModel {
                     direction,
                     role,
                     connection_policy: ConnectionPolicy::OwnerManaged,
+                    capture_latency: Default::default(),
+                    playback_latency: Default::default(),
                 });
                 for endpoint in rule.endpoints.iter() {
                     let host_id = script_midi_host_id(host_direction, &endpoint.id);
@@ -7634,6 +7691,8 @@ impl ApplicationModel {
                         data_type: app_data_type(document.data_type),
                         direction: app_port_direction(document.direction),
                         role: app_port_role(document.role),
+                        capture_latency: Default::default(),
+                        playback_latency: Default::default(),
                         candidates: BTreeMap::new(),
                     },
                 );
@@ -7804,6 +7863,8 @@ impl ApplicationModel {
                     data_type: PortDataType::Midi,
                     direction: PortDirection::Input,
                     role: PortRole::MidiInput,
+                    capture_latency: Default::default(),
+                    playback_latency: Default::default(),
                     candidates: BTreeMap::new(),
                 },
             );
@@ -7824,6 +7885,8 @@ impl ApplicationModel {
                     data_type: PortDataType::Midi,
                     direction: PortDirection::Input,
                     role: PortRole::MidiInput,
+                    capture_latency: Default::default(),
+                    playback_latency: Default::default(),
                     candidates: BTreeMap::new(),
                 },
             );
@@ -7960,6 +8023,7 @@ impl ApplicationModel {
                         loop_length: model.length as u64,
                         played_sample: matches!(model.state.mode, LoopMode::Playing)
                             .then_some(model.position as i64),
+                        latency: app_backend_take_latency(&channel.latency),
                     })
                     .collect()
             })
@@ -9401,6 +9465,33 @@ fn document_take_latency(
     }
 }
 
+fn app_backend_take_latency(latency: &BackendTakeLatencySnapshot) -> TakeLatencyProvenanceState {
+    TakeLatencyProvenanceState {
+        capture_alignment_frames: latency.capture_alignment_frames,
+        retained_before_frames: latency.retained_before_frames,
+        retained_after_frames: latency.retained_after_frames,
+        render_advance_frames: 0,
+        certainty: match latency.certainty {
+            BackendLatencyCertainty::Exact => shoop_app_api::LatencyCertaintyState::Exact,
+            BackendLatencyCertainty::Range => shoop_app_api::LatencyCertaintyState::Range,
+            BackendLatencyCertainty::Estimated => shoop_app_api::LatencyCertaintyState::Estimated,
+            BackendLatencyCertainty::ManualOnly => shoop_app_api::LatencyCertaintyState::ManualOnly,
+            BackendLatencyCertainty::Unknown => shoop_app_api::LatencyCertaintyState::Unknown,
+        },
+        observation_min_frames: latency.observation_min_frames,
+        observation_max_frames: latency.observation_max_frames,
+        observation_sample_rate: latency.observation_sample_rate,
+        observation_revision: latency.observation_revision,
+        variable_history: latency.variable_history,
+        history_revisions: latency.history_revisions,
+        changed_during_operation: latency.changed_during_operation,
+        incomplete: latency.incomplete,
+        deferred_mode: None,
+        finalizing: false,
+        error: None,
+    }
+}
+
 fn app_take_latency_document(
     latency: &TakeLatencyDocument,
 ) -> Result<TakeLatencyProvenanceState, String> {
@@ -9555,11 +9646,64 @@ fn backend_take_latency(
     })
 }
 
+fn backend_track_latency_policy(
+    policy: &shoop_app_api::TrackLatencyPolicyState,
+    ports: &BTreeMap<PortId, ConnectionPortModel>,
+) -> Result<shoop_app_api::TrackLatencyPolicyState, String> {
+    let mut translated = policy.clone();
+    translated.cue_output = policy
+        .cue_output
+        .as_ref()
+        .map(|selection| match selection {
+            CueOutputSelection::ApplicationPort(port_id) => ports
+                .get(port_id)
+                .map(|port| {
+                    CueOutputSelection::ApplicationPort(PortId::from_raw(port.backend_id.raw()))
+                })
+                .ok_or_else(|| format!("stale cue application port {port_id}")),
+            CueOutputSelection::HostPort(host_port_id) => {
+                Ok(CueOutputSelection::HostPort(host_port_id.clone()))
+            }
+        })
+        .transpose()?;
+    Ok(translated)
+}
+
+fn application_track_latency_policy(
+    policy: &shoop_app_api::TrackLatencyPolicyState,
+    backend_to_application: &BTreeMap<u64, PortId>,
+) -> shoop_app_api::TrackLatencyPolicyState {
+    let mut translated = policy.clone();
+    translated.cue_output = policy
+        .cue_output
+        .as_ref()
+        .and_then(|selection| match selection {
+            CueOutputSelection::ApplicationPort(port_id) => backend_to_application
+                .get(&port_id.raw())
+                .copied()
+                .map(CueOutputSelection::ApplicationPort),
+            CueOutputSelection::HostPort(host_port_id) => {
+                Some(CueOutputSelection::HostPort(host_port_id.clone()))
+            }
+        });
+    translated
+}
+
 fn document_track_latency_policy(
     policy: &shoop_app_api::TrackLatencyPolicyState,
 ) -> TrackLatencyPolicyDocument {
     TrackLatencyPolicyDocument {
         cue_followed: policy.cue_followed,
+        cue_output: policy.cue_output.as_ref().map(|selection| match selection {
+            CueOutputSelection::ApplicationPort(port_id) => {
+                CueOutputSelectionDocument::ApplicationPort {
+                    port_id: port_id.raw(),
+                }
+            }
+            CueOutputSelection::HostPort(host_port_id) => CueOutputSelectionDocument::HostPort {
+                host_port_id: host_port_id.to_string(),
+            },
+        }),
         revision: policy.revision,
         components: policy
             .components
@@ -9594,6 +9738,11 @@ fn document_track_latency_policy(
                         }
                     }
                 },
+                range_selection: match component.range_selection {
+                    LatencyRangeSelectionState::Minimum => LatencyRangeSelectionDocument::Minimum,
+                    LatencyRangeSelectionState::Midpoint => LatencyRangeSelectionDocument::Midpoint,
+                    LatencyRangeSelectionState::Maximum => LatencyRangeSelectionDocument::Maximum,
+                },
             })
             .collect(),
     }
@@ -9604,6 +9753,14 @@ fn app_track_latency_policy(
 ) -> Result<shoop_app_api::TrackLatencyPolicyState, String> {
     Ok(shoop_app_api::TrackLatencyPolicyState {
         cue_followed: policy.cue_followed,
+        cue_output: policy.cue_output.as_ref().map(|selection| match selection {
+            CueOutputSelectionDocument::ApplicationPort { port_id } => {
+                CueOutputSelection::ApplicationPort(PortId::from_raw(*port_id))
+            }
+            CueOutputSelectionDocument::HostPort { host_port_id } => {
+                CueOutputSelection::HostPort(HostPortId::new(host_port_id.clone()))
+            }
+        }),
         revision: policy.revision,
         pending: false,
         error: None,
@@ -9645,6 +9802,17 @@ fn app_track_latency_policy(
                                     "latency trim exceeds application range".to_owned()
                                 })?,
                             )
+                        }
+                    },
+                    range_selection: match component.range_selection {
+                        LatencyRangeSelectionDocument::Minimum => {
+                            LatencyRangeSelectionState::Minimum
+                        }
+                        LatencyRangeSelectionDocument::Midpoint => {
+                            LatencyRangeSelectionState::Midpoint
+                        }
+                        LatencyRangeSelectionDocument::Maximum => {
+                            LatencyRangeSelectionState::Maximum
                         }
                     },
                 })
@@ -9813,6 +9981,8 @@ fn register_backend_ports(
                     BackendPortRole::MidiOutput => PortRole::MidiOutput,
                     BackendPortRole::MidiSend => PortRole::MidiSend,
                 },
+                capture_latency: Default::default(),
+                playback_latency: Default::default(),
                 candidates: BTreeMap::new(),
             },
         );
@@ -14634,6 +14804,65 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         }));
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_track_latency_defaults_reconcile_and_latch_on_the_next_operation() {
+        let backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithLatencyPolicy {
+                spec: TrackSpec {
+                    name: "Default latency policy".to_owned(),
+                    topology: TrackSpecTopology::Direct {
+                        audio_channels: 1,
+                        midi: false,
+                    },
+                },
+                policy: shoop_app_api::TrackLatencyPolicyState {
+                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
+                        kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
+                        enabled: true,
+                        value_mode: shoop_app_api::LatencyValueMode::Manual(4),
+                        range_selection: LatencyRangeSelectionState::Maximum,
+                    }]),
+                    revision: 1,
+                    ..Default::default()
+                },
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = &runtime.snapshot().tracks[1];
+        assert!(!track.latency_policy.pending);
+        assert_eq!(track.latency_policy.revision, 1);
+        assert!(runtime.snapshot().connections.application_ports.iter().any(|port| {
+            matches!(port.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == track.id)
+                && port.capture_latency.certainty == shoop_app_api::LatencyCertaintyState::Unknown
+        }));
+        let (track_id, loop_id) = (track.id, track.loops[0].id);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(2));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0]
+                .latency
+                .capture_alignment_frames,
+            4
+        );
+        assert!(runtime
+            .snapshot()
+            .status
+            .latency_diagnostic_summary
+            .contains("unresolved="));
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn latency_intents_reconcile_optimistic_state_and_report_rejections() {
@@ -14651,10 +14880,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         let loop_id = snapshot.tracks[1].loops[0].id;
         let policy = shoop_app_api::TrackLatencyPolicyState {
             cue_followed: true,
+            cue_output: None,
             components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
                 kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
                 enabled: true,
                 value_mode: shoop_app_api::LatencyValueMode::Manual(5),
+                range_selection: LatencyRangeSelectionState::Maximum,
             }]),
             revision: 4,
             pending: false,
@@ -16874,10 +17105,12 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 track_id: persistent_track,
                 policy: shoop_app_api::TrackLatencyPolicyState {
                     cue_followed: true,
+                    cue_output: None,
                     components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
                         kind: shoop_app_api::LatencyComponentKind::Manual,
                         enabled: true,
                         value_mode: shoop_app_api::LatencyValueMode::Manual(12),
+                        range_selection: LatencyRangeSelectionState::Maximum,
                     }]),
                     revision: 7,
                     pending: false,

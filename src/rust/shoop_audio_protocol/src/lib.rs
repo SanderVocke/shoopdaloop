@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 15;
+pub const PROTOCOL_VERSION: u16 = 18;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -13,6 +13,7 @@ pub const MIDI_BATCH_CAPACITY: usize = 128;
 pub const MIDI_OUTPUT_QUEUE_CAPACITY: usize = 1024;
 pub const TRACK_MIDI_MESSAGE_BYTES: usize = 4;
 pub const LATENCY_COMPONENT_CAPACITY: usize = 8;
+pub const LATENCY_DIAGNOSTIC_PLOT_SAMPLES: usize = 64;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -52,16 +53,34 @@ pub enum WireLatencyValueMode {
     AutomaticPlusTrim(i32),
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireLatencyRangeSelection {
+    Minimum,
+    Midpoint,
+    #[default]
+    Maximum,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum WireCueOutputSelection {
+    ApplicationPort { port_id: u64 },
+    HostPort { host_port_id: String },
+}
+
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireLatencyComponentPolicy {
     pub kind: WireLatencyComponentKind,
     pub enabled: bool,
     pub value_mode: WireLatencyValueMode,
+    pub range_selection: WireLatencyRangeSelection,
 }
 
 #[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireTrackLatencyPolicy {
     pub cue_followed: bool,
+    pub cue_output: Option<WireCueOutputSelection>,
     pub components: Vec<WireLatencyComponentPolicy>,
     pub revision: u64,
 }
@@ -562,6 +581,41 @@ pub enum Event {
     Stopped,
 }
 
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireLatencyDiagnostics {
+    pub unresolved_recipes: u64,
+    pub observation_changes: u64,
+    pub insufficient_margins: u64,
+    pub deferred_transitions: u64,
+    pub finalization_overruns: u64,
+    pub path_ambiguities: u64,
+    pub provider_failures: u64,
+    pub applied_capture_plot: Vec<i32>,
+    pub render_advance_plot: Vec<u32>,
+    pub active_postroll_plot: Vec<u32>,
+    pub plot_cursor: u8,
+    pub plot_len: u8,
+}
+
+impl Default for WireLatencyDiagnostics {
+    fn default() -> Self {
+        Self {
+            unresolved_recipes: 0,
+            observation_changes: 0,
+            insufficient_margins: 0,
+            deferred_transitions: 0,
+            finalization_overruns: 0,
+            path_ambiguities: 0,
+            provider_failures: 0,
+            applied_capture_plot: Vec::new(),
+            render_advance_plot: Vec::new(),
+            active_postroll_plot: Vec::new(),
+            plot_cursor: 0,
+            plot_len: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct WireSnapshot {
     pub sample_rate: u32,
@@ -580,6 +634,7 @@ pub struct WireSnapshot {
     pub storage_exhaustions: u32,
     pub backend_capture_latency: WireLatencyObservation,
     pub backend_playback_latency: WireLatencyObservation,
+    pub latency_diagnostics: WireLatencyDiagnostics,
     pub tracks: Vec<WireTrackState>,
     pub loops: Vec<WireLoopState>,
     pub composites: Vec<WireCompositeState>,
@@ -622,6 +677,8 @@ pub struct WireApplicationPort {
     pub data_type: WirePortDataType,
     pub direction: WirePortDirection,
     pub role: WirePortRole,
+    pub capture_latency: WireLatencyObservation,
+    pub playback_latency: WireLatencyObservation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -974,6 +1031,14 @@ mod tests {
             data_type: WirePortDataType::Midi,
             direction: WirePortDirection::Input,
             role: WirePortRole::MidiInput,
+            capture_latency: WireLatencyObservation {
+                minimum_frames: Some(3),
+                maximum_frames: Some(5),
+                certainty: WireLatencyCertainty::Range,
+                sample_rate: 48_000,
+                revision: 2,
+            },
+            playback_latency: WireLatencyObservation::default(),
         };
         let encoded = serde_json::to_vec(&port).unwrap();
         assert_eq!(
@@ -1034,7 +1099,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":15,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":18,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -1045,7 +1110,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":15,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":18,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 
@@ -1057,6 +1122,9 @@ mod tests {
                 track_id: 7,
                 policy: WireTrackLatencyPolicy {
                     cue_followed: true,
+                    cue_output: Some(WireCueOutputSelection::HostPort {
+                        host_port_id: "system:playback_1".to_owned(),
+                    }),
                     components: (0..LATENCY_COMPONENT_CAPACITY)
                         .map(|index| WireLatencyComponentPolicy {
                             kind: if index % 2 == 0 {
@@ -1066,6 +1134,7 @@ mod tests {
                             },
                             enabled: true,
                             value_mode: WireLatencyValueMode::AutomaticPlusTrim(index as i32 - 4),
+                            range_selection: WireLatencyRangeSelection::Midpoint,
                         })
                         .collect(),
                     revision: 8,

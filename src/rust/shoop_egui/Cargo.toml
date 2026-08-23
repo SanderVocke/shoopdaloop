@@ -13,6 +13,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
 shoop_app_api = { path = "../shoop_app_api" }
+shoop_latency = { path = "../shoop_latency" }
 shoop_settings = { path = "../shoop_settings" }
 shoop_script_resources = { path = "../shoop_script_resources" }
 egui = { workspace = true }

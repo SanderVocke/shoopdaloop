@@ -127,6 +127,8 @@ struct NativeRuntime {
     next_port_id: u64,
     connection_revision: u64,
     connection_failures: Vec<BackendConnectionFailure>,
+    latency_diagnostics: LatencyDiagnosticsState,
+    latency_diagnostic_active: BTreeSet<(BackendLoopId, u8)>,
     configured: AudioDriverConfig,
     resolved: ResolvedAudioDriverConfig,
     driver: AudioDriver,
@@ -405,6 +407,8 @@ impl NativeRuntime {
             next_port_id: 1,
             connection_revision: 1,
             connection_failures: Vec::new(),
+            latency_diagnostics: LatencyDiagnosticsState::default(),
+            latency_diagnostic_active: BTreeSet::new(),
             configured,
             resolved,
             driver,
@@ -1855,6 +1859,455 @@ impl NativeRuntime {
         Ok(())
     }
 
+    fn cue_runtime_latency(
+        &self,
+        selection: Option<&shoop_app_api::CueOutputSelection>,
+    ) -> shoop_engine::RuntimeLatencyObservation {
+        let port = match selection {
+            Some(shoop_app_api::CueOutputSelection::ApplicationPort(port_id)) => {
+                self.ports.get(&BackendPortId::from_raw(port_id.raw()))
+            }
+            Some(shoop_app_api::CueOutputSelection::HostPort(host_port_id)) => {
+                let mut candidates = self.ports.values().filter(|port| {
+                    port.descriptor.direction == BackendPortDirection::Output
+                        && port
+                            .handle
+                            .connections_now()
+                            .get(host_port_id.as_str())
+                            .copied()
+                            .unwrap_or(false)
+                });
+                let first = candidates.next();
+                if candidates.next().is_some() {
+                    return Default::default();
+                }
+                first
+            }
+            None => None,
+        };
+        match port.map(|port| &port.handle) {
+            Some(NativePortHandle::Audio(port)) => port
+                .poll_state()
+                .map(|state| state.playback_latency)
+                .unwrap_or_default(),
+            Some(NativePortHandle::Midi(port)) => port
+                .poll_state()
+                .map(|state| state.playback_latency)
+                .unwrap_or_default(),
+            None => Default::default(),
+        }
+    }
+
+    fn resolve_track_latency_recipe(
+        &self,
+        track_id: BackendTrackId,
+        policy: &TrackLatencyPolicyState,
+        operation: shoop_latency::LatencyOperationKind,
+        external_capture: shoop_engine::RuntimeLatencyObservation,
+        processor: shoop_engine::RuntimeLatencyObservation,
+    ) -> Result<shoop_engine::RuntimeLatencyRecipe> {
+        let cue = self.cue_runtime_latency(policy.cue_output.as_ref());
+        let driver = self.driver.get_state();
+        let backend = if matches!(
+            operation,
+            shoop_latency::LatencyOperationKind::DryThroughWet
+                | shoop_latency::LatencyOperationKind::RecordDryIntoWet
+        ) {
+            driver.playback_latency
+        } else {
+            driver.capture_latency
+        };
+        let mut inputs = Vec::with_capacity(policy.components.len());
+        for component in policy.components.iter().copied() {
+            let kind = crate::app_latency_component_kind(component.kind);
+            let observation = match kind {
+                shoop_latency::LatencyComponentKind::ExternalCapture => external_capture,
+                shoop_latency::LatencyComponentKind::Processor => processor,
+                shoop_latency::LatencyComponentKind::CuePlayback => cue,
+                shoop_latency::LatencyComponentKind::BackendBuffering => backend,
+                shoop_latency::LatencyComponentKind::Manual => Default::default(),
+            };
+            let identity = format!("native-track:{}:{kind:?}", track_id.raw());
+            inputs.push(shoop_latency::LatencyComponentInput {
+                kind,
+                observation: crate::domain_latency_observation(
+                    observation,
+                    identity.clone(),
+                    observation.range.map(|_| identity),
+                )?,
+                policy: crate::domain_latency_policy(component),
+            });
+        }
+        let resolved = shoop_latency::resolve_latency_recipe(
+            operation,
+            if policy.cue_followed {
+                shoop_latency::RecordingReference::ShoopCue
+            } else {
+                shoop_latency::RecordingReference::ExternalWorld
+            },
+            &inputs,
+        )?;
+        Ok(shoop_engine::RuntimeLatencyRecipe::from_resolved(
+            &resolved,
+            policy.revision,
+        ))
+    }
+
+    fn refresh_latched_latency_observations(&mut self) -> Result<()> {
+        let driver = self.driver.get_state();
+        let mut sequences = Vec::new();
+        for (track_id, track) in &self.tracks {
+            let policy = &track.state.latency_policy;
+            let processor = track
+                .state
+                .fx
+                .as_ref()
+                .map(|fx| crate::runtime_latency_observation(fx.latency))
+                .unwrap_or_default();
+            let cue = self.cue_runtime_latency(policy.cue_output.as_ref());
+            for loop_id in &track.loops {
+                let Some(loop_) = self.loops.get(loop_id) else {
+                    continue;
+                };
+                let mut role_offsets = [0_usize; 3];
+                for (channel, mode) in loop_.audio.iter().zip(&loop_.audio_modes) {
+                    let state = channel.get_state()?;
+                    let Some(recipe) = state.latched_latency_recipe.recipe else {
+                        continue;
+                    };
+                    let role = match mode {
+                        BackendChannelMode::Direct => 0,
+                        BackendChannelMode::Dry => 1,
+                        BackendChannelMode::Wet => 2,
+                    };
+                    let ordinal = &mut role_offsets[role];
+                    let external = track
+                        .audio_inputs
+                        .get((*ordinal).min(track.audio_inputs.len().saturating_sub(1)))
+                        .and_then(AudioPort::poll_state)
+                        .map(|state| state.capture_latency)
+                        .unwrap_or_default();
+                    *ordinal = ordinal.saturating_add(1);
+                    let backend = if matches!(
+                        recipe.operation,
+                        shoop_latency::LatencyOperationKind::DryThroughWet
+                            | shoop_latency::LatencyOperationKind::RecordDryIntoWet
+                    ) {
+                        driver.playback_latency
+                    } else {
+                        driver.capture_latency
+                    };
+                    for component in recipe.components() {
+                        let current = match component.kind {
+                            shoop_latency::LatencyComponentKind::ExternalCapture => external,
+                            shoop_latency::LatencyComponentKind::Processor => processor,
+                            shoop_latency::LatencyComponentKind::CuePlayback => cue,
+                            shoop_latency::LatencyComponentKind::BackendBuffering => backend,
+                            shoop_latency::LatencyComponentKind::Manual => Default::default(),
+                        };
+                        if current != component.observation {
+                            sequences.push(channel.observe_latency(component.kind, current)?);
+                        }
+                    }
+                }
+                let midi_external = track
+                    .midi_input
+                    .as_ref()
+                    .and_then(MidiPort::poll_state)
+                    .map(|state| state.capture_latency)
+                    .unwrap_or_default();
+                for channel in &loop_.midi {
+                    let state = channel.get_state()?;
+                    let Some(recipe) = state.latched_latency_recipe.recipe else {
+                        continue;
+                    };
+                    let backend = if matches!(
+                        recipe.operation,
+                        shoop_latency::LatencyOperationKind::DryThroughWet
+                            | shoop_latency::LatencyOperationKind::RecordDryIntoWet
+                    ) {
+                        driver.playback_latency
+                    } else {
+                        driver.capture_latency
+                    };
+                    for component in recipe.components() {
+                        let current = match component.kind {
+                            shoop_latency::LatencyComponentKind::ExternalCapture => midi_external,
+                            shoop_latency::LatencyComponentKind::Processor => processor,
+                            shoop_latency::LatencyComponentKind::CuePlayback => cue,
+                            shoop_latency::LatencyComponentKind::BackendBuffering => backend,
+                            shoop_latency::LatencyComponentKind::Manual => Default::default(),
+                        };
+                        if current != component.observation {
+                            sequences.push(channel.observe_latency(component.kind, current)?);
+                        }
+                    }
+                }
+            }
+            let _ = track_id;
+        }
+        for sequence in sequences {
+            self.session
+                .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        }
+        Ok(())
+    }
+
+    fn prepare_loop_latency_policy(
+        &mut self,
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+    ) -> Result<()> {
+        let (track_id, policy, audio_inputs, midi_input, processor) = self
+            .tracks
+            .iter()
+            .find(|(_, track)| track.loops.contains(&loop_id))
+            .map(|(id, track)| {
+                (
+                    *id,
+                    track.state.latency_policy.clone(),
+                    track.audio_inputs.clone(),
+                    track.midi_input.clone(),
+                    track
+                        .state
+                        .fx
+                        .as_ref()
+                        .map(|fx| crate::runtime_latency_observation(fx.latency))
+                        .unwrap_or_default(),
+                )
+            })
+            .ok_or_else(|| anyhow!("missing native loop owner for latency policy"))?;
+        let loop_ = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing native loop for latency policy"))?;
+        let audio = loop_.audio.clone();
+        let audio_modes = loop_.audio_modes.clone();
+        let midi = loop_.midi.clone();
+        let midi_modes = loop_.midi_modes.clone();
+        let operation_for = |channel_mode: BackendChannelMode| match mode {
+            BackendLoopMode::Recording => Some(match channel_mode {
+                BackendChannelMode::Direct => shoop_latency::LatencyOperationKind::RecordDirect,
+                BackendChannelMode::Dry => shoop_latency::LatencyOperationKind::RecordDry,
+                BackendChannelMode::Wet => shoop_latency::LatencyOperationKind::RecordWet,
+            }),
+            BackendLoopMode::Replacing => Some(shoop_latency::LatencyOperationKind::Replacement(
+                match channel_mode {
+                    BackendChannelMode::Direct => shoop_latency::LatencyChannelRole::Direct,
+                    BackendChannelMode::Dry => shoop_latency::LatencyChannelRole::Dry,
+                    BackendChannelMode::Wet => shoop_latency::LatencyChannelRole::Wet,
+                },
+            )),
+            BackendLoopMode::PlayingDryThroughWet => (channel_mode != BackendChannelMode::Wet)
+                .then_some(shoop_latency::LatencyOperationKind::DryThroughWet),
+            BackendLoopMode::RecordingDryIntoWet => {
+                Some(shoop_latency::LatencyOperationKind::RecordDryIntoWet)
+            }
+            _ => None,
+        };
+        let mut role_offsets = [0_usize; 3];
+        let mut sequences = Vec::new();
+        for (channel, channel_mode) in audio.iter().zip(&audio_modes) {
+            let role = match channel_mode {
+                BackendChannelMode::Direct => 0,
+                BackendChannelMode::Dry => 1,
+                BackendChannelMode::Wet => 2,
+            };
+            let ordinal = &mut role_offsets[role];
+            let external = audio_inputs
+                .get((*ordinal).min(audio_inputs.len().saturating_sub(1)))
+                .and_then(AudioPort::poll_state)
+                .map(|state| state.capture_latency)
+                .unwrap_or_default();
+            *ordinal = ordinal.saturating_add(1);
+            let recipe = operation_for(*channel_mode)
+                .map(|operation| {
+                    self.resolve_track_latency_recipe(
+                        track_id, &policy, operation, external, processor,
+                    )
+                })
+                .transpose()?;
+            sequences.push(channel.set_latency_recipe(recipe)?);
+            if matches!(
+                operation_for(*channel_mode),
+                Some(
+                    shoop_latency::LatencyOperationKind::RecordDirect
+                        | shoop_latency::LatencyOperationKind::RecordDry
+                        | shoop_latency::LatencyOperationKind::RecordWet
+                )
+            ) {
+                let retained = recipe.and_then(|recipe| recipe.total_frames).unwrap_or(0);
+                sequences.push(channel.restore_retained_margin_metadata(0, retained)?);
+            }
+        }
+        let midi_external = midi_input
+            .as_ref()
+            .and_then(MidiPort::poll_state)
+            .map(|state| state.capture_latency)
+            .unwrap_or_default();
+        for (channel, channel_mode) in midi.iter().zip(&midi_modes) {
+            let recipe = operation_for(*channel_mode)
+                .map(|operation| {
+                    self.resolve_track_latency_recipe(
+                        track_id,
+                        &policy,
+                        operation,
+                        midi_external,
+                        processor,
+                    )
+                })
+                .transpose()?;
+            sequences.push(channel.set_latency_recipe(recipe)?);
+            if matches!(
+                operation_for(*channel_mode),
+                Some(
+                    shoop_latency::LatencyOperationKind::RecordDirect
+                        | shoop_latency::LatencyOperationKind::RecordDry
+                        | shoop_latency::LatencyOperationKind::RecordWet
+                )
+            ) {
+                let retained = recipe.and_then(|recipe| recipe.total_frames).unwrap_or(0);
+                sequences.push(channel.restore_retained_margin_metadata(0, retained)?);
+            }
+        }
+        for sequence in sequences {
+            self.session
+                .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
+        }
+        Ok(())
+    }
+
+    fn update_latency_diagnostics(
+        &mut self,
+        loop_states: &BTreeMap<BackendLoopId, BackendLoopState>,
+    ) -> Result<()> {
+        let mut next_active = BTreeSet::new();
+        let mut applied_capture = 0_i32;
+        let mut render_advance = 0_u32;
+        let mut active_postroll = 0_u32;
+        for (loop_id, loop_state) in loop_states {
+            let mut unresolved = false;
+            let mut provider_failure = false;
+            if let Some(loop_) = self.loops.get(loop_id) {
+                let mut inspect =
+                    |capture: i32,
+                     render: u32,
+                     postroll: u32,
+                     recipe: Option<shoop_engine::RuntimeLatencyRecipe>| {
+                        if capture.unsigned_abs() > applied_capture.unsigned_abs() {
+                            applied_capture = capture;
+                        }
+                        render_advance = render_advance.max(render);
+                        active_postroll = active_postroll.max(postroll);
+                        if let Some(recipe) = recipe {
+                            if recipe.total_frames.is_none()
+                                && recipe.components().any(|component| {
+                                    component.application
+                                        == shoop_latency::ComponentApplication::Unresolved
+                                })
+                            {
+                                unresolved = true;
+                                provider_failure |= recipe.components().any(|component| {
+                                    component.application
+                                        == shoop_latency::ComponentApplication::Unresolved
+                                        && component.observation.range.is_none()
+                                });
+                            }
+                        }
+                    };
+                for channel in &loop_.audio {
+                    let state = channel.get_state()?;
+                    inspect(
+                        state.capture_alignment_frames,
+                        state.render_advance_frames,
+                        state.postroll_remaining_frames,
+                        state
+                            .latched_latency_recipe
+                            .recipe
+                            .or(state.current_latency_recipe.recipe),
+                    );
+                }
+                for channel in &loop_.midi {
+                    let state = channel.get_state()?;
+                    inspect(
+                        state.capture_alignment_frames,
+                        state.render_advance_frames,
+                        state.postroll_remaining_frames,
+                        state
+                            .latched_latency_recipe
+                            .recipe
+                            .or(state.current_latency_recipe.recipe),
+                    );
+                }
+            }
+            let path_ambiguity = self
+                .tracks
+                .values()
+                .find(|track| track.loops.contains(loop_id))
+                .and_then(|track| track.state.latency_policy.cue_output.as_ref())
+                .is_some_and(|selection| match selection {
+                    shoop_app_api::CueOutputSelection::HostPort(host) => {
+                        self.ports
+                            .values()
+                            .filter(|port| {
+                                port.descriptor.direction == BackendPortDirection::Output
+                                    && port
+                                        .handle
+                                        .connections_now()
+                                        .get(host.as_str())
+                                        .copied()
+                                        .unwrap_or(false)
+                            })
+                            .take(2)
+                            .count()
+                            > 1
+                    }
+                    shoop_app_api::CueOutputSelection::ApplicationPort(_) => false,
+                });
+            let flags = [
+                unresolved,
+                loop_state.latency.changed_during_operation,
+                loop_state.latency.incomplete,
+                loop_state.latency.deferred_mode.is_some(),
+                loop_state.latency.finalizing && loop_state.latency.incomplete,
+                path_ambiguity,
+                provider_failure,
+            ];
+            for (index, active) in flags.into_iter().enumerate() {
+                if active {
+                    let key = (*loop_id, index as u8);
+                    next_active.insert(key);
+                    if !self.latency_diagnostic_active.contains(&key) {
+                        let counter = match index {
+                            0 => &mut self.latency_diagnostics.unresolved_recipes,
+                            1 => &mut self.latency_diagnostics.observation_changes,
+                            2 => &mut self.latency_diagnostics.insufficient_margins,
+                            3 => &mut self.latency_diagnostics.deferred_transitions,
+                            4 => &mut self.latency_diagnostics.finalization_overruns,
+                            5 => &mut self.latency_diagnostics.path_ambiguities,
+                            _ => &mut self.latency_diagnostics.provider_failures,
+                        };
+                        *counter = counter.saturating_add(1);
+                    }
+                }
+            }
+        }
+        self.latency_diagnostic_active = next_active;
+        let index = self.latency_diagnostics.plot_cursor as usize
+            % shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES;
+        self.latency_diagnostics.applied_capture_plot[index] = applied_capture;
+        self.latency_diagnostics.render_advance_plot[index] = render_advance;
+        self.latency_diagnostics.active_postroll_plot[index] = active_postroll;
+        self.latency_diagnostics.plot_cursor =
+            ((index + 1) % shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES) as u8;
+        self.latency_diagnostics.plot_len = self
+            .latency_diagnostics
+            .plot_len
+            .saturating_add(1)
+            .min(shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES as u8);
+        Ok(())
+    }
+
     fn set_port_connected(
         &mut self,
         port_id: BackendPortId,
@@ -2522,6 +2975,7 @@ impl Backend for NativeBackend {
         align_to_sync_at: Option<u32>,
     ) -> Result<()> {
         let runtime = self.runtime_mut()?;
+        runtime.prepare_loop_latency_policy(loop_id, mode)?;
         runtime
             .loops
             .get(&loop_id)
@@ -2801,6 +3255,7 @@ impl Backend for NativeBackend {
         for track_id in track_ids {
             runtime.apply_track_routing(track_id)?;
         }
+        runtime.refresh_latched_latency_observations()?;
         runtime.wait();
         let driver = runtime.driver.get_state();
         let session = runtime.session.get_state();
@@ -2890,6 +3345,7 @@ impl Backend for NativeBackend {
                         channel.capture_alignment_frames,
                         channel.retained_before_frames,
                         channel.retained_after_frames,
+                        channel.postroll_remaining_frames,
                         channel.render_advance_frames,
                         channel.latency_history_variable,
                         channel.latency_history_revisions,
@@ -2906,6 +3362,7 @@ impl Backend for NativeBackend {
                                 channel.capture_alignment_frames,
                                 channel.retained_before_frames,
                                 channel.retained_after_frames,
+                                channel.postroll_remaining_frames,
                                 channel.render_advance_frames,
                                 channel.latency_history_variable,
                                 channel.latency_history_revisions,
@@ -2919,6 +3376,7 @@ impl Backend for NativeBackend {
                         capture,
                         retained_before,
                         retained_after,
+                        postroll_remaining,
                         render,
                         variable,
                         revisions,
@@ -2942,7 +3400,7 @@ impl Backend for NativeBackend {
                                 .deferred_latency_mode
                                 .map(from_native_mode)
                                 .map(app_loop_mode),
-                            finalizing: false,
+                            finalizing: postroll_remaining > 0,
                             error: None,
                         }
                     },
@@ -3018,6 +3476,7 @@ impl Backend for NativeBackend {
                 ))
             })
             .collect();
+        runtime.update_latency_diagnostics(&loops)?;
         let port_latency = runtime
             .ports
             .iter()
@@ -3057,6 +3516,7 @@ impl Backend for NativeBackend {
                 callback_budget_overruns: session.callback_budget_overruns,
                 backend_capture_latency: app_latency_observation(driver.capture_latency),
                 backend_playback_latency: app_latency_observation(driver.playback_latency),
+                latency_diagnostics: runtime.latency_diagnostics,
                 ..Default::default()
             },
             audio_drivers,
@@ -3428,6 +3888,50 @@ mod tests {
 
         backend.remove_composite_loop(composite).unwrap();
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_dummy_track_policy_latches_manual_capture_and_retention() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 64,
+        }))
+        .unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "native-latency-policy".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency_policy(
+                created.track_id,
+                &TrackLatencyPolicyState {
+                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
+                        kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
+                        enabled: true,
+                        value_mode: shoop_app_api::LatencyValueMode::Manual(4),
+                        range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
+                    }]),
+                    revision: 2,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        backend.advance(Duration::from_millis(2));
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        backend.advance(Duration::from_millis(2));
+        let capture = backend.capture_session().unwrap();
+        let latency = &capture.tracks[0].loops[0].audio[0].latency;
+        assert_eq!(latency.capture_alignment_frames, 4);
+        assert_eq!(latency.retained_after_frames, 4);
     }
 
     #[shoop_wasm_test_support::shoop_test]

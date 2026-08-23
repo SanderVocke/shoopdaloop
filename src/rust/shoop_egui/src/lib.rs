@@ -13,6 +13,7 @@ mod dial;
 mod fonts;
 mod global_controls;
 mod key_input;
+mod latency_panel;
 mod loop_widget;
 mod meter_ballistics;
 mod midi_sequence_widget;
@@ -30,16 +31,19 @@ mod waveform_widget;
 
 pub use app_widget::{
     audio_driver_config_from_draft, audio_driver_config_from_snapshot,
-    carla_hosting_mode_from_snapshot, default_builtins_location, register_audio_settings,
-    register_bundled_script_settings, register_carla_settings, register_script_settings,
-    register_settings, register_settings_with_appearance_defaults,
+    carla_hosting_mode_from_snapshot, default_builtins_location, latency_policy_from_snapshot,
+    register_audio_settings, register_bundled_script_settings, register_carla_settings,
+    register_script_settings, register_settings, register_settings_with_appearance_defaults,
     register_settings_with_ui_scale_default, selected_audio_driver, set_selected_audio_driver,
     AppWidget, AppWidgetResponse, APC_MINI_SCRIPT_ENABLED, BUILTINS_LOCATION, BUILTIN_SCRIPTS,
     CARLA_HOSTING_MODE, CPAL_BUFFER_SIZE, CPAL_CAPTURE_RING_FRAMES, CPAL_CLIENT_NAME, CPAL_HOST,
     CPAL_INPUT_CHANNELS, CPAL_INPUT_DEVICE, CPAL_MIDI_INPUTS, CPAL_MIDI_OUTPUTS,
     CPAL_OUTPUT_CHANNELS, CPAL_OUTPUT_DEVICE, CPAL_SAMPLE_RATE, DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
     DEFAULT_NEW_TRACK_MIDI, DUMMY_BUFFER_SIZE, DUMMY_SAMPLE_RATE, JACK_CLIENT_NAME,
-    KEYBOARD_SCRIPT_ENABLED, SELECTED_AUDIO_DRIVER, TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
+    KEYBOARD_SCRIPT_ENABLED, LATENCY_BACKEND_BUFFERING_ENABLED, LATENCY_CUE_OUTPUT_ENABLED,
+    LATENCY_CUE_OUTPUT_IDENTITY, LATENCY_EXTERNAL_CAPTURE_ENABLED, LATENCY_MANUAL_TRIM_FRAMES,
+    LATENCY_PROCESSOR_ENABLED, LATENCY_RANGE_SELECTION, SELECTED_AUDIO_DRIVER, TOUCH_MODE,
+    UI_SCALE_FACTOR, USER_SCRIPTS,
 };
 pub use composite_loop_widget::CompositeLoopWidget;
 pub use connection_dialog::{ConnectionDialog, ConnectionScope};

@@ -287,7 +287,7 @@ pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
 pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum LatencyComponentKind {
     #[default]
     ExternalCapture,
@@ -306,15 +306,31 @@ pub enum LatencyValueMode {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyRangeSelectionState {
+    Minimum,
+    Midpoint,
+    #[default]
+    Maximum,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CueOutputSelection {
+    ApplicationPort(PortId),
+    HostPort(HostPortId),
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct LatencyComponentPolicyState {
     pub kind: LatencyComponentKind,
     pub enabled: bool,
     pub value_mode: LatencyValueMode,
+    pub range_selection: LatencyRangeSelectionState,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TrackLatencyPolicyState {
     pub cue_followed: bool,
+    pub cue_output: Option<CueOutputSelection>,
     pub components: Arc<[LatencyComponentPolicyState]>,
     pub revision: u64,
     pub pending: bool,
@@ -583,6 +599,43 @@ pub struct AudioDriverRuntimeState {
     pub switch: AudioDriverSwitchState,
 }
 
+pub const LATENCY_DIAGNOSTIC_PLOT_SAMPLES: usize = 64;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LatencyDiagnosticsState {
+    pub unresolved_recipes: u64,
+    pub observation_changes: u64,
+    pub insufficient_margins: u64,
+    pub deferred_transitions: u64,
+    pub finalization_overruns: u64,
+    pub path_ambiguities: u64,
+    pub provider_failures: u64,
+    pub applied_capture_plot: [i32; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+    pub render_advance_plot: [u32; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+    pub active_postroll_plot: [u32; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+    pub plot_cursor: u8,
+    pub plot_len: u8,
+}
+
+impl Default for LatencyDiagnosticsState {
+    fn default() -> Self {
+        Self {
+            unresolved_recipes: 0,
+            observation_changes: 0,
+            insufficient_margins: 0,
+            deferred_transitions: 0,
+            finalization_overruns: 0,
+            path_ambiguities: 0,
+            provider_failures: 0,
+            applied_capture_plot: [0; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+            render_advance_plot: [0; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+            active_postroll_plot: [0; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+            plot_cursor: 0,
+            plot_len: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct StatusState {
     pub version: String,
@@ -603,6 +656,8 @@ pub struct StatusState {
     pub storage_exhaustions: u32,
     pub backend_capture_latency: LatencyObservationState,
     pub backend_playback_latency: LatencyObservationState,
+    pub latency_diagnostics: LatencyDiagnosticsState,
+    pub latency_diagnostic_summary: String,
 }
 
 impl StatusState {
@@ -831,6 +886,8 @@ pub struct ApplicationPortState {
     pub direction: PortDirection,
     pub role: PortRole,
     pub connection_policy: ConnectionPolicy,
+    pub capture_latency: LatencyObservationState,
+    pub playback_latency: LatencyObservationState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -944,6 +1001,7 @@ pub struct WaveformChannelState {
     pub preplay_samples: u64,
     pub loop_length: u64,
     pub played_sample: Option<i64>,
+    pub latency: TakeLatencyProvenanceState,
 }
 
 impl Default for WaveformChannelState {
@@ -956,6 +1014,7 @@ impl Default for WaveformChannelState {
             preplay_samples: 0,
             loop_length: 0,
             played_sample: None,
+            latency: TakeLatencyProvenanceState::default(),
         }
     }
 }
@@ -976,6 +1035,7 @@ pub struct MidiSequenceChannelState {
     pub preplay_samples: u64,
     pub loop_length: u64,
     pub played_sample: Option<i64>,
+    pub latency: TakeLatencyProvenanceState,
 }
 
 impl Default for MidiSequenceChannelState {
@@ -989,6 +1049,7 @@ impl Default for MidiSequenceChannelState {
             preplay_samples: 0,
             loop_length: 0,
             played_sample: None,
+            latency: TakeLatencyProvenanceState::default(),
         }
     }
 }
@@ -1679,6 +1740,10 @@ pub enum AppIntent {
     Piano(PianoAction),
     AddTrack(DirectTrackSpec),
     AddTrackWithTopology(TrackSpec),
+    AddTrackWithLatencyPolicy {
+        spec: TrackSpec,
+        policy: TrackLatencyPolicyState,
+    },
     AddLoop {
         track_id: TrackId,
     },
@@ -1968,7 +2033,9 @@ impl AppIntent {
             Self::Global(action) => action.kind(),
             Self::Piano(action) => action.kind(),
             Self::AddTrack(_) => "track.add_direct",
-            Self::AddTrackWithTopology(_) => "track.add_with_topology",
+            Self::AddTrackWithTopology(_) | Self::AddTrackWithLatencyPolicy { .. } => {
+                "track.add_with_topology"
+            }
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",
@@ -2483,6 +2550,8 @@ mod tests {
             direction: PortDirection::Input,
             role: PortRole::AudioInput,
             connection_policy: ConnectionPolicy::UserManaged,
+            capture_latency: Default::default(),
+            playback_latency: Default::default(),
         };
         let host = HostPortState {
             id: HostPortId::new(endpoint.clone()),
@@ -2590,10 +2659,14 @@ mod tests {
     fn latency_model_exposes_edit_intents_and_take_provenance() {
         let policy = TrackLatencyPolicyState {
             cue_followed: true,
+            cue_output: Some(CueOutputSelection::HostPort(HostPortId::new(
+                "system:playback_1",
+            ))),
             components: Arc::from([LatencyComponentPolicyState {
                 kind: LatencyComponentKind::Processor,
                 enabled: true,
                 value_mode: LatencyValueMode::AutomaticPlusTrim(-2),
+                range_selection: LatencyRangeSelectionState::Midpoint,
             }]),
             revision: 7,
             pending: true,

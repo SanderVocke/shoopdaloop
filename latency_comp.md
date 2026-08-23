@@ -758,7 +758,7 @@ Verification:
 
 - [x] Offset matrix tests pass across consecutive odd callback sizes.
 - [x] No fixed 64-frame claim remains without exact proof.
-- [ ] OxiSynth dry MIDI through wet and wet recording tests report/apply the declared semantics consistently on native and Wasm.
+- [x] OxiSynth dry MIDI through wet and wet recording tests report/apply the declared semantics consistently on native and Wasm.
 
 ### Stage 10 — CPAL, browser, and protocol capability completion
 
@@ -803,39 +803,39 @@ Verification:
 
 Dependencies: Stages 6 and 11.
 
-- [ ] Register machine defaults and add settings migration/documentation.
-- [ ] Add track/loop latency panel and component editors.
-- [ ] Add cue-output selection integrated with normalized application/host port identities.
-- [ ] Display exact/range/estimated/manual/unknown and selected/applied totals in frames and milliseconds.
-- [ ] Add take snapshot/current observation comparison and changed/incomplete warnings.
-- [ ] Add logical/raw waveform and MIDI view markers.
-- [ ] Add operation deferral/finalization status and actionable errors.
-- [ ] Add explicit consolidate/bake and raw export confirmation where implemented.
-- [ ] Ensure touch mode and keyboard navigation can operate all controls without hover-only behavior.
+- [x] Register machine defaults and add settings migration/documentation.
+- [x] Add track/loop latency panel and component editors.
+- [x] Add cue-output selection integrated with normalized application/host port identities.
+- [x] Display exact/range/estimated/manual/unknown and selected/applied totals in frames and milliseconds.
+- [x] Add take snapshot/current observation comparison and changed/incomplete warnings.
+- [x] Add logical/raw waveform and MIDI view markers.
+- [x] Add operation deferral/finalization status and actionable errors.
+- [x] Add explicit consolidate/bake and raw export confirmation where implemented.
+- [x] Ensure touch mode and keyboard navigation can operate all controls without hover-only behavior.
 
 Verification:
 
-- [ ] UI unit tests cover component toggles, mode changes, signed edits, range selection, cue selection, warnings, and no-backend states.
-- [ ] Snapshot-driven tests prove UI displays authoritative latched values after optimistic edits reconcile.
-- [ ] Settings save/cancel/reset/migration behavior follows existing contracts.
+- [x] UI unit tests cover component toggles, mode changes, signed edits, range selection, cue selection, warnings, and no-backend states.
+- [x] Snapshot-driven tests prove UI displays authoritative latched values after optimistic edits reconcile.
+- [x] Settings save/cancel/reset/migration behavior follows existing contracts.
 - [ ] Manual usability pass covers direct, External, Carla, and Built-in Synth tracks.
 
 ### Stage 13 — Diagnostics, tracing, and operational hardening
 
 Dependencies: all runtime provider stages.
 
-- [ ] Add bounded counters for unresolved recipes, observation changes, insufficient margins, deferred transitions, finalization overruns, path ambiguity, and provider failures.
-- [ ] Add realtime-safe plots for applied capture/render advance and active postroll.
-- [ ] Add non-realtime diagnostic summaries to backend/application snapshots.
-- [ ] Update tracing inventory and ensure every added event/span is classified.
-- [ ] Add stress tests for rapid policy edits, graph churn, processor latency changes, driver switches, loop transitions, and session saves.
-- [ ] Confirm all arithmetic and capacities under maximum supported latency/channel/loop counts.
+- [x] Add bounded counters for unresolved recipes, observation changes, insufficient margins, deferred transitions, finalization overruns, path ambiguity, and provider failures.
+- [x] Add realtime-safe plots for applied capture/render advance and active postroll.
+- [x] Add non-realtime diagnostic summaries to backend/application snapshots.
+- [x] Update tracing inventory and ensure every added event/span is classified.
+- [x] Add stress tests for rapid policy edits, graph churn, processor latency changes, driver switches, loop transitions, and session saves.
+- [x] Confirm all arithmetic and capacities under maximum supported latency/channel/loop counts.
 
 Verification:
 
-- [ ] Diagnostics identify failure source and remediation without realtime logs.
-- [ ] Stress tests show bounded memory and stable callback work.
-- [ ] Tracing coverage check is closed.
+- [x] Diagnostics identify failure source and remediation without realtime logs.
+- [x] Stress tests show bounded memory and stable callback work.
+- [x] Tracing coverage check is closed.
 
 ### Stage 14 — Documentation and final end-to-end validation
 

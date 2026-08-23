@@ -1,9 +1,9 @@
 use crate::document::{
-    AudioPayload, ChannelModeDocument, CompositeKindDocument, DataTypeDocument, FormatVersion,
-    FxChainTypeDocument, LatencyCertaintyDocument, MediaPayload, SessionBundle, SessionDocument,
-    TakeLatencyDocument, TrackDocument, TrackLatencyPolicyDocument, TrackTopologyDocument,
-    AUDIO_FORMAT, DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT,
-    SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
+    AudioPayload, ChannelModeDocument, CompositeKindDocument, CueOutputSelectionDocument,
+    DataTypeDocument, FormatVersion, FxChainTypeDocument, LatencyCertaintyDocument, MediaPayload,
+    PortDirectionDocument, SessionBundle, SessionDocument, TakeLatencyDocument, TrackDocument,
+    TrackLatencyPolicyDocument, TrackTopologyDocument, AUDIO_FORMAT, DOCUMENT_VERSION,
+    FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_DOCUMENT_VERSION, SESSION_FORMAT,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -701,6 +701,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                 }
                 validate_finite(port.gain, "port gain")?;
             }
+            validate_track_cue_output(track)?;
             for loop_ in &track.loops {
                 require_id(loop_.id, "loop")?;
                 if !loop_ids.insert(loop_.id) {
@@ -1043,6 +1044,38 @@ fn validate_track_channel_shape(
             track.id
         )))
     }
+}
+
+fn validate_track_cue_output(track: &TrackDocument) -> Result<(), SessionError> {
+    let Some(selection) = &track.latency_policy.cue_output else {
+        return Ok(());
+    };
+    let ports = track
+        .ports
+        .iter()
+        .chain(track.fx_chain.iter().flat_map(|chain| &chain.ports));
+    let valid = match selection {
+        CueOutputSelectionDocument::ApplicationPort { port_id } => ports
+            .clone()
+            .any(|port| port.id == *port_id && port.direction == PortDirectionDocument::Output),
+        CueOutputSelectionDocument::HostPort { host_port_id } => {
+            !host_port_id.is_empty()
+                && host_port_id.len() <= shoop_latency::MAX_SOURCE_IDENTITY_BYTES
+                && ports.clone().any(|port| {
+                    port.direction == PortDirectionDocument::Output
+                        && port
+                            .external_connections
+                            .iter()
+                            .any(|candidate| candidate == host_port_id)
+                })
+        }
+    };
+    if !valid {
+        return Err(SessionError::Validation(
+            "track cue output does not identify a connected output path".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_track_latency_policy(policy: &TrackLatencyPolicyDocument) -> Result<(), SessionError> {

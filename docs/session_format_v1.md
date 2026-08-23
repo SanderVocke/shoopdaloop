@@ -30,9 +30,9 @@ This document defines the first application persistence format. Predecessor `.sh
 - a Built-in Synth topology, OxiSynth chain identity, selected preset, additive sends, and MIDI assignments;
 - captured FX-state records referenced by recorded channels;
 - a sorted media index;
-- per-track latency component policy and per-take frozen latency provenance, including signed capture alignment, observed range/certainty/revision/sample rate, variable-history and incomplete/change warnings, applied-during-render identity, and piecewise raw alignment regions.
+- per-track latency component policy and per-take frozen latency provenance, including each component's automatic/manual/automatic-plus-trim mode, minimum/midpoint/maximum range selection, normalized application- or host-port cue identity, signed capture alignment, retained margins, observed range/certainty/revision/sample rate, variable-history and incomplete/change warnings, applied-during-render identity, and piecewise raw alignment regions.
 
-Latency values are bounded to 768,000 frames in magnitude, ranges must be ordered, region bounds must be ordered and inside raw media, regions must not overlap, and referenced observation revisions may not exceed the take revision. Invalid metadata fails validation before backend replacement. Version-6 sessions have none of these fields and migrate to disabled/default track policy and zero-alignment unknown take provenance.
+Latency values are bounded to 768,000 frames in magnitude, ranges must be ordered, region bounds must be ordered and inside raw media, regions must not overlap, and referenced observation revisions may not exceed the take revision. An application-port cue identity must name an output port owned by that track; a host cue identity must match one of the track's persisted output connections. Missing current hardware remains visible at runtime but does not retarget the saved identity. Invalid metadata fails validation before backend replacement. Version-6 sessions have none of these fields and migrate to disabled/default track policy and zero-alignment unknown take provenance.
 
 Transient loop mode/position, queued transitions, meters, driver/device handles, permissions, xruns, task state, dialogs, and machine-wide settings are not session data. Loaded loops start stopped.
 

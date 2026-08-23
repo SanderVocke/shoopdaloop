@@ -458,6 +458,7 @@ pub struct AudioChannelStateMirror {
     capture_alignment_frames: AtomicI32,
     retained_before_frames: AtomicU32,
     retained_after_frames: AtomicU32,
+    postroll_remaining_frames: AtomicU32,
     render_advance_frames: AtomicU32,
     played_back_sample: AtomicI32,
     logical_played_position: AtomicI32,
@@ -483,6 +484,7 @@ impl Default for AudioChannelStateMirror {
             capture_alignment_frames: AtomicI32::new(0),
             retained_before_frames: AtomicU32::new(0),
             retained_after_frames: AtomicU32::new(0),
+            postroll_remaining_frames: AtomicU32::new(0),
             render_advance_frames: AtomicU32::new(0),
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             logical_played_position: AtomicI32::new(NO_SAMPLE),
@@ -507,6 +509,7 @@ impl AudioChannelStateMirror {
         length: usize,
         start_offset: i32,
         capture_alignment_frames: i32,
+        postroll_remaining_frames: u32,
         render_advance_frames: u32,
         played_back_sample: Option<i32>,
         n_preplay_samples: u32,
@@ -518,6 +521,8 @@ impl AudioChannelStateMirror {
         self.start_offset.store(start_offset, Ordering::Relaxed);
         self.capture_alignment_frames
             .store(capture_alignment_frames, Ordering::Relaxed);
+        self.postroll_remaining_frames
+            .store(postroll_remaining_frames, Ordering::Relaxed);
         self.render_advance_frames
             .store(render_advance_frames, Ordering::Relaxed);
         self.played_back_sample
@@ -606,6 +611,7 @@ impl AudioChannelStateMirror {
             capture_alignment_frames: self.capture_alignment_frames.load(Ordering::Relaxed),
             retained_before_frames: self.retained_before_frames.load(Ordering::Relaxed),
             retained_after_frames: self.retained_after_frames.load(Ordering::Relaxed),
+            postroll_remaining_frames: self.postroll_remaining_frames.load(Ordering::Relaxed),
             render_advance_frames: self.render_advance_frames.load(Ordering::Relaxed),
             played_back_sample: (played != NO_SAMPLE).then_some(played),
             logical_played_position: (logical != NO_SAMPLE).then_some(logical),
@@ -636,6 +642,7 @@ pub struct MidiChannelStateMirror {
     capture_alignment_frames: AtomicI32,
     retained_before_frames: AtomicU32,
     retained_after_frames: AtomicU32,
+    postroll_remaining_frames: AtomicU32,
     render_advance_frames: AtomicU32,
     played_back_sample: AtomicI32,
     logical_played_position: AtomicI32,
@@ -661,6 +668,7 @@ impl Default for MidiChannelStateMirror {
             capture_alignment_frames: AtomicI32::new(0),
             retained_before_frames: AtomicU32::new(0),
             retained_after_frames: AtomicU32::new(0),
+            postroll_remaining_frames: AtomicU32::new(0),
             render_advance_frames: AtomicU32::new(0),
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             logical_played_position: AtomicI32::new(NO_SAMPLE),
@@ -685,6 +693,7 @@ impl MidiChannelStateMirror {
         length: u32,
         start_offset: i32,
         capture_alignment_frames: i32,
+        postroll_remaining_frames: u32,
         render_advance_frames: u32,
         played_back_sample: Option<i32>,
         n_preplay_samples: u32,
@@ -696,6 +705,8 @@ impl MidiChannelStateMirror {
         self.start_offset.store(start_offset, Ordering::Relaxed);
         self.capture_alignment_frames
             .store(capture_alignment_frames, Ordering::Relaxed);
+        self.postroll_remaining_frames
+            .store(postroll_remaining_frames, Ordering::Relaxed);
         self.render_advance_frames
             .store(render_advance_frames, Ordering::Relaxed);
         self.played_back_sample
@@ -780,6 +791,7 @@ impl MidiChannelStateMirror {
             capture_alignment_frames: self.capture_alignment_frames.load(Ordering::Relaxed),
             retained_before_frames: self.retained_before_frames.load(Ordering::Relaxed),
             retained_after_frames: self.retained_after_frames.load(Ordering::Relaxed),
+            postroll_remaining_frames: self.postroll_remaining_frames.load(Ordering::Relaxed),
             render_advance_frames: self.render_advance_frames.load(Ordering::Relaxed),
             played_back_sample: (played != NO_SAMPLE).then_some(played),
             logical_played_position: (logical != NO_SAMPLE).then_some(logical),
@@ -1092,12 +1104,12 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn channel_data_sequences_support_local_acknowledgement() {
         let audio = AudioChannelStateMirror::default();
-        audio.publish(ChannelMode::Direct, 1.0, 4, 0, 0, 0, None, 0, 3);
+        audio.publish(ChannelMode::Direct, 1.0, 4, 0, 0, 0, 0, None, 0, 3);
         check!(audio.read(0).data_dirty);
         check!(!audio.read(3).data_dirty);
 
         let midi = MidiChannelStateMirror::default();
-        midi.publish(ChannelMode::Direct, 0, 4, 0, 0, 0, None, 0, 7);
+        midi.publish(ChannelMode::Direct, 0, 4, 0, 0, 0, 0, None, 0, 7);
         check!(midi.read(0).data_dirty);
         check!(!midi.read(7).data_dirty);
     }

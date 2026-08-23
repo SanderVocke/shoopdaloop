@@ -2,22 +2,23 @@
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 use shoop_app_api::{
-    LatencyComponentKind, LatencyComponentPolicyState, LatencyObservationState, LatencyValueMode,
+    CueOutputSelection, HostPortId, LatencyComponentKind, LatencyComponentPolicyState,
+    LatencyObservationState, LatencyRangeSelectionState, LatencyValueMode, PortId,
     TakeLatencyProvenanceState, TrackLatencyPolicyState,
 };
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
     WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
-    WireConfirmedLink, WireHostPort, WireLatencyCertainty, WireLatencyComponentKind,
-    WireLatencyComponentPolicy, WireLatencyObservation, WireLatencyValueMode,
-    WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMidiOutputEvent,
-    WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState, WirePortDataType,
-    WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl, WireTrackFxControl,
-    WireTrackFxState, WireTrackLatencyPolicy, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
-    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
-    WAVEFORM_CHUNK_SAMPLES,
+    WireConfirmedLink, WireCueOutputSelection, WireHostPort, WireLatencyCertainty,
+    WireLatencyComponentKind, WireLatencyComponentPolicy, WireLatencyDiagnostics,
+    WireLatencyObservation, WireLatencyRangeSelection, WireLatencyValueMode, WireLatestMidiMessage,
+    WireLoopMode, WireLoopState, WireMidiOutputEvent, WireOxiSynthMidiCcAssignment,
+    WireOxiSynthParameter, WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
+    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyPolicy,
+    WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
@@ -797,6 +798,14 @@ impl WorkletHost {
 fn from_wire_latency_policy(policy: WireTrackLatencyPolicy) -> TrackLatencyPolicyState {
     TrackLatencyPolicyState {
         cue_followed: policy.cue_followed,
+        cue_output: policy.cue_output.map(|selection| match selection {
+            WireCueOutputSelection::ApplicationPort { port_id } => {
+                CueOutputSelection::ApplicationPort(PortId::from_raw(port_id))
+            }
+            WireCueOutputSelection::HostPort { host_port_id } => {
+                CueOutputSelection::HostPort(HostPortId::new(host_port_id))
+            }
+        }),
         components: policy
             .components
             .into_iter()
@@ -820,6 +829,11 @@ fn from_wire_latency_policy(policy: WireTrackLatencyPolicy) -> TrackLatencyPolic
                         LatencyValueMode::AutomaticPlusTrim(frames)
                     }
                 },
+                range_selection: match component.range_selection {
+                    WireLatencyRangeSelection::Minimum => LatencyRangeSelectionState::Minimum,
+                    WireLatencyRangeSelection::Midpoint => LatencyRangeSelectionState::Midpoint,
+                    WireLatencyRangeSelection::Maximum => LatencyRangeSelectionState::Maximum,
+                },
             })
             .collect::<Vec<_>>()
             .into(),
@@ -832,6 +846,16 @@ fn from_wire_latency_policy(policy: WireTrackLatencyPolicy) -> TrackLatencyPolic
 fn to_wire_latency_policy(policy: TrackLatencyPolicyState) -> WireTrackLatencyPolicy {
     WireTrackLatencyPolicy {
         cue_followed: policy.cue_followed,
+        cue_output: policy.cue_output.map(|selection| match selection {
+            CueOutputSelection::ApplicationPort(port_id) => {
+                WireCueOutputSelection::ApplicationPort {
+                    port_id: port_id.raw(),
+                }
+            }
+            CueOutputSelection::HostPort(host_port_id) => WireCueOutputSelection::HostPort {
+                host_port_id: host_port_id.to_string(),
+            },
+        }),
         components: policy
             .components
             .iter()
@@ -854,6 +878,11 @@ fn to_wire_latency_policy(policy: TrackLatencyPolicyState) -> WireTrackLatencyPo
                     LatencyValueMode::AutomaticPlusTrim(frames) => {
                         WireLatencyValueMode::AutomaticPlusTrim(frames)
                     }
+                },
+                range_selection: match component.range_selection {
+                    LatencyRangeSelectionState::Minimum => WireLatencyRangeSelection::Minimum,
+                    LatencyRangeSelectionState::Midpoint => WireLatencyRangeSelection::Midpoint,
+                    LatencyRangeSelectionState::Maximum => WireLatencyRangeSelection::Maximum,
                 },
             })
             .collect(),
@@ -1111,6 +1140,7 @@ fn to_wire_role(value: BackendPortRole) -> WirePortRole {
 }
 
 fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
+    let port_latency = &snapshot.port_latency;
     let application_ports = snapshot
         .connections
         .application_ports
@@ -1125,6 +1155,14 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
             data_type: to_wire_data_type(port.data_type),
             direction: to_wire_direction(port.direction),
             role: to_wire_role(port.role),
+            capture_latency: port_latency
+                .get(&port.id)
+                .map(|latency| to_wire_latency_observation(latency.capture))
+                .unwrap_or_default(),
+            playback_latency: port_latency
+                .get(&port.id)
+                .map(|latency| to_wire_latency_observation(latency.playback))
+                .unwrap_or_default(),
         })
         .collect();
     let host_ports = snapshot
@@ -1168,6 +1206,32 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
         backend_playback_latency: to_wire_latency_observation(
             snapshot.status.backend_playback_latency,
         ),
+        latency_diagnostics: WireLatencyDiagnostics {
+            unresolved_recipes: snapshot.status.latency_diagnostics.unresolved_recipes,
+            observation_changes: snapshot.status.latency_diagnostics.observation_changes,
+            insufficient_margins: snapshot.status.latency_diagnostics.insufficient_margins,
+            deferred_transitions: snapshot.status.latency_diagnostics.deferred_transitions,
+            finalization_overruns: snapshot.status.latency_diagnostics.finalization_overruns,
+            path_ambiguities: snapshot.status.latency_diagnostics.path_ambiguities,
+            provider_failures: snapshot.status.latency_diagnostics.provider_failures,
+            applied_capture_plot: snapshot
+                .status
+                .latency_diagnostics
+                .applied_capture_plot
+                .to_vec(),
+            render_advance_plot: snapshot
+                .status
+                .latency_diagnostics
+                .render_advance_plot
+                .to_vec(),
+            active_postroll_plot: snapshot
+                .status
+                .latency_diagnostics
+                .active_postroll_plot
+                .to_vec(),
+            plot_cursor: snapshot.status.latency_diagnostics.plot_cursor,
+            plot_len: snapshot.status.latency_diagnostics.plot_len,
+        },
         tracks: snapshot
             .tracks
             .into_iter()
@@ -1463,11 +1527,13 @@ mod tests {
                 track_id: 1,
                 policy: WireTrackLatencyPolicy {
                     cue_followed: false,
+                    cue_output: None,
                     components: vec![
                         WireLatencyComponentPolicy {
                             kind: WireLatencyComponentKind::ExternalCapture,
                             enabled: true,
                             value_mode: WireLatencyValueMode::Automatic,
+                            range_selection: WireLatencyRangeSelection::Maximum,
                         };
                         shoop_audio_protocol::LATENCY_COMPONENT_CAPACITY + 1
                     ],

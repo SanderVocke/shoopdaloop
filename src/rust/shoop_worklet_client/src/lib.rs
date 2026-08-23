@@ -19,21 +19,24 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    FxLifecycle, LatencyCertaintyState, LatencyComponentKind, LatencyComponentPolicyState,
-    LatencyObservationState, LatencyProviderState, LatencyValueMode, OxiSynthMidiCcAssignment,
-    OxiSynthParameter, OxiSynthState, ResolvedAudioDriverConfig, TakeLatencyProvenanceState,
-    TrackFxState, TrackLatencyPolicyState, TrackProcessorDescriptor, TrackProcessorEditorState,
+    CueOutputSelection, FxLifecycle, HostPortId, LatencyCertaintyState, LatencyComponentKind,
+    LatencyComponentPolicyState, LatencyDiagnosticsState, LatencyObservationState,
+    LatencyProviderState, LatencyRangeSelectionState, LatencyValueMode, OxiSynthMidiCcAssignment,
+    OxiSynthParameter, OxiSynthState, PortId, ResolvedAudioDriverConfig,
+    TakeLatencyProvenanceState, TrackFxState, TrackLatencyPolicyState, TrackProcessorDescriptor,
+    TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
     Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
-    WireGrabRequest, WireHostPort, WireLatencyCertainty, WireLatencyComponentKind,
-    WireLatencyComponentPolicy, WireLatencyObservation, WireLatencyValueMode, WireLoopMode,
-    WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType,
-    WirePortDirection, WirePortRole, WireSnapshot, WireTakeLatencyState, WireTrackControl,
-    WireTrackFxControl, WireTrackLatencyPolicy, WireTrackTopology, COMMAND_CAPACITY,
-    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
-    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireCueOutputSelection, WireGrabRequest, WireHostPort, WireLatencyCertainty,
+    WireLatencyComponentKind, WireLatencyComponentPolicy, WireLatencyObservation,
+    WireLatencyRangeSelection, WireLatencyValueMode, WireLoopMode, WireMidiEvent,
+    WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType, WirePortDirection,
+    WirePortRole, WireSnapshot, WireTakeLatencyState, WireTrackControl, WireTrackFxControl,
+    WireTrackLatencyPolicy, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
+    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
@@ -45,10 +48,10 @@ use shoop_backend::{
     BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMutationDetail,
     BackendMutationFailure, BackendMutationKind, BackendOperationKind, BackendOperationProgress,
     BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortOwner, BackendPortRole, BackendSessionData, BackendSessionReplacement,
-    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
-    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
-    DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
+    BackendPortLatencyState, BackendPortOwner, BackendPortRole, BackendSessionData,
+    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
+    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
+    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -133,6 +136,20 @@ pub struct RemoteWorkletBackend {
     loop_content_replace_error: Option<String>,
     midi: Box<dyn HostMidiBridge>,
     midi_revision: u64,
+}
+
+fn bounded_i32_plot(values: &[i32]) -> [i32; shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES] {
+    let mut result = [0; shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES];
+    let count = values.len().min(result.len());
+    result[..count].copy_from_slice(&values[..count]);
+    result
+}
+
+fn bounded_u32_plot(values: &[u32]) -> [u32; shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES] {
+    let mut result = [0; shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES];
+    let count = values.len().min(result.len());
+    result[..count].copy_from_slice(&values[..count]);
+    result
 }
 
 impl RemoteWorkletBackend {
@@ -744,6 +761,14 @@ impl RemoteWorkletBackend {
     fn latency_policy(wire: WireTrackLatencyPolicy) -> TrackLatencyPolicyState {
         TrackLatencyPolicyState {
             cue_followed: wire.cue_followed,
+            cue_output: wire.cue_output.map(|selection| match selection {
+                WireCueOutputSelection::ApplicationPort { port_id } => {
+                    CueOutputSelection::ApplicationPort(PortId::from_raw(port_id))
+                }
+                WireCueOutputSelection::HostPort { host_port_id } => {
+                    CueOutputSelection::HostPort(HostPortId::new(host_port_id))
+                }
+            }),
             components: wire
                 .components
                 .into_iter()
@@ -767,6 +792,11 @@ impl RemoteWorkletBackend {
                             LatencyValueMode::AutomaticPlusTrim(frames)
                         }
                     },
+                    range_selection: match component.range_selection {
+                        WireLatencyRangeSelection::Minimum => LatencyRangeSelectionState::Minimum,
+                        WireLatencyRangeSelection::Midpoint => LatencyRangeSelectionState::Midpoint,
+                        WireLatencyRangeSelection::Maximum => LatencyRangeSelectionState::Maximum,
+                    },
                 })
                 .collect::<Vec<_>>()
                 .into(),
@@ -779,6 +809,16 @@ impl RemoteWorkletBackend {
     fn wire_latency_policy(policy: &TrackLatencyPolicyState) -> WireTrackLatencyPolicy {
         WireTrackLatencyPolicy {
             cue_followed: policy.cue_followed,
+            cue_output: policy.cue_output.clone().map(|selection| match selection {
+                CueOutputSelection::ApplicationPort(port_id) => {
+                    WireCueOutputSelection::ApplicationPort {
+                        port_id: port_id.raw(),
+                    }
+                }
+                CueOutputSelection::HostPort(host_port_id) => WireCueOutputSelection::HostPort {
+                    host_port_id: host_port_id.to_string(),
+                },
+            }),
             components: policy
                 .components
                 .iter()
@@ -801,6 +841,11 @@ impl RemoteWorkletBackend {
                         LatencyValueMode::AutomaticPlusTrim(frames) => {
                             WireLatencyValueMode::AutomaticPlusTrim(frames)
                         }
+                    },
+                    range_selection: match component.range_selection {
+                        LatencyRangeSelectionState::Minimum => WireLatencyRangeSelection::Minimum,
+                        LatencyRangeSelectionState::Midpoint => WireLatencyRangeSelection::Midpoint,
+                        LatencyRangeSelectionState::Maximum => WireLatencyRangeSelection::Maximum,
                     },
                 })
                 .collect(),
@@ -857,6 +902,26 @@ impl RemoteWorkletBackend {
             storage_exhaustions: wire.storage_exhaustions,
             backend_capture_latency: Self::latency_observation(wire.backend_capture_latency),
             backend_playback_latency: Self::latency_observation(wire.backend_playback_latency),
+            latency_diagnostics: LatencyDiagnosticsState {
+                unresolved_recipes: wire.latency_diagnostics.unresolved_recipes,
+                observation_changes: wire.latency_diagnostics.observation_changes,
+                insufficient_margins: wire.latency_diagnostics.insufficient_margins,
+                deferred_transitions: wire.latency_diagnostics.deferred_transitions,
+                finalization_overruns: wire.latency_diagnostics.finalization_overruns,
+                path_ambiguities: wire.latency_diagnostics.path_ambiguities,
+                provider_failures: wire.latency_diagnostics.provider_failures,
+                applied_capture_plot: bounded_i32_plot(
+                    &wire.latency_diagnostics.applied_capture_plot,
+                ),
+                render_advance_plot: bounded_u32_plot(
+                    &wire.latency_diagnostics.render_advance_plot,
+                ),
+                active_postroll_plot: bounded_u32_plot(
+                    &wire.latency_diagnostics.active_postroll_plot,
+                ),
+                plot_cursor: wire.latency_diagnostics.plot_cursor,
+                plot_len: wire.latency_diagnostics.plot_len,
+            },
             driver_state: state,
             ..Default::default()
         };
@@ -865,29 +930,34 @@ impl RemoteWorkletBackend {
             active.buffer_size = wire.quantum;
         }
         self.snapshot.connections.available = true;
-        self.snapshot.connections.application_ports = wire
-            .application_ports
-            .into_iter()
-            .map(|port| {
-                let id = BackendPortId::from_raw(port.id);
-                (
+        self.snapshot.connections.application_ports.clear();
+        self.snapshot.port_latency.clear();
+        for port in wire.application_ports {
+            let id = BackendPortId::from_raw(port.id);
+            self.snapshot.port_latency.insert(
+                id,
+                BackendPortLatencyState {
+                    capture: Self::latency_observation(port.capture_latency),
+                    playback: Self::latency_observation(port.playback_latency),
+                },
+            );
+            self.snapshot.connections.application_ports.insert(
+                id,
+                BackendPortDescriptor {
                     id,
-                    BackendPortDescriptor {
-                        id,
-                        owner: match port.owner {
-                            WireApplicationPortOwner::Track => BackendPortOwner::Track,
-                            WireApplicationPortOwner::GlobalFxControl => {
-                                BackendPortOwner::GlobalFxControl
-                            }
-                        },
-                        name: port.name,
-                        data_type: from_wire_data_type(port.data_type),
-                        direction: from_wire_direction(port.direction),
-                        role: from_wire_role(port.role),
+                    owner: match port.owner {
+                        WireApplicationPortOwner::Track => BackendPortOwner::Track,
+                        WireApplicationPortOwner::GlobalFxControl => {
+                            BackendPortOwner::GlobalFxControl
+                        }
                     },
-                )
-            })
-            .collect();
+                    name: port.name,
+                    data_type: from_wire_data_type(port.data_type),
+                    direction: from_wire_direction(port.direction),
+                    role: from_wire_role(port.role),
+                },
+            );
+        }
         self.snapshot.connections.host_ports = wire
             .host_ports
             .into_iter()
@@ -2942,6 +3012,12 @@ mod tests {
                 storage_exhaustions: 8,
                 backend_capture_latency: Default::default(),
                 backend_playback_latency: Default::default(),
+                latency_diagnostics: shoop_audio_protocol::WireLatencyDiagnostics {
+                    unresolved_recipes: 2,
+                    applied_capture_plot: vec![4; 64],
+                    plot_len: 64,
+                    ..Default::default()
+                },
                 tracks: vec![
                     track(
                         1,
@@ -3042,6 +3118,14 @@ mod tests {
                             WirePortDirection::Input
                         },
                         role,
+                        capture_latency: WireLatencyObservation {
+                            minimum_frames: Some(index as u32),
+                            maximum_frames: Some(index as u32),
+                            certainty: WireLatencyCertainty::Exact,
+                            sample_rate: 48_000,
+                            revision: 3,
+                        },
+                        playback_latency: WireLatencyObservation::default(),
                     })
                     .collect(),
                 host_ports: vec![
@@ -3103,9 +3187,21 @@ mod tests {
         assert_eq!(snapshot.loops.len(), modes.len());
         assert_eq!(snapshot.composites.len(), 1);
         assert_eq!(snapshot.connections.application_ports.len(), roles.len());
+        assert_eq!(snapshot.port_latency.len(), roles.len());
+        assert_eq!(
+            snapshot.port_latency[&BackendPortId::from_raw(3)]
+                .capture
+                .minimum_frames,
+            Some(2)
+        );
         assert_eq!(snapshot.connections.host_ports.len(), 2);
         assert_eq!(snapshot.connections.confirmed_links.len(), 1);
         assert_eq!(snapshot.status.storage_exhaustions, 8);
+        assert_eq!(snapshot.status.latency_diagnostics.unresolved_recipes, 2);
+        assert_eq!(
+            snapshot.status.latency_diagnostics.applied_capture_plot[0],
+            4
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
