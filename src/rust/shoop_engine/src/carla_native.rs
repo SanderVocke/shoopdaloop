@@ -776,6 +776,10 @@ fn state_chain_label(chain_type: FXChainType) -> Result<&'static str> {
     }
 }
 
+pub fn encode_carla_project_state(chain_type: FXChainType, bytes: &[u8]) -> Result<String> {
+    encode_state(chain_type, bytes)
+}
+
 fn encode_state(chain_type: FXChainType, bytes: &[u8]) -> Result<String> {
     if bytes.len() > MAX_STATE_BYTES {
         bail!("Carla state exceeds {MAX_STATE_BYTES} bytes");
@@ -1409,7 +1413,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn pinned_adapter_reports_rack_exactly_and_patchbay_as_graph_dependent() {
+    fn pinned_adapter_reports_rack_and_reachable_patchbay_paths() {
         let _exclusive = lock_carla_test();
         let Ok(rack) = CarlaNativeHost::instantiate(FXChainType::CarlaRack, 48_000, 64) else {
             eprintln!("skipping Carla latency adapter test; runtime unavailable");
@@ -1427,9 +1431,10 @@ mod tests {
             let host = CarlaNativeHost::instantiate(chain_type, 48_000, 64).unwrap();
             assert_eq!(
                 host.latency_diagnostic(),
-                ProcessorLatencyDiagnostic::Unsupported
+                ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange
             );
-            assert!(host.latency().range.is_none());
+            assert_eq!(host.latency().range.unwrap().min(), 0);
+            assert_eq!(host.latency().range.unwrap().max(), 0);
         }
     }
 
@@ -1498,6 +1503,10 @@ mod tests {
                 host.idle();
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
+            host.idle();
+            let latency = host.latency();
+            assert_eq!(latency.range.unwrap().min(), 0);
+            assert_eq!(latency.range.unwrap().max(), 0);
             let state = host.save_state().unwrap();
             assert!(
                 loaded_processed,
@@ -1509,5 +1518,186 @@ mod tests {
             assert!(state_xml.contains("<Label>midithrough</Label>"));
             host.restore_state(&state).unwrap();
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn real_nonzero_rack_and_branched_patchbay_latency_match_impulse_paths() {
+        let explicit = std::env::var_os("SHOOP_CARLA_NONZERO_RACK_STATE_XML")
+            .zip(std::env::var_os("SHOOP_CARLA_BRANCHED_PATCHBAY_STATE_XML"));
+        let (rack_xml, patchbay_xml) = if let Some((rack_path, patchbay_path)) = explicit {
+            (
+                std::fs::read(rack_path).expect("read nonzero Rack Carla XML"),
+                std::fs::read(patchbay_path).expect("read branched Patchbay Carla XML"),
+            )
+        } else if let Some(binary) = std::env::var_os("SHOOP_CARLA_NONZERO_PLUGIN_BINARY") {
+            let binary = binary.to_string_lossy();
+            let plugin = format!(
+                r#"
+ <Plugin>
+  <Info>
+   <Type>LADSPA</Type>
+   <Name>Rubber Band Live Mono Pitch Shifter</Name>
+   <Binary>{binary}</Binary>
+   <Label>rubberband-live-pitchshifter-mono</Label>
+  </Info>
+  <Data><Active>Yes</Active><ControlChannel>1</ControlChannel><Options>0x0</Options></Data>
+ </Plugin>
+"#,
+            );
+            let rack = format!(
+                r#"<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE CARLA-PROJECT>
+<CARLA-PROJECT VERSION='2.5'>
+ <EngineSettings><ForceStereo>true</ForceStereo><PreferPluginBridges>false</PreferPluginBridges><PreferUiBridges>false</PreferUiBridges><UIsAlwaysOnTop>false</UIsAlwaysOnTop><MaxParameters>200</MaxParameters><UIBridgesTimeout>4000</UIBridgesTimeout></EngineSettings>
+{plugin}</CARLA-PROJECT>
+"#,
+            );
+            let fixture = include_str!("../test_data/carla_legacy_patchbay_loaded_state.json");
+            let encoded = decode_state(fixture, FXChainType::CarlaPatchbay).unwrap();
+            let mut patchbay = String::from_utf8(encoded).unwrap();
+            patchbay = patchbay.replace("\n <Patchbay>", &format!("{plugin}\n <Patchbay>"));
+            patchbay = patchbay.replace(
+                "<Target>Audio Gain (Stereo):input_2</Target>",
+                "<Target>Rubber Band Live Mono Pitch Shifter:Input</Target>",
+            );
+            patchbay = patchbay.replace(
+                "<Source>Audio Gain (Stereo):output_2</Source>\n   <Target>Audio Output:Right</Target>",
+                "<Source>Rubber Band Live Mono Pitch Shifter:Output</Source>\n   <Target>Audio Output:Right</Target>",
+            );
+            (rack.into_bytes(), patchbay.into_bytes())
+        } else {
+            eprintln!(
+                "skipping real nonzero Carla latency test; provide XML fixtures or SHOOP_CARLA_NONZERO_PLUGIN_BINARY"
+            );
+            return;
+        };
+        let _exclusive = lock_carla_test();
+
+        let mut rack = CarlaNativeHost::instantiate(FXChainType::CarlaRack, 48_000, 64).unwrap();
+        rack.restore_state(&encode_state(FXChainType::CarlaRack, &rack_xml).unwrap())
+            .unwrap();
+        rack.set_active(true);
+        let mut rack_latency = None;
+        for _ in 0..100 {
+            rack.process(64).unwrap();
+            rack.idle();
+            if rack.latency().range.is_some_and(|range| range.max() > 0) {
+                rack_latency = rack.latency().range;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let rack_latency = rack_latency.unwrap_or_else(|| {
+            let state = rack
+                .save_state()
+                .unwrap_or_else(|_| "unavailable".to_owned());
+            panic!(
+                "nonzero Rack plugin did not report latency; diagnostic={:?}; state={}",
+                rack.latency_diagnostic(),
+                decode_state(&state, FXChainType::CarlaRack)
+                    .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                    .unwrap_or_else(|_| state)
+            )
+        });
+        assert_eq!(rack_latency.min(), rack_latency.max());
+        let expected = rack_latency.max();
+        let mut peak = (0.0_f32, 0_u32);
+        let blocks = expected.div_ceil(64) + 8;
+        for block in 0..blocks {
+            for channel in 0..rack.info().audio_inputs {
+                rack.audio_input_mut(channel).unwrap()[..64].fill(0.0);
+            }
+            if block == 0 {
+                rack.audio_input_mut(0).unwrap()[0] = 1.0;
+            }
+            rack.process(64).unwrap();
+            for (offset, sample) in rack.audio_output(0).unwrap()[..64].iter().enumerate() {
+                if sample.abs() > peak.0 {
+                    peak = (sample.abs(), block * 64 + offset as u32);
+                }
+            }
+        }
+        assert!(peak.0 > 1.0e-6);
+        assert_eq!(peak.1, expected);
+        drop(rack);
+
+        let mut patchbay =
+            CarlaNativeHost::instantiate(FXChainType::CarlaPatchbay, 48_000, 64).unwrap();
+        patchbay
+            .restore_state(&encode_state(FXChainType::CarlaPatchbay, &patchbay_xml).unwrap())
+            .unwrap();
+        patchbay.set_active(true);
+        let mut range = None;
+        for _ in 0..100 {
+            patchbay.process(64).unwrap();
+            patchbay.idle();
+            if patchbay
+                .latency()
+                .range
+                .is_some_and(|value| value.max() > 0)
+            {
+                range = patchbay.latency().range;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let range = range.expect("branched Patchbay did not report reachable latency paths");
+        assert_eq!(range.min(), 0);
+        assert_eq!(range.max(), expected);
+        let mut routing_ready = false;
+        for _ in 0..100 {
+            for channel in 0..patchbay.info().audio_inputs {
+                patchbay.audio_input_mut(channel).unwrap()[..64].fill(0.25);
+            }
+            patchbay.process(64).unwrap();
+            if patchbay.audio_output(0).unwrap()[..64]
+                .iter()
+                .any(|sample| sample.abs() > 0.1)
+                && patchbay.audio_output(1).unwrap()[..64]
+                    .iter()
+                    .any(|sample| sample.abs() > 0.01)
+            {
+                routing_ready = true;
+                break;
+            }
+            patchbay.idle();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            routing_ready,
+            "branched Patchbay routes did not become active"
+        );
+        for _ in 0..(expected.div_ceil(64) + 4) {
+            for channel in 0..patchbay.info().audio_inputs {
+                patchbay.audio_input_mut(channel).unwrap()[..64].fill(0.0);
+            }
+            patchbay.process(64).unwrap();
+        }
+
+        let mut zero_onset = None;
+        let mut delayed_peak = (0.0_f32, 0_u32);
+        for block in 0..(expected.div_ceil(64) + 8) {
+            for channel in 0..patchbay.info().audio_inputs {
+                patchbay.audio_input_mut(channel).unwrap()[..64].fill(0.0);
+                if block == 0 {
+                    patchbay.audio_input_mut(channel).unwrap()[0] = 1.0;
+                }
+            }
+            patchbay.process(64).unwrap();
+            if zero_onset.is_none() {
+                zero_onset = patchbay.audio_output(0).unwrap()[..64]
+                    .iter()
+                    .position(|sample| sample.abs() > 1.0e-6)
+                    .map(|offset| block * 64 + offset as u32);
+            }
+            for (offset, sample) in patchbay.audio_output(1).unwrap()[..64].iter().enumerate() {
+                if sample.abs() > delayed_peak.0 {
+                    delayed_peak = (sample.abs(), block * 64 + offset as u32);
+                }
+            }
+        }
+        assert_eq!(zero_onset, Some(0));
+        assert!(delayed_peak.0 > 1.0e-6);
+        assert_eq!(delayed_peak.1, expected);
     }
 }

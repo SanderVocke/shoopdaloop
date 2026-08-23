@@ -1035,6 +1035,9 @@ mod tests {
                 sample_rate: 48_000,
                 revision: 9,
             },
+            variable_history: true,
+            history_revisions: 2,
+            changed_during_operation: true,
             alignment_regions: vec![AlignmentRegionDocument {
                 raw_start_frame: 0,
                 raw_end_frame: 3,
@@ -1097,6 +1100,162 @@ mod tests {
             validate_bundle(&stale_cue),
             Err(SessionError::Validation(message)) if message.contains("cue output")
         ));
+    }
+
+    fn replay_persisted_midi_actions(bundle: &SessionBundle) -> (Vec<u32>, Vec<u32>) {
+        use shoop_engine::channel_mode::ChannelMode;
+        use shoop_engine::loop_mode::LoopMode;
+        use shoop_engine::midi;
+        use shoop_engine::midi_channel::MidiChannel;
+        use shoop_engine::midi_storage::MidiStorageElem;
+
+        let track = &bundle.document.track_groups[0].tracks[0];
+        let loop_ = &track.loops[0];
+        let channel_document = loop_
+            .channels
+            .iter()
+            .find(|channel| channel.data_type == DataTypeDocument::Midi)
+            .unwrap();
+        let MediaPayload::Midi(media) = &bundle.media[channel_document.media_id.as_ref().unwrap()]
+        else {
+            panic!("MIDI payload missing")
+        };
+        let processor_delay = match track.latency_policy.components[0].value {
+            LatencyValueDocument::Manual { frames } => frames as u32,
+            _ => panic!("manual processor fixture expected"),
+        };
+        let events = media
+            .events
+            .iter()
+            .map(|event| MidiStorageElem::new(event.frame as u32, &event.data).unwrap())
+            .collect::<Vec<_>>();
+        let run = |role: ChannelMode, render_advance: u32| {
+            let mut channel = MidiChannel::with_capacity_elems(128, role);
+            channel.set_contents(
+                &events,
+                media.length_frames as u32,
+                Some(&media.start_state),
+            );
+            channel.set_start_offset(channel_document.start_offset_frames as i32);
+            channel
+                .set_capture_alignment_frames(
+                    channel_document.latency.capture_alignment_frames as i32,
+                )
+                .unwrap();
+            channel.set_render_advance_frames(render_advance).unwrap();
+            let mode = if role == ChannelMode::Dry {
+                LoopMode::PlayingDryThroughWet
+            } else {
+                LoopMode::Playing
+            };
+            let loop_length = loop_.length_frames as u32;
+            let mut observed = Vec::new();
+            for cycle in 0..2 {
+                let mut start = 0_u32;
+                while start < loop_length {
+                    let frames = 7.min(loop_length - start);
+                    channel.set_playback_buffer(frames);
+                    let mut output = Vec::with_capacity(16);
+                    channel
+                        .process(
+                            mode,
+                            LoopMode::Unknown,
+                            None,
+                            None,
+                            frames,
+                            start as i32,
+                            start + frames,
+                            loop_length,
+                            &[],
+                            &mut output,
+                        )
+                        .unwrap();
+                    observed.extend(output.into_iter().filter_map(|event| {
+                        (midi::is_note_on(event.data()) && event.data()[1] == 60)
+                            .then_some(cycle * loop_length + start + event.time + processor_delay)
+                    }));
+                    start += frames;
+                }
+            }
+            observed
+        };
+        let ordinary = run(ChannelMode::Direct, 0)
+            .into_iter()
+            .map(|frame| frame - processor_delay)
+            .collect();
+        let through_wet = run(ChannelMode::Dry, processor_delay);
+        (ordinary, through_wet)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn same_and_cross_rate_session_restore_replays_ordinary_and_dry_wet_timing() {
+        let mut bundle = direct_bundle(1);
+        let track = &mut bundle.document.track_groups[0].tracks[0];
+        track.latency_policy.components = vec![LatencyComponentPolicyDocument {
+            component: LatencyComponentDocument::Processor,
+            enabled: true,
+            value: LatencyValueDocument::Manual { frames: 3 },
+            range_selection: LatencyRangeSelectionDocument::Maximum,
+        }];
+        let loop_ = &mut track.loops[0];
+        loop_.length_frames = 32;
+        let channel = loop_
+            .channels
+            .iter_mut()
+            .find(|channel| channel.data_type == DataTypeDocument::Midi)
+            .unwrap();
+        channel.data_length_frames = 37;
+        channel.latency = TakeLatencyDocument {
+            capture_alignment_frames: 5,
+            retained_after_frames: 5,
+            observation: LatencyObservationDocument {
+                minimum_frames: Some(5),
+                maximum_frames: Some(5),
+                certainty: LatencyCertaintyDocument::Exact,
+                sample_rate: 48_000,
+                revision: 1,
+            },
+            alignment_regions: vec![AlignmentRegionDocument {
+                raw_start_frame: 0,
+                raw_end_frame: 37,
+                capture_alignment_frames: 5,
+                observation_revision: 1,
+            }],
+            ..Default::default()
+        };
+        bundle.media.insert(
+            "midi_main".to_owned(),
+            MediaPayload::Midi(ExactMidi {
+                sample_rate: 48_000,
+                length_frames: 37,
+                start_state: vec![vec![0xB0, 64, 127]],
+                events: vec![
+                    ExactMidiEvent {
+                        frame: 12,
+                        order: 0,
+                        data: vec![0x90, 60, 100],
+                    },
+                    ExactMidiEvent {
+                        frame: 12,
+                        order: 1,
+                        data: vec![0x80, 60, 0],
+                    },
+                ],
+                latency: channel.latency.clone(),
+            }),
+        );
+        let restored = decode_session(&encode_session(&bundle, "timing-replay").unwrap()).unwrap();
+        let (ordinary, dry_wet) = replay_persisted_midi_actions(&restored);
+        assert_eq!(ordinary, vec![7, 39]);
+        assert_eq!(dry_wet, ordinary);
+
+        let converted = resample_session(&restored, 32_000).unwrap();
+        let restored =
+            decode_session(&encode_session(&converted, "timing-replay-resampled").unwrap())
+                .unwrap();
+        let (ordinary, dry_wet) = replay_persisted_midi_actions(&restored);
+        assert_eq!(ordinary, vec![5, 27]);
+        assert_eq!(dry_wet, ordinary);
     }
 
     #[shoop_wasm_test_support::shoop_test]

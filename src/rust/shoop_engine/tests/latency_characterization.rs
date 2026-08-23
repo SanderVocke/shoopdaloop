@@ -3,7 +3,9 @@ use shoop_engine::audio_midi_loop::AudioMidiLoop;
 use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
-use shoop_engine::latency_runtime::{RetainedLatencySelection, RuntimeLatencyObservation};
+use shoop_engine::latency_runtime::{
+    RetainedLatencySelection, RuntimeLatencyObservation, RuntimeLatencyRecipe,
+};
 use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi;
 use shoop_engine::midi_channel::MidiChannel;
@@ -21,6 +23,43 @@ use latency_support::{
     DeterministicDelayedProcessor, DeterministicTimingConfig, IdentifiedAudioEvent,
     IdentifiedMidiEvent,
 };
+
+fn runtime_render_recipe(
+    operation: shoop_latency::LatencyOperationKind,
+    observed_frames: u32,
+    selected_frames: u32,
+    revision: u64,
+) -> RuntimeLatencyRecipe {
+    let observation = shoop_latency::LatencyObservation::new(
+        Some(shoop_latency::LatencyRangeFrames::new(observed_frames, observed_frames).unwrap()),
+        shoop_latency::LatencyCertainty::Exact,
+        48_000,
+        revision,
+        shoop_latency::SourceIdentity::new(format!("matrix-processor-{revision}")).unwrap(),
+        Some(
+            shoop_latency::LatencyIntervalIdentity::new(format!(
+                "matrix-processor-interval-{revision}"
+            ))
+            .unwrap(),
+        ),
+    )
+    .unwrap();
+    let resolved = shoop_latency::resolve_latency_recipe(
+        operation,
+        shoop_latency::RecordingReference::ExternalWorld,
+        &[shoop_latency::LatencyComponentInput {
+            kind: shoop_latency::LatencyComponentKind::Processor,
+            observation,
+            policy: shoop_latency::LatencyComponentPolicy {
+                enabled: true,
+                value_mode: shoop_latency::LatencyValueMode::Manual(selected_frames),
+                range_selection: shoop_latency::LatencyRangeSelection::Maximum,
+            },
+        }],
+    )
+    .unwrap();
+    RuntimeLatencyRecipe::from_resolved(&resolved, revision)
+}
 
 fn process_audio_callback(
     loop_: &mut AudioMidiLoop,
@@ -206,6 +245,318 @@ fn current_grab_adopts_raw_history_across_callback_boundaries() {
     assert_eq!(grabbed.mode(), LoopMode::Playing);
     assert_eq!(grabbed.length(), source.len() as u32);
     assert_eq!(grabbed.audio_channel(0).unwrap().data(), source);
+}
+
+fn process_midi_callback(
+    loop_: &mut AudioMidiLoop,
+    dry_channel: usize,
+    processor: &mut DeterministicDelayedProcessor,
+    callback_start: u64,
+    callback_frames: u32,
+) {
+    let mut processed = 0_u32;
+    while processed < callback_frames {
+        let available = callback_frames - processed;
+        loop_
+            .midi_channel_mut(dry_channel)
+            .expect("dry MIDI channel")
+            .set_playback_buffer(available);
+        loop_.resync_poi();
+        let frames = loop_.next_poi().map_or(available, |poi| poi.min(available));
+        if frames == 0 {
+            loop_.handle_poi();
+            continue;
+        }
+        let mut outputs = [Vec::with_capacity(32)];
+        loop_
+            .process(frames, &[&[][..]], &mut outputs)
+            .expect("process MIDI loop");
+        let hit_poi = loop_.next_poi() == Some(0);
+        if hit_poi {
+            loop_.handle_poi();
+        }
+        let silence = vec![0.0; frames as usize];
+        processor.process(callback_start + u64::from(processed), &silence, &outputs[0]);
+        processed += frames;
+    }
+}
+
+fn dry_through_wet_audio_oracle(
+    callback_size: u32,
+    loop_length: u32,
+    event_frame: u32,
+    actual_processor_delay: u32,
+    selected_render_advance: u32,
+    take_capture_alignment: u32,
+    cycles: u32,
+) -> Vec<u64> {
+    let audio_id = 0x3f80_0062;
+    let sample = identified_audio_sample(audio_id);
+    let mut loop_ = AudioMidiLoop::default();
+    let dry = loop_.add_audio_channel(callback_size.max(1) as usize, ChannelMode::Dry);
+    let mut data = vec![0.0; (loop_length + take_capture_alignment) as usize];
+    data[(event_frame + take_capture_alignment) as usize] = sample;
+    loop_.audio_channel_mut(dry).unwrap().load_data(&data);
+    loop_
+        .audio_channel_mut(dry)
+        .unwrap()
+        .set_capture_alignment_frames(take_capture_alignment as i32)
+        .unwrap();
+    loop_.set_length(loop_length);
+    loop_.set_pending_latency_recipe(Some(runtime_render_recipe(
+        shoop_latency::LatencyOperationKind::DryThroughWet,
+        actual_processor_delay,
+        selected_render_advance,
+        1,
+    )));
+    loop_.latch_latency_recipes(0);
+    loop_.set_pending_latency_recipe(None);
+    loop_.set_mode(LoopMode::PlayingDryThroughWet);
+    assert_eq!(
+        loop_.audio_channel(dry).unwrap().render_advance_frames(),
+        selected_render_advance
+    );
+    let mut processor = DeterministicDelayedProcessor::new(actual_processor_delay, 0);
+    pump_callbacks(
+        u64::from(loop_length) * u64::from(cycles),
+        callback_size,
+        |start, frames| {
+            assert_eq!(
+                loop_.audio_channel(dry).unwrap().render_advance_frames(),
+                selected_render_advance
+            );
+            process_audio_callback(&mut loop_, dry, None, &mut processor, start, frames);
+        },
+    );
+    processor
+        .observations()
+        .audio_output
+        .iter()
+        .filter(|(id, frame)| *id == audio_id && *frame >= u64::from(selected_render_advance))
+        .map(|(_, frame)| *frame)
+        .collect()
+}
+
+fn dry_through_wet_midi_oracle(
+    callback_size: u32,
+    loop_length: u32,
+    event_frame: u32,
+    actual_processor_delay: u32,
+    selected_render_advance: u32,
+    cycles: u32,
+) -> Vec<u64> {
+    let note = 71;
+    let mut loop_ = AudioMidiLoop::default();
+    let dry = loop_.add_midi_channel(128, ChannelMode::Dry);
+    loop_.midi_channel_mut(dry).unwrap().set_contents(
+        &[
+            MidiStorageElem::new(event_frame, &midi::note_on(0, note, 100)).unwrap(),
+            MidiStorageElem::new(event_frame, &midi::note_off(0, note, 0)).unwrap(),
+        ],
+        loop_length,
+        Some(&[midi::cc(0, 64, 127).to_vec()]),
+    );
+    loop_.set_length(loop_length);
+    loop_.set_pending_latency_recipe(Some(runtime_render_recipe(
+        shoop_latency::LatencyOperationKind::DryThroughWet,
+        actual_processor_delay,
+        selected_render_advance,
+        2,
+    )));
+    loop_.latch_latency_recipes(0);
+    loop_.set_pending_latency_recipe(None);
+    loop_.set_mode(LoopMode::PlayingDryThroughWet);
+    assert_eq!(
+        loop_.midi_channel(dry).unwrap().render_advance_frames(),
+        selected_render_advance
+    );
+    let mut processor = DeterministicDelayedProcessor::new(actual_processor_delay, 0);
+    pump_callbacks(
+        u64::from(loop_length) * u64::from(cycles),
+        callback_size,
+        |start, frames| {
+            assert_eq!(
+                loop_.midi_channel(dry).unwrap().render_advance_frames(),
+                selected_render_advance
+            );
+            process_midi_callback(&mut loop_, dry, &mut processor, start, frames);
+        },
+    );
+    processor
+        .observations()
+        .midi_output
+        .iter()
+        .filter(|(data, frame)| {
+            midi::is_note_on(data)
+                && data[1] == note
+                && *frame >= u64::from(selected_render_advance)
+        })
+        .map(|(_, frame)| *frame)
+        .collect()
+}
+
+fn process_midi_synth_callback(
+    loop_: &mut AudioMidiLoop,
+    dry_midi: usize,
+    wet_audio: usize,
+    processor: &mut DeterministicDelayedProcessor,
+    callback_start: u64,
+    callback_frames: u32,
+    synth_sample: f32,
+) {
+    let mut processed = 0_u32;
+    while processed < callback_frames {
+        let available = callback_frames - processed;
+        loop_
+            .midi_channel_mut(dry_midi)
+            .unwrap()
+            .set_playback_buffer(available);
+        loop_
+            .audio_channel_mut(wet_audio)
+            .unwrap()
+            .set_recording_buffer_size(available as usize);
+        loop_.resync_poi();
+        let frames = loop_.next_poi().map_or(available, |poi| poi.min(available));
+        if frames == 0 {
+            loop_.handle_poi();
+            continue;
+        }
+        let mut midi_outputs = [Vec::with_capacity(32)];
+        loop_
+            .process(frames, &[&[][..]], &mut midi_outputs)
+            .unwrap();
+        if loop_.next_poi() == Some(0) {
+            loop_.handle_poi();
+        }
+        let silence = vec![0.0; frames as usize];
+        let (_, processed_midi) = processor.process(
+            callback_start + u64::from(processed),
+            &silence,
+            &midi_outputs[0],
+        );
+        let mut wet = vec![0.0; frames as usize];
+        for event in processed_midi {
+            if midi::is_note_on(event.data()) {
+                wet[event.time as usize] = synth_sample;
+            }
+        }
+        loop_
+            .audio_channel_mut(wet_audio)
+            .unwrap()
+            .finalize_process(&wet, &mut []);
+        processed += frames;
+    }
+}
+
+fn dry_midi_into_wet_audio_oracle(
+    callback_size: u32,
+    loop_length: u32,
+    event_frame: u32,
+    actual_processor_delay: u32,
+    selected_render_advance: u32,
+) -> (Vec<usize>, Vec<(Vec<u8>, u64)>) {
+    let sample = identified_audio_sample(0x3f80_0064);
+    let note = 72;
+    let mut loop_ = AudioMidiLoop::default();
+    let wet = loop_.add_audio_channel(callback_size.max(1) as usize, ChannelMode::Wet);
+    let dry = loop_.add_midi_channel(256, ChannelMode::Dry);
+    loop_
+        .audio_channel_mut(wet)
+        .unwrap()
+        .load_data(&vec![0.0; loop_length as usize]);
+    loop_.midi_channel_mut(dry).unwrap().set_contents(
+        &[
+            MidiStorageElem::new(event_frame, &midi::cc(0, 64, 127)).unwrap(),
+            MidiStorageElem::new(event_frame, &midi::note_on(0, note, 100)).unwrap(),
+            MidiStorageElem::new(event_frame, &midi::note_off(0, note, 0)).unwrap(),
+        ],
+        loop_length,
+        Some(&[midi::program_change(0, 4).to_vec()]),
+    );
+    loop_.set_length(loop_length);
+    loop_.set_pending_latency_recipe(Some(runtime_render_recipe(
+        shoop_latency::LatencyOperationKind::RecordDryIntoWet,
+        actual_processor_delay,
+        selected_render_advance,
+        4,
+    )));
+    loop_.set_mode(LoopMode::RecordingDryIntoWet);
+    let mut processor = DeterministicDelayedProcessor::new(actual_processor_delay, 0);
+    pump_callbacks(
+        u64::from(loop_length) * 3 + u64::from(selected_render_advance),
+        callback_size,
+        |start, frames| {
+            process_midi_synth_callback(
+                &mut loop_,
+                dry,
+                wet,
+                &mut processor,
+                start,
+                frames,
+                sample,
+            );
+        },
+    );
+    let frames = loop_
+        .audio_channel(wet)
+        .unwrap()
+        .data()
+        .iter()
+        .enumerate()
+        .filter_map(|(frame, value)| (*value == sample).then_some(frame))
+        .collect();
+    (frames, processor.observations().midi_output.clone())
+}
+
+fn dry_into_wet_audio_oracle(
+    callback_size: u32,
+    loop_length: u32,
+    event_frame: u32,
+    actual_processor_delay: u32,
+    selected_render_advance: u32,
+) -> (Vec<usize>, bool, i32) {
+    let audio_id = 0x3f80_0063;
+    let sample = identified_audio_sample(audio_id);
+    let mut loop_ = AudioMidiLoop::default();
+    let dry = loop_.add_audio_channel(callback_size.max(1) as usize, ChannelMode::Dry);
+    let wet = loop_.add_audio_channel(callback_size.max(1) as usize, ChannelMode::Wet);
+    let mut dry_data = vec![0.0; loop_length as usize];
+    dry_data[event_frame as usize] = sample;
+    loop_.audio_channel_mut(dry).unwrap().load_data(&dry_data);
+    loop_
+        .audio_channel_mut(wet)
+        .unwrap()
+        .load_data(&vec![0.0; loop_length as usize]);
+    loop_.set_length(loop_length);
+    loop_.set_pending_latency_recipe(Some(runtime_render_recipe(
+        shoop_latency::LatencyOperationKind::RecordDryIntoWet,
+        actual_processor_delay,
+        selected_render_advance,
+        3,
+    )));
+    loop_.set_mode(LoopMode::RecordingDryIntoWet);
+    let mut processor = DeterministicDelayedProcessor::new(actual_processor_delay, 0);
+    pump_callbacks(
+        u64::from(loop_length) * 3 + u64::from(selected_render_advance),
+        callback_size,
+        |start, frames| {
+            process_audio_callback(&mut loop_, dry, Some(wet), &mut processor, start, frames);
+        },
+    );
+    let wet_channel = loop_.audio_channel(wet).unwrap();
+    let frames = wet_channel
+        .data()
+        .iter()
+        .enumerate()
+        .filter_map(|(frame, value)| (*value == sample).then_some(frame))
+        .collect();
+    let applied = wet_channel.latched_latency_recipe().is_some_and(|latched| {
+        latched
+            .recipe
+            .components()
+            .all(|component| component.applied_during_render)
+    });
+    (frames, applied, wet_channel.capture_alignment_frames())
 }
 
 fn latency_grab_fixture(
@@ -529,6 +880,352 @@ fn insufficient_latency_grab_margin_fails_before_target_mutation() {
             .data(),
         vec![9.0]
     );
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn planned_render_matrix_dispatches_exactly_before_public_transition() {
+    const LOOP_LENGTH: u32 = 11;
+    for advance in [0_u32, 1, 10, 11, 12, 25] {
+        let delay_cycles = advance.saturating_sub(1) / LOOP_LENGTH;
+        let target = (delay_cycles + 1) * LOOP_LENGTH;
+        let audio_id = 0x3f80_0080 + advance;
+        let mut loop_ = AudioMidiLoop::default();
+        let dry = loop_.add_audio_channel(4, ChannelMode::Dry);
+        let mut data = vec![0.0; LOOP_LENGTH as usize];
+        data[0] = identified_audio_sample(audio_id);
+        loop_.audio_channel_mut(dry).unwrap().load_data(&data);
+        loop_.set_length(LOOP_LENGTH);
+        loop_.set_pending_latency_recipe(Some(runtime_render_recipe(
+            shoop_latency::LatencyOperationKind::DryThroughWet,
+            advance,
+            advance,
+            100 + u64::from(advance),
+        )));
+        loop_.set_sync_source(Some(shoop_engine::basic_loop::SyncSourceState {
+            mode: LoopMode::Playing,
+            triggering_now: false,
+            next_trigger_eta: Some(LOOP_LENGTH),
+            position: 0,
+            length: LOOP_LENGTH,
+        }));
+        loop_.plan_transition(LoopMode::PlayingDryThroughWet, Some(delay_cycles), None);
+        let mut processor = DeterministicDelayedProcessor::new(advance, 0);
+        let mut modes_at_frame = Vec::new();
+        for global in 0..target + LOOP_LENGTH {
+            let position = global % LOOP_LENGTH;
+            loop_.set_sync_source(Some(shoop_engine::basic_loop::SyncSourceState {
+                mode: LoopMode::Playing,
+                triggering_now: false,
+                next_trigger_eta: Some(LOOP_LENGTH - position),
+                position,
+                length: LOOP_LENGTH,
+            }));
+            modes_at_frame.push(loop_.mode());
+            process_audio_callback(&mut loop_, dry, None, &mut processor, u64::from(global), 1);
+            if (global + 1) % LOOP_LENGTH == 0 {
+                loop_.set_sync_source(Some(shoop_engine::basic_loop::SyncSourceState {
+                    mode: LoopMode::Playing,
+                    triggering_now: true,
+                    next_trigger_eta: Some(LOOP_LENGTH),
+                    position: 0,
+                    length: LOOP_LENGTH,
+                }));
+                loop_.handle_sync();
+            }
+        }
+        let dispatch = processor
+            .observations()
+            .audio_dispatch
+            .iter()
+            .find(|(id, _)| *id == audio_id)
+            .unwrap()
+            .1;
+        let output = processor
+            .observations()
+            .audio_output
+            .iter()
+            .find(|(id, frame)| *id == audio_id && *frame >= u64::from(target))
+            .unwrap()
+            .1;
+        assert_eq!(dispatch, u64::from(target - advance));
+        assert_eq!(output, u64::from(target));
+        if advance > 0 {
+            assert_eq!(
+                modes_at_frame[(target - advance) as usize],
+                LoopMode::Stopped
+            );
+        }
+        assert_eq!(loop_.mode(), LoopMode::PlayingDryThroughWet);
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn dry_through_wet_component_matrix_matches_audio_midi_processor_oracles() {
+    for callback_size in [1_u32, 7, 64, 127] {
+        let loop_length = callback_size.saturating_add(11).max(12);
+        let event_frames = [0, 1, loop_length / 2, loop_length - 1];
+        for actual in [1, 3, callback_size + 1, loop_length + 1] {
+            let mut selected_values = vec![0, actual, actual.saturating_add(2)];
+            selected_values.push(actual.saturating_sub(1));
+            selected_values.sort_unstable();
+            selected_values.dedup();
+            for event_frame in event_frames {
+                for selected in selected_values.iter().copied() {
+                    let cycles = 3;
+                    let total = u64::from(loop_length) * u64::from(cycles);
+                    let expected = (0..=cycles)
+                        .map(|cycle| {
+                            u64::from(event_frame)
+                                + u64::from(actual)
+                                + u64::from(cycle) * u64::from(loop_length)
+                        })
+                        .filter(|frame| *frame >= u64::from(selected) && *frame < total)
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        dry_through_wet_audio_oracle(
+                            callback_size,
+                            loop_length,
+                            event_frame,
+                            actual,
+                            selected,
+                            0,
+                            cycles,
+                        ),
+                        expected,
+                        "audio B={callback_size} L={loop_length} E={event_frame} actual={actual} selected={selected}",
+                    );
+                    assert_eq!(
+                        dry_through_wet_midi_oracle(
+                            callback_size,
+                            loop_length,
+                            event_frame,
+                            actual,
+                            selected,
+                            cycles,
+                        ),
+                        expected,
+                        "MIDI B={callback_size} L={loop_length} E={event_frame} actual={actual} selected={selected}",
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn dry_into_wet_component_and_boundary_matrix_writes_one_canonical_event() {
+    for callback_size in [1_u32, 7, 64, 127] {
+        let loop_length = callback_size.saturating_add(9).max(10);
+        for event_frame in [0, 1, callback_size.min(loop_length - 1), loop_length - 1] {
+            for actual in [1, 3, callback_size + 1, loop_length + 1] {
+                let mut selected_values = vec![0, actual, actual.saturating_add(1)];
+                selected_values.push(actual.saturating_sub(1));
+                selected_values.sort_unstable();
+                selected_values.dedup();
+                for selected in selected_values {
+                    let expected = (i64::from(event_frame) + i64::from(actual)
+                        - i64::from(selected))
+                    .rem_euclid(i64::from(loop_length)) as usize;
+                    let (frames, applied_during_render, remaining_alignment) =
+                        dry_into_wet_audio_oracle(
+                            callback_size,
+                            loop_length,
+                            event_frame,
+                            actual,
+                            selected,
+                        );
+                    assert_eq!(
+                        frames,
+                        vec![expected],
+                        "B={callback_size} L={loop_length} E={event_frame} actual={actual} selected={selected}",
+                    );
+                    assert!(applied_during_render);
+                    assert_eq!(remaining_alignment, 0);
+                }
+            }
+        }
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn dry_midi_into_wet_audio_preserves_state_order_and_canonical_timing() {
+    for callback_size in [1_u32, 7, 64] {
+        let loop_length = callback_size.saturating_add(9).max(10);
+        for event_frame in [0, 1, loop_length - 1] {
+            for actual in [1, 3, callback_size + 1] {
+                for selected in [0, actual, actual.saturating_add(1)] {
+                    let expected = (i64::from(event_frame) + i64::from(actual)
+                        - i64::from(selected))
+                    .rem_euclid(i64::from(loop_length)) as usize;
+                    let (frames, midi_output) = dry_midi_into_wet_audio_oracle(
+                        callback_size,
+                        loop_length,
+                        event_frame,
+                        actual,
+                        selected,
+                    );
+                    assert_eq!(frames, vec![expected]);
+                    let processor_frame = u64::from(event_frame + actual) % u64::from(loop_length);
+                    let same_frame = midi_output
+                        .iter()
+                        .filter(|(_, frame)| *frame % u64::from(loop_length) == processor_frame)
+                        .map(|(data, _)| data[0] & 0xf0)
+                        .collect::<Vec<_>>();
+                    assert!(same_frame
+                        .windows(3)
+                        .any(|window| window == [0xB0, 0x90, 0x80]));
+                }
+            }
+        }
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn dry_through_wet_start_steady_wrap_stop_restart_and_parallel_loops_are_exact() {
+    const LOOP_LENGTH: u32 = 13;
+    const CALLBACK: u32 = 5;
+    const DELAY: u32 = 3;
+    let mut loops = [AudioMidiLoop::default(), AudioMidiLoop::default()];
+    let mut processors = [
+        DeterministicDelayedProcessor::new(DELAY, 0),
+        DeterministicDelayedProcessor::new(DELAY, 0),
+    ];
+    let mut channels = [0_usize; 2];
+    for (index, loop_) in loops.iter_mut().enumerate() {
+        let channel = loop_.add_audio_channel(4, ChannelMode::Dry);
+        channels[index] = channel;
+        let mut data = vec![0.0; LOOP_LENGTH as usize];
+        data[4 + index] = identified_audio_sample(0x3f80_0070 + index as u32);
+        loop_.audio_channel_mut(channel).unwrap().load_data(&data);
+        loop_.set_length(LOOP_LENGTH);
+        loop_.set_pending_latency_recipe(Some(runtime_render_recipe(
+            shoop_latency::LatencyOperationKind::DryThroughWet,
+            DELAY,
+            DELAY,
+            10 + index as u64,
+        )));
+        loop_.latch_latency_recipes(0);
+        loop_.set_pending_latency_recipe(None);
+        loop_.set_mode(LoopMode::PlayingDryThroughWet);
+    }
+    let mut pump_cycle = |cycle: u32, loops: &mut [AudioMidiLoop; 2]| {
+        pump_callbacks(u64::from(LOOP_LENGTH), CALLBACK, |start, frames| {
+            for index in 0..2 {
+                process_audio_callback(
+                    &mut loops[index],
+                    channels[index],
+                    None,
+                    &mut processors[index],
+                    u64::from(cycle * LOOP_LENGTH) + start,
+                    frames,
+                );
+            }
+        });
+    };
+    pump_cycle(0, &mut loops);
+    loops[0].set_mode(LoopMode::Stopped);
+    pump_cycle(1, &mut loops);
+    loops[0].set_pending_latency_recipe(Some(runtime_render_recipe(
+        shoop_latency::LatencyOperationKind::DryThroughWet,
+        DELAY,
+        DELAY,
+        20,
+    )));
+    loops[0].latch_latency_recipes(u64::from(2 * LOOP_LENGTH));
+    loops[0].set_pending_latency_recipe(None);
+    loops[0].set_mode(LoopMode::PlayingDryThroughWet);
+    pump_cycle(2, &mut loops);
+
+    assert_eq!(
+        processors[0]
+            .observations()
+            .audio_output
+            .iter()
+            .map(|(_, frame)| *frame)
+            .collect::<Vec<_>>(),
+        vec![7, 2 * u64::from(LOOP_LENGTH) + 7]
+    );
+    assert_eq!(
+        processors[1]
+            .observations()
+            .audio_output
+            .iter()
+            .map(|(_, frame)| *frame)
+            .collect::<Vec<_>>(),
+        vec![
+            8,
+            u64::from(LOOP_LENGTH) + 8,
+            2 * u64::from(LOOP_LENGTH) + 8
+        ]
+    );
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn frozen_take_has_identical_logical_times_before_current_render_advance() {
+    for callback_size in [1_u32, 7, 64] {
+        let loop_length = callback_size + 11;
+        let event_frame = loop_length - 2;
+        let capture_alignment = callback_size + 1;
+        let processor_delay = callback_size + 3;
+        let ordinary = render_audio_oracle(
+            ChannelMode::Direct,
+            callback_size,
+            loop_length,
+            event_frame,
+            capture_alignment as i32,
+            capture_alignment as i32,
+        );
+        let through_wet = dry_through_wet_audio_oracle(
+            callback_size,
+            loop_length,
+            event_frame,
+            processor_delay,
+            processor_delay,
+            capture_alignment,
+            3,
+        );
+        let relative_to_transition = through_wet
+            .into_iter()
+            .map(|frame| frame - u64::from(processor_delay))
+            .take(ordinary.len())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            relative_to_transition,
+            ordinary.into_iter().map(u64::from).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn media_lead_in_preplay_boundary_then_take_alignment_are_independent() {
+    let mut channel = AudioChannel::with_chunk_size(4, ChannelMode::Direct);
+    channel.load_data(&(0..16).map(|frame| frame as f32).collect::<Vec<_>>());
+    channel.set_start_offset(5);
+    channel.set_pre_play_samples(3);
+    channel.set_capture_alignment_frames(2).unwrap();
+
+    channel.set_playback_buffer_size(1);
+    channel
+        .process(
+            LoopMode::Stopped,
+            LoopMode::Playing,
+            Some(0),
+            Some(3),
+            1,
+            0,
+            8,
+        )
+        .unwrap();
+    let mut boundary = [0.0];
+    channel.finalize_process(&[], &mut boundary);
+    assert_eq!(boundary, [4.0]);
+    channel.set_playback_buffer_size(1);
+    channel
+        .process(LoopMode::Playing, LoopMode::Unknown, None, None, 1, 0, 8)
+        .unwrap();
+    let mut logical_start = [0.0];
+    channel.finalize_process(&[], &mut logical_start);
+    assert_eq!(logical_start, [7.0]);
 }
 
 #[shoop_wasm_test_support::shoop_test]

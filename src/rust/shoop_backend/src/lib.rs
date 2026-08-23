@@ -3188,12 +3188,20 @@ impl EngineBackend {
                 shoop_latency::LatencyComponentKind::Manual => Default::default(),
             };
             let identity = format!("track:{}:{kind:?}", track_id.raw());
+            let interval = if kind == shoop_latency::LatencyComponentKind::BackendBuffering
+                && self.port_model == EnginePortModel::Physical
+                && external_capture.range.is_some()
+            {
+                format!("track:{}:ExternalCapture", track_id.raw())
+            } else {
+                identity.clone()
+            };
             inputs.push(shoop_latency::LatencyComponentInput {
                 kind,
                 observation: domain_latency_observation(
                     observation,
-                    identity.clone(),
-                    observation.range.map(|_| identity),
+                    identity,
+                    observation.range.map(|_| interval),
                 )?,
                 policy: domain_latency_policy(component),
             });
@@ -8597,6 +8605,78 @@ mod tests {
             - 1)
             % shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES;
         assert!(diagnostics.active_postroll_plot[latest] > 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn full_provider_capture_path_rejects_overlapping_backend_component() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "overlap-policy".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let input = track
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioInput)
+            .unwrap();
+        backend
+            .session
+            .port(backend.connection_ports[&input.id].session_port)
+            .unwrap()
+            .audio()
+            .unwrap()
+            .publish_capture_latency(
+                shoop_engine::RuntimeLatencyObservation::exact(5, 48_000, 1).unwrap(),
+            );
+        backend.backend_capture_latency =
+            shoop_engine::RuntimeLatencyObservation::exact(2, 48_000, 1).unwrap();
+        backend.port_model = EnginePortModel::Physical;
+        let component = |kind| shoop_app_api::LatencyComponentPolicyState {
+            kind,
+            enabled: true,
+            value_mode: shoop_app_api::LatencyValueMode::Automatic,
+            range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
+        };
+        backend
+            .set_track_latency_policy(
+                track.track_id,
+                &TrackLatencyPolicyState {
+                    components: Arc::from([
+                        component(shoop_app_api::LatencyComponentKind::ExternalCapture),
+                        component(shoop_app_api::LatencyComponentKind::BackendBuffering),
+                    ]),
+                    revision: 1,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Replacing, None)
+            .unwrap();
+        let channel = backend.loop_channels[&track.loops[0]].audio[0];
+        let recipe = backend
+            .session
+            .audio_channel(channel)
+            .unwrap()
+            .pending_latency_recipe()
+            .unwrap();
+        assert_eq!(recipe.total_frames, None);
+        assert_eq!(
+            recipe
+                .components()
+                .filter(|component| {
+                    component.application == shoop_latency::ComponentApplication::Unresolved
+                })
+                .count(),
+            2
+        );
+        let diagnostics = backend.poll().unwrap().status.latency_diagnostics;
+        assert_eq!(diagnostics.unresolved_recipes, 1);
+        assert_eq!(diagnostics.provider_failures, 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

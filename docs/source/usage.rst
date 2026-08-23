@@ -7,6 +7,7 @@ contains session, connection, and application settings actions.
 
 .. include:: usage.loopcontrols.rst
 .. include:: usage.trackcontrols.rst
+.. include:: usage.latency_compensation.rst
 .. include:: usage.carla_subprocess.rst
 .. include:: usage.midicontrol.rst
 .. include:: usage.keyboard.rst

@@ -31,6 +31,12 @@ pub enum LoopError {
     Midi(#[from] MidiChannelError),
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProcessorBoundaryPolicy {
+    pub warmup_frames: u32,
+    pub tail_frames: u32,
+}
+
 #[derive(Debug, Default)]
 pub struct AudioMidiLoop {
     loop_: BasicLoop,
@@ -44,6 +50,8 @@ pub struct AudioMidiLoop {
     deferred_render_preroll_remaining: u32,
     deferred_for_finalization: bool,
     deferred_finalization_has_processed: bool,
+    processor_boundary_policy: ProcessorBoundaryPolicy,
+    processor_tail_remaining_frames: u32,
 }
 
 impl AudioMidiLoop {
@@ -251,6 +259,37 @@ impl AudioMidiLoop {
         self.deferred_latency_mode
     }
 
+    pub fn set_processor_boundary_policy(
+        &mut self,
+        policy: ProcessorBoundaryPolicy,
+    ) -> Result<(), shoop_latency::LatencyDomainError> {
+        for frames in [policy.warmup_frames, policy.tail_frames] {
+            if frames > shoop_latency::MAX_COMPENSATION_FRAMES {
+                return Err(shoop_latency::LatencyDomainError::ValueExceedsMaximum(
+                    frames,
+                ));
+            }
+        }
+        self.processor_boundary_policy = policy;
+        Ok(())
+    }
+
+    pub fn processor_boundary_policy(&self) -> ProcessorBoundaryPolicy {
+        self.processor_boundary_policy
+    }
+
+    pub fn processor_tail_remaining_frames(&self) -> u32 {
+        self.processor_tail_remaining_frames
+    }
+
+    pub fn processor_boundary_work_active(&self) -> bool {
+        self.deferred_render_preroll_remaining > 0
+            || self.processor_tail_remaining_frames > 0
+            || self
+                .planned_render_schedule()
+                .is_some_and(|(_, eta, required)| eta <= required)
+    }
+
     pub fn compensated_playback_ready(&self) -> bool {
         let logical_length = self.length();
         self.audio_channels.iter().all(|channel| {
@@ -338,6 +377,9 @@ impl AudioMidiLoop {
             )
             .max()
             .unwrap_or(0)
+            .checked_add(self.processor_boundary_policy.warmup_frames)
+            .filter(|frames| *frames <= shoop_latency::MAX_COMPENSATION_FRAMES)
+            .unwrap_or(shoop_latency::MAX_COMPENSATION_FRAMES)
     }
 
     fn defer_render_mode(&mut self, mode: LoopMode, frames: u32) {
@@ -523,6 +565,16 @@ impl AudioMidiLoop {
         self.resync_poi();
     }
     pub fn set_mode(&mut self, mode: LoopMode) {
+        let previous_mode = self.mode();
+        if matches!(
+            previous_mode,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) && !matches!(
+            mode,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) {
+            self.processor_tail_remaining_frames = self.processor_boundary_policy.tail_frames;
+        }
         let content_edit = matches!(
             mode,
             LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
@@ -713,6 +765,7 @@ impl AudioMidiLoop {
         midi_in: &[I],
         midi_out: &mut [Vec<MidiStorageElem>],
     ) -> Result<(), LoopError> {
+        let boundary_mode_before = self.mode();
         if let Some(mode) = self.deferred_latency_mode {
             let playback_ready = mode != LoopMode::Playing || self.compensated_playback_ready();
             let finalization_ready = !self.deferred_for_finalization
@@ -853,6 +906,23 @@ impl AudioMidiLoop {
             self.loop_.set_length(retained);
             self.loop_.set_position(0);
             self.loop_.set_mode(LoopMode::Stopped);
+        }
+        let boundary_mode_after = self.mode();
+        if matches!(
+            boundary_mode_before,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) && !matches!(
+            boundary_mode_after,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) {
+            self.processor_tail_remaining_frames = self.processor_boundary_policy.tail_frames;
+        } else if !matches!(
+            boundary_mode_before,
+            LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
+        ) {
+            self.processor_tail_remaining_frames = self
+                .processor_tail_remaining_frames
+                .saturating_sub(n_samples);
         }
         self.resync_poi();
         match err {
@@ -1235,6 +1305,60 @@ mod tests {
             .recipe
             .components()
             .all(|component| component.applied_during_render));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn separately_named_processor_warmup_and_tail_are_bounded_at_transitions() {
+        let mut l = AudioMidiLoop::default();
+        l.add_audio_channel(8, C::Dry);
+        l.set_length(8);
+        l.set_processor_boundary_policy(ProcessorBoundaryPolicy {
+            warmup_frames: 2,
+            tail_frames: 4,
+        })
+        .unwrap();
+        l.set_pending_latency_recipe(Some(runtime_render_recipe(
+            LatencyOperationKind::DryThroughWet,
+            3,
+            61,
+        )));
+        l.set_sync_source(Some(SyncSourceState {
+            mode: L::Playing,
+            triggering_now: false,
+            next_trigger_eta: Some(8),
+            position: 0,
+            length: 8,
+        }));
+        l.plan_transition(L::PlayingDryThroughWet, Some(0), None);
+        check!(cycle(&mut l, 3, &[]) == vec![0.0; 3]);
+        check!(l.mode() == L::Stopped);
+        check!(!l.processor_boundary_work_active());
+        l.set_sync_source(Some(SyncSourceState {
+            mode: L::Playing,
+            triggering_now: false,
+            next_trigger_eta: Some(5),
+            position: 3,
+            length: 8,
+        }));
+        check!(cycle(&mut l, 1, &[]) == vec![0.0]);
+        check!(l.processor_boundary_work_active());
+        l.clear_planned_transitions();
+        l.set_mode(L::PlayingDryThroughWet);
+        while l.deferred_latency_mode().is_some() {
+            let _ = cycle(&mut l, 1, &[]);
+        }
+        l.set_mode(L::Stopped);
+        check!(l.processor_tail_remaining_frames() == 4);
+        let _ = cycle(&mut l, 2, &[]);
+        check!(l.processor_tail_remaining_frames() == 2);
+        let _ = cycle(&mut l, 2, &[]);
+        check!(!l.processor_boundary_work_active());
+        check!(l
+            .set_processor_boundary_policy(ProcessorBoundaryPolicy {
+                warmup_frames: shoop_latency::MAX_COMPENSATION_FRAMES + 1,
+                tail_frames: 0,
+            })
+            .is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

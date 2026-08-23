@@ -48,6 +48,7 @@
         liblo
         libpulseaudio
         libsndfile
+        rubberband
         libxcb
         libxkbcommon
         wayland
@@ -87,6 +88,7 @@
         SHOOP_CARLA_RESOURCE_DIR = "${carlaWithLatency}/share/carla/resources";
         SHOOP_CARLA_UNPATCHED_NATIVE_LIBRARY = "${pkgs.carla}/lib/carla/libcarla_native-plugin.so";
         SHOOP_CARLA_UNPATCHED_RESOURCE_DIR = "${pkgs.carla}/share/carla/resources";
+        SHOOP_CARLA_NONZERO_PLUGIN_BINARY = "${pkgs.rubberband}/lib/ladspa/ladspa-rubberband.so";
 
         shellHook = ''
           jack_provider="''${SHOOP_JACK_PROVIDER_OVERRIDE:-auto}"

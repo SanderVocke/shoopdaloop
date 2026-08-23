@@ -1928,12 +1928,19 @@ impl NativeRuntime {
                 shoop_latency::LatencyComponentKind::Manual => Default::default(),
             };
             let identity = format!("native-track:{}:{kind:?}", track_id.raw());
+            let interval = if kind == shoop_latency::LatencyComponentKind::BackendBuffering
+                && external_capture.range.is_some()
+            {
+                format!("native-track:{}:ExternalCapture", track_id.raw())
+            } else {
+                identity.clone()
+            };
             inputs.push(shoop_latency::LatencyComponentInput {
                 kind,
                 observation: crate::domain_latency_observation(
                     observation,
-                    identity.clone(),
-                    observation.range.map(|_| identity),
+                    identity,
+                    observation.range.map(|_| interval),
                 )?,
                 policy: crate::domain_latency_policy(component),
             });

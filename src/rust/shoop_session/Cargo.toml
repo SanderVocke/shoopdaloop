@@ -24,6 +24,7 @@ thiserror = { workspace = true }
 zip = { workspace = true }
 
 [dev-dependencies]
+shoop_engine = { path = "../shoop_engine" }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

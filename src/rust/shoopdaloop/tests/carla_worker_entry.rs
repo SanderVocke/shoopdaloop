@@ -1,6 +1,6 @@
 #![cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
 
-use shoop_engine::carla_native::carla_runtime_availability;
+use shoop_engine::carla_native::{carla_runtime_availability, encode_carla_project_state};
 use shoop_engine::carla_processor::{CarlaProcessor, ProcessorLatencyDiagnostic};
 use shoop_engine::carla_subprocess::{
     CarlaWorkerTestMode, SubprocessCarlaProcessor, SupervisedCarlaProcessor,
@@ -144,6 +144,42 @@ fn application_worker_hosts_the_real_carla_native_runtime_when_available() {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     assert!(restored_processed, "legacy Carla state did not process");
+
+    if let Some(path) = std::env::var_os("SHOOP_CARLA_NONZERO_RACK_STATE_XML") {
+        let xml = std::fs::read(path).unwrap();
+        worker
+            .restore_state(&encode_carla_project_state(FXChainType::CarlaRack, &xml).unwrap())
+            .unwrap();
+        let mut expected = None;
+        for _ in 0..100 {
+            worker.audio_input_mut(0).unwrap()[..64].fill(0.0);
+            worker.audio_input_mut(1).unwrap()[..64].fill(0.0);
+            worker.process(64).unwrap();
+            if worker.latency().range.is_some_and(|range| range.max() > 0) {
+                expected = worker.latency().range.map(|range| range.max());
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let expected = expected.expect("worker plugin did not report nonzero latency");
+        let mut peak = (0.0_f32, 0_u32);
+        for block in 0..(expected.div_ceil(64) + 8) {
+            worker.audio_input_mut(0).unwrap()[..64].fill(0.0);
+            worker.audio_input_mut(1).unwrap()[..64].fill(0.0);
+            if block == 0 {
+                worker.audio_input_mut(0).unwrap()[0] = 1.0;
+            }
+            worker.process(64).unwrap();
+            for (offset, sample) in worker.audio_output(0).unwrap()[..64].iter().enumerate() {
+                if sample.abs() > peak.0 {
+                    peak = (sample.abs(), block * 64 + offset as u32);
+                }
+            }
+        }
+        assert!(peak.0 > 1.0e-6);
+        assert_eq!(peak.1, expected);
+    }
+
     let state = worker.save_state().unwrap();
     assert!(state.starts_with("shoop-carla-native-state:2:rack:"));
     worker.restore_state(&state).unwrap();
