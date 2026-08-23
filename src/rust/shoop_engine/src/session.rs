@@ -363,6 +363,7 @@ pub struct Session {
 
     sample_rate: u32,
     buffer_size: u32,
+    loop_smoothing_ms: u32,
 
     /// Reused so routing a channel's input does not allocate per cycle.
     scratch: Vec<f32>,
@@ -598,11 +599,45 @@ fn adoption_window(
 }
 
 impl Session {
+    fn loop_smoothing_frames_for(sample_rate: u32, milliseconds: u32) -> usize {
+        if milliseconds == 0 {
+            return 0;
+        }
+        let frames = u64::from(milliseconds).saturating_mul(u64::from(sample_rate)) / 1_000;
+        usize::try_from(frames).unwrap_or(usize::MAX).max(1)
+    }
+
+    fn loop_smoothing_frames(&self) -> usize {
+        Self::loop_smoothing_frames_for(self.sample_rate, self.loop_smoothing_ms)
+    }
+
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
     }
     pub fn set_sample_rate(&mut self, sr: u32) {
         self.sample_rate = sr;
+        let frames = self.loop_smoothing_frames();
+        for loop_ in &mut self.loops {
+            for channel_idx in 0..loop_.n_audio_channels() {
+                if let Some(channel) = loop_.audio_channel_mut(channel_idx) {
+                    channel.set_loop_smoothing_frames(frames);
+                }
+            }
+        }
+    }
+    pub fn loop_smoothing_ms(&self) -> u32 {
+        self.loop_smoothing_ms
+    }
+    pub fn set_loop_smoothing_ms(&mut self, milliseconds: u32) {
+        self.loop_smoothing_ms = milliseconds;
+        let frames = self.loop_smoothing_frames();
+        for loop_ in &mut self.loops {
+            for channel_idx in 0..loop_.n_audio_channels() {
+                if let Some(channel) = loop_.audio_channel_mut(channel_idx) {
+                    channel.set_loop_smoothing_frames(frames);
+                }
+            }
+        }
     }
     pub fn buffer_size(&self) -> u32 {
         self.buffer_size
@@ -1105,11 +1140,16 @@ impl Session {
         capacity: usize,
         mode: ChannelMode,
     ) -> Result<usize, SessionError> {
+        let smoothing_frames = self.loop_smoothing_frames();
         let loop_ = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
         let channel_idx = loop_.add_audio_channel_with_bounded_capacity(chunk_size, capacity, mode);
+        loop_
+            .audio_channel_mut(channel_idx)
+            .expect("new audio channel exists")
+            .set_loop_smoothing_frames(smoothing_frames);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Audio,
@@ -1128,12 +1168,17 @@ impl Session {
         capacity: usize,
         mode: ChannelMode,
     ) -> Result<usize, SessionError> {
+        let smoothing_frames = self.loop_smoothing_frames();
         let loop_ = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
         let channel_idx =
             loop_.add_audio_channel_with_bounded_capacity_unprepared(chunk_size, capacity, mode);
+        loop_
+            .audio_channel_mut(channel_idx)
+            .expect("new audio channel exists")
+            .set_loop_smoothing_frames(smoothing_frames);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Audio,
@@ -1153,12 +1198,16 @@ impl Session {
         state: Arc<AudioChannelStateMirror>,
         snapshots: Option<crate::content_snapshot::AudioProcessSnapshotWriter>,
     ) -> Result<usize, SessionError> {
+        let smoothing_frames = self.loop_smoothing_frames();
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
         let channel_idx =
             l.add_audio_channel_with_state_and_snapshots(chunk_size, mode, state, snapshots);
+        l.audio_channel_mut(channel_idx)
+            .expect("new audio channel exists")
+            .set_loop_smoothing_frames(smoothing_frames);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Audio,
@@ -3475,6 +3524,78 @@ mod tests {
         check!(samples == vec![1.0, 2.0, 3.0, 4.0]);
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn discontinuous_loop_smoothing_is_deterministic_end_to_end() {
+        fn fixture(milliseconds: u32) -> (Session, usize, usize) {
+            let mut session = Session::default();
+            session.set_sample_rate(1_000);
+            session.set_loop_smoothing_ms(milliseconds);
+            let output = session.add_port(dummy(2, "out", PortDirection::Output));
+            let loop_ = session.create_loop();
+            let channel = session
+                .add_audio_channel(loop_, 2, ChannelMode::Direct)
+                .unwrap();
+            session.connect_channel_output(channel, output).unwrap();
+            session
+                .loop_mut(loop_)
+                .unwrap()
+                .audio_channel_mut(0)
+                .unwrap()
+                .load_data(&[1.0, 1.0, -1.0, -1.0]);
+            session.loop_mut(loop_).unwrap().set_length(4);
+            session.apply_graph_changes().unwrap();
+            (session, loop_, output)
+        }
+
+        fn render(session: &mut Session, output: usize, frames: usize) -> Vec<f32> {
+            session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .request_data(frames);
+            session.process(frames);
+            session
+                .port_mut(output)
+                .unwrap()
+                .as_dummy_mut()
+                .unwrap()
+                .dequeue_data(frames)
+                .unwrap()
+        }
+
+        let (mut exact, exact_loop, exact_output) = fixture(0);
+        exact.set_loop_mode(exact_loop, LoopMode::Playing).unwrap();
+        assert_eq!(
+            render(&mut exact, exact_output, 6),
+            vec![1.0, 1.0, -1.0, -1.0, 1.0, 1.0]
+        );
+
+        let (mut smooth, smooth_loop, smooth_output) = fixture(3);
+        smooth
+            .set_loop_mode(smooth_loop, LoopMode::Playing)
+            .unwrap();
+        let playing = render(&mut smooth, smooth_output, 6);
+        let expected = [0.0, 1.0 / 3.0, -4.0 / 3.0, -1.0, -1.0, -1.0 / 3.0];
+        for (actual, expected) in playing.iter().zip(expected) {
+            assert!((actual - expected).abs() < 1.0e-6, "{playing:?}");
+        }
+        smooth
+            .set_loop_mode(smooth_loop, LoopMode::Stopped)
+            .unwrap();
+        let stopped = render(&mut smooth, smooth_output, 4);
+        assert!((stopped[0] - playing[5]).abs() < 1.0e-6);
+        assert!(stopped[3].abs() < 1.0e-6);
+
+        let (mut longer, longer_loop, longer_output) = fixture(5);
+        longer
+            .set_loop_mode(longer_loop, LoopMode::Playing)
+            .unwrap();
+        let longer = render(&mut longer, longer_output, 6);
+        assert_ne!(longer, playing);
+        assert_eq!(longer[0], 0.0);
+    }
+
     fn test_processor_session(monitored: bool) -> (Session, usize, usize) {
         let mut session = Session::default();
         session.set_buffer_size(4);
@@ -5144,6 +5265,83 @@ mod tests {
         s.set_buffer_size(256);
         check!(s.sample_rate() == 48000);
         check!(s.buffer_size() == 256);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_smoothing_reaches_existing_and_future_channel_creation_paths() {
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        let loop_ = session.create_loop();
+        let direct = session
+            .add_audio_channel(loop_, 4, ChannelMode::Direct)
+            .unwrap();
+        let bounded = session
+            .add_audio_channel_with_bounded_capacity(loop_, 4, 16, ChannelMode::Direct)
+            .unwrap();
+        let unprepared = session
+            .add_audio_channel_with_bounded_capacity_unprepared(loop_, 4, 16, ChannelMode::Direct)
+            .unwrap();
+
+        let graph_request = session.graph_request_id();
+        session.set_loop_smoothing_ms(3);
+        check!(session.loop_smoothing_ms() == 3);
+        check!(session.graph_request_id() == graph_request);
+        for channel in [direct, bounded, unprepared] {
+            check!(
+                session
+                    .audio_channel(channel)
+                    .unwrap()
+                    .loop_smoothing_frames()
+                    == 144
+            );
+        }
+
+        let state = Arc::new(AudioChannelStateMirror::default());
+        let future = session
+            .add_audio_channel_with_state(loop_, 4, ChannelMode::Direct, state)
+            .unwrap();
+        check!(
+            session
+                .audio_channel(future)
+                .unwrap()
+                .loop_smoothing_frames()
+                == 144
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_smoothing_handles_zero_low_rates_and_sample_rate_changes() {
+        let mut session = Session::default();
+        session.set_sample_rate(100);
+        session.set_loop_smoothing_ms(3);
+        let loop_ = session.create_loop();
+        let channel = session
+            .add_audio_channel(loop_, 4, ChannelMode::Direct)
+            .unwrap();
+        check!(
+            session
+                .audio_channel(channel)
+                .unwrap()
+                .loop_smoothing_frames()
+                == 1
+        );
+
+        session.set_sample_rate(44_100);
+        check!(
+            session
+                .audio_channel(channel)
+                .unwrap()
+                .loop_smoothing_frames()
+                == 132
+        );
+        session.set_loop_smoothing_ms(0);
+        check!(
+            session
+                .audio_channel(channel)
+                .unwrap()
+                .loop_smoothing_frames()
+                == 0
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
