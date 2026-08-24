@@ -101,11 +101,15 @@ fn application_worker_hosts_the_real_carla_native_runtime_when_available() {
         ProcessGeneration(1),
     )
     .expect("application executable should host Carla Native in its worker");
-    assert_eq!(
-        worker.latency_diagnostic(),
-        ProcessorLatencyDiagnostic::CarlaRackAggregate
-    );
-    assert_eq!(worker.latency().range.unwrap().min(), 0);
+    if worker.latency_diagnostic() == ProcessorLatencyDiagnostic::Unsupported {
+        assert!(worker.latency().range.is_none());
+    } else {
+        assert_eq!(
+            worker.latency_diagnostic(),
+            ProcessorLatencyDiagnostic::CarlaRackAggregate
+        );
+        assert_eq!(worker.latency().range.unwrap().min(), 0);
+    }
     worker.set_active(true);
     let mut processed = false;
     for _ in 0..8 {

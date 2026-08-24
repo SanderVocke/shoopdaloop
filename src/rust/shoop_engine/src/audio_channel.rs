@@ -543,11 +543,6 @@ impl AudioChannel {
         capture_alignment_frames: i32,
         selection: RetainedLatencySelection,
     ) -> Result<(), LatencyDomainError> {
-        if media_layout_offset.unsigned_abs() > MAX_COMPENSATION_FRAMES {
-            return Err(LatencyDomainError::ValueExceedsMaximum(
-                media_layout_offset.unsigned_abs(),
-            ));
-        }
         self.set_capture_alignment_frames(capture_alignment_frames)?;
         self.start_offset = media_layout_offset;
         self.grab_latency_selection = selection;
@@ -1341,6 +1336,7 @@ impl AudioChannel {
         }
         self.output_peak = peak;
         self.state.publish_output_peak(published_peak);
+        self.finish_latency_recording_mutation();
         self.publish_state();
     }
 
@@ -1414,13 +1410,17 @@ impl AudioChannel {
         }
         self.output_peak = peak;
         self.state.publish_output_peak(published_peak);
+        self.finish_latency_recording_mutation();
+        self.publish_state();
+    }
+
+    fn finish_latency_recording_mutation(&mut self) {
         if self.finish_recording_after_finalize {
             if let Some(snapshots) = self.content_snapshots.as_mut() {
                 snapshots.finish_mutation(false);
             }
             self.finish_recording_after_finalize = false;
         }
-        self.publish_state();
     }
 }
 
@@ -1740,6 +1740,7 @@ mod tests {
             Some(writer),
         );
         ch.prepare_latency_retention(4, 0, 3).unwrap();
+        ch.set_loop_smoothing_frames(2);
 
         cycle(&mut ch, L::Recording, 4, 0, 0, &[1.0, 2.0, 3.0, 4.0]);
         check!(matches!(
@@ -1815,6 +1816,25 @@ mod tests {
         };
         check!(snapshot.metadata.length == 4);
         check!(snapshot.contiguous() == vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn legacy_media_layout_offset_is_independent_of_latency_bounds() {
+        let mut ch = channel();
+        let media_offset = i32::MAX - 1;
+        ch.apply_grab_latency_mapping(media_offset, 7, RetainedLatencySelection::Unavailable)
+            .unwrap();
+        check!(ch.start_offset() == media_offset);
+        check!(ch.capture_alignment_frames() == 7);
+        assert!(ch
+            .apply_grab_latency_mapping(
+                media_offset,
+                shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1,
+                RetainedLatencySelection::Unavailable,
+            )
+            .is_err());
+        check!(ch.start_offset() == media_offset);
+        check!(ch.capture_alignment_frames() == 7);
     }
 
     #[shoop_wasm_test_support::shoop_test]

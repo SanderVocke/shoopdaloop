@@ -1,6 +1,7 @@
 use crate::archive::SessionError;
 use crate::document::{
-    ExactMidi, LatencyValueDocument, LoopAudio, MediaPayload, SessionBundle, TakeLatencyDocument,
+    ExactMidi, LatencyCertaintyDocument, LatencyValueDocument, LoopAudio, MediaPayload,
+    SessionBundle, TakeLatencyDocument,
 };
 use rubato::{
     audioadapter_buffers::direct::SequentialSliceOfVecs, Async, FixedAsync, Resampler,
@@ -166,6 +167,12 @@ fn resample_take_latency(
         scale_signed_nearest(latency.capture_alignment_frames, source, target)?;
     latency.retained_before_frames = scale_nearest(latency.retained_before_frames, source, target)?;
     latency.retained_after_frames = scale_nearest(latency.retained_after_frames, source, target)?;
+    let preserve_nonempty_range = latency.observation.certainty == LatencyCertaintyDocument::Range
+        && latency
+            .observation
+            .minimum_frames
+            .zip(latency.observation.maximum_frames)
+            .is_some_and(|(minimum, maximum)| minimum < maximum);
     latency.observation.minimum_frames = latency
         .observation
         .minimum_frames
@@ -176,6 +183,20 @@ fn resample_take_latency(
         .maximum_frames
         .map(|frames| scale_nearest(frames, source, target))
         .transpose()?;
+    if preserve_nonempty_range
+        && latency.observation.minimum_frames == latency.observation.maximum_frames
+    {
+        let frames = latency.observation.maximum_frames.unwrap_or_default();
+        if frames < u64::from(shoop_latency::MAX_COMPENSATION_FRAMES) {
+            latency.observation.maximum_frames = Some(frames + 1);
+        } else if frames > 0 {
+            latency.observation.minimum_frames = Some(frames - 1);
+        } else {
+            return Err(SessionError::Validation(
+                "could not preserve nonempty latency range while resampling".to_owned(),
+            ));
+        }
+    }
     if latency.observation.minimum_frames.is_some() {
         latency.observation.sample_rate = target;
     }
@@ -272,4 +293,34 @@ fn resample_mono(input: &[f32], target_frames: usize) -> Result<Vec<f32>, Sessio
     let pad = output.last().copied().unwrap_or(0.0);
     output.resize(target_frames, pad);
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::LatencyObservationDocument;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn resampling_preserves_a_nonempty_range_when_endpoints_collapse() {
+        let mut latency = TakeLatencyDocument {
+            observation: LatencyObservationDocument {
+                minimum_frames: Some(1),
+                maximum_frames: Some(2),
+                certainty: LatencyCertaintyDocument::Range,
+                sample_rate: 48_000,
+                revision: 3,
+            },
+            ..Default::default()
+        };
+
+        resample_take_latency(&mut latency, 48_000, 8_000, 16).unwrap();
+
+        assert_eq!(latency.observation.minimum_frames, Some(0));
+        assert_eq!(latency.observation.maximum_frames, Some(1));
+        assert_eq!(
+            latency.observation.certainty,
+            LatencyCertaintyDocument::Range
+        );
+        crate::archive::validate_take_latency(&latency, 16, 8_000).unwrap();
+    }
 }

@@ -715,6 +715,7 @@ pub struct BackendAudioDataChunk {
     pub total_samples: usize,
     pub start_offset: i32,
     pub preplay: u32,
+    pub latency: BackendTakeLatencySnapshot,
     pub samples: Vec<f32>,
 }
 
@@ -970,6 +971,7 @@ pub trait Backend {
             .unwrap_or_else(|| Arc::from([]));
         let start_offset = channel_data.map_or(0, |channel| channel.start_offset);
         let preplay = channel_data.map_or(0, |channel| channel.preplay);
+        let latency = channel_data.map_or_else(Default::default, |channel| channel.latency.clone());
         let end = offset.saturating_add(max_samples).min(samples.len());
         Ok(BackendAudioDataChunk {
             content_revision: 0,
@@ -979,6 +981,7 @@ pub trait Backend {
             total_samples: samples.len(),
             start_offset,
             preplay,
+            latency,
             samples: if offset < end {
                 samples[offset..end].to_vec()
             } else {
@@ -5202,6 +5205,15 @@ impl Backend for EngineBackend {
             total_samples,
             start_offset: channel_ref.start_offset(),
             preplay: channel_ref.pre_play_samples(),
+            latency: backend_take_latency_snapshot(
+                channel_ref.capture_alignment_frames(),
+                channel_ref.retained_before_frames(),
+                channel_ref.retained_after_frames(),
+                channel_ref.length().min(u32::MAX as usize) as u32,
+                channel_ref.grab_latency_selection(),
+                channel_ref.latched_latency_recipe(),
+                channel_ref.latency_retention_incomplete(),
+            ),
             samples,
         })
     }

@@ -420,11 +420,6 @@ impl MidiChannel {
         capture_alignment_frames: i32,
         selection: RetainedLatencySelection,
     ) -> Result<(), LatencyDomainError> {
-        if media_layout_offset.unsigned_abs() > MAX_COMPENSATION_FRAMES {
-            return Err(LatencyDomainError::ValueExceedsMaximum(
-                media_layout_offset.unsigned_abs(),
-            ));
-        }
         self.set_capture_alignment_frames(capture_alignment_frames)?;
         self.start_offset = media_layout_offset;
         self.grab_latency_selection = selection;
@@ -1481,6 +1476,25 @@ mod tests {
         check!(ch.n_events() == 2);
         check!(times(&ch.contents()) == vec![2, 5]);
         check!(ch.length() == 8);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn legacy_media_layout_offset_is_independent_of_midi_latency_bounds() {
+        let mut ch = channel();
+        let media_offset = i32::MIN + 1;
+        ch.restore_take_latency_mapping(media_offset, 7, RetainedLatencySelection::Unavailable)
+            .unwrap();
+        check!(ch.start_offset() == media_offset);
+        check!(ch.capture_alignment_frames() == 7);
+        assert!(ch
+            .restore_take_latency_mapping(
+                media_offset,
+                shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1,
+                RetainedLatencySelection::Unavailable,
+            )
+            .is_err());
+        check!(ch.start_offset() == media_offset);
+        check!(ch.capture_alignment_frames() == 7);
     }
 
     #[shoop_wasm_test_support::shoop_test]

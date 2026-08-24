@@ -86,6 +86,28 @@ pub struct WireTrackLatencyPolicy {
 }
 
 #[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireAlignmentRegion {
+    pub raw_start: u32,
+    pub raw_end: u32,
+    pub capture_alignment_frames: i32,
+    pub observation_revision: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireMediaTakeLatency {
+    pub capture_alignment_frames: i32,
+    pub retained_before_frames: u32,
+    pub retained_after_frames: u32,
+    pub observation: WireLatencyObservation,
+    pub variable_history: bool,
+    pub history_revisions: u32,
+    pub changed_during_operation: bool,
+    pub incomplete: bool,
+    pub applied_during_render: bool,
+    pub alignment_regions: Vec<WireAlignmentRegion>,
+}
+
+#[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
 pub struct WireTakeLatencyState {
     pub capture_alignment_frames: i32,
     pub retained_before_frames: u32,
@@ -829,6 +851,7 @@ pub struct WaveformChunk {
     pub total_samples: usize,
     pub start_offset: i32,
     pub preplay: u32,
+    pub latency: WireMediaTakeLatency,
     pub final_chunk: bool,
     pub samples: Vec<f32>,
 }
@@ -846,6 +869,7 @@ pub struct MidiDataChunk {
     pub length: u32,
     pub start_offset: i32,
     pub preplay: u32,
+    pub latency: WireMediaTakeLatency,
     pub final_chunk: bool,
     pub events: Vec<WireMidiEvent>,
 }
@@ -1084,6 +1108,17 @@ mod tests {
                 length: 512,
                 start_offset: -7,
                 preplay: 9,
+                latency: WireMediaTakeLatency {
+                    capture_alignment_frames: 11,
+                    observation: WireLatencyObservation {
+                        minimum_frames: Some(10),
+                        maximum_frames: Some(12),
+                        certainty: WireLatencyCertainty::Range,
+                        sample_rate: 48_000,
+                        revision: 4,
+                    },
+                    ..Default::default()
+                },
                 final_chunk: true,
                 events: vec![WireMidiEvent {
                     frame: 400,

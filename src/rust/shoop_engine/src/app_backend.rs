@@ -5135,6 +5135,11 @@ impl AudioChannel {
         capture_alignment_frames: i32,
         selection: engine::RetainedLatencySelection,
     ) -> Result<CommandSequence> {
+        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
+            return Err(anyhow!(
+                "take latency alignment exceeds the supported bound"
+            ));
+        }
         let sequence = self.with_mut(move |channel| {
             let _ = channel.apply_grab_latency_mapping(
                 media_layout_offset,
@@ -5650,6 +5655,11 @@ impl MidiChannel {
         capture_alignment_frames: i32,
         selection: engine::RetainedLatencySelection,
     ) -> Result<CommandSequence> {
+        if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
+            return Err(anyhow!(
+                "take latency alignment exceeds the supported bound"
+            ));
+        }
         let sequence = self.with_mut(move |channel| {
             let _ = channel.restore_take_latency_mapping(
                 media_layout_offset,

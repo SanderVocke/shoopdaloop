@@ -8,27 +8,28 @@ use shoop_app_api::{
 };
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, MidiDataChunk, WaveformChunk,
-    WireActiveCompositeChild, WireApplicationPort, WireApplicationPortOwner, WireChannelMode,
-    WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
-    WireConfirmedLink, WireCueOutputSelection, WireHostPort, WireLatencyCertainty,
-    WireLatencyComponentKind, WireLatencyComponentPolicy, WireLatencyDiagnostics,
-    WireLatencyObservation, WireLatencyRangeSelection, WireLatencyValueMode, WireLatestMidiMessage,
-    WireLoopMode, WireLoopState, WireMidiOutputEvent, WireOxiSynthMidiCcAssignment,
-    WireOxiSynthParameter, WireOxiSynthState, WirePortDataType, WirePortDirection, WirePortRole,
-    WireSnapshot, WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyPolicy,
-    WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
-    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    WireActiveCompositeChild, WireAlignmentRegion, WireApplicationPort, WireApplicationPortOwner,
+    WireChannelMode, WireCompositeConfig, WireCompositeKind, WireCompositeState,
+    WireCompositeTarget, WireConfirmedLink, WireCueOutputSelection, WireHostPort,
+    WireLatencyCertainty, WireLatencyComponentKind, WireLatencyComponentPolicy,
+    WireLatencyDiagnostics, WireLatencyObservation, WireLatencyRangeSelection,
+    WireLatencyValueMode, WireLatestMidiMessage, WireLoopMode, WireLoopState, WireMediaTakeLatency,
+    WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState,
+    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl,
+    WireTrackFxControl, WireTrackFxState, WireTrackLatencyPolicy, WireTrackState,
+    WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
+    MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
     SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
     BackendCompositeKind, BackendCompositeTarget, BackendGrabRequest, BackendHostPortDescriptor,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiEvent,
-    BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner, BackendPortRole,
-    BackendSessionData, BackendSnapshot, BackendTrackControl, BackendTrackFxControl,
-    BackendTrackId, BackendTrackTopology, EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment,
-    OxiSynthParameter, TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest,
-    MAX_WEB_AUDIO_QUANTUM,
+    BackendLatencyCertainty, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendMidiEvent, BackendPortDataType, BackendPortDirection, BackendPortId, BackendPortOwner,
+    BackendPortRole, BackendSessionData, BackendSnapshot, BackendTakeLatencySnapshot,
+    BackendTrackControl, BackendTrackFxControl, BackendTrackId, BackendTrackTopology,
+    EngineBackend, OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter,
+    TrackProcessorEditorState, TrackProcessorTypeId, TrackRequest, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -603,6 +604,7 @@ impl WorkletHost {
                     total_samples: chunk.total_samples,
                     start_offset: chunk.start_offset,
                     preplay: chunk.preplay,
+                    latency: to_wire_media_take_latency(chunk.latency),
                     final_chunk: chunk.offset.saturating_add(chunk.samples.len())
                         >= chunk.total_samples,
                     samples: chunk.samples,
@@ -658,6 +660,7 @@ impl WorkletHost {
                     length: channel_data.length,
                     start_offset: channel_data.start_offset,
                     preplay: channel_data.preplay,
+                    latency: to_wire_media_take_latency(channel_data.latency.clone()),
                     final_chunk: end >= channel_data.events.len(),
                     events: channel_data.events[offset..end]
                         .iter()
@@ -909,6 +912,42 @@ fn to_wire_latency_observation(observation: LatencyObservationState) -> WireLate
         },
         sample_rate: observation.sample_rate,
         revision: observation.revision,
+    }
+}
+
+fn to_wire_media_take_latency(latency: BackendTakeLatencySnapshot) -> WireMediaTakeLatency {
+    WireMediaTakeLatency {
+        capture_alignment_frames: latency.capture_alignment_frames,
+        retained_before_frames: latency.retained_before_frames,
+        retained_after_frames: latency.retained_after_frames,
+        observation: WireLatencyObservation {
+            minimum_frames: latency.observation_min_frames,
+            maximum_frames: latency.observation_max_frames,
+            certainty: match latency.certainty {
+                BackendLatencyCertainty::Exact => WireLatencyCertainty::Exact,
+                BackendLatencyCertainty::Range => WireLatencyCertainty::Range,
+                BackendLatencyCertainty::Estimated => WireLatencyCertainty::Estimated,
+                BackendLatencyCertainty::ManualOnly => WireLatencyCertainty::ManualOnly,
+                BackendLatencyCertainty::Unknown => WireLatencyCertainty::Unknown,
+            },
+            sample_rate: latency.observation_sample_rate,
+            revision: latency.observation_revision,
+        },
+        variable_history: latency.variable_history,
+        history_revisions: latency.history_revisions,
+        changed_during_operation: latency.changed_during_operation,
+        incomplete: latency.incomplete,
+        applied_during_render: latency.applied_during_render,
+        alignment_regions: latency
+            .alignment_regions
+            .into_iter()
+            .map(|region| WireAlignmentRegion {
+                raw_start: region.raw_start,
+                raw_end: region.raw_end,
+                capture_alignment_frames: region.capture_alignment_frames,
+                observation_revision: region.observation_revision,
+            })
+            .collect(),
     }
 }
 
@@ -1959,7 +1998,15 @@ mod tests {
                         events,
                         start_offset: Some(-2),
                         preplay: Some(3),
-                        latency: None,
+                        latency: Some(BackendTakeLatencySnapshot {
+                            capture_alignment_frames: 9,
+                            observation_min_frames: Some(8),
+                            observation_max_frames: Some(10),
+                            certainty: BackendLatencyCertainty::Range,
+                            observation_sample_rate: 48_000,
+                            observation_revision: 4,
+                            ..Default::default()
+                        }),
                     }],
                     length: Some(256),
                     ..Default::default()
@@ -1985,6 +2032,9 @@ mod tests {
         assert_eq!(first.total_events, 200);
         assert!(!first.final_chunk);
         assert_eq!(first.start_offset, -2);
+        assert_eq!(first.latency.capture_alignment_frames, 9);
+        assert_eq!(first.latency.observation.minimum_frames, Some(8));
+        assert_eq!(first.latency.observation.maximum_frames, Some(10));
         let Event::MidiData(second) = command(
             &mut host,
             3,
@@ -2002,6 +2052,7 @@ mod tests {
         };
         assert_eq!(second.events.len(), MIDI_DETAIL_CHUNK_EVENTS);
         assert!(!second.final_chunk);
+        assert_eq!(second.latency, first.latency);
         let Event::MidiData(last) = command(
             &mut host,
             4,

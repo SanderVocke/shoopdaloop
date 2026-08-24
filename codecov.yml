@@ -8,9 +8,9 @@ ignore:
 
 coverage:
   status:
-    # Large ownership moves can make project coverage fluctuate even when the
-    # changed lines are well covered. Keep that tolerance bounded while the
-    # patch target continues to enforce the repository's current coverage.
+    # Large ownership moves and target-specific provider/worklet code can make
+    # native llvm-cov coverage fluctuate even when dedicated platform gates
+    # execute those paths. Keep both tolerances bounded.
     project:
       default:
         target: auto
@@ -18,3 +18,4 @@ coverage:
     patch:
       default:
         target: auto
+        threshold: 3%

@@ -31,27 +31,28 @@ use shoop_audio_protocol::{
     WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
     WireCueOutputSelection, WireGrabRequest, WireHostPort, WireLatencyCertainty,
     WireLatencyComponentKind, WireLatencyComponentPolicy, WireLatencyObservation,
-    WireLatencyRangeSelection, WireLatencyValueMode, WireLoopMode, WireMidiEvent,
-    WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType, WirePortDirection,
-    WirePortRole, WireSnapshot, WireTakeLatencyState, WireTrackControl, WireTrackFxControl,
-    WireTrackLatencyPolicy, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
-    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireLatencyRangeSelection, WireLatencyValueMode, WireLoopMode, WireMediaTakeLatency,
+    WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTakeLatencyState, WireTrackControl,
+    WireTrackFxControl, WireTrackLatencyPolicy, WireTrackTopology, COMMAND_CAPACITY,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
-    BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
-    BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
-    BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLatencyCapability,
-    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendLoopState,
-    BackendMidiChannelData, BackendMidiData, BackendMidiEvent, BackendMutationDetail,
-    BackendMutationFailure, BackendMutationKind, BackendOperationKind, BackendOperationProgress,
-    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortLatencyState, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
+    BackendAlignmentRegion, BackendAsyncResult, BackendAudioChannelData, BackendAudioData,
+    BackendChannelMode, BackendCompositeConfig, BackendCompositeId, BackendCompositeKind,
+    BackendCompositeState, BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure,
+    BackendDriverState, BackendGrabRequest, BackendHostPortDescriptor, BackendLatencyCapability,
+    BackendLatencyCertainty, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
+    BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortLatencyState, BackendPortOwner, BackendPortRole, BackendSessionData,
+    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTakeLatencySnapshot,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackState, BackendTrackTopology, DirectTrackRequest, OxiSynthControl,
+    TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -60,6 +61,7 @@ struct WaveformAssembly {
     revision: u64,
     channels: Vec<Vec<f32>>,
     timing: Vec<(i32, u32)>,
+    latency: Vec<BackendTakeLatencySnapshot>,
     next_channel: usize,
     next_offset: usize,
     complete: bool,
@@ -387,15 +389,29 @@ impl RemoteWorkletBackend {
             return Ok(());
         }
         assembly.in_flight = false;
+        let latency = Self::media_take_latency(chunk.latency.clone());
         if assembly.channels.len() < chunk.channel_count {
             assembly.channels.resize_with(chunk.channel_count, Vec::new);
             assembly.timing.resize(chunk.channel_count, (0, 0));
+            assembly
+                .latency
+                .resize_with(chunk.channel_count, Default::default);
         }
         if let Some(channel) = assembly.channels.get_mut(chunk.channel) {
             channel.extend_from_slice(&chunk.samples);
         }
-        if let Some(timing) = assembly.timing.get_mut(chunk.channel) {
-            *timing = (chunk.start_offset, chunk.preplay);
+        if chunk.offset == 0 {
+            if let Some(timing) = assembly.timing.get_mut(chunk.channel) {
+                *timing = (chunk.start_offset, chunk.preplay);
+            }
+            if let Some(current) = assembly.latency.get_mut(chunk.channel) {
+                *current = latency;
+            }
+        } else if assembly.timing.get(chunk.channel).copied()
+            != Some((chunk.start_offset, chunk.preplay))
+            || assembly.latency.get(chunk.channel) != Some(&latency)
+        {
+            return Err(anyhow!("inconsistent waveform detail chunk metadata"));
         }
         if chunk.final_chunk {
             assembly.next_channel += 1;
@@ -490,7 +506,7 @@ impl RemoteWorkletBackend {
                 events: Vec::with_capacity(chunk.total_events),
                 start_offset: chunk.start_offset,
                 preplay: chunk.preplay,
-                latency: Default::default(),
+                latency: Self::media_take_latency(chunk.latency.clone()),
             });
         }
         let Some(channel) = assembly.channels.get_mut(chunk.channel) else {
@@ -502,6 +518,7 @@ impl RemoteWorkletBackend {
         if channel.length != chunk.length
             || channel.start_offset != chunk.start_offset
             || channel.preplay != chunk.preplay
+            || channel.latency != Self::media_take_latency(chunk.latency)
             || channel.events.len() != chunk.offset
         {
             return Err(anyhow!("inconsistent MIDI detail chunk metadata"));
@@ -850,6 +867,40 @@ impl RemoteWorkletBackend {
                 })
                 .collect(),
             revision: policy.revision,
+        }
+    }
+
+    fn media_take_latency(wire: WireMediaTakeLatency) -> BackendTakeLatencySnapshot {
+        BackendTakeLatencySnapshot {
+            capture_alignment_frames: wire.capture_alignment_frames,
+            retained_before_frames: wire.retained_before_frames,
+            retained_after_frames: wire.retained_after_frames,
+            observation_min_frames: wire.observation.minimum_frames,
+            observation_max_frames: wire.observation.maximum_frames,
+            certainty: match wire.observation.certainty {
+                WireLatencyCertainty::Exact => BackendLatencyCertainty::Exact,
+                WireLatencyCertainty::Range => BackendLatencyCertainty::Range,
+                WireLatencyCertainty::Estimated => BackendLatencyCertainty::Estimated,
+                WireLatencyCertainty::ManualOnly => BackendLatencyCertainty::ManualOnly,
+                WireLatencyCertainty::Unknown => BackendLatencyCertainty::Unknown,
+            },
+            observation_sample_rate: wire.observation.sample_rate,
+            observation_revision: wire.observation.revision,
+            variable_history: wire.variable_history,
+            history_revisions: wire.history_revisions,
+            changed_during_operation: wire.changed_during_operation,
+            incomplete: wire.incomplete,
+            applied_during_render: wire.applied_during_render,
+            alignment_regions: wire
+                .alignment_regions
+                .into_iter()
+                .map(|region| BackendAlignmentRegion {
+                    raw_start: region.raw_start,
+                    raw_end: region.raw_end,
+                    capture_alignment_frames: region.capture_alignment_frames,
+                    observation_revision: region.observation_revision,
+                })
+                .collect(),
         }
     }
 
@@ -1929,6 +1980,7 @@ impl Backend for RemoteWorkletBackend {
                 revision: *revision,
                 channels: Vec::new(),
                 timing: Vec::new(),
+                latency: Vec::new(),
                 next_channel: 0,
                 next_offset: 0,
                 complete: false,
@@ -1946,22 +1998,22 @@ impl Backend for RemoteWorkletBackend {
         let Some(channels) = self.loop_audio_data(loop_id)? else {
             return Ok(None);
         };
-        let timing = &self
+        let assembly = self
             .waveforms
             .get(&loop_id)
-            .ok_or_else(|| anyhow!("missing completed waveform assembly"))?
-            .timing;
+            .ok_or_else(|| anyhow!("missing completed waveform assembly"))?;
         Ok(Some(BackendAudioData {
             channels: channels
                 .into_iter()
                 .enumerate()
                 .map(|(index, samples)| {
-                    let (start_offset, preplay) = timing.get(index).copied().unwrap_or_default();
+                    let (start_offset, preplay) =
+                        assembly.timing.get(index).copied().unwrap_or_default();
                     BackendAudioChannelData {
                         samples,
                         start_offset,
                         preplay,
-                        latency: Default::default(),
+                        latency: assembly.latency.get(index).cloned().unwrap_or_default(),
                     }
                 })
                 .collect(),
@@ -2893,6 +2945,17 @@ mod tests {
                 total_samples: 3,
                 start_offset: -4,
                 preplay: 6,
+                latency: WireMediaTakeLatency {
+                    capture_alignment_frames: 9,
+                    observation: WireLatencyObservation {
+                        minimum_frames: Some(8),
+                        maximum_frames: Some(10),
+                        certainty: WireLatencyCertainty::Range,
+                        sample_rate: 48_000,
+                        revision: 5,
+                    },
+                    ..Default::default()
+                },
                 final_chunk: true,
                 samples: vec![0.25, -0.5, 0.75],
             }),
@@ -2905,26 +2968,46 @@ mod tests {
         assert_eq!(audio.channels[0].samples.as_ref(), [0.25, -0.5, 0.75]);
         assert_eq!(audio.channels[0].start_offset, -4);
         assert_eq!(audio.channels[0].preplay, 6);
+        assert_eq!(audio.channels[0].latency.capture_alignment_frames, 9);
+        assert_eq!(audio.channels[0].latency.observation_min_frames, Some(8));
+        assert_eq!(audio.channels[0].latency.observation_max_frames, Some(10));
 
-        backend.midi_data.insert(
-            loop_id,
-            MidiDataAssembly {
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_none());
+        deliver(
+            &control,
+            1,
+            4,
+            Event::MidiData(MidiDataChunk {
+                loop_id: loop_id.raw(),
                 generation: 1,
-                channels: vec![BackendMidiChannelData {
-                    content_revision: 1,
-                    mode: BackendChannelMode::Direct,
-                    length: 16,
-                    events: Vec::new(),
-                    start_offset: -4,
-                    preplay: 6,
-                    latency: Default::default(),
-                }],
-                next_channel: 1,
-                next_offset: 0,
-                complete: true,
-                in_flight: false,
-            },
+                content_revision: 1,
+                mode: WireChannelMode::Direct,
+                channel: 0,
+                channel_count: 1,
+                offset: 0,
+                total_events: 0,
+                length: 16,
+                start_offset: -4,
+                preplay: 6,
+                latency: WireMediaTakeLatency {
+                    capture_alignment_frames: 7,
+                    observation: WireLatencyObservation {
+                        minimum_frames: Some(7),
+                        maximum_frames: Some(7),
+                        certainty: WireLatencyCertainty::Exact,
+                        sample_rate: 48_000,
+                        revision: 6,
+                    },
+                    ..Default::default()
+                },
+                final_chunk: true,
+                events: Vec::new(),
+            }),
         );
+        backend.poll().unwrap();
+        let midi = backend.loop_midi_data(loop_id).unwrap().unwrap();
+        assert_eq!(midi.channels[0].latency.capture_alignment_frames, 7);
+        assert_eq!(midi.channels[0].latency.observation_min_frames, Some(7));
         backend
             .set_loop_timing(loop_id, Some(-8), None, None)
             .unwrap();

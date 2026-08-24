@@ -1419,6 +1419,11 @@ mod tests {
             eprintln!("skipping Carla latency adapter test; runtime unavailable");
             return;
         };
+        if rack.latency_diagnostic() == ProcessorLatencyDiagnostic::Unsupported {
+            assert!(rack.latency().range.is_none());
+            eprintln!("skipping Carla latency adapter assertions; installed runtime is unpatched");
+            return;
+        }
         assert_eq!(
             rack.latency_diagnostic(),
             ProcessorLatencyDiagnostic::CarlaRackAggregate
@@ -1505,8 +1510,12 @@ mod tests {
             }
             host.idle();
             let latency = host.latency();
-            assert_eq!(latency.range.unwrap().min(), 0);
-            assert_eq!(latency.range.unwrap().max(), 0);
+            if host.latency_diagnostic() == ProcessorLatencyDiagnostic::Unsupported {
+                assert!(latency.range.is_none());
+            } else {
+                assert_eq!(latency.range.unwrap().min(), 0);
+                assert_eq!(latency.range.unwrap().max(), 0);
+            }
             let state = host.save_state().unwrap();
             assert!(
                 loaded_processed,
