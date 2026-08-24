@@ -1512,6 +1512,28 @@ impl MidiChannel {
         self.pending_playback_valid = self.recording_start_valid;
     }
 
+    fn rebuild_piecewise_pending_state(&mut self, logical_before: i32) {
+        if !self.pending_playback_valid {
+            return;
+        }
+        let mut mapped = std::mem::take(&mut self.replace_scratch);
+        mapped.clear();
+        for event in self.storage.iter() {
+            let Some(logical) = self.logical_position_for_raw(event.time as i32) else {
+                continue;
+            };
+            if logical < logical_before {
+                let sort_key = (i64::from(logical) - i64::from(i32::MIN)) as u32;
+                mapped.push(event.at_time(sort_key));
+            }
+        }
+        mapped.sort_by_key(|event| event.time);
+        for event in &mapped {
+            self.pending_playback_state.process(event.data());
+        }
+        self.replace_scratch = mapped;
+    }
+
     fn process_playback(
         &mut self,
         our_pos: i32,
@@ -1533,6 +1555,11 @@ impl MidiChannel {
         }
 
         self.playback_cursor.sync(&self.storage);
+        if !respect_global_valid_from {
+            if let Some(logical_before) = self.logical_position_for_raw(our_pos) {
+                self.rebuild_piecewise_pending_state(logical_before);
+            }
+        }
 
         // Skip to our position. Skipped messages still count towards the state to
         // restore, so the first audible message sounds in the right context.
@@ -1550,15 +1577,18 @@ impl MidiChannel {
             } = self;
             let valid = *pending_playback_valid;
             let mut cb = |e: &MidiStorageElem| {
-                if !respect_global_valid_from
-                    && logical_position_for_raw_regions(
+                if !respect_global_valid_from {
+                    if logical_position_for_raw_regions(
                         alignment_regions,
                         start_offset,
                         capture_alignment_frames,
                         e.time as i32,
                     )
                     .is_none()
-                {
+                    {
+                        return;
+                    }
+                    last_skipped = Some(e.time as i32);
                     return;
                 }
                 if valid {
@@ -2331,6 +2361,43 @@ mod tests {
             .iter()
             .any(|event| event.time == 2 && event.data()[1] == 60));
         check!(!out.iter().any(|event| event.data()[1] == 55));
+        check!(!out
+            .iter()
+            .any(|event| event.data() == midi::cc(0, 7, 99).as_slice()));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn piecewise_state_restore_ignores_raw_earlier_logical_future_events() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::cc(0, 7, 99)),
+                ev(4, &midi::note_on(0, 60, 100)),
+            ],
+            8,
+            None,
+        );
+        ch.set_capture_alignment_frames(4).unwrap();
+        ch.restore_alignment_regions(&[
+            RuntimeAlignmentRegion {
+                raw_start: 0,
+                raw_end: 4,
+                capture_alignment_frames: -5,
+                observation_revision: 1,
+            },
+            RuntimeAlignmentRegion {
+                raw_start: 4,
+                raw_end: 8,
+                capture_alignment_frames: 4,
+                observation_revision: 2,
+            },
+        ])
+        .unwrap();
+
+        let out = cycle(&mut ch, L::Playing, 1, 0, 4, &[]);
+        check!(out
+            .iter()
+            .any(|event| event.time == 0 && event.data()[1] == 60));
         check!(!out
             .iter()
             .any(|event| event.data() == midi::cc(0, 7, 99).as_slice()));

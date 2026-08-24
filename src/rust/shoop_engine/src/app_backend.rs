@@ -5597,25 +5597,29 @@ impl MidiChannel {
             std::thread::sleep(Duration::from_millis(1));
         };
         let mut start_state = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
+        for event in raw_events.iter().filter(|event| event.time < 0) {
+            start_state.process(&event.data);
+        }
+        let mut mapped = raw_events
+            .into_iter()
+            .filter(|event| event.time >= 0)
+            .filter_map(|event| {
+                let logical = logical_position_for_raw(event.time)?;
+                (i64::from(logical) < i64::from(logical_length)).then_some((logical, event.data))
+            })
+            .collect::<Vec<_>>();
+        mapped.sort_by_key(|(logical, _)| *logical);
         let mut consolidated = Vec::new();
-        for event in raw_events {
-            if event.time < 0 {
-                start_state.process(&event.data);
-                continue;
-            }
-            let logical = logical_position_for_raw(event.time);
-            if logical.is_some_and(|logical| logical < 0) {
-                start_state.process(&event.data);
-            } else if let Some(logical) =
-                logical.filter(|logical| i64::from(*logical) < i64::from(logical_length))
-            {
+        for (logical, data) in mapped {
+            if logical < 0 {
+                start_state.process(&data);
+            } else {
                 consolidated.push(MidiEvent {
                     time: logical,
-                    data: event.data,
+                    data,
                 });
             }
         }
-        consolidated.sort_by_key(|event| event.time);
         let mut baked = start_state
             .state_as_messages()
             .into_iter()

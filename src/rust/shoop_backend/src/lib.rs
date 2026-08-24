@@ -4402,20 +4402,25 @@ impl Backend for EngineBackend {
             for message in channel.recording_start_state_messages() {
                 start_state.process(&message);
             }
+            let mut mapped = channel
+                .contents()
+                .into_iter()
+                .filter_map(|event| {
+                    let logical = i32::try_from(event.time)
+                        .ok()
+                        .and_then(|raw| channel.logical_position_for_raw(raw))?;
+                    ((logical as i64) < logical_length as i64).then_some((logical, event))
+                })
+                .collect::<Vec<_>>();
+            mapped.sort_by_key(|(logical, _)| *logical);
             let mut consolidated = Vec::new();
-            for event in channel.contents() {
-                let logical = i32::try_from(event.time)
-                    .ok()
-                    .and_then(|raw| channel.logical_position_for_raw(raw));
-                if logical.is_some_and(|logical| logical < 0) {
+            for (logical, event) in mapped {
+                if logical < 0 {
                     start_state.process(event.data());
-                } else if let Some(logical) =
-                    logical.filter(|logical| (*logical as i64) < logical_length as i64)
-                {
+                } else {
                     consolidated.push(event.at_time(logical as u32));
                 }
             }
-            consolidated.sort_by_key(|event| event.time);
             let start_state = start_state.state_as_messages();
             channel.set_contents(
                 &consolidated,

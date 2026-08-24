@@ -8673,6 +8673,7 @@ impl ApplicationModel {
                     Some(event)
                 })
                 .collect();
+            midi.events.sort_by_key(|event| (event.frame, event.order));
             midi.length_frames = u64::from(loop_content.length);
             midi.latency = TakeLatencyDocument::default();
         }
@@ -8882,20 +8883,20 @@ fn logical_position_for_raw(
 
 fn logical_midi_start_state(content: &BackendMidiContent) -> Vec<Vec<u8>> {
     let mut messages = content.start_state.clone();
-    messages.extend(
-        content
-            .events
-            .iter()
-            .filter(|event| {
-                logical_position_for_raw(
-                    content.start_offset,
-                    &content.latency,
-                    i64::from(event.time),
-                )
-                .is_some_and(|logical| logical < 0)
-            })
-            .map(|event| event.data.clone()),
-    );
+    let mut preroll = content
+        .events
+        .iter()
+        .filter_map(|event| {
+            let logical = logical_position_for_raw(
+                content.start_offset,
+                &content.latency,
+                i64::from(event.time),
+            )?;
+            (logical < 0).then(|| (logical, event.data.clone()))
+        })
+        .collect::<Vec<_>>();
+    preroll.sort_by_key(|(logical, _)| *logical);
+    messages.extend(preroll.into_iter().map(|(_, data)| data));
 
     // Canonicalize the messages into the state a fresh receiver needs at the
     // logical boundary. This avoids replaying transient notes from retained
