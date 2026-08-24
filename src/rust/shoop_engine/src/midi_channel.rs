@@ -182,6 +182,52 @@ pub struct MidiChannel {
     prepared_replacement_alignment: Option<i32>,
 }
 
+fn raw_position_for_logical_regions(
+    regions: &[Option<RuntimeAlignmentRegion>],
+    start_offset: i32,
+    capture_alignment_frames: i32,
+    logical_position: i32,
+) -> Option<i32> {
+    let base = logical_position.checked_add(start_offset)?;
+    let alignment = regions
+        .iter()
+        .flatten()
+        .filter_map(|region| {
+            let candidate = base.checked_add(region.capture_alignment_frames)?;
+            ((candidate as i64) >= i64::from(region.raw_start)
+                && (candidate as i64) < i64::from(region.raw_end))
+            .then_some((region.observation_revision, region.capture_alignment_frames))
+        })
+        .max_by_key(|(revision, _)| *revision)
+        .map(|(_, alignment)| alignment)
+        .unwrap_or(capture_alignment_frames);
+    base.checked_add(alignment)
+}
+
+fn logical_position_for_raw_regions(
+    regions: &[Option<RuntimeAlignmentRegion>],
+    start_offset: i32,
+    capture_alignment_frames: i32,
+    raw_position: i32,
+) -> Option<i32> {
+    let alignment = regions
+        .iter()
+        .flatten()
+        .filter(|region| {
+            (raw_position as i64) >= i64::from(region.raw_start)
+                && (raw_position as i64) < i64::from(region.raw_end)
+        })
+        .max_by_key(|region| region.observation_revision)
+        .map(|region| region.capture_alignment_frames)
+        .unwrap_or(capture_alignment_frames);
+    let logical = raw_position
+        .checked_sub(start_offset)?
+        .checked_sub(alignment)?;
+    (raw_position_for_logical_regions(regions, start_offset, capture_alignment_frames, logical)
+        == Some(raw_position))
+    .then_some(logical)
+}
+
 impl MidiChannel {
     pub fn with_capacity_elems(capacity: usize, mode: ChannelMode) -> Self {
         Self::with_capacity_elems_and_state(
@@ -581,34 +627,20 @@ impl MidiChannel {
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
-        let base = logical_position.checked_add(self.start_offset)?;
-        let alignment = self
-            .alignment_regions()
-            .filter_map(|region| {
-                let candidate = base.checked_add(region.capture_alignment_frames)?;
-                ((candidate as i64) >= i64::from(region.raw_start)
-                    && (candidate as i64) < i64::from(region.raw_end))
-                .then_some((region.observation_revision, region.capture_alignment_frames))
-            })
-            .max_by_key(|(revision, _)| *revision)
-            .map(|(_, alignment)| alignment)
-            .unwrap_or(self.capture_alignment_frames);
-        base.checked_add(alignment)
+        raw_position_for_logical_regions(
+            &self.alignment_regions[..self.n_alignment_regions],
+            self.start_offset,
+            self.capture_alignment_frames,
+            logical_position,
+        )
     }
     pub fn logical_position_for_raw(&self, raw_position: i32) -> Option<i32> {
-        let alignment = self
-            .alignment_regions()
-            .filter(|region| {
-                (raw_position as i64) >= i64::from(region.raw_start)
-                    && (raw_position as i64) < i64::from(region.raw_end)
-            })
-            .max_by_key(|region| region.observation_revision)
-            .map(|region| region.capture_alignment_frames)
-            .unwrap_or(self.capture_alignment_frames);
-        let logical = raw_position
-            .checked_sub(self.start_offset)?
-            .checked_sub(alignment)?;
-        (self.raw_position_for_logical(logical) == Some(raw_position)).then_some(logical)
+        logical_position_for_raw_regions(
+            &self.alignment_regions[..self.n_alignment_regions],
+            self.start_offset,
+            self.capture_alignment_frames,
+            raw_position,
+        )
     }
     pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
         self.raw_position_for_logical(logical_position)?
@@ -1506,6 +1538,9 @@ impl MidiChannel {
         // restore, so the first audible message sounds in the right context.
         let mut last_skipped: Option<i32> = None;
         {
+            let alignment_regions = &self.alignment_regions[..self.n_alignment_regions];
+            let start_offset = self.start_offset;
+            let capture_alignment_frames = self.capture_alignment_frames;
             let MidiChannel {
                 playback_cursor,
                 storage,
@@ -1515,6 +1550,17 @@ impl MidiChannel {
             } = self;
             let valid = *pending_playback_valid;
             let mut cb = |e: &MidiStorageElem| {
+                if !respect_global_valid_from
+                    && logical_position_for_raw_regions(
+                        alignment_regions,
+                        start_offset,
+                        capture_alignment_frames,
+                        e.time as i32,
+                    )
+                    .is_none()
+                {
+                    return;
+                }
                 if valid {
                     pending_playback_state.process(e.data());
                 }
@@ -2250,6 +2296,7 @@ mod tests {
             &[
                 ev(0, &midi::note_on(0, 50, 100)),
                 ev(2, &midi::note_on(0, 55, 100)),
+                ev(2, &midi::cc(0, 7, 99)),
                 ev(4, &midi::note_on(0, 60, 100)),
             ],
             8,
@@ -2284,6 +2331,9 @@ mod tests {
             .iter()
             .any(|event| event.time == 2 && event.data()[1] == 60));
         check!(!out.iter().any(|event| event.data()[1] == 55));
+        check!(!out
+            .iter()
+            .any(|event| event.data() == midi::cc(0, 7, 99).as_slice()));
     }
 
     #[shoop_wasm_test_support::shoop_test]

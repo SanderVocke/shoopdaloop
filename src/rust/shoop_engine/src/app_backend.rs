@@ -5948,6 +5948,83 @@ impl MidiChannel {
     }
 }
 
+pub fn set_take_latency_policy_for_channels(
+    audio: &[AudioChannel],
+    midi: &[MidiChannel],
+    capture_alignment_frames: i32,
+) -> Result<CommandSequence> {
+    if capture_alignment_frames.unsigned_abs() > shoop_latency::MAX_COMPENSATION_FRAMES {
+        return Err(anyhow!(
+            "take latency alignment exceeds the supported bound"
+        ));
+    }
+    let shared = audio
+        .first()
+        .map(|channel| Arc::clone(&channel.shared))
+        .or_else(|| midi.first().map(|channel| Arc::clone(&channel.shared)))
+        .ok_or_else(|| anyhow!("loop has no channels for take latency policy"))?;
+    if audio
+        .iter()
+        .any(|channel| !Arc::ptr_eq(&shared, &channel.shared))
+        || midi
+            .iter()
+            .any(|channel| !Arc::ptr_eq(&shared, &channel.shared))
+    {
+        return Err(anyhow!(
+            "take latency channels belong to different sessions"
+        ));
+    }
+    let audio_ids = audio
+        .iter()
+        .map(|channel| {
+            channel
+                .control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .ok_or_else(|| anyhow!("audio channel is not ready for take latency policy"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let midi_ids = midi
+        .iter()
+        .map(|channel| {
+            channel
+                .control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .ok_or_else(|| anyhow!("MIDI channel is not ready for take latency policy"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let mut ids = Some((audio_ids, midi_ids));
+    let sequence = shared.send_control(move |session| {
+        let Some((audio_ids, midi_ids)) = ids.take() else {
+            return;
+        };
+        for index in audio_ids {
+            if let Some(channel) = session.audio_channel_mut(index) {
+                let _ = channel.set_capture_alignment_frames(capture_alignment_frames);
+            }
+        }
+        for index in midi_ids {
+            if let Some(channel) = session.midi_channel_mut(index) {
+                let _ = channel.set_capture_alignment_frames(capture_alignment_frames);
+            }
+        }
+    })?;
+    for channel in audio {
+        channel
+            .control
+            .mirror
+            .set_capture_alignment_frames(capture_alignment_frames);
+    }
+    for channel in midi {
+        channel
+            .control
+            .mirror
+            .set_capture_alignment_frames(capture_alignment_frames);
+    }
+    Ok(sequence)
+}
+
 pub fn consolidate_loop_latency(
     audio: &[AudioChannel],
     midi: &[MidiChannel],
@@ -9581,9 +9658,6 @@ mod tests {
             let sequence = channel.load_data(&samples).unwrap();
             sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
                 .unwrap();
-            let sequence = channel.set_take_latency_policy(1).unwrap();
-            sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
-                .unwrap();
         }
         let sequence = midi
             .load_midi_data(
@@ -9596,9 +9670,17 @@ mod tests {
             .unwrap();
         sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
             .unwrap();
-        let sequence = midi.set_take_latency_policy(1).unwrap();
+        let sequence = set_take_latency_policy_for_channels(
+            &[audio_a.clone(), audio_b.clone()],
+            std::slice::from_ref(&midi),
+            1,
+        )
+        .unwrap();
         sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
             .unwrap();
+        assert_eq!(audio_a.get_state().unwrap().capture_alignment_frames, 1);
+        assert_eq!(audio_b.get_state().unwrap().capture_alignment_frames, 1);
+        assert_eq!(midi.get_state().unwrap().capture_alignment_frames, 1);
 
         let sequence = consolidate_loop_latency(
             &[audio_a.clone(), audio_b.clone()],

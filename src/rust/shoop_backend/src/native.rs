@@ -2443,12 +2443,14 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown loop"))?;
-        for channel in &loop_.audio {
-            channel.set_take_latency_policy(capture_alignment_frames)?;
-        }
-        for channel in &loop_.midi {
-            channel.set_take_latency_policy(capture_alignment_frames)?;
-        }
+        let sequence = shoop_engine::app_backend::set_take_latency_policy_for_channels(
+            &loop_.audio,
+            &loop_.midi,
+            capture_alignment_frames,
+        )?;
+        self.runtime()?
+            .session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
         Ok(())
     }
 
