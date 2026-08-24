@@ -5255,7 +5255,18 @@ impl AudioChannel {
     pub fn consolidate_latency(&self) -> Result<CommandSequence> {
         let state = self.get_state()?;
         let logical_length = self.parent.mirror.read().length as usize;
-        let raw = self.get_data();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let raw = loop {
+            if let Ok(snapshot) = self.try_get_current_data_snapshot() {
+                break snapshot.contiguous();
+            }
+            if Instant::now() >= deadline {
+                return Err(anyhow!(
+                    "audio content did not settle before latency consolidation"
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        };
         let regions = self.get_alignment_regions()?;
         let mut consolidated = Vec::with_capacity(logical_length);
         for logical in 0..logical_length {
