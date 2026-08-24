@@ -2458,12 +2458,11 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown loop"))?;
-        for channel in &loop_.audio {
-            channel.consolidate_latency()?;
-        }
-        for channel in &loop_.midi {
-            channel.consolidate_latency()?;
-        }
+        let sequence =
+            shoop_engine::app_backend::consolidate_loop_latency(&loop_.audio, &loop_.midi)?;
+        self.runtime()?
+            .session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
         Ok(())
     }
 

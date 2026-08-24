@@ -4415,6 +4415,7 @@ impl Backend for EngineBackend {
                     consolidated.push(event.at_time(logical as u32));
                 }
             }
+            consolidated.sort_by_key(|event| event.time);
             let start_state = start_state.state_as_messages();
             channel.set_contents(
                 &consolidated,
