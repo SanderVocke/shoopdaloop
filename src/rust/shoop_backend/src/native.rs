@@ -815,15 +815,18 @@ impl NativeRuntime {
                             gain: state.gain,
                             start_offset: state.start_offset,
                             preplay: state.n_preplay_samples,
-                            latency: native_take_latency_snapshot(
-                                state.capture_alignment_frames,
-                                state.retained_before_frames,
-                                state.retained_after_frames,
-                                state.length,
-                                state.latency_history_variable,
-                                state.latency_history_revisions,
-                                state.latency_retention_incomplete,
-                                state.latched_latency_recipe,
+                            latency: with_runtime_alignment_regions(
+                                native_take_latency_snapshot(
+                                    state.capture_alignment_frames,
+                                    state.retained_before_frames,
+                                    state.retained_after_frames,
+                                    state.length,
+                                    state.latency_history_variable,
+                                    state.latency_history_revisions,
+                                    state.latency_retention_incomplete,
+                                    state.latched_latency_recipe,
+                                ),
+                                channel.get_alignment_regions()?.into_iter(),
                             ),
                         })
                     })
@@ -853,15 +856,18 @@ impl NativeRuntime {
                                 .collect(),
                             start_offset: state.start_offset,
                             preplay: state.n_preplay_samples,
-                            latency: native_take_latency_snapshot(
-                                state.capture_alignment_frames,
-                                state.retained_before_frames,
-                                state.retained_after_frames,
-                                state.length,
-                                state.latency_history_variable,
-                                state.latency_history_revisions,
-                                state.latency_retention_incomplete,
-                                state.latched_latency_recipe,
+                            latency: with_runtime_alignment_regions(
+                                native_take_latency_snapshot(
+                                    state.capture_alignment_frames,
+                                    state.retained_before_frames,
+                                    state.retained_after_frames,
+                                    state.length,
+                                    state.latency_history_variable,
+                                    state.latency_history_revisions,
+                                    state.latency_retention_incomplete,
+                                    state.latched_latency_recipe,
+                                ),
+                                channel.get_alignment_regions()?.into_iter(),
                             ),
                         })
                     })
@@ -1079,6 +1085,8 @@ impl NativeRuntime {
                             self.resolved.sample_rate,
                         )?,
                     )?;
+                    channel
+                        .restore_alignment_regions(runtime_alignment_regions(&content.latency))?;
                     channel.restore_retained_margin_metadata(
                         content.latency.retained_before_frames,
                         content.latency.retained_after_frames,
@@ -1107,6 +1115,8 @@ impl NativeRuntime {
                             self.resolved.sample_rate,
                         )?,
                     )?;
+                    channel
+                        .restore_alignment_regions(runtime_alignment_regions(&content.latency))?;
                     channel.restore_retained_margin_metadata(
                         content.latency.retained_before_frames,
                         content.latency.retained_after_frames,
@@ -2189,6 +2199,44 @@ impl NativeRuntime {
         Ok(())
     }
 
+    fn prepare_loop_latency_replacement(&self, loop_id: BackendLoopId) -> Result<()> {
+        let loop_ = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing native loop for latency replacement"))?;
+        let mut targets = Vec::with_capacity(loop_.audio.len() + loop_.midi.len());
+        for (channel_idx, channel) in loop_.audio.iter().enumerate() {
+            let Some(frames) = channel
+                .poll_state()
+                .and_then(|state| state.current_latency_recipe.recipe)
+                .and_then(|recipe| recipe.total_frames)
+            else {
+                return Ok(());
+            };
+            targets.push(shoop_engine::session::LatencyReplacementChannel::Audio {
+                channel_idx,
+                capture_alignment_frames: i32::try_from(frames)
+                    .map_err(|_| anyhow!("native replacement latency exceeds i32"))?,
+            });
+        }
+        for (channel_idx, channel) in loop_.midi.iter().enumerate() {
+            let Some(frames) = channel
+                .poll_state()
+                .and_then(|state| state.current_latency_recipe.recipe)
+                .and_then(|recipe| recipe.total_frames)
+            else {
+                return Ok(());
+            };
+            targets.push(shoop_engine::session::LatencyReplacementChannel::Midi {
+                channel_idx,
+                capture_alignment_frames: i32::try_from(frames)
+                    .map_err(|_| anyhow!("native MIDI replacement latency exceeds i32"))?,
+            });
+        }
+        self.session
+            .prepare_latency_replacement(loop_.handle.identity().slot as usize, targets)
+    }
+
     fn update_latency_diagnostics(
         &mut self,
         loop_states: &BTreeMap<BackendLoopId, BackendLoopState>,
@@ -2410,10 +2458,10 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown loop"))?;
-        if loop_.audio.is_empty() {
-            return Err(anyhow!("MIDI-only latency consolidation is unsupported"));
-        }
         for channel in &loop_.audio {
+            channel.consolidate_latency()?;
+        }
+        for channel in &loop_.midi {
             channel.consolidate_latency()?;
         }
         Ok(())
@@ -2827,37 +2875,70 @@ impl Backend for NativeBackend {
 
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
         let runtime = self.runtime_mut()?;
+        let mut audio_requests = Vec::with_capacity(requests.len());
+        let mut midi_requests = Vec::with_capacity(requests.len());
+        let mut prepared_midi = Vec::new();
         for request in requests {
-            if !runtime.loops.contains_key(&request.loop_id) {
-                return Err(anyhow!("unknown native loop {:?}", request.loop_id));
-            }
-        }
-        for request in requests {
-            let input = runtime
+            let loop_ = runtime
+                .loops
+                .get(&request.loop_id)
+                .ok_or_else(|| anyhow!("unknown native loop {:?}", request.loop_id))?;
+            let track = runtime
                 .tracks
                 .values()
                 .find(|track| track.loops.contains(&request.loop_id))
-                .and_then(|track| track.midi_input.clone());
-            let loop_ = &runtime.loops[&request.loop_id];
-            if let Some(input) = &input {
-                for channel in &loop_.midi {
-                    channel.adopt_ringbuffer_contents(
-                        input,
-                        &loop_.handle,
-                        request.reverse_start_cycle,
-                        request.cycles_length,
-                        request.go_to_cycle,
-                        to_native_mode(request.go_to_mode),
-                    )?;
-                }
+                .ok_or_else(|| anyhow!("missing native grab track"))?;
+            let has_observation = track
+                .audio_inputs
+                .iter()
+                .filter_map(AudioPort::poll_state)
+                .any(|state| state.capture_latency.range.is_some())
+                || track
+                    .midi_input
+                    .as_ref()
+                    .and_then(MidiPort::poll_state)
+                    .is_some_and(|state| state.capture_latency.range.is_some());
+            let policy = fallback_unknown_grab_latency(
+                grab_latency_policy(&track.state.latency_policy)?,
+                has_observation,
+            );
+            let engine_loop = loop_.handle.identity().slot as usize;
+            let adoption = shoop_engine::session::AudioRingbufferAdoption {
+                loop_idx: engine_loop,
+                reverse_start_cycle: request.reverse_start_cycle,
+                cycles_length: request.cycles_length,
+                go_to_cycle: request.go_to_cycle,
+                go_to_mode: to_native_mode(request.go_to_mode).into(),
+            };
+            if !loop_.audio.is_empty() {
+                audio_requests.push(shoop_engine::session::LatencyAwareAudioRingbufferAdoption {
+                    request: adoption,
+                    latency_policy: policy,
+                });
             }
-            loop_.handle.adopt_ringbuffer_contents(
-                request.reverse_start_cycle,
-                request.cycles_length,
-                request.go_to_cycle,
-                to_native_mode(request.go_to_mode),
-            )?;
+            if !loop_.midi.is_empty() {
+                midi_requests.push(shoop_engine::session::LatencyAwareMidiRingbufferAdoption {
+                    request: adoption,
+                    latency_policy: policy,
+                });
+                prepared_midi.extend((0..loop_.midi.len()).map(|channel_idx| {
+                    shoop_engine::session::PreparedMidiLatencyGrabChannel {
+                        loop_idx: engine_loop,
+                        channel_idx,
+                        data: shoop_engine::MidiStorage::with_capacity_elems(1024),
+                        start_state: shoop_engine::MidiStateTracker::new(
+                            shoop_engine::TrackWhat::ALL,
+                        ),
+                    }
+                }));
+            }
         }
+        runtime.session.adopt_ringbuffers_with_latency(
+            audio_requests,
+            midi_requests,
+            prepared_midi,
+        )?;
+        runtime.wait();
         Ok(())
     }
 
@@ -2890,20 +2971,26 @@ impl Backend for NativeBackend {
             .iter()
             .map(|channel| {
                 let state = channel.get_state()?;
+                let mut latency = native_take_latency_snapshot(
+                    state.capture_alignment_frames,
+                    state.retained_before_frames,
+                    state.retained_after_frames,
+                    state.length,
+                    state.latency_history_variable,
+                    state.latency_history_revisions,
+                    state.latency_retention_incomplete,
+                    state.latched_latency_recipe,
+                );
+                let regions =
+                    backend_alignment_regions(channel.get_alignment_regions()?.into_iter());
+                if !regions.is_empty() {
+                    latency.alignment_regions = regions;
+                }
                 Ok(BackendAudioChannelData {
                     samples: Arc::from(channel.get_data()),
                     start_offset: state.start_offset,
                     preplay: state.n_preplay_samples,
-                    latency: native_take_latency_snapshot(
-                        state.capture_alignment_frames,
-                        state.retained_before_frames,
-                        state.retained_after_frames,
-                        state.length,
-                        state.latency_history_variable,
-                        state.latency_history_revisions,
-                        state.latency_retention_incomplete,
-                        state.latched_latency_recipe,
-                    ),
+                    latency,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -2924,6 +3011,21 @@ impl Backend for NativeBackend {
                 let state = channel.get_state()?;
                 let data = channel.get_all_midi_data();
                 let revision = channel.get_latest_data_snapshot().snapshot.revision.0;
+                let mut latency = native_take_latency_snapshot(
+                    state.capture_alignment_frames,
+                    state.retained_before_frames,
+                    state.retained_after_frames,
+                    state.length,
+                    state.latency_history_variable,
+                    state.latency_history_revisions,
+                    state.latency_retention_incomplete,
+                    state.latched_latency_recipe,
+                );
+                let regions =
+                    backend_alignment_regions(channel.get_alignment_regions()?.into_iter());
+                if !regions.is_empty() {
+                    latency.alignment_regions = regions;
+                }
                 Ok(BackendMidiChannelData {
                     content_revision: revision,
                     mode: *mode,
@@ -2938,16 +3040,7 @@ impl Backend for NativeBackend {
                         .collect(),
                     start_offset: state.start_offset,
                     preplay: state.n_preplay_samples,
-                    latency: native_take_latency_snapshot(
-                        state.capture_alignment_frames,
-                        state.retained_before_frames,
-                        state.retained_after_frames,
-                        state.length,
-                        state.latency_history_variable,
-                        state.latency_history_revisions,
-                        state.latency_retention_incomplete,
-                        state.latched_latency_recipe,
-                    ),
+                    latency,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -2996,6 +3089,9 @@ impl Backend for NativeBackend {
     ) -> Result<()> {
         let runtime = self.runtime_mut()?;
         runtime.prepare_loop_latency_policy(loop_id, mode)?;
+        if mode == BackendLoopMode::Replacing {
+            runtime.prepare_loop_latency_replacement(loop_id)?;
+        }
         runtime
             .loops
             .get(&loop_id)
@@ -3154,6 +3250,8 @@ impl Backend for NativeBackend {
                     snapshot.capture_alignment_frames,
                     selection,
                 )?);
+                latency_sequences
+                    .push(channel.restore_alignment_regions(runtime_alignment_regions(snapshot))?);
                 latency_sequences.push(channel.restore_retained_margin_metadata(
                     snapshot.retained_before_frames,
                     snapshot.retained_after_frames,
@@ -3167,6 +3265,8 @@ impl Backend for NativeBackend {
                     snapshot.capture_alignment_frames,
                     selection,
                 )?);
+                latency_sequences
+                    .push(channel.restore_alignment_regions(runtime_alignment_regions(snapshot))?);
                 latency_sequences.push(channel.restore_retained_margin_metadata(
                     snapshot.retained_before_frames,
                     snapshot.retained_after_frames,
@@ -3370,6 +3470,8 @@ impl Backend for NativeBackend {
                         channel.latency_history_variable,
                         channel.latency_history_revisions,
                         channel.latency_retention_incomplete,
+                        channel.length,
+                        channel.latched_latency_recipe,
                     )
                 })
                 .or_else(|| {
@@ -3387,6 +3489,8 @@ impl Backend for NativeBackend {
                                 channel.latency_history_variable,
                                 channel.latency_history_revisions,
                                 channel.latency_retention_incomplete,
+                                channel.length,
+                                channel.latched_latency_recipe,
                             )
                         })
                 });
@@ -3401,28 +3505,28 @@ impl Backend for NativeBackend {
                         variable,
                         revisions,
                         incomplete,
+                        raw_length,
+                        latched,
                     )| {
-                        TakeLatencyProvenanceState {
-                            capture_alignment_frames: capture,
-                            retained_before_frames: retained_before,
-                            retained_after_frames: retained_after,
-                            render_advance_frames: render,
-                            certainty: LatencyCertaintyState::Unknown,
-                            observation_min_frames: None,
-                            observation_max_frames: None,
-                            observation_sample_rate: 0,
-                            observation_revision: 0,
-                            variable_history: variable,
-                            history_revisions: revisions,
-                            changed_during_operation: state.latched_latency_recipe.changed,
+                        let snapshot = native_take_latency_snapshot(
+                            capture,
+                            retained_before,
+                            retained_after,
+                            raw_length,
+                            variable,
+                            revisions,
                             incomplete,
-                            deferred_mode: state
-                                .deferred_latency_mode
-                                .map(from_native_mode)
-                                .map(app_loop_mode),
-                            finalizing: postroll_remaining > 0,
-                            error: None,
-                        }
+                            latched,
+                        );
+                        let mut latency = app_take_latency_snapshot(&snapshot);
+                        latency.render_advance_frames = render;
+                        latency.changed_during_operation = state.latched_latency_recipe.changed;
+                        latency.deferred_mode = state
+                            .deferred_latency_mode
+                            .map(from_native_mode)
+                            .map(app_loop_mode);
+                        latency.finalizing = postroll_remaining > 0;
+                        latency
                     },
                 )
                 .unwrap_or_default();

@@ -13,11 +13,11 @@ use crate::chunked_samples::ChunkedSamples;
 use crate::content_snapshot::AudioProcessSnapshotWriter;
 use crate::latency_runtime::{
     cyclic_render_dispatch_position, LatchedLatencyRecipe, RetainedLatencySelection,
-    RuntimeLatencyRecipe,
+    RuntimeAlignmentRegion, RuntimeLatencyRecipe,
 };
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
-use shoop_latency::{LatencyDomainError, MAX_COMPENSATION_FRAMES};
+use shoop_latency::{LatencyDomainError, MAX_ALIGNMENT_REGIONS, MAX_COMPENSATION_FRAMES};
 
 /// At most two copy commands (record and playback) per session sub-block.
 /// The session processes no more than 16 sub-blocks in one callback.
@@ -237,6 +237,8 @@ pub struct AudioChannel {
     capture_alignment_frames: i32,
     /// Ephemeral early dispatch for current processor rendering; never persisted into the take.
     render_advance_frames: u32,
+    alignment_regions: [Option<RuntimeAlignmentRegion>; MAX_ALIGNMENT_REGIONS],
+    n_alignment_regions: usize,
     pre_play_samples: u32,
     output_peak: f32,
     gain: f32,
@@ -320,6 +322,8 @@ impl AudioChannel {
             start_offset: 0,
             capture_alignment_frames: 0,
             render_advance_frames: 0,
+            alignment_regions: [None; MAX_ALIGNMENT_REGIONS],
+            n_alignment_regions: 0,
             pre_play_samples: 0,
             output_peak: 0.0,
             gain: 1.0,
@@ -450,6 +454,7 @@ impl AudioChannel {
                         // The processor delay was consumed while rendering. The wet
                         // destination is canonical logical media, not a newly delayed take.
                         self.capture_alignment_frames = 0;
+                        self.n_alignment_regions = 0;
                         self.render_advance_frames = 0;
                     }
                 }
@@ -490,7 +495,48 @@ impl AudioChannel {
             ));
         }
         self.capture_alignment_frames = frames;
+        self.n_alignment_regions = 0;
         self.publish_state();
+        Ok(())
+    }
+    pub fn alignment_regions(&self) -> impl Iterator<Item = RuntimeAlignmentRegion> + '_ {
+        self.alignment_regions[..self.n_alignment_regions]
+            .iter()
+            .flatten()
+            .copied()
+    }
+    pub fn restore_alignment_regions(
+        &mut self,
+        regions: &[RuntimeAlignmentRegion],
+    ) -> Result<(), LatencyDomainError> {
+        if regions.len() > MAX_ALIGNMENT_REGIONS {
+            return Err(LatencyDomainError::TooManyAlignmentRegions(regions.len()));
+        }
+        let mut previous_end = 0;
+        for region in regions {
+            if region.raw_start >= region.raw_end
+                || region.raw_start < previous_end
+                || region.raw_end as usize > self.data_length
+            {
+                return Err(LatencyDomainError::InvertedRange {
+                    min: region.raw_start,
+                    max: region.raw_end,
+                });
+            }
+            if region.capture_alignment_frames.unsigned_abs() > MAX_COMPENSATION_FRAMES {
+                return Err(LatencyDomainError::ValueExceedsMaximum(
+                    region.capture_alignment_frames.unsigned_abs(),
+                ));
+            }
+            previous_end = region.raw_end;
+        }
+        self.n_alignment_regions = regions.len();
+        for (destination, source) in self.alignment_regions.iter_mut().zip(regions) {
+            *destination = Some(*source);
+        }
+        for destination in &mut self.alignment_regions[self.n_alignment_regions..] {
+            *destination = None;
+        }
         Ok(())
     }
     pub fn render_advance_frames(&self) -> u32 {
@@ -548,11 +594,21 @@ impl AudioChannel {
         self.grab_latency_selection = selection;
         self.latency_retention_incomplete = false;
         self.state.publish_latency_retention_incomplete(false);
-        let (variable, revisions) = match selection {
-            RetainedLatencySelection::Stable(_) => (false, 1),
-            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
-            RetainedLatencySelection::Unavailable => (false, 0),
+        let (variable, revisions, observation_revision) = match selection {
+            RetainedLatencySelection::Stable(observation) => (false, 1, observation.revision),
+            RetainedLatencySelection::Variable {
+                newest, revisions, ..
+            } => (true, revisions, newest.revision),
+            RetainedLatencySelection::Unavailable => (false, 0, 0),
         };
+        if self.data_length > 0 {
+            self.restore_alignment_regions(&[RuntimeAlignmentRegion {
+                raw_start: 0,
+                raw_end: self.data_length.min(u32::MAX as usize) as u32,
+                capture_alignment_frames,
+                observation_revision,
+            }])?;
+        }
         self.state.publish_latency_history(variable, revisions);
         self.publish_state();
         Ok(())
@@ -619,9 +675,33 @@ impl AudioChannel {
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
-        logical_position
-            .checked_add(self.start_offset)?
-            .checked_add(self.capture_alignment_frames)
+        let base = logical_position.checked_add(self.start_offset)?;
+        let alignment = self
+            .alignment_regions()
+            .filter_map(|region| {
+                let candidate = base.checked_add(region.capture_alignment_frames)?;
+                ((candidate as i64) >= i64::from(region.raw_start)
+                    && (candidate as i64) < i64::from(region.raw_end))
+                .then_some((region.observation_revision, region.capture_alignment_frames))
+            })
+            .max_by_key(|(revision, _)| *revision)
+            .map(|(_, alignment)| alignment)
+            .unwrap_or(self.capture_alignment_frames);
+        base.checked_add(alignment)
+    }
+    pub fn logical_position_for_raw(&self, raw_position: i32) -> Option<i32> {
+        let alignment = self
+            .alignment_regions()
+            .filter(|region| {
+                (raw_position as i64) >= i64::from(region.raw_start)
+                    && (raw_position as i64) < i64::from(region.raw_end)
+            })
+            .max_by_key(|region| region.observation_revision)
+            .map(|region| region.capture_alignment_frames)
+            .unwrap_or(self.capture_alignment_frames);
+        raw_position
+            .checked_sub(self.start_offset)?
+            .checked_sub(alignment)
     }
     pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
         self.raw_position_for_logical(logical_position)?
@@ -698,6 +778,7 @@ impl AudioChannel {
         self.data_length = samples.len();
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
+        self.n_alignment_regions = 0;
         self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -749,6 +830,7 @@ impl AudioChannel {
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
+        self.n_alignment_regions = 0;
         self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         self.publish_all_data();
@@ -764,6 +846,7 @@ impl AudioChannel {
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
+        self.n_alignment_regions = 0;
         self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -781,6 +864,7 @@ impl AudioChannel {
         self.data_length = length;
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
+        self.n_alignment_regions = 0;
         self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -801,6 +885,7 @@ impl AudioChannel {
         self.data_length = length;
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
+        self.n_alignment_regions = 0;
         self.render_advance_frames = 0;
         self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -1588,6 +1673,32 @@ mod tests {
         check!(ch
             .set_capture_alignment_frames(-(MAX_COMPENSATION_FRAMES as i32) - 1)
             .is_err());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn piecewise_alignment_regions_select_the_newest_matching_raw_mapping() {
+        let mut ch = channel();
+        ch.load_data(&(0..8).map(|sample| sample as f32).collect::<Vec<_>>());
+        ch.restore_alignment_regions(&[
+            RuntimeAlignmentRegion {
+                raw_start: 0,
+                raw_end: 4,
+                capture_alignment_frames: 0,
+                observation_revision: 1,
+            },
+            RuntimeAlignmentRegion {
+                raw_start: 4,
+                raw_end: 8,
+                capture_alignment_frames: 2,
+                observation_revision: 2,
+            },
+        ])
+        .unwrap();
+
+        check!(ch.raw_position_for_logical(0) == Some(0));
+        check!(ch.raw_position_for_logical(2) == Some(4));
+        check!(ch.raw_position_for_logical(5) == Some(7));
+        check!(ch.alignment_regions().count() == 2);
     }
 
     #[shoop_wasm_test_support::shoop_test]

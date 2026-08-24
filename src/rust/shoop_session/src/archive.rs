@@ -1161,7 +1161,7 @@ pub(crate) fn validate_take_latency(
             "variable take latency has fewer than two revisions".to_owned(),
         ));
     }
-    if latency.alignment_regions.len() > shoop_latency::MAX_OBSERVATION_HISTORY {
+    if latency.alignment_regions.len() > shoop_latency::MAX_ALIGNMENT_REGIONS {
         return Err(SessionError::Validation(
             "take latency exceeds alignment-region capacity".to_owned(),
         ));
@@ -1173,6 +1173,7 @@ pub(crate) fn validate_take_latency(
             || region.raw_end_frame > raw_length
             || region.capture_alignment_frames.unsigned_abs()
                 > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
+            || region.observation_revision > latency.observation.revision
         {
             return Err(SessionError::Validation(
                 "take latency alignment region is invalid".to_owned(),

@@ -1090,6 +1090,32 @@ mod tests {
         ));
         assert_eq!(decoded, bundle);
 
+        let latency = &bundle.document.track_groups[0].tracks[0].loops[0].channels[0].latency;
+        let mut forward_revision = latency.clone();
+        forward_revision.alignment_regions[0].observation_revision = 10;
+        assert!(matches!(
+            crate::archive::validate_take_latency(&forward_revision, 3, 48_000),
+            Err(SessionError::Validation(message)) if message.contains("alignment region")
+        ));
+
+        let mut oversized_regions = latency.clone();
+        oversized_regions.alignment_regions = (0..=shoop_latency::MAX_ALIGNMENT_REGIONS)
+            .map(|frame| AlignmentRegionDocument {
+                raw_start_frame: frame as u64,
+                raw_end_frame: frame as u64 + 1,
+                capture_alignment_frames: 2,
+                observation_revision: 9,
+            })
+            .collect();
+        assert!(matches!(
+            crate::archive::validate_take_latency(
+                &oversized_regions,
+                oversized_regions.alignment_regions.len() as u64,
+                48_000,
+            ),
+            Err(SessionError::Validation(message)) if message.contains("alignment-region capacity")
+        ));
+
         let mut stale_cue = bundle.clone();
         stale_cue.document.track_groups[0].tracks[0]
             .latency_policy

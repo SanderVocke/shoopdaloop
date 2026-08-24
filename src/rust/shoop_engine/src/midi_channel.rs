@@ -19,13 +19,13 @@ use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::content_snapshot::MidiProcessSnapshotWriter;
 use crate::latency_runtime::{
     cyclic_render_dispatch_position, LatchedLatencyRecipe, RetainedLatencySelection,
-    RuntimeLatencyRecipe,
+    RuntimeAlignmentRegion, RuntimeLatencyRecipe,
 };
 use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
 use crate::state_mirror::MidiChannelStateMirror;
-use shoop_latency::{LatencyDomainError, MAX_COMPENSATION_FRAMES};
+use shoop_latency::{LatencyDomainError, MAX_ALIGNMENT_REGIONS, MAX_COMPENSATION_FRAMES};
 
 use std::sync::Arc;
 use thiserror::Error;
@@ -154,6 +154,8 @@ pub struct MidiChannel {
     capture_alignment_frames: i32,
     /// Ephemeral early dispatch for current processor rendering.
     render_advance_frames: u32,
+    alignment_regions: [Option<RuntimeAlignmentRegion>; MAX_ALIGNMENT_REGIONS],
+    n_alignment_regions: usize,
     pre_play_samples: u32,
     n_events_triggered: u32,
     data_seq_nr: u32,
@@ -224,6 +226,8 @@ impl MidiChannel {
             start_offset: 0,
             capture_alignment_frames: 0,
             render_advance_frames: 0,
+            alignment_regions: [None; MAX_ALIGNMENT_REGIONS],
+            n_alignment_regions: 0,
             pre_play_samples: 0,
             n_events_triggered: 0,
             data_seq_nr: 0,
@@ -331,6 +335,7 @@ impl MidiChannel {
                         self.render_advance_frames = total;
                     } else {
                         self.capture_alignment_frames = 0;
+                        self.n_alignment_regions = 0;
                         self.render_advance_frames = 0;
                     }
                 }
@@ -367,7 +372,48 @@ impl MidiChannel {
             ));
         }
         self.capture_alignment_frames = frames;
+        self.n_alignment_regions = 0;
         self.publish_state();
+        Ok(())
+    }
+    pub fn alignment_regions(&self) -> impl Iterator<Item = RuntimeAlignmentRegion> + '_ {
+        self.alignment_regions[..self.n_alignment_regions]
+            .iter()
+            .flatten()
+            .copied()
+    }
+    pub fn restore_alignment_regions(
+        &mut self,
+        regions: &[RuntimeAlignmentRegion],
+    ) -> Result<(), LatencyDomainError> {
+        if regions.len() > MAX_ALIGNMENT_REGIONS {
+            return Err(LatencyDomainError::TooManyAlignmentRegions(regions.len()));
+        }
+        let mut previous_end = 0;
+        for region in regions {
+            if region.raw_start >= region.raw_end
+                || region.raw_start < previous_end
+                || region.raw_end > self.data_length
+            {
+                return Err(LatencyDomainError::InvertedRange {
+                    min: region.raw_start,
+                    max: region.raw_end,
+                });
+            }
+            if region.capture_alignment_frames.unsigned_abs() > MAX_COMPENSATION_FRAMES {
+                return Err(LatencyDomainError::ValueExceedsMaximum(
+                    region.capture_alignment_frames.unsigned_abs(),
+                ));
+            }
+            previous_end = region.raw_end;
+        }
+        self.n_alignment_regions = regions.len();
+        for (destination, source) in self.alignment_regions.iter_mut().zip(regions) {
+            *destination = Some(*source);
+        }
+        for destination in &mut self.alignment_regions[self.n_alignment_regions..] {
+            *destination = None;
+        }
         Ok(())
     }
     pub fn render_advance_frames(&self) -> u32 {
@@ -423,11 +469,21 @@ impl MidiChannel {
         self.set_capture_alignment_frames(capture_alignment_frames)?;
         self.start_offset = media_layout_offset;
         self.grab_latency_selection = selection;
-        let (variable, revisions) = match selection {
-            RetainedLatencySelection::Stable(_) => (false, 1),
-            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
-            RetainedLatencySelection::Unavailable => (false, 0),
+        let (variable, revisions, observation_revision) = match selection {
+            RetainedLatencySelection::Stable(observation) => (false, 1, observation.revision),
+            RetainedLatencySelection::Variable {
+                newest, revisions, ..
+            } => (true, revisions, newest.revision),
+            RetainedLatencySelection::Unavailable => (false, 0, 0),
         };
+        if self.data_length > 0 {
+            self.restore_alignment_regions(&[RuntimeAlignmentRegion {
+                raw_start: 0,
+                raw_end: self.data_length,
+                capture_alignment_frames,
+                observation_revision,
+            }])?;
+        }
         self.state.publish_latency_history(variable, revisions);
         self.publish_state();
         Ok(())
@@ -461,11 +517,21 @@ impl MidiChannel {
         self.recording_start_valid = true;
         self.loaded_contents = true;
         self.grab_latency_selection = selection;
-        let (variable, revisions) = match selection {
-            RetainedLatencySelection::Stable(_) => (false, 1),
-            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
-            RetainedLatencySelection::Unavailable => (false, 0),
+        let (variable, revisions, observation_revision) = match selection {
+            RetainedLatencySelection::Stable(observation) => (false, 1, observation.revision),
+            RetainedLatencySelection::Variable {
+                newest, revisions, ..
+            } => (true, revisions, newest.revision),
+            RetainedLatencySelection::Unavailable => (false, 0, 0),
         };
+        if self.data_length > 0 {
+            self.restore_alignment_regions(&[RuntimeAlignmentRegion {
+                raw_start: 0,
+                raw_end: self.data_length,
+                capture_alignment_frames,
+                observation_revision,
+            }])?;
+        }
         self.state.publish_latency_history(variable, revisions);
         self.publish_snapshot_contents(
             crate::content_snapshot::ContentMutation::RingbufferAdoption,
@@ -515,9 +581,33 @@ impl MidiChannel {
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
-        logical_position
-            .checked_add(self.start_offset)?
-            .checked_add(self.capture_alignment_frames)
+        let base = logical_position.checked_add(self.start_offset)?;
+        let alignment = self
+            .alignment_regions()
+            .filter_map(|region| {
+                let candidate = base.checked_add(region.capture_alignment_frames)?;
+                ((candidate as i64) >= i64::from(region.raw_start)
+                    && (candidate as i64) < i64::from(region.raw_end))
+                .then_some((region.observation_revision, region.capture_alignment_frames))
+            })
+            .max_by_key(|(revision, _)| *revision)
+            .map(|(_, alignment)| alignment)
+            .unwrap_or(self.capture_alignment_frames);
+        base.checked_add(alignment)
+    }
+    pub fn logical_position_for_raw(&self, raw_position: i32) -> Option<i32> {
+        let alignment = self
+            .alignment_regions()
+            .filter(|region| {
+                (raw_position as i64) >= i64::from(region.raw_start)
+                    && (raw_position as i64) < i64::from(region.raw_end)
+            })
+            .max_by_key(|region| region.observation_revision)
+            .map(|region| region.capture_alignment_frames)
+            .unwrap_or(self.capture_alignment_frames);
+        raw_position
+            .checked_sub(self.start_offset)?
+            .checked_sub(alignment)
     }
     pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
         self.raw_position_for_logical(logical_position)?
@@ -589,6 +679,7 @@ impl MidiChannel {
         self.loaded_contents = false;
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
+        self.n_alignment_regions = 0;
         self.render_advance_frames = 0;
         self.grab_latency_selection = RetainedLatencySelection::Unavailable;
         self.state.publish_latency_history(false, 0);
@@ -628,6 +719,7 @@ impl MidiChannel {
         self.data_length = length;
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
+        self.n_alignment_regions = 0;
         self.render_advance_frames = 0;
         self.grab_latency_selection = RetainedLatencySelection::Unavailable;
         self.state.publish_latency_history(false, 0);
@@ -655,6 +747,7 @@ impl MidiChannel {
         self.recording_start_valid = prepared.start_state_valid;
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
+        self.n_alignment_regions = 0;
         self.render_advance_frames = 0;
         self.grab_latency_selection = RetainedLatencySelection::Unavailable;
         self.state.publish_latency_history(false, 0);
@@ -2041,6 +2134,32 @@ mod tests {
         let published = state.read(ch.data_seq_nr() as u64);
         check!(published.raw_played_position == Some(5));
         check!(published.dispatch_position == Some(5));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn piecewise_alignment_regions_select_the_newest_matching_midi_mapping() {
+        let mut ch = channel();
+        ch.set_contents(&[], 8, None);
+        ch.restore_alignment_regions(&[
+            RuntimeAlignmentRegion {
+                raw_start: 0,
+                raw_end: 4,
+                capture_alignment_frames: 0,
+                observation_revision: 1,
+            },
+            RuntimeAlignmentRegion {
+                raw_start: 4,
+                raw_end: 8,
+                capture_alignment_frames: 2,
+                observation_revision: 2,
+            },
+        ])
+        .unwrap();
+
+        check!(ch.raw_position_for_logical(0) == Some(0));
+        check!(ch.raw_position_for_logical(2) == Some(4));
+        check!(ch.raw_position_for_logical(5) == Some(7));
+        check!(ch.alignment_regions().count() == 2);
     }
 
     #[shoop_wasm_test_support::shoop_test]

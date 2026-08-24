@@ -678,6 +678,8 @@ pub enum LatencyDomainError {
     SourceIdentityTooLong(usize),
     #[error("recipe has {0} components")]
     TooManyRecipeComponents(usize),
+    #[error("take has {0} alignment regions")]
+    TooManyAlignmentRegions(usize),
     #[error("latency recipe is unresolved")]
     UnresolvedRecipe,
     #[error("retained latency margin exceeds the supported maximum")]

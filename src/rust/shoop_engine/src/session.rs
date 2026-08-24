@@ -84,6 +84,7 @@ pub struct AudioRingbufferAdoption {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrabLatencyPolicy {
     Automatic,
+    AutomaticPlusTrim(i32),
     Disabled,
     Manual(i32),
 }
@@ -2301,6 +2302,12 @@ impl Session {
                         i32::try_from(observed.ok_or(SessionError::LatencyGrabUnresolved)?)
                             .map_err(|_| SessionError::LatencyGrabAlignment)?
                     }
+                    GrabLatencyPolicy::AutomaticPlusTrim(trim) => {
+                        i32::try_from(observed.ok_or(SessionError::LatencyGrabUnresolved)?)
+                            .ok()
+                            .and_then(|frames| frames.checked_add(trim))
+                            .ok_or(SessionError::LatencyGrabAlignment)?
+                    }
                     GrabLatencyPolicy::Disabled => 0,
                     GrabLatencyPolicy::Manual(frames) => frames,
                 };
@@ -2449,6 +2456,12 @@ impl Session {
                     GrabLatencyPolicy::Automatic => {
                         i32::try_from(observed.ok_or(SessionError::LatencyGrabUnresolved)?)
                             .map_err(|_| SessionError::LatencyGrabAlignment)?
+                    }
+                    GrabLatencyPolicy::AutomaticPlusTrim(trim) => {
+                        i32::try_from(observed.ok_or(SessionError::LatencyGrabUnresolved)?)
+                            .ok()
+                            .and_then(|frames| frames.checked_add(trim))
+                            .ok_or(SessionError::LatencyGrabAlignment)?
                     }
                     GrabLatencyPolicy::Disabled => 0,
                     GrabLatencyPolicy::Manual(frames) => frames,

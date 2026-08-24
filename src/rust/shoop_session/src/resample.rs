@@ -200,15 +200,29 @@ fn resample_take_latency(
     if latency.observation.minimum_frames.is_some() {
         latency.observation.sample_rate = target;
     }
+    let mut previous_end = 0;
     for region in &mut latency.alignment_regions {
-        region.raw_start_frame = scale_nearest(region.raw_start_frame, source, target)?;
-        region.raw_end_frame = scale_nearest(region.raw_end_frame, source, target)?.min(raw_length);
+        let mut start = scale_nearest(region.raw_start_frame, source, target)?;
+        let mut end = scale_duration(region.raw_end_frame, source, target)?.min(raw_length);
+        start = start.max(previous_end).min(raw_length);
+        if end <= start {
+            if start < raw_length {
+                end = start + 1;
+            } else if raw_length > previous_end {
+                start = raw_length - 1;
+                end = raw_length;
+            } else {
+                return Err(SessionError::Validation(
+                    "resampling cannot preserve nonempty alignment regions".to_owned(),
+                ));
+            }
+        }
+        region.raw_start_frame = start;
+        region.raw_end_frame = end;
         region.capture_alignment_frames =
             scale_signed_nearest(region.capture_alignment_frames, source, target)?;
+        previous_end = end;
     }
-    latency
-        .alignment_regions
-        .retain(|region| region.raw_start_frame < region.raw_end_frame);
     Ok(())
 }
 
@@ -303,6 +317,12 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn resampling_preserves_a_nonempty_range_when_endpoints_collapse() {
         let mut latency = TakeLatencyDocument {
+            alignment_regions: vec![crate::document::AlignmentRegionDocument {
+                raw_start_frame: 1,
+                raw_end_frame: 2,
+                capture_alignment_frames: 1,
+                observation_revision: 3,
+            }],
             observation: LatencyObservationDocument {
                 minimum_frames: Some(1),
                 maximum_frames: Some(2),
@@ -321,6 +341,8 @@ mod tests {
             latency.observation.certainty,
             LatencyCertaintyDocument::Range
         );
+        assert_eq!(latency.alignment_regions[0].raw_start_frame, 0);
+        assert_eq!(latency.alignment_regions[0].raw_end_frame, 1);
         crate::archive::validate_take_latency(&latency, 16, 8_000).unwrap();
     }
 }

@@ -2938,6 +2938,38 @@ impl BackendSession {
         Ok(CompositeInstallAck { sequence, outcome })
     }
 
+    pub fn prepare_latency_replacement(
+        &self,
+        loop_idx: usize,
+        channels: Vec<engine::session::LatencyReplacementChannel>,
+    ) -> Result<()> {
+        self.shared
+            .query_graph_scheduler_response(move |session| {
+                session.prepare_latency_replacement(loop_idx, &channels)
+            })??;
+        Ok(())
+    }
+
+    pub fn adopt_ringbuffers_with_latency(
+        &self,
+        audio_requests: Vec<engine::session::LatencyAwareAudioRingbufferAdoption>,
+        midi_requests: Vec<engine::session::LatencyAwareMidiRingbufferAdoption>,
+        mut prepared_midi: Vec<engine::session::PreparedMidiLatencyGrabChannel>,
+    ) -> Result<()> {
+        self.shared
+            .query_graph_scheduler_response(move |session| {
+                if !audio_requests.is_empty() {
+                    session.adopt_audio_ringbuffers_with_latency(&audio_requests)?;
+                }
+                if !midi_requests.is_empty() {
+                    session
+                        .adopt_midi_ringbuffers_with_latency(&midi_requests, &mut prepared_midi)?;
+                }
+                Ok::<(), engine::SessionError>(())
+            })??;
+        Ok(())
+    }
+
     pub fn adopt_audio_ringbuffers(
         &self,
         requests: Vec<engine::AudioRingbufferAdoption>,
@@ -5162,6 +5194,42 @@ impl AudioChannel {
         Ok(sequence)
     }
 
+    pub fn restore_alignment_regions(
+        &self,
+        regions: Vec<crate::latency_runtime::RuntimeAlignmentRegion>,
+    ) -> Result<CommandSequence> {
+        if regions.len() > shoop_latency::MAX_ALIGNMENT_REGIONS {
+            return Err(anyhow!("take exceeds alignment-region capacity"));
+        }
+        let mut previous_end = 0;
+        for region in &regions {
+            if region.raw_start >= region.raw_end
+                || region.raw_start < previous_end
+                || region.capture_alignment_frames.unsigned_abs()
+                    > shoop_latency::MAX_COMPENSATION_FRAMES
+            {
+                return Err(anyhow!("take alignment region is invalid"));
+            }
+            previous_end = region.raw_end;
+        }
+        Ok(self.with_mut(move |channel| {
+            let _ = channel.restore_alignment_regions(&regions);
+        })?)
+    }
+
+    pub fn get_alignment_regions(
+        &self,
+    ) -> Result<Vec<crate::latency_runtime::RuntimeAlignmentRegion>> {
+        let control = Arc::clone(&self.control);
+        self.shared.query_graph_scheduler_response(move |session| {
+            control
+                .ready_id()
+                .and_then(|id| session.audio_channel(id.index()))
+                .map(|channel| channel.alignment_regions().collect())
+                .unwrap_or_default()
+        })
+    }
+
     pub fn restore_retained_margin_metadata(
         &self,
         retained_before_frames: u32,
@@ -5188,11 +5256,22 @@ impl AudioChannel {
         let state = self.get_state()?;
         let logical_length = self.parent.mirror.read().length as usize;
         let raw = self.get_data();
+        let regions = self.get_alignment_regions()?;
         let mut consolidated = Vec::with_capacity(logical_length);
         for logical in 0..logical_length {
-            let raw_position = i64::from(state.start_offset)
-                + i64::from(state.capture_alignment_frames)
-                + logical as i64;
+            let base = i64::from(state.start_offset) + logical as i64;
+            let alignment = regions
+                .iter()
+                .filter_map(|region| {
+                    let candidate = base + i64::from(region.capture_alignment_frames);
+                    (candidate >= i64::from(region.raw_start)
+                        && candidate < i64::from(region.raw_end))
+                    .then_some((region.observation_revision, region.capture_alignment_frames))
+                })
+                .max_by_key(|(revision, _)| *revision)
+                .map(|(_, alignment)| alignment)
+                .unwrap_or(state.capture_alignment_frames);
+            let raw_position = base + i64::from(alignment);
             consolidated.push(
                 usize::try_from(raw_position)
                     .ok()
@@ -5455,6 +5534,51 @@ impl MidiChannel {
         result
     }
 
+    pub fn consolidate_latency(&self) -> Result<CommandSequence> {
+        let state = self.get_state()?;
+        let logical_length = self.parent.mirror.read().length;
+        let regions = self.get_alignment_regions()?;
+        let logical_position_for_raw = |raw: i32| {
+            let alignment = regions
+                .iter()
+                .filter(|region| {
+                    i64::from(raw) >= i64::from(region.raw_start)
+                        && i64::from(raw) < i64::from(region.raw_end)
+                })
+                .max_by_key(|region| region.observation_revision)
+                .map(|region| region.capture_alignment_frames)
+                .unwrap_or(state.capture_alignment_frames);
+            raw.checked_sub(state.start_offset)?.checked_sub(alignment)
+        };
+        let mut start_state = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
+        let mut consolidated = Vec::new();
+        for event in self.get_all_midi_data() {
+            if event.time < 0 {
+                start_state.process(&event.data);
+                continue;
+            }
+            let logical = logical_position_for_raw(event.time);
+            if logical.is_some_and(|logical| logical < 0) {
+                start_state.process(&event.data);
+            } else if let Some(logical) =
+                logical.filter(|logical| i64::from(*logical) < i64::from(logical_length))
+            {
+                consolidated.push(MidiEvent {
+                    time: logical,
+                    data: event.data,
+                });
+            }
+        }
+        let mut baked = start_state
+            .state_as_messages()
+            .into_iter()
+            .map(|data| MidiEvent { time: -1, data })
+            .collect::<Vec<_>>();
+        baked.extend(consolidated);
+        self.load_midi_data(&baked, logical_length)
+            .map_err(|error| anyhow!("could not queue MIDI latency consolidation: {error}"))
+    }
+
     pub fn adopt_ringbuffer_contents(
         &self,
         port: &MidiPort,
@@ -5680,6 +5804,42 @@ impl MidiChannel {
             .mirror
             .publish_latency_history(variable, revisions);
         Ok(sequence)
+    }
+
+    pub fn restore_alignment_regions(
+        &self,
+        regions: Vec<crate::latency_runtime::RuntimeAlignmentRegion>,
+    ) -> Result<CommandSequence> {
+        if regions.len() > shoop_latency::MAX_ALIGNMENT_REGIONS {
+            return Err(anyhow!("MIDI take exceeds alignment-region capacity"));
+        }
+        let mut previous_end = 0;
+        for region in &regions {
+            if region.raw_start >= region.raw_end
+                || region.raw_start < previous_end
+                || region.capture_alignment_frames.unsigned_abs()
+                    > shoop_latency::MAX_COMPENSATION_FRAMES
+            {
+                return Err(anyhow!("MIDI take alignment region is invalid"));
+            }
+            previous_end = region.raw_end;
+        }
+        Ok(self.with_mut(move |channel| {
+            let _ = channel.restore_alignment_regions(&regions);
+        })?)
+    }
+
+    pub fn get_alignment_regions(
+        &self,
+    ) -> Result<Vec<crate::latency_runtime::RuntimeAlignmentRegion>> {
+        let control = Arc::clone(&self.control);
+        self.shared.query_graph_scheduler_response(move |session| {
+            control
+                .ready_id()
+                .and_then(|id| session.midi_channel(id.index()))
+                .map(|channel| channel.alignment_regions().collect())
+                .unwrap_or_default()
+        })
     }
 
     pub fn restore_retained_margin_metadata(

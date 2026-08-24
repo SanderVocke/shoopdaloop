@@ -33,6 +33,14 @@ pub(crate) fn cyclic_render_dispatch_position(
 /// coherently published numeric portion that realtime code needs to detect revisions and latch
 /// recipes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeAlignmentRegion {
+    pub raw_start: u32,
+    pub raw_end: u32,
+    pub capture_alignment_frames: i32,
+    pub observation_revision: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RuntimeLatencyObservation {
     pub range: Option<LatencyRangeFrames>,
     pub certainty: LatencyCertainty,
