@@ -3240,12 +3240,17 @@ impl Backend for NativeBackend {
             .session
             .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
         let mut latency_sequences = Vec::new();
-        for ((item, selection), channel) in
-            update.audio.iter().zip(audio_latency).zip(&target.audio)
-        {
+        for (item, selection) in update.audio.iter().zip(audio_latency) {
             if let (Some(snapshot), Some(selection)) = (item.latency.as_ref(), selection) {
+                let channel = target
+                    .audio
+                    .get(item.channel)
+                    .ok_or_else(|| anyhow!("unknown audio channel {}", item.channel))?;
+                let start_offset = item
+                    .start_offset
+                    .unwrap_or(channel.get_state()?.start_offset);
                 latency_sequences.push(channel.restore_take_latency_mapping(
-                    item.start_offset.unwrap_or(0),
+                    start_offset,
                     snapshot.capture_alignment_frames,
                     selection,
                 )?);
@@ -3257,10 +3262,17 @@ impl Backend for NativeBackend {
                 )?);
             }
         }
-        for ((item, selection), channel) in update.midi.iter().zip(midi_latency).zip(&target.midi) {
+        for (item, selection) in update.midi.iter().zip(midi_latency) {
             if let (Some(snapshot), Some(selection)) = (item.latency.as_ref(), selection) {
+                let channel = target
+                    .midi
+                    .get(item.channel)
+                    .ok_or_else(|| anyhow!("unknown MIDI channel {}", item.channel))?;
+                let start_offset = item
+                    .start_offset
+                    .unwrap_or(channel.get_state()?.start_offset);
                 latency_sequences.push(channel.restore_take_latency_mapping(
-                    item.start_offset.unwrap_or(0),
+                    start_offset,
                     snapshot.capture_alignment_frames,
                     selection,
                 )?);
@@ -4494,6 +4506,56 @@ mod tests {
             .iter()
             .all(|channel| channel.start_offset == -8 && channel.preplay == 9));
         assert_eq!(backend.poll().unwrap().loops[&target].length, 12);
+
+        backend
+            .replace_loop_content(
+                target,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 1,
+                        samples: vec![5.0, 6.0, 7.0, 8.0],
+                        start_offset: None,
+                        preplay: None,
+                        latency: Some(BackendTakeLatencySnapshot {
+                            capture_alignment_frames: 3,
+                            ..Default::default()
+                        }),
+                    }],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 4,
+                        start_state: vec![vec![0xB0, 7, 100]],
+                        events: vec![BackendMidiEvent {
+                            time: 1,
+                            data: vec![0x90, 64, 127],
+                        }],
+                        start_offset: None,
+                        preplay: None,
+                        latency: Some(BackendTakeLatencySnapshot {
+                            capture_alignment_frames: 2,
+                            ..Default::default()
+                        }),
+                    }],
+                    length: None,
+                },
+            )
+            .unwrap();
+        let updated_audio = backend
+            .loop_audio_data_with_metadata(target)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated_audio.channels[0].latency.capture_alignment_frames,
+            0
+        );
+        assert_eq!(updated_audio.channels[1].start_offset, -8);
+        assert_eq!(
+            updated_audio.channels[1].latency.capture_alignment_frames,
+            3
+        );
+        let updated_midi = backend.loop_midi_data(target).unwrap().unwrap();
+        assert_eq!(updated_midi.channels[0].start_offset, -8);
+        assert_eq!(updated_midi.channels[0].latency.capture_alignment_frames, 2);
 
         let captured = backend.capture_session().unwrap();
         assert_eq!(

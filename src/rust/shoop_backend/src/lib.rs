@@ -5589,10 +5589,11 @@ impl Backend for EngineBackend {
                 .session
                 .midi_channel_mut(index)
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+            let retained_offset = channel.start_offset();
             channel.set_contents(&events, item.length, Some(&item.start_state));
             if let (Some(latency), Some(snapshot)) = (latency, item.latency.as_ref()) {
                 channel.restore_take_latency_mapping(
-                    item.start_offset.unwrap_or(0),
+                    item.start_offset.unwrap_or(retained_offset),
                     snapshot.capture_alignment_frames,
                     latency,
                 )?;

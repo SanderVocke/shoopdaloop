@@ -6299,10 +6299,9 @@ pub fn replace_loop_content(
                 let channel = session
                     .midi_channel_mut(*channel_id)
                     .expect("loop content channels were preflighted");
+                let retained_offset = channel.start_offset();
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
-                if let Some(offset) = offset {
-                    channel.set_start_offset(*offset);
-                }
+                channel.set_start_offset(offset.unwrap_or(retained_offset));
                 if let Some(preplay) = preplay {
                     channel.set_pre_play_samples(*preplay);
                 }
