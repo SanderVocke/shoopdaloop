@@ -8557,12 +8557,12 @@ impl ApplicationModel {
                         } else {
                             (0..content.length as usize)
                                 .map(|logical| {
-                                    usize::try_from(
-                                        i64::from(channel.start_offset)
-                                            + i64::from(channel.latency.capture_alignment_frames)
-                                            + logical as i64,
+                                    raw_position_for_logical(
+                                        channel.start_offset,
+                                        &channel.latency,
+                                        logical as i64,
                                     )
-                                    .ok()
+                                    .and_then(|raw| usize::try_from(raw).ok())
                                     .and_then(|raw| channel.samples.get(raw).copied())
                                     .unwrap_or(0.0)
                                 })
@@ -8656,16 +8656,16 @@ impl ApplicationModel {
             LoopMidiExportFormat::Exact | LoopMidiExportFormat::RawStandard
         );
         if !raw {
-            let selected_start = i64::from(content.start_offset)
-                + i64::from(content.latency.capture_alignment_frames);
-            midi.start_state = logical_midi_start_state(content, selected_start);
+            midi.start_state = logical_midi_start_state(content);
             midi.events = midi
                 .events
                 .into_iter()
                 .filter_map(|mut event| {
-                    let logical = i64::try_from(event.frame)
-                        .ok()?
-                        .checked_sub(selected_start)?;
+                    let logical = logical_position_for_raw(
+                        content.start_offset,
+                        &content.latency,
+                        i64::try_from(event.frame).ok()?,
+                    )?;
                     if logical < 0 || logical >= i64::from(loop_content.length) {
                         return None;
                     }
@@ -8842,17 +8842,58 @@ fn audio_channel_labels(topology: &TrackTopology, direct_audio_channels: u32) ->
     }
 }
 
-fn logical_midi_start_state(content: &BackendMidiContent, selected_start: i64) -> Vec<Vec<u8>> {
+fn raw_position_for_logical(
+    start_offset: i32,
+    latency: &BackendTakeLatencySnapshot,
+    logical: i64,
+) -> Option<i64> {
+    let base = logical.checked_add(i64::from(start_offset))?;
+    let alignment = latency
+        .alignment_regions
+        .iter()
+        .filter_map(|region| {
+            let candidate = base.checked_add(i64::from(region.capture_alignment_frames))?;
+            (candidate >= i64::from(region.raw_start) && candidate < i64::from(region.raw_end))
+                .then_some((region.observation_revision, region.capture_alignment_frames))
+        })
+        .max_by_key(|(revision, _)| *revision)
+        .map(|(_, alignment)| alignment)
+        .unwrap_or(latency.capture_alignment_frames);
+    base.checked_add(i64::from(alignment))
+}
+
+fn logical_position_for_raw(
+    start_offset: i32,
+    latency: &BackendTakeLatencySnapshot,
+    raw: i64,
+) -> Option<i64> {
+    let alignment = latency
+        .alignment_regions
+        .iter()
+        .filter(|region| raw >= i64::from(region.raw_start) && raw < i64::from(region.raw_end))
+        .max_by_key(|region| region.observation_revision)
+        .map(|region| region.capture_alignment_frames)
+        .unwrap_or(latency.capture_alignment_frames);
+    raw.checked_sub(i64::from(start_offset))?
+        .checked_sub(i64::from(alignment))
+}
+
+fn logical_midi_start_state(content: &BackendMidiContent) -> Vec<Vec<u8>> {
     let mut messages = content.start_state.clone();
-    if selected_start > 0 {
-        messages.extend(
-            content
-                .events
-                .iter()
-                .filter(|event| i64::from(event.time) < selected_start)
-                .map(|event| event.data.clone()),
-        );
-    }
+    messages.extend(
+        content
+            .events
+            .iter()
+            .filter(|event| {
+                logical_position_for_raw(
+                    content.start_offset,
+                    &content.latency,
+                    i64::from(event.time),
+                )
+                .is_some_and(|logical| logical < 0)
+            })
+            .map(|event| event.data.clone()),
+    );
 
     // Canonicalize the messages into the state a fresh receiver needs at the
     // logical boundary. This avoids replaying transient notes from retained
@@ -17487,13 +17528,21 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             observation_max_frames: Some(2),
             certainty: BackendLatencyCertainty::Exact,
             observation_sample_rate: 48_000,
-            observation_revision: 1,
-            alignment_regions: vec![BackendAlignmentRegion {
-                raw_start: 0,
-                raw_end: 5,
-                capture_alignment_frames: 2,
-                observation_revision: 1,
-            }],
+            observation_revision: 2,
+            alignment_regions: vec![
+                BackendAlignmentRegion {
+                    raw_start: 0,
+                    raw_end: 2,
+                    capture_alignment_frames: 0,
+                    observation_revision: 1,
+                },
+                BackendAlignmentRegion {
+                    raw_start: 3,
+                    raw_end: 5,
+                    capture_alignment_frames: 2,
+                    observation_revision: 2,
+                },
+            ],
             ..Default::default()
         };
         backend
@@ -17502,7 +17551,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 &BackendLoopContentUpdate {
                     audio: vec![BackendAudioChannelUpdate {
                         channel: 0,
-                        samples: vec![9.0, 9.0, 1.0, 2.0, 3.0],
+                        samples: vec![1.0, 9.0, 9.0, 2.0, 3.0],
                         start_offset: Some(0),
                         preplay: Some(0),
                         latency: Some(latency.clone()),
@@ -17561,11 +17610,11 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             loop_id,
             LoopAudioExportFormat::RawExact,
         );
-        assert_eq!(raw.channels[0].samples, vec![9.0, 9.0, 1.0, 2.0, 3.0]);
+        assert_eq!(raw.channels[0].samples, vec![1.0, 9.0, 9.0, 2.0, 3.0]);
         assert_eq!(raw.channels[0].latency.capture_alignment_frames, 2);
         assert_eq!(
             backend.loop_audio_data(backend_loop).unwrap().unwrap()[0].as_ref(),
-            [9.0, 9.0, 1.0, 2.0, 3.0]
+            [1.0, 9.0, 9.0, 2.0, 3.0]
         );
 
         model.handle_intent(&mut backend, AppIntent::RequestSaveSession);
@@ -17636,13 +17685,21 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             observation_max_frames: Some(9_600),
             certainty: BackendLatencyCertainty::Exact,
             observation_sample_rate: 48_000,
-            observation_revision: 1,
-            alignment_regions: vec![BackendAlignmentRegion {
-                raw_start: 0,
-                raw_end: 28_800,
-                capture_alignment_frames: 9_600,
-                observation_revision: 1,
-            }],
+            observation_revision: 2,
+            alignment_regions: vec![
+                BackendAlignmentRegion {
+                    raw_start: 0,
+                    raw_end: 19_000,
+                    capture_alignment_frames: 9_600,
+                    observation_revision: 1,
+                },
+                BackendAlignmentRegion {
+                    raw_start: 19_000,
+                    raw_end: 28_800,
+                    capture_alignment_frames: 14_400,
+                    observation_revision: 2,
+                },
+            ],
             ..Default::default()
         };
         let raw_events = vec![
@@ -17722,7 +17779,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .iter()
                 .map(|event| event.frame)
                 .collect::<Vec<_>>(),
-            vec![0, 0, 9_600]
+            vec![0, 0, 4_800]
         );
         assert_eq!(logical.latency, TakeLatencyDocument::default());
         let raw = export(
