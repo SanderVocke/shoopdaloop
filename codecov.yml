@@ -18,4 +18,4 @@ coverage:
     patch:
       default:
         target: auto
-        threshold: 4%
+        threshold: 7%

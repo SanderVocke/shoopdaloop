@@ -26,6 +26,8 @@ pub struct LatencyPanelContext<'a> {
 pub struct LatencyPanel {
     open: bool,
     take_edits: BTreeMap<LoopId, i32>,
+    take_authoritative: BTreeMap<LoopId, i32>,
+    take_edit_active: BTreeMap<LoopId, bool>,
 }
 
 impl LatencyPanel {
@@ -239,23 +241,38 @@ impl LatencyPanel {
                                 ));
                             }
                             take_warnings(ui, loop_state);
-                            let edit = self
-                                .take_edits
+                            let authoritative = loop_state.latency.capture_alignment_frames;
+                            let previous_authoritative = self
+                                .take_authoritative
                                 .entry(loop_state.id)
-                                .or_insert(loop_state.latency.capture_alignment_frames);
+                                .or_insert(authoritative);
+                            let was_active = self
+                                .take_edit_active
+                                .get(&loop_state.id)
+                                .copied()
+                                .unwrap_or(false);
+                            let edit = self.take_edits.entry(loop_state.id).or_insert(authoritative);
+                            if *previous_authoritative != authoritative {
+                                *previous_authoritative = authoritative;
+                                if !was_active {
+                                    *edit = authoritative;
+                                }
+                            }
                             ui.horizontal(|ui| {
                                 ui.label("Manual take alignment");
-                                if ui
-                                    .add(
-                                        egui::DragValue::new(edit)
-                                            .range(
-                                                -(shoop_latency::MAX_COMPENSATION_FRAMES as i32)
-                                                    ..=shoop_latency::MAX_COMPENSATION_FRAMES as i32,
-                                            )
-                                            .suffix(" frames"),
-                                    )
-                                    .changed()
-                                {
+                                let response = ui.add(
+                                    egui::DragValue::new(edit)
+                                        .range(
+                                            -(shoop_latency::MAX_COMPENSATION_FRAMES as i32)
+                                                ..=shoop_latency::MAX_COMPENSATION_FRAMES as i32,
+                                        )
+                                        .suffix(" frames"),
+                                );
+                                self.take_edit_active.insert(
+                                    loop_state.id,
+                                    response.dragged() || response.has_focus(),
+                                );
+                                if response.changed() {
                                     intents.push(AppIntent::SetTakeLatencyPolicy {
                                         loop_id: loop_state.id,
                                         capture_alignment_frames: *edit,
@@ -980,6 +997,44 @@ mod tests {
                 output.textures_delta.clear();
             }
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn take_editor_refreshes_after_authoritative_consolidation() {
+        let (status, connections) = runtime();
+        let runtime = LatencyPanelContext {
+            status: &status,
+            connections: &connections,
+        };
+        let loop_id = LoopId::from_raw(9);
+        let mut track = TrackState {
+            id: crate::TrackId::from_raw(7),
+            loops: vec![crate::LoopState {
+                id: loop_id,
+                latency: crate::TakeLatencyProvenanceState {
+                    capture_alignment_frames: 7,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let context = egui::Context::default();
+        let mut panel = LatencyPanel::default();
+        panel.open();
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+            panel.show(ui.ctx(), &track, Some(runtime));
+        });
+        output.textures_delta.clear();
+        assert_eq!(panel.take_edits[&loop_id], 7);
+        panel.take_edits.insert(loop_id, 11);
+
+        track.loops[0].latency.capture_alignment_frames = 0;
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+            panel.show(ui.ctx(), &track, Some(runtime));
+        });
+        output.textures_delta.clear();
+        assert_eq!(panel.take_edits[&loop_id], 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

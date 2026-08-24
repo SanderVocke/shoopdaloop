@@ -9559,6 +9559,68 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn mixed_latency_consolidation_commits_all_prepared_channels_together() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        sess.wait_for_command(loop_.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let audio_a = loop_.add_audio_channel(ChannelMode::Direct).unwrap();
+        let audio_b = loop_.add_audio_channel(ChannelMode::Direct).unwrap();
+        let midi = loop_.add_midi_channel(ChannelMode::Direct).unwrap();
+        for sequence in [
+            audio_a.creation_sequence(),
+            audio_b.creation_sequence(),
+            midi.creation_sequence(),
+        ] {
+            sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+                .unwrap();
+        }
+        let sequence = loop_.set_length(2).unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        for (channel, samples) in [(&audio_a, [0.0, 1.0, 2.0]), (&audio_b, [0.0, 3.0, 4.0])] {
+            let sequence = channel.load_data(&samples).unwrap();
+            sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+                .unwrap();
+            let sequence = channel.set_take_latency_policy(1).unwrap();
+            sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+                .unwrap();
+        }
+        let sequence = midi
+            .load_midi_data(
+                &[MidiEvent {
+                    time: 1,
+                    data: vec![0x90, 60, 100],
+                }],
+                3,
+            )
+            .unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+        let sequence = midi.set_take_latency_policy(1).unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+
+        let sequence = consolidate_loop_latency(
+            &[audio_a.clone(), audio_b.clone()],
+            std::slice::from_ref(&midi),
+        )
+        .unwrap();
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .unwrap();
+
+        assert_eq!(audio_a.get_data(), vec![1.0, 2.0]);
+        assert_eq!(audio_b.get_data(), vec![3.0, 4.0]);
+        assert_eq!(audio_a.get_state().unwrap().capture_alignment_frames, 0);
+        assert_eq!(audio_b.get_state().unwrap().capture_alignment_frames, 0);
+        assert_eq!(midi.get_state().unwrap().capture_alignment_frames, 0);
+        assert!(midi
+            .get_all_midi_data()
+            .iter()
+            .any(|event| event.time == 0 && event.data == [0x90, 60, 100]));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn current_fx_chain_handle_controls_visibility_activity_and_ports() {
         let sess = BackendSession::new().expect("session");
         let chain = sess
