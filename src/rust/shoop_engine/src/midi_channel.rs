@@ -994,10 +994,6 @@ impl MidiChannel {
         }
 
         if flags.contains(ProcessFlags::PLAYBACK) {
-            let raw_position = params
-                .position
-                .checked_add(self.capture_alignment_frames)
-                .ok_or(MidiChannelError::LatencyPositionOverflow)?;
             let render_advance_frames = if matches!(
                 mode,
                 LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
@@ -1010,16 +1006,44 @@ impl MidiChannel {
             } else {
                 0
             };
-            let dispatch_position = cyclic_render_dispatch_position(
-                params.position,
-                self.start_offset,
-                self.capture_alignment_frames,
-                render_advance_frames,
-                length_before,
-            )
-            .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+            let logical_position = params
+                .position
+                .checked_sub(self.start_offset)
+                .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+            let dispatch_logical = if render_advance_frames > 0 && length_before > 0 {
+                i32::try_from(
+                    (i64::from(logical_position) + i64::from(render_advance_frames))
+                        .rem_euclid(i64::from(length_before)),
+                )
+                .map_err(|_| MidiChannelError::LatencyPositionOverflow)?
+            } else {
+                logical_position
+            };
+            let (raw_position, dispatch_position) = if self.n_alignment_regions > 0 {
+                (
+                    self.raw_position_for_logical(logical_position)
+                        .ok_or(MidiChannelError::LatencyPositionOverflow)?,
+                    self.raw_position_for_logical(dispatch_logical)
+                        .ok_or(MidiChannelError::LatencyPositionOverflow)?,
+                )
+            } else {
+                (
+                    params
+                        .position
+                        .checked_add(self.capture_alignment_frames)
+                        .ok_or(MidiChannelError::LatencyPositionOverflow)?,
+                    cyclic_render_dispatch_position(
+                        params.position,
+                        self.start_offset,
+                        self.capture_alignment_frames,
+                        render_advance_frames,
+                        length_before,
+                    )
+                    .ok_or(MidiChannelError::LatencyPositionOverflow)?,
+                )
+            };
             self.state.publish_playback_positions(
-                params.position.checked_sub(self.start_offset),
+                Some(logical_position),
                 Some(raw_position),
                 Some(dispatch_position),
             );
@@ -1039,47 +1063,56 @@ impl MidiChannel {
                 self.reset_playback_cursor_and_pending_state();
             }
 
-            let cyclic_window = (render_advance_frames > 0 && length_before > 0)
-                .then(|| {
-                    let start = self
-                        .start_offset
-                        .checked_add(self.capture_alignment_frames)
+            if self.n_alignment_regions > 0 {
+                self.process_piecewise_playback(
+                    dispatch_logical,
+                    n_samples,
+                    (render_advance_frames > 0).then_some(length_before),
+                    out,
+                )?;
+            } else {
+                let cyclic_window = (render_advance_frames > 0 && length_before > 0)
+                    .then(|| {
+                        let start = self
+                            .start_offset
+                            .checked_add(self.capture_alignment_frames)
+                            .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+                        let end = start
+                            .checked_add(
+                                i32::try_from(length_before)
+                                    .map_err(|_| MidiChannelError::LatencyPositionOverflow)?,
+                            )
+                            .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+                        Ok::<_, MidiChannelError>((start, end))
+                    })
+                    .transpose()?;
+                let mut source_position = dispatch_position;
+                let mut remaining = n_samples;
+                let mut output_offset = 0;
+                while remaining > 0 {
+                    let segment = cyclic_window
+                        .map(|(_, end)| remaining.min((end - source_position).max(0) as u32))
+                        .unwrap_or(remaining);
+                    if segment == 0 {
+                        break;
+                    }
+                    self.process_playback(source_position, segment, false, out, output_offset)?;
+                    source_position = source_position
+                        .checked_add(segment as i32)
                         .ok_or(MidiChannelError::LatencyPositionOverflow)?;
-                    let end = start
-                        .checked_add(
-                            i32::try_from(length_before)
-                                .map_err(|_| MidiChannelError::LatencyPositionOverflow)?,
-                        )
-                        .ok_or(MidiChannelError::LatencyPositionOverflow)?;
-                    Ok::<_, MidiChannelError>((start, end))
-                })
-                .transpose()?;
-            let mut source_position = dispatch_position;
-            let mut remaining = n_samples;
-            let mut output_offset = 0;
-            while remaining > 0 {
-                let segment = cyclic_window
-                    .map(|(_, end)| remaining.min((end - source_position).max(0) as u32))
-                    .unwrap_or(remaining);
-                if segment == 0 {
-                    break;
-                }
-                self.process_playback(source_position, segment, false, out, output_offset)?;
-                source_position = source_position
-                    .checked_add(segment as i32)
-                    .ok_or(MidiChannelError::LatencyPositionOverflow)?;
-                remaining -= segment;
-                output_offset += segment;
-                if remaining > 0 {
-                    if let Some((start, end)) = cyclic_window {
-                        if source_position == end {
-                            let time = self
-                                .play
-                                .map(|play| play.n_frames_processed + output_offset)
-                                .unwrap_or(output_offset);
-                            self.stop_active_playback_notes(out, time);
-                            self.reset_playback_cursor_and_pending_state();
-                            source_position = start;
+                    remaining -= segment;
+                    output_offset += segment;
+                    if remaining > 0 {
+                        if let Some((start, end)) = cyclic_window {
+                            if source_position == end {
+                                let time = self
+                                    .play
+                                    .map(|play| play.n_frames_processed + output_offset)
+                                    .unwrap_or(output_offset);
+                                self.stop_active_playback_notes(out, time);
+                                self.reset_playback_cursor_and_pending_state();
+                                source_position = start;
+                            }
                         }
                     }
                 }
@@ -1130,6 +1163,66 @@ impl MidiChannel {
             p.n_frames_processed += n_samples;
         }
         self.publish_state();
+        Ok(())
+    }
+
+    fn process_piecewise_playback(
+        &mut self,
+        logical_start: i32,
+        n_samples: u32,
+        cyclic_length: Option<u32>,
+        out: &mut Vec<MidiStorageElem>,
+    ) -> Result<(), MidiChannelError> {
+        let mut segment_raw = None;
+        let mut segment_offset = 0;
+        let mut segment_length = 0;
+        for output_offset in 0..=n_samples {
+            let raw = if output_offset == n_samples {
+                None
+            } else {
+                let logical = if let Some(length) = cyclic_length.filter(|length| *length > 0) {
+                    i32::try_from(
+                        (i64::from(logical_start) + i64::from(output_offset))
+                            .rem_euclid(i64::from(length)),
+                    )
+                    .map_err(|_| MidiChannelError::LatencyPositionOverflow)?
+                } else {
+                    logical_start
+                        .checked_add(output_offset as i32)
+                        .ok_or(MidiChannelError::LatencyPositionOverflow)?
+                };
+                self.raw_position_for_logical(logical)
+            };
+            let contiguous = segment_raw
+                .is_some_and(|start: i32| raw == start.checked_add(segment_length as i32));
+            if !contiguous && segment_length > 0 {
+                self.process_playback(
+                    segment_raw.unwrap_or_default(),
+                    segment_length,
+                    false,
+                    out,
+                    segment_offset,
+                )?;
+                segment_length = 0;
+            }
+            if let Some(raw) = raw {
+                if segment_length == 0 {
+                    if output_offset > 0 {
+                        let time = self
+                            .play
+                            .map(|play| play.n_frames_processed + output_offset)
+                            .unwrap_or(output_offset);
+                        self.stop_active_playback_notes(out, time);
+                        self.reset_playback_cursor_and_pending_state();
+                    }
+                    segment_raw = Some(raw);
+                    segment_offset = output_offset;
+                }
+                segment_length += 1;
+            } else {
+                segment_raw = None;
+            }
+        }
         Ok(())
     }
 
@@ -2139,7 +2232,14 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn piecewise_alignment_regions_select_the_newest_matching_midi_mapping() {
         let mut ch = channel();
-        ch.set_contents(&[], 8, None);
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 50, 100)),
+                ev(4, &midi::note_on(0, 60, 100)),
+            ],
+            8,
+            None,
+        );
         ch.restore_alignment_regions(&[
             RuntimeAlignmentRegion {
                 raw_start: 0,
@@ -2160,6 +2260,13 @@ mod tests {
         check!(ch.raw_position_for_logical(2) == Some(4));
         check!(ch.raw_position_for_logical(5) == Some(7));
         check!(ch.alignment_regions().count() == 2);
+        let out = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        check!(out
+            .iter()
+            .any(|event| event.time == 0 && event.data()[1] == 50));
+        check!(out
+            .iter()
+            .any(|event| event.time == 2 && event.data()[1] == 60));
     }
 
     #[shoop_wasm_test_support::shoop_test]

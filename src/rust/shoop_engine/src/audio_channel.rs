@@ -21,7 +21,7 @@ use shoop_latency::{LatencyDomainError, MAX_ALIGNMENT_REGIONS, MAX_COMPENSATION_
 
 /// At most two copy commands (record and playback) per session sub-block.
 /// The session processes no more than 16 sub-blocks in one callback.
-const COPY_COMMAND_CAPACITY: usize = 32;
+const COPY_COMMAND_CAPACITY: usize = MAX_ALIGNMENT_REGIONS * 32;
 
 #[derive(Debug)]
 struct PlaybackSmoother {
@@ -1070,10 +1070,6 @@ impl AudioChannel {
 
         if flags.contains(ProcessFlags::PLAYBACK) {
             self.last_played_back_sample = Some(params.position);
-            let raw_position = params
-                .position
-                .checked_add(self.capture_alignment_frames)
-                .ok_or(ChannelError::LatencyPositionOverflow)?;
             let render_advance_frames = if matches!(
                 mode,
                 LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
@@ -1086,34 +1082,71 @@ impl AudioChannel {
             } else {
                 0
             };
-            let dispatch_position = cyclic_render_dispatch_position(
-                params.position,
-                self.start_offset,
-                self.capture_alignment_frames,
-                render_advance_frames,
-                length_before.min(u32::MAX as usize) as u32,
-            )
-            .ok_or(ChannelError::LatencyPositionOverflow)?;
-            self.state.publish_playback_positions(
-                params.position.checked_sub(self.start_offset),
-                Some(raw_position),
-                Some(dispatch_position),
-            );
-            let cyclic_window = (render_advance_frames > 0 && length_before > 0)
-                .then(|| {
-                    let start = self
-                        .start_offset
-                        .checked_add(self.capture_alignment_frames)
-                        .ok_or(ChannelError::LatencyPositionOverflow)?;
-                    let length = i32::try_from(length_before)
-                        .map_err(|_| ChannelError::LatencyPositionOverflow)?;
-                    let end = start
-                        .checked_add(length)
-                        .ok_or(ChannelError::LatencyPositionOverflow)?;
-                    Ok::<_, ChannelError>((start, end))
-                })
-                .transpose()?;
-            self.process_playback(dispatch_position, n_samples, cyclic_window)?;
+            if self.n_alignment_regions > 0 {
+                let logical_position = params
+                    .position
+                    .checked_sub(self.start_offset)
+                    .ok_or(ChannelError::LatencyPositionOverflow)?;
+                let dispatch_logical = if render_advance_frames > 0 && length_before > 0 {
+                    i32::try_from(
+                        (i64::from(logical_position) + i64::from(render_advance_frames))
+                            .rem_euclid(length_before as i64),
+                    )
+                    .map_err(|_| ChannelError::LatencyPositionOverflow)?
+                } else {
+                    logical_position
+                };
+                let raw_position = self
+                    .raw_position_for_logical(logical_position)
+                    .ok_or(ChannelError::LatencyPositionOverflow)?;
+                let dispatch_position = self
+                    .raw_position_for_logical(dispatch_logical)
+                    .ok_or(ChannelError::LatencyPositionOverflow)?;
+                self.state.publish_playback_positions(
+                    Some(logical_position),
+                    Some(raw_position),
+                    Some(dispatch_position),
+                );
+                self.process_piecewise_playback(
+                    dispatch_logical,
+                    n_samples,
+                    (render_advance_frames > 0)
+                        .then_some(length_before.min(u32::MAX as usize) as u32),
+                )?;
+            } else {
+                let raw_position = params
+                    .position
+                    .checked_add(self.capture_alignment_frames)
+                    .ok_or(ChannelError::LatencyPositionOverflow)?;
+                let dispatch_position = cyclic_render_dispatch_position(
+                    params.position,
+                    self.start_offset,
+                    self.capture_alignment_frames,
+                    render_advance_frames,
+                    length_before.min(u32::MAX as usize) as u32,
+                )
+                .ok_or(ChannelError::LatencyPositionOverflow)?;
+                self.state.publish_playback_positions(
+                    params.position.checked_sub(self.start_offset),
+                    Some(raw_position),
+                    Some(dispatch_position),
+                );
+                let cyclic_window = (render_advance_frames > 0 && length_before > 0)
+                    .then(|| {
+                        let start = self
+                            .start_offset
+                            .checked_add(self.capture_alignment_frames)
+                            .ok_or(ChannelError::LatencyPositionOverflow)?;
+                        let length = i32::try_from(length_before)
+                            .map_err(|_| ChannelError::LatencyPositionOverflow)?;
+                        let end = start
+                            .checked_add(length)
+                            .ok_or(ChannelError::LatencyPositionOverflow)?;
+                        Ok::<_, ChannelError>((start, end))
+                    })
+                    .transpose()?;
+                self.process_playback(dispatch_position, n_samples, cyclic_window)?;
+            }
         } else {
             self.last_played_back_sample = None;
             self.state.publish_playback_positions(None, None, None);
@@ -1280,6 +1313,93 @@ impl AudioChannel {
 
         for _ in 0..chunks_touched {
             self.data_changed();
+        }
+        Ok(())
+    }
+
+    fn queue_piecewise_playback_segment(
+        &mut self,
+        mut raw_position: i32,
+        mut destination: usize,
+        mut length: usize,
+    ) {
+        while length > 0 && raw_position >= 0 && (raw_position as usize) < self.data_length {
+            let source = raw_position as usize;
+            let count = length
+                .min(self.buffers.space_for_sample(source))
+                .min(self.data_length - source);
+            if count == 0 {
+                break;
+            }
+            self.queue.push(CopyCmd::OutOfMain {
+                src: source,
+                dst: destination,
+                len: count,
+                gain: self.gain,
+            });
+            raw_position += count as i32;
+            destination += count;
+            length -= count;
+        }
+    }
+
+    fn process_piecewise_playback(
+        &mut self,
+        logical_start: i32,
+        n_samples: usize,
+        cyclic_length: Option<u32>,
+    ) -> Result<(), ChannelError> {
+        let buf = self.playback.unwrap_or_default();
+        if buf.remaining < n_samples {
+            return Err(ChannelError::PlaybackOutOfBounds {
+                n_samples,
+                available: buf.remaining,
+            });
+        }
+        let mut segment_raw = None;
+        let mut segment_destination = 0;
+        let mut segment_length = 0;
+        for output_offset in 0..n_samples {
+            let logical = if let Some(length) = cyclic_length.filter(|length| *length > 0) {
+                i32::try_from(
+                    (i64::from(logical_start) + output_offset as i64).rem_euclid(i64::from(length)),
+                )
+                .map_err(|_| ChannelError::LatencyPositionOverflow)?
+            } else {
+                logical_start
+                    .checked_add(output_offset as i32)
+                    .ok_or(ChannelError::LatencyPositionOverflow)?
+            };
+            let raw = (logical >= -(self.pre_play_samples as i32))
+                .then(|| self.raw_position_for_logical(logical))
+                .flatten()
+                .filter(|raw| *raw >= 0 && (*raw as usize) < self.data_length);
+            let contiguous = segment_raw
+                .is_some_and(|start: i32| raw == start.checked_add(segment_length as i32));
+            if !contiguous && segment_length > 0 {
+                self.queue_piecewise_playback_segment(
+                    segment_raw.unwrap_or_default(),
+                    buf.cursor + segment_destination,
+                    segment_length,
+                );
+                segment_length = 0;
+            }
+            if let Some(raw) = raw {
+                if segment_length == 0 {
+                    segment_raw = Some(raw);
+                    segment_destination = output_offset;
+                }
+                segment_length += 1;
+            } else {
+                segment_raw = None;
+            }
+        }
+        if segment_length > 0 {
+            self.queue_piecewise_playback_segment(
+                segment_raw.unwrap_or_default(),
+                buf.cursor + segment_destination,
+                segment_length,
+            );
         }
         Ok(())
     }
@@ -1699,6 +1819,7 @@ mod tests {
         check!(ch.raw_position_for_logical(2) == Some(4));
         check!(ch.raw_position_for_logical(5) == Some(7));
         check!(ch.alignment_regions().count() == 2);
+        check!(cycle(&mut ch, L::Playing, 4, 0, 4, &[]) == vec![0.0, 1.0, 4.0, 5.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]
