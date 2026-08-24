@@ -24,7 +24,8 @@ WASM_PACK_VERSION = "0.15.0"
 WASM_BINDGEN_VERSION = "0.2.127"
 WASM_BINDGEN_TEST_VERSION = "0.3.77"
 NODE_VERSION = "22.23.2"
-CHROME_VERSION = "147.0.7727.137"
+# CI's Chrome-for-Testing pin and the Nix shell's security-patched Chromium.
+CHROME_VERSIONS = ("147.0.7727.117", "147.0.7727.137")
 
 
 class AssetHandler(http.server.SimpleHTTPRequestHandler):
@@ -105,11 +106,15 @@ def validate_tools(runtime: str, env: dict[str, str]):
             raise RuntimeError("Chrome or Chromium is unavailable; set CHROME_BIN or PATH")
         env["CHROME_BIN"] = browser
         browser_version = run_checked([browser, "--version"], env=env)
-        if CHROME_VERSION not in browser_version:
-            raise RuntimeError(f"expected Chrome {CHROME_VERSION}, got {browser_version!r}")
-        if CHROME_VERSION not in driver_version:
+        matched_version = next(
+            (version for version in CHROME_VERSIONS if version in browser_version), None
+        )
+        if matched_version is None:
+            expected = " or ".join(CHROME_VERSIONS)
+            raise RuntimeError(f"expected Chrome {expected}, got {browser_version!r}")
+        if matched_version not in driver_version:
             raise RuntimeError(
-                f"expected ChromeDriver {CHROME_VERSION}, got {driver_version!r}"
+                f"expected ChromeDriver {matched_version}, got {driver_version!r}"
             )
         tools["chrome"] = browser_version
         tools["chromedriver"] = driver_version
