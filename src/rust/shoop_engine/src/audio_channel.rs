@@ -23,6 +23,82 @@ use shoop_latency::{LatencyDomainError, MAX_COMPENSATION_FRAMES};
 /// The session processes no more than 16 sub-blocks in one callback.
 const COPY_COMMAND_CAPACITY: usize = 32;
 
+#[derive(Debug)]
+struct PlaybackSmoother {
+    duration_frames: usize,
+    raw_active: bool,
+    expected_source: Option<usize>,
+    previous_gain: f32,
+    previous_rendered: f32,
+    correction: f32,
+    correction_step: f32,
+    correction_frames_left: usize,
+}
+
+impl Default for PlaybackSmoother {
+    fn default() -> Self {
+        Self {
+            duration_frames: 0,
+            raw_active: false,
+            expected_source: None,
+            previous_gain: 1.0,
+            previous_rendered: 0.0,
+            correction: 0.0,
+            correction_step: 0.0,
+            correction_frames_left: 0,
+        }
+    }
+}
+
+impl PlaybackSmoother {
+    fn set_duration_frames(&mut self, frames: usize) {
+        self.duration_frames = frames;
+    }
+
+    fn is_bypassed(&self) -> bool {
+        self.duration_frames == 0 && self.correction_frames_left == 0
+    }
+
+    fn observe_range(&mut self, active: bool, source: usize, gain: f32, raw_last: f32, len: usize) {
+        if len == 0 {
+            return;
+        }
+        self.raw_active = active;
+        self.expected_source = active.then(|| source.saturating_add(len));
+        self.previous_gain = gain;
+        self.previous_rendered = raw_last;
+    }
+
+    fn render(&mut self, raw: f32, active: bool, source: usize, gain: f32) -> f32 {
+        let is_edge = active != self.raw_active
+            || (active
+                && (self.expected_source != Some(source)
+                    || self.previous_gain.to_bits() != gain.to_bits()));
+        if is_edge && self.duration_frames > 0 {
+            self.correction = self.previous_rendered - raw;
+            self.correction_step = self.correction / self.duration_frames as f32;
+            self.correction_frames_left = self.duration_frames;
+        }
+
+        let rendered = raw + self.correction;
+        if self.correction_frames_left > 0 {
+            self.correction_frames_left -= 1;
+            if self.correction_frames_left == 0 {
+                self.correction = 0.0;
+                self.correction_step = 0.0;
+            } else {
+                self.correction -= self.correction_step;
+            }
+        }
+
+        self.raw_active = active;
+        self.expected_source = active.then(|| source.saturating_add(1));
+        self.previous_gain = gain;
+        self.previous_rendered = rendered;
+        rendered
+    }
+}
+
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -186,6 +262,7 @@ pub struct AudioChannel {
     latched_latency_recipe: Option<LatchedLatencyRecipe>,
     grab_latency_selection: RetainedLatencySelection,
     prepared_replacement_alignment: Option<i32>,
+    playback_smoother: PlaybackSmoother,
 }
 
 impl AudioChannel {
@@ -267,6 +344,7 @@ impl AudioChannel {
             latched_latency_recipe: None,
             grab_latency_selection: RetainedLatencySelection::Unavailable,
             prepared_replacement_alignment: None,
+            playback_smoother: PlaybackSmoother::default(),
         };
         channel.publish_state();
         channel
@@ -570,6 +648,12 @@ impl AudioChannel {
     }
     pub fn reset_output_peak(&mut self) {
         self.output_peak = 0.0;
+    }
+    pub fn set_loop_smoothing_frames(&mut self, frames: usize) {
+        self.playback_smoother.set_duration_frames(frames);
+    }
+    pub fn loop_smoothing_frames(&self) -> usize {
+        self.playback_smoother.duration_frames
     }
     pub fn data_seq_nr(&self) -> u32 {
         self.data_seq_nr
@@ -1192,8 +1276,14 @@ impl AudioChannel {
     /// `record_src` and `playback_dst` are the whole cycle's port buffers, as
     /// handed to `set_*_buffer_size`; queued offsets index into them.
     pub fn finalize_process(&mut self, record_src: &[f32], playback_dst: &mut [f32]) {
+        if self.playback_smoother.is_bypassed() {
+            self.finalize_process_bypassed(record_src, playback_dst);
+            return;
+        }
+
         let mut peak = self.output_peak;
         let mut published_peak = 0.0f32;
+        let mut timeline_cursor = 0;
         for cmd in self.queue.drain(..) {
             match cmd {
                 CopyCmd::IntoMain { dst, src, len } => {
@@ -1221,6 +1311,79 @@ impl AudioChannel {
                     len,
                     gain,
                 } => {
+                    for at in timeline_cursor..dst.min(playback_dst.len()) {
+                        let rendered = self.playback_smoother.render(0.0, false, 0, 1.0);
+                        let sample = playback_dst[at] + rendered;
+                        playback_dst[at] = sample;
+                        peak = peak.max(sample.abs());
+                        published_peak = published_peak.max(sample.abs());
+                    }
+                    if let Some(from) = self.buffers.chunk_slice(src) {
+                        for i in 0..len {
+                            let raw = from[i] * gain;
+                            let rendered = self.playback_smoother.render(raw, true, src + i, gain);
+                            let sample = playback_dst[dst + i] + rendered;
+                            playback_dst[dst + i] = sample;
+                            peak = peak.max(sample.abs());
+                            published_peak = published_peak.max(sample.abs());
+                        }
+                    }
+                    timeline_cursor = dst.saturating_add(len);
+                }
+            }
+        }
+        for at in timeline_cursor..playback_dst.len() {
+            let rendered = self.playback_smoother.render(0.0, false, 0, 1.0);
+            let sample = playback_dst[at] + rendered;
+            playback_dst[at] = sample;
+            peak = peak.max(sample.abs());
+            published_peak = published_peak.max(sample.abs());
+        }
+        self.output_peak = peak;
+        self.state.publish_output_peak(published_peak);
+        self.publish_state();
+    }
+
+    fn finalize_process_bypassed(&mut self, record_src: &[f32], playback_dst: &mut [f32]) {
+        let mut peak = self.output_peak;
+        let mut published_peak = 0.0f32;
+        let mut timeline_cursor = 0;
+        for cmd in self.queue.drain(..) {
+            match cmd {
+                CopyCmd::IntoMain { dst, src, len } => {
+                    let source = &record_src[src..src + len];
+                    copy_in(&mut self.buffers, dst, source);
+                    if let Some(snapshots) = self.content_snapshots.as_mut() {
+                        snapshots.publish_range(
+                            dst,
+                            source,
+                            self.data_length,
+                            self.publish_snapshot_updates,
+                        );
+                    }
+                }
+                CopyCmd::IntoPreRecord { dst, src, len } => {
+                    let source = &record_src[src..src + len];
+                    copy_in(&mut self.prerecord_buffers, dst, source);
+                    if let Some(snapshots) = self.content_snapshots.as_mut() {
+                        snapshots.publish_prerecord_range(dst, source, self.prerecord_data_length);
+                    }
+                }
+                CopyCmd::OutOfMain {
+                    src,
+                    dst,
+                    len,
+                    gain,
+                } => {
+                    if dst > timeline_cursor {
+                        self.playback_smoother.observe_range(
+                            false,
+                            0,
+                            1.0,
+                            0.0,
+                            dst - timeline_cursor,
+                        );
+                    }
                     if let Some(from) = self.buffers.chunk_slice(src) {
                         for i in 0..len {
                             let sample = playback_dst[dst + i] + from[i] * gain;
@@ -1228,9 +1391,26 @@ impl AudioChannel {
                             peak = peak.max(sample.abs());
                             published_peak = published_peak.max(sample.abs());
                         }
+                        self.playback_smoother.observe_range(
+                            true,
+                            src,
+                            gain,
+                            from[len - 1] * gain,
+                            len,
+                        );
                     }
+                    timeline_cursor = dst.saturating_add(len);
                 }
             }
+        }
+        if playback_dst.len() > timeline_cursor {
+            self.playback_smoother.observe_range(
+                false,
+                0,
+                1.0,
+                0.0,
+                playback_dst.len() - timeline_cursor,
+            );
         }
         self.output_peak = peak;
         self.state.publish_output_peak(published_peak);
@@ -1829,5 +2009,157 @@ mod tests {
         check!(ch.played_back_sample() == Some(0));
         cycle(&mut ch, L::Stopped, 2, 0, 2, &[]);
         check!(ch.played_back_sample() == None);
+    }
+
+    fn playback_subblocks(ch: &mut AudioChannel, blocks: &[(usize, i32)]) -> Vec<f32> {
+        let total = blocks.iter().map(|(len, _)| *len).sum();
+        ch.set_recording_buffer_size(total);
+        ch.set_playback_buffer_size(total);
+        for (len, position) in blocks {
+            assert2::assert!(let Ok(()) = ch.process(
+                L::Playing,
+                L::Unknown,
+                None,
+                None,
+                *len,
+                *position,
+                ch.length(),
+            ));
+        }
+        let mut output = vec![0.0; total];
+        ch.finalize_process(&vec![0.0; total], &mut output);
+        output
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_fades_from_silence_at_start() {
+        let mut ch = channel();
+        ch.load_data(&[1.0; 8]);
+        ch.set_loop_smoothing_frames(4);
+        let output = cycle(&mut ch, L::Playing, 5, 0, 8, &[]);
+        check!(output == vec![0.0, 0.25, 0.5, 0.75, 1.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_emits_a_bounded_stop_tail_without_reading_content() {
+        let mut ch = channel();
+        ch.load_data(&[1.0; 8]);
+        ch.set_loop_smoothing_frames(4);
+        cycle(&mut ch, L::Playing, 8, 0, 8, &[]);
+        let output = cycle(&mut ch, L::Stopped, 6, 0, 8, &[]);
+        check!(output == vec![1.0, 0.75, 0.5, 0.25, 0.0, 0.0]);
+        check!(ch.played_back_sample() == None);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_handles_wraps_within_and_between_callbacks() {
+        let mut boundary = channel();
+        boundary.load_data(&[-1.0, -1.0, 1.0, 1.0]);
+        playback_subblocks(&mut boundary, &[(2, 2)]);
+        boundary.set_loop_smoothing_frames(4);
+        let boundary_wrap = playback_subblocks(&mut boundary, &[(2, 0)]);
+        check!(boundary_wrap == vec![1.0, 0.5]);
+
+        let mut within = channel();
+        within.load_data(&[-1.0, -1.0, 1.0, 1.0]);
+        playback_subblocks(&mut within, &[(2, 0)]);
+        within.set_loop_smoothing_frames(4);
+        let within_callback_wrap = playback_subblocks(&mut within, &[(2, 2), (2, 0)]);
+        check!(within_callback_wrap == vec![1.0, 1.0, 1.0, 0.5]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_handles_seeks_and_gain_changes() {
+        let mut ch = channel();
+        ch.load_data(&[-1.0, -1.0, 1.0, 1.0]);
+        playback_subblocks(&mut ch, &[(2, 2)]);
+        ch.set_loop_smoothing_frames(2);
+
+        let seek = playback_subblocks(&mut ch, &[(2, 0)]);
+        check!(seek == vec![1.0, 0.0]);
+        ch.set_gain(0.5);
+        let gain_change = playback_subblocks(&mut ch, &[(2, 2)]);
+        check!(gain_change == vec![0.0, 0.25]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_restarts_continuously_for_short_repeated_loops() {
+        let mut ch = channel();
+        ch.load_data(&[1.0, -1.0]);
+        ch.set_loop_smoothing_frames(4);
+        let output = playback_subblocks(&mut ch, &[(1, 0), (1, 0), (1, 1), (1, 0)]);
+        check!(output == vec![0.0, 0.0, -1.75, -1.75]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_continues_into_silence_after_content_ends() {
+        let mut ch = channel();
+        ch.load_data(&[1.0; 4]);
+        ch.set_loop_smoothing_frames(2);
+        let output = cycle(&mut ch, L::Playing, 7, 0, 8, &[]);
+        check!(output == vec![0.0, 0.5, 1.0, 1.0, 1.0, 0.5, 0.0]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_changes_only_the_channel_contribution() {
+        let mut ch = channel();
+        ch.load_data(&[1.0; 4]);
+        ch.set_loop_smoothing_frames(2);
+        ch.set_recording_buffer_size(4);
+        ch.set_playback_buffer_size(4);
+        assert2::assert!(let Ok(()) = ch.process(L::Playing, L::Unknown, None, None, 4, 0, 4));
+        let mut output = vec![10.0; 4];
+        ch.finalize_process(&[0.0; 4], &mut output);
+        check!(output == vec![10.0, 10.5, 11.0, 11.0]);
+        check!(ch.output_peak() == 11.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_does_not_mark_chunk_or_callback_continuity_as_an_edge() {
+        let mut ch = channel();
+        ch.load_data(&[1.0; 12]);
+        ch.set_loop_smoothing_frames(4);
+        let across_chunk = cycle(&mut ch, L::Playing, 8, 0, 12, &[]);
+        check!(across_chunk == vec![0.0, 0.25, 0.5, 0.75, 1.0, 1.0, 1.0, 1.0]);
+        let across_callback = cycle(&mut ch, L::Playing, 4, 8, 12, &[]);
+        check!(across_callback == vec![1.0; 4]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn smoothing_duration_changes_apply_to_later_edges() {
+        let mut ch = channel();
+        ch.load_data(&[1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0]);
+        ch.set_loop_smoothing_frames(4);
+        cycle(&mut ch, L::Playing, 4, 0, 7, &[]);
+        ch.set_loop_smoothing_frames(2);
+        let output = cycle(&mut ch, L::Playing, 2, 5, 7, &[]);
+        check!(output == vec![0.75, -0.125]);
+        check!(ch.loop_smoothing_frames() == 2);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn zero_duration_is_exact_additive_copy_and_primes_continuity() {
+        let mut ch = channel();
+        ch.load_data(&[1.0, -2.0, 3.0, -4.0]);
+        ch.set_gain(0.5);
+        let output = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
+        check!(output == vec![0.5, -1.0, 1.5, -2.0]);
+
+        ch.set_loop_smoothing_frames(3);
+        ch.load_data(&[-4.0, -4.0, -4.0]);
+        let discontinuity = cycle(&mut ch, L::Playing, 3, 0, 3, &[]);
+        check!(discontinuity[0] == -2.0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn disabling_smoothing_allows_the_current_correction_to_finish() {
+        let mut ch = channel();
+        ch.load_data(&[1.0; 8]);
+        ch.set_loop_smoothing_frames(4);
+        let first = cycle(&mut ch, L::Playing, 2, 0, 8, &[]);
+        check!(first == vec![0.0, 0.25]);
+        ch.set_loop_smoothing_frames(0);
+        let rest = cycle(&mut ch, L::Playing, 3, 2, 8, &[]);
+        check!(rest == vec![0.5, 0.75, 1.0]);
     }
 }

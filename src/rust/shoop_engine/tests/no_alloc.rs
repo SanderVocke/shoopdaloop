@@ -912,6 +912,8 @@ fn recording_audio_does_not_allocate() {
 )]
 fn playing_audio_does_not_allocate() {
     let mut s = Session::default();
+    s.set_sample_rate(48_000);
+    s.set_loop_smoothing_ms(3);
     let output = s.add_port(audio_port(1, "out", PortDirection::Output));
     let l = s.create_loop();
     let c = s.add_audio_channel(l, 64, ChannelMode::Direct).unwrap();

@@ -113,6 +113,7 @@ pub struct NativeBackend {
     runtime: Option<NativeRuntime>,
     catalog: Arc<[AudioDriverDescriptor]>,
     fatal_error: Option<String>,
+    loop_smoothing_ms: u32,
 }
 
 struct NativeRuntime {
@@ -277,6 +278,7 @@ impl NativeBackend {
             runtime: Some(runtime),
             catalog,
             fatal_error: None,
+            loop_smoothing_ms: 0,
         })
     }
 
@@ -322,6 +324,9 @@ impl NativeBackend {
         session: &BackendSessionData,
     ) -> Result<(NativeRuntime, BackendSessionReplacement)> {
         let mut runtime = NativeRuntime::start(config)?;
+        runtime
+            .session
+            .set_loop_smoothing_ms(self.loop_smoothing_ms)?;
         if runtime.resolved.sample_rate != session.sample_rate {
             return Err(anyhow!(
                 "resolved target sample rate changed from {} to {}",
@@ -2411,6 +2416,14 @@ impl Backend for NativeBackend {
         for channel in &loop_.audio {
             channel.consolidate_latency()?;
         }
+        Ok(())
+    }
+
+    fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
+        self.loop_smoothing_ms = milliseconds;
+        self.runtime()?
+            .session
+            .set_loop_smoothing_ms(milliseconds)?;
         Ok(())
     }
 
@@ -4979,6 +4992,7 @@ mod tests {
             runtime: Some(runtime),
             catalog: Arc::from([]),
             fatal_error: None,
+            loop_smoothing_ms: 0,
         };
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -5015,6 +5029,7 @@ mod tests {
             runtime: Some(runtime),
             catalog: Arc::from([]),
             fatal_error: None,
+            loop_smoothing_ms: 0,
         };
         let created = backend
             .create_direct_track(DirectTrackRequest {
@@ -5202,6 +5217,21 @@ mod tests {
             AudioDriverKind::Dummy
         );
         assert_eq!(preferred.kind(), AudioDriverKind::Jack);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_driver_replacement_retains_global_loop_smoothing() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
+        backend.set_loop_smoothing_ms(9).unwrap();
+        let session = backend.capture_session().unwrap();
+        let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: session.sample_rate,
+            buffer_size: 128,
+        });
+        backend
+            .switch_audio_driver(&target, session.sample_rate, &session)
+            .unwrap();
+        assert_eq!(backend.loop_smoothing_ms, 9);
     }
 
     #[shoop_wasm_test_support::shoop_test]

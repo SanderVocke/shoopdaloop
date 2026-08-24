@@ -1710,6 +1710,7 @@ pub enum PianoAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
+    SetLoopSmoothingMs(u32),
     SetTrackLatencyPolicy {
         track_id: TrackId,
         policy: TrackLatencyPolicyState,
@@ -2024,6 +2025,7 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetTrackLatencyPolicy { .. } => "track.latency_policy",
             Self::SetTakeLatencyPolicy { .. } => "loop.take_latency_policy",
             Self::ConsolidateTakeLatency { .. } => "loop.take_latency_consolidate",

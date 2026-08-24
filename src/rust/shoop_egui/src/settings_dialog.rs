@@ -605,6 +605,18 @@ impl SettingsDialog {
         audio: &AudioDriverRuntimeState,
         response: &mut SettingsDialogResponse,
     ) {
+        #[cfg(test)]
+        self.setting_card_rects.clear();
+        ui.heading("Loop audio");
+        let definitions = self
+            .registry
+            .definitions()
+            .iter()
+            .filter(|definition| definition.key() == crate::LOOP_EDGE_SMOOTHING_MS.id())
+            .cloned()
+            .collect::<Vec<_>>();
+        self.show_definition_cards(ui, definitions, None);
+
         if !audio.supported || cfg!(target_arch = "wasm32") {
             #[cfg(target_arch = "wasm32")]
             {
@@ -791,8 +803,6 @@ impl SettingsDialog {
         definitions: Vec<shoop_settings::ErasedSettingDefinition>,
         audio: Option<&crate::AudioDriverDescriptor>,
     ) {
-        #[cfg(test)]
-        self.setting_card_rects.clear();
         for definition in definitions {
             let card = egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(8));
             let margin = card.total_margin();
@@ -1847,6 +1857,30 @@ mod tests {
             assert!(!output.shapes.is_empty());
         }
         assert_eq!(dialog.audio_target, Some(AudioDriverKind::Dummy));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn generic_loop_audio_setting_is_visible_without_driver_switching() {
+        let mut builder = SettingsRegistryBuilder::default();
+        crate::register_audio_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let state = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.open(&state);
+        let context = egui::Context::default();
+        let mut response = SettingsDialogResponse::default();
+        let mut output = context.run_ui(Default::default(), |ui| {
+            dialog.show_audio(ui, &AudioDriverRuntimeState::default(), &mut response);
+        });
+        output.textures_delta.clear();
+        assert_eq!(dialog.setting_card_rects.len(), 1);
+        assert!(response.app_actions.is_empty());
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -1350,6 +1350,9 @@ impl ApplicationModel {
                     },
                 }
             }
+            AppIntent::SetLoopSmoothingMs(milliseconds) => backend
+                .set_loop_smoothing_ms(milliseconds)
+                .map_err(|error| error.to_string()),
             AppIntent::SetLoopTimeline {
                 loop_id,
                 start_offset,
@@ -19306,6 +19309,20 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         assert!(!model
             .desired_track_controls
             .contains_key(&(backend_track, TrackControlKey::OutputGain)));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_smoothing_intent_routes_to_backend() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
+        model.handle_intent(&mut backend, AppIntent::SetLoopSmoothingMs(23));
+        assert_eq!(backend.loop_smoothing_ms(), Some(23));
     }
 
     #[shoop_wasm_test_support::shoop_test]

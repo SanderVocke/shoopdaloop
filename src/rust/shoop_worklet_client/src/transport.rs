@@ -590,6 +590,41 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn loop_smoothing_journal_replays_only_the_latest_value() {
+        let (transport, control) = transport_pair();
+        transport
+            .borrow_mut()
+            .journal(Command::SetLoopSmoothingMs { milliseconds: 0 })
+            .unwrap();
+        transport
+            .borrow_mut()
+            .journal(Command::SetLoopSmoothingMs { milliseconds: 17 })
+            .unwrap();
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 1, 0, 2).unwrap();
+        let commands = sent
+            .borrow()
+            .iter()
+            .map(|json| {
+                serde_json::from_str::<CommandEnvelope>(json)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands,
+            vec![
+                Command::ConfigureDeviceChannels {
+                    input_channels: 0,
+                    output_channels: 2,
+                },
+                Command::SetLoopSmoothingMs { milliseconds: 17 },
+            ]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn response_validation_rejects_stale_unknown_duplicate_and_out_of_order_events() {
         let (_, stale) = transport_pair();
         stale

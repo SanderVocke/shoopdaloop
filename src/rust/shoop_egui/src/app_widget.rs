@@ -51,6 +51,7 @@ pub const LATENCY_MANUAL_TRIM_FRAMES: SettingKey<i32> =
 pub const LATENCY_CUE_OUTPUT_IDENTITY: SettingKey<String> =
     SettingKey::new("latency.defaults.cue_output_identity");
 
+pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
 pub const DUMMY_BUFFER_SIZE: SettingKey<u32> = SettingKey::new("audio.dummy.buffer_size");
@@ -304,6 +305,19 @@ pub fn register_audio_settings(
     let effect = SettingEffect::ExplicitApply;
     builder.register(
         SettingDefinition::new(
+            LOOP_EDGE_SMOOTHING_MS,
+            3,
+            "Audio",
+            "Loop edge smoothing",
+            "Duration in milliseconds for smoothing loop playback discontinuities; 0 disables smoothing.",
+        )
+        .category_order(5)
+        .setting_order(0)
+        .effect(effect)
+        .editor(SettingEditor::UnsignedInteger { min: 0, max: 100 }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
             SELECTED_AUDIO_DRIVER,
             "dummy".to_owned(),
             "Audio",
@@ -522,6 +536,12 @@ pub fn carla_hosting_mode_from_snapshot(
         .map_err(|error| error.to_string())?
         .parse()
         .map_err(|error: shoop_settings::CarlaHostingModeParseError| error.to_string())
+}
+
+pub fn loop_edge_smoothing_ms(snapshot: &SettingsSnapshot) -> Result<u32, String> {
+    snapshot
+        .get(LOOP_EDGE_SMOOTHING_MS)
+        .map_err(|error| error.to_string())
 }
 
 pub fn selected_audio_driver(snapshot: &SettingsSnapshot) -> Result<AudioDriverKind, String> {
@@ -2783,6 +2803,13 @@ mod tests {
         register_audio_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let snapshot = registry.defaults(7);
+        assert_eq!(loop_edge_smoothing_ms(&snapshot).unwrap(), 3);
+        let smoothing = registry.definition(LOOP_EDGE_SMOOTHING_MS.id()).unwrap();
+        assert_eq!(
+            smoothing.editor(),
+            &SettingEditor::UnsignedInteger { min: 0, max: 100 }
+        );
+        assert!(smoothing.help().contains("0 disables"));
         assert_eq!(
             selected_audio_driver(&snapshot).unwrap(),
             AudioDriverKind::Dummy

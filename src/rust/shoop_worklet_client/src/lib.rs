@@ -1275,6 +1275,7 @@ fn browser_oxisynth_port_descriptors(
 
 fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, Option<u64>)> {
     Some(match command {
+        Command::SetLoopSmoothingMs { .. } => (BackendMutationKind::AudioProcessing, None),
         Command::ConfigureDeviceChannels { .. }
         | Command::ConfigureBackendLatency { .. }
         | Command::ConfigureMidiEndpoints { .. } => {
@@ -1497,6 +1498,10 @@ impl Backend for RemoteWorkletBackend {
         self.submit(Command::ConsolidateTakeLatency {
             loop_id: loop_id.raw(),
         })
+    }
+
+    fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
+        self.submit(Command::SetLoopSmoothingMs { milliseconds })
     }
 
     fn supports_composite_loops(&self) -> bool {
@@ -2745,6 +2750,36 @@ mod tests {
                 .unwrap(),
             )
             .unwrap();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn remote_loop_smoothing_control_is_durable_and_globally_classified() {
+        let (mut backend, control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        backend.set_loop_smoothing_ms(0).unwrap();
+        backend.set_loop_smoothing_ms(19).unwrap();
+        let endpoint = MemoryEndpoint::default();
+        let sent = endpoint.sent.clone();
+        control.attach(Box::new(endpoint), 3, 0, 2).unwrap();
+        let commands = sent
+            .borrow()
+            .iter()
+            .map(|message| {
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| matches!(command, Command::SetLoopSmoothingMs { .. }))
+                .collect::<Vec<_>>(),
+            vec![&Command::SetLoopSmoothingMs { milliseconds: 19 }]
+        );
+        assert_eq!(
+            command_mutation_identity(&Command::SetLoopSmoothingMs { milliseconds: 19 }),
+            Some((BackendMutationKind::AudioProcessing, None))
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

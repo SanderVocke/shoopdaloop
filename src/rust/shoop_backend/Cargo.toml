@@ -24,6 +24,7 @@ shoop_settings = { path = "../shoop_settings" }
 
 [dev-dependencies]
 assert_no_alloc = { workspace = true }
+serde_json = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

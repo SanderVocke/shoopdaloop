@@ -181,6 +181,12 @@ impl WorkletHost {
             return Err("worklet host is stopped".to_owned());
         }
         match command {
+            Command::SetLoopSmoothingMs { milliseconds } => {
+                self.backend
+                    .set_loop_smoothing_ms(milliseconds)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::ConfigureDeviceChannels {
                 input_channels,
                 output_channels,
@@ -1542,6 +1548,31 @@ mod tests {
             },
         );
         assert!(matches!(overflow.event, Event::Error { .. }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_applies_zero_and_nonzero_loop_smoothing_values() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::SetLoopSmoothingMs { milliseconds: 0 }
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_eq!(host.backend.loop_smoothing_ms(), 0);
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::SetLoopSmoothingMs { milliseconds: 21 }
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_eq!(host.backend.loop_smoothing_ms(), 21);
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -67,13 +67,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-tracy = { version = "=0.11.4", default-features = false, features = ["enable", "manual-lifetime", "ondemand", "timer-fallback"] }
 tracy-client = { version = "=0.18.4", default-features = false, features = ["enable", "manual-lifetime", "ondemand", "timer-fallback"] }
 tracy-client-sys = { version = "=0.28.0", default-features = false, features = ["embedded-capture"] }
-tracy-nextest-capture = { git = "https://github.com/SanderVocke/tracy-extensions", rev = "8589c41352c41ff3fe5e9c44075f61bd1e63a72d" }
+tracy-nextest-capture = { git = "https://github.com/SanderVocke/tracy-extensions", tag = "v0.7.0" }
 shoop_tracing = { path = "src/rust/shoop_tracing", default-features = false }
 oxisynth = { version = "=0.1.0", default-features = false }
 soundfont = "=0.1.0"
 
 [patch.crates-io]
-tracy-client-sys = { git = "https://github.com/SanderVocke/tracy-extensions", tag = "v0.6.0" }
+tracy-client-sys = { git = "https://github.com/SanderVocke/tracy-extensions", tag = "v0.7.0" }
 
 [profile.release-with-debug]
 inherits = "release"
