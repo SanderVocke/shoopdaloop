@@ -8874,8 +8874,10 @@ fn logical_position_for_raw(
         .max_by_key(|region| region.observation_revision)
         .map(|region| region.capture_alignment_frames)
         .unwrap_or(latency.capture_alignment_frames);
-    raw.checked_sub(i64::from(start_offset))?
-        .checked_sub(i64::from(alignment))
+    let logical = raw
+        .checked_sub(i64::from(start_offset))?
+        .checked_sub(i64::from(alignment))?;
+    (raw_position_for_logical(start_offset, latency, logical) == Some(raw)).then_some(logical)
 }
 
 fn logical_midi_start_state(content: &BackendMidiContent) -> Vec<Vec<u8>> {
@@ -17712,6 +17714,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 data: vec![0x90, 60, 100],
             },
             BackendMidiEvent {
+                time: 14_400,
+                data: vec![0x90, 70, 100],
+            },
+            BackendMidiEvent {
                 time: 19_200,
                 data: vec![0x80, 60, 64],
             },
@@ -17781,6 +17787,10 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .collect::<Vec<_>>(),
             vec![0, 0, 4_800]
         );
+        assert!(!logical
+            .events
+            .iter()
+            .any(|event| event.data == [0x90, 70, 100]));
         assert_eq!(logical.latency, TakeLatencyDocument::default());
         let raw = export(
             &mut model,
@@ -17790,7 +17800,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         );
         assert_eq!(raw.length_frames, 28_800);
         assert_eq!(raw.start_state, vec![vec![0xB0, 7, 10]]);
-        assert_eq!(raw.events.len(), 3);
+        assert_eq!(raw.events.len(), 4);
         assert_eq!(raw.latency.capture_alignment_frames, 9_600);
         let raw_standard = export(
             &mut model,
@@ -17805,7 +17815,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .iter()
                 .map(|event| event.frame)
                 .collect::<Vec<_>>(),
-            vec![0, 4_800, 9_600, 19_200]
+            vec![0, 4_800, 9_600, 14_400, 19_200]
         );
         let unchanged = backend.loop_midi_data(backend_loop).unwrap().unwrap();
         assert_eq!(unchanged.channels[0].events, raw_events);

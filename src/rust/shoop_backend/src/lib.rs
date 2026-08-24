@@ -8835,13 +8835,48 @@ mod tests {
         let audio_channel = backend.session.audio_channel_mut(audio).unwrap();
         audio_channel.load_data(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
         audio_channel.set_capture_alignment_frames(2).unwrap();
+        audio_channel
+            .restore_alignment_regions(&[
+                shoop_engine::RuntimeAlignmentRegion {
+                    raw_start: 0,
+                    raw_end: 2,
+                    capture_alignment_frames: 0,
+                    observation_revision: 1,
+                },
+                shoop_engine::RuntimeAlignmentRegion {
+                    raw_start: 2,
+                    raw_end: 6,
+                    capture_alignment_frames: 2,
+                    observation_revision: 2,
+                },
+            ])
+            .unwrap();
         let midi_channel = backend.session.midi_channel_mut(midi).unwrap();
         midi_channel.set_contents(
-            &[shoop_engine::MidiStorageElem::new(3, &[0x90, 60, 100]).unwrap()],
+            &[
+                shoop_engine::MidiStorageElem::new(1, &[0x90, 70, 100]).unwrap(),
+                shoop_engine::MidiStorageElem::new(3, &[0x90, 60, 100]).unwrap(),
+            ],
             6,
             None,
         );
         midi_channel.set_capture_alignment_frames(2).unwrap();
+        midi_channel
+            .restore_alignment_regions(&[
+                shoop_engine::RuntimeAlignmentRegion {
+                    raw_start: 0,
+                    raw_end: 2,
+                    capture_alignment_frames: 0,
+                    observation_revision: 1,
+                },
+                shoop_engine::RuntimeAlignmentRegion {
+                    raw_start: 2,
+                    raw_end: 6,
+                    capture_alignment_frames: 2,
+                    observation_revision: 2,
+                },
+            ])
+            .unwrap();
 
         backend.consolidate_take_latency(loop_id).unwrap();
 
@@ -8851,7 +8886,9 @@ mod tests {
         let midi_channel = backend.session.midi_channel(midi).unwrap();
         assert_eq!(midi_channel.capture_alignment_frames(), 0);
         assert_eq!(midi_channel.length(), 4);
+        assert_eq!(midi_channel.contents().len(), 1);
         assert_eq!(midi_channel.contents()[0].time, 1);
+        assert_eq!(midi_channel.contents()[0].data(), [0x90, 60, 100]);
     }
 
     #[shoop_wasm_test_support::shoop_test]

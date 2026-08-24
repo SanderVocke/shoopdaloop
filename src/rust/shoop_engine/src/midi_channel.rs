@@ -605,9 +605,10 @@ impl MidiChannel {
             .max_by_key(|region| region.observation_revision)
             .map(|region| region.capture_alignment_frames)
             .unwrap_or(self.capture_alignment_frames);
-        raw_position
+        let logical = raw_position
             .checked_sub(self.start_offset)?
-            .checked_sub(alignment)
+            .checked_sub(alignment)?;
+        (self.raw_position_for_logical(logical) == Some(raw_position)).then_some(logical)
     }
     pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
         self.raw_position_for_logical(logical_position)?
@@ -1096,7 +1097,14 @@ impl MidiChannel {
                     if segment == 0 {
                         break;
                     }
-                    self.process_playback(source_position, segment, false, out, output_offset)?;
+                    self.process_playback(
+                        source_position,
+                        segment,
+                        false,
+                        out,
+                        output_offset,
+                        true,
+                    )?;
                     source_position = source_position
                         .checked_add(segment as i32)
                         .ok_or(MidiChannelError::LatencyPositionOverflow)?;
@@ -1202,6 +1210,7 @@ impl MidiChannel {
                     false,
                     out,
                     segment_offset,
+                    false,
                 )?;
                 segment_length = 0;
             }
@@ -1478,6 +1487,7 @@ impl MidiChannel {
         muted: bool,
         out: &mut Vec<MidiStorageElem>,
         output_offset: u32,
+        respect_global_valid_from: bool,
     ) -> Result<(), MidiChannelError> {
         let Some(play) = self.play else {
             return Err(MidiChannelError::NoPlaybackBuffer);
@@ -1516,11 +1526,15 @@ impl MidiChannel {
             self.last_played_back_sample = Some(t);
         }
 
-        let valid_from = our_pos.max(
-            self.start_offset
-                .saturating_add(self.capture_alignment_frames)
-                .saturating_sub(self.pre_play_samples as i32),
-        );
+        let valid_from = if respect_global_valid_from {
+            our_pos.max(
+                self.start_offset
+                    .saturating_add(self.capture_alignment_frames)
+                    .saturating_sub(self.pre_play_samples as i32),
+            )
+        } else {
+            our_pos
+        };
         let valid_to = our_pos + n_samples as i32;
 
         while self.playback_cursor.valid() {
@@ -2235,6 +2249,7 @@ mod tests {
         ch.set_contents(
             &[
                 ev(0, &midi::note_on(0, 50, 100)),
+                ev(2, &midi::note_on(0, 55, 100)),
                 ev(4, &midi::note_on(0, 60, 100)),
             ],
             8,
@@ -2258,6 +2273,7 @@ mod tests {
 
         check!(ch.raw_position_for_logical(0) == Some(0));
         check!(ch.raw_position_for_logical(2) == Some(4));
+        check!(ch.logical_position_for_raw(2).is_none());
         check!(ch.raw_position_for_logical(5) == Some(7));
         check!(ch.alignment_regions().count() == 2);
         let out = cycle(&mut ch, L::Playing, 4, 0, 4, &[]);
@@ -2267,6 +2283,7 @@ mod tests {
         check!(out
             .iter()
             .any(|event| event.time == 2 && event.data()[1] == 60));
+        check!(!out.iter().any(|event| event.data()[1] == 55));
     }
 
     #[shoop_wasm_test_support::shoop_test]

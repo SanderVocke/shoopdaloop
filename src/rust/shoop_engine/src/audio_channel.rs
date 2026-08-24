@@ -699,9 +699,10 @@ impl AudioChannel {
             .max_by_key(|region| region.observation_revision)
             .map(|region| region.capture_alignment_frames)
             .unwrap_or(self.capture_alignment_frames);
-        raw_position
+        let logical = raw_position
             .checked_sub(self.start_offset)?
-            .checked_sub(alignment)
+            .checked_sub(alignment)?;
+        (self.raw_position_for_logical(logical) == Some(raw_position)).then_some(logical)
     }
     pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
         self.raw_position_for_logical(logical_position)?
@@ -1817,6 +1818,7 @@ mod tests {
 
         check!(ch.raw_position_for_logical(0) == Some(0));
         check!(ch.raw_position_for_logical(2) == Some(4));
+        check!(ch.logical_position_for_raw(2).is_none());
         check!(ch.raw_position_for_logical(5) == Some(7));
         check!(ch.alignment_regions().count() == 2);
         check!(cycle(&mut ch, L::Playing, 4, 0, 4, &[]) == vec![0.0, 1.0, 4.0, 5.0]);
