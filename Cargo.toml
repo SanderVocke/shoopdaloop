@@ -45,7 +45,7 @@ libc = "0.2"
 assert2 = "0.4"
 assert_no_alloc = "1.1"
 arc-swap = "1.7"
-rtrb = "0.3"
+rtrb = "0.4"
 jack = "0.13"
 # Pinned to what rodio (used by the application) already brings in: cpal declares
 # links = "alsa", so two versions cannot coexist in one workspace.
