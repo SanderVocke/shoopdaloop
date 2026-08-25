@@ -51,7 +51,7 @@ jack = "0.13"
 # links = "alsa", so two versions cannot coexist in one workspace.
 # Enable all known cross-platform CPAL host features so that `--list-cpal-hosts`
 # surfaces every available backend (ALSA, JACK, WASAPI, ASIO, CoreAudio).
-cpal = { version = "0.16", features = ["jack", "asio"] }
+cpal = { version = "0.17", features = ["jack", "asio"] }
 midir = "0.11"
 rubato = "5.0"
 thiserror = "2.0"
