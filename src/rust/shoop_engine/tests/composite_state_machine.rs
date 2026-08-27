@@ -621,8 +621,15 @@ fn stop_and_clear_cancel_pending_state_and_clean_children_in_stable_order() {
     assert_eq!(runtime.pending(), None);
     assert_eq!(runtime.mode(), LoopMode::Stopped);
 
+    let stopped_again = runtime.stop(&plan, always_current).unwrap();
+    assert_eq!(stopped_again.as_slice().len(), 2);
+    assert!(stopped_again
+        .as_slice()
+        .iter()
+        .all(|transition| transition.action == CompositeTargetAction::Stop));
+
     let cleared = runtime.clear(&plan, always_current).unwrap();
-    assert!(cleared.is_empty());
+    assert_eq!(cleared.as_slice().len(), 2);
     assert_eq!(runtime.active_children().count(), 0);
     assert_eq!(runtime.cycle_count(), 0);
 }
