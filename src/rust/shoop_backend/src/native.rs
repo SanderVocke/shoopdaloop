@@ -916,7 +916,15 @@ impl NativeRuntime {
             .global_ports
             .insert(source_global.source_id, self.global_fx_port);
         for external in &source_global.external_connections {
-            self.set_port_connected(self.global_fx_port, external, true)?;
+            if let Err(error) = self.set_port_connected(self.global_fx_port, external, true) {
+                self.connection_failures.push(BackendConnectionFailure {
+                    port_id: self.global_fx_port,
+                    external_port: external.clone(),
+                    desired_connected: true,
+                    message: format!("could not restore external endpoint {external}: {error}"),
+                });
+                self.connection_revision = self.connection_revision.wrapping_add(1);
+            }
         }
         for source_track in &data.tracks {
             if source_track.state.topology != source_track.topology {
@@ -1046,7 +1054,7 @@ impl NativeRuntime {
                             external_port: external.clone(),
                             desired_connected: true,
                             message: format!(
-                                "external endpoint {external} is unavailable after the audio-driver switch"
+                                "external endpoint {external} is unavailable during session restoration"
                             ),
                         });
                         self.connection_revision = self.connection_revision.wrapping_add(1);
@@ -1058,7 +1066,7 @@ impl NativeRuntime {
                             external_port: external.clone(),
                             desired_connected: true,
                             message: format!(
-                                "could not restore external endpoint {external} after the audio-driver switch: {error}"
+                                "could not restore external endpoint {external}: {error}"
                             ),
                         });
                         self.connection_revision = self.connection_revision.wrapping_add(1);
@@ -3175,6 +3183,9 @@ mod tests {
             captured.global_ports[0].external_connections,
             ["controller:midi_out"]
         );
+        captured.global_ports[0]
+            .external_connections
+            .push("removed:stale_midi".to_owned());
         captured.tracks[0].loops[0].length = 512;
         captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5, 0.75];
         captured.tracks[0].loops[0].midi[0] = BackendMidiContent {
@@ -3222,10 +3233,14 @@ mod tests {
             .iter()
             .any(|port| port.external_connections == ["system:capture_1"]));
         let failures = backend.poll().unwrap().connections.failures;
-        assert_eq!(failures.len(), 1);
-        assert_eq!(failures[0].external_port, "removed:stale_capture");
-        assert!(failures[0].desired_connected);
-        assert!(failures[0].message.contains("unavailable after"));
+        assert_eq!(failures.len(), 2);
+        assert!(failures.iter().all(|failure| failure.desired_connected));
+        assert!(failures
+            .iter()
+            .any(|failure| failure.external_port == "removed:stale_midi"));
+        assert!(failures
+            .iter()
+            .any(|failure| failure.external_port == "removed:stale_capture"));
         assert!(backend.poll().unwrap().connections.failures.is_empty());
     }
 
