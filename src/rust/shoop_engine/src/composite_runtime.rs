@@ -541,18 +541,7 @@ impl CompositeRuntime {
             self.bump_plan_mismatch();
             return Err(CompositeRuntimeError::PlanMismatch);
         }
-        if self.mode == LoopMode::Stopped
-            || self.iteration.saturating_add(1) >= current_plan.n_iterations()
-            || self.iteration.saturating_add(1) >= candidate.n_iterations()
-            || current_plan.kind() != candidate.kind()
-            || current_plan.sync_length() != candidate.sync_length()
-            || !plans_match_at(
-                current_plan,
-                candidate,
-                self.iteration,
-                self.iteration.saturating_add(1),
-            )
-        {
+        if !self.can_adopt_plan_before_future_change(current_plan, candidate) {
             return Ok(false);
         }
 
@@ -569,6 +558,26 @@ impl CompositeRuntime {
             }
         }
         Ok(true)
+    }
+
+    pub(crate) fn can_adopt_plan_before_future_change(
+        &self,
+        current_plan: &CompiledCompositePlan,
+        candidate: &CompiledCompositePlan,
+    ) -> bool {
+        self.ensure_plan(current_plan).is_ok()
+            && candidate.source() == self.source
+            && self.mode != LoopMode::Stopped
+            && self.iteration.saturating_add(1) < current_plan.n_iterations()
+            && self.iteration.saturating_add(1) < candidate.n_iterations()
+            && current_plan.kind() == candidate.kind()
+            && current_plan.sync_length() == candidate.sync_length()
+            && plans_match_at(
+                current_plan,
+                candidate,
+                self.iteration,
+                self.iteration.saturating_add(1),
+            )
     }
 
     pub fn clear<F>(

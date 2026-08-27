@@ -597,6 +597,44 @@ fn compatible_replacement_supersedes_an_older_deferred_candidate() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn future_change_adopts_when_retirement_storage_is_full() {
+    let Fixture {
+        session,
+        timeline,
+        source,
+        ..
+    } = fixture();
+    let mut version_two = fixture_with_entry(3, 1).timeline;
+    version_two.prepare_install(2, &[None, None]).unwrap();
+    let mut version_three = fixture_with_entry(2, 1).timeline;
+    version_three.prepare_install(3, &[None, None]).unwrap();
+    let (mut engine, mut handle) = split(session, 8);
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    engine.process(1);
+    assert!(install.pop().unwrap().is_ok());
+    let mut start = handle
+        .send_composite_immediate_transition(source, LoopMode::Playing, 0)
+        .unwrap();
+    engine.process(1);
+    assert!(start.pop().unwrap().is_ok());
+    let mut second = handle.send_composite_timeline(version_two).unwrap();
+    engine.pump();
+    assert!(second.pop().unwrap().is_ok());
+    engine.process(2);
+    assert_eq!(engine.session().composite_timeline().n_retired_plans(), 1);
+
+    let mut third = handle.send_composite_timeline(version_three).unwrap();
+    engine.pump();
+
+    assert!(third.pop().unwrap().is_ok());
+    let active = engine.session().composite_timeline().node_state(0).unwrap();
+    assert_eq!(active.active_version, 3);
+    assert_eq!(active.pending_version, None);
+    assert_eq!(active.runtime.mode(), LoopMode::Playing);
+    assert_eq!(engine.session().composite_timeline().n_retired_plans(), 1);
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn running_dependency_topology_change_restarts_at_the_install_boundary() {
     let Fixture {
         session,

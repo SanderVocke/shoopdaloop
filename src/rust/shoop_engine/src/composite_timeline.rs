@@ -545,6 +545,18 @@ impl CompositeBoundaryTimeline {
         if self.nodes.len() != candidate.nodes.len() {
             return false;
         }
+        if !self
+            .nodes
+            .iter()
+            .zip(&candidate.nodes)
+            .all(|(current, next)| {
+                current.plan().source() == next.plan().source()
+                    && current.sync_source == next.sync_source
+                    && composite_targets(current.plan()).eq(composite_targets(next.plan()))
+            })
+        {
+            return false;
+        }
         let additional_retirements = self
             .nodes
             .iter()
@@ -553,19 +565,12 @@ impl CompositeBoundaryTimeline {
                 current.plan() != next.plan()
                     && current.runtime.mode() != LoopMode::Stopped
                     && current.pending_plan.is_none()
+                    && !current
+                        .runtime
+                        .can_adopt_plan_before_future_change(current.plan(), next.plan())
             })
             .count();
-        if self.retired_plans.len() + additional_retirements > self.retired_plans.capacity() {
-            return false;
-        }
-        self.nodes
-            .iter()
-            .zip(&candidate.nodes)
-            .all(|(current, next)| {
-                current.plan().source() == next.plan().source()
-                    && current.sync_source == next.sync_source
-                    && composite_targets(current.plan()).eq(composite_targets(next.plan()))
-            })
+        self.retired_plans.len() + additional_retirements <= self.retired_plans.capacity()
     }
 
     pub fn queue_runtime_preserving_replacement(&mut self, mut candidate: Self) -> Self {
