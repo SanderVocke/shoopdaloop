@@ -280,7 +280,7 @@ impl CompositeRuntime {
             return Err(CompositeRuntimeError::UnknownMode);
         }
         if mode == LoopMode::Stopped {
-            return self.stop_inner(plan, &mut target_is_current);
+            return self.stop_inner(&mut target_is_current);
         }
         if plan.n_iterations() == 0 {
             self.mode = LoopMode::Stopped;
@@ -345,7 +345,7 @@ impl CompositeRuntime {
         F: FnMut(LoopIdentity) -> bool,
     {
         self.ensure_plan_mut(plan)?;
-        self.stop_inner(plan, &mut target_is_current)
+        self.stop_inner(&mut target_is_current)
     }
 
     pub fn sync_boundary<F>(
@@ -540,7 +540,7 @@ impl CompositeRuntime {
         F: FnMut(LoopIdentity) -> bool,
     {
         self.ensure_plan_mut(plan)?;
-        let batch = self.stop_inner(plan, &mut target_is_current)?;
+        let batch = self.stop_inner(&mut target_is_current)?;
         self.target_count = 0;
         self.installed_targets.fill(EMPTY_IDENTITY);
         self.cycle_count = 0;
@@ -624,21 +624,22 @@ impl CompositeRuntime {
 
     fn stop_inner<F>(
         &mut self,
-        plan: &CompiledCompositePlan,
         target_is_current: &mut F,
     ) -> Result<CompositeTransitionBatch, CompositeRuntimeError>
     where
         F: FnMut(LoopIdentity) -> bool,
     {
         self.pending = None;
-        let batch = self.reconcile(
-            plan,
-            None,
-            LoopMode::Stopped,
-            false,
-            false,
-            target_is_current,
-        )?;
+        let mut batch = CompositeTransitionBatch::default();
+        for index in 0..self.target_count {
+            self.emit(
+                &mut batch,
+                index,
+                CompositeTargetAction::Stop,
+                target_is_current,
+            )?;
+            self.active[index] = INACTIVE_TARGET;
+        }
         self.mode = LoopMode::Stopped;
         self.iteration = 0;
         self.sync_position = 0;
