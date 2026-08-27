@@ -4183,9 +4183,6 @@ impl Loop {
                 let _ = s.set_loop_mode(idx, to_mode.into());
             }
         })?;
-        if immediate {
-            self.control.mirror.set_mode(to_mode);
-        }
         Ok(sequence)
     }
 
@@ -4215,7 +4212,6 @@ impl Loop {
                 }
             }
         })?;
-        self.control.mirror.set_length(length);
         Ok(sequence)
     }
 
@@ -4228,7 +4224,6 @@ impl Loop {
                 }
             }
         })?;
-        self.control.mirror.set_position(position);
         Ok(sequence)
     }
 
@@ -5240,10 +5235,6 @@ pub fn replace_loop_content(
             return Err(error.into());
         }
     };
-    loop_.control.mirror.set_mode(LoopMode::Stopped);
-    if let Some(length) = length {
-        loop_.control.mirror.set_length(length);
-    }
     for item in audio {
         item.channel
             .desired_data

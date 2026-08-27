@@ -17,8 +17,8 @@ const NO_SAMPLE: i32 = i32::MIN;
 
 /// Lock-free loop-state publication shared by the engine and its control handle.
 ///
-/// The generation is a seqlock. Writers serialize with atomic compare-and-exchange, while readers
-/// retry if they overlap a publication instead of observing fields from different updates.
+/// The generation is a seqlock. The engine is the single writer, while readers retry if they
+/// overlap a publication instead of observing fields from different audio callbacks.
 #[derive(Debug)]
 pub struct LoopStateMirror {
     generation: AtomicU64,
@@ -46,23 +46,8 @@ impl Default for LoopStateMirror {
 
 impl LoopStateMirror {
     fn begin_write(&self) {
-        let mut generation = self.generation.load(Ordering::Relaxed);
-        loop {
-            if generation & 1 != 0 {
-                std::hint::spin_loop();
-                generation = self.generation.load(Ordering::Relaxed);
-                continue;
-            }
-            match self.generation.compare_exchange_weak(
-                generation,
-                generation.wrapping_add(1),
-                Ordering::Acquire,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return,
-                Err(observed) => generation = observed,
-            }
-        }
+        self.generation.fetch_add(1, Ordering::Relaxed);
+        std::sync::atomic::fence(Ordering::Release);
     }
 
     fn end_write(&self) {
@@ -132,7 +117,8 @@ impl LoopStateMirror {
                     .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
                 maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
             };
-            let after = self.generation.load(Ordering::Acquire);
+            std::sync::atomic::fence(Ordering::Acquire);
+            let after = self.generation.load(Ordering::Relaxed);
             if before == after {
                 return snapshot;
             }
@@ -956,26 +942,21 @@ mod tests {
         use std::sync::Arc;
 
         let mirror = Arc::new(LoopStateMirror::default());
-        let playing_writer = Arc::clone(&mirror);
-        let playing_writer = std::thread::spawn(move || {
+        let writer = Arc::clone(&mirror);
+        let writer = std::thread::spawn(move || {
             for _ in 0..100_000 {
-                playing_writer.publish(
+                writer.publish(
                     LoopMode::Playing,
                     128,
                     17,
                     3,
                     Some((LoopMode::Recording, 2)),
                 );
-            }
-        });
-        let stopped_writer = Arc::clone(&mirror);
-        let stopped_writer = std::thread::spawn(move || {
-            for _ in 0..100_000 {
-                stopped_writer.publish(LoopMode::Stopped, 0, 0, 4, None);
+                writer.publish(LoopMode::Stopped, 0, 0, 4, None);
             }
         });
 
-        while !playing_writer.is_finished() || !stopped_writer.is_finished() {
+        while !writer.is_finished() {
             let state = mirror.read();
             let initial_or_stopped = state.mode == LoopMode::Stopped
                 && state.length == 0
@@ -991,7 +972,6 @@ mod tests {
                 && state.maybe_next_mode_delay == Some(2);
             check!(initial_or_stopped || playing);
         }
-        playing_writer.join().unwrap();
-        stopped_writer.join().unwrap();
+        writer.join().unwrap();
     }
 }
