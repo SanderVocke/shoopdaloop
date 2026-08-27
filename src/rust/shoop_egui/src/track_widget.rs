@@ -296,14 +296,19 @@ impl TrackWidget {
         {
             self.hovered_loop = None;
         }
-        let stale_pair = |(source, target)| {
+        let stale_local_pair = |(source, target)| {
             !state.loops.iter().any(|loop_state| loop_state.id == source)
                 || !state.loops.iter().any(|loop_state| loop_state.id == target)
         };
-        if self.pending_loop_drop.is_some_and(stale_pair) {
+        if self.pending_loop_drop.is_some_and(|(_, target)| {
+            !state.loops.iter().any(|loop_state| loop_state.id == target)
+        }) {
             self.pending_loop_drop = None;
         }
-        if self.pending_clone_confirmation.is_some_and(stale_pair) {
+        if self
+            .pending_clone_confirmation
+            .is_some_and(stale_local_pair)
+        {
             self.pending_clone_confirmation = None;
         }
         let mut result = TrackWidgetResponse::default();
@@ -353,13 +358,8 @@ impl TrackWidget {
                                         global_controls,
                                     )
                                 });
-                            let dropped = dropped.filter(|payload| {
-                                payload.loop_id != loop_state.id
-                                    && state
-                                        .loops
-                                        .iter()
-                                        .any(|candidate| candidate.id == payload.loop_id)
-                            });
+                            let dropped =
+                                dropped.filter(|payload| payload.loop_id != loop_state.id);
                             if let Some(payload) = dropped.as_ref() {
                                 self.pending_loop_drop = Some((payload.loop_id, loop_state.id));
                             }
@@ -487,6 +487,7 @@ impl TrackWidget {
             return;
         }
         let popup_id = ui.id().with(("loop_drop_menu", target));
+        let source_is_in_track = self.loop_widgets.contains_key(&source);
         let mut action = None;
         let mut confirm_clone = false;
         egui::Popup::menu(response)
@@ -494,18 +495,18 @@ impl TrackWidget {
             .open_memory(open.then_some(egui::SetOpenCommand::Bool(true)))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
-                let clone = ui.button("Clone into");
+                let clone = source_is_in_track.then(|| ui.button("Clone into"));
                 let compose_end = ui.button("Compose (end)");
                 let compose_parallel = ui.button("Compose (parallel)");
-                let swap = ui.button("Swap");
+                let swap = source_is_in_track.then(|| ui.button("Swap"));
                 #[cfg(test)]
                 {
-                    self.test_drop_clone_rect = Some(clone.rect);
+                    self.test_drop_clone_rect = clone.as_ref().map(|button| button.rect);
                     self.test_drop_compose_end_rect = Some(compose_end.rect);
                     self.test_drop_compose_parallel_rect = Some(compose_parallel.rect);
-                    self.test_drop_swap_rect = Some(swap.rect);
+                    self.test_drop_swap_rect = swap.as_ref().map(|button| button.rect);
                 }
-                if clone.clicked() {
+                if clone.is_some_and(|button| button.clicked()) {
                     if target_state.empty {
                         action = Some(LoopWidgetAction::DuplicateTo(target));
                     } else {
@@ -518,7 +519,7 @@ impl TrackWidget {
                 } else if compose_parallel.clicked() {
                     action = Some(LoopWidgetAction::ComposeIntoParallel(target));
                     ui.close();
-                } else if swap.clicked() {
+                } else if swap.is_some_and(|button| button.clicked()) {
                     action = Some(LoopWidgetAction::SwapWith(target));
                     ui.close();
                 }
@@ -1317,6 +1318,62 @@ mod tests {
         assert_eq!(
             response.loop_actions,
             [(source, LoopWidgetAction::SwapWith(target))]
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dropping_a_loop_from_another_track_offers_composition_actions() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let source = LoopId::from_raw(1);
+        let target = LoopId::from_raw(2);
+        let state = TrackState {
+            id: TrackId::from_raw(2),
+            loops: vec![LoopState {
+                id: target,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let target_center = widget.test_loop_rects[0].center();
+        egui::DragAndDrop::set_payload(&context, LoopDragPayload { loop_id: source });
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(target_center),
+                egui::Event::PointerButton {
+                    pos: target_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerButton {
+                pos: target_center,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+
+        assert!(widget.test_drop_clone_rect.is_none());
+        assert!(widget.test_drop_swap_rect.is_none());
+        let compose_end = widget
+            .test_drop_compose_end_rect
+            .expect("compose at end drop action");
+        assert_eq!(
+            click(&context, &mut widget, &state, compose_end.center()).loop_actions,
+            [(source, LoopWidgetAction::ComposeIntoEnd(target))]
         );
     }
 

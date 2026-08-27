@@ -4459,7 +4459,12 @@ impl ApplicationModel {
         let Some(loop_model) = self.loops.get(&loop_id) else {
             return Err(format!("stale or unknown loop {loop_id}"));
         };
-        if loop_model.track_id != track_id {
+        if loop_model.track_id != track_id
+            && !matches!(
+                action,
+                LoopAction::ComposeIntoEnd(_) | LoopAction::ComposeIntoParallel(_)
+            )
+        {
             return Err(format!(
                 "loop {loop_id} does not belong to track {track_id}"
             ));
@@ -5079,10 +5084,11 @@ impl ApplicationModel {
             .iter()
             .find(|track| track.id == track_id)
             .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
-        if !track.loops.contains(&source) || !track.loops.contains(&target) {
-            return Err(format!(
-                "loops {source} and {target} must belong to track {track_id}"
-            ));
+        if !track.loops.contains(&target) {
+            return Err(format!("loop {target} does not belong to track {track_id}"));
+        }
+        if !self.loops.contains_key(&source) {
+            return Err(format!("stale or unknown composition source {source}"));
         }
         if source == target || self.composite_references(source, target, &mut BTreeSet::new()) {
             return Err(format!(
@@ -12054,6 +12060,34 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 .map(|event| event.loop_id)
                 .collect::<Vec<_>>(),
             [source.raw(), parallel_source.raw(), end_source.raw()]
+        );
+
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Other track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let cross_track_source = model.tracks[2].loops[0];
+        model
+            .handle_loop_action(
+                &mut backend,
+                track,
+                cross_track_source,
+                LoopAction::ComposeIntoEnd(target),
+            )
+            .unwrap();
+        assert_eq!(
+            model.loops[&target].script_composition,
+            [
+                vec![source, parallel_source],
+                vec![end_source],
+                vec![cross_track_source]
+            ]
         );
     }
 
