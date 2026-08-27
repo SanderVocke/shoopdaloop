@@ -531,6 +531,46 @@ impl CompositeRuntime {
         Ok(output)
     }
 
+    pub(crate) fn adopt_plan_before_future_change(
+        &mut self,
+        current_plan: &CompiledCompositePlan,
+        candidate: &CompiledCompositePlan,
+    ) -> Result<bool, CompositeRuntimeError> {
+        self.ensure_plan_mut(current_plan)?;
+        if candidate.source() != self.source {
+            self.bump_plan_mismatch();
+            return Err(CompositeRuntimeError::PlanMismatch);
+        }
+        if self.mode == LoopMode::Stopped
+            || self.iteration.saturating_add(1) >= current_plan.n_iterations()
+            || self.iteration.saturating_add(1) >= candidate.n_iterations()
+            || current_plan.kind() != candidate.kind()
+            || current_plan.sync_length() != candidate.sync_length()
+            || !plans_match_at(
+                current_plan,
+                candidate,
+                self.iteration,
+                self.iteration.saturating_add(1),
+            )
+        {
+            return Ok(false);
+        }
+
+        let old_targets = self.installed_targets;
+        let old_active = self.active;
+        let old_target_count = self.target_count;
+        self.install_target_table(candidate);
+        self.active.fill(INACTIVE_TARGET);
+        for new_index in 0..self.target_count {
+            if let Ok(old_index) =
+                old_targets[..old_target_count].binary_search(&self.installed_targets[new_index])
+            {
+                self.active[new_index] = old_active[old_index];
+            }
+        }
+        Ok(true)
+    }
+
     pub fn clear<F>(
         &mut self,
         plan: &CompiledCompositePlan,
@@ -790,6 +830,52 @@ impl CompositeRuntime {
     fn bump_arithmetic_overflow(&mut self) {
         self.counters.arithmetic_overflows = self.counters.arithmetic_overflows.saturating_add(1);
     }
+}
+
+fn plans_match_at(
+    current: &CompiledCompositePlan,
+    candidate: &CompiledCompositePlan,
+    first_iteration: u32,
+    second_iteration: u32,
+) -> bool {
+    current.targets().iter().all(|target| {
+        target_matches_at(
+            current,
+            candidate,
+            *target,
+            first_iteration,
+            second_iteration,
+        )
+    }) && candidate.targets().iter().all(|target| {
+        target_matches_at(
+            current,
+            candidate,
+            *target,
+            first_iteration,
+            second_iteration,
+        )
+    })
+}
+
+fn target_matches_at(
+    current: &CompiledCompositePlan,
+    candidate: &CompiledCompositePlan,
+    target: LoopIdentity,
+    first_iteration: u32,
+    second_iteration: u32,
+) -> bool {
+    let current_index = current.targets().binary_search(&target).ok();
+    let candidate_index = candidate.targets().binary_search(&target).ok();
+    [first_iteration, second_iteration]
+        .into_iter()
+        .all(|iteration| {
+            [false, true].into_iter().all(|first_recording_only| {
+                current_index
+                    .and_then(|index| current.desired(iteration, index, first_recording_only))
+                    == candidate_index
+                        .and_then(|index| candidate.desired(iteration, index, first_recording_only))
+            })
+        })
 }
 
 #[derive(Debug, Clone, Copy)]

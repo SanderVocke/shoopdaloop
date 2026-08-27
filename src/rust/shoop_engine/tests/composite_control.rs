@@ -21,6 +21,10 @@ fn fixture() -> Fixture {
 }
 
 fn fixture_with_cycles(n_cycles: i64) -> Fixture {
+    fixture_with_entry(0, n_cycles)
+}
+
+fn fixture_with_entry(delay: i64, n_cycles: i64) -> Fixture {
     let mut session = Session::default();
     let sync = session.create_loop();
     let child = session.create_loop();
@@ -59,7 +63,7 @@ fn fixture_with_cycles(n_cycles: i64) -> Fixture {
                 sections: vec![CompositeSection {
                     entries: vec![CompositeEntry {
                         target: child_identity,
-                        delay: 0,
+                        delay,
                         n_cycles: Some(n_cycles),
                         mode: None,
                     }],
@@ -87,6 +91,41 @@ fn fixture_with_cycles(n_cycles: i64) -> Fixture {
         source,
         child: child_identity,
     }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn running_timeline_adopts_changes_more_than_one_cycle_ahead() {
+    let Fixture {
+        session,
+        timeline,
+        source,
+        child,
+    } = fixture_with_entry(3, 1);
+    let mut replacement = fixture_with_entry(2, 1).timeline;
+    replacement.prepare_install(2, &[None, None]).unwrap();
+    let (mut engine, mut handle) = split(session, 8);
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    engine.process(1);
+    assert!(install.pop().unwrap().is_ok());
+    let mut start = handle
+        .send_composite_immediate_transition(source, LoopMode::Playing, 0)
+        .unwrap();
+    engine.process(1);
+    assert!(start.pop().unwrap().is_ok());
+
+    let mut replace = handle.send_composite_timeline(replacement).unwrap();
+    engine.pump();
+
+    assert!(replace.pop().unwrap().is_ok());
+    let node = engine.session().composite_timeline().node_state(0).unwrap();
+    assert_eq!(node.active_version, 2);
+    assert_eq!(node.pending_version, None);
+    assert_eq!(node.runtime.iteration(), 0);
+    engine.process(7);
+    assert_eq!(
+        engine.session().loop_(child.slot as usize).unwrap().mode(),
+        LoopMode::Playing
+    );
 }
 
 #[shoop_wasm_test_support::shoop_test]
