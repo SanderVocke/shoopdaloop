@@ -558,6 +558,45 @@ fn newest_running_replacement_supersedes_older_candidate() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn compatible_replacement_supersedes_an_older_deferred_candidate() {
+    let Fixture {
+        session,
+        timeline,
+        source,
+        ..
+    } = fixture_with_entry(3, 1);
+    let mut version_two = fixture_with_entry(0, 2).timeline;
+    version_two.prepare_install(2, &[None, None]).unwrap();
+    let mut version_three = fixture_with_entry(2, 1).timeline;
+    version_three.prepare_install(3, &[None, None]).unwrap();
+    let (mut engine, mut handle) = split(session, 8);
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    engine.process(1);
+    assert!(install.pop().unwrap().is_ok());
+    let mut start = handle
+        .send_composite_immediate_transition(source, LoopMode::Playing, 0)
+        .unwrap();
+    engine.process(1);
+    assert!(start.pop().unwrap().is_ok());
+
+    let mut second = handle.send_composite_timeline(version_two).unwrap();
+    engine.pump();
+    assert!(second.pop().unwrap().is_ok());
+    let mut third = handle.send_composite_timeline(version_three).unwrap();
+    engine.pump();
+    assert!(third.pop().unwrap().is_ok());
+
+    let pending = engine.session().composite_timeline().node_state(0).unwrap();
+    assert_eq!(pending.active_version, 1);
+    assert_eq!(pending.pending_version, Some(3));
+    engine.process(14);
+    let active = engine.session().composite_timeline().node_state(0).unwrap();
+    assert_eq!(active.active_version, 3);
+    assert_eq!(active.pending_version, None);
+    assert_eq!(active.runtime.length_samples(active.plan), Ok(12));
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn running_dependency_topology_change_restarts_at_the_install_boundary() {
     let Fixture {
         session,

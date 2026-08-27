@@ -588,18 +588,19 @@ impl CompositeBoundaryTimeline {
                     .activate_plan(current_plan, next_plan, |_| true);
                 std::mem::swap(&mut current.plan, &mut next.plan);
                 std::mem::swap(&mut current.active_version, &mut next.active_version);
-            } else if current
-                .runtime
-                .adopt_plan_before_future_change(
-                    current
-                        .plan
-                        .as_ref()
-                        .expect("installed timelines always have an active plan"),
-                    next.plan
-                        .as_ref()
-                        .expect("prepared replacement nodes have a plan"),
-                )
-                .expect("replacement plans have matching composite identities")
+            } else if current.pending_plan.is_none()
+                && current
+                    .runtime
+                    .adopt_plan_before_future_change(
+                        current
+                            .plan
+                            .as_ref()
+                            .expect("installed timelines always have an active plan"),
+                        next.plan
+                            .as_ref()
+                            .expect("prepared replacement nodes have a plan"),
+                    )
+                    .expect("replacement plans have matching composite identities")
             {
                 std::mem::swap(&mut current.plan, &mut next.plan);
                 std::mem::swap(&mut current.active_version, &mut next.active_version);
