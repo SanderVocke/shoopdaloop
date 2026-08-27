@@ -1227,6 +1227,7 @@ pub struct EngineBackend {
     next_port_id: u64,
     next_backend_port_id: u64,
     connection_revision: u64,
+    connection_failures: Vec<BackendConnectionFailure>,
     connection_ports: BTreeMap<BackendPortId, EngineConnectionPort>,
     external_connections: DummyExternalConnections,
     web_midi_hosts: BTreeMap<String, BackendHostPortDescriptor>,
@@ -1370,6 +1371,7 @@ impl EngineBackend {
             next_port_id: 2,
             next_backend_port_id: 1,
             connection_revision: 1,
+            connection_failures: Vec::new(),
             connection_ports: BTreeMap::from([(
                 global_fx_port,
                 EngineConnectionPort {
@@ -2108,7 +2110,7 @@ impl EngineBackend {
         self.set_port_connected(port_id, external_port, connected)
     }
 
-    fn connection_snapshot(&self) -> BackendConnectionSnapshot {
+    fn connection_snapshot(&mut self) -> BackendConnectionSnapshot {
         let application_ports = self
             .connection_ports
             .iter()
@@ -2153,7 +2155,7 @@ impl EngineBackend {
             application_ports,
             host_ports,
             confirmed_links,
-            failures: Vec::new(),
+            failures: std::mem::take(&mut self.connection_failures),
         }
     }
 
@@ -2792,7 +2794,15 @@ impl EngineBackend {
         }
         staged.web_midi_hosts = self.web_midi_hosts.clone();
         for external in &source_global.external_connections {
-            staged.set_port_connected(staged.global_fx_port, external, true)?;
+            if let Err(error) = staged.set_port_connected(staged.global_fx_port, external, true) {
+                staged.connection_failures.push(BackendConnectionFailure {
+                    port_id: staged.global_fx_port,
+                    external_port: external.clone(),
+                    desired_connected: true,
+                    message: format!("could not restore external endpoint {external}: {error}"),
+                });
+                staged.connection_revision = staged.connection_revision.wrapping_add(1);
+            }
         }
         for source_track in &data.tracks {
             let created = staged.create_track(TrackRequest {
@@ -2896,7 +2906,19 @@ impl EngineBackend {
                         staged.set_port_connected(created_port.id, &default_connection, false)?;
                     }
                     for external in &source_port.external_connections {
-                        staged.set_port_connected(created_port.id, external, true)?;
+                        if let Err(error) =
+                            staged.set_port_connected(created_port.id, external, true)
+                        {
+                            staged.connection_failures.push(BackendConnectionFailure {
+                                port_id: created_port.id,
+                                external_port: external.clone(),
+                                desired_connected: true,
+                                message: format!(
+                                    "could not restore external endpoint {external}: {error}"
+                                ),
+                            });
+                            staged.connection_revision = staged.connection_revision.wrapping_add(1);
+                        }
                     }
                 }
             }
@@ -6675,6 +6697,19 @@ impl Backend for FakeBackend {
         replacement
             .global_ports
             .insert(source_global.source_id, staged_global);
+        for external in &source_global.external_connections {
+            if let Err(error) = staged.set_port_connected(staged_global, external, true) {
+                staged.connections.with_state(|state| {
+                    state.failures.push(BackendConnectionFailure {
+                        port_id: staged_global,
+                        external_port: external.clone(),
+                        desired_connected: true,
+                        message: format!("could not restore external endpoint {external}: {error}"),
+                    });
+                    state.revision = state.revision.wrapping_add(1);
+                });
+            }
+        }
         for source_track in &session.tracks {
             if source_track.state.topology != source_track.topology {
                 return Err(anyhow!("prepared session topology state is inconsistent"));
@@ -6767,7 +6802,19 @@ impl Backend for FakeBackend {
                     .ports
                     .insert(source_port.source_id, created_port.id);
                 for external in &source_port.external_connections {
-                    staged.set_port_connected(created_port.id, external, true)?;
+                    if let Err(error) = staged.set_port_connected(created_port.id, external, true) {
+                        staged.connections.with_state(|state| {
+                            state.failures.push(BackendConnectionFailure {
+                                port_id: created_port.id,
+                                external_port: external.clone(),
+                                desired_connected: true,
+                                message: format!(
+                                    "could not restore external endpoint {external}: {error}"
+                                ),
+                            });
+                            state.revision = state.revision.wrapping_add(1);
+                        });
+                    }
                 }
             }
             replacement
@@ -7617,10 +7664,18 @@ mod tests {
             start_offset: -1,
             preplay: 2,
         };
+        track
+            .ports
+            .iter_mut()
+            .find(|port| port.source_id == input.id.raw())
+            .unwrap()
+            .external_connections
+            .push("removed:stale_capture".to_owned());
         backend.advance(Duration::from_millis(20));
         let status_before_replace = backend.poll().unwrap().status;
         let mapping = backend.replace_session(&prepared).unwrap();
-        let status_after_replace = backend.poll().unwrap().status;
+        let after_replace = backend.poll().unwrap();
+        let status_after_replace = after_replace.status;
         assert_eq!(
             status_after_replace.callback_count,
             status_before_replace.callback_count
@@ -7631,6 +7686,11 @@ mod tests {
         );
         assert_eq!(mapping.tracks.len(), prepared.tracks.len());
         assert_eq!(mapping.loops.len(), 2);
+        assert_eq!(after_replace.connections.failures.len(), 1);
+        assert_eq!(
+            after_replace.connections.failures[0].external_port,
+            "removed:stale_capture"
+        );
         let captured = backend.capture_session().unwrap();
         let track = captured
             .tracks
