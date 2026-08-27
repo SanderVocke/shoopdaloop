@@ -5084,6 +5084,9 @@ impl ApplicationModel {
             .iter()
             .find(|track| track.id == track_id)
             .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        if track.is_sync {
+            return Err("the sync loop cannot be a composition target".to_owned());
+        }
         if !track.loops.contains(&target) {
             return Err(format!("loop {target} does not belong to track {track_id}"));
         }
@@ -12089,6 +12092,19 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                 vec![cross_track_source]
             ]
         );
+
+        let sync_track = model.tracks[0].id;
+        let sync_loop = model.tracks[0].loops[0];
+        let error = model
+            .handle_loop_action(
+                &mut backend,
+                sync_track,
+                cross_track_source,
+                LoopAction::ComposeIntoEnd(sync_loop),
+            )
+            .unwrap_err();
+        assert!(error.contains("sync loop cannot be a composition target"));
+        assert!(model.loops[&sync_loop].composite.is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]

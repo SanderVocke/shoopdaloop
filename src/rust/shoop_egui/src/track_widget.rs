@@ -358,8 +358,9 @@ impl TrackWidget {
                                         global_controls,
                                     )
                                 });
-                            let dropped =
-                                dropped.filter(|payload| payload.loop_id != loop_state.id);
+                            let dropped = dropped.filter(|payload| {
+                                !state.is_sync && payload.loop_id != loop_state.id
+                            });
                             if let Some(payload) = dropped.as_ref() {
                                 self.pending_loop_drop = Some((payload.loop_id, loop_state.id));
                             }
@@ -1375,6 +1376,45 @@ mod tests {
             click(&context, &mut widget, &state, compose_end.center()).loop_actions,
             [(source, LoopWidgetAction::ComposeIntoEnd(target))]
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn dropping_a_loop_on_the_sync_loop_is_ignored() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let source = LoopId::from_raw(1);
+        let state = TrackState {
+            id: TrackId::from_raw(2),
+            is_sync: true,
+            loops: vec![LoopState {
+                id: LoopId::from_raw(2),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let target_center = widget.test_loop_rects[0].center();
+        egui::DragAndDrop::set_payload(&context, LoopDragPayload { loop_id: source });
+        let response = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(target_center),
+                egui::Event::PointerButton {
+                    pos: target_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+
+        assert!(response.loop_actions.is_empty());
+        assert!(widget.test_drop_compose_end_rect.is_none());
+        assert!(widget.test_drop_compose_parallel_rect.is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]
