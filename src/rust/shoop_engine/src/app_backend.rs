@@ -1322,6 +1322,7 @@ struct SharedSession {
     /// work, but the session itself is reached solely through the queues inside, so no
     /// audio thread ever waits on this.
     handle: Mutex<engine::EngineHandle>,
+    stats: Arc<engine::Stats>,
     /// Lock-free lifecycle observation for pending object handles.
     engine_connected: Arc<AtomicBool>,
     /// The engine, for as long as no driver has taken it.
@@ -2003,9 +2004,11 @@ impl BackendSession {
         // the steady state.
         let (engine, handle) = engine::split(s, command_queue_capacity);
         let engine_connected = handle.connected_flag();
+        let stats = Arc::clone(handle.stats());
         let shared = Arc::new(SharedSession {
             session_id: NEXT_BACKEND_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             handle: Mutex::new(handle),
+            stats,
             engine_connected,
             parked: Mutex::new(Some(engine)),
             next_composite_slot: AtomicU32::new(0x8000_0000),
@@ -2198,6 +2201,7 @@ impl BackendSession {
         Ok(Loop {
             shared: self.shared.clone(),
             control,
+            desired_state: Arc::new(Mutex::new(DesiredLoopState::default())),
         })
     }
     #[tracing::instrument(
@@ -4008,9 +4012,61 @@ impl CompositeLoop {
 pub struct Loop {
     shared: Arc<SharedSession>,
     control: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
+    desired_state: Arc<Mutex<DesiredLoopState>>,
 }
 pub type LoopState = engine::LoopState;
+
+#[derive(Default)]
+struct DesiredLoopState {
+    mode: Option<(LoopMode, CommandSequence)>,
+    length: Option<(u32, CommandSequence)>,
+    position: Option<(u32, CommandSequence)>,
+}
+
 impl Loop {
+    fn read_state(&self) -> LoopState {
+        let mut state = self.control.mirror.read();
+        let applied = self
+            .shared
+            .stats
+            .last_applied_command
+            .load(Ordering::Acquire);
+        let mut desired = self
+            .desired_state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if desired
+            .mode
+            .is_some_and(|(_, sequence)| sequence.get() <= applied)
+        {
+            desired.mode = None;
+        }
+        if desired
+            .length
+            .is_some_and(|(_, sequence)| sequence.get() <= applied)
+        {
+            desired.length = None;
+        }
+        if desired
+            .position
+            .is_some_and(|(_, sequence)| sequence.get() <= applied)
+        {
+            desired.position = None;
+        }
+        if let Some((mode, _)) = desired.mode {
+            state.mode = mode;
+            state.maybe_next_mode = None;
+            state.maybe_next_mode_delay = None;
+        }
+        if let Some((length, _)) = desired.length {
+            state.length = length;
+        }
+        if let Some((position, _)) = desired.position {
+            state.position = position;
+        }
+        state
+    }
+
     pub fn session_id(&self) -> u64 {
         self.control.session_id
     }
@@ -4184,18 +4240,21 @@ impl Loop {
             }
         })?;
         if immediate {
-            self.control.mirror.set_mode(to_mode);
+            self.desired_state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .mode = Some((to_mode, sequence));
         }
         Ok(sequence)
     }
 
     pub fn poll_state(&self) -> Option<LoopState> {
-        (self.lifecycle() == ObjectLifecycle::Ready).then(|| self.control.mirror.read())
+        (self.lifecycle() == ObjectLifecycle::Ready).then(|| self.read_state())
     }
 
     pub fn get_state(&self) -> Result<LoopState> {
         match self.lifecycle() {
-            ObjectLifecycle::Ready => Ok(self.control.mirror.read()),
+            ObjectLifecycle::Ready => Ok(self.read_state()),
             ObjectLifecycle::Pending => Err(anyhow!("loop is pending creation")),
             ObjectLifecycle::Failed => Err(anyhow!(
                 "loop creation failed: {}",
@@ -4215,7 +4274,10 @@ impl Loop {
                 }
             }
         })?;
-        self.control.mirror.set_length(length);
+        self.desired_state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .length = Some((length, sequence));
         Ok(sequence)
     }
 
@@ -4228,7 +4290,10 @@ impl Loop {
                 }
             }
         })?;
-        self.control.mirror.set_position(position);
+        self.desired_state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .position = Some((position, sequence));
         Ok(sequence)
     }
 
@@ -5240,9 +5305,15 @@ pub fn replace_loop_content(
             return Err(error.into());
         }
     };
-    loop_.control.mirror.set_mode(LoopMode::Stopped);
-    if let Some(length) = length {
-        loop_.control.mirror.set_length(length);
+    {
+        let mut desired = loop_
+            .desired_state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        desired.mode = Some((LoopMode::Stopped, sequence));
+        if let Some(length) = length {
+            desired.length = Some((length, sequence));
+        }
     }
     for item in audio {
         item.channel
@@ -7138,6 +7209,7 @@ mod tests {
         let failed_parent = Loop {
             shared: Arc::clone(&sess.shared),
             control: failed_parent_control,
+            desired_state: Arc::new(Mutex::new(DesiredLoopState::default())),
         };
         let failed_channel = failed_parent
             .add_midi_channel(ChannelMode::Direct)
@@ -7717,6 +7789,7 @@ mod tests {
         let failed = Loop {
             shared: Arc::clone(&sess.shared),
             control: failed_control,
+            desired_state: Arc::new(Mutex::new(DesiredLoopState::default())),
         };
         let closed_control = Arc::new(ObjectControl::<LoopId, engine::LoopStateMirror>::pending(
             sess.shared.session_id,
@@ -7726,6 +7799,7 @@ mod tests {
         let closed = Loop {
             shared: Arc::clone(&sess.shared),
             control: closed_control,
+            desired_state: Arc::new(Mutex::new(DesiredLoopState::default())),
         };
 
         assert_eq!(failed.lifecycle(), ObjectLifecycle::Failed);
