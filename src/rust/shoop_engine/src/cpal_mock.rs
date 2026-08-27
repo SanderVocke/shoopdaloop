@@ -11,11 +11,12 @@
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
-    BufferSize, BuildStreamError, Data, DefaultStreamConfigError, DeviceNameError, DevicesError,
-    InputCallbackInfo, InputStreamTimestamp, OutputCallbackInfo, OutputStreamTimestamp,
-    PauseStreamError, PlayStreamError, SampleFormat, SampleRate, StreamConfig, StreamError,
-    StreamInstant, SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigRange,
-    SupportedStreamConfigsError,
+    BufferSize, BuildStreamError, Data, DefaultStreamConfigError, DeviceDescription,
+    DeviceDescriptionBuilder, DeviceDirection, DeviceId, DeviceIdError, DeviceNameError, DeviceType,
+    DevicesError, InputCallbackInfo, InputStreamTimestamp, InterfaceType, OutputCallbackInfo,
+    OutputStreamTimestamp, PauseStreamError, PlayStreamError, SampleFormat, StreamConfig,
+    StreamError, StreamInstant, SupportedBufferSize, SupportedStreamConfig,
+    SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -28,7 +29,7 @@ use std::time::Duration;
 /// cpal's `Data` has private fields and no `#[repr]` attribute, so its layout is the
 /// default Rust layout: for a struct of three Copy fields with the alignments
 /// observed here (8, 8, 1) the source-order layout coincides with `#[repr(C)]` on
-/// every platform cpal 0.16 targets. If a future release adds a `#[repr]` or
+/// every platform cpal targets. If a future release adds a `#[repr]` or
 /// reorders fields, the tests will start failing loudly in the audio callback -- the
 /// desired failure mode for a layout mismatch.
 #[repr(C)]
@@ -176,7 +177,7 @@ impl MockDevice {
     fn supported_config(&self) -> SupportedStreamConfig {
         SupportedStreamConfig::new(
             self.n_channels,
-            SampleRate(self.sample_rate),
+            self.sample_rate,
             SupportedBufferSize::Range { min: 64, max: 8192 },
             SampleFormat::F32,
         )
@@ -204,8 +205,8 @@ impl Iterator for MockSupportedOutputConfigs {
             self.yielded = true;
             Some(SupportedStreamConfigRange::new(
                 2,
-                SampleRate(48_000),
-                SampleRate(48_000),
+                48_000,
+                48_000,
                 SupportedBufferSize::Range { min: 64, max: 8192 },
                 SampleFormat::F32,
             ))
@@ -227,8 +228,8 @@ impl Iterator for MockSupportedInputConfigs {
             self.yielded = true;
             Some(SupportedStreamConfigRange::new(
                 2,
-                SampleRate(48_000),
-                SampleRate(48_000),
+                48_000,
+                48_000,
                 SupportedBufferSize::Range { min: 64, max: 8192 },
                 SampleFormat::F32,
             ))
@@ -241,8 +242,20 @@ impl DeviceTrait for MockDevice {
     type SupportedOutputConfigs = MockSupportedOutputConfigs;
     type Stream = MockStream;
 
-    fn name(&self) -> Result<String, DeviceNameError> {
-        Ok(self.name.clone())
+    fn description(&self) -> Result<DeviceDescription, DeviceNameError> {
+        let direction = match self.direction {
+            Direction::Input => DeviceDirection::Input,
+            Direction::Output => DeviceDirection::Output,
+        };
+        Ok(DeviceDescriptionBuilder::new(&self.name)
+            .device_type(DeviceType::Virtual)
+            .interface_type(InterfaceType::Virtual)
+            .direction(direction)
+            .build())
+    }
+
+    fn id(&self) -> Result<DeviceId, DeviceIdError> {
+        Ok(DeviceId(cpal::default_host().id(), self.name.clone()))
     }
 
     fn supported_input_configs(
@@ -300,7 +313,7 @@ impl DeviceTrait for MockDevice {
         );
 
         let channels = config.channels as usize;
-        let sample_rate = config.sample_rate.0;
+        let sample_rate = config.sample_rate;
         let frames_per_cycle = self.frames_per_cycle(config);
         let buffer_len = frames_per_cycle * channels;
 
@@ -360,7 +373,7 @@ impl DeviceTrait for MockDevice {
         );
 
         let channels = config.channels as usize;
-        let sample_rate = config.sample_rate.0;
+        let sample_rate = config.sample_rate;
         let frames_per_cycle = self.frames_per_cycle(config);
         let buffer_len = frames_per_cycle * channels;
 
@@ -396,7 +409,7 @@ impl DeviceTrait for MockDevice {
 
 /// Construct an output [`cpal::Data`] pointing into a mutable f32 buffer.
 ///
-/// `cpal::Data` has private fields and no public constructor in 0.16, so the only
+/// `cpal::Data` has private fields and no public constructor, so the only
 /// way to get one is to lay out the fields ourselves and `transmute_copy`. The
 /// `DataLayout` struct above mirrors the field order with `#[repr(C)]` so the
 /// layouts match.

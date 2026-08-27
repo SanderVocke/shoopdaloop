@@ -564,7 +564,10 @@ impl JackBackend {
 }
 
 fn cpal_device_label(device: &cpal::Device) -> String {
-    device.name().unwrap_or_else(|_| "cpal".to_string())
+    device
+        .description()
+        .map(|description| description.name().to_owned())
+        .unwrap_or_else(|_| "cpal".to_string())
 }
 
 fn cpal_host_label(id: cpal::HostId) -> String {
@@ -601,7 +604,7 @@ fn apply_cpal_config_options(
     channels: &str,
 ) -> cpal::StreamConfig {
     if sample_rate > 0 {
-        config.sample_rate = cpal::SampleRate(sample_rate);
+        config.sample_rate = sample_rate;
     }
     if buffer_size > 0 {
         config.buffer_size = cpal::BufferSize::Fixed(buffer_size);
@@ -780,7 +783,7 @@ impl CpalBackend {
         let sample_rate = if settings.sample_rate > 0 {
             settings.sample_rate
         } else {
-            output_supported_config.sample_rate().0
+            output_supported_config.sample_rate()
         };
         let output_config = apply_cpal_config_options(
             output_supported_config.into(),
@@ -1145,9 +1148,10 @@ impl CpalBackend {
         let output_device = host.default_output_device().expect("mock output device");
         let output_config = output_device.default_output_config()?;
         let output_channels = output_config.channels() as usize;
-        let sample_rate = output_config.sample_rate().0;
+        let sample_rate = output_config.sample_rate();
         let output_device_name = output_device
-            .name()
+            .description()
+            .map(|description| description.name().to_owned())
             .unwrap_or_else(|_| "mock-output".to_string());
         let playback_names: Vec<String> = (0..output_channels)
             .map(|c| format!("cpal:{output_device_name}:playback_{}", c + 1))
@@ -1159,7 +1163,8 @@ impl CpalBackend {
             let input_device = host.default_input_device().expect("mock input device");
             let input_channels = input_device.default_input_config()?.channels() as usize;
             let input_device_name = input_device
-                .name()
+                .description()
+                .map(|description| description.name().to_owned())
                 .unwrap_or_else(|_| "mock-input".to_string());
             (0..input_channels)
                 .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))

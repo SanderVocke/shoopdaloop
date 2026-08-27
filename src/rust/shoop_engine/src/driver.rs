@@ -77,7 +77,10 @@ pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {
 #[cfg(feature = "cpal")]
 fn cpal_device_label(device: &cpal::Device) -> String {
     use cpal::traits::DeviceTrait;
-    device.name().unwrap_or_else(|_| "cpal".to_string())
+    device
+        .description()
+        .map(|description| description.name().to_owned())
+        .unwrap_or_else(|_| "cpal".to_string())
 }
 
 #[cfg(feature = "cpal")]
