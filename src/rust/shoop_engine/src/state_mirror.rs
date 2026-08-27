@@ -15,8 +15,13 @@ const NO_MODE: i32 = -1;
 const NO_DELAY: u64 = u64::MAX;
 const NO_SAMPLE: i32 = i32::MIN;
 
+/// Lock-free loop-state publication shared by the engine and its control handle.
+///
+/// The generation is a seqlock. Writers serialize with atomic compare-and-exchange, while readers
+/// retry if they overlap a publication instead of observing fields from different updates.
 #[derive(Debug)]
 pub struct LoopStateMirror {
+    generation: AtomicU64,
     mode: AtomicI32,
     length: AtomicU32,
     position: AtomicU32,
@@ -28,6 +33,7 @@ pub struct LoopStateMirror {
 impl Default for LoopStateMirror {
     fn default() -> Self {
         Self {
+            generation: AtomicU64::new(0),
             mode: AtomicI32::new(LoopMode::Stopped as i32),
             length: AtomicU32::new(0),
             position: AtomicU32::new(0),
@@ -39,6 +45,30 @@ impl Default for LoopStateMirror {
 }
 
 impl LoopStateMirror {
+    fn begin_write(&self) {
+        let mut generation = self.generation.load(Ordering::Relaxed);
+        loop {
+            if generation & 1 != 0 {
+                std::hint::spin_loop();
+                generation = self.generation.load(Ordering::Relaxed);
+                continue;
+            }
+            match self.generation.compare_exchange_weak(
+                generation,
+                generation.wrapping_add(1),
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(observed) => generation = observed,
+            }
+        }
+    }
+
+    fn end_write(&self) {
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+
     pub fn publish(
         &self,
         mode: LoopMode,
@@ -47,6 +77,7 @@ impl LoopStateMirror {
         cycle_count: u64,
         next: Option<(LoopMode, u32)>,
     ) {
+        self.begin_write();
         self.mode.store(mode as i32, Ordering::Relaxed);
         self.length.store(length, Ordering::Relaxed);
         self.position.store(position, Ordering::Relaxed);
@@ -59,34 +90,52 @@ impl LoopStateMirror {
             next.map(|(_, delay)| delay as u64).unwrap_or(NO_DELAY),
             Ordering::Relaxed,
         );
+        self.end_write();
     }
 
     pub fn set_mode(&self, mode: LoopMode) {
+        self.begin_write();
         self.mode.store(mode as i32, Ordering::Relaxed);
         self.next_mode.store(NO_MODE, Ordering::Relaxed);
         self.next_delay.store(NO_DELAY, Ordering::Relaxed);
+        self.end_write();
     }
 
     pub fn set_length(&self, length: u32) {
+        self.begin_write();
         self.length.store(length, Ordering::Relaxed);
+        self.end_write();
     }
 
     pub fn set_position(&self, position: u32) {
+        self.begin_write();
         self.position.store(position, Ordering::Relaxed);
+        self.end_write();
     }
 
     pub fn read(&self) -> LoopState {
-        let next_mode = self.next_mode.load(Ordering::Relaxed);
-        let next_delay = self.next_delay.load(Ordering::Relaxed);
-        LoopState {
-            mode: LoopMode::try_from(self.mode.load(Ordering::Relaxed))
-                .unwrap_or(LoopMode::Unknown),
-            length: self.length.load(Ordering::Relaxed),
-            position: self.position.load(Ordering::Relaxed),
-            cycle_count: self.cycle_count.load(Ordering::Relaxed),
-            maybe_next_mode: (next_mode != NO_MODE)
-                .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
-            maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
+        loop {
+            let before = self.generation.load(Ordering::Acquire);
+            if before & 1 != 0 {
+                std::hint::spin_loop();
+                continue;
+            }
+            let next_mode = self.next_mode.load(Ordering::Relaxed);
+            let next_delay = self.next_delay.load(Ordering::Relaxed);
+            let snapshot = LoopState {
+                mode: LoopMode::try_from(self.mode.load(Ordering::Relaxed))
+                    .unwrap_or(LoopMode::Unknown),
+                length: self.length.load(Ordering::Relaxed),
+                position: self.position.load(Ordering::Relaxed),
+                cycle_count: self.cycle_count.load(Ordering::Relaxed),
+                maybe_next_mode: (next_mode != NO_MODE)
+                    .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
+                maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
+            };
+            let after = self.generation.load(Ordering::Acquire);
+            if before == after {
+                return snapshot;
+            }
         }
     }
 }
@@ -899,5 +948,50 @@ mod tests {
         let state = mirror.read();
         check!(state.maybe_next_mode.is_none());
         check!(state.maybe_next_mode_delay.is_none());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn loop_state_reads_one_complete_publication() {
+        use std::sync::Arc;
+
+        let mirror = Arc::new(LoopStateMirror::default());
+        let playing_writer = Arc::clone(&mirror);
+        let playing_writer = std::thread::spawn(move || {
+            for _ in 0..100_000 {
+                playing_writer.publish(
+                    LoopMode::Playing,
+                    128,
+                    17,
+                    3,
+                    Some((LoopMode::Recording, 2)),
+                );
+            }
+        });
+        let stopped_writer = Arc::clone(&mirror);
+        let stopped_writer = std::thread::spawn(move || {
+            for _ in 0..100_000 {
+                stopped_writer.publish(LoopMode::Stopped, 0, 0, 4, None);
+            }
+        });
+
+        while !playing_writer.is_finished() || !stopped_writer.is_finished() {
+            let state = mirror.read();
+            let initial_or_stopped = state.mode == LoopMode::Stopped
+                && state.length == 0
+                && state.position == 0
+                && matches!(state.cycle_count, 0 | 4)
+                && state.maybe_next_mode.is_none()
+                && state.maybe_next_mode_delay.is_none();
+            let playing = state.mode == LoopMode::Playing
+                && state.length == 128
+                && state.position == 17
+                && state.cycle_count == 3
+                && state.maybe_next_mode == Some(LoopMode::Recording)
+                && state.maybe_next_mode_delay == Some(2);
+            check!(initial_or_stopped || playing);
+        }
+        playing_writer.join().unwrap();
+        stopped_writer.join().unwrap();
     }
 }
