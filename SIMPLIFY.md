@@ -271,25 +271,27 @@ Progress: audio/MIDI channel render advance, operation-boundary latching, planne
 - [x] Implement explicit defer/warn behavior for immediate transitions lacking lead time.
 - [ ] Restore and clean MIDI state across early dispatch, wrap, stop, and latency changes.
 - [x] Implement dry-into-wet canonical writes and `applied_during_render` provenance with no remaining processor playback contribution.
-- [ ] Keep live monitoring on the uncompensated shortest path.
+- [x] Keep live monitoring on the uncompensated shortest path.
 
 Verification:
 
 - [ ] Planned-preplay, dry-through-wet, and dry-into-wet matrices pass for audio and MIDI.
 - [ ] Exact processor delay lands on target at start, steady state, wrap, stop, and restart.
-- [ ] Wet rerecord followed by ordinary playback proves no double compensation.
-- [ ] Monitoring equivalence remains sample-for-sample unchanged.
+- [x] Wet rerecord followed by ordinary playback proves no double compensation.
+- [x] Monitoring equivalence remains sample-for-sample unchanged.
 
 ### Stage 6 — Implement scalar grab, replacement, and consolidation
 
 Dependencies: Stages 4–5.
 
-- [ ] Retain bounded latency-observation history alongside input ring history.
-- [ ] Use one stable observation for stable grabs.
-- [ ] For revision-spanning grabs, select the documented newest observation for the complete channel and persist variable/revision warnings.
-- [ ] Preflight low-level replacement before entering replacement mode.
-- [ ] Permit replacement only when the resolved incoming alignment equals the existing channel scalar.
-- [ ] Reject differing replacement alignment before mutation with a consolidation-required error.
+Progress: bounded audio/MIDI observation history, scalar grab preparation/commit, and transactional replacement preflight are implemented in the engine. History, allocation, compatible replacement, and incompatible no-mutation tests pass; backend consolidation remains open.
+
+- [x] Retain bounded latency-observation history alongside input ring history.
+- [x] Use one stable observation for stable grabs.
+- [x] For revision-spanning grabs, select the documented newest observation for the complete channel and persist variable/revision warnings.
+- [x] Preflight low-level replacement before entering replacement mode.
+- [x] Permit replacement only when the resolved incoming alignment equals the existing channel scalar.
+- [x] Reject differing replacement alignment before mutation with a consolidation-required error.
 - [ ] Consolidate complete audio and MIDI channels into logical coordinates, reset scalar alignment to zero, and commit all channels atomically.
 - [ ] Preserve undo/content snapshot behavior and invalidate application media caches after consolidation.
 

@@ -8,12 +8,12 @@
 //! behind at the tail of the capture window, fed by messages as they age out. The
 //! lagging one is what lets a retroactive recording know the state it began in.
 
-use crate::latency_runtime::RuntimeLatencyObservation;
+use crate::latency_runtime::{RetainedLatencySelection, RuntimeLatencyObservation};
 use crate::midi_ringbuffer::MidiRingbuffer;
 use crate::midi_sorting_buffer::MidiSortingBuffer;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{MidiStorage, MidiStorageElem};
-use crate::port::PortDataType;
+use crate::port::{BoundedLatencyHistory, PortDataType};
 use crate::state::LatestMidiMessage;
 use crate::state_mirror::MidiPortStateMirror;
 use std::sync::Arc;
@@ -37,6 +37,7 @@ pub struct MidiPort {
     passthrough_cleanup_pending: bool,
     /// Created lazily, only once capture is asked for.
     ringbuffer: Option<MidiRingbuffer>,
+    latency_history: Option<BoundedLatencyHistory>,
     ringbuffer_capacity: usize,
     n_input_events: u32,
     n_output_events: u32,
@@ -55,6 +56,7 @@ impl MidiPort {
             passthrough_cleanup: Vec::with_capacity(MAX_DIFF_MESSAGES),
             passthrough_cleanup_pending: false,
             ringbuffer: None,
+            latency_history: None,
             ringbuffer_capacity: DEFAULT_RINGBUFFER_CAPACITY_ELEMS,
             n_input_events: 0,
             n_output_events: 0,
@@ -172,6 +174,14 @@ impl MidiPort {
     pub fn ringbuffer_n_samples(&self) -> u32 {
         self.ringbuffer.as_ref().map_or(0, |r| r.n_samples())
     }
+    pub fn ringbuffer_n_events(&self) -> u32 {
+        self.ringbuffer.as_ref().map_or(0, |r| r.n_events())
+    }
+    pub fn ringbuffer_retained_frames(&self) -> u32 {
+        self.ringbuffer
+            .as_ref()
+            .map_or(0, |r| r.n_samples().min(r.current_end_time()))
+    }
 
     /// Sets the capture window, creating the storage on first use.
     pub fn set_ringbuffer_n_samples(&mut self, n: u32) {
@@ -179,6 +189,7 @@ impl MidiPort {
             self.ringbuffer = Some(MidiRingbuffer::with_capacity_elems(
                 self.ringbuffer_capacity,
             ));
+            self.latency_history = Some(BoundedLatencyHistory::new());
         }
         if let Some(r) = self.ringbuffer.as_mut() {
             r.set_n_samples(n);
@@ -192,6 +203,52 @@ impl MidiPort {
         match self.ringbuffer.as_ref() {
             Some(r) => r.snapshot(target, None),
             None => target.clear(),
+        }
+    }
+
+    pub fn snapshot_ringbuffer_range_into(
+        &self,
+        target: &mut MidiStorage,
+        start: u32,
+        end: u32,
+        start_state: &mut MidiStateTracker,
+    ) -> bool {
+        let Some(ringbuffer) = self.ringbuffer.as_ref() else {
+            target.clear();
+            start_state.clear();
+            return false;
+        };
+        if start >= end || end > ringbuffer.n_samples() {
+            return false;
+        }
+        start_state.copy_relevant_state(&self.ringbuffer_tail_state);
+        let window_start = ringbuffer.window_start_time();
+        let absolute_start = window_start.saturating_add(start);
+        let absolute_end = window_start.saturating_add(end);
+        for event in ringbuffer.storage().iter() {
+            if event.time < absolute_start {
+                start_state.process(event.data());
+            }
+        }
+        target.clear();
+        for event in ringbuffer.storage().iter() {
+            if event.time >= absolute_start && event.time < absolute_end {
+                if !target.append(event.time - absolute_start, event.data(), false, None) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    pub fn ringbuffer_latency_selection(&self, start: u32, end: u32) -> RetainedLatencySelection {
+        match (&self.ringbuffer, &self.latency_history) {
+            (Some(ringbuffer), Some(history)) => history.select(
+                ringbuffer.n_samples().min(ringbuffer.current_end_time()) as usize,
+                start as usize,
+                end as usize,
+            ),
+            _ => RetainedLatencySelection::Unavailable,
         }
     }
 
@@ -212,6 +269,13 @@ impl MidiPort {
             let tail = &mut self.ringbuffer_tail_state;
             let mut cb = |e: &MidiStorageElem| tail.process(e.data());
             r.next_buffer(n_frames, Some(&mut cb));
+            if let Some(history) = self.latency_history.as_mut() {
+                history.append(
+                    n_frames as usize,
+                    self.state.capture_latency(),
+                    r.n_samples().min(r.current_end_time()) as usize,
+                );
+            }
         }
 
         let Some(events) = input else {
@@ -504,6 +568,26 @@ mod tests {
         // No events, but time advanced without incident.
         check!(p.n_input_events() == 0);
         check!(p.ringbuffer_n_samples() == 8);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_capture_history_tracks_latency_revisions_without_events() {
+        let mut p = port();
+        p.set_ringbuffer_n_samples(8);
+        let first = RuntimeLatencyObservation::exact(2, 48_000, 1).unwrap();
+        let second = RuntimeLatencyObservation::exact(5, 48_000, 2).unwrap();
+        p.publish_capture_latency(first);
+        p.process(4, None, None);
+        p.publish_capture_latency(second);
+        p.process(4, None, None);
+        check!(p.ringbuffer_latency_selection(0, 4) == RetainedLatencySelection::Stable(first));
+        check!(
+            p.ringbuffer_latency_selection(0, 8)
+                == RetainedLatencySelection::Variable {
+                    newest: second,
+                    revisions: 2,
+                }
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
