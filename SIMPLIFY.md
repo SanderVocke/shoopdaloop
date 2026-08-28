@@ -301,7 +301,7 @@ Verification:
 - [x] Insufficient history fails before target mutation.
 - [x] Compatible replacement preserves one scalar; incompatible replacement leaves mode and content unchanged.
 - [ ] Mixed audio/MIDI consolidation preserves samples, event ordering, start state, and loop length atomically.
-- [ ] Consolidated waveform/MIDI detail data is refreshed rather than served from stale caches.
+- [x] Consolidated waveform/MIDI detail data is refreshed rather than served from stale caches.
 
 ### Stage 7 — Integrate backend and application policy
 
@@ -312,14 +312,14 @@ Progress: scalar latency capability, observations, policies, diagnostics, take s
 - [x] Extend backend snapshots and commands with per-port observations, track policy, one channel/take scalar, warnings, and consolidation.
 - [x] Resolve policy off the realtime thread and transfer bounded prepared recipes to callbacks.
 - [x] Integrate native, dummy/test, and application model paths without duplicating recipe semantics.
-- [ ] Reconcile optimistic UI/application edits against authoritative callback-latched state.
+- [x] Reconcile optimistic UI/application edits against authoritative callback-latched state.
 - [ ] Keep multi-channel take edits and content operations transactional.
 
 Verification:
 
 - [ ] Fake, engine, and native backend contract tests pass.
-- [ ] Settings affect future operations but not frozen takes.
-- [ ] Unsupported, pending, accepted, latched, changed, and failed policy updates are distinguishable.
+- [x] Settings affect future operations but not frozen takes.
+- [x] Unsupported, pending, accepted, latched, changed, and failed policy updates are distinguishable.
 - [ ] Driver/processor changes warn without silently moving existing content.
 
 ### Stage 8 — Implement native provider support

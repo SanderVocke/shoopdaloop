@@ -21,6 +21,7 @@ shoop_script_resources = { path = "../shoop_script_resources" }
 tracing = { workspace = true }
 
 [dev-dependencies]
+shoop_latency = { path = "../shoop_latency" }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
