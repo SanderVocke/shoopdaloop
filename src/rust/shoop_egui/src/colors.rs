@@ -47,5 +47,7 @@ pub const WAVEFORM_ZERO_LINE: Color32 = Color32::from_rgb(92, 48, 54);
 pub const WAVEFORM_LOOP_REGION: Color32 = Color32::from_rgba_unmultiplied_const(28, 28, 128, 110);
 pub const WAVEFORM_PREPLAY_REGION: Color32 = Color32::from_rgba_unmultiplied_const(96, 72, 24, 90);
 pub const WAVEFORM_SYNC_MARKER: Color32 = Color32::from_rgba_unmultiplied_const(180, 180, 210, 90);
+pub const WAVEFORM_RAW_START_MARKER: Color32 = Color32::from_rgb(235, 155, 70);
+pub const WAVEFORM_LOGICAL_START_MARKER: Color32 = Color32::from_rgb(90, 220, 150);
 pub const WAVEFORM_LINE: Color32 = Color32::from_rgb(235, 35, 55);
 pub const WAVEFORM_PLAYHEAD: Color32 = Color32::from_rgb(80, 210, 100);

@@ -382,19 +382,19 @@ Verification:
 
 Dependencies: Stages 7 and 10.
 
-- [ ] Register defaults for future operations without retiming frozen takes.
-- [ ] Add component controls, range selection, signed trim, cue selection, scalar totals, and current/frozen comparison.
-- [ ] Display raw/logical positions, retained bounds, exact/range/estimated/manual/unknown state, and changed/incomplete/variable warnings.
-- [ ] Add consolidation and explicit raw-export controls.
-- [ ] Expose bounded counters/plots for unresolved recipes, changes, insufficient margins, deferred transitions, finalization, ambiguity, and provider failures.
-- [ ] Keep controls usable with keyboard and touch without hover-only requirements.
+- [x] Register defaults for future operations without retiming frozen takes.
+- [x] Add component controls, range selection, signed trim, cue selection, scalar totals, and current/frozen comparison.
+- [x] Display raw/logical positions, retained bounds, exact/range/estimated/manual/unknown state, and changed/incomplete/variable warnings.
+- [x] Add consolidation and explicit raw-export controls.
+- [x] Expose bounded counters/plots for unresolved recipes, changes, insufficient margins, deferred transitions, finalization, ambiguity, and provider failures.
+- [x] Keep controls usable with keyboard and touch without hover-only requirements.
 
 Verification:
 
-- [ ] UI policy, warning, reconciliation, no-backend, cue, consolidation, cache-refresh, touch, and layout tests pass.
-- [ ] Settings save/cancel/reset/migration behavior passes.
-- [ ] Diagnostics identify actionable failures without realtime logging.
-- [ ] Manual usability fixtures cover Direct, External, Carla, and Built-in Synth tracks.
+- [x] UI policy, warning, reconciliation, no-backend, cue, consolidation, cache-refresh, touch, and layout tests pass.
+- [x] Settings save/cancel/reset/migration behavior passes.
+- [x] Diagnostics identify actionable failures without realtime logging.
+- [x] Manual usability fixtures cover Direct, External, Carla, and Built-in Synth tracks.
 
 ### Stage 12 — Simplification and realtime audit
 

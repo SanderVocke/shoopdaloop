@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    colors, composite_loop_widget::LoopDragPayload, AppIntent, FxLifecycle, GlobalControlState,
-    LoopId, LoopWidget, LoopWidgetAction, TrackControls, TrackProcessorDescriptor, TrackState,
-    TrackWidgetAction,
+    colors,
+    composite_loop_widget::LoopDragPayload,
+    latency_panel::{LatencyPanel, LatencyPanelContext},
+    AppIntent, FxLifecycle, GlobalControlState, LoopId, LoopWidget, LoopWidgetAction,
+    TrackControls, TrackProcessorDescriptor, TrackState, TrackWidgetAction,
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
@@ -44,6 +46,7 @@ pub struct TrackWidget {
     controls: TrackControls,
     fx_logs_open: bool,
     oxisynth_editor: OxiSynthEditor,
+    latency_panel: LatencyPanel,
     width: f32,
     rendered_content_width: f32,
     width_drag_start: Option<f32>,
@@ -98,6 +101,7 @@ impl Default for TrackWidget {
             controls: TrackControls::default(),
             fx_logs_open: false,
             oxisynth_editor: OxiSynthEditor::default(),
+            latency_panel: LatencyPanel::default(),
             width: DEFAULT_TRACK_WIDTH,
             rendered_content_width: DEFAULT_TRACK_WIDTH,
             width_drag_start: None,
@@ -269,6 +273,7 @@ impl TrackWidget {
             show_add_loop,
             0.0,
             global_controls,
+            None,
         )
     }
 
@@ -280,6 +285,7 @@ impl TrackWidget {
         show_add_loop: bool,
         min_height: f32,
         global_controls: &GlobalControlState,
+        latency_runtime: Option<LatencyPanelContext<'_>>,
     ) -> TrackWidgetResponse {
         let _span = tracing::trace_span!(
             "frontend.egui.track",
@@ -417,6 +423,9 @@ impl TrackWidget {
         result
             .actions
             .extend(self.oxisynth_editor.show(ui.ctx(), state, processor));
+        result
+            .io_intents
+            .extend(self.latency_panel.show(ui.ctx(), state, latency_runtime));
         if !result.actions.is_empty()
             || !result.loop_actions.is_empty()
             || !result.io_intents.is_empty()
@@ -738,6 +747,11 @@ impl TrackWidget {
                     }
                     if connections.clicked() {
                         result.connections_requested = true;
+                        ui.close();
+                    }
+                    let latency = ui.button("Latency compensation…");
+                    if latency.clicked() {
+                        self.latency_panel.open();
                         ui.close();
                     }
                     if !state.is_sync {
@@ -1090,6 +1104,8 @@ mod tests {
                     dropped_stdout_bytes: 1,
                     dropped_stderr_bytes: 2,
                 }]),
+                latency: Default::default(),
+                latency_provider: Default::default(),
                 editor: None,
             }),
             ..Default::default()

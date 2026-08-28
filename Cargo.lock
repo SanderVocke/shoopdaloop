@@ -4172,12 +4172,14 @@ dependencies = [
 name = "shoop_egui"
 version = "0.3.0"
 dependencies = [
+ "eframe",
  "egui",
  "egui_commonmark",
  "egui_material_icons",
  "image",
  "serde_json",
  "shoop_app_api",
+ "shoop_latency",
  "shoop_script_resources",
  "shoop_settings",
  "shoop_wasm_test_support",
