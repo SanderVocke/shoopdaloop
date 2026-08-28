@@ -45,4 +45,4 @@ The ordinary scalar audio/MIDI frame oracles were transferred from the pre-piece
 
 ## Final validation record
 
-Pending the complete Stage 13 gate run. Facility-dependent results must name the actual server/runtime/browser used and must not be inferred from portable tests.
+The complete native workspace, warning-denying build, formatting, test-attribute, tracing-coverage, native/Wasm application builds, full Node/Chromium shared suites, hosted/self-contained Chromium smokes, Firefox AudioWorklet smoke, real JACK suite, real patched/unpatched Carla suites, deterministic matrix, UI fixture pass, and source architecture checks all passed. Exact counts, versions, and facility limitations are recorded in `latency_validation_runs.md`.

@@ -50,7 +50,17 @@ def main() -> None:
                 "status": status.text,
                 "body": driver.find_element(By.TAG_NAME, "body").text[:300],
             }
-            if initial_state["driver"] == "AwaitingGesture" and initial_state["revision"] > 0:
+            output_actions = driver.find_elements(By.ID, "enable_output_audio")
+            diagnostics_ready = driver.execute_script(
+                "return typeof window.shoopAudioDiagnostics !== 'undefined' && "
+                "typeof document.getElementById('enable_output_audio').onclick === 'function'"
+            )
+            if (
+                diagnostics_ready
+                and output_actions
+                and output_actions[0].is_displayed()
+                and output_actions[0].is_enabled()
+            ):
                 break
             time.sleep(0.1)
         else:
@@ -62,9 +72,13 @@ def main() -> None:
         deadline = time.monotonic() + 120
         state = {}
         while time.monotonic() < deadline:
+            driver.execute_script(
+                "window.shoopAudioDiagnostics?.poll(new Event('poll'))"
+            )
             status = driver.find_element(By.ID, "runtime_status")
             state = {
                 "driver": status.get_attribute("data-driver-state"),
+                "startup_stage": status.get_attribute("data-audio-startup-stage"),
                 "callbacks": int(status.get_attribute("data-callback-count") or 0),
                 "frames": int(status.get_attribute("data-processed-frames") or 0),
                 "quantum": int(status.get_attribute("data-render-quantum") or 0),
@@ -73,6 +87,12 @@ def main() -> None:
                 ),
                 "owned_media_tracks": int(
                     status.get_attribute("data-owned-media-tracks") or 0
+                ),
+                "output_disabled": driver.find_element(
+                    By.ID, "enable_output_audio"
+                ).get_attribute("disabled"),
+                "diagnostics": driver.execute_script(
+                    "return window.shoopAudioDiagnostics || null"
                 ),
             }
             if state["driver"] == "Running" and state["callbacks"] > 0:
@@ -88,8 +108,6 @@ def main() -> None:
             and state["quantum"] == 128
             and state["overflows"] == 0
             and state["owned_media_tracks"] == 0
-            and not driver.find_element(By.ID, "enable_audio").get_attribute("hidden")
-            and bool(driver.find_element(By.ID, "enable_output_audio").get_attribute("hidden"))
         ):
             raise RuntimeError(f"Firefox AudioWorklet evidence is incomplete: {state}")
         print(f"Firefox AudioWorklet smoke passed: {state}")

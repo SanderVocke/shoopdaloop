@@ -433,6 +433,10 @@ impl RemoteBackendControl {
         self.inner.borrow_mut().receive(generation, message)
     }
 
+    pub fn request_poll(&self) -> Result<()> {
+        self.inner.borrow_mut().ephemeral(Command::Poll)
+    }
+
     pub fn configure_backend_latency(
         &self,
         base_latency_frames: Option<u32>,
