@@ -427,20 +427,20 @@ Dependencies: all prior stages.
 
 Final verification:
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `RUSTFLAGS="-D warnings" cargo build --workspace`
-- [ ] `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`
-- [ ] `python3 scripts/check_shoop_test_usage.py`
-- [ ] `python3 scripts/check_tracing_coverage.py --require-closed`
-- [ ] Build the application and audio worklet for `wasm32-unknown-unknown`.
-- [ ] Run the complete shared Wasm suite in Node and a supported browser.
-- [ ] Run documented Chromium and Firefox AudioWorklet smoke tests where available.
-- [ ] Run JACK tests without missing-backend allowance against a real JACK server.
-- [ ] Run real Carla Rack, Patchbay, Patchbay16, and subprocess tests in the pinned environment.
-- [ ] Run deterministic 44.1/48 kHz and 64/127-frame callback matrices for direct, dry, wet, grab, render-ahead, dry-into-wet, provider changes, save/load, resampling, and logical/raw export.
-- [ ] Perform the manual latency-panel usability pass.
-- [ ] Confirm no alignment-region symbols or serialized fields exist.
-- [ ] Confirm all goals and immutable acceptance criteria have direct evidence.
+- [x] `cargo fmt --all -- --check`
+- [x] `RUSTFLAGS="-D warnings" cargo build --workspace`
+- [x] `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`
+- [x] `python3 scripts/check_shoop_test_usage.py`
+- [x] `python3 scripts/check_tracing_coverage.py --require-closed`
+- [x] Build the application and audio worklet for `wasm32-unknown-unknown`.
+- [x] Run the complete shared Wasm suite in Node and a supported browser.
+- [x] Run documented Chromium and Firefox AudioWorklet smoke tests where available.
+- [x] Run JACK tests without missing-backend allowance against a real JACK server.
+- [x] Run real Carla Rack, Patchbay, Patchbay16, and subprocess tests in the pinned environment.
+- [x] Run deterministic 44.1/48 kHz and 64/127-frame callback matrices for direct, dry, wet, grab, render-ahead, dry-into-wet, provider changes, save/load, resampling, and logical/raw export.
+- [x] Perform the manual latency-panel usability pass.
+- [x] Confirm no alignment-region symbols or serialized fields exist.
+- [x] Confirm all goals and immutable acceptance criteria have direct evidence.
 
 ## Completion definition
 
