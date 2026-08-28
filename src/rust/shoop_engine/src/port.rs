@@ -9,6 +9,7 @@
 //! with the driver implementations.
 
 use crate::buffer_queue::{BufferQueue, Snapshot};
+use crate::latency_runtime::RuntimeLatencyObservation;
 use crate::state_mirror::AudioPortStateMirror;
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -123,6 +124,22 @@ impl AudioPort {
 
     pub fn data_type(&self) -> PortDataType {
         PortDataType::Audio
+    }
+
+    pub fn publish_capture_latency(&self, observation: RuntimeLatencyObservation) {
+        self.state.publish_capture_latency(observation);
+    }
+
+    pub fn publish_playback_latency(&self, observation: RuntimeLatencyObservation) {
+        self.state.publish_playback_latency(observation);
+    }
+
+    pub fn capture_latency(&self) -> RuntimeLatencyObservation {
+        self.state.capture_latency()
+    }
+
+    pub fn playback_latency(&self) -> RuntimeLatencyObservation {
+        self.state.playback_latency()
     }
 
     pub fn gain(&self) -> f32 {
