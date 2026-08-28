@@ -8,8 +8,8 @@ pub const MIDI_FORMAT: &str = "shoop-midi";
 pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
-pub const DOCUMENT_VERSION: u16 = 1;
-pub const SESSION_DOCUMENT_VERSION: u16 = 6;
+pub const DOCUMENT_VERSION: u16 = 2;
+pub const SESSION_DOCUMENT_VERSION: u16 = 7;
 pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -120,6 +120,8 @@ pub struct TrackDocument {
     pub loops: Vec<LoopDocument>,
     pub ports: Vec<PortDocument>,
     pub fx_chain: Option<FxChainDocument>,
+    #[serde(default)]
+    pub latency_policy: TrackLatencyPolicyDocument,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -183,6 +185,101 @@ pub struct ChannelDocument {
     pub media_id: Option<String>,
     pub recording_started_at: Option<String>,
     pub recording_fx_state_id: Option<u64>,
+    #[serde(default)]
+    pub latency: TakeLatencyDocument,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LatencyCertaintyDocument {
+    Exact,
+    Range,
+    Estimated,
+    ManualOnly,
+    #[default]
+    Unknown,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct LatencyObservationDocument {
+    pub minimum_frames: Option<u64>,
+    pub maximum_frames: Option<u64>,
+    pub certainty: LatencyCertaintyDocument,
+    pub sample_rate: u32,
+    pub revision: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct TakeLatencyDocument {
+    pub capture_alignment_frames: i64,
+    #[serde(default)]
+    pub retained_before_frames: u64,
+    #[serde(default)]
+    pub retained_after_frames: u64,
+    pub observation: LatencyObservationDocument,
+    pub variable_history: bool,
+    pub history_revisions: u32,
+    pub changed_during_operation: bool,
+    pub incomplete: bool,
+    pub applied_during_render: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum LatencyComponentDocument {
+    #[default]
+    ExternalCapture,
+    Processor,
+    CuePlayback,
+    BackendBuffering,
+    Manual,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum LatencyValueDocument {
+    #[default]
+    Automatic,
+    Manual {
+        frames: u64,
+    },
+    AutomaticPlusTrim {
+        frames: i64,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LatencyRangeSelectionDocument {
+    Minimum,
+    Midpoint,
+    #[default]
+    Maximum,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CueOutputSelectionDocument {
+    ApplicationPort { port_id: u64 },
+    HostPort { host_port_id: String },
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct LatencyComponentPolicyDocument {
+    pub component: LatencyComponentDocument,
+    pub enabled: bool,
+    pub value: LatencyValueDocument,
+    #[serde(default)]
+    pub range_selection: LatencyRangeSelectionDocument,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct TrackLatencyPolicyDocument {
+    pub cue_followed: bool,
+    #[serde(default)]
+    pub cue_output: Option<CueOutputSelectionDocument>,
+    pub revision: u64,
+    pub components: Vec<LatencyComponentPolicyDocument>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -372,6 +469,8 @@ pub struct ExactMidi {
     pub length_frames: u64,
     pub start_state: Vec<Vec<u8>>,
     pub events: Vec<ExactMidiEvent>,
+    #[serde(default)]
+    pub latency: TakeLatencyDocument,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -392,4 +491,5 @@ pub struct LoopAudioChannel {
     pub label: String,
     pub role: String,
     pub samples: Vec<f32>,
+    pub latency: TakeLatencyDocument,
 }

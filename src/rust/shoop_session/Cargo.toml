@@ -17,12 +17,14 @@ midly = { workspace = true }
 rubato = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+shoop_latency = { path = "../shoop_latency" }
 shoop_script_resources = { path = "../shoop_script_resources" }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 zip = { workspace = true }
 
 [dev-dependencies]
+shoop_engine = { path = "../shoop_engine" }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

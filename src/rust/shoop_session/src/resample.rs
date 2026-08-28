@@ -1,5 +1,8 @@
 use crate::archive::SessionError;
-use crate::document::{ExactMidi, LoopAudio, MediaPayload, SessionBundle};
+use crate::document::{
+    ExactMidi, LatencyCertaintyDocument, LatencyValueDocument, LoopAudio, MediaPayload,
+    SessionBundle, TakeLatencyDocument,
+};
 use rubato::{
     audioadapter_buffers::direct::SequentialSliceOfVecs, Async, FixedAsync, Resampler,
     SincInterpolationParameters, SincInterpolationType, WindowFunction,
@@ -43,6 +46,17 @@ pub fn resample_session(
                         scale_duration(port.ringbuffer_frames, source, target_sample_rate)?;
                 }
             }
+            for component in &mut track.latency_policy.components {
+                match &mut component.value {
+                    LatencyValueDocument::Manual { frames } => {
+                        *frames = scale_nearest(*frames, source, target_sample_rate)?;
+                    }
+                    LatencyValueDocument::AutomaticPlusTrim { frames } => {
+                        *frames = scale_signed_nearest(*frames, source, target_sample_rate)?;
+                    }
+                    LatencyValueDocument::Automatic => {}
+                }
+            }
             for loop_ in &mut track.loops {
                 loop_.length_frames =
                     scale_duration(loop_.length_frames, source, target_sample_rate)?;
@@ -56,6 +70,12 @@ pub fn resample_session(
                     )?;
                     channel.preplay_frames =
                         scale_duration(channel.preplay_frames, source, target_sample_rate)?;
+                    resample_take_latency(
+                        &mut channel.latency,
+                        source,
+                        target_sample_rate,
+                        channel.data_length_frames,
+                    )?;
                 }
             }
         }
@@ -99,11 +119,14 @@ pub fn resample_exact_midi(
         events.push(converted);
     }
     events.sort_by_key(|event| (event.frame, event.order));
+    let mut latency = midi.latency.clone();
+    resample_take_latency(&mut latency, midi.sample_rate, target_sample_rate, length)?;
     Ok(ExactMidi {
         sample_rate: target_sample_rate,
         length_frames: length,
         start_state: midi.start_state.clone(),
         events,
+        latency,
     })
 }
 
@@ -124,8 +147,60 @@ pub fn resample_loop_audio(
             target_sample_rate,
         )?;
         channel.samples = resample_mono(&channel.samples, target as usize)?;
+        resample_take_latency(
+            &mut channel.latency,
+            audio.sample_rate,
+            target_sample_rate,
+            target,
+        )?;
     }
     Ok(converted)
+}
+
+fn resample_take_latency(
+    latency: &mut TakeLatencyDocument,
+    source: u32,
+    target: u32,
+    _raw_length: u64,
+) -> Result<(), SessionError> {
+    latency.capture_alignment_frames =
+        scale_signed_nearest(latency.capture_alignment_frames, source, target)?;
+    latency.retained_before_frames = scale_nearest(latency.retained_before_frames, source, target)?;
+    latency.retained_after_frames = scale_nearest(latency.retained_after_frames, source, target)?;
+    let preserve_nonempty_range = latency.observation.certainty == LatencyCertaintyDocument::Range
+        && latency
+            .observation
+            .minimum_frames
+            .zip(latency.observation.maximum_frames)
+            .is_some_and(|(minimum, maximum)| minimum < maximum);
+    latency.observation.minimum_frames = latency
+        .observation
+        .minimum_frames
+        .map(|frames| scale_nearest(frames, source, target))
+        .transpose()?;
+    latency.observation.maximum_frames = latency
+        .observation
+        .maximum_frames
+        .map(|frames| scale_nearest(frames, source, target))
+        .transpose()?;
+    if preserve_nonempty_range
+        && latency.observation.minimum_frames == latency.observation.maximum_frames
+    {
+        let frames = latency.observation.maximum_frames.unwrap_or_default();
+        if frames < u64::from(shoop_latency::MAX_COMPENSATION_FRAMES) {
+            latency.observation.maximum_frames = Some(frames + 1);
+        } else if frames > 0 {
+            latency.observation.minimum_frames = Some(frames - 1);
+        } else {
+            return Err(SessionError::Validation(
+                "could not preserve nonempty latency range while resampling".to_owned(),
+            ));
+        }
+    }
+    if latency.observation.minimum_frames.is_some() {
+        latency.observation.sample_rate = target;
+    }
+    Ok(())
 }
 
 pub fn scale_duration(value: u64, from: u32, to: u32) -> Result<u64, SessionError> {
@@ -209,4 +284,34 @@ fn resample_mono(input: &[f32], target_frames: usize) -> Result<Vec<f32>, Sessio
     let pad = output.last().copied().unwrap_or(0.0);
     output.resize(target_frames, pad);
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::LatencyObservationDocument;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn resampling_preserves_a_nonempty_range_when_endpoints_collapse() {
+        let mut latency = TakeLatencyDocument {
+            observation: LatencyObservationDocument {
+                minimum_frames: Some(1),
+                maximum_frames: Some(2),
+                certainty: LatencyCertaintyDocument::Range,
+                sample_rate: 48_000,
+                revision: 3,
+            },
+            ..Default::default()
+        };
+
+        resample_take_latency(&mut latency, 48_000, 8_000, 16).unwrap();
+
+        assert_eq!(latency.observation.minimum_frames, Some(0));
+        assert_eq!(latency.observation.maximum_frames, Some(1));
+        assert_eq!(
+            latency.observation.certainty,
+            LatencyCertaintyDocument::Range
+        );
+        crate::archive::validate_take_latency(&latency, 16, 8_000).unwrap();
+    }
 }

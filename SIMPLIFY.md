@@ -361,22 +361,22 @@ Verification:
 
 Dependencies: Stages 6–9 define the complete persisted state.
 
-- [ ] Add versioned session/exact-media documents for observations, policy, one scalar alignment, margins, operation provenance, and warnings.
-- [ ] Migrate older sessions to explicit zero-applied/unknown provenance.
-- [ ] Validate all bounds and relationships before backend mutation.
-- [ ] Resample unsigned observations/margins and signed alignment/trims with documented checked rounding.
-- [ ] Export logical audio/MIDI through the shared scalar mapping and preserve equal-frame MIDI order and boundary state.
-- [ ] Keep raw export explicit and metadata-preserving.
-- [ ] Import standard media with zero-applied/unknown provenance and optional manual scalar offset, including zero-duration media.
-- [ ] Preserve or intentionally reset scalar provenance across duplicate, clone, composite, and session-switch flows.
+- [x] Add versioned session/exact-media documents for observations, policy, one scalar alignment, margins, operation provenance, and warnings.
+- [x] Migrate older sessions to explicit zero-applied/unknown provenance.
+- [x] Validate all bounds and relationships before backend mutation.
+- [x] Resample unsigned observations/margins and signed alignment/trims with documented checked rounding.
+- [x] Export logical audio/MIDI through the shared scalar mapping and preserve equal-frame MIDI order and boundary state.
+- [x] Keep raw export explicit and metadata-preserving.
+- [x] Import standard media with zero-applied/unknown provenance and optional manual scalar offset, including zero-duration media.
+- [x] Preserve or intentionally reset scalar provenance across duplicate, clone, composite, and session-switch flows.
 
 Verification:
 
-- [ ] Same-rate save/load preserves raw bytes/events, scalar metadata, and replayed logical timing.
-- [ ] Cross-rate replay follows documented rounding without changing component identity.
-- [ ] Malformed, overflowing, and future-version data fails transactionally.
-- [ ] Logical/raw audio and MIDI exports have exact expected content and do not mutate the take.
-- [ ] Empty and non-empty manual-offset imports pass without interval metadata.
+- [x] Same-rate save/load preserves raw bytes/events, scalar metadata, and replayed logical timing.
+- [x] Cross-rate replay follows documented rounding without changing component identity.
+- [x] Malformed, overflowing, and future-version data fails transactionally.
+- [x] Logical/raw audio and MIDI exports have exact expected content and do not mutate the take.
+- [x] Empty and non-empty manual-offset imports pass without interval metadata.
 
 ### Stage 11 — Implement UI, settings, and diagnostics
 

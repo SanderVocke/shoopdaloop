@@ -4,9 +4,7 @@ This file tracks transferred tests whose production behavior is not implemented 
 
 ## Current expected failures
 
-| Subsystem | Expected result | Current explicit gap |
-|---|---|---|
-| Application import/export | Manual scalar offsets, raw audio/MIDI export, and empty-media imports preserve scalar semantics | The new intents compile, but manual offsets and raw formats return explicit unsupported errors until Stage 10 tests are transferred. |
+None.
 
 ## Resolved groups
 
