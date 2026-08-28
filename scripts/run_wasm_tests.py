@@ -24,7 +24,8 @@ WASM_PACK_VERSION = "0.15.0"
 WASM_BINDGEN_VERSION = "0.2.127"
 WASM_BINDGEN_TEST_VERSION = "0.3.77"
 NODE_VERSION = "22.22.2"
-CHROME_VERSION = "147.0.7727.117"
+# CI's Chrome-for-Testing pin and the Nix shell's security-patched Chromium.
+CHROME_VERSIONS = ("147.0.7727.117", "147.0.7727.137")
 
 
 class AssetHandler(http.server.SimpleHTTPRequestHandler):
@@ -95,9 +96,9 @@ def validate_tools(runtime: str, env: dict[str, str]):
         explicit_browser = env.get("CHROME_BIN")
         browser = explicit_browser or next(
             (
-                candidate
+                resolved
                 for candidate in ("google-chrome", "google-chrome-stable", "chromium")
-                if shutil.which(candidate, path=env.get("PATH"))
+                if (resolved := shutil.which(candidate, path=env.get("PATH")))
             ),
             None,
         )
@@ -105,11 +106,15 @@ def validate_tools(runtime: str, env: dict[str, str]):
             raise RuntimeError("Chrome or Chromium is unavailable; set CHROME_BIN or PATH")
         env["CHROME_BIN"] = browser
         browser_version = run_checked([browser, "--version"], env=env)
-        if CHROME_VERSION not in browser_version:
-            raise RuntimeError(f"expected Chrome {CHROME_VERSION}, got {browser_version!r}")
-        if CHROME_VERSION not in driver_version:
+        matched_version = next(
+            (version for version in CHROME_VERSIONS if version in browser_version), None
+        )
+        if matched_version is None:
+            expected = " or ".join(CHROME_VERSIONS)
+            raise RuntimeError(f"expected Chrome {expected}, got {browser_version!r}")
+        if matched_version not in driver_version:
             raise RuntimeError(
-                f"expected ChromeDriver {CHROME_VERSION}, got {driver_version!r}"
+                f"expected ChromeDriver {matched_version}, got {driver_version!r}"
             )
         tools["chrome"] = browser_version
         tools["chromedriver"] = driver_version
@@ -262,15 +267,25 @@ def invoke_package(
         command += ["--", *filters]
 
     webdriver_config = package["path"] / "webdriver.json" if runtime == "chrome" else None
+    webdriver_profile = (
+        reports / ".webdriver-profiles" / package["name"] if runtime == "chrome" else None
+    )
     if webdriver_config and webdriver_config.exists():
         raise RuntimeError(f"refusing to overwrite {webdriver_config}")
     if webdriver_config:
+        shutil.rmtree(webdriver_profile, ignore_errors=True)
+        webdriver_profile.mkdir(parents=True)
         webdriver_config.write_text(
             json.dumps(
                 {
                     "goog:chromeOptions": {
                         "binary": env["CHROME_BIN"],
-                        "args": ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                        "args": [
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                            f"--user-data-dir={webdriver_profile.resolve()}",
+                        ],
                     }
                 },
                 indent=2,
@@ -279,13 +294,17 @@ def invoke_package(
             + "\n"
         )
 
+    package_env = env.copy()
+    if webdriver_profile:
+        package_env["XDG_CONFIG_HOME"] = str((webdriver_profile / "xdg-config").resolve())
+
     started = time.monotonic()
     try:
         try:
             result = subprocess.run(
                 command,
                 cwd=ROOT,
-                env=env,
+                env=package_env,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -302,6 +321,8 @@ def invoke_package(
     finally:
         if webdriver_config:
             webdriver_config.unlink(missing_ok=True)
+        if webdriver_profile:
+            shutil.rmtree(webdriver_profile, ignore_errors=True)
     elapsed = time.monotonic() - started
     stem = f"{package['name']}-{runtime}"
     log = reports / f"{stem}.log"

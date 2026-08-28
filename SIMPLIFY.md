@@ -186,20 +186,20 @@ Dependencies: Stage 0.
 Progress: the 12 shared-domain tests, two callback-publication tests, scalar API scaffolding, and fixed-size runtime publication types are transferred. The resolved and future intentional behavioral failures are tracked in [`docs/latency_expected_failures.md`](docs/latency_expected_failures.md).
 
 - [x] Transfer the deterministic latency harness and applicable tests before implementing behavior.
-- [ ] Transfer inline tests in coherent subsystem groups, resolving current-`master` conflicts by preserving test intent.
-- [ ] Remove the three piecewise-only tests and convert the seven region-bearing fixtures to scalar fixtures.
-- [ ] Add the cache-invalidation, empty-import, and no-region architecture regressions.
-- [ ] Add minimal scalar domain/backend/application/wire/session API shapes needed for compilation.
-- [ ] Stub unavailable behavior with explicit unsupported or unresolved results; do not return invented zero observations or false success.
-- [ ] Make the workspace build and all transferred tests compile.
-- [ ] Record the expected failing tests by subsystem and expected frame/result.
+- [x] Transfer inline tests in coherent subsystem groups, resolving current-`master` conflicts by preserving test intent.
+- [x] Remove the three piecewise-only tests and convert the seven region-bearing fixtures to scalar fixtures.
+- [x] Add the cache-invalidation, empty-import, and no-region architecture regressions.
+- [x] Add minimal scalar domain/backend/application/wire/session API shapes needed for compilation.
+- [x] Stub unavailable behavior with explicit unsupported or unresolved results; do not return invented zero observations or false success.
+- [x] Make the workspace build and all transferred tests compile.
+- [x] Record the expected failing tests by subsystem and expected frame/result.
 
 Verification:
 
-- [ ] `cargo check --workspace` succeeds.
-- [ ] Test discovery contains the expected transferred tests, with only documented region tests omitted.
-- [ ] Failures are behavioral assertions or explicit unsupported results, not compilation failures, panics from missing scaffolding, or hangs.
-- [ ] No `AlignmentRegion`, `alignment_regions`, piecewise latency map, or equivalent API exists.
+- [x] `cargo check --workspace` succeeds.
+- [x] Test discovery contains the expected transferred tests, with only documented region tests omitted.
+- [x] Failures are behavioral assertions or explicit unsupported results, not compilation failures, panics from missing scaffolding, or hangs.
+- [x] No `AlignmentRegion`, `alignment_regions`, piecewise latency map, or equivalent API exists.
 
 ### Stage 2 — Implement shared latency observations and scalar policy resolution
 
@@ -355,7 +355,7 @@ Verification:
 
 - [x] Wire round-trip, capacity, stale-generation, missing-property, restart, and media-detail tests pass.
 - [x] Native and worklet backends expose equivalent scalar behavior where capabilities overlap.
-- [ ] Node and browser Wasm suites pass for completed packages.
+- [x] Node and browser Wasm suites pass for completed packages.
 
 ### Stage 10 — Implement persistence, resampling, import, and export
 

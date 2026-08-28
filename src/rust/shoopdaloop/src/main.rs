@@ -2790,6 +2790,7 @@ fn browser_unsupported_session_bytes(
             loops: Vec::new(),
             ports: Vec::new(),
             fx_chain,
+            latency_policy: Default::default(),
         }],
     });
     encode_session(&SessionBundle::new(document), "browser-capability-test")

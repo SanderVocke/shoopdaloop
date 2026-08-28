@@ -1347,6 +1347,40 @@ mod tests {
         assert_eq!(flagged.retained_after_frames, 5);
     }
 
+    #[shoop_wasm_test_support::shoop_test(
+        no_wasm = "repository source audit requires filesystem access"
+    )]
+    fn forbidden_alignment_region_symbols_are_absent() {
+        fn visit(path: &std::path::Path, forbidden: &[String]) {
+            for entry in std::fs::read_dir(path).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    visit(&path, forbidden);
+                } else if matches!(
+                    path.extension().and_then(|value| value.to_str()),
+                    Some("rs")
+                ) {
+                    let source = std::fs::read_to_string(&path).unwrap();
+                    for token in forbidden {
+                        assert!(
+                            !source.contains(token),
+                            "forbidden scalar-latency architecture token {token:?} in {}",
+                            path.display()
+                        );
+                    }
+                }
+            }
+        }
+
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let root = manifest.ancestors().nth(3).unwrap();
+        let forbidden = [
+            ["Alignment", "Region"].concat(),
+            ["alignment_", "regions"].concat(),
+        ];
+        visit(&root.join("src"), &forbidden);
+    }
+
     #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
     shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 }

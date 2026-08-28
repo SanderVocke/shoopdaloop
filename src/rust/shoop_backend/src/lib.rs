@@ -3536,6 +3536,51 @@ impl EngineBackend {
         }
     }
 
+    fn prepare_loop_latency_replacement(
+        &mut self,
+        loop_id: BackendLoopId,
+        engine_loop: usize,
+    ) -> Result<()> {
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("missing loop channels for latency replacement"))?;
+        let mut targets = Vec::with_capacity(channels.audio.len() + channels.midi.len());
+        for (channel_idx, session_index) in channels.audio.iter().copied().enumerate() {
+            let Some(frames) = self
+                .session
+                .audio_channel(session_index)
+                .and_then(|channel| channel.pending_latency_recipe())
+                .and_then(|recipe| recipe.total_frames)
+            else {
+                return Ok(());
+            };
+            targets.push(shoop_engine::session::LatencyReplacementChannel::Audio {
+                channel_idx,
+                capture_alignment_frames: i32::try_from(frames)
+                    .map_err(|_| anyhow!("replacement latency exceeds i32"))?,
+            });
+        }
+        for (channel_idx, session_index) in channels.midi.iter().copied().enumerate() {
+            let Some(frames) = self
+                .session
+                .midi_channel(session_index)
+                .and_then(|channel| channel.pending_latency_recipe())
+                .and_then(|recipe| recipe.total_frames)
+            else {
+                return Ok(());
+            };
+            targets.push(shoop_engine::session::LatencyReplacementChannel::Midi {
+                channel_idx,
+                capture_alignment_frames: i32::try_from(frames)
+                    .map_err(|_| anyhow!("replacement MIDI latency exceeds i32"))?,
+            });
+        }
+        self.session
+            .prepare_latency_replacement(engine_loop, &targets)?;
+        Ok(())
+    }
+
     fn update_latency_diagnostics(
         &mut self,
         loop_states: &BTreeMap<BackendLoopId, BackendLoopState>,
@@ -5281,6 +5326,9 @@ impl Backend for EngineBackend {
     ) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
         self.prepare_loop_latency_policy(loop_id, mode)?;
+        if mode == BackendLoopMode::Replacing {
+            self.prepare_loop_latency_replacement(loop_id, engine_loop)?;
+        }
         if matches!(
             mode,
             BackendLoopMode::Recording
@@ -5310,6 +5358,9 @@ impl Backend for EngineBackend {
     ) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
         self.prepare_loop_latency_policy(loop_id, mode)?;
+        if mode == BackendLoopMode::Replacing {
+            self.prepare_loop_latency_replacement(loop_id, engine_loop)?;
+        }
         if matches!(
             mode,
             BackendLoopMode::Recording
@@ -8615,6 +8666,57 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn compensated_replacement_is_rejected_before_mode_change_when_alignment_differs() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "replacement-preflight".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_latency_policy(
+                track.track_id,
+                &TrackLatencyPolicyState {
+                    components: Arc::from([shoop_app_api::LatencyComponentPolicyState {
+                        kind: shoop_app_api::LatencyComponentKind::ExternalCapture,
+                        enabled: true,
+                        value_mode: shoop_app_api::LatencyValueMode::Manual(4),
+                        range_selection: shoop_app_api::LatencyRangeSelectionState::Maximum,
+                    }]),
+                    revision: 2,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let audio_channel = backend.loop_channels[&track.loops[0]].audio[0];
+        let midi_channel = backend.loop_channels[&track.loops[0]].midi[0];
+        backend
+            .session
+            .audio_channel_mut(audio_channel)
+            .unwrap()
+            .set_capture_alignment_frames(1)
+            .unwrap();
+        backend
+            .session
+            .midi_channel_mut(midi_channel)
+            .unwrap()
+            .set_capture_alignment_frames(1)
+            .unwrap();
+
+        let error = backend
+            .transition_loop(track.loops[0], BackendLoopMode::Replacing, None)
+            .unwrap_err();
+        assert!(error.to_string().contains("consolidation"));
+        assert_eq!(
+            backend.poll().unwrap().loops[&track.loops[0]].mode,
+            BackendLoopMode::Stopped
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn mixed_audio_midi_consolidation_bakes_both_channel_timelines() {
         let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
         let track = backend
@@ -10086,8 +10188,12 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn fake_and_engine_backends_satisfy_transactional_session_io_contract() {
+    fn fake_backend_satisfies_transactional_session_io_contract() {
         session_io_contract(&mut FakeBackend::default());
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_backend_satisfies_transactional_session_io_contract() {
         session_io_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 

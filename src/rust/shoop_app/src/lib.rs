@@ -17983,6 +17983,11 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn manual_import_offset_accepts_zero_duration_audio_and_midi() {
+        standard_imports_default_to_unknown_zero_provenance_and_accept_manual_offsets();
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn invalid_loop_media_inputs_finish_tasks_as_failed() {
         let mut runtime =
             CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
