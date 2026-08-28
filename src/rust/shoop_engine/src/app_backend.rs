@@ -315,6 +315,7 @@ enum JackRegisteredPort {
 }
 
 const MAX_JACK_LATENCY_ROUTES: usize = 512;
+const MAX_JACK_LATENCY_CONNECTIONS: usize = 16;
 const JACK_LATENCY_AUDIO_IN: u8 = 1;
 const JACK_LATENCY_AUDIO_OUT: u8 = 2;
 const JACK_LATENCY_MIDI_IN: u8 = 3;
@@ -327,6 +328,7 @@ struct JackLatencySlot {
     kind: AtomicU8,
     internal_min: AtomicU32,
     internal_max: AtomicU32,
+    peers: [AtomicUsize; MAX_JACK_LATENCY_CONNECTIONS],
     last_capture_min: AtomicU32,
     last_capture_max: AtomicU32,
     last_playback_min: AtomicU32,
@@ -343,6 +345,7 @@ impl Default for JackLatencySlot {
             kind: AtomicU8::new(0),
             internal_min: AtomicU32::new(0),
             internal_max: AtomicU32::new(0),
+            peers: std::array::from_fn(|_| AtomicUsize::new(0)),
             last_capture_min: AtomicU32::new(u32::MAX),
             last_capture_max: AtomicU32::new(u32::MAX),
             last_playback_min: AtomicU32::new(u32::MAX),
@@ -402,6 +405,9 @@ impl JackLatencyContext {
         slot.kind.store(kind, Ordering::Relaxed);
         slot.internal_min.store(0, Ordering::Relaxed);
         slot.internal_max.store(0, Ordering::Relaxed);
+        for peer in &slot.peers {
+            peer.store(0, Ordering::Relaxed);
+        }
         slot.port.store(port as usize, Ordering::Release);
         Ok(())
     }
@@ -419,6 +425,50 @@ impl JackLatencyContext {
             slot.mirror.store(0, Ordering::Relaxed);
             slot.engine_index.store(0, Ordering::Relaxed);
             slot.kind.store(0, Ordering::Relaxed);
+            for peer in &slot.peers {
+                peer.store(0, Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn connection_changed(
+        &self,
+        client: &jack::Client,
+        first: jack::PortId,
+        second: jack::PortId,
+        connected: bool,
+    ) {
+        let first = unsafe { jack_sys::jack_port_by_id(client.raw(), first) } as usize;
+        let second = unsafe { jack_sys::jack_port_by_id(client.raw(), second) } as usize;
+        if first == 0 || second == 0 {
+            return;
+        }
+        for (own, peer) in [(first, second), (second, first)] {
+            let Some(slot) = self
+                .slots
+                .iter()
+                .find(|slot| slot.port.load(Ordering::Acquire) == own)
+            else {
+                continue;
+            };
+            if connected {
+                if slot
+                    .peers
+                    .iter()
+                    .any(|entry| entry.load(Ordering::Acquire) == peer)
+                {
+                    continue;
+                }
+                let _ = slot.peers.iter().any(|entry| {
+                    entry
+                        .compare_exchange(0, peer, Ordering::AcqRel, Ordering::Relaxed)
+                        .is_ok()
+                });
+            } else {
+                for entry in &slot.peers {
+                    let _ = entry.compare_exchange(peer, 0, Ordering::AcqRel, Ordering::Relaxed);
+                }
+            }
         }
     }
 
@@ -555,6 +605,28 @@ unsafe fn publish_jack_latency_slot(
     }
 }
 
+unsafe fn jack_connected_latency_range(
+    slot: &JackLatencySlot,
+    port: *mut jack_sys::jack_port_t,
+    mode: jack_sys::jack_latency_callback_mode_t,
+) -> (u32, u32) {
+    let mut aggregate = None;
+    for peer in &slot.peers {
+        let peer = peer.load(Ordering::Acquire);
+        if peer == 0 {
+            continue;
+        }
+        let mut range = jack_sys::jack_latency_range_t { min: 0, max: 0 };
+        jack_sys::jack_port_get_latency_range(peer as *mut _, mode, &mut range);
+        aggregate = aggregate_parallel_latency(aggregate, (range.min, range.max));
+    }
+    aggregate.unwrap_or_else(|| {
+        let mut range = jack_sys::jack_latency_range_t { min: 0, max: 0 };
+        jack_sys::jack_port_get_latency_range(port, mode, &mut range);
+        (range.min, range.max)
+    })
+}
+
 unsafe extern "C" fn jack_latency_callback(
     mode: jack_sys::jack_latency_callback_mode_t,
     arg: *mut std::ffi::c_void,
@@ -578,9 +650,7 @@ unsafe extern "C" fn jack_latency_callback(
         if !query {
             continue;
         }
-        let mut range = jack_sys::jack_latency_range_t { min: 0, max: 0 };
-        jack_sys::jack_port_get_latency_range(port as *mut _, mode, &mut range);
-        let range = (range.min, range.max);
+        let range = jack_connected_latency_range(slot, port as *mut _, mode);
         aggregate = aggregate_parallel_latency(aggregate, range);
         publish_jack_latency_slot(slot, capture, range, kind, sample_rate);
     }
@@ -652,10 +722,12 @@ impl jack::NotificationHandler for JackNotifications {
     fn ports_connected(
         &mut self,
         client: &jack::Client,
-        _: jack::PortId,
-        _: jack::PortId,
-        _: bool,
+        first: jack::PortId,
+        second: jack::PortId,
+        connected: bool,
     ) {
+        self.latency
+            .connection_changed(client, first, second, connected);
         unsafe {
             jack_sys::jack_recompute_total_latencies(client.raw());
         }

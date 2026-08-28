@@ -326,16 +326,16 @@ Verification:
 
 Dependencies: Stages 3 and 7.
 
-- [ ] Reuse the reference branch's provider characterization evidence, revalidating it against current dependencies.
-- [ ] Implement JACK capture/playback observation and latency callback propagation through fixed-capacity callback-safe route snapshots.
-- [ ] Account for verified external send/return callback-cycle latency as a separately identified component.
+- [x] Reuse the reference branch's provider characterization evidence, revalidating it against current dependencies.
+- [x] Implement JACK capture/playback observation and latency callback propagation through fixed-capacity callback-safe route snapshots.
+- [x] Account for verified external send/return callback-cycle latency as a separately identified component.
 - [ ] Implement the version-gated Carla Rack/Patchbay adapter and in-process/subprocess publication without importing region concepts.
 - [x] Publish OxiSynth's characterized phase-dependent event latency range consistently on native and Wasm.
-- [ ] Report CPAL/midir values only where their APIs provide defensible semantics; otherwise use estimated/manual/unknown states.
+- [x] Report CPAL/midir values only where their APIs provide defensible semantics; otherwise use estimated/manual/unknown states.
 
 Verification:
 
-- [ ] JACK range, route filtering, external-hop, graph-change, and port-retirement tests pass on a real software server.
+- [x] JACK range, route filtering, external-hop, graph-change, and port-retirement tests pass on a real software server.
 - [ ] Carla zero/nonzero Rack, branched Patchbay, Patchbay16, unsupported-runtime, and worker-restart tests pass where facilities exist.
 - [x] OxiSynth offset/event/callback characterization and compensation tests pass.
 - [ ] Provider callbacks satisfy realtime allocation/lock constraints.
