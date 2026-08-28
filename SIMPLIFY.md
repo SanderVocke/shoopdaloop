@@ -165,17 +165,19 @@ Rewrite these tests to retain their non-region purpose:
 
 Dependencies: none.
 
-- [ ] Create the implementation branch from an updated `master` and record its base commit.
-- [ ] Record the immutable reference commit and PR review findings used during transfer.
-- [ ] Run the current native and portable baseline suites before adding latency code.
-- [ ] Inventory every reference test, helper, fixture, provider patch, protocol field, and persistence field to transfer, rewrite, or omit under the policy above.
-- [ ] Record baseline behavior for monitoring, ordinary recording/playback, grab, preplay, dry/wet modes, and low-level replacement where current tests do not already pin it.
+Evidence: [`docs/latency_stage0_inventory.md`](docs/latency_stage0_inventory.md), [`docs/latency_reference_test_inventory.csv`](docs/latency_reference_test_inventory.csv), and [`docs/latency_reference_field_inventory.csv`](docs/latency_reference_field_inventory.csv).
+
+- [x] Create the implementation branch from an updated `master` and record its base commit.
+- [x] Record the immutable reference commit and PR review findings used during transfer.
+- [x] Run the current native and portable baseline suites before adding latency code.
+- [x] Inventory every reference test, helper, fixture, provider patch, protocol field, and persistence field to transfer, rewrite, or omit under the policy above.
+- [x] Record baseline behavior for monitoring, ordinary recording/playback, grab, preplay, dry/wet modes, and low-level replacement where current tests do not already pin it.
 
 Verification:
 
-- [ ] Baseline tests pass on the implementation branch before feature changes.
-- [ ] The transfer inventory accounts for all reference latency tests and the two missing regressions.
-- [ ] No production commit from the reference branch has been wholesale cherry-picked.
+- [x] Baseline tests pass on the implementation branch before feature changes.
+- [x] The transfer inventory accounts for all reference latency tests and the two missing regressions.
+- [x] No production commit from the reference branch has been wholesale cherry-picked.
 
 ### Stage 1 — Transfer tests, fixtures, and compile-time API contracts
 

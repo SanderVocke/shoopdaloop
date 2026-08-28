@@ -1,0 +1,156 @@
+category,reference_path,item_kind,item,reference_shape,disposition,scalar_action
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,MidiDataChunk.latency,WireMediaTakeLatency,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WaveformChunk.latency,WireMediaTakeLatency,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireAlignmentRegion.raw_start,u32,omit,forbidden region data
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireAlignmentRegion.raw_end,u32,omit,forbidden region data
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireAlignmentRegion.capture_alignment_frames,i32,omit,forbidden region data
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireAlignmentRegion.observation_revision,u64,omit,forbidden region data
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireApplicationPort.capture_latency,WireLatencyObservation,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireApplicationPort.playback_latency,WireLatencyObservation,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyComponentPolicy.kind,WireLatencyComponentKind,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyComponentPolicy.enabled,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyComponentPolicy.value_mode,WireLatencyValueMode,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyComponentPolicy.range_selection,WireLatencyRangeSelection,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.unresolved_recipes,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.observation_changes,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.insufficient_margins,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.deferred_transitions,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.finalization_overruns,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.path_ambiguities,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.provider_failures,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.applied_capture_plot,Vec<i32>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.render_advance_plot,Vec<u32>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.active_postroll_plot,Vec<u32>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.plot_cursor,u8,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyDiagnostics.plot_len,u8,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyObservation.minimum_frames,Option<u32>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyObservation.maximum_frames,Option<u32>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyObservation.certainty,WireLatencyCertainty,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyObservation.sample_rate,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLatencyObservation.revision,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireLoopState.latency,WireTakeLatencyState,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.capture_alignment_frames,i32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.retained_before_frames,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.retained_after_frames,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.observation,WireLatencyObservation,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.variable_history,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.history_revisions,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.changed_during_operation,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.incomplete,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.applied_during_render,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireMediaTakeLatency.alignment_regions,Vec<WireAlignmentRegion>,omit,forbidden region data
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireSnapshot.backend_capture_latency,WireLatencyObservation,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireSnapshot.backend_playback_latency,WireLatencyObservation,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireSnapshot.latency_diagnostics,WireLatencyDiagnostics,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.capture_alignment_frames,i32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.retained_before_frames,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.retained_after_frames,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.render_advance_frames,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.observation,WireLatencyObservation,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.variable_history,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.history_revisions,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.changed_during_operation,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.incomplete,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.finalizing,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTakeLatencyState.error,Option<String>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTrackFxState.latency,WireLatencyObservation,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTrackLatencyPolicy.cue_followed,bool,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTrackLatencyPolicy.cue_output,Option<WireCueOutputSelection>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTrackLatencyPolicy.components,Vec<WireLatencyComponentPolicy>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTrackLatencyPolicy.revision,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,field,WireTrackState.latency_policy,WireTrackLatencyPolicy,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,Command::ConfigureBackendLatency,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,Command::SetTrackLatencyPolicy,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,Command::SetTakeLatencyPolicy,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,Command::ConsolidateTakeLatency,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireCueOutputSelection::ApplicationPort,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireCueOutputSelection::HostPort,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyCertainty::Exact,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyCertainty::Range,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyCertainty::Estimated,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyCertainty::ManualOnly,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyCertainty::Unknown,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyComponentKind::ExternalCapture,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyComponentKind::Processor,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyComponentKind::CuePlayback,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyComponentKind::BackendBuffering,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyComponentKind::Manual,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyRangeSelection::Minimum,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyRangeSelection::Midpoint,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyRangeSelection::Maximum,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyValueMode::Automatic,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyValueMode::Manual,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,variant,WireLatencyValueMode::AutomaticPlusTrim,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,field,WorkerLatencyObservation.minimum_frames,Option<u32>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,field,WorkerLatencyObservation.maximum_frames,Option<u32>,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,field,WorkerLatencyObservation.certainty,WorkerLatencyCertainty,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,field,WorkerLatencyObservation.sample_rate,u32,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,field,WorkerLatencyObservation.revision,u64,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,field,WorkerLatencyObservation.diagnostic,WorkerLatencyDiagnostic,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,field,WorkerStatus.latency,WorkerLatencyObservation,port-scalar,retain with scalar bounds/conversion
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,ValidationError::InvalidLatencyObservation,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyCertainty::Exact,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyCertainty::Range,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyCertainty::Estimated,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyCertainty::ManualOnly,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyCertainty::Unknown,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyDiagnostic::CarlaRackAggregate,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyDiagnostic::CarlaPatchbayGraphRange,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyDiagnostic::BuiltInSynthPhaseRange,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyDiagnostic::Manual,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyDiagnostic::VersionMismatch,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,variant,WorkerLatencyDiagnostic::Unsupported,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,field,AlignmentRegionDocument.raw_start_frame,u64,omit,forbidden region data
+persistence,src/rust/shoop_session/src/document.rs,field,AlignmentRegionDocument.raw_end_frame,u64,omit,forbidden region data
+persistence,src/rust/shoop_session/src/document.rs,field,AlignmentRegionDocument.capture_alignment_frames,i64,omit,forbidden region data
+persistence,src/rust/shoop_session/src/document.rs,field,AlignmentRegionDocument.observation_revision,u64,omit,forbidden region data
+persistence,src/rust/shoop_session/src/document.rs,field,ChannelDocument.latency,TakeLatencyDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,ExactMidi.latency,TakeLatencyDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyComponentPolicyDocument.component,LatencyComponentDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyComponentPolicyDocument.enabled,bool,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyComponentPolicyDocument.value,LatencyValueDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyComponentPolicyDocument.range_selection,LatencyRangeSelectionDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyObservationDocument.minimum_frames,Option<u64>,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyObservationDocument.maximum_frames,Option<u64>,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyObservationDocument.certainty,LatencyCertaintyDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyObservationDocument.sample_rate,u32,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LatencyObservationDocument.revision,u64,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,LoopAudioChannel.latency,TakeLatencyDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.capture_alignment_frames,i64,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.retained_before_frames,u64,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.retained_after_frames,u64,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.observation,LatencyObservationDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.variable_history,bool,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.history_revisions,u32,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.changed_during_operation,bool,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.incomplete,bool,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.applied_during_render,bool,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TakeLatencyDocument.alignment_regions,Vec<AlignmentRegionDocument>,omit,forbidden region data
+persistence,src/rust/shoop_session/src/document.rs,field,TrackDocument.latency_policy,TrackLatencyPolicyDocument,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TrackLatencyPolicyDocument.cue_followed,bool,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TrackLatencyPolicyDocument.cue_output,Option<CueOutputSelectionDocument>,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TrackLatencyPolicyDocument.revision,u64,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,field,TrackLatencyPolicyDocument.components,Vec<LatencyComponentPolicyDocument>,port-scalar,retain with scalar bounds/conversion
+persistence,src/rust/shoop_session/src/document.rs,variant,CueOutputSelectionDocument::ApplicationPort,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,CueOutputSelectionDocument::HostPort,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyCertaintyDocument::Exact,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyCertaintyDocument::Range,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyCertaintyDocument::Estimated,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyCertaintyDocument::ManualOnly,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyCertaintyDocument::Unknown,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyComponentDocument::ExternalCapture,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyComponentDocument::Processor,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyComponentDocument::CuePlayback,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyComponentDocument::BackendBuffering,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyComponentDocument::Manual,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyRangeSelectionDocument::Minimum,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyRangeSelectionDocument::Midpoint,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyRangeSelectionDocument::Maximum,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyValueDocument::Automatic,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyValueDocument::Manual,,port-scalar,retain unless provider evidence requires unsupported result
+persistence,src/rust/shoop_session/src/document.rs,variant,LatencyValueDocument::AutomaticPlusTrim,,port-scalar,retain unless provider evidence requires unsupported result
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,version,PROTOCOL_VERSION,14 -> 18 in reference,recalculate,bump once scalar command/event shapes and capacities are final
+protocol,src/rust/shoop_audio_protocol/src/lib.rs,capacity,COMMAND_MAX_BYTES,64 KiB unchanged,reverify,test worst-case scalar payload
+protocol,src/rust/shoop_plugin_protocol/src/lib.rs,version,PROTOCOL_VERSION,2 -> 3 in reference,recalculate,bump for scalar observation status
+persistence,src/rust/shoop_session/src/document.rs,version,DOCUMENT_VERSION,1 -> 2 in reference,recalculate,bump exact-media envelope for scalar metadata
+persistence,src/rust/shoop_session/src/document.rs,version,SESSION_DOCUMENT_VERSION,6 -> 7 in reference,recalculate,bump session document for scalar metadata and preserve migration
