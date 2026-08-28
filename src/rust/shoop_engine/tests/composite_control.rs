@@ -21,6 +21,10 @@ fn fixture() -> Fixture {
 }
 
 fn fixture_with_cycles(n_cycles: i64) -> Fixture {
+    fixture_with_entry(0, n_cycles)
+}
+
+fn fixture_with_entry(delay: i64, n_cycles: i64) -> Fixture {
     let mut session = Session::default();
     let sync = session.create_loop();
     let child = session.create_loop();
@@ -59,7 +63,7 @@ fn fixture_with_cycles(n_cycles: i64) -> Fixture {
                 sections: vec![CompositeSection {
                     entries: vec![CompositeEntry {
                         target: child_identity,
-                        delay: 0,
+                        delay,
                         n_cycles: Some(n_cycles),
                         mode: None,
                     }],
@@ -87,6 +91,41 @@ fn fixture_with_cycles(n_cycles: i64) -> Fixture {
         source,
         child: child_identity,
     }
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn running_timeline_adopts_changes_more_than_one_cycle_ahead() {
+    let Fixture {
+        session,
+        timeline,
+        source,
+        child,
+    } = fixture_with_entry(3, 1);
+    let mut replacement = fixture_with_entry(2, 1).timeline;
+    replacement.prepare_install(2, &[None, None]).unwrap();
+    let (mut engine, mut handle) = split(session, 8);
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    engine.process(1);
+    assert!(install.pop().unwrap().is_ok());
+    let mut start = handle
+        .send_composite_immediate_transition(source, LoopMode::Playing, 0)
+        .unwrap();
+    engine.process(1);
+    assert!(start.pop().unwrap().is_ok());
+
+    let mut replace = handle.send_composite_timeline(replacement).unwrap();
+    engine.pump();
+
+    assert!(replace.pop().unwrap().is_ok());
+    let node = engine.session().composite_timeline().node_state(0).unwrap();
+    assert_eq!(node.active_version, 2);
+    assert_eq!(node.pending_version, None);
+    assert_eq!(node.runtime.iteration(), 0);
+    engine.process(7);
+    assert_eq!(
+        engine.session().loop_(child.slot as usize).unwrap().mode(),
+        LoopMode::Playing
+    );
 }
 
 #[shoop_wasm_test_support::shoop_test]
@@ -516,6 +555,83 @@ fn newest_running_replacement_supersedes_older_candidate() {
     assert_eq!(node.runtime.length_samples(node.plan), Ok(12));
     assert_eq!(node.runtime.iteration(), 0);
     assert_eq!(engine.session().composite_timeline_version(), 3);
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn compatible_replacement_supersedes_an_older_deferred_candidate() {
+    let Fixture {
+        session,
+        timeline,
+        source,
+        ..
+    } = fixture_with_entry(3, 1);
+    let mut version_two = fixture_with_entry(0, 2).timeline;
+    version_two.prepare_install(2, &[None, None]).unwrap();
+    let mut version_three = fixture_with_entry(2, 1).timeline;
+    version_three.prepare_install(3, &[None, None]).unwrap();
+    let (mut engine, mut handle) = split(session, 8);
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    engine.process(1);
+    assert!(install.pop().unwrap().is_ok());
+    let mut start = handle
+        .send_composite_immediate_transition(source, LoopMode::Playing, 0)
+        .unwrap();
+    engine.process(1);
+    assert!(start.pop().unwrap().is_ok());
+
+    let mut second = handle.send_composite_timeline(version_two).unwrap();
+    engine.pump();
+    assert!(second.pop().unwrap().is_ok());
+    let mut third = handle.send_composite_timeline(version_three).unwrap();
+    engine.pump();
+    assert!(third.pop().unwrap().is_ok());
+
+    let pending = engine.session().composite_timeline().node_state(0).unwrap();
+    assert_eq!(pending.active_version, 1);
+    assert_eq!(pending.pending_version, Some(3));
+    engine.process(14);
+    let active = engine.session().composite_timeline().node_state(0).unwrap();
+    assert_eq!(active.active_version, 3);
+    assert_eq!(active.pending_version, None);
+    assert_eq!(active.runtime.length_samples(active.plan), Ok(12));
+}
+
+#[shoop_wasm_test_support::shoop_test]
+fn future_change_adopts_when_retirement_storage_is_full() {
+    let Fixture {
+        session,
+        timeline,
+        source,
+        ..
+    } = fixture();
+    let mut version_two = fixture_with_entry(3, 1).timeline;
+    version_two.prepare_install(2, &[None, None]).unwrap();
+    let mut version_three = fixture_with_entry(2, 1).timeline;
+    version_three.prepare_install(3, &[None, None]).unwrap();
+    let (mut engine, mut handle) = split(session, 8);
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    engine.process(1);
+    assert!(install.pop().unwrap().is_ok());
+    let mut start = handle
+        .send_composite_immediate_transition(source, LoopMode::Playing, 0)
+        .unwrap();
+    engine.process(1);
+    assert!(start.pop().unwrap().is_ok());
+    let mut second = handle.send_composite_timeline(version_two).unwrap();
+    engine.pump();
+    assert!(second.pop().unwrap().is_ok());
+    engine.process(2);
+    assert_eq!(engine.session().composite_timeline().n_retired_plans(), 1);
+
+    let mut third = handle.send_composite_timeline(version_three).unwrap();
+    engine.pump();
+
+    assert!(third.pop().unwrap().is_ok());
+    let active = engine.session().composite_timeline().node_state(0).unwrap();
+    assert_eq!(active.active_version, 3);
+    assert_eq!(active.pending_version, None);
+    assert_eq!(active.runtime.mode(), LoopMode::Playing);
+    assert_eq!(engine.session().composite_timeline().n_retired_plans(), 1);
 }
 
 #[shoop_wasm_test_support::shoop_test]

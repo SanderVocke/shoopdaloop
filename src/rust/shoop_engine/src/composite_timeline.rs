@@ -545,6 +545,18 @@ impl CompositeBoundaryTimeline {
         if self.nodes.len() != candidate.nodes.len() {
             return false;
         }
+        if !self
+            .nodes
+            .iter()
+            .zip(&candidate.nodes)
+            .all(|(current, next)| {
+                current.plan().source() == next.plan().source()
+                    && current.sync_source == next.sync_source
+                    && composite_targets(current.plan()).eq(composite_targets(next.plan()))
+            })
+        {
+            return false;
+        }
         let additional_retirements = self
             .nodes
             .iter()
@@ -553,19 +565,12 @@ impl CompositeBoundaryTimeline {
                 current.plan() != next.plan()
                     && current.runtime.mode() != LoopMode::Stopped
                     && current.pending_plan.is_none()
+                    && !current
+                        .runtime
+                        .can_adopt_plan_before_future_change(current.plan(), next.plan())
             })
             .count();
-        if self.retired_plans.len() + additional_retirements > self.retired_plans.capacity() {
-            return false;
-        }
-        self.nodes
-            .iter()
-            .zip(&candidate.nodes)
-            .all(|(current, next)| {
-                current.plan().source() == next.plan().source()
-                    && current.sync_source == next.sync_source
-                    && composite_targets(current.plan()).eq(composite_targets(next.plan()))
-            })
+        self.retired_plans.len() + additional_retirements <= self.retired_plans.capacity()
     }
 
     pub fn queue_runtime_preserving_replacement(&mut self, mut candidate: Self) -> Self {
@@ -586,6 +591,22 @@ impl CompositeBoundaryTimeline {
                 let _ = current
                     .runtime
                     .activate_plan(current_plan, next_plan, |_| true);
+                std::mem::swap(&mut current.plan, &mut next.plan);
+                std::mem::swap(&mut current.active_version, &mut next.active_version);
+            } else if current.pending_plan.is_none()
+                && current
+                    .runtime
+                    .adopt_plan_before_future_change(
+                        current
+                            .plan
+                            .as_ref()
+                            .expect("installed timelines always have an active plan"),
+                        next.plan
+                            .as_ref()
+                            .expect("prepared replacement nodes have a plan"),
+                    )
+                    .expect("replacement plans have matching composite identities")
+            {
                 std::mem::swap(&mut current.plan, &mut next.plan);
                 std::mem::swap(&mut current.active_version, &mut next.active_version);
             } else {
