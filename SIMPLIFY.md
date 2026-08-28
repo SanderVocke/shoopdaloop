@@ -307,20 +307,20 @@ Verification:
 
 Dependencies: Stages 2–6.
 
-Progress: scalar latency capability, observations, policies, diagnostics, take state, commands, grabs, replacement, and consolidation are integrated through fake, engine, Web Audio, and native backend contracts. All 51 portable backend tests pass; application intent/reconciliation and mixed atomic consolidation remain open.
+Evidence: scalar capability, observations, policies, diagnostics, take state, commands, grabs, replacement, and atomic mixed consolidation are integrated through fake, engine, Web Audio, native, and application paths. Complete app/backend/engine contract suites pass, including optimistic reconciliation, provider-change warnings, cache invalidation, and loop-wide atomic commands.
 
 - [x] Extend backend snapshots and commands with per-port observations, track policy, one channel/take scalar, warnings, and consolidation.
 - [x] Resolve policy off the realtime thread and transfer bounded prepared recipes to callbacks.
 - [x] Integrate native, dummy/test, and application model paths without duplicating recipe semantics.
 - [x] Reconcile optimistic UI/application edits against authoritative callback-latched state.
-- [ ] Keep multi-channel take edits and content operations transactional.
+- [x] Keep multi-channel take edits and content operations transactional.
 
 Verification:
 
-- [ ] Fake, engine, and native backend contract tests pass.
+- [x] Fake, engine, and native backend contract tests pass.
 - [x] Settings affect future operations but not frozen takes.
 - [x] Unsupported, pending, accepted, latched, changed, and failed policy updates are distinguishable.
-- [ ] Driver/processor changes warn without silently moving existing content.
+- [x] Driver/processor changes warn without silently moving existing content.
 
 ### Stage 8 — Implement native provider support
 

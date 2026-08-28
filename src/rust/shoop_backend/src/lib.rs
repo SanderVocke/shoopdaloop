@@ -4214,16 +4214,27 @@ impl Backend for EngineBackend {
             .loop_channels
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown loop"))?;
+        if channels
+            .audio
+            .iter()
+            .any(|channel| self.session.audio_channel(*channel).is_none())
+            || channels
+                .midi
+                .iter()
+                .any(|channel| self.session.midi_channel(*channel).is_none())
+        {
+            return Err(anyhow!("missing channel in take latency policy"));
+        }
         for channel in &channels.audio {
             self.session
                 .audio_channel_mut(*channel)
-                .ok_or_else(|| anyhow!("missing audio channel"))?
+                .expect("take latency preflight retained audio channel")
                 .set_capture_alignment_frames(capture_alignment_frames)?;
         }
         for channel in &channels.midi {
             self.session
                 .midi_channel_mut(*channel)
-                .ok_or_else(|| anyhow!("missing MIDI channel"))?
+                .expect("take latency preflight retained MIDI channel")
                 .set_capture_alignment_frames(capture_alignment_frames)?;
         }
         Ok(())
