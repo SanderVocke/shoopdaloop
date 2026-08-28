@@ -205,18 +205,20 @@ Verification:
 
 Dependencies: Stage 1 API contracts.
 
-- [ ] Implement checked exact/range/estimated/manual-only/unknown observations.
-- [ ] Implement component kinds, policy modes, range selection, source/path identity, revisions, and overlap prevention.
-- [ ] Resolve direct/dry/wet record, dry-through-wet, dry-into-wet, grab, and replacement recipes to one checked scalar total.
-- [ ] Encode conditional cue/output semantics in the resolver.
-- [ ] Implement frozen take snapshots and changed/incomplete/variable status without region fields.
-- [ ] Keep shared types Wasm-compatible and independent of backend/UI representations.
+Evidence: `shoop_latency` has 12 direct tests passing under native nextest and pinned Node Wasm; the Wasm target warning-denying check also passes.
+
+- [x] Implement checked exact/range/estimated/manual-only/unknown observations.
+- [x] Implement component kinds, policy modes, range selection, source/path identity, revisions, and overlap prevention.
+- [x] Resolve direct/dry/wet record, dry-through-wet, dry-into-wet, grab, and replacement recipes to one checked scalar total.
+- [x] Encode conditional cue/output semantics in the resolver.
+- [x] Implement frozen take snapshots and changed/incomplete/variable status without region fields.
+- [x] Keep shared types Wasm-compatible and independent of backend/UI representations.
 
 Verification:
 
-- [ ] All shared-domain and scalar recipe tests pass on native and Wasm-compatible targets.
-- [ ] Unknown automatic values remain unresolved; disabled unknown values contribute zero explicitly.
-- [ ] Component toggles, trims, bounds, overlap rejection, and range selection have direct tests.
+- [x] All shared-domain and scalar recipe tests pass on native and Wasm-compatible targets.
+- [x] Unknown automatic values remain unresolved; disabled unknown values contribute zero explicitly.
+- [x] Component toggles, trims, bounds, overlap rejection, and range selection have direct tests.
 
 ### Stage 3 — Add provider observations and callback-safe scalar contracts
 

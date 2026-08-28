@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 pub const MAX_COMPENSATION_FRAMES: u32 = 768_000;
@@ -341,7 +342,6 @@ pub enum UnresolvedReason {
     ValueExceedsMaximum,
     OverlappingAutomaticInterval,
     TotalOverflow,
-    Unsupported,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -373,41 +373,111 @@ pub fn resolve_latency_recipe(
     if inputs.len() > MAX_RECIPE_COMPONENTS {
         return Err(LatencyDomainError::TooManyRecipeComponents(inputs.len()));
     }
+
+    let mut components = Vec::with_capacity(inputs.len());
+    let mut warnings = Vec::new();
+    let mut automatic_intervals = BTreeMap::<&LatencyIntervalIdentity, usize>::new();
+    let mut unresolved = false;
+    let mut total = 0_u32;
+
+    for input in inputs {
+        let cue_applicable = input.kind != LatencyComponentKind::CuePlayback
+            || recording_reference.uses_cue_playback();
+        let applicable = operation.component_is_applicable(input.kind) && cue_applicable;
+        let mut component = ResolvedLatencyComponent {
+            kind: input.kind,
+            observation: input.observation.clone(),
+            policy: input.policy,
+            selected_frames: None,
+            contribution_frames: 0,
+            application: ComponentApplication::NotApplicable,
+            applied_during_render: operation == LatencyOperationKind::RecordDryIntoWet
+                && input.kind == LatencyComponentKind::Processor,
+        };
+
+        if !applicable {
+            components.push(component);
+            continue;
+        }
+        if !input.policy.enabled {
+            component.application = ComponentApplication::Disabled;
+            components.push(component);
+            continue;
+        }
+
+        let selected = select_component_value(&input.observation, input.policy);
+        match selected {
+            Ok(value) => {
+                component.selected_frames = Some(value);
+                component.contribution_frames = value;
+                component.application = ComponentApplication::Applied;
+                if uses_automatic(input.policy.value_mode) {
+                    if let Some(interval) = input.observation.interval() {
+                        if let Some(previous) =
+                            automatic_intervals.insert(interval, components.len())
+                        {
+                            component.application = ComponentApplication::Unresolved;
+                            component.contribution_frames = 0;
+                            components[previous].application = ComponentApplication::Unresolved;
+                            components[previous].contribution_frames = 0;
+                            warnings.push(LatencyResolutionWarning {
+                                component: Some(input.kind),
+                                reason: UnresolvedReason::OverlappingAutomaticInterval,
+                            });
+                            unresolved = true;
+                        }
+                    }
+                }
+                if component.application == ComponentApplication::Applied {
+                    match total.checked_add(value) {
+                        Some(value) if value <= MAX_COMPENSATION_FRAMES => total = value,
+                        _ => {
+                            component.application = ComponentApplication::Unresolved;
+                            component.contribution_frames = 0;
+                            warnings.push(LatencyResolutionWarning {
+                                component: Some(input.kind),
+                                reason: UnresolvedReason::TotalOverflow,
+                            });
+                            unresolved = true;
+                        }
+                    }
+                }
+            }
+            Err(reason) => {
+                component.application = ComponentApplication::Unresolved;
+                warnings.push(LatencyResolutionWarning {
+                    component: Some(input.kind),
+                    reason,
+                });
+                unresolved = true;
+            }
+        }
+        components.push(component);
+    }
+
+    if unresolved {
+        total = components
+            .iter()
+            .filter(|component| component.application == ComponentApplication::Applied)
+            .fold(0_u32, |sum, component| {
+                sum.saturating_add(component.contribution_frames)
+            });
+    }
+
     Ok(ResolvedLatencyRecipe {
         operation,
         recording_reference,
-        components: inputs
-            .iter()
-            .map(|input| {
-                let cue_applicable = input.kind != LatencyComponentKind::CuePlayback
-                    || recording_reference.uses_cue_playback();
-                let applicable = operation.component_is_applicable(input.kind) && cue_applicable;
-                if applicable && input.policy.enabled {
-                    let _ = select_component_value(&input.observation, input.policy);
-                }
-                ResolvedLatencyComponent {
-                    kind: input.kind,
-                    observation: input.observation.clone(),
-                    policy: input.policy,
-                    selected_frames: None,
-                    contribution_frames: 0,
-                    application: if !applicable {
-                        ComponentApplication::NotApplicable
-                    } else if !input.policy.enabled {
-                        ComponentApplication::Disabled
-                    } else {
-                        ComponentApplication::Unresolved
-                    },
-                    applied_during_render: false,
-                }
-            })
-            .collect(),
-        total_frames: None,
-        warnings: vec![LatencyResolutionWarning {
-            component: None,
-            reason: UnresolvedReason::Unsupported,
-        }],
+        components,
+        total_frames: (!unresolved).then_some(total),
+        warnings,
     })
+}
+
+fn uses_automatic(mode: LatencyValueMode) -> bool {
+    matches!(
+        mode,
+        LatencyValueMode::Automatic | LatencyValueMode::AutomaticPlusTrim(_)
+    )
 }
 
 fn select_component_value(
@@ -460,11 +530,66 @@ pub enum PathAmbiguity {
 }
 
 pub fn aggregate_latency_paths(
-    _paths: &[LatencyObservation],
-    _aggregate_source: SourceIdentity,
-    _aggregate_interval: LatencyIntervalIdentity,
+    paths: &[LatencyObservation],
+    aggregate_source: SourceIdentity,
+    aggregate_interval: LatencyIntervalIdentity,
 ) -> Result<PathAggregation, LatencyDomainError> {
-    Ok(PathAggregation::Unknown)
+    if paths.is_empty() {
+        return Ok(PathAggregation::Ambiguous(PathAmbiguity::NoPaths));
+    }
+    if paths.len() > MAX_LATENCY_PATHS {
+        return Ok(PathAggregation::Ambiguous(PathAmbiguity::TooManyPaths));
+    }
+    if paths
+        .iter()
+        .any(|path| path.certainty() == LatencyCertainty::Unknown)
+    {
+        return Ok(PathAggregation::Unknown);
+    }
+    let sample_rate = paths[0].sample_rate();
+    if sample_rate == 0 || paths.iter().any(|path| path.sample_rate() != sample_rate) {
+        return Ok(PathAggregation::Ambiguous(PathAmbiguity::MixedSampleRates));
+    }
+    let Some(first) = paths[0].range() else {
+        return Ok(PathAggregation::Ambiguous(PathAmbiguity::MissingRange));
+    };
+    let mut min = first.min();
+    let mut max = first.max();
+    let mut revision = paths[0].revision();
+    let mut estimated = paths[0].certainty() == LatencyCertainty::Estimated;
+    for path in &paths[1..] {
+        let Some(range) = path.range() else {
+            return Ok(PathAggregation::Ambiguous(PathAmbiguity::MissingRange));
+        };
+        min = min.min(range.min());
+        max = max.max(range.max());
+        revision = revision.max(path.revision());
+        estimated |= path.certainty() == LatencyCertainty::Estimated;
+    }
+    let equivalent = paths.iter().all(|path| {
+        path.range()
+            .is_some_and(|range| range.min() == min && range.max() == max)
+    });
+    let certainty = if estimated {
+        LatencyCertainty::Estimated
+    } else if min == max {
+        LatencyCertainty::Exact
+    } else {
+        LatencyCertainty::Range
+    };
+    let observation = LatencyObservation::new(
+        Some(LatencyRangeFrames::new(min, max)?),
+        certainty,
+        sample_rate,
+        revision,
+        aggregate_source,
+        Some(aggregate_interval),
+    )?;
+    Ok(if equivalent {
+        PathAggregation::Equivalent(observation)
+    } else {
+        PathAggregation::Ranged(observation)
+    })
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -498,7 +623,9 @@ impl TakeLatencySnapshot {
         retained_after_frames: u32,
         status: TakeLatencyStatus,
     ) -> Result<Self, LatencyDomainError> {
-        let resolved_total_frames = recipe.total_frames.unwrap_or_default();
+        let resolved_total_frames = recipe
+            .total_frames
+            .ok_or(LatencyDomainError::UnresolvedRecipe)?;
         if sample_rate == 0 {
             return Err(LatencyDomainError::ZeroSampleRate);
         }
@@ -516,10 +643,7 @@ impl TakeLatencySnapshot {
             retained_before_frames,
             retained_after_frames,
             components: recipe.components.clone(),
-            status: TakeLatencyStatus {
-                incomplete: recipe.total_frames.is_none() || status.incomplete,
-                ..status
-            },
+            status,
         })
     }
 
@@ -613,6 +737,62 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn every_certainty_and_identity_shape_is_checked() {
+        let ranged = LatencyObservation::new(
+            Some(LatencyRangeFrames::new(2, 5).unwrap()),
+            LatencyCertainty::Range,
+            48_000,
+            7,
+            source("ranged"),
+            Some(interval("ranged-path")),
+        )
+        .unwrap();
+        assert_eq!(ranged.certainty(), LatencyCertainty::Range);
+        assert_eq!(ranged.revision(), 7);
+        assert_eq!(ranged.source_identity().as_str(), "ranged");
+        assert_eq!(ranged.interval().unwrap().as_str(), "ranged-path");
+
+        let estimated = LatencyObservation::new(
+            Some(LatencyRangeFrames::new(3, 4).unwrap()),
+            LatencyCertainty::Estimated,
+            48_000,
+            8,
+            source("estimated"),
+            Some(interval("estimated-path")),
+        )
+        .unwrap();
+        assert_eq!(estimated.certainty(), LatencyCertainty::Estimated);
+        assert_eq!(estimated.range().unwrap().min(), 3);
+        assert_eq!(estimated.range().unwrap().max(), 4);
+
+        assert_eq!(
+            SourceIdentity::new(""),
+            Err(LatencyDomainError::EmptySourceIdentity)
+        );
+        assert_eq!(
+            LatencyIntervalIdentity::new(""),
+            Err(LatencyDomainError::EmptySourceIdentity)
+        );
+        assert_eq!(
+            SourceIdentity::new("x".repeat(MAX_SOURCE_IDENTITY_BYTES + 1)),
+            Err(LatencyDomainError::SourceIdentityTooLong(
+                MAX_SOURCE_IDENTITY_BYTES + 1
+            ))
+        );
+        assert_eq!(
+            LatencyObservation::new(
+                Some(LatencyRangeFrames::new(1, 2).unwrap()),
+                LatencyCertainty::Range,
+                48_000,
+                1,
+                source("missing-path"),
+                None,
+            ),
+            Err(LatencyDomainError::MissingAutomaticInterval)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn every_range_selection_stays_inside_the_range() {
         for min in 0..=32 {
             for max in min..=32 {
@@ -700,6 +880,28 @@ mod tests {
             ),
             Ok(9)
         );
+        assert_eq!(
+            select_component_value(
+                &unknown,
+                LatencyComponentPolicy {
+                    enabled: true,
+                    value_mode: LatencyValueMode::Manual(MAX_COMPENSATION_FRAMES + 1),
+                    range_selection: LatencyRangeSelection::Maximum,
+                }
+            ),
+            Err(UnresolvedReason::ValueExceedsMaximum)
+        );
+        assert_eq!(
+            select_component_value(
+                &ranged,
+                LatencyComponentPolicy {
+                    enabled: true,
+                    value_mode: LatencyValueMode::AutomaticPlusTrim(i32::MAX),
+                    range_selection: LatencyRangeSelection::Maximum,
+                }
+            ),
+            Err(UnresolvedReason::ValueExceedsMaximum)
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -725,6 +927,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(direct_cue.total_frames, Some(13));
+        let dry_world = resolve_latency_recipe(
+            LatencyOperationKind::RecordDry,
+            RecordingReference::ExternalWorld,
+            &inputs,
+        )
+        .unwrap();
+        assert_eq!(dry_world.total_frames, Some(6));
         let wet_cue = resolve_latency_recipe(
             LatencyOperationKind::RecordWet,
             RecordingReference::ShoopCue,
@@ -995,7 +1204,14 @@ mod tests {
         let ranged =
             aggregate_latency_paths(&[a.clone(), c], source("aggregate"), interval("aggregate"))
                 .unwrap();
-        assert!(matches!(ranged, PathAggregation::Ranged(_)));
+        let PathAggregation::Ranged(ranged) = ranged else {
+            panic!("expected a ranged path aggregation");
+        };
+        assert_eq!(ranged.range(), Some(LatencyRangeFrames::new(3, 7).unwrap()));
+        assert_eq!(ranged.certainty(), LatencyCertainty::Range);
+        assert_eq!(ranged.revision(), 3);
+        assert_eq!(ranged.source_identity().as_str(), "aggregate");
+        assert_eq!(ranged.interval().unwrap().as_str(), "aggregate");
         let unknown = LatencyObservation::unknown(48_000, 1, source("unknown")).unwrap();
         assert_eq!(
             aggregate_latency_paths(
@@ -1034,6 +1250,16 @@ mod tests {
         snapshot.detect_revision_change(&[changed]);
         assert!(snapshot.status.changed);
         assert_eq!(snapshot.resolved_total_frames, 4);
+
+        let status = TakeLatencyStatus {
+            changed: false,
+            incomplete: true,
+            variable: true,
+        };
+        let flagged = TakeLatencySnapshot::new(&recipe, 48_000, 101, 8, 3, 5, status).unwrap();
+        assert_eq!(flagged.status, status);
+        assert_eq!(flagged.retained_before_frames, 3);
+        assert_eq!(flagged.retained_after_frames, 5);
     }
 
     #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
