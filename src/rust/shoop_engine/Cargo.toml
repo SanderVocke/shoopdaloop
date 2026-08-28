@@ -27,6 +27,7 @@ rtrb = { workspace = true }
 rubato = { workspace = true }
 # Optional so the engine builds and tests without libjack present.
 jack = { workspace = true, optional = true }
+jack-sys = { workspace = true, optional = true }
 # Optional too, though cpal needs no system library on macOS or Windows.
 cpal = { workspace = true, optional = true }
 # MIDI for hosts without JACK. Optional for the same reason.
@@ -63,7 +64,7 @@ workspace = true
 
 [features]
 prebuild = []
-jack = ["dep:jack"]
+jack = ["dep:jack", "dep:jack-sys"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
 carla = ["dep:serde_json", "dep:libloading", "dep:libc", "dep:rfd"]

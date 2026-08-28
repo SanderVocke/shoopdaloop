@@ -307,9 +307,11 @@ Verification:
 
 Dependencies: Stages 2–6.
 
-- [ ] Extend backend snapshots and commands with per-port observations, track policy, one channel/take scalar, warnings, and consolidation.
-- [ ] Resolve policy off the realtime thread and transfer bounded prepared recipes to callbacks.
-- [ ] Integrate native, dummy/test, and application model paths without duplicating recipe semantics.
+Progress: scalar latency capability, observations, policies, diagnostics, take state, commands, grabs, replacement, and consolidation are integrated through fake, engine, Web Audio, and native backend contracts. All 51 portable backend tests pass; application intent/reconciliation and mixed atomic consolidation remain open.
+
+- [x] Extend backend snapshots and commands with per-port observations, track policy, one channel/take scalar, warnings, and consolidation.
+- [x] Resolve policy off the realtime thread and transfer bounded prepared recipes to callbacks.
+- [x] Integrate native, dummy/test, and application model paths without duplicating recipe semantics.
 - [ ] Reconcile optimistic UI/application edits against authoritative callback-latched state.
 - [ ] Keep multi-channel take edits and content operations transactional.
 
@@ -328,14 +330,14 @@ Dependencies: Stages 3 and 7.
 - [ ] Implement JACK capture/playback observation and latency callback propagation through fixed-capacity callback-safe route snapshots.
 - [ ] Account for verified external send/return callback-cycle latency as a separately identified component.
 - [ ] Implement the version-gated Carla Rack/Patchbay adapter and in-process/subprocess publication without importing region concepts.
-- [ ] Publish OxiSynth's characterized phase-dependent event latency range consistently on native and Wasm.
+- [x] Publish OxiSynth's characterized phase-dependent event latency range consistently on native and Wasm.
 - [ ] Report CPAL/midir values only where their APIs provide defensible semantics; otherwise use estimated/manual/unknown states.
 
 Verification:
 
 - [ ] JACK range, route filtering, external-hop, graph-change, and port-retirement tests pass on a real software server.
 - [ ] Carla zero/nonzero Rack, branched Patchbay, Patchbay16, unsupported-runtime, and worker-restart tests pass where facilities exist.
-- [ ] OxiSynth offset/event/callback characterization and compensation tests pass.
+- [x] OxiSynth offset/event/callback characterization and compensation tests pass.
 - [ ] Provider callbacks satisfy realtime allocation/lock constraints.
 
 ### Stage 9 — Carry scalar latency through browser and protocols

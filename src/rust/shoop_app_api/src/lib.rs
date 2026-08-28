@@ -248,6 +248,26 @@ pub enum TrackProcessorEditorState {
     OxiSynth(OxiSynthState),
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyProviderState {
+    CarlaRackAggregate,
+    CarlaPatchbayGraphRange,
+    BuiltInSynthPhaseRange,
+    Manual,
+    VersionMismatch,
+    #[default]
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LatencyObservationState {
+    pub minimum_frames: Option<u32>,
+    pub maximum_frames: Option<u32>,
+    pub certainty: LatencyCertaintyState,
+    pub sample_rate: u32,
+    pub revision: u64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrackFxState {
     pub processor_type: TrackProcessorTypeId,
@@ -258,12 +278,94 @@ pub struct TrackFxState {
     pub crash_summary: Option<String>,
     pub logs: Arc<[FxGenerationLogState]>,
     pub editor: Option<TrackProcessorEditorState>,
+    pub latency: LatencyObservationState,
+    pub latency_provider: LatencyProviderState,
 }
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
 pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum LatencyComponentKind {
+    #[default]
+    ExternalCapture,
+    Processor,
+    CuePlayback,
+    BackendBuffering,
+    Manual,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyValueMode {
+    #[default]
+    Automatic,
+    Manual(u32),
+    AutomaticPlusTrim(i32),
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyRangeSelectionState {
+    Minimum,
+    Midpoint,
+    #[default]
+    Maximum,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CueOutputSelection {
+    ApplicationPort(PortId),
+    HostPort(HostPortId),
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LatencyComponentPolicyState {
+    pub kind: LatencyComponentKind,
+    pub enabled: bool,
+    pub value_mode: LatencyValueMode,
+    pub range_selection: LatencyRangeSelectionState,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TrackLatencyPolicyState {
+    pub cue_followed: bool,
+    pub cue_output: Option<CueOutputSelection>,
+    pub components: Arc<[LatencyComponentPolicyState]>,
+    pub revision: u64,
+    pub pending: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LatencyCertaintyState {
+    Exact,
+    Range,
+    Estimated,
+    ManualOnly,
+    #[default]
+    Unknown,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TakeLatencyProvenanceState {
+    pub capture_alignment_frames: i32,
+    pub retained_before_frames: u32,
+    pub retained_after_frames: u32,
+    pub render_advance_frames: u32,
+    pub certainty: LatencyCertaintyState,
+    pub observation_min_frames: Option<u32>,
+    pub observation_max_frames: Option<u32>,
+    pub observation_sample_rate: u32,
+    pub observation_revision: u64,
+    pub variable_history: bool,
+    pub history_revisions: u32,
+    pub changed_during_operation: bool,
+    pub incomplete: bool,
+    pub deferred_mode: Option<LoopMode>,
+    pub finalizing: bool,
+    pub error: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DefaultRecordingAction {
@@ -497,6 +599,43 @@ pub struct AudioDriverRuntimeState {
     pub switch: AudioDriverSwitchState,
 }
 
+pub const LATENCY_DIAGNOSTIC_PLOT_SAMPLES: usize = 64;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LatencyDiagnosticsState {
+    pub unresolved_recipes: u64,
+    pub observation_changes: u64,
+    pub insufficient_margins: u64,
+    pub deferred_transitions: u64,
+    pub finalization_overruns: u64,
+    pub path_ambiguities: u64,
+    pub provider_failures: u64,
+    pub applied_capture_plot: [i32; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+    pub render_advance_plot: [u32; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+    pub active_postroll_plot: [u32; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+    pub plot_cursor: u8,
+    pub plot_len: u8,
+}
+
+impl Default for LatencyDiagnosticsState {
+    fn default() -> Self {
+        Self {
+            unresolved_recipes: 0,
+            observation_changes: 0,
+            insufficient_margins: 0,
+            deferred_transitions: 0,
+            finalization_overruns: 0,
+            path_ambiguities: 0,
+            provider_failures: 0,
+            applied_capture_plot: [0; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+            render_advance_plot: [0; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+            active_postroll_plot: [0; LATENCY_DIAGNOSTIC_PLOT_SAMPLES],
+            plot_cursor: 0,
+            plot_len: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct StatusState {
     pub version: String,
@@ -515,6 +654,10 @@ pub struct StatusState {
     pub command_overflows: u32,
     pub storage_low_channels: u32,
     pub storage_exhaustions: u32,
+    pub backend_capture_latency: LatencyObservationState,
+    pub backend_playback_latency: LatencyObservationState,
+    pub latency_diagnostics: LatencyDiagnosticsState,
+    pub latency_diagnostic_summary: String,
 }
 
 impl StatusState {
@@ -623,6 +766,7 @@ pub struct LoopState {
     pub peak_right_db: f32,
     pub midi_activity: bool,
     pub has_recorded_fx_state: bool,
+    pub latency: TakeLatencyProvenanceState,
 }
 
 impl Default for LoopState {
@@ -656,6 +800,7 @@ impl Default for LoopState {
             peak_right_db: -200.0,
             midi_activity: false,
             has_recorded_fx_state: false,
+            latency: TakeLatencyProvenanceState::default(),
         }
     }
 }
@@ -741,6 +886,8 @@ pub struct ApplicationPortState {
     pub direction: PortDirection,
     pub role: PortRole,
     pub connection_policy: ConnectionPolicy,
+    pub capture_latency: LatencyObservationState,
+    pub playback_latency: LatencyObservationState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -841,6 +988,7 @@ pub struct TrackState {
     pub fx: Option<TrackFxState>,
     pub loops: Vec<LoopState>,
     pub controls: TrackControlState,
+    pub latency_policy: TrackLatencyPolicyState,
     pub port_ids: Arc<[PortId]>,
 }
 
@@ -853,6 +1001,7 @@ pub struct WaveformChannelState {
     pub preplay_samples: u64,
     pub loop_length: u64,
     pub played_sample: Option<i64>,
+    pub latency: TakeLatencyProvenanceState,
 }
 
 impl Default for WaveformChannelState {
@@ -865,6 +1014,7 @@ impl Default for WaveformChannelState {
             preplay_samples: 0,
             loop_length: 0,
             played_sample: None,
+            latency: TakeLatencyProvenanceState::default(),
         }
     }
 }
@@ -885,6 +1035,7 @@ pub struct MidiSequenceChannelState {
     pub preplay_samples: u64,
     pub loop_length: u64,
     pub played_sample: Option<i64>,
+    pub latency: TakeLatencyProvenanceState,
 }
 
 impl Default for MidiSequenceChannelState {
@@ -898,6 +1049,7 @@ impl Default for MidiSequenceChannelState {
             preplay_samples: 0,
             loop_length: 0,
             played_sample: None,
+            latency: TakeLatencyProvenanceState::default(),
         }
     }
 }
@@ -1409,6 +1561,15 @@ pub struct SelectionModifiers {
 pub enum LoopAudioExportFormat {
     Exact,
     FloatWav,
+    RawExact,
+    RawFloatWav,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LoopMidiExportFormat {
+    Exact,
+    Standard,
+    RawStandard,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1550,6 +1711,17 @@ pub enum PianoAction {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
     SetLoopSmoothingMs(u32),
+    SetTrackLatencyPolicy {
+        track_id: TrackId,
+        policy: TrackLatencyPolicyState,
+    },
+    SetTakeLatencyPolicy {
+        loop_id: LoopId,
+        capture_alignment_frames: i32,
+    },
+    ConsolidateTakeLatency {
+        loop_id: LoopId,
+    },
     SetLoopTimeline {
         loop_id: LoopId,
         start_offset: Option<i64>,
@@ -1569,6 +1741,10 @@ pub enum AppIntent {
     Piano(PianoAction),
     AddTrack(DirectTrackSpec),
     AddTrackWithTopology(TrackSpec),
+    AddTrackWithLatencyPolicy {
+        spec: TrackSpec,
+        policy: TrackLatencyPolicyState,
+    },
     AddLoop {
         track_id: TrackId,
     },
@@ -1737,10 +1913,11 @@ pub enum AppIntent {
         name: String,
         bytes: Arc<[u8]>,
         update_loop_length: bool,
+        manual_offset_frames: Option<i32>,
     },
     RequestLoopMidiExport {
         loop_id: LoopId,
-        standard: bool,
+        format: LoopMidiExportFormat,
     },
     RequestLoopMidiImportPicker {
         loop_id: LoopId,
@@ -1750,6 +1927,7 @@ pub enum AppIntent {
         name: String,
         bytes: Arc<[u8]>,
         update_loop_length: bool,
+        manual_offset_frames: Option<i32>,
     },
 }
 
@@ -1848,13 +2026,18 @@ impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
+            Self::SetTrackLatencyPolicy { .. } => "track.latency_policy",
+            Self::SetTakeLatencyPolicy { .. } => "loop.take_latency_policy",
+            Self::ConsolidateTakeLatency { .. } => "loop.take_latency_consolidate",
             Self::SetLoopTimeline { .. } => "loop.timeline",
             Self::Loop { action, .. } => action.kind(),
             Self::Track { action, .. } => action.kind(),
             Self::Global(action) => action.kind(),
             Self::Piano(action) => action.kind(),
             Self::AddTrack(_) => "track.add_direct",
-            Self::AddTrackWithTopology(_) => "track.add_with_topology",
+            Self::AddTrackWithTopology(_) | Self::AddTrackWithLatencyPolicy { .. } => {
+                "track.add_with_topology"
+            }
             Self::AddLoop { .. } => "loop.add_row",
             Self::ComposeLoopSerial { .. } => "loop.compose_serial",
             Self::ComposeLoopAt { .. } => "loop.compose_at",
@@ -2369,6 +2552,8 @@ mod tests {
             direction: PortDirection::Input,
             role: PortRole::AudioInput,
             connection_policy: ConnectionPolicy::UserManaged,
+            capture_latency: Default::default(),
+            playback_latency: Default::default(),
         };
         let host = HostPortState {
             id: HostPortId::new(endpoint.clone()),
@@ -2470,6 +2655,39 @@ mod tests {
         assert_eq!(AudioDriverKind::Cpal.id(), "cpal");
         assert_eq!(AudioDriverKind::Jack.label(), "JACK");
         assert_ne!(dummy, jack);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_model_exposes_edit_intents_and_take_provenance() {
+        let policy = TrackLatencyPolicyState {
+            cue_followed: true,
+            cue_output: Some(CueOutputSelection::HostPort(HostPortId::new(
+                "system:playback_1",
+            ))),
+            components: Arc::from([LatencyComponentPolicyState {
+                kind: LatencyComponentKind::Processor,
+                enabled: true,
+                value_mode: LatencyValueMode::AutomaticPlusTrim(-2),
+                range_selection: LatencyRangeSelectionState::Midpoint,
+            }]),
+            revision: 7,
+            pending: true,
+            error: None,
+        };
+        let intent = AppIntent::SetTrackLatencyPolicy {
+            track_id: TrackId::from_raw(3),
+            policy: policy.clone(),
+        };
+        assert_eq!(intent.kind(), "track.latency_policy");
+        let mut loop_state = LoopState::default();
+        loop_state.latency.capture_alignment_frames = 9;
+        loop_state.latency.variable_history = true;
+        loop_state.latency.history_revisions = 2;
+        loop_state.latency.deferred_mode = Some(LoopMode::Playing);
+        assert_eq!(loop_state.latency.capture_alignment_frames, 9);
+        assert!(loop_state.latency.variable_history);
+        assert_eq!(loop_state.latency.deferred_mode, Some(LoopMode::Playing));
+        assert!(policy.pending);
     }
 
     #[shoop_wasm_test_support::shoop_test]

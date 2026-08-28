@@ -439,6 +439,7 @@ impl RemoteWorkletBackend {
                 events: Vec::with_capacity(chunk.total_events),
                 start_offset: chunk.start_offset,
                 preplay: chunk.preplay,
+                latency: Default::default(),
             });
         }
         let Some(channel) = assembly.channels.get_mut(chunk.channel) else {
@@ -828,6 +829,8 @@ impl RemoteWorkletBackend {
                                 crash_summary: None,
                                 logs: Arc::from([]),
                                 editor: oxisynth,
+                                latency: Default::default(),
+                                latency_provider: Default::default(),
                             }
                         }),
                         audio_channels: track.audio_channels,
@@ -868,6 +871,7 @@ impl RemoteWorkletBackend {
                         balance: loop_.balance,
                         audio_peaks: loop_.audio_peaks,
                         midi_activity: loop_.midi_activity,
+                        latency: Default::default(),
                     },
                 )
             })
@@ -1699,6 +1703,7 @@ impl Backend for RemoteWorkletBackend {
                         samples,
                         start_offset,
                         preplay,
+                        latency: Default::default(),
                     }
                 })
                 .collect(),

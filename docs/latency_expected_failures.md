@@ -4,7 +4,11 @@ This file tracks transferred tests whose production behavior is not implemented 
 
 ## Current expected failures
 
-None in the transferred shared-domain group. Later Stage 1 subsystem transfers will add entries here before their production behavior is implemented.
+| Subsystem | Expected result | Current explicit gap |
+|---|---|---|
+| Application import/export | Manual scalar offsets, raw audio/MIDI export, and empty-media imports preserve scalar semantics | The new intents compile, but manual offsets and raw formats return explicit unsupported errors until Stage 10 tests are transferred. |
+| Application media details | Waveform and MIDI details preserve complete scalar take provenance | Temporary application assembly defaults latency metadata pending the Stage 7 model transfer. |
+| Worklet media details | Browser audio/MIDI chunks preserve and validate scalar take provenance | Temporary client assembly defaults latency metadata pending Stage 9 protocol transfer. |
 
 ## Resolved groups
 

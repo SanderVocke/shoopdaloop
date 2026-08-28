@@ -439,6 +439,14 @@ fn validate_preset(preset: OxiSynthPresetId) -> Result<(), OxiSynthStateError> {
 }
 
 fn create_synth(sample_rate: f32, state: OxiSynthState) -> Result<(Synth, SoundFontId)> {
+    create_synth_with_effects(sample_rate, state, true)
+}
+
+fn create_synth_with_effects(
+    sample_rate: f32,
+    state: OxiSynthState,
+    effects_active: bool,
+) -> Result<(Synth, SoundFontId)> {
     validate_state(state).context("validate OxiSynth state")?;
     let mut bytes = Cursor::new(SOUNDFONT_BYTES);
     let font = SoundFont::load(&mut bytes).context("parse embedded TimGM6mb SoundFont")?;
@@ -446,8 +454,8 @@ fn create_synth(sample_rate: f32, state: OxiSynthState) -> Result<(Synth, SoundF
         sample_rate,
         polyphony: POLYPHONY,
         midi_channels: 16,
-        reverb_active: true,
-        chorus_active: true,
+        reverb_active: effects_active,
+        chorus_active: effects_active,
         drums_channel_active: false,
         audio_channels: 1,
         audio_groups: 1,
@@ -482,6 +490,11 @@ fn apply_send(
     synth.set_gen(0, generator, value * MAX_SEND_GENERATOR_UNITS)
 }
 
+/// OxiSynth applies queued events at 64-frame render phase boundaries. The
+/// characterized algorithmic residual is therefore phase-dependent in 0..=63
+/// frames; musical attack, chorus, and reverb tails are deliberately excluded.
+pub const OXISYNTH_EVENT_PHASE_FRAMES: u32 = 64;
+
 pub struct OxiSynthProcessor {
     synth: Synth,
     soundfont_id: SoundFontId,
@@ -506,6 +519,16 @@ impl std::fmt::Debug for OxiSynthProcessor {
 }
 
 impl OxiSynthProcessor {
+    pub fn latency_observation(sample_rate: u32) -> crate::RuntimeLatencyObservation {
+        crate::RuntimeLatencyObservation::new(
+            shoop_latency::LatencyRangeFrames::new(0, OXISYNTH_EVENT_PHASE_FRAMES - 1).ok(),
+            shoop_latency::LatencyCertainty::Range,
+            sample_rate.max(1),
+            1,
+        )
+        .expect("the characterized OxiSynth phase range is valid")
+    }
+
     pub fn new(sample_rate: f32, max_frames: usize, state: OxiSynthState) -> Result<Self> {
         let runtime_state = Arc::new(OxiSynthRuntimeState::new(state));
         Self::new_with_runtime(
@@ -524,8 +547,30 @@ impl OxiSynthProcessor {
         midi_cc_assignments: OxiSynthMidiCcAssignments,
         runtime_state: Arc<OxiSynthRuntimeState>,
     ) -> Result<Self> {
+        Self::new_with_runtime_and_effects(
+            sample_rate,
+            max_frames,
+            state,
+            midi_cc_assignments,
+            runtime_state,
+            true,
+        )
+    }
+
+    fn new_with_runtime_and_effects(
+        sample_rate: f32,
+        max_frames: usize,
+        state: OxiSynthState,
+        midi_cc_assignments: OxiSynthMidiCcAssignments,
+        runtime_state: Arc<OxiSynthRuntimeState>,
+        effects_active: bool,
+    ) -> Result<Self> {
         let max_frames = max_frames.max(1);
-        let (synth, soundfont_id) = create_synth(sample_rate, state)?;
+        let (synth, soundfont_id) = if effects_active {
+            create_synth(sample_rate, state)?
+        } else {
+            create_synth_with_effects(sample_rate, state, false)?
+        };
         Ok(Self {
             synth,
             soundfont_id,
@@ -538,6 +583,23 @@ impl OxiSynthProcessor {
             left: vec![0.0; max_frames],
             right: vec![0.0; max_frames],
         })
+    }
+
+    #[cfg(test)]
+    fn new_without_effects(
+        sample_rate: f32,
+        max_frames: usize,
+        state: OxiSynthState,
+    ) -> Result<Self> {
+        let runtime_state = Arc::new(OxiSynthRuntimeState::new(state));
+        Self::new_with_runtime_and_effects(
+            sample_rate,
+            max_frames,
+            state,
+            OxiSynthMidiCcAssignments::default(),
+            runtime_state,
+            false,
+        )
     }
 
     pub fn selected_preset(&self) -> OxiSynthPresetId {
@@ -759,6 +821,7 @@ fn translate_midi(data: &[u8]) -> Option<MidiEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::midi;
     use oxisynth::MidiEvent;
     use sha2::{Digest, Sha256};
 
@@ -1036,6 +1099,175 @@ mod tests {
         assert_eq!(processor.synth.cc(0, 10).unwrap(), 64);
         assert_eq!(processor.synth.cc(0, 91).unwrap(), 0);
         assert_eq!(processor.synth.cc(0, 93).unwrap(), 0);
+    }
+
+    const CHARACTERIZATION_OFFSETS: [u32; 9] = [0, 1, 31, 63, 64, 65, 127, 128, 255];
+
+    fn characterization_events(offset: u32) -> Vec<MidiStorageElem> {
+        [
+            midi::note_on(0, 60, 100).to_vec(),
+            midi::cc(0, 64, 127).to_vec(),
+            midi::note_off(0, 61, 0).to_vec(),
+            midi::cc(0, 1, 73).to_vec(),
+            midi::pitch_wheel(0, 10_000).to_vec(),
+            vec![0xd0, 91],
+        ]
+        .into_iter()
+        .map(|data| MidiStorageElem::new(offset, &data).unwrap())
+        .collect()
+    }
+
+    fn processor_for_characterization(
+        max_frames: usize,
+        effects_active: bool,
+    ) -> OxiSynthProcessor {
+        let mut state = OxiSynthState::default();
+        if effects_active {
+            state.reverb_send = 1.0;
+            state.chorus_send = 1.0;
+            OxiSynthProcessor::new(48_000.0, max_frames, state).unwrap()
+        } else {
+            OxiSynthProcessor::new_without_effects(48_000.0, max_frames, state).unwrap()
+        }
+    }
+
+    fn stereo_output(processor: &OxiSynthProcessor, frames: usize) -> Vec<[f32; 2]> {
+        processor
+            .output(0, frames)
+            .unwrap()
+            .iter()
+            .copied()
+            .zip(processor.output(1, frames).unwrap().iter().copied())
+            .map(|(left, right)| [left, right])
+            .collect()
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn latency_contract_reports_only_the_characterized_event_phase_range() {
+        let observation = OxiSynthProcessor::latency_observation(48_000);
+        assert_eq!(
+            observation.certainty,
+            shoop_latency::LatencyCertainty::Range
+        );
+        assert_eq!(
+            observation.range.map(|range| (range.min(), range.max())),
+            Some((0, 63))
+        );
+        assert_eq!(observation.sample_rate, 48_000);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn event_application_exposes_64_frame_phase_latency() {
+        const FRAMES: usize = 384;
+        for effects_active in [false, true] {
+            let mut silence = processor_for_characterization(FRAMES, effects_active);
+            silence.process(FRAMES, &[]);
+            let silence = stereo_output(&silence, FRAMES);
+
+            let mut baseline = processor_for_characterization(FRAMES, effects_active);
+            baseline.process(
+                FRAMES,
+                &[MidiStorageElem::new(0, &midi::note_on(0, 60, 100)).unwrap()],
+            );
+            let baseline = stereo_output(&baseline, FRAMES);
+            let baseline_onset = baseline
+                .iter()
+                .zip(&silence)
+                .position(|(actual, silent)| actual != silent)
+                .expect("note affects output");
+
+            for offset in CHARACTERIZATION_OFFSETS {
+                let mut processor = processor_for_characterization(FRAMES, effects_active);
+                processor.process(
+                    FRAMES,
+                    &[MidiStorageElem::new(offset, &midi::note_on(0, 60, 100)).unwrap()],
+                );
+                let output = stereo_output(&processor, FRAMES);
+                let onset = output
+                    .iter()
+                    .zip(&silence)
+                    .position(|(actual, silent)| actual != silent)
+                    .expect("note affects output");
+                let render_boundary = (offset as usize).div_ceil(64) * 64;
+                assert_eq!(
+                    onset,
+                    render_boundary + baseline_onset,
+                    "effects_active={effects_active}, offset={offset}"
+                );
+                assert_eq!(
+                    output[..offset as usize],
+                    silence[..offset as usize],
+                    "effects_active={effects_active}, offset={offset}"
+                );
+            }
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn note_and_controller_types_apply_at_every_characterized_offset() {
+        const FRAMES: usize = 320;
+        for offset in CHARACTERIZATION_OFFSETS {
+            let mut timestamped = processor_for_characterization(FRAMES, false);
+            let mut split = processor_for_characterization(FRAMES, false);
+            let held = MidiStorageElem::new(0, &midi::note_on(0, 61, 100)).unwrap();
+            timestamped.process(32, &[held]);
+            split.process(32, &[held]);
+
+            let events = characterization_events(offset);
+            timestamped.process(FRAMES, &events);
+            let timestamped_output = stereo_output(&timestamped, FRAMES);
+
+            let offset = offset as usize;
+            let mut split_output = Vec::with_capacity(FRAMES);
+            if offset > 0 {
+                split.process(offset, &[]);
+                split_output.extend(stereo_output(&split, offset));
+            }
+            let events_at_zero = characterization_events(0);
+            split.process(FRAMES - offset, &events_at_zero);
+            split_output.extend(stereo_output(&split, FRAMES - offset));
+
+            assert_eq!(timestamped_output, split_output, "offset={offset}");
+            assert_eq!(timestamped.synth.cc(0, 64).unwrap(), 127);
+            assert_eq!(timestamped.synth.cc(0, 1).unwrap(), 73);
+            assert_eq!(timestamped.synth.pitch_bend(0).unwrap(), 10_000);
+            assert_eq!(split.synth.cc(0, 64).unwrap(), 127);
+            assert_eq!(split.synth.cc(0, 1).unwrap(), 73);
+            assert_eq!(split.synth.pitch_bend(0).unwrap(), 10_000);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn odd_process_calls_match_one_contiguous_render() {
+        const FRAMES: usize = 320;
+        let events: Vec<MidiStorageElem> = CHARACTERIZATION_OFFSETS
+            .into_iter()
+            .flat_map(characterization_events)
+            .collect();
+        let mut contiguous = processor_for_characterization(FRAMES, true);
+        contiguous.process(FRAMES, &events);
+        let contiguous_output = stereo_output(&contiguous, FRAMES);
+
+        let mut chunked = processor_for_characterization(65, true);
+        let mut chunked_output = Vec::with_capacity(FRAMES);
+        let mut start = 0_u32;
+        for frames in [17_u32, 45, 1, 63, 1, 65, 63, 65] {
+            let end = start + frames;
+            let local_events: Vec<MidiStorageElem> = events
+                .iter()
+                .filter(|event| event.time >= start && event.time < end)
+                .map(|event| MidiStorageElem::new(event.time - start, event.data()).unwrap())
+                .collect();
+            chunked.process(frames as usize, &local_events);
+            chunked_output.extend(stereo_output(&chunked, frames as usize));
+            start = end;
+        }
+
+        assert_eq!(start, FRAMES as u32);
+        assert_eq!(chunked_output, contiguous_output);
+        assert_eq!(chunked.synth.cc(0, 64).unwrap(), 127);
+        assert_eq!(chunked.synth.cc(0, 1).unwrap(), 73);
+        assert_eq!(chunked.synth.pitch_bend(0).unwrap(), 10_000);
     }
 
     #[shoop_wasm_test_support::shoop_test]

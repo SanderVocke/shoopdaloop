@@ -22,12 +22,12 @@ use shoop_app_api::{
     ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DefaultRecordingAction,
     DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
     IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
-    LoopId, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState, PendingConnectionState,
-    PianoAction, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
-    ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind, ScriptMidiRuleDirection,
-    ScriptingState, StatusState, StructuralState, TaskId, TrackAction, TrackControlState, TrackId,
-    TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec, TrackSpecTopology, TrackState,
-    TrackTopology, WaveformChannelState,
+    LoopId, LoopMidiExportFormat, LoopMode, LoopState, MidiEventState, MidiSequenceChannelState,
+    PendingConnectionState, PianoAction, PortDataType, PortDirection, PortId, PortRole,
+    SampleRateWarning, ScriptDialogButtonId, ScriptDialogId, ScriptId, ScriptKind,
+    ScriptMidiRuleDirection, ScriptingState, StatusState, StructuralState, TaskId, TrackAction,
+    TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor, TrackSpec,
+    TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAsyncResult, BackendAudioChannelUpdate, BackendAudioContent, BackendAudioData,
@@ -935,6 +935,7 @@ fn midi_detail_channels(model: &LoopModel, data: BackendMidiData) -> Vec<MidiSeq
                     LoopMode::Playing | LoopMode::PlayingDryThroughWet
                 )
                 .then_some(i64::from(model.position)),
+                latency: Default::default(),
             }
         })
         .collect()
@@ -1264,6 +1265,37 @@ impl ApplicationModel {
             AppIntent::SetLoopSmoothingMs(milliseconds) => backend
                 .set_loop_smoothing_ms(milliseconds)
                 .map_err(|error| error.to_string()),
+            AppIntent::SetTrackLatencyPolicy { track_id, policy } => self
+                .tracks
+                .iter()
+                .find(|track| track.id == track_id)
+                .ok_or_else(|| format!("unknown track {track_id}"))
+                .and_then(|track| {
+                    backend
+                        .set_track_latency_policy(track.backend_id, &policy)
+                        .map_err(|error| error.to_string())
+                }),
+            AppIntent::SetTakeLatencyPolicy {
+                loop_id,
+                capture_alignment_frames,
+            } => self
+                .loops
+                .get(&loop_id)
+                .ok_or_else(|| format!("unknown loop {loop_id}"))
+                .and_then(|loop_| {
+                    backend
+                        .set_take_latency_policy(loop_.backend_id, capture_alignment_frames)
+                        .map_err(|error| error.to_string())
+                }),
+            AppIntent::ConsolidateTakeLatency { loop_id } => self
+                .loops
+                .get(&loop_id)
+                .ok_or_else(|| format!("unknown loop {loop_id}"))
+                .and_then(|loop_| {
+                    backend
+                        .consolidate_take_latency(loop_.backend_id)
+                        .map_err(|error| error.to_string())
+                }),
             AppIntent::SetLoopTimeline {
                 loop_id,
                 start_offset,
@@ -1284,6 +1316,18 @@ impl ApplicationModel {
             }
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddTrackWithTopology(spec) => self.add_track_spec(backend, spec),
+            AppIntent::AddTrackWithLatencyPolicy { spec, policy } => self
+                .add_track_spec(backend, spec)
+                .and_then(|_| {
+                    self.tracks
+                        .last()
+                        .ok_or_else(|| "created track is unavailable".to_owned())
+                })
+                .and_then(|track| {
+                    backend
+                        .set_track_latency_policy(track.backend_id, &policy)
+                        .map_err(|error| error.to_string())
+                }),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
             AppIntent::ComposeLoopSerial {
                 target_loop_id,
@@ -1450,16 +1494,34 @@ impl ApplicationModel {
                 name,
                 bytes,
                 update_loop_length,
-            } => self.import_loop_audio(backend, loop_id, name, &bytes, update_loop_length),
-            AppIntent::RequestLoopMidiExport { loop_id, standard } => {
-                self.export_loop_midi(backend, loop_id, standard)
+                manual_offset_frames,
+            } => {
+                if manual_offset_frames.is_some() {
+                    Err("manual audio import offsets are not implemented".to_owned())
+                } else {
+                    self.import_loop_audio(backend, loop_id, name, &bytes, update_loop_length)
+                }
             }
+            AppIntent::RequestLoopMidiExport { loop_id, format } => match format {
+                LoopMidiExportFormat::Exact => self.export_loop_midi(backend, loop_id, false),
+                LoopMidiExportFormat::Standard => self.export_loop_midi(backend, loop_id, true),
+                LoopMidiExportFormat::RawStandard => {
+                    Err("raw MIDI export is not implemented".to_owned())
+                }
+            },
             AppIntent::ImportLoopMidiBytes {
                 loop_id,
                 name,
                 bytes,
                 update_loop_length,
-            } => self.import_loop_midi(backend, loop_id, name, &bytes, update_loop_length),
+                manual_offset_frames,
+            } => {
+                if manual_offset_frames.is_some() {
+                    Err("manual MIDI import offsets are not implemented".to_owned())
+                } else {
+                    self.import_loop_midi(backend, loop_id, name, &bytes, update_loop_length)
+                }
+            }
         };
         if let Err(error) = result {
             span.record("outcome", "error");
@@ -3898,6 +3960,7 @@ impl ApplicationModel {
                                             samples: content.samples,
                                             start_offset: Some(content.start_offset),
                                             preplay: Some(content.preplay),
+                                            latency: None,
                                         })
                                         .collect(),
                                     midi: content
@@ -3911,6 +3974,7 @@ impl ApplicationModel {
                                             events: content.events,
                                             start_offset: Some(content.start_offset),
                                             preplay: Some(content.preplay),
+                                            latency: None,
                                         })
                                         .collect(),
                                     length: Some(content.length),
@@ -6914,6 +6978,8 @@ impl ApplicationModel {
                 direction: port.direction,
                 role: port.role,
                 connection_policy: ConnectionPolicy::UserManaged,
+                capture_latency: Default::default(),
+                playback_latency: Default::default(),
             })
             .collect();
         let mut normalized_hosts = self.host_ports.clone();
@@ -6956,6 +7022,8 @@ impl ApplicationModel {
                     direction,
                     role,
                     connection_policy: ConnectionPolicy::OwnerManaged,
+                    capture_latency: Default::default(),
+                    playback_latency: Default::default(),
                 });
                 for endpoint in rule.endpoints.iter() {
                     let host_id = script_midi_host_id(host_direction, &endpoint.id);
@@ -7803,6 +7871,7 @@ impl ApplicationModel {
                         .collect(),
                     controls: track.controls.clone(),
                     port_ids: Arc::clone(&track.port_ids),
+                    latency_policy: Default::default(),
                 })
                 .collect(),
             track_processors: Arc::clone(&self.track_processors),
@@ -7849,6 +7918,7 @@ impl ApplicationModel {
                         loop_length: model.length as u64,
                         played_sample: matches!(model.state.mode, LoopMode::Playing)
                             .then_some(model.position as i64),
+                        latency: Default::default(),
                     })
                     .collect()
             })
@@ -8008,6 +8078,7 @@ impl ApplicationModel {
                     samples: source.samples.clone(),
                     start_offset: None,
                     preplay: None,
+                    latency: None,
                 })
                 .collect(),
             midi: Vec::new(),
@@ -8049,6 +8120,7 @@ impl ApplicationModel {
                     .collect::<Result<Vec<_>, String>>()?,
                 start_offset: None,
                 preplay: None,
+                latency: None,
             }],
             length: update_loop_length.then_some(length),
         })
@@ -8087,6 +8159,7 @@ impl ApplicationModel {
                     samples: samples.clone(),
                     start_offset: Some(0),
                     preplay: Some(0),
+                    latency: None,
                 })
                 .collect(),
             midi: Vec::new(),
@@ -8128,6 +8201,7 @@ impl ApplicationModel {
                 events,
                 start_offset: Some(0),
                 preplay: Some(0),
+                latency: None,
             }],
             length: Some(length),
         })
@@ -8353,6 +8427,9 @@ impl ApplicationModel {
                 "wav",
                 "audio/wav",
             ),
+            LoopAudioExportFormat::RawExact | LoopAudioExportFormat::RawFloatWav => {
+                return Err("raw audio export is not implemented".to_owned().into());
+            }
         };
         self.file_outputs
             .lock()
@@ -8971,6 +9048,7 @@ fn session_bundle_to_backend(
                                 .map_err(|_| "audio offset exceeds engine range".to_owned())?,
                             preplay: u32::try_from(channel.preplay_frames)
                                 .map_err(|_| "audio preplay exceeds engine range".to_owned())?,
+                            latency: Default::default(),
                         });
                     }
                     DataTypeDocument::Midi => {
@@ -9008,6 +9086,7 @@ fn session_bundle_to_backend(
                                 .map_err(|_| "MIDI offset exceeds engine range".to_owned())?,
                             preplay: u32::try_from(channel.preplay_frames)
                                 .map_err(|_| "MIDI preplay exceeds engine range".to_owned())?,
+                            latency: Default::default(),
                         });
                     }
                 }
@@ -9022,6 +9101,7 @@ fn session_bundle_to_backend(
                         gain: 1.0,
                         start_offset: 0,
                         preplay: 0,
+                        latency: Default::default(),
                     })
                     .collect();
                 midi_channels = expected_midi_modes
@@ -9034,6 +9114,7 @@ fn session_bundle_to_backend(
                         events: Vec::new(),
                         start_offset: 0,
                         preplay: 0,
+                        latency: Default::default(),
                     })
                     .collect();
             }
@@ -9728,6 +9809,7 @@ mod tests {
                 samples: vec![0.25, -0.5, 0.75, -1.0],
                 start_offset: Some(-2),
                 preplay: Some(3),
+                latency: None,
             }],
             midi: vec![BackendMidiChannelUpdate {
                 channel: 0,
@@ -9739,6 +9821,7 @@ mod tests {
                 }],
                 start_offset: Some(-1),
                 preplay: Some(2),
+                latency: None,
             }],
             length: Some(4),
         };
@@ -9756,6 +9839,7 @@ mod tests {
                         samples: vec![1.0, 1.0],
                         start_offset: Some(0),
                         preplay: Some(0),
+                        latency: None,
                     }],
                     midi: Vec::new(),
                     length: Some(2),
@@ -14611,6 +14695,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         ],
                         start_offset: Some(-3),
                         preplay: Some(4),
+                        latency: None,
                     }],
                     length: Some(24),
                     ..Default::default()
@@ -17437,6 +17522,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                             samples: vec![channel as f32 + 0.25; 128],
                             start_offset: Some(11),
                             preplay: Some(12),
+                            latency: None,
                         })
                         .collect(),
                     midi: vec![BackendMidiChannelUpdate {
@@ -17449,6 +17535,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                         }],
                         start_offset: Some(13),
                         preplay: Some(14),
+                        latency: None,
                     }],
                     length: Some(128),
                 },

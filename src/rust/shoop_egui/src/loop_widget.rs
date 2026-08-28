@@ -7,8 +7,8 @@ use egui_material_icons::MaterialIcon;
 use crate::{
     colors, composite_loop_widget::LoopDragPayload, dial::paint_dial,
     meter_ballistics::PeakMeterAnimation, optimistic_value::OptimisticValue, AppIntent,
-    CompositeKind, GlobalControlState, LoopAudioExportFormat, LoopMode, LoopState,
-    LoopWidgetAction, SelectionModifiers,
+    CompositeKind, GlobalControlState, LoopAudioExportFormat, LoopMidiExportFormat, LoopMode,
+    LoopState, LoopWidgetAction, SelectionModifiers,
 };
 
 const TOUCH_MODE_ID: &str = "shoop_touch_mode";
@@ -387,14 +387,14 @@ impl LoopWidget {
             if ui.button("Save exact MIDI…").clicked() {
                 result.io_intents.push(AppIntent::RequestLoopMidiExport {
                     loop_id: state.id,
-                    standard: false,
+                    format: LoopMidiExportFormat::Exact,
                 });
                 ui.close();
             }
             if ui.button("Save standard MIDI…").clicked() {
                 result.io_intents.push(AppIntent::RequestLoopMidiExport {
                     loop_id: state.id,
-                    standard: true,
+                    format: LoopMidiExportFormat::Standard,
                 });
                 ui.close();
             }

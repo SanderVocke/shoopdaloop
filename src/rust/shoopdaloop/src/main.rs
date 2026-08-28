@@ -975,6 +975,7 @@ impl UnifiedApp {
                                 name: file_name(&path),
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
+                                manual_offset_frames: None,
                             });
                         }
                         Err(error) => {
@@ -1001,6 +1002,7 @@ impl UnifiedApp {
                                 name: file_name(&path),
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
+                                manual_offset_frames: None,
                             });
                         }
                         Err(error) => {
@@ -1065,6 +1067,7 @@ impl UnifiedApp {
                                 name,
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
+                                manual_offset_frames: None,
                             });
                     }
                 });
@@ -1086,6 +1089,7 @@ impl UnifiedApp {
                                 name,
                                 bytes: std::sync::Arc::from(bytes),
                                 update_loop_length: true,
+                                manual_offset_frames: None,
                             });
                     }
                 });
@@ -4226,6 +4230,7 @@ impl BrowserSelfTest {
                         name: output.suggested_name,
                         bytes: output.bytes,
                         update_loop_length: true,
+                        manual_offset_frames: None,
                     })
                     .map(|()| Self::WaitForLoopAudioMapping)
             }
@@ -4285,6 +4290,7 @@ impl BrowserSelfTest {
                         name: output.suggested_name,
                         bytes: output.bytes,
                         update_loop_length: true,
+                        manual_offset_frames: None,
                     })
                     .map(|()| Self::WaitForLoopMidiImport)
             }
