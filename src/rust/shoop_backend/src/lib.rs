@@ -4243,13 +4243,12 @@ impl Backend for EngineBackend {
             .loop_channels
             .get(&loop_id)
             .ok_or_else(|| anyhow!("missing loop channels"))?;
-        if channels.audio.is_empty() {
-            return Err(anyhow!("MIDI-only latency consolidation is unsupported"));
-        }
-        for channel_index in &channels.audio {
+
+        let mut prepared_audio = Vec::with_capacity(channels.audio.len());
+        for &channel_index in &channels.audio {
             let channel = self
                 .session
-                .audio_channel_mut(*channel_index)
+                .audio_channel(channel_index)
                 .ok_or_else(|| anyhow!("missing audio channel"))?;
             let raw = channel.data();
             let start = channel.start_offset();
@@ -4262,7 +4261,44 @@ impl Backend for EngineBackend {
                         .unwrap_or(0.0)
                 })
                 .collect::<Vec<_>>();
-            channel.load_data(&consolidated);
+            prepared_audio.push((channel_index, consolidated));
+        }
+
+        let mut prepared_midi = Vec::with_capacity(channels.midi.len());
+        for &channel_index in &channels.midi {
+            let channel = self
+                .session
+                .midi_channel(channel_index)
+                .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+            let start = i64::from(channel.start_offset());
+            let alignment = i64::from(channel.capture_alignment_frames());
+            let mut state = shoop_engine::MidiStateTracker::new(shoop_engine::TrackWhat::ALL);
+            for message in channel.recording_start_state_messages() {
+                state.process(&message);
+            }
+            let mut events = Vec::new();
+            for event in channel.contents() {
+                let logical = i64::from(event.time) - start - alignment;
+                if logical < 0 {
+                    state.process(event.data());
+                } else if logical < logical_length as i64 {
+                    events.push(event.at_time(logical as u32));
+                }
+            }
+            prepared_midi.push((channel_index, events, state.state_as_messages()));
+        }
+
+        for (channel_index, samples) in prepared_audio {
+            self.session
+                .audio_channel_mut(channel_index)
+                .expect("consolidation preflight retained audio channel")
+                .load_data(&samples);
+        }
+        for (channel_index, events, start_state) in prepared_midi {
+            self.session
+                .midi_channel_mut(channel_index)
+                .expect("consolidation preflight retained MIDI channel")
+                .set_contents(&events, logical_length as u32, Some(&start_state));
         }
         Ok(())
     }
@@ -8565,6 +8601,53 @@ mod tests {
         assert_eq!(take.observation_max_frames, Some(5));
         assert_eq!(take.observation_revision, 7);
         assert!(take.changed_during_operation);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn mixed_audio_midi_consolidation_bakes_both_channel_timelines() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "mixed-consolidation".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = track.loops[0];
+        let engine_loop = backend.loops[&loop_id];
+        backend.session.loop_mut(engine_loop).unwrap().set_length(4);
+        let audio = backend.loop_channels[&loop_id].audio[0];
+        let midi = backend.loop_channels[&loop_id].midi[0];
+        let audio_channel = backend.session.audio_channel_mut(audio).unwrap();
+        audio_channel.load_data(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+        audio_channel.set_capture_alignment_frames(2).unwrap();
+        let midi_channel = backend.session.midi_channel_mut(midi).unwrap();
+        midi_channel.set_contents(
+            &[
+                shoop_engine::MidiStorageElem::new(1, &[0xB0, 7, 99]).unwrap(),
+                shoop_engine::MidiStorageElem::new(3, &[0x90, 60, 100]).unwrap(),
+            ],
+            6,
+            None,
+        );
+        midi_channel.set_capture_alignment_frames(2).unwrap();
+
+        backend.consolidate_take_latency(loop_id).unwrap();
+
+        let audio_channel = backend.session.audio_channel(audio).unwrap();
+        assert_eq!(audio_channel.data(), vec![2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(audio_channel.capture_alignment_frames(), 0);
+        let midi_channel = backend.session.midi_channel(midi).unwrap();
+        assert_eq!(midi_channel.capture_alignment_frames(), 0);
+        assert_eq!(midi_channel.length(), 4);
+        assert_eq!(midi_channel.contents().len(), 1);
+        assert_eq!(midi_channel.contents()[0].time, 1);
+        assert_eq!(midi_channel.contents()[0].data(), [0x90, 60, 100]);
+        assert!(midi_channel
+            .recording_start_state_messages()
+            .iter()
+            .any(|message| message == &[0xB0, 7, 99]));
     }
 
     #[shoop_wasm_test_support::shoop_test]

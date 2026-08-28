@@ -292,15 +292,15 @@ Progress: bounded audio/MIDI observation history, scalar grab preparation/commit
 - [x] Preflight low-level replacement before entering replacement mode.
 - [x] Permit replacement only when the resolved incoming alignment equals the existing channel scalar.
 - [x] Reject differing replacement alignment before mutation with a consolidation-required error.
-- [ ] Consolidate complete audio and MIDI channels into logical coordinates, reset scalar alignment to zero, and commit all channels atomically.
-- [ ] Preserve undo/content snapshot behavior and invalidate application media caches after consolidation.
+- [x] Consolidate complete audio and MIDI channels into logical coordinates, reset scalar alignment to zero, and commit all channels atomically.
+- [x] Preserve undo/content snapshot behavior and invalidate application media caches after consolidation.
 
 Verification:
 
 - [x] Stable and variable grab tests pass without producing segment metadata.
 - [x] Insufficient history fails before target mutation.
 - [x] Compatible replacement preserves one scalar; incompatible replacement leaves mode and content unchanged.
-- [ ] Mixed audio/MIDI consolidation preserves samples, event ordering, start state, and loop length atomically.
+- [x] Mixed audio/MIDI consolidation preserves samples, event ordering, start state, and loop length atomically.
 - [x] Consolidated waveform/MIDI detail data is refreshed rather than served from stale caches.
 
 ### Stage 7 — Integrate backend and application policy

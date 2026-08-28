@@ -2418,12 +2418,11 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown loop"))?;
-        if loop_.audio.is_empty() {
-            return Err(anyhow!("MIDI-only latency consolidation is unsupported"));
-        }
-        for channel in &loop_.audio {
-            channel.consolidate_latency()?;
-        }
+        let sequence =
+            shoop_engine::app_backend::consolidate_loop_latency(&loop_.audio, &loop_.midi)?;
+        self.runtime()?
+            .session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
         Ok(())
     }
 
@@ -3916,6 +3915,77 @@ mod tests {
 
         backend.remove_composite_loop(composite).unwrap();
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_mixed_latency_consolidation_commits_audio_and_midi_together() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 64,
+        }))
+        .unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "native-mixed-consolidation".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let loop_id = created.loops[0];
+        backend
+            .replace_loop_content(
+                loop_id,
+                &BackendLoopContentUpdate {
+                    audio: vec![BackendAudioChannelUpdate {
+                        channel: 0,
+                        samples: vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
+                        start_offset: Some(0),
+                        preplay: Some(0),
+                        latency: None,
+                    }],
+                    midi: vec![BackendMidiChannelUpdate {
+                        channel: 0,
+                        length: 6,
+                        start_state: Vec::new(),
+                        events: vec![
+                            BackendMidiEvent {
+                                time: 1,
+                                data: vec![0xB0, 7, 99],
+                            },
+                            BackendMidiEvent {
+                                time: 3,
+                                data: vec![0x90, 60, 100],
+                            },
+                        ],
+                        start_offset: Some(0),
+                        preplay: Some(0),
+                        latency: None,
+                    }],
+                    length: Some(4),
+                },
+            )
+            .unwrap();
+        backend.set_take_latency_policy(loop_id, 2).unwrap();
+        backend.consolidate_take_latency(loop_id).unwrap();
+
+        let capture = backend.capture_session().unwrap();
+        let loop_ = capture
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert_eq!(loop_.audio[0].samples, vec![2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(loop_.audio[0].latency.capture_alignment_frames, 0);
+        assert_eq!(loop_.midi[0].events.len(), 1);
+        assert_eq!(loop_.midi[0].events[0].time, 1);
+        assert_eq!(loop_.midi[0].events[0].data, [0x90, 60, 100]);
+        assert!(loop_.midi[0]
+            .start_state
+            .iter()
+            .any(|message| message == &[0xB0, 7, 99]));
+        assert_eq!(loop_.midi[0].latency.capture_alignment_frames, 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

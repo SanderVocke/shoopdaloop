@@ -5254,10 +5254,21 @@ impl AudioChannel {
         Ok(sequence)
     }
 
-    pub fn consolidate_latency(&self) -> Result<CommandSequence> {
+    fn prepare_latency_consolidation(&self) -> Result<Vec<f32>> {
         let state = self.get_state()?;
         let logical_length = self.parent.mirror.read().length as usize;
-        let raw = self.get_data();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let raw = loop {
+            if let Ok(snapshot) = self.try_get_current_data_snapshot() {
+                break snapshot.contiguous();
+            }
+            if Instant::now() >= deadline {
+                return Err(anyhow!(
+                    "audio content did not settle before latency consolidation"
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        };
         let mut consolidated = Vec::with_capacity(logical_length);
         for logical in 0..logical_length {
             let raw_position = i64::from(state.start_offset)
@@ -5270,6 +5281,11 @@ impl AudioChannel {
                     .unwrap_or(0.0),
             );
         }
+        Ok(consolidated)
+    }
+
+    pub fn consolidate_latency(&self) -> Result<CommandSequence> {
+        let consolidated = self.prepare_latency_consolidation()?;
         self.load_data(&consolidated)
             .map_err(|error| anyhow!("could not queue latency consolidation: {error}"))
     }
@@ -5523,6 +5539,58 @@ impl MidiChannel {
             self.snapshot_control.cancel();
         }
         result
+    }
+
+    fn prepare_latency_consolidation(&self) -> Result<(Vec<MidiEvent>, u32)> {
+        let state = self.get_state()?;
+        let logical_length = self.parent.mirror.read().length;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let raw_events = loop {
+            if let Ok(snapshot) = self.try_get_current_data_snapshot() {
+                break snapshot.contiguous();
+            }
+            if Instant::now() >= deadline {
+                return Err(anyhow!(
+                    "MIDI content did not settle before latency consolidation"
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        let mut start_state = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
+        let mut consolidated = Vec::new();
+        for event in raw_events {
+            if event.time < 0 {
+                start_state.process(&event.data);
+                continue;
+            }
+            let logical = event
+                .time
+                .checked_sub(state.start_offset)
+                .and_then(|value| value.checked_sub(state.capture_alignment_frames));
+            if logical.is_some_and(|logical| logical < 0) {
+                start_state.process(&event.data);
+            } else if let Some(logical) =
+                logical.filter(|logical| i64::from(*logical) < i64::from(logical_length))
+            {
+                consolidated.push(MidiEvent {
+                    time: logical,
+                    data: event.data,
+                });
+            }
+        }
+        let mut baked = start_state
+            .state_as_messages()
+            .into_iter()
+            .map(|data| MidiEvent { time: -1, data })
+            .collect::<Vec<_>>();
+        baked.extend(consolidated);
+        Ok((baked, logical_length))
+    }
+
+    pub fn consolidate_latency(&self) -> Result<CommandSequence> {
+        let (baked, logical_length) = self.prepare_latency_consolidation()?;
+        self.load_midi_data(&baked, logical_length)
+            .map_err(|error| anyhow!("could not queue MIDI latency consolidation: {error}"))
     }
 
     pub fn adopt_ringbuffer_contents(
@@ -5803,6 +5871,155 @@ impl MidiChannel {
 
     pub fn reset_state_tracking(&self) -> std::result::Result<CommandSequence, SendError> {
         self.with_mut(move |channel| channel.reset_state_tracking())
+    }
+}
+
+pub fn consolidate_loop_latency(
+    audio: &[AudioChannel],
+    midi: &[MidiChannel],
+) -> Result<CommandSequence> {
+    let shared = audio
+        .first()
+        .map(|channel| Arc::clone(&channel.shared))
+        .or_else(|| midi.first().map(|channel| Arc::clone(&channel.shared)))
+        .ok_or_else(|| anyhow!("loop has no channels to consolidate"))?;
+    if audio
+        .iter()
+        .any(|channel| !Arc::ptr_eq(&shared, &channel.shared))
+        || midi
+            .iter()
+            .any(|channel| !Arc::ptr_eq(&shared, &channel.shared))
+    {
+        return Err(anyhow!(
+            "latency consolidation channels belong to different sessions"
+        ));
+    }
+
+    let audio_baked = audio
+        .iter()
+        .map(AudioChannel::prepare_latency_consolidation)
+        .collect::<Result<Vec<_>>>()?;
+    let midi_baked = midi
+        .iter()
+        .map(MidiChannel::prepare_latency_consolidation)
+        .collect::<Result<Vec<_>>>()?;
+
+    let audio_indices = audio
+        .iter()
+        .map(|channel| {
+            channel
+                .control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .ok_or_else(|| anyhow!("audio channel is not ready for consolidation"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let midi_indices = midi
+        .iter()
+        .map(|channel| {
+            channel
+                .control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .ok_or_else(|| anyhow!("MIDI channel is not ready for consolidation"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut audio_installs = Vec::with_capacity(audio.len());
+    for ((channel, samples), index) in audio.iter().zip(&audio_baked).zip(audio_indices) {
+        let Some(snapshot) = channel
+            .snapshot_control
+            .prepare(samples, engine::content_snapshot::ContentMutation::Loading)
+        else {
+            for prepared in audio.iter().take(audio_installs.len()) {
+                prepared.snapshot_control.cancel();
+            }
+            return Err(anyhow!("audio channel is busy during consolidation"));
+        };
+        let mut prepared = engine::PreparedAudioChannelData::new(64, samples.len());
+        prepared.begin_load(samples.len());
+        prepared.write(0, samples);
+        audio_installs.push((index, prepared, snapshot));
+    }
+
+    let mut midi_installs = Vec::with_capacity(midi.len());
+    for ((channel, (messages, length)), index) in midi.iter().zip(&midi_baked).zip(midi_indices) {
+        let state = messages
+            .iter()
+            .filter(|message| message.time < 0)
+            .map(|message| message.data.clone())
+            .collect::<Vec<_>>();
+        let elements = messages
+            .iter()
+            .filter(|message| message.time >= 0)
+            .filter_map(|message| {
+                engine::midi_storage::MidiStorageElem::new(message.time as u32, &message.data)
+            })
+            .collect::<Vec<_>>();
+        let Some(snapshot) = channel.snapshot_control.prepare(
+            messages,
+            *length,
+            engine::content_snapshot::ContentMutation::Loading,
+        ) else {
+            for prepared in audio {
+                prepared.snapshot_control.cancel();
+            }
+            for prepared in midi.iter().take(midi_installs.len()) {
+                prepared.snapshot_control.cancel();
+            }
+            return Err(anyhow!("MIDI channel is busy during consolidation"));
+        };
+        let prepared = engine::PreparedMidiChannelData::new(
+            &elements,
+            *length,
+            (!state.is_empty()).then_some(state.as_slice()),
+        );
+        midi_installs.push((index, prepared, snapshot));
+    }
+
+    let audio_controls = audio
+        .iter()
+        .map(|channel| channel.snapshot_control.clone())
+        .collect::<Vec<_>>();
+    let midi_controls = midi
+        .iter()
+        .map(|channel| channel.snapshot_control.clone())
+        .collect::<Vec<_>>();
+    let mut installs = Some((audio_installs, midi_installs));
+    let sequence = shared.send_control(move |session| {
+        let Some((audio_installs, midi_installs)) = installs.take() else {
+            return;
+        };
+        for (index, mut prepared, snapshot) in audio_installs {
+            if let Some(channel) = session.audio_channel_mut(index) {
+                channel.commit_prepared_data_and_snapshot(&mut prepared, snapshot);
+            }
+        }
+        for (index, mut prepared, snapshot) in midi_installs {
+            if let Some(channel) = session.midi_channel_mut(index) {
+                channel.commit_prepared_data_and_snapshot(&mut prepared, snapshot);
+            }
+        }
+    });
+    match sequence {
+        Ok(sequence) => {
+            for (channel, samples) in audio.iter().zip(audio_baked) {
+                channel.desired_data.store(Arc::new(samples));
+            }
+            for (channel, (messages, _)) in midi.iter().zip(midi_baked) {
+                channel.desired_data.store(Arc::new(messages));
+            }
+            Ok(sequence)
+        }
+        Err(error) => {
+            for control in audio_controls {
+                control.cancel();
+            }
+            for control in midi_controls {
+                control.cancel();
+            }
+            Err(error.into())
+        }
     }
 }
 
