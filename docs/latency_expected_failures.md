@@ -10,4 +10,4 @@ None in the transferred shared-domain group. Later Stage 1 subsystem transfers w
 
 | Subsystem | Initial inventory | Resolution evidence |
 |---|---|---|
-| Shared latency domain | 11 transferred tests: 3 initially green and 8 explicit behavioral failures | Stage 2 now has 12 native and Node Wasm tests green, including direct certainty/identity, trim/bound, recipe, overlap, cue, path, and frozen-status assertions. |
+| Shared latency domain | 11 transferred tests: 3 initially green and 8 explicit behavioral failures | Stage 2 now has 13 native and pinned-Node Wasm tests green, including direct scalar-mapping, certainty/identity, trim/bound, recipe, overlap, cue, path, and frozen-status assertions. |

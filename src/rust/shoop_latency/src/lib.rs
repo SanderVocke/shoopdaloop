@@ -9,6 +9,49 @@ pub const MAX_OBSERVATION_HISTORY: usize = 4_096;
 pub const MAX_SOURCE_IDENTITY_BYTES: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ScalarFrameMapping {
+    capture_alignment_frames: i32,
+}
+
+impl ScalarFrameMapping {
+    pub fn new(capture_alignment_frames: i32) -> Result<Self, LatencyDomainError> {
+        if i64::from(capture_alignment_frames).unsigned_abs() > u64::from(MAX_COMPENSATION_FRAMES) {
+            return Err(LatencyDomainError::SignedValueExceedsMaximum(
+                capture_alignment_frames,
+            ));
+        }
+        Ok(Self {
+            capture_alignment_frames,
+        })
+    }
+
+    pub const fn capture_alignment_frames(self) -> i32 {
+        self.capture_alignment_frames
+    }
+
+    pub fn raw_frame(self, logical_frame: i64) -> Result<i64, LatencyDomainError> {
+        logical_frame
+            .checked_add(i64::from(self.capture_alignment_frames))
+            .ok_or(LatencyDomainError::FrameArithmeticOverflow)
+    }
+
+    pub fn logical_frame(self, raw_frame: i64) -> Result<i64, LatencyDomainError> {
+        raw_frame
+            .checked_sub(i64::from(self.capture_alignment_frames))
+            .ok_or(LatencyDomainError::FrameArithmeticOverflow)
+    }
+
+    pub fn processor_dispatch_frame(
+        target_wet_frame: i64,
+        render_advance_frames: u32,
+    ) -> Result<i64, LatencyDomainError> {
+        target_wet_frame
+            .checked_sub(i64::from(render_advance_frames))
+            .ok_or(LatencyDomainError::FrameArithmeticOverflow)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LatencyRangeFrames {
     min: u32,
     max: u32,
@@ -665,6 +708,10 @@ pub enum LatencyDomainError {
     InvertedRange { min: u32, max: u32 },
     #[error("latency value {0} exceeds the supported maximum")]
     ValueExceedsMaximum(u32),
+    #[error("signed latency value {0} exceeds the supported maximum")]
+    SignedValueExceedsMaximum(i32),
+    #[error("latency frame arithmetic overflowed")]
+    FrameArithmeticOverflow,
     #[error("latency certainty and range do not agree")]
     CertaintyRangeMismatch,
     #[error("a meaningful latency observation has a zero sample rate")]
@@ -708,6 +755,44 @@ mod tests {
             .unwrap(),
             policy: LatencyComponentPolicy::default(),
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn scalar_mapping_uses_one_checked_signed_alignment() {
+        for alignment in [-17, 0, 23] {
+            let mapping = ScalarFrameMapping::new(alignment).unwrap();
+            assert_eq!(mapping.capture_alignment_frames(), alignment);
+            assert_eq!(mapping.raw_frame(100).unwrap(), 100 + i64::from(alignment));
+            assert_eq!(
+                mapping.logical_frame(100 + i64::from(alignment)).unwrap(),
+                100
+            );
+        }
+        assert_eq!(
+            ScalarFrameMapping::new(MAX_COMPENSATION_FRAMES as i32 + 1),
+            Err(LatencyDomainError::SignedValueExceedsMaximum(
+                MAX_COMPENSATION_FRAMES as i32 + 1
+            ))
+        );
+        assert_eq!(
+            ScalarFrameMapping::new(-(MAX_COMPENSATION_FRAMES as i32) - 1),
+            Err(LatencyDomainError::SignedValueExceedsMaximum(
+                -(MAX_COMPENSATION_FRAMES as i32) - 1
+            ))
+        );
+        let mapping = ScalarFrameMapping::new(1).unwrap();
+        assert_eq!(
+            mapping.raw_frame(i64::MAX),
+            Err(LatencyDomainError::FrameArithmeticOverflow)
+        );
+        assert_eq!(
+            ScalarFrameMapping::processor_dispatch_frame(i64::MIN, 1),
+            Err(LatencyDomainError::FrameArithmeticOverflow)
+        );
+        assert_eq!(
+            ScalarFrameMapping::processor_dispatch_frame(100, 17).unwrap(),
+            83
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

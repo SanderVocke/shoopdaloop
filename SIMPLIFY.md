@@ -183,7 +183,7 @@ Verification:
 
 Dependencies: Stage 0.
 
-Progress: the 11 shared-domain tests and scalar API scaffolding are transferred; their eight intentional behavioral failures are recorded in [`docs/latency_expected_failures.md`](docs/latency_expected_failures.md).
+Progress: the 12 shared-domain tests, two callback-publication tests, scalar API scaffolding, and fixed-size runtime publication types are transferred. The resolved and future intentional behavioral failures are tracked in [`docs/latency_expected_failures.md`](docs/latency_expected_failures.md).
 
 - [ ] Transfer the deterministic latency harness and applicable tests before implementing behavior.
 - [ ] Transfer inline tests in coherent subsystem groups, resolving current-`master` conflicts by preserving test intent.
@@ -223,6 +223,8 @@ Verification:
 ### Stage 3 — Add provider observations and callback-safe scalar contracts
 
 Dependencies: Stage 2.
+
+Progress: scalar observation and bounded recipe seqlocks are implemented and pass native/Wasm warning-denying checks plus allocation-free publication tests; provider/engine integration remains open.
 
 - [ ] Add per-port and per-processor latency observations with coherent revisions.
 - [ ] Add callback-readable atomic/fixed-size publication for observations and one latched recipe per operation.

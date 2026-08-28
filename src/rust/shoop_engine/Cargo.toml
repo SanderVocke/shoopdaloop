@@ -39,6 +39,7 @@ memmap2 = { workspace = true }
 tempfile = { workspace = true }
 assert_no_alloc = { workspace = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
+shoop_latency = { path = "../shoop_latency" }
 shoop_settings = { path = "../shoop_settings" }
 tracing = { workspace = true }
 enum-iterator = { workspace = true }
