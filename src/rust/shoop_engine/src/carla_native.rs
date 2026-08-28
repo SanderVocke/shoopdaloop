@@ -1,6 +1,9 @@
 //! Direct hosting of Carla Rack and Patchbay through the Carla Native C ABI.
 
-use crate::carla_processor::{CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo};
+use crate::carla_processor::{
+    CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo, ProcessorLatencyDiagnostic,
+    ProcessorLatencyObservation,
+};
 use crate::FXChainType;
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
@@ -224,6 +227,34 @@ struct NativePluginDescriptor {
 
 type GetDescriptor = unsafe extern "C" fn() -> *const NativePluginDescriptor;
 type StateFree = unsafe extern "C" fn(*mut c_void);
+type LatencyAdapterVersion = unsafe extern "C" fn() -> u32;
+type QueryNativeLatency = unsafe extern "C" fn(
+    *const NativePluginDescriptor,
+    NativePluginHandle,
+    *mut ShoopCarlaLatencyResult,
+) -> bool;
+
+const SHOOP_CARLA_LATENCY_ABI_VERSION: u32 = 1;
+const SHOOP_CARLA_LATENCY_EXACT: u32 = 0;
+const SHOOP_CARLA_LATENCY_RANGE: u32 = 1;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+struct ShoopCarlaLatencyResult {
+    struct_size: u32,
+    abi_version: u32,
+    status: u32,
+    minimum_frames: u32,
+    maximum_frames: u32,
+    path_count: u32,
+}
+
+#[derive(Clone, Copy)]
+enum LatencyAdapter {
+    Available(QueryNativeLatency),
+    Missing,
+    VersionMismatch(u32),
+}
 
 #[cfg(not(target_os = "windows"))]
 unsafe extern "C" fn process_state_free(pointer: *mut c_void) {
@@ -235,6 +266,7 @@ struct CarlaRuntime {
     _library: Library,
     _state_allocator_library: Option<Library>,
     state_free: StateFree,
+    latency_adapter: LatencyAdapter,
     rack: NonNull<NativePluginDescriptor>,
     patchbay: NonNull<NativePluginDescriptor>,
     patchbay16: NonNull<NativePluginDescriptor>,
@@ -447,6 +479,27 @@ fn load_runtime() -> Result<Arc<CarlaRuntime>> {
             })?;
             let library = unsafe { Library::new(&canonical) }
                 .with_context(|| format!("loading {}", canonical.display()))?;
+            let latency_adapter = unsafe {
+                let version = library
+                    .get::<LatencyAdapterVersion>(b"shoop_carla_latency_adapter_version\0")
+                    .ok()
+                    .map(|symbol| *symbol);
+                let query = library
+                    .get::<QueryNativeLatency>(b"shoop_carla_query_native_latency\0")
+                    .ok()
+                    .map(|symbol| *symbol);
+                match (version, query) {
+                    (Some(version), Some(query)) => {
+                        let version = version();
+                        if version == SHOOP_CARLA_LATENCY_ABI_VERSION {
+                            LatencyAdapter::Available(query)
+                        } else {
+                            LatencyAdapter::VersionMismatch(version)
+                        }
+                    }
+                    _ => LatencyAdapter::Missing,
+                }
+            };
             #[cfg(target_os = "windows")]
             let (state_allocator_library, state_free) = {
                 // Carla's official Windows build allocates get_state() with
@@ -478,6 +531,7 @@ fn load_runtime() -> Result<Arc<CarlaRuntime>> {
                 _library: library,
                 _state_allocator_library: state_allocator_library,
                 state_free,
+                latency_adapter,
                 rack,
                 patchbay,
                 patchbay16,
@@ -722,6 +776,10 @@ fn state_chain_label(chain_type: FXChainType) -> Result<&'static str> {
     }
 }
 
+pub fn encode_carla_project_state(chain_type: FXChainType, bytes: &[u8]) -> Result<String> {
+    encode_state(chain_type, bytes)
+}
+
 fn encode_state(chain_type: FXChainType, bytes: &[u8]) -> Result<String> {
     if bytes.len() > MAX_STATE_BYTES {
         bail!("Carla state exceeds {MAX_STATE_BYTES} bytes");
@@ -803,6 +861,8 @@ pub struct CarlaNativeHost {
     input_pointers: Vec<*mut f32>,
     output_pointers: Vec<*mut f32>,
     midi_inputs: Vec<NativeMidiEvent>,
+    latency: ProcessorLatencyObservation,
+    latency_diagnostic: ProcessorLatencyDiagnostic,
     active: bool,
 }
 
@@ -898,7 +958,7 @@ impl CarlaNativeHost {
         let mut audio_outputs = vec![vec![0.0; CARLA_MAX_BUFFER_SIZE]; channels];
         let input_pointers = audio_inputs.iter_mut().map(Vec::as_mut_ptr).collect();
         let output_pointers = audio_outputs.iter_mut().map(Vec::as_mut_ptr).collect();
-        Ok(Self {
+        let mut host = Self {
             runtime,
             descriptor,
             handle,
@@ -913,8 +973,90 @@ impl CarlaNativeHost {
             input_pointers,
             output_pointers,
             midi_inputs: Vec::with_capacity(CARLA_MIDI_BUFFER_CAPACITY),
+            latency: ProcessorLatencyObservation::unknown(sample_rate, 1),
+            latency_diagnostic: ProcessorLatencyDiagnostic::Unsupported,
             active: false,
-        })
+        };
+        host.refresh_latency();
+        Ok(host)
+    }
+
+    fn refresh_latency(&mut self) {
+        let query = match self.runtime.latency_adapter {
+            LatencyAdapter::Available(query) => query,
+            LatencyAdapter::Missing => {
+                self.latency_diagnostic = ProcessorLatencyDiagnostic::Unsupported;
+                self.latency = ProcessorLatencyObservation::unknown(
+                    self.host_context.sample_rate as u32,
+                    self.latency.revision,
+                );
+                return;
+            }
+            LatencyAdapter::VersionMismatch(version) => {
+                let _reported_version = version;
+                self.latency_diagnostic = ProcessorLatencyDiagnostic::VersionMismatch;
+                self.latency = ProcessorLatencyObservation::unknown(
+                    self.host_context.sample_rate as u32,
+                    self.latency.revision,
+                );
+                return;
+            }
+        };
+        let mut result = ShoopCarlaLatencyResult {
+            struct_size: std::mem::size_of::<ShoopCarlaLatencyResult>() as u32,
+            ..Default::default()
+        };
+        if !unsafe { query(self.descriptor.as_ptr(), self.handle.as_ptr(), &mut result) }
+            || result.abi_version != SHOOP_CARLA_LATENCY_ABI_VERSION
+        {
+            self.latency_diagnostic = ProcessorLatencyDiagnostic::VersionMismatch;
+            return;
+        }
+        let certainty = match result.status {
+            SHOOP_CARLA_LATENCY_EXACT if result.minimum_frames == result.maximum_frames => {
+                shoop_latency::LatencyCertainty::Exact
+            }
+            SHOOP_CARLA_LATENCY_RANGE if result.minimum_frames <= result.maximum_frames => {
+                shoop_latency::LatencyCertainty::Range
+            }
+            _ => {
+                self.latency_diagnostic = ProcessorLatencyDiagnostic::Unsupported;
+                self.latency = ProcessorLatencyObservation::unknown(
+                    self.host_context.sample_rate as u32,
+                    self.latency.revision,
+                );
+                return;
+            }
+        };
+        let changed = self.latency.range.is_none_or(|range| {
+            range.min() != result.minimum_frames || range.max() != result.maximum_frames
+        }) || self.latency.certainty != certainty;
+        let revision = if changed {
+            self.latency.revision.saturating_add(1)
+        } else {
+            self.latency.revision
+        };
+        self.latency = ProcessorLatencyObservation::new(
+            shoop_latency::LatencyRangeFrames::new(result.minimum_frames, result.maximum_frames)
+                .ok(),
+            certainty,
+            self.host_context.sample_rate as u32,
+            revision,
+        )
+        .unwrap_or_else(|_| {
+            ProcessorLatencyObservation::unknown(self.host_context.sample_rate as u32, revision)
+        });
+        self.latency_diagnostic = match self.info.chain_type {
+            FXChainType::CarlaRack => ProcessorLatencyDiagnostic::CarlaRackAggregate,
+            FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
+                ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange
+            }
+            _ => ProcessorLatencyDiagnostic::Unsupported,
+        };
+    }
+
+    pub fn latency_diagnostic(&self) -> ProcessorLatencyDiagnostic {
+        self.latency_diagnostic
     }
 
     fn descriptor(&self) -> &NativePluginDescriptor {
@@ -961,8 +1103,17 @@ impl CarlaProcessor for CarlaNativeHost {
         self.info
     }
 
+    fn latency(&self) -> ProcessorLatencyObservation {
+        self.latency
+    }
+
+    fn latency_diagnostic(&self) -> ProcessorLatencyDiagnostic {
+        self.latency_diagnostic
+    }
+
     fn idle(&mut self) {
         CarlaNativeHost::idle(self);
+        self.refresh_latency();
     }
 
     fn set_active(&mut self, active: bool) {
@@ -977,6 +1128,7 @@ impl CarlaProcessor for CarlaNativeHost {
             unsafe { deactivate(self.handle.as_ptr()) };
         }
         self.active = active;
+        self.refresh_latency();
     }
 
     fn is_active(&self) -> bool {
@@ -1028,6 +1180,7 @@ impl CarlaProcessor for CarlaNativeHost {
             .set_state
             .ok_or_else(|| anyhow!("Carla Native plugin has no state setter"))?;
         unsafe { set_state(self.handle.as_ptr(), state.as_ptr()) };
+        self.refresh_latency();
         Ok(())
     }
 
@@ -1260,6 +1413,37 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn pinned_adapter_reports_rack_and_reachable_patchbay_paths() {
+        let _exclusive = lock_carla_test();
+        let Ok(rack) = CarlaNativeHost::instantiate(FXChainType::CarlaRack, 48_000, 64) else {
+            eprintln!("skipping Carla latency adapter test; runtime unavailable");
+            return;
+        };
+        if rack.latency_diagnostic() == ProcessorLatencyDiagnostic::Unsupported {
+            assert!(rack.latency().range.is_none());
+            eprintln!("skipping Carla latency adapter assertions; installed runtime is unpatched");
+            return;
+        }
+        assert_eq!(
+            rack.latency_diagnostic(),
+            ProcessorLatencyDiagnostic::CarlaRackAggregate
+        );
+        assert_eq!(rack.latency().range.unwrap().min(), 0);
+        assert_eq!(rack.latency().range.unwrap().max(), 0);
+        drop(rack);
+
+        for chain_type in [FXChainType::CarlaPatchbay, FXChainType::CarlaPatchbay16x] {
+            let host = CarlaNativeHost::instantiate(chain_type, 48_000, 64).unwrap();
+            assert_eq!(
+                host.latency_diagnostic(),
+                ProcessorLatencyDiagnostic::CarlaPatchbayGraphRange
+            );
+            assert_eq!(host.latency().range.unwrap().min(), 0);
+            assert_eq!(host.latency().range.unwrap().max(), 0);
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn probes_and_runs_installed_carla_when_available() {
         let _exclusive = lock_carla_test();
         let fixtures = [
@@ -1324,6 +1508,14 @@ mod tests {
                 host.idle();
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
+            host.idle();
+            let latency = host.latency();
+            if host.latency_diagnostic() == ProcessorLatencyDiagnostic::Unsupported {
+                assert!(latency.range.is_none());
+            } else {
+                assert_eq!(latency.range.unwrap().min(), 0);
+                assert_eq!(latency.range.unwrap().max(), 0);
+            }
             let state = host.save_state().unwrap();
             assert!(
                 loaded_processed,
@@ -1335,5 +1527,186 @@ mod tests {
             assert!(state_xml.contains("<Label>midithrough</Label>"));
             host.restore_state(&state).unwrap();
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn real_nonzero_rack_and_branched_patchbay_latency_match_impulse_paths() {
+        let explicit = std::env::var_os("SHOOP_CARLA_NONZERO_RACK_STATE_XML")
+            .zip(std::env::var_os("SHOOP_CARLA_BRANCHED_PATCHBAY_STATE_XML"));
+        let (rack_xml, patchbay_xml) = if let Some((rack_path, patchbay_path)) = explicit {
+            (
+                std::fs::read(rack_path).expect("read nonzero Rack Carla XML"),
+                std::fs::read(patchbay_path).expect("read branched Patchbay Carla XML"),
+            )
+        } else if let Some(binary) = std::env::var_os("SHOOP_CARLA_NONZERO_PLUGIN_BINARY") {
+            let binary = binary.to_string_lossy();
+            let plugin = format!(
+                r#"
+ <Plugin>
+  <Info>
+   <Type>LADSPA</Type>
+   <Name>Rubber Band Live Mono Pitch Shifter</Name>
+   <Binary>{binary}</Binary>
+   <Label>rubberband-live-pitchshifter-mono</Label>
+  </Info>
+  <Data><Active>Yes</Active><ControlChannel>1</ControlChannel><Options>0x0</Options></Data>
+ </Plugin>
+"#,
+            );
+            let rack = format!(
+                r#"<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE CARLA-PROJECT>
+<CARLA-PROJECT VERSION='2.5'>
+ <EngineSettings><ForceStereo>true</ForceStereo><PreferPluginBridges>false</PreferPluginBridges><PreferUiBridges>false</PreferUiBridges><UIsAlwaysOnTop>false</UIsAlwaysOnTop><MaxParameters>200</MaxParameters><UIBridgesTimeout>4000</UIBridgesTimeout></EngineSettings>
+{plugin}</CARLA-PROJECT>
+"#,
+            );
+            let fixture = include_str!("../test_data/carla_legacy_patchbay_loaded_state.json");
+            let encoded = decode_state(fixture, FXChainType::CarlaPatchbay).unwrap();
+            let mut patchbay = String::from_utf8(encoded).unwrap();
+            patchbay = patchbay.replace("\n <Patchbay>", &format!("{plugin}\n <Patchbay>"));
+            patchbay = patchbay.replace(
+                "<Target>Audio Gain (Stereo):input_2</Target>",
+                "<Target>Rubber Band Live Mono Pitch Shifter:Input</Target>",
+            );
+            patchbay = patchbay.replace(
+                "<Source>Audio Gain (Stereo):output_2</Source>\n   <Target>Audio Output:Right</Target>",
+                "<Source>Rubber Band Live Mono Pitch Shifter:Output</Source>\n   <Target>Audio Output:Right</Target>",
+            );
+            (rack.into_bytes(), patchbay.into_bytes())
+        } else {
+            eprintln!(
+                "skipping real nonzero Carla latency test; provide XML fixtures or SHOOP_CARLA_NONZERO_PLUGIN_BINARY"
+            );
+            return;
+        };
+        let _exclusive = lock_carla_test();
+
+        let mut rack = CarlaNativeHost::instantiate(FXChainType::CarlaRack, 48_000, 64).unwrap();
+        rack.restore_state(&encode_state(FXChainType::CarlaRack, &rack_xml).unwrap())
+            .unwrap();
+        rack.set_active(true);
+        let mut rack_latency = None;
+        for _ in 0..100 {
+            rack.process(64).unwrap();
+            rack.idle();
+            if rack.latency().range.is_some_and(|range| range.max() > 0) {
+                rack_latency = rack.latency().range;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let rack_latency = rack_latency.unwrap_or_else(|| {
+            let state = rack
+                .save_state()
+                .unwrap_or_else(|_| "unavailable".to_owned());
+            panic!(
+                "nonzero Rack plugin did not report latency; diagnostic={:?}; state={}",
+                rack.latency_diagnostic(),
+                decode_state(&state, FXChainType::CarlaRack)
+                    .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                    .unwrap_or_else(|_| state)
+            )
+        });
+        assert_eq!(rack_latency.min(), rack_latency.max());
+        let expected = rack_latency.max();
+        let mut peak = (0.0_f32, 0_u32);
+        let blocks = expected.div_ceil(64) + 8;
+        for block in 0..blocks {
+            for channel in 0..rack.info().audio_inputs {
+                rack.audio_input_mut(channel).unwrap()[..64].fill(0.0);
+            }
+            if block == 0 {
+                rack.audio_input_mut(0).unwrap()[0] = 1.0;
+            }
+            rack.process(64).unwrap();
+            for (offset, sample) in rack.audio_output(0).unwrap()[..64].iter().enumerate() {
+                if sample.abs() > peak.0 {
+                    peak = (sample.abs(), block * 64 + offset as u32);
+                }
+            }
+        }
+        assert!(peak.0 > 1.0e-6);
+        assert_eq!(peak.1, expected);
+        drop(rack);
+
+        let mut patchbay =
+            CarlaNativeHost::instantiate(FXChainType::CarlaPatchbay, 48_000, 64).unwrap();
+        patchbay
+            .restore_state(&encode_state(FXChainType::CarlaPatchbay, &patchbay_xml).unwrap())
+            .unwrap();
+        patchbay.set_active(true);
+        let mut range = None;
+        for _ in 0..100 {
+            patchbay.process(64).unwrap();
+            patchbay.idle();
+            if patchbay
+                .latency()
+                .range
+                .is_some_and(|value| value.max() > 0)
+            {
+                range = patchbay.latency().range;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let range = range.expect("branched Patchbay did not report reachable latency paths");
+        assert_eq!(range.min(), 0);
+        assert_eq!(range.max(), expected);
+        let mut routing_ready = false;
+        for _ in 0..100 {
+            for channel in 0..patchbay.info().audio_inputs {
+                patchbay.audio_input_mut(channel).unwrap()[..64].fill(0.25);
+            }
+            patchbay.process(64).unwrap();
+            if patchbay.audio_output(0).unwrap()[..64]
+                .iter()
+                .any(|sample| sample.abs() > 0.1)
+                && patchbay.audio_output(1).unwrap()[..64]
+                    .iter()
+                    .any(|sample| sample.abs() > 0.01)
+            {
+                routing_ready = true;
+                break;
+            }
+            patchbay.idle();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            routing_ready,
+            "branched Patchbay routes did not become active"
+        );
+        for _ in 0..(expected.div_ceil(64) + 4) {
+            for channel in 0..patchbay.info().audio_inputs {
+                patchbay.audio_input_mut(channel).unwrap()[..64].fill(0.0);
+            }
+            patchbay.process(64).unwrap();
+        }
+
+        let mut zero_onset = None;
+        let mut delayed_peak = (0.0_f32, 0_u32);
+        for block in 0..(expected.div_ceil(64) + 8) {
+            for channel in 0..patchbay.info().audio_inputs {
+                patchbay.audio_input_mut(channel).unwrap()[..64].fill(0.0);
+                if block == 0 {
+                    patchbay.audio_input_mut(channel).unwrap()[0] = 1.0;
+                }
+            }
+            patchbay.process(64).unwrap();
+            if zero_onset.is_none() {
+                zero_onset = patchbay.audio_output(0).unwrap()[..64]
+                    .iter()
+                    .position(|sample| sample.abs() > 1.0e-6)
+                    .map(|offset| block * 64 + offset as u32);
+            }
+            for (offset, sample) in patchbay.audio_output(1).unwrap()[..64].iter().enumerate() {
+                if sample.abs() > delayed_peak.0 {
+                    delayed_peak = (sample.abs(), block * 64 + offset as u32);
+                }
+            }
+        }
+        assert_eq!(zero_onset, Some(0));
+        assert!(delayed_peak.0 > 1.0e-6);
+        assert_eq!(delayed_peak.1, expected);
     }
 }
