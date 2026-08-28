@@ -17,7 +17,7 @@ use crate::latency_runtime::{
 };
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
-use shoop_latency::{LatencyDomainError, MAX_COMPENSATION_FRAMES};
+use shoop_latency::{LatencyDomainError, ScalarFrameMapping, MAX_COMPENSATION_FRAMES};
 
 /// At most two copy commands (record and playback) per session sub-block.
 /// The session processes no more than 16 sub-blocks in one callback.
@@ -619,9 +619,13 @@ impl AudioChannel {
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
-        logical_position
-            .checked_add(self.start_offset)?
-            .checked_add(self.capture_alignment_frames)
+        let mapping = ScalarFrameMapping::new(self.capture_alignment_frames).ok()?;
+        i32::try_from(
+            mapping
+                .raw_media_frame(i64::from(logical_position), i64::from(self.start_offset))
+                .ok()?,
+        )
+        .ok()
     }
     pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
         self.raw_position_for_logical(logical_position)?
@@ -985,10 +989,14 @@ impl AudioChannel {
 
         if flags.contains(ProcessFlags::PLAYBACK) {
             self.last_played_back_sample = Some(params.position);
-            let raw_position = params
-                .position
-                .checked_add(self.capture_alignment_frames)
-                .ok_or(ChannelError::LatencyPositionOverflow)?;
+            let mapping = ScalarFrameMapping::new(self.capture_alignment_frames)
+                .map_err(|_| ChannelError::LatencyPositionOverflow)?;
+            let raw_position = i32::try_from(
+                mapping
+                    .raw_frame(i64::from(params.position))
+                    .map_err(|_| ChannelError::LatencyPositionOverflow)?,
+            )
+            .map_err(|_| ChannelError::LatencyPositionOverflow)?;
             let render_advance_frames = if matches!(
                 mode,
                 LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
@@ -1016,10 +1024,12 @@ impl AudioChannel {
             );
             let cyclic_window = (render_advance_frames > 0 && length_before > 0)
                 .then(|| {
-                    let start = self
-                        .start_offset
-                        .checked_add(self.capture_alignment_frames)
-                        .ok_or(ChannelError::LatencyPositionOverflow)?;
+                    let start = i32::try_from(
+                        mapping
+                            .raw_frame(i64::from(self.start_offset))
+                            .map_err(|_| ChannelError::LatencyPositionOverflow)?,
+                    )
+                    .map_err(|_| ChannelError::LatencyPositionOverflow)?;
                     let length = i32::try_from(length_before)
                         .map_err(|_| ChannelError::LatencyPositionOverflow)?;
                     let end = start

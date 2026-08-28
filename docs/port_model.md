@@ -15,6 +15,14 @@ Lua control links are owner-managed because script regex/autoconnect policy rema
 
 The user-managed **Global FX Control MIDI In** port is application-owned and appears only in the all-tracks Connections graph. CC 0–119, channel pressure, and pitch bend fan out to every MIDI-capable FX processor without entering loop channels, recording, playback media, or automation. Inactive processors retain only the latest value per control and receive it when normal processing resumes; global MIDI never wakes sleeping DSP, and a saturated restore drains over bounded later blocks. Other MIDI messages are filtered. Connecting one source here and to a track input is additive: absolute controls can be applied twice, relative controls may behave incorrectly, and the regular track copy can be recorded. Processor mappings remain processor-owned, and a host API that cannot open one endpoint twice reports an unconfirmed connection rather than deduplicating traffic.
 
+## Latency observations and cue identity
+
+Each normalized application port also publishes independent capture and playback observations: minimum/maximum frames, exact/range/estimated/manual/unknown certainty, sample rate, and revision. Numeric/revision changes do not rebuild topology. Browser worklet protocol snapshots carry the same bounded values; absent APIs remain unknown rather than invented zero.
+
+A track latency policy may select either its stable application output identity or one confirmed normalized host identity as the cue path. Application IDs are translated to backend IDs at the command boundary and translated back in authoritative snapshots; session documents retain the stable application ID. Host IDs use the same opaque `HostPortId` as the Connections graph. A missing selection remains visibly missing. More than one output connected to the selected host is path ambiguity: recipe resolution fails and diagnostics increment instead of choosing a route.
+
+Provider path intervals are scoped. A JACK/end-to-end capture observation and a separately enabled backend-buffer component that describes the same interval are rejected as overlapping, preventing double counting. Processor and selected output intervals remain independent where providers establish that separation.
+
 ## Web Audio endpoints
 
 After the explicit browser audio enable action, device channels are configured before track commands are replayed. Negotiated microphone channels appear as `webaudio:capture_N` host outputs and destination channels as `webaudio:destination_N` host inputs. Output-only mode has no capture host ports. A separate Web MIDI gesture publishes connected browser inputs as host outputs and browser outputs as host inputs. MIDI control can operate without audio; track MIDI waits for the AudioWorklet clock. Capture and destination endpoints are device boundaries, not an External effects host: the current browser processor catalog is empty and does not advertise External or Carla.

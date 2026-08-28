@@ -5341,11 +5341,11 @@ impl AudioChannel {
             }
             std::thread::sleep(Duration::from_millis(1));
         };
+        let mapping = shoop_latency::ScalarFrameMapping::new(state.capture_alignment_frames)?;
         let mut consolidated = Vec::with_capacity(logical_length);
         for logical in 0..logical_length {
-            let raw_position = i64::from(state.start_offset)
-                + i64::from(state.capture_alignment_frames)
-                + logical as i64;
+            let raw_position =
+                mapping.raw_media_frame(logical as i64, i64::from(state.start_offset))?;
             consolidated.push(
                 usize::try_from(raw_position)
                     .ok()
@@ -5628,6 +5628,7 @@ impl MidiChannel {
             }
             std::thread::sleep(Duration::from_millis(1));
         };
+        let mapping = shoop_latency::ScalarFrameMapping::new(state.capture_alignment_frames)?;
         let mut start_state = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
         let mut consolidated = Vec::new();
         for event in raw_events {
@@ -5635,10 +5636,10 @@ impl MidiChannel {
                 start_state.process(&event.data);
                 continue;
             }
-            let logical = event
-                .time
-                .checked_sub(state.start_offset)
-                .and_then(|value| value.checked_sub(state.capture_alignment_frames));
+            let logical = mapping
+                .logical_media_frame(i64::from(event.time), i64::from(state.start_offset))
+                .ok()
+                .and_then(|value| i32::try_from(value).ok());
             if logical.is_some_and(|logical| logical < 0) {
                 start_state.process(&event.data);
             } else if let Some(logical) =

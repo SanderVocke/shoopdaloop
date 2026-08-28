@@ -8550,6 +8550,10 @@ impl ApplicationModel {
                         .audio
                         .get(*index as usize)
                         .ok_or_else(|| "selected audio channel is unavailable".to_owned())?;
+                    let mapping = shoop_latency::ScalarFrameMapping::new(
+                        channel.latency.capture_alignment_frames,
+                    )
+                    .map_err(|error| error.to_string())?;
                     Ok(LoopAudioChannel {
                         label: labels
                             .get(*index as usize)
@@ -8566,14 +8570,15 @@ impl ApplicationModel {
                         } else {
                             (0..content.length as usize)
                                 .map(|logical| {
-                                    usize::try_from(
-                                        i64::from(channel.start_offset)
-                                            + i64::from(channel.latency.capture_alignment_frames)
-                                            + logical as i64,
-                                    )
-                                    .ok()
-                                    .and_then(|raw| channel.samples.get(raw).copied())
-                                    .unwrap_or(0.0)
+                                    mapping
+                                        .raw_media_frame(
+                                            logical as i64,
+                                            i64::from(channel.start_offset),
+                                        )
+                                        .ok()
+                                        .and_then(|raw| usize::try_from(raw).ok())
+                                        .and_then(|raw| channel.samples.get(raw).copied())
+                                        .unwrap_or(0.0)
                                 })
                                 .collect()
                         },
@@ -8665,16 +8670,23 @@ impl ApplicationModel {
             LoopMidiExportFormat::Exact | LoopMidiExportFormat::RawStandard
         );
         if !raw {
-            let selected_start = i64::from(content.start_offset)
-                + i64::from(content.latency.capture_alignment_frames);
+            let mapping =
+                shoop_latency::ScalarFrameMapping::new(content.latency.capture_alignment_frames)
+                    .map_err(|error| error.to_string())?;
+            let selected_start = mapping
+                .raw_media_frame(0, i64::from(content.start_offset))
+                .map_err(|error| error.to_string())?;
             midi.start_state = logical_midi_start_state(content, selected_start);
             midi.events = midi
                 .events
                 .into_iter()
                 .filter_map(|mut event| {
-                    let logical = i64::try_from(event.frame)
-                        .ok()?
-                        .checked_sub(selected_start)?;
+                    let logical = mapping
+                        .logical_media_frame(
+                            i64::try_from(event.frame).ok()?,
+                            i64::from(content.start_offset),
+                        )
+                        .ok()?;
                     if logical < 0 || logical >= i64::from(loop_content.length) {
                         return None;
                     }

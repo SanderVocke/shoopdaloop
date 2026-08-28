@@ -25,7 +25,7 @@ use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
 use crate::state_mirror::MidiChannelStateMirror;
-use shoop_latency::{LatencyDomainError, MAX_COMPENSATION_FRAMES};
+use shoop_latency::{LatencyDomainError, ScalarFrameMapping, MAX_COMPENSATION_FRAMES};
 
 use std::sync::Arc;
 use thiserror::Error;
@@ -515,9 +515,13 @@ impl MidiChannel {
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
-        logical_position
-            .checked_add(self.start_offset)?
-            .checked_add(self.capture_alignment_frames)
+        let mapping = ScalarFrameMapping::new(self.capture_alignment_frames).ok()?;
+        i32::try_from(
+            mapping
+                .raw_media_frame(i64::from(logical_position), i64::from(self.start_offset))
+                .ok()?,
+        )
+        .ok()
     }
     pub fn dispatch_raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
         self.raw_position_for_logical(logical_position)?
@@ -901,10 +905,14 @@ impl MidiChannel {
         }
 
         if flags.contains(ProcessFlags::PLAYBACK) {
-            let raw_position = params
-                .position
-                .checked_add(self.capture_alignment_frames)
-                .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+            let mapping = ScalarFrameMapping::new(self.capture_alignment_frames)
+                .map_err(|_| MidiChannelError::LatencyPositionOverflow)?;
+            let raw_position = i32::try_from(
+                mapping
+                    .raw_frame(i64::from(params.position))
+                    .map_err(|_| MidiChannelError::LatencyPositionOverflow)?,
+            )
+            .map_err(|_| MidiChannelError::LatencyPositionOverflow)?;
             let render_advance_frames = if matches!(
                 mode,
                 LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
@@ -948,10 +956,12 @@ impl MidiChannel {
 
             let cyclic_window = (render_advance_frames > 0 && length_before > 0)
                 .then(|| {
-                    let start = self
-                        .start_offset
-                        .checked_add(self.capture_alignment_frames)
-                        .ok_or(MidiChannelError::LatencyPositionOverflow)?;
+                    let start = i32::try_from(
+                        mapping
+                            .raw_frame(i64::from(self.start_offset))
+                            .map_err(|_| MidiChannelError::LatencyPositionOverflow)?,
+                    )
+                    .map_err(|_| MidiChannelError::LatencyPositionOverflow)?;
                     let end = start
                         .checked_add(
                             i32::try_from(length_before)

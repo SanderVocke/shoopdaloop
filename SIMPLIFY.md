@@ -183,7 +183,7 @@ Verification:
 
 Dependencies: Stage 0.
 
-Progress: the 12 shared-domain tests, two callback-publication tests, scalar API scaffolding, and fixed-size runtime publication types are transferred. The resolved and future intentional behavioral failures are tracked in [`docs/latency_expected_failures.md`](docs/latency_expected_failures.md).
+Evidence: all 134 reference tests are accounted for by the transfer inventory (124 transferred, seven scalar rewrites, three deliberate piecewise omissions), and all three added regressions are present. No expected-failure scaffolding remains.
 
 - [x] Transfer the deterministic latency harness and applicable tests before implementing behavior.
 - [x] Transfer inline tests in coherent subsystem groups, resolving current-`master` conflicts by preserving test intent.
@@ -400,30 +400,30 @@ Verification:
 
 Dependencies: all runtime stages.
 
-- [ ] Inventory latency representations and remove unnecessary conversion duplication.
-- [ ] Confirm audio, MIDI, export, and consolidation use the same scalar mapping semantics.
-- [ ] Confirm fake/native/worklet backends share policy resolution rather than reimplementing it.
-- [ ] Audit callback paths for content-sized scans, sorting, allocation, locks, logging, and unbounded sub-block loops.
-- [ ] Run maximum-value, rapid-policy, graph-churn, processor-change, driver-switch, loop-transition, and session-save stress tests.
-- [ ] Remove scaffolding stubs and temporary expected-failure inventories.
-- [ ] Verify forbidden region symbols and equivalent structures are absent from production and persistence APIs.
+- [x] Inventory latency representations and remove unnecessary conversion duplication.
+- [x] Confirm audio, MIDI, export, and consolidation use the same scalar mapping semantics.
+- [x] Confirm fake/native/worklet backends share policy resolution rather than reimplementing it.
+- [x] Audit callback paths for content-sized scans, sorting, allocation, locks, logging, and unbounded sub-block loops.
+- [x] Run maximum-value, rapid-policy, graph-churn, processor-change, driver-switch, loop-transition, and session-save stress tests.
+- [x] Remove scaffolding stubs and temporary expected-failure inventories.
+- [x] Verify forbidden region symbols and equivalent structures are absent from production and persistence APIs.
 
 Verification:
 
-- [ ] All transferred tests are green; no test remains ignored or weakened for implementation convenience.
-- [ ] No callback work scales with complete take content because of latency compensation.
-- [ ] Memory and callback work remain bounded at documented maxima.
-- [ ] `git diff --check` passes and unrelated changes are absent.
+- [x] All transferred tests are green; no test remains ignored or weakened for implementation convenience.
+- [x] No callback work scales with complete take content because of latency compensation.
+- [x] Memory and callback work remain bounded at documented maxima.
+- [x] `git diff --check` passes and unrelated changes are absent.
 
 ### Stage 13 — Documentation and final end-to-end validation
 
 Dependencies: all prior stages.
 
-- [ ] Document the scalar sign convention, component meanings, cue/output condition, provider certainty, retained media, grab warning, replacement/consolidation rule, and dry/wet behavior.
-- [ ] Update session, settings, port, Web MIDI, worklet, Carla, and troubleshooting contracts.
-- [ ] Retain provider measurements and facility limitations as evidence rather than unsupported claims.
-- [ ] Map every immutable acceptance criterion to direct tests or recorded provider validation.
-- [ ] Compare the new branch's ordinary scalar frame oracles with the reference implementation and document intentional differences for variable grab and replacement.
+- [x] Document the scalar sign convention, component meanings, cue/output condition, provider certainty, retained media, grab warning, replacement/consolidation rule, and dry/wet behavior.
+- [x] Update session, settings, port, Web MIDI, worklet, Carla, and troubleshooting contracts.
+- [x] Retain provider measurements and facility limitations as evidence rather than unsupported claims.
+- [x] Map every immutable acceptance criterion to direct tests or recorded provider validation.
+- [x] Compare the new branch's ordinary scalar frame oracles with the reference implementation and document intentional differences for variable grab and replacement.
 
 Final verification:
 

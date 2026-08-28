@@ -6,6 +6,8 @@ use shoop_latency::{
 use std::array;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 
+const PUBLICATION_READ_ATTEMPTS: usize = 16;
+
 pub(crate) fn cyclic_render_dispatch_position(
     media_position: i32,
     media_layout_offset: i32,
@@ -151,7 +153,7 @@ impl AtomicLatencyObservation {
     }
 
     pub fn read(&self) -> RuntimeLatencyObservation {
-        loop {
+        for _ in 0..PUBLICATION_READ_ATTEMPTS {
             let before = self.generation.load(Ordering::Acquire);
             if before & 1 != 0 {
                 std::hint::spin_loop();
@@ -182,6 +184,10 @@ impl AtomicLatencyObservation {
                 revision,
             };
         }
+        RuntimeLatencyObservation::unknown(
+            self.sample_rate.load(Ordering::Relaxed),
+            self.revision.load(Ordering::Relaxed),
+        )
     }
 }
 
@@ -493,7 +499,7 @@ impl AtomicLatencyRecipePublication {
     }
 
     pub fn read(&self) -> PublishedLatencyRecipe {
-        loop {
+        for _ in 0..PUBLICATION_READ_ATTEMPTS {
             let before = self.generation.load(Ordering::Acquire);
             if before & 1 != 0 {
                 std::hint::spin_loop();
@@ -535,6 +541,7 @@ impl AtomicLatencyRecipePublication {
             }
             std::hint::spin_loop();
         }
+        PublishedLatencyRecipe::default()
     }
 }
 
@@ -646,6 +653,23 @@ mod tests {
         assert_no_alloc::assert_no_alloc(|| {
             atomic.publish(observation);
             assert_eq!(atomic.read(), observation);
+        });
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn contended_publication_reads_fail_bounded_and_truthfully() {
+        let observation = AtomicLatencyObservation::default();
+        observation.generation.store(1, Ordering::Relaxed);
+        assert_no_alloc::assert_no_alloc(|| {
+            let fallback = observation.read();
+            assert_eq!(fallback.certainty, LatencyCertainty::Unknown);
+            assert!(fallback.range.is_none());
+        });
+
+        let recipe = AtomicLatencyRecipePublication::default();
+        recipe.generation.store(1, Ordering::Relaxed);
+        assert_no_alloc::assert_no_alloc(|| {
+            assert_eq!(recipe.read(), PublishedLatencyRecipe::default());
         });
     }
 

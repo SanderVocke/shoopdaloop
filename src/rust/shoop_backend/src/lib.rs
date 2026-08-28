@@ -4308,11 +4308,14 @@ impl Backend for EngineBackend {
                 .ok_or_else(|| anyhow!("missing audio channel"))?;
             let raw = channel.data();
             let start = channel.start_offset();
-            let alignment = channel.capture_alignment_frames();
+            let mapping =
+                shoop_latency::ScalarFrameMapping::new(channel.capture_alignment_frames())?;
             let consolidated = (0..logical_length)
                 .map(|logical| {
-                    usize::try_from(i64::from(start) + i64::from(alignment) + logical as i64)
+                    mapping
+                        .raw_media_frame(logical as i64, i64::from(start))
                         .ok()
+                        .and_then(|position| usize::try_from(position).ok())
                         .and_then(|position| raw.get(position).copied())
                         .unwrap_or(0.0)
                 })
@@ -4327,14 +4330,15 @@ impl Backend for EngineBackend {
                 .midi_channel(channel_index)
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?;
             let start = i64::from(channel.start_offset());
-            let alignment = i64::from(channel.capture_alignment_frames());
+            let mapping =
+                shoop_latency::ScalarFrameMapping::new(channel.capture_alignment_frames())?;
             let mut state = shoop_engine::MidiStateTracker::new(shoop_engine::TrackWhat::ALL);
             for message in channel.recording_start_state_messages() {
                 state.process(&message);
             }
             let mut events = Vec::new();
             for event in channel.contents() {
-                let logical = i64::from(event.time) - start - alignment;
+                let logical = mapping.logical_media_frame(i64::from(event.time), start)?;
                 if logical < 0 {
                     state.process(event.data());
                 } else if logical < logical_length as i64 {

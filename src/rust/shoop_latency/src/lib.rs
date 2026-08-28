@@ -41,6 +41,28 @@ impl ScalarFrameMapping {
             .ok_or(LatencyDomainError::FrameArithmeticOverflow)
     }
 
+    pub fn raw_media_frame(
+        self,
+        logical_frame: i64,
+        media_layout_offset: i64,
+    ) -> Result<i64, LatencyDomainError> {
+        self.raw_frame(
+            logical_frame
+                .checked_add(media_layout_offset)
+                .ok_or(LatencyDomainError::FrameArithmeticOverflow)?,
+        )
+    }
+
+    pub fn logical_media_frame(
+        self,
+        raw_frame: i64,
+        media_layout_offset: i64,
+    ) -> Result<i64, LatencyDomainError> {
+        self.logical_frame(raw_frame)?
+            .checked_sub(media_layout_offset)
+            .ok_or(LatencyDomainError::FrameArithmeticOverflow)
+    }
+
     pub fn processor_dispatch_frame(
         target_wet_frame: i64,
         render_advance_frames: u32,
@@ -763,6 +785,16 @@ mod tests {
             let mapping = ScalarFrameMapping::new(alignment).unwrap();
             assert_eq!(mapping.capture_alignment_frames(), alignment);
             assert_eq!(mapping.raw_frame(100).unwrap(), 100 + i64::from(alignment));
+            assert_eq!(
+                mapping.raw_media_frame(100, -9).unwrap(),
+                91 + i64::from(alignment)
+            );
+            assert_eq!(
+                mapping
+                    .logical_media_frame(91 + i64::from(alignment), -9)
+                    .unwrap(),
+                100
+            );
             assert_eq!(
                 mapping.logical_frame(100 + i64::from(alignment)).unwrap(),
                 100
