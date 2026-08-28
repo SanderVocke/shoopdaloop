@@ -183,6 +183,8 @@ Verification:
 
 Dependencies: Stage 0.
 
+Progress: the 11 shared-domain tests and scalar API scaffolding are transferred; their eight intentional behavioral failures are recorded in [`docs/latency_expected_failures.md`](docs/latency_expected_failures.md).
+
 - [ ] Transfer the deterministic latency harness and applicable tests before implementing behavior.
 - [ ] Transfer inline tests in coherent subsystem groups, resolving current-`master` conflicts by preserving test intent.
 - [ ] Remove the three piecewise-only tests and convert the seven region-bearing fixtures to scalar fixtures.
