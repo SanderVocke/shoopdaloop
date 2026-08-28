@@ -185,7 +185,7 @@ Dependencies: Stage 0.
 
 Progress: the 12 shared-domain tests, two callback-publication tests, scalar API scaffolding, and fixed-size runtime publication types are transferred. The resolved and future intentional behavioral failures are tracked in [`docs/latency_expected_failures.md`](docs/latency_expected_failures.md).
 
-- [ ] Transfer the deterministic latency harness and applicable tests before implementing behavior.
+- [x] Transfer the deterministic latency harness and applicable tests before implementing behavior.
 - [ ] Transfer inline tests in coherent subsystem groups, resolving current-`master` conflicts by preserving test intent.
 - [ ] Remove the three piecewise-only tests and convert the seven region-bearing fixtures to scalar fixtures.
 - [ ] Add the cache-invalidation, empty-import, and no-region architecture regressions.
@@ -242,7 +242,7 @@ Verification:
 
 Dependencies: Stages 2–3.
 
-Progress: the scalar audio/MIDI channel implementations and all applicable reference channel latency tests are transferred. Forty-eight audio-channel and 60 MIDI-channel-focused tests pass, covering signed mapping, bounded retention/postroll, callback/wrap playback, prerecord, replacement, snapshots/state ordering, smoothing finalization, and allocation-free recording. Loop/session integration remains open.
+Evidence: the scalar audio/MIDI channel and session implementations pass all 19 deterministic characterization tests plus the complete lower-layer suite. Coverage includes direct/dry/wet matrices, signed windows, callbacks, wrap, preplay, finalization, restart, state ordering, and allocation-free recording.
 
 - [x] Separate media layout, frozen capture alignment, and current render advance in audio and MIDI channels.
 - [x] Centralize checked scalar raw/logical mapping and use it for both channel types.
@@ -254,10 +254,10 @@ Progress: the scalar audio/MIDI channel implementations and all applicable refer
 
 Verification:
 
-- [ ] Ordinary record/play matrices pass for direct, dry, and wet audio/MIDI.
+- [x] Ordinary record/play matrices pass for direct, dry, and wet audio/MIDI.
 - [x] Positive, zero, and bounded negative alignments select exact expected raw frames.
 - [x] Final events survive postroll; prerecord material supports negative alignment.
-- [ ] Start/stop/restart, callback crossings, loop wrap, and play-after-record tests pass.
+- [x] Start/stop/restart, callback crossings, loop wrap, and play-after-record tests pass.
 - [x] Armed record/finalization remains allocation-free and lock-free.
 
 ### Stage 5 — Implement scalar dry render-ahead and wet rerecording
@@ -269,14 +269,14 @@ Progress: audio/MIDI channel render advance, operation-boundary latching, planne
 - [x] Apply current processor render advance independently of frozen capture alignment.
 - [x] Start planned dry-through-wet dispatch early enough for exact target-frame output.
 - [x] Implement explicit defer/warn behavior for immediate transitions lacking lead time.
-- [ ] Restore and clean MIDI state across early dispatch, wrap, stop, and latency changes.
+- [x] Restore and clean MIDI state across early dispatch, wrap, stop, and latency changes.
 - [x] Implement dry-into-wet canonical writes and `applied_during_render` provenance with no remaining processor playback contribution.
 - [x] Keep live monitoring on the uncompensated shortest path.
 
 Verification:
 
-- [ ] Planned-preplay, dry-through-wet, and dry-into-wet matrices pass for audio and MIDI.
-- [ ] Exact processor delay lands on target at start, steady state, wrap, stop, and restart.
+- [x] Planned-preplay, dry-through-wet, and dry-into-wet matrices pass for audio and MIDI.
+- [x] Exact processor delay lands on target at start, steady state, wrap, stop, and restart.
 - [x] Wet rerecord followed by ordinary playback proves no double compensation.
 - [x] Monitoring equivalence remains sample-for-sample unchanged.
 
@@ -297,9 +297,9 @@ Progress: bounded audio/MIDI observation history, scalar grab preparation/commit
 
 Verification:
 
-- [ ] Stable and variable grab tests pass without producing segment metadata.
-- [ ] Insufficient history fails before target mutation.
-- [ ] Compatible replacement preserves one scalar; incompatible replacement leaves mode and content unchanged.
+- [x] Stable and variable grab tests pass without producing segment metadata.
+- [x] Insufficient history fails before target mutation.
+- [x] Compatible replacement preserves one scalar; incompatible replacement leaves mode and content unchanged.
 - [ ] Mixed audio/MIDI consolidation preserves samples, event ordering, start state, and loop length atomically.
 - [ ] Consolidated waveform/MIDI detail data is refreshed rather than served from stale caches.
 
