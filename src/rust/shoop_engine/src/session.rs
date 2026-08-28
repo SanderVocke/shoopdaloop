@@ -13,6 +13,7 @@
 
 #[cfg(feature = "carla")]
 use crate::carla_processor::CarlaProcessor;
+use crate::carla_processor::ProcessorLatencyObservation;
 use crate::pending_midi_control::PendingMidiControlState;
 use shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK;
 use std::collections::HashMap;
@@ -412,11 +413,26 @@ enum ProcessorBackend {
     Carla(Box<dyn CarlaProcessor>),
 }
 
+impl ProcessorBackend {
+    fn latency(&self, sample_rate: u32) -> ProcessorLatencyObservation {
+        match self {
+            Self::Test2x2x1 => ProcessorLatencyObservation::exact(0, sample_rate.max(1), 1)
+                .expect("zero test latency is valid"),
+            Self::External | Self::OxiSynth(_) => {
+                ProcessorLatencyObservation::unknown(sample_rate, 0)
+            }
+            #[cfg(feature = "carla")]
+            Self::Carla(host) => host.latency(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ProcessorRoute {
     title: String,
     backend: ProcessorBackend,
     active: bool,
+    latency: ProcessorLatencyObservation,
     audio_inputs: Vec<usize>,
     audio_outputs: Vec<usize>,
     midi_inputs: Vec<usize>,
@@ -1523,6 +1539,27 @@ impl Session {
         self.sync_sources.get(loop_idx).copied().flatten()
     }
 
+    pub fn set_processor_latency_observation(
+        &mut self,
+        title: &str,
+        observation: ProcessorLatencyObservation,
+    ) -> Result<(), SessionError> {
+        let route = self
+            .processors
+            .iter_mut()
+            .find(|route| route.title == title)
+            .ok_or(SessionError::NoSuchProcessor)?;
+        route.latency = observation;
+        Ok(())
+    }
+
+    pub fn processor_latency(&self, title: &str) -> Option<ProcessorLatencyObservation> {
+        self.processors
+            .iter()
+            .find(|route| route.title == title)
+            .map(|route| route.latency)
+    }
+
     pub fn set_test_fx_active(&mut self, title: impl Into<String>, active: bool) {
         let title = title.into();
         if let Some(route) = self
@@ -1536,6 +1573,8 @@ impl Session {
                 title,
                 backend: ProcessorBackend::Test2x2x1,
                 active,
+                latency: ProcessorLatencyObservation::exact(0, self.sample_rate.max(1), 1)
+                    .expect("zero test latency is valid"),
                 audio_inputs: Vec::new(),
                 audio_outputs: Vec::new(),
                 midi_inputs: Vec::new(),
@@ -1561,6 +1600,7 @@ impl Session {
             title,
             backend: ProcessorBackend::External,
             active: true,
+            latency: ProcessorLatencyObservation::unknown(self.sample_rate, 0),
             audio_inputs: Vec::new(),
             audio_outputs: Vec::new(),
             midi_inputs: Vec::new(),
@@ -1637,15 +1677,21 @@ impl Session {
             .iter_mut()
             .find(|route| route.title == title)
         {
-            match std::mem::replace(&mut route.backend, ProcessorBackend::OxiSynth(processor)) {
+            let displaced = match std::mem::replace(
+                &mut route.backend,
+                ProcessorBackend::OxiSynth(processor),
+            ) {
                 ProcessorBackend::OxiSynth(previous) => Some(previous),
                 _ => None,
-            }
+            };
+            route.latency = ProcessorLatencyObservation::unknown(self.sample_rate, 0);
+            displaced
         } else {
             self.processors.push(ProcessorRoute {
                 title,
                 backend: ProcessorBackend::OxiSynth(processor),
                 active: false,
+                latency: ProcessorLatencyObservation::unknown(self.sample_rate, 0),
                 audio_inputs: Vec::new(),
                 audio_outputs: Vec::new(),
                 midi_inputs: Vec::new(),
@@ -1702,12 +1748,15 @@ impl Session {
             .iter_mut()
             .find(|route| route.title == title)
         {
+            route.latency = host.latency();
             route.backend = ProcessorBackend::Carla(host);
         } else {
+            let latency = host.latency();
             self.processors.push(ProcessorRoute {
                 title,
                 backend: ProcessorBackend::Carla(host),
                 active: true,
+                latency,
                 audio_inputs: Vec::new(),
                 audio_outputs: Vec::new(),
                 midi_inputs: Vec::new(),
@@ -2371,6 +2420,7 @@ impl Session {
             self.processors = processors;
             return;
         };
+        route.latency = route.backend.latency(self.sample_rate);
 
         for (staging, &port_index) in route.midi_staging.iter_mut().zip(&route.midi_inputs) {
             staging.clear();
@@ -3628,6 +3678,27 @@ mod tests {
             .unwrap();
         session.apply_graph_changes().unwrap();
         (session, loop_, output)
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn processor_latency_updates_do_not_rebuild_graph_topology() {
+        let mut session = Session::default();
+        session.set_sample_rate(48_000);
+        session.set_test_fx_active("test", true);
+        session.apply_graph_changes().unwrap();
+        let request = session.graph_request_id();
+        let applied = session.graph_applied_id();
+        let initial = session.processor_latency("test").unwrap();
+        assert_eq!(initial.range.unwrap().min(), 0);
+        assert_eq!(initial.sample_rate, 48_000);
+
+        session.set_sample_rate(44_100);
+        session.process(4);
+        let updated = session.processor_latency("test").unwrap();
+        assert_eq!(updated.sample_rate, 44_100);
+        assert_eq!(session.graph_request_id(), request);
+        assert_eq!(session.graph_applied_id(), applied);
+        assert!(session.graph_up_to_date());
     }
 
     #[shoop_wasm_test_support::shoop_test]
