@@ -19,31 +19,40 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    FxLifecycle, OxiSynthMidiCcAssignment, OxiSynthParameter, OxiSynthState,
-    ResolvedAudioDriverConfig, TrackFxState, TrackProcessorDescriptor, TrackProcessorEditorState,
+    CueOutputSelection, FxLifecycle, HostPortId, LatencyCertaintyState, LatencyComponentKind,
+    LatencyComponentPolicyState, LatencyDiagnosticsState, LatencyObservationState,
+    LatencyProviderState, LatencyRangeSelectionState, LatencyValueMode, OxiSynthMidiCcAssignment,
+    OxiSynthParameter, OxiSynthState, PortId, ResolvedAudioDriverConfig,
+    TakeLatencyProvenanceState, TrackFxState, TrackLatencyPolicyState, TrackProcessorDescriptor,
+    TrackProcessorEditorState,
 };
 use shoop_audio_protocol::{
     Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
-    WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment,
-    WireOxiSynthParameter, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
-    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireCueOutputSelection, WireGrabRequest, WireHostPort, WireLatencyCertainty,
+    WireLatencyComponentKind, WireLatencyComponentPolicy, WireLatencyObservation,
+    WireLatencyRangeSelection, WireLatencyValueMode, WireLoopMode, WireMediaTakeLatency,
+    WireMidiEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WirePortDataType,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTakeLatencyState, WireTrackControl,
+    WireTrackFxControl, WireTrackLatencyPolicy, WireTrackTopology, COMMAND_CAPACITY,
+    MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
     BackendAsyncResult, BackendAudioChannelData, BackendAudioData, BackendChannelMode,
     BackendCompositeConfig, BackendCompositeId, BackendCompositeKind, BackendCompositeState,
     BackendCompositeTarget, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
-    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopContentUpdate, BackendLoopId,
-    BackendLoopMode, BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLatencyCapability,
+    BackendLatencyCertainty, BackendLoopContentUpdate, BackendLoopId, BackendLoopMode,
+    BackendLoopState, BackendMidiChannelData, BackendMidiData, BackendMidiEvent,
     BackendMutationDetail, BackendMutationFailure, BackendMutationKind, BackendOperationKind,
     BackendOperationProgress, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortOwner, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackFxControl, BackendTrackId, BackendTrackState,
-    BackendTrackTopology, DirectTrackRequest, OxiSynthControl, TrackProcessorTypeId, TrackRequest,
+    BackendPortId, BackendPortLatencyState, BackendPortOwner, BackendPortRole, BackendSessionData,
+    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTakeLatencySnapshot,
+    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
+    BackendTrackState, BackendTrackTopology, DirectTrackRequest, OxiSynthControl,
+    TrackProcessorTypeId, TrackRequest,
 };
 
 use crate::transport::{transport_pair, TransportCore};
@@ -52,6 +61,7 @@ struct WaveformAssembly {
     revision: u64,
     channels: Vec<Vec<f32>>,
     timing: Vec<(i32, u32)>,
+    latency: Vec<BackendTakeLatencySnapshot>,
     next_channel: usize,
     next_offset: usize,
     complete: bool,
@@ -128,6 +138,20 @@ pub struct RemoteWorkletBackend {
     loop_content_replace_error: Option<String>,
     midi: Box<dyn HostMidiBridge>,
     midi_revision: u64,
+}
+
+fn bounded_i32_plot(values: &[i32]) -> [i32; shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES] {
+    let mut result = [0; shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES];
+    let count = values.len().min(result.len());
+    result[..count].copy_from_slice(&values[..count]);
+    result
+}
+
+fn bounded_u32_plot(values: &[u32]) -> [u32; shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES] {
+    let mut result = [0; shoop_app_api::LATENCY_DIAGNOSTIC_PLOT_SAMPLES];
+    let count = values.len().min(result.len());
+    result[..count].copy_from_slice(&values[..count]);
+    result
 }
 
 impl RemoteWorkletBackend {
@@ -233,6 +257,35 @@ impl RemoteWorkletBackend {
         self.transport.borrow_mut().journal(command)
     }
 
+    pub fn configure_audio_context_latency(
+        &mut self,
+        base_latency_seconds: Option<f64>,
+        output_latency_seconds: Option<f64>,
+        sample_rate: u32,
+        revision: u64,
+    ) -> Result<()> {
+        let frames = |seconds: Option<f64>| -> Result<Option<u32>> {
+            seconds
+                .map(|seconds| {
+                    if !seconds.is_finite() || seconds < 0.0 || sample_rate == 0 {
+                        return Err(anyhow!("invalid browser latency observation"));
+                    }
+                    let frames = (seconds * f64::from(sample_rate)).round();
+                    if frames > f64::from(u32::MAX) {
+                        return Err(anyhow!("browser latency observation exceeds frame range"));
+                    }
+                    Ok(frames as u32)
+                })
+                .transpose()
+        };
+        self.submit(Command::ConfigureBackendLatency {
+            base_latency_frames: frames(base_latency_seconds)?,
+            output_latency_frames: frames(output_latency_seconds)?,
+            sample_rate,
+            revision,
+        })
+    }
+
     fn submit_ephemeral(&mut self, command: Command) -> Result<()> {
         self.transport.borrow_mut().ephemeral(command)
     }
@@ -336,15 +389,29 @@ impl RemoteWorkletBackend {
             return Ok(());
         }
         assembly.in_flight = false;
+        let latency = Self::media_take_latency(chunk.latency.clone());
         if assembly.channels.len() < chunk.channel_count {
             assembly.channels.resize_with(chunk.channel_count, Vec::new);
             assembly.timing.resize(chunk.channel_count, (0, 0));
+            assembly
+                .latency
+                .resize_with(chunk.channel_count, Default::default);
         }
         if let Some(channel) = assembly.channels.get_mut(chunk.channel) {
             channel.extend_from_slice(&chunk.samples);
         }
-        if let Some(timing) = assembly.timing.get_mut(chunk.channel) {
-            *timing = (chunk.start_offset, chunk.preplay);
+        if chunk.offset == 0 {
+            if let Some(timing) = assembly.timing.get_mut(chunk.channel) {
+                *timing = (chunk.start_offset, chunk.preplay);
+            }
+            if let Some(current) = assembly.latency.get_mut(chunk.channel) {
+                *current = latency;
+            }
+        } else if assembly.timing.get(chunk.channel).copied()
+            != Some((chunk.start_offset, chunk.preplay))
+            || assembly.latency.get(chunk.channel) != Some(&latency)
+        {
+            return Err(anyhow!("inconsistent waveform detail chunk metadata"));
         }
         if chunk.final_chunk {
             assembly.next_channel += 1;
@@ -439,7 +506,7 @@ impl RemoteWorkletBackend {
                 events: Vec::with_capacity(chunk.total_events),
                 start_offset: chunk.start_offset,
                 preplay: chunk.preplay,
-                latency: Default::default(),
+                latency: Self::media_take_latency(chunk.latency.clone()),
             });
         }
         let Some(channel) = assembly.channels.get_mut(chunk.channel) else {
@@ -451,6 +518,7 @@ impl RemoteWorkletBackend {
         if channel.length != chunk.length
             || channel.start_offset != chunk.start_offset
             || channel.preplay != chunk.preplay
+            || channel.latency != Self::media_take_latency(chunk.latency)
             || channel.events.len() != chunk.offset
         {
             return Err(anyhow!("inconsistent MIDI detail chunk metadata"));
@@ -691,6 +759,163 @@ impl RemoteWorkletBackend {
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
     }
 
+    fn latency_observation(wire: WireLatencyObservation) -> LatencyObservationState {
+        LatencyObservationState {
+            minimum_frames: wire.minimum_frames,
+            maximum_frames: wire.maximum_frames,
+            certainty: match wire.certainty {
+                WireLatencyCertainty::Exact => LatencyCertaintyState::Exact,
+                WireLatencyCertainty::Range => LatencyCertaintyState::Range,
+                WireLatencyCertainty::Estimated => LatencyCertaintyState::Estimated,
+                WireLatencyCertainty::ManualOnly => LatencyCertaintyState::ManualOnly,
+                WireLatencyCertainty::Unknown => LatencyCertaintyState::Unknown,
+            },
+            sample_rate: wire.sample_rate,
+            revision: wire.revision,
+        }
+    }
+
+    fn latency_policy(wire: WireTrackLatencyPolicy) -> TrackLatencyPolicyState {
+        TrackLatencyPolicyState {
+            cue_followed: wire.cue_followed,
+            cue_output: wire.cue_output.map(|selection| match selection {
+                WireCueOutputSelection::ApplicationPort { port_id } => {
+                    CueOutputSelection::ApplicationPort(PortId::from_raw(port_id))
+                }
+                WireCueOutputSelection::HostPort { host_port_id } => {
+                    CueOutputSelection::HostPort(HostPortId::new(host_port_id))
+                }
+            }),
+            components: wire
+                .components
+                .into_iter()
+                .map(|component| LatencyComponentPolicyState {
+                    kind: match component.kind {
+                        WireLatencyComponentKind::ExternalCapture => {
+                            LatencyComponentKind::ExternalCapture
+                        }
+                        WireLatencyComponentKind::Processor => LatencyComponentKind::Processor,
+                        WireLatencyComponentKind::CuePlayback => LatencyComponentKind::CuePlayback,
+                        WireLatencyComponentKind::BackendBuffering => {
+                            LatencyComponentKind::BackendBuffering
+                        }
+                        WireLatencyComponentKind::Manual => LatencyComponentKind::Manual,
+                    },
+                    enabled: component.enabled,
+                    value_mode: match component.value_mode {
+                        WireLatencyValueMode::Automatic => LatencyValueMode::Automatic,
+                        WireLatencyValueMode::Manual(frames) => LatencyValueMode::Manual(frames),
+                        WireLatencyValueMode::AutomaticPlusTrim(frames) => {
+                            LatencyValueMode::AutomaticPlusTrim(frames)
+                        }
+                    },
+                    range_selection: match component.range_selection {
+                        WireLatencyRangeSelection::Minimum => LatencyRangeSelectionState::Minimum,
+                        WireLatencyRangeSelection::Midpoint => LatencyRangeSelectionState::Midpoint,
+                        WireLatencyRangeSelection::Maximum => LatencyRangeSelectionState::Maximum,
+                    },
+                })
+                .collect::<Vec<_>>()
+                .into(),
+            revision: wire.revision,
+            pending: false,
+            error: None,
+        }
+    }
+
+    fn wire_latency_policy(policy: &TrackLatencyPolicyState) -> WireTrackLatencyPolicy {
+        WireTrackLatencyPolicy {
+            cue_followed: policy.cue_followed,
+            cue_output: policy.cue_output.clone().map(|selection| match selection {
+                CueOutputSelection::ApplicationPort(port_id) => {
+                    WireCueOutputSelection::ApplicationPort {
+                        port_id: port_id.raw(),
+                    }
+                }
+                CueOutputSelection::HostPort(host_port_id) => WireCueOutputSelection::HostPort {
+                    host_port_id: host_port_id.to_string(),
+                },
+            }),
+            components: policy
+                .components
+                .iter()
+                .map(|component| WireLatencyComponentPolicy {
+                    kind: match component.kind {
+                        LatencyComponentKind::ExternalCapture => {
+                            WireLatencyComponentKind::ExternalCapture
+                        }
+                        LatencyComponentKind::Processor => WireLatencyComponentKind::Processor,
+                        LatencyComponentKind::CuePlayback => WireLatencyComponentKind::CuePlayback,
+                        LatencyComponentKind::BackendBuffering => {
+                            WireLatencyComponentKind::BackendBuffering
+                        }
+                        LatencyComponentKind::Manual => WireLatencyComponentKind::Manual,
+                    },
+                    enabled: component.enabled,
+                    value_mode: match component.value_mode {
+                        LatencyValueMode::Automatic => WireLatencyValueMode::Automatic,
+                        LatencyValueMode::Manual(frames) => WireLatencyValueMode::Manual(frames),
+                        LatencyValueMode::AutomaticPlusTrim(frames) => {
+                            WireLatencyValueMode::AutomaticPlusTrim(frames)
+                        }
+                    },
+                    range_selection: match component.range_selection {
+                        LatencyRangeSelectionState::Minimum => WireLatencyRangeSelection::Minimum,
+                        LatencyRangeSelectionState::Midpoint => WireLatencyRangeSelection::Midpoint,
+                        LatencyRangeSelectionState::Maximum => WireLatencyRangeSelection::Maximum,
+                    },
+                })
+                .collect(),
+            revision: policy.revision,
+        }
+    }
+
+    fn media_take_latency(wire: WireMediaTakeLatency) -> BackendTakeLatencySnapshot {
+        BackendTakeLatencySnapshot {
+            capture_alignment_frames: wire.capture_alignment_frames,
+            retained_before_frames: wire.retained_before_frames,
+            retained_after_frames: wire.retained_after_frames,
+            observation_min_frames: wire.observation.minimum_frames,
+            observation_max_frames: wire.observation.maximum_frames,
+            certainty: match wire.observation.certainty {
+                WireLatencyCertainty::Exact => BackendLatencyCertainty::Exact,
+                WireLatencyCertainty::Range => BackendLatencyCertainty::Range,
+                WireLatencyCertainty::Estimated => BackendLatencyCertainty::Estimated,
+                WireLatencyCertainty::ManualOnly => BackendLatencyCertainty::ManualOnly,
+                WireLatencyCertainty::Unknown => BackendLatencyCertainty::Unknown,
+            },
+            observation_sample_rate: wire.observation.sample_rate,
+            observation_revision: wire.observation.revision,
+            variable_history: wire.variable_history,
+            history_revisions: wire.history_revisions,
+            changed_during_operation: wire.changed_during_operation,
+            incomplete: wire.incomplete,
+            applied_during_render: wire.applied_during_render,
+        }
+    }
+
+    fn take_latency(wire: WireTakeLatencyState) -> TakeLatencyProvenanceState {
+        let observation = Self::latency_observation(wire.observation);
+        TakeLatencyProvenanceState {
+            capture_alignment_frames: wire.capture_alignment_frames,
+            retained_before_frames: wire.retained_before_frames,
+            retained_after_frames: wire.retained_after_frames,
+            render_advance_frames: wire.render_advance_frames,
+            certainty: observation.certainty,
+            observation_min_frames: observation.minimum_frames,
+            observation_max_frames: observation.maximum_frames,
+            observation_sample_rate: observation.sample_rate,
+            observation_revision: observation.revision,
+            variable_history: wire.variable_history,
+            history_revisions: wire.history_revisions,
+            changed_during_operation: wire.changed_during_operation,
+            incomplete: wire.incomplete,
+            deferred_mode: None,
+            finalizing: wire.finalizing,
+            error: wire.error,
+        }
+    }
+
     fn apply_wire_snapshot(&mut self, wire: WireSnapshot) {
         let state = self.transport.borrow().driver_state();
         let xruns = if wire.xruns >= self.last_wire_xruns {
@@ -716,6 +941,28 @@ impl RemoteWorkletBackend {
                 .saturating_add(self.transport.borrow().overflows()),
             storage_low_channels: wire.storage_low_channels,
             storage_exhaustions: wire.storage_exhaustions,
+            backend_capture_latency: Self::latency_observation(wire.backend_capture_latency),
+            backend_playback_latency: Self::latency_observation(wire.backend_playback_latency),
+            latency_diagnostics: LatencyDiagnosticsState {
+                unresolved_recipes: wire.latency_diagnostics.unresolved_recipes,
+                observation_changes: wire.latency_diagnostics.observation_changes,
+                insufficient_margins: wire.latency_diagnostics.insufficient_margins,
+                deferred_transitions: wire.latency_diagnostics.deferred_transitions,
+                finalization_overruns: wire.latency_diagnostics.finalization_overruns,
+                path_ambiguities: wire.latency_diagnostics.path_ambiguities,
+                provider_failures: wire.latency_diagnostics.provider_failures,
+                applied_capture_plot: bounded_i32_plot(
+                    &wire.latency_diagnostics.applied_capture_plot,
+                ),
+                render_advance_plot: bounded_u32_plot(
+                    &wire.latency_diagnostics.render_advance_plot,
+                ),
+                active_postroll_plot: bounded_u32_plot(
+                    &wire.latency_diagnostics.active_postroll_plot,
+                ),
+                plot_cursor: wire.latency_diagnostics.plot_cursor,
+                plot_len: wire.latency_diagnostics.plot_len,
+            },
             driver_state: state,
             ..Default::default()
         };
@@ -724,29 +971,34 @@ impl RemoteWorkletBackend {
             active.buffer_size = wire.quantum;
         }
         self.snapshot.connections.available = true;
-        self.snapshot.connections.application_ports = wire
-            .application_ports
-            .into_iter()
-            .map(|port| {
-                let id = BackendPortId::from_raw(port.id);
-                (
+        self.snapshot.connections.application_ports.clear();
+        self.snapshot.port_latency.clear();
+        for port in wire.application_ports {
+            let id = BackendPortId::from_raw(port.id);
+            self.snapshot.port_latency.insert(
+                id,
+                BackendPortLatencyState {
+                    capture: Self::latency_observation(port.capture_latency),
+                    playback: Self::latency_observation(port.playback_latency),
+                },
+            );
+            self.snapshot.connections.application_ports.insert(
+                id,
+                BackendPortDescriptor {
                     id,
-                    BackendPortDescriptor {
-                        id,
-                        owner: match port.owner {
-                            WireApplicationPortOwner::Track => BackendPortOwner::Track,
-                            WireApplicationPortOwner::GlobalFxControl => {
-                                BackendPortOwner::GlobalFxControl
-                            }
-                        },
-                        name: port.name,
-                        data_type: from_wire_data_type(port.data_type),
-                        direction: from_wire_direction(port.direction),
-                        role: from_wire_role(port.role),
+                    owner: match port.owner {
+                        WireApplicationPortOwner::Track => BackendPortOwner::Track,
+                        WireApplicationPortOwner::GlobalFxControl => {
+                            BackendPortOwner::GlobalFxControl
+                        }
                     },
-                )
-            })
-            .collect();
+                    name: port.name,
+                    data_type: from_wire_data_type(port.data_type),
+                    direction: from_wire_direction(port.direction),
+                    role: from_wire_role(port.role),
+                },
+            );
+        }
         self.snapshot.connections.host_ports = wire
             .host_ports
             .into_iter()
@@ -800,6 +1052,7 @@ impl RemoteWorkletBackend {
                                 dry_midi: true,
                             },
                         },
+                        latency_policy: Self::latency_policy(track.latency_policy),
                         fx: track.fx.map(|fx| {
                             let oxisynth = fx.oxisynth.map(|oxisynth| {
                                 TrackProcessorEditorState::OxiSynth(OxiSynthState {
@@ -828,9 +1081,9 @@ impl RemoteWorkletBackend {
                                 generation: 0,
                                 crash_summary: None,
                                 logs: Arc::from([]),
+                                latency: Self::latency_observation(fx.latency),
+                                latency_provider: LatencyProviderState::BuiltInSynthPhaseRange,
                                 editor: oxisynth,
-                                latency: Default::default(),
-                                latency_provider: Default::default(),
                             }
                         }),
                         audio_channels: track.audio_channels,
@@ -862,6 +1115,7 @@ impl RemoteWorkletBackend {
                     BackendLoopId::from_raw(loop_.id),
                     BackendLoopState {
                         mode: from_wire_loop_mode(loop_.mode),
+                        latency: Self::take_latency(loop_.latency),
                         length: loop_.length,
                         position: loop_.position,
                         next_mode: loop_.next_mode.map(from_wire_loop_mode),
@@ -871,7 +1125,6 @@ impl RemoteWorkletBackend {
                         balance: loop_.balance,
                         audio_peaks: loop_.audio_peaks,
                         midi_activity: loop_.midi_activity,
-                        latency: Default::default(),
                     },
                 )
             })
@@ -1064,8 +1317,19 @@ fn browser_oxisynth_port_descriptors(
 fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, Option<u64>)> {
     Some(match command {
         Command::SetLoopSmoothingMs { .. } => (BackendMutationKind::AudioProcessing, None),
-        Command::ConfigureDeviceChannels { .. } | Command::ConfigureMidiEndpoints { .. } => {
+        Command::ConfigureDeviceChannels { .. }
+        | Command::ConfigureBackendLatency { .. }
+        | Command::ConfigureMidiEndpoints { .. } => {
             (BackendMutationKind::DriverConfiguration, None)
+        }
+        Command::SetTrackLatencyPolicy { track_id, .. } => {
+            (BackendMutationKind::TrackControl, Some(*track_id))
+        }
+        Command::SetTakeLatencyPolicy { loop_id, .. } => {
+            (BackendMutationKind::LoopControl, Some(*loop_id))
+        }
+        Command::ConsolidateTakeLatency { loop_id } => {
+            (BackendMutationKind::LoopContent, Some(*loop_id))
         }
         Command::CreateTrack {
             expected_track_id, ..
@@ -1242,6 +1506,41 @@ fn transfer_identity(command: &Command) -> Option<(BackendOperationKind, u64)> {
 }
 
 impl Backend for RemoteWorkletBackend {
+    fn latency_capability(&self) -> BackendLatencyCapability {
+        BackendLatencyCapability::Observed
+    }
+
+    fn set_track_latency_policy(
+        &mut self,
+        track_id: BackendTrackId,
+        policy: &TrackLatencyPolicyState,
+    ) -> Result<()> {
+        if policy.components.len() > shoop_audio_protocol::LATENCY_COMPONENT_CAPACITY {
+            return Err(anyhow!("latency component capacity exceeded"));
+        }
+        self.submit(Command::SetTrackLatencyPolicy {
+            track_id: track_id.raw(),
+            policy: Self::wire_latency_policy(policy),
+        })
+    }
+
+    fn set_take_latency_policy(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        self.submit(Command::SetTakeLatencyPolicy {
+            loop_id: loop_id.raw(),
+            capture_alignment_frames,
+        })
+    }
+
+    fn consolidate_take_latency(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        self.submit(Command::ConsolidateTakeLatency {
+            loop_id: loop_id.raw(),
+        })
+    }
+
     fn set_loop_smoothing_ms(&mut self, milliseconds: u32) -> Result<()> {
         self.submit(Command::SetLoopSmoothingMs { milliseconds })
     }
@@ -1671,6 +1970,7 @@ impl Backend for RemoteWorkletBackend {
                 revision: *revision,
                 channels: Vec::new(),
                 timing: Vec::new(),
+                latency: Vec::new(),
                 next_channel: 0,
                 next_offset: 0,
                 complete: false,
@@ -1688,22 +1988,22 @@ impl Backend for RemoteWorkletBackend {
         let Some(channels) = self.loop_audio_data(loop_id)? else {
             return Ok(None);
         };
-        let timing = &self
+        let assembly = self
             .waveforms
             .get(&loop_id)
-            .ok_or_else(|| anyhow!("missing completed waveform assembly"))?
-            .timing;
+            .ok_or_else(|| anyhow!("missing completed waveform assembly"))?;
         Ok(Some(BackendAudioData {
             channels: channels
                 .into_iter()
                 .enumerate()
                 .map(|(index, samples)| {
-                    let (start_offset, preplay) = timing.get(index).copied().unwrap_or_default();
+                    let (start_offset, preplay) =
+                        assembly.timing.get(index).copied().unwrap_or_default();
                     BackendAudioChannelData {
                         samples,
                         start_offset,
                         preplay,
-                        latency: Default::default(),
+                        latency: assembly.latency.get(index).cloned().unwrap_or_default(),
                     }
                 })
                 .collect(),
@@ -2446,6 +2746,28 @@ mod tests {
         );
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn worklet_backend_exposes_observed_capability_without_inventing_zero() {
+        let (mut backend, _control) = RemoteWorkletBackend::new(NullHostMidiBridge);
+        assert_eq!(
+            backend.latency_capability(),
+            BackendLatencyCapability::Observed
+        );
+        assert!(backend
+            .configure_audio_context_latency(Some(0.01), Some(0.005), 48_000, 2)
+            .is_ok());
+        assert!(backend
+            .configure_audio_context_latency(Some(f64::NAN), None, 48_000, 3)
+            .is_err());
+        assert!(backend
+            .set_take_latency_policy(BackendLoopId::from_raw(1), 0)
+            .is_ok());
+        assert_eq!(
+            backend.snapshot.status.backend_playback_latency,
+            LatencyObservationState::default()
+        );
+    }
+
     #[derive(Default)]
     struct MemoryEndpoint {
         sent: Rc<RefCell<Vec<String>>>,
@@ -2613,6 +2935,17 @@ mod tests {
                 total_samples: 3,
                 start_offset: -4,
                 preplay: 6,
+                latency: WireMediaTakeLatency {
+                    capture_alignment_frames: 9,
+                    observation: WireLatencyObservation {
+                        minimum_frames: Some(8),
+                        maximum_frames: Some(10),
+                        certainty: WireLatencyCertainty::Range,
+                        sample_rate: 48_000,
+                        revision: 5,
+                    },
+                    ..Default::default()
+                },
                 final_chunk: true,
                 samples: vec![0.25, -0.5, 0.75],
             }),
@@ -2625,25 +2958,46 @@ mod tests {
         assert_eq!(audio.channels[0].samples.as_ref(), [0.25, -0.5, 0.75]);
         assert_eq!(audio.channels[0].start_offset, -4);
         assert_eq!(audio.channels[0].preplay, 6);
+        assert_eq!(audio.channels[0].latency.capture_alignment_frames, 9);
+        assert_eq!(audio.channels[0].latency.observation_min_frames, Some(8));
+        assert_eq!(audio.channels[0].latency.observation_max_frames, Some(10));
 
-        backend.midi_data.insert(
-            loop_id,
-            MidiDataAssembly {
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_none());
+        deliver(
+            &control,
+            1,
+            4,
+            Event::MidiData(MidiDataChunk {
+                loop_id: loop_id.raw(),
                 generation: 1,
-                channels: vec![BackendMidiChannelData {
-                    content_revision: 1,
-                    mode: BackendChannelMode::Direct,
-                    length: 16,
-                    events: Vec::new(),
-                    start_offset: -4,
-                    preplay: 6,
-                }],
-                next_channel: 1,
-                next_offset: 0,
-                complete: true,
-                in_flight: false,
-            },
+                content_revision: 1,
+                mode: WireChannelMode::Direct,
+                channel: 0,
+                channel_count: 1,
+                offset: 0,
+                total_events: 0,
+                length: 16,
+                start_offset: -4,
+                preplay: 6,
+                latency: WireMediaTakeLatency {
+                    capture_alignment_frames: 7,
+                    observation: WireLatencyObservation {
+                        minimum_frames: Some(7),
+                        maximum_frames: Some(7),
+                        certainty: WireLatencyCertainty::Exact,
+                        sample_rate: 48_000,
+                        revision: 6,
+                    },
+                    ..Default::default()
+                },
+                final_chunk: true,
+                events: Vec::new(),
+            }),
         );
+        backend.poll().unwrap();
+        let midi = backend.loop_midi_data(loop_id).unwrap().unwrap();
+        assert_eq!(midi.channels[0].latency.capture_alignment_frames, 7);
+        assert_eq!(midi.channels[0].latency.observation_min_frames, Some(7));
         backend
             .set_loop_timing(loop_id, Some(-8), None, None)
             .unwrap();
@@ -2711,6 +3065,7 @@ mod tests {
             id,
             topology,
             fx,
+            latency_policy: Default::default(),
             audio_channels: 2,
             midi: true,
             output_gain_db: -3.0,
@@ -2763,6 +3118,14 @@ mod tests {
                 command_overflows: 6,
                 storage_low_channels: 7,
                 storage_exhaustions: 8,
+                backend_capture_latency: Default::default(),
+                backend_playback_latency: Default::default(),
+                latency_diagnostics: shoop_audio_protocol::WireLatencyDiagnostics {
+                    unresolved_recipes: 2,
+                    applied_capture_plot: vec![4; 64],
+                    plot_len: 64,
+                    ..Default::default()
+                },
                 tracks: vec![
                     track(
                         1,
@@ -2779,6 +3142,7 @@ mod tests {
                             processor_type: TrackProcessorTypeId::OXISYNTH.to_owned(),
                             active: true,
                             visible: false,
+                            latency: Default::default(),
                             oxisynth: Some(WireOxiSynthState {
                                 selected_preset_id: "0:40".to_owned(),
                                 reverb_send: 0.25,
@@ -2794,6 +3158,7 @@ mod tests {
                     .map(|(index, mode)| WireLoopState {
                         id: index as u64 + 1,
                         mode,
+                        latency: Default::default(),
                         length: 256,
                         position: 64,
                         next_mode: Some(WireLoopMode::Playing),
@@ -2861,6 +3226,14 @@ mod tests {
                             WirePortDirection::Input
                         },
                         role,
+                        capture_latency: WireLatencyObservation {
+                            minimum_frames: Some(index as u32),
+                            maximum_frames: Some(index as u32),
+                            certainty: WireLatencyCertainty::Exact,
+                            sample_rate: 48_000,
+                            revision: 3,
+                        },
+                        playback_latency: WireLatencyObservation::default(),
                     })
                     .collect(),
                 host_ports: vec![
@@ -2922,9 +3295,21 @@ mod tests {
         assert_eq!(snapshot.loops.len(), modes.len());
         assert_eq!(snapshot.composites.len(), 1);
         assert_eq!(snapshot.connections.application_ports.len(), roles.len());
+        assert_eq!(snapshot.port_latency.len(), roles.len());
+        assert_eq!(
+            snapshot.port_latency[&BackendPortId::from_raw(3)]
+                .capture
+                .minimum_frames,
+            Some(2)
+        );
         assert_eq!(snapshot.connections.host_ports.len(), 2);
         assert_eq!(snapshot.connections.confirmed_links.len(), 1);
         assert_eq!(snapshot.status.storage_exhaustions, 8);
+        assert_eq!(snapshot.status.latency_diagnostics.unresolved_recipes, 2);
+        assert_eq!(
+            snapshot.status.latency_diagnostics.applied_capture_plot[0],
+            4
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -3257,6 +3642,7 @@ mod tests {
                 samples: vec![0.25; 128],
                 start_offset: None,
                 preplay: None,
+                latency: None,
             }],
             length: Some(128),
             ..Default::default()

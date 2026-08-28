@@ -344,17 +344,17 @@ Verification:
 
 Dependencies: Stages 2, 7, and provider semantics needed by the worklet.
 
-- [ ] Add bounded scalar policy, observation, frozen-take, warning, and error records to audio worklet/client protocols.
-- [ ] Bump and validate protocol versions and message capacities.
-- [ ] Publish supported Web Audio output properties and keep unavailable capture/output values unknown/manual.
-- [ ] Preserve Web MIDI's existing coarse timing claim.
-- [ ] Transfer waveform/MIDI detail latency metadata as one scalar and reject inconsistent chunks.
-- [ ] Preserve frozen takes across browser device restart or permission changes.
+- [x] Add bounded scalar policy, observation, frozen-take, warning, and error records to audio worklet/client protocols.
+- [x] Bump and validate protocol versions and message capacities.
+- [x] Publish supported Web Audio output properties and keep unavailable capture/output values unknown/manual.
+- [x] Preserve Web MIDI's existing coarse timing claim.
+- [x] Transfer waveform/MIDI detail latency metadata as one scalar and reject inconsistent chunks.
+- [x] Preserve frozen takes across browser device restart or permission changes.
 
 Verification:
 
-- [ ] Wire round-trip, capacity, stale-generation, missing-property, restart, and media-detail tests pass.
-- [ ] Native and worklet backends expose equivalent scalar behavior where capabilities overlap.
+- [x] Wire round-trip, capacity, stale-generation, missing-property, restart, and media-detail tests pass.
+- [x] Native and worklet backends expose equivalent scalar behavior where capabilities overlap.
 - [ ] Node and browser Wasm suites pass for completed packages.
 
 ### Stage 10 — Implement persistence, resampling, import, and export

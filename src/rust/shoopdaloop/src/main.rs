@@ -4273,7 +4273,7 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::RequestLoopMidiExport {
                         loop_id: loop_state.id,
-                        standard: false,
+                        format: shoop_egui::LoopMidiExportFormat::Exact,
                     })
                     .map(|()| Self::WaitForLoopMidiExport)
             }
@@ -4492,7 +4492,7 @@ impl BrowserSelfTest {
                 runtime
                     .dispatch(AppIntent::RequestLoopMidiExport {
                         loop_id: loop_state.id,
-                        standard: false,
+                        format: shoop_egui::LoopMidiExportFormat::Exact,
                     })
                     .map(|()| Self::WaitForClickMidiExport)
             }

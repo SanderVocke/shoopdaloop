@@ -15,6 +15,7 @@ wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+shoop_app_api = { path = "../shoop_app_api" }
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
 shoop_backend = { path = "../shoop_backend" }
 serde_json = { workspace = true }
