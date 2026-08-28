@@ -7564,20 +7564,12 @@ mod tests {
                 engine::content_snapshot::ContentMutation::Recording
             ))
         ));
-        assert_eq!(
-            audio.get_latest_data_snapshot().snapshot.contiguous(),
-            vec![1.0, 2.0]
-        );
         assert!(matches!(
             midi.try_get_current_data_snapshot(),
             Err(engine::content_snapshot::CurrentDataError::MutationActive(
                 engine::content_snapshot::ContentMutation::Recording
             ))
         ));
-        assert_eq!(
-            midi.get_latest_data_snapshot().snapshot.contiguous().len(),
-            1
-        );
 
         // Mutations that would overlap recording are rejected without touching content.
         assert!(matches!(audio.load_data(&[9.0]), Err(SendError::Full)));
@@ -7597,6 +7589,20 @@ mod tests {
             assert!(start.elapsed() < Duration::from_secs(1));
             thread::yield_now();
         }
+        assert_eq!(
+            audio
+                .try_get_current_data_snapshot()
+                .expect("settled recording audio")
+                .contiguous(),
+            vec![0.0; 4]
+        );
+        assert_eq!(
+            midi.try_get_current_data_snapshot()
+                .expect("settled recording MIDI")
+                .events()
+                .count(),
+            0
+        );
         sess.shared.return_engine(engine);
     }
 
