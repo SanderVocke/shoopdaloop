@@ -12,10 +12,10 @@
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     BufferSize, BuildStreamError, Data, DefaultStreamConfigError, DeviceDescription,
-    DeviceDescriptionBuilder, DeviceDirection, DeviceId, DeviceIdError, DeviceNameError, DeviceType,
-    DevicesError, InputCallbackInfo, InputStreamTimestamp, InterfaceType, OutputCallbackInfo,
-    OutputStreamTimestamp, PauseStreamError, PlayStreamError, SampleFormat, StreamConfig,
-    StreamError, StreamInstant, SupportedBufferSize, SupportedStreamConfig,
+    DeviceDescriptionBuilder, DeviceDirection, DeviceId, DeviceIdError, DeviceNameError,
+    DeviceType, DevicesError, InputCallbackInfo, InputStreamTimestamp, InterfaceType,
+    OutputCallbackInfo, OutputStreamTimestamp, PauseStreamError, PlayStreamError, SampleFormat,
+    StreamConfig, StreamError, StreamInstant, SupportedBufferSize, SupportedStreamConfig,
     SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
