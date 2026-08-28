@@ -478,9 +478,22 @@ pub struct AudioChannelStateMirror {
     output_peak: AtomicU32,
     length: AtomicU32,
     start_offset: AtomicI32,
+    capture_alignment_frames: AtomicI32,
+    retained_before_frames: AtomicU32,
+    retained_after_frames: AtomicU32,
+    postroll_remaining_frames: AtomicU32,
+    render_advance_frames: AtomicU32,
     played_back_sample: AtomicI32,
+    logical_played_position: AtomicI32,
+    raw_played_position: AtomicI32,
+    dispatch_position: AtomicI32,
     n_preplay_samples: AtomicU32,
+    latency_retention_incomplete: AtomicBool,
+    latency_history_variable: AtomicBool,
+    latency_history_revisions: AtomicU32,
     data_sequence: AtomicU64,
+    current_latency_recipe: AtomicLatencyRecipePublication,
+    latched_latency_recipe: AtomicLatencyRecipePublication,
 }
 
 impl Default for AudioChannelStateMirror {
@@ -491,9 +504,22 @@ impl Default for AudioChannelStateMirror {
             output_peak: AtomicU32::new(0.0f32.to_bits()),
             length: AtomicU32::new(0),
             start_offset: AtomicI32::new(0),
+            capture_alignment_frames: AtomicI32::new(0),
+            retained_before_frames: AtomicU32::new(0),
+            retained_after_frames: AtomicU32::new(0),
+            postroll_remaining_frames: AtomicU32::new(0),
+            render_advance_frames: AtomicU32::new(0),
             played_back_sample: AtomicI32::new(NO_SAMPLE),
+            logical_played_position: AtomicI32::new(NO_SAMPLE),
+            raw_played_position: AtomicI32::new(NO_SAMPLE),
+            dispatch_position: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
+            latency_retention_incomplete: AtomicBool::new(false),
+            latency_history_variable: AtomicBool::new(false),
+            latency_history_revisions: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
+            current_latency_recipe: AtomicLatencyRecipePublication::default(),
+            latched_latency_recipe: AtomicLatencyRecipePublication::default(),
         }
     }
 }
@@ -505,6 +531,9 @@ impl AudioChannelStateMirror {
         gain: f32,
         length: usize,
         start_offset: i32,
+        capture_alignment_frames: i32,
+        postroll_remaining_frames: u32,
+        render_advance_frames: u32,
         played_back_sample: Option<i32>,
         n_preplay_samples: u32,
         data_sequence: u64,
@@ -513,6 +542,12 @@ impl AudioChannelStateMirror {
         self.gain.store(gain.to_bits(), Ordering::Relaxed);
         self.length.store(length as u32, Ordering::Relaxed);
         self.start_offset.store(start_offset, Ordering::Relaxed);
+        self.capture_alignment_frames
+            .store(capture_alignment_frames, Ordering::Relaxed);
+        self.postroll_remaining_frames
+            .store(postroll_remaining_frames, Ordering::Relaxed);
+        self.render_advance_frames
+            .store(render_advance_frames, Ordering::Relaxed);
         self.played_back_sample
             .store(played_back_sample.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
         self.n_preplay_samples
@@ -536,12 +571,54 @@ impl AudioChannelStateMirror {
         self.n_preplay_samples.store(samples, Ordering::Relaxed);
     }
 
+    pub fn publish_playback_positions(
+        &self,
+        logical: Option<i32>,
+        raw: Option<i32>,
+        dispatch: Option<i32>,
+    ) {
+        self.logical_played_position
+            .store(logical.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
+        self.raw_played_position
+            .store(raw.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
+        self.dispatch_position
+            .store(dispatch.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
+    }
+
+    pub fn publish_retained_margins(&self, before: u32, after: u32) {
+        self.retained_before_frames.store(before, Ordering::Relaxed);
+        self.retained_after_frames.store(after, Ordering::Relaxed);
+    }
+
+    pub fn publish_latency_retention_incomplete(&self, incomplete: bool) {
+        self.latency_retention_incomplete
+            .store(incomplete, Ordering::Relaxed);
+    }
+
+    pub fn publish_latency_history(&self, variable: bool, revisions: u32) {
+        self.latency_history_variable
+            .store(variable, Ordering::Relaxed);
+        self.latency_history_revisions
+            .store(revisions, Ordering::Relaxed);
+    }
+
+    pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.current_latency_recipe.publish_pending(recipe);
+    }
+
+    pub fn publish_latched_latency_recipe(&self, recipe: Option<LatchedLatencyRecipe>) {
+        self.latched_latency_recipe.publish_latched(recipe);
+    }
+
     pub fn publish_output_peak(&self, peak: f32) {
         atomic_max_f32(&self.output_peak, peak);
     }
 
     pub fn read(&self, acknowledged_data_sequence: u64) -> AudioChannelState {
         let played = self.played_back_sample.load(Ordering::Relaxed);
+        let logical = self.logical_played_position.load(Ordering::Relaxed);
+        let raw = self.raw_played_position.load(Ordering::Relaxed);
+        let dispatch = self.dispatch_position.load(Ordering::Relaxed);
         AudioChannelState {
             mode: ChannelMode::try_from(self.mode.load(Ordering::Relaxed))
                 .unwrap_or(ChannelMode::Disabled),
@@ -549,9 +626,22 @@ impl AudioChannelStateMirror {
             output_peak: f32::from_bits(self.output_peak.swap(0.0f32.to_bits(), Ordering::Relaxed)),
             length: self.length.load(Ordering::Relaxed),
             start_offset: self.start_offset.load(Ordering::Relaxed),
+            capture_alignment_frames: self.capture_alignment_frames.load(Ordering::Relaxed),
+            retained_before_frames: self.retained_before_frames.load(Ordering::Relaxed),
+            retained_after_frames: self.retained_after_frames.load(Ordering::Relaxed),
+            postroll_remaining_frames: self.postroll_remaining_frames.load(Ordering::Relaxed),
+            render_advance_frames: self.render_advance_frames.load(Ordering::Relaxed),
             played_back_sample: (played != NO_SAMPLE).then_some(played),
+            logical_played_position: (logical != NO_SAMPLE).then_some(logical),
+            raw_played_position: (raw != NO_SAMPLE).then_some(raw),
+            dispatch_position: (dispatch != NO_SAMPLE).then_some(dispatch),
             n_preplay_samples: self.n_preplay_samples.load(Ordering::Relaxed),
+            latency_retention_incomplete: self.latency_retention_incomplete.load(Ordering::Relaxed),
+            latency_history_variable: self.latency_history_variable.load(Ordering::Relaxed),
+            latency_history_revisions: self.latency_history_revisions.load(Ordering::Relaxed),
             data_dirty: self.data_sequence.load(Ordering::Relaxed) != acknowledged_data_sequence,
+            current_latency_recipe: self.current_latency_recipe.read(),
+            latched_latency_recipe: self.latched_latency_recipe.read(),
         }
     }
 
@@ -937,7 +1027,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn channel_data_sequences_support_local_acknowledgement() {
         let audio = AudioChannelStateMirror::default();
-        audio.publish(ChannelMode::Direct, 1.0, 4, 0, None, 0, 3);
+        audio.publish(ChannelMode::Direct, 1.0, 4, 0, 0, 0, 0, None, 0, 3);
         check!(audio.read(0).data_dirty);
         check!(!audio.read(3).data_dirty);
 

@@ -1,9 +1,30 @@
 use shoop_latency::{
     ComponentApplication, LatencyCertainty, LatencyComponentKind, LatencyDomainError,
-    LatencyOperationKind, LatencyRangeFrames, ResolvedLatencyRecipe, MAX_RECIPE_COMPONENTS,
+    LatencyOperationKind, LatencyRangeFrames, ResolvedLatencyRecipe, ScalarFrameMapping,
+    MAX_RECIPE_COMPONENTS,
 };
 use std::array;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
+
+pub(crate) fn cyclic_render_dispatch_position(
+    media_position: i32,
+    media_layout_offset: i32,
+    capture_alignment_frames: i32,
+    render_advance_frames: u32,
+    logical_length: u32,
+) -> Option<i32> {
+    let mapping = ScalarFrameMapping::new(capture_alignment_frames).ok()?;
+    let raw_position = i32::try_from(mapping.raw_frame(i64::from(media_position)).ok()?).ok()?;
+    if render_advance_frames == 0 || logical_length == 0 {
+        return Some(raw_position);
+    }
+
+    let selected_start = mapping.raw_frame(i64::from(media_layout_offset)).ok()?;
+    let logical_position = i64::from(media_position) - i64::from(media_layout_offset);
+    let dispatch_logical =
+        (logical_position + i64::from(render_advance_frames)).rem_euclid(i64::from(logical_length));
+    i32::try_from(selected_start + dispatch_logical).ok()
+}
 
 /// Bounded, allocation-free observation used by callback-facing engine surfaces.
 ///

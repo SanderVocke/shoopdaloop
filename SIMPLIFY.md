@@ -242,6 +242,8 @@ Verification:
 
 Dependencies: Stages 2–3.
 
+Progress: the scalar audio-channel implementation and all 11 applicable reference audio-channel latency tests are transferred. Forty-eight complete audio-channel tests pass, covering signed mapping, bounded retention/postroll, callback/wrap playback, prerecord, replacement, snapshots, smoothing finalization, and allocation-free recording. MIDI-channel and loop/session integration remain open.
+
 - [ ] Separate media layout, frozen capture alignment, and current render advance in audio and MIDI channels.
 - [ ] Centralize checked scalar raw/logical mapping and use it for both channel types.
 - [ ] Reserve bounded prerecord/postroll storage before arming.
@@ -261,6 +263,8 @@ Verification:
 ### Stage 5 — Implement scalar dry render-ahead and wet rerecording
 
 Dependencies: Stage 4 and delayed processor fixture.
+
+Progress: audio-channel render advance and canonical dry-into-wet writes are implemented and directly tested; operation transitions, MIDI state, session routing, and monitoring matrices remain open.
 
 - [ ] Apply current processor render advance independently of frozen capture alignment.
 - [ ] Start planned dry-through-wet dispatch early enough for exact target-frame output.
