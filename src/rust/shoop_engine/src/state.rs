@@ -15,6 +15,7 @@ pub struct LoopState {
     pub cycle_count: u64,
     pub maybe_next_mode: Option<LoopMode>,
     pub maybe_next_mode_delay: Option<u32>,
+    pub deferred_latency_mode: Option<LoopMode>,
     pub current_latency_recipe: PublishedLatencyRecipe,
     pub latched_latency_recipe: PublishedLatencyRecipe,
 }
@@ -28,6 +29,7 @@ impl Default for LoopState {
             cycle_count: 0,
             maybe_next_mode: None,
             maybe_next_mode_delay: None,
+            deferred_latency_mode: None,
             current_latency_recipe: PublishedLatencyRecipe::default(),
             latched_latency_recipe: PublishedLatencyRecipe::default(),
         }

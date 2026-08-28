@@ -246,11 +246,11 @@ Progress: the scalar audio/MIDI channel implementations and all applicable refer
 
 - [x] Separate media layout, frozen capture alignment, and current render advance in audio and MIDI channels.
 - [x] Centralize checked scalar raw/logical mapping and use it for both channel types.
-- [ ] Reserve bounded prerecord/postroll storage before arming.
-- [ ] Continue finalization until required postroll is available while keeping content mutations unsettled transactionally.
+- [x] Reserve bounded prerecord/postroll storage before arming.
+- [x] Continue finalization until required postroll is available while keeping content mutations unsettled transactionally.
 - [x] Map ordinary playback through the single scalar across callbacks and loop wrap.
 - [x] Preserve MIDI start state, equal-frame order, and events crossing retained boundaries.
-- [ ] Implement deterministic readiness/defer behavior for play-after-record and advances at or above one loop.
+- [x] Implement deterministic readiness/defer behavior for play-after-record and advances at or above one loop.
 
 Verification:
 
@@ -264,11 +264,11 @@ Verification:
 
 Dependencies: Stage 4 and delayed processor fixture.
 
-Progress: audio-channel render advance and canonical dry-into-wet writes are implemented and directly tested; operation transitions, MIDI state, session routing, and monitoring matrices remain open.
+Progress: audio/MIDI channel render advance, operation-boundary latching, planned/immediate transition handling, and canonical dry-into-wet writes are implemented. All 29 audio/MIDI loop tests pass; session routing and monitoring matrices remain open.
 
 - [x] Apply current processor render advance independently of frozen capture alignment.
-- [ ] Start planned dry-through-wet dispatch early enough for exact target-frame output.
-- [ ] Implement explicit defer/warn behavior for immediate transitions lacking lead time.
+- [x] Start planned dry-through-wet dispatch early enough for exact target-frame output.
+- [x] Implement explicit defer/warn behavior for immediate transitions lacking lead time.
 - [ ] Restore and clean MIDI state across early dispatch, wrap, stop, and latency changes.
 - [x] Implement dry-into-wet canonical writes and `applied_during_render` provenance with no remaining processor playback contribution.
 - [ ] Keep live monitoring on the uncompensated shortest path.
