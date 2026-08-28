@@ -252,6 +252,40 @@ impl LatchedLatencyRecipe {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct OperationLatencyLatch {
+    pending: Option<RuntimeLatencyRecipe>,
+    latched: Option<LatchedLatencyRecipe>,
+}
+
+impl OperationLatencyLatch {
+    pub fn prepare(&mut self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.pending = recipe;
+    }
+
+    pub const fn pending(&self) -> Option<RuntimeLatencyRecipe> {
+        self.pending
+    }
+
+    pub const fn latched(&self) -> Option<LatchedLatencyRecipe> {
+        self.latched
+    }
+
+    pub fn latch(&mut self, operation: LatencyOperationKind, operation_frame: u64) -> bool {
+        let Some(recipe) = self.pending.filter(|recipe| recipe.operation == operation) else {
+            return false;
+        };
+        self.latched = Some(LatchedLatencyRecipe::new(recipe, operation_frame));
+        true
+    }
+
+    pub fn observe(&mut self, kind: LatencyComponentKind, current: RuntimeLatencyObservation) {
+        if let Some(latched) = self.latched.as_mut() {
+            latched.observe(kind, current);
+        }
+    }
+}
+
 const NO_SELECTED_FRAMES: u64 = u64::MAX;
 const NO_TOTAL_FRAMES: u64 = u64::MAX;
 const NO_OPERATION_FRAME: u64 = u64::MAX;
@@ -592,6 +626,48 @@ mod tests {
             atomic.publish(observation);
             assert_eq!(atomic.read(), observation);
         });
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn operation_latch_changes_only_at_matching_boundaries_and_marks_revisions() {
+        let observation = RuntimeLatencyObservation::exact(4, 48_000, 1).unwrap();
+        let component = RuntimeLatencyComponent {
+            kind: LatencyComponentKind::ExternalCapture,
+            observation,
+            selected_frames: Some(4),
+            contribution_frames: 4,
+            application: ComponentApplication::Applied,
+            applied_during_render: false,
+        };
+        let mut components = [None; MAX_RECIPE_COMPONENTS];
+        components[0] = Some(component);
+        let first = RuntimeLatencyRecipe {
+            operation: LatencyOperationKind::RecordDirect,
+            total_frames: Some(4),
+            revision: 1,
+            components,
+            n_components: 1,
+        };
+        let mut latch = OperationLatencyLatch::default();
+        latch.prepare(Some(first));
+        assert!(!latch.latch(LatencyOperationKind::RecordWet, 10));
+        assert!(latch.latched().is_none());
+        assert!(latch.latch(LatencyOperationKind::RecordDirect, 11));
+        assert_eq!(latch.latched().unwrap().operation_frame, 11);
+
+        let mut second = first;
+        second.revision = 2;
+        second.total_frames = Some(9);
+        latch.prepare(Some(second));
+        assert_eq!(latch.latched().unwrap().recipe, first);
+        latch.observe(
+            LatencyComponentKind::ExternalCapture,
+            RuntimeLatencyObservation::exact(9, 48_000, 2).unwrap(),
+        );
+        assert!(latch.latched().unwrap().changed);
+        assert!(latch.latch(LatencyOperationKind::RecordDirect, 20));
+        assert_eq!(latch.latched().unwrap().recipe, second);
+        assert!(!latch.latched().unwrap().changed);
     }
 
     #[shoop_wasm_test_support::shoop_test]

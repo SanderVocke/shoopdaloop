@@ -227,15 +227,15 @@ Dependencies: Stage 2.
 Progress: scalar observation and bounded recipe seqlocks, per-port mirrors, and processor publication are implemented. Provider-specific observations and operation-boundary latching remain open.
 
 - [x] Add per-port and per-processor latency observations with coherent revisions.
-- [ ] Add callback-readable atomic/fixed-size publication for observations and one latched recipe per operation.
+- [x] Add callback-readable atomic/fixed-size publication for observations and one latched recipe per operation.
 - [x] Port the deterministic delayed audio/MIDI processor fixture.
-- [ ] Publish current and latched scalar state through engine mirrors.
+- [x] Publish current and latched scalar state through engine mirrors.
 - [ ] Ensure numeric updates do not trigger graph topology rebuilds.
 
 Verification:
 
-- [ ] Observation publication and latching tests pass.
-- [ ] Dynamic changes increment revisions and mark active operations without retiming them.
+- [x] Observation publication and latching tests pass.
+- [x] Dynamic changes increment revisions and mark active operations without retiming them.
 - [x] Publication and deterministic processor paths pass no-allocation/no-lock checks.
 
 ### Stage 4 — Implement scalar capture windows and ordinary playback

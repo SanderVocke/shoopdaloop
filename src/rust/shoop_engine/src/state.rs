@@ -4,7 +4,7 @@
 //! strings and are supplied when a mirror is read, so the process thread never clones them.
 
 use crate::channel_mode::ChannelMode;
-use crate::latency_runtime::RuntimeLatencyObservation;
+use crate::latency_runtime::{PublishedLatencyRecipe, RuntimeLatencyObservation};
 use crate::loop_mode::LoopMode;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -15,6 +15,8 @@ pub struct LoopState {
     pub cycle_count: u64,
     pub maybe_next_mode: Option<LoopMode>,
     pub maybe_next_mode_delay: Option<u32>,
+    pub current_latency_recipe: PublishedLatencyRecipe,
+    pub latched_latency_recipe: PublishedLatencyRecipe,
 }
 
 impl Default for LoopState {
@@ -26,6 +28,8 @@ impl Default for LoopState {
             cycle_count: 0,
             maybe_next_mode: None,
             maybe_next_mode_delay: None,
+            current_latency_recipe: PublishedLatencyRecipe::default(),
+            latched_latency_recipe: PublishedLatencyRecipe::default(),
         }
     }
 }

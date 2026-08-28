@@ -3,7 +3,10 @@ use crate::composite_plan::{LoopIdentity, LoopTargetKind, MAX_COMPOSITE_TARGETS}
 use crate::composite_runtime::{
     ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
 };
-use crate::latency_runtime::{AtomicLatencyObservation, RuntimeLatencyObservation};
+use crate::latency_runtime::{
+    AtomicLatencyObservation, AtomicLatencyRecipePublication, LatchedLatencyRecipe,
+    RuntimeLatencyObservation, RuntimeLatencyRecipe,
+};
 use crate::loop_mode::LoopMode;
 use crate::state::{
     AudioChannelState, AudioPortState, LatestMidiMessage, LoopState, MidiChannelState,
@@ -29,6 +32,8 @@ pub struct LoopStateMirror {
     cycle_count: AtomicU64,
     next_mode: AtomicI32,
     next_delay: AtomicU64,
+    current_latency_recipe: AtomicLatencyRecipePublication,
+    latched_latency_recipe: AtomicLatencyRecipePublication,
 }
 
 impl Default for LoopStateMirror {
@@ -41,6 +46,8 @@ impl Default for LoopStateMirror {
             cycle_count: AtomicU64::new(0),
             next_mode: AtomicI32::new(NO_MODE),
             next_delay: AtomicU64::new(NO_DELAY),
+            current_latency_recipe: AtomicLatencyRecipePublication::default(),
+            latched_latency_recipe: AtomicLatencyRecipePublication::default(),
         }
     }
 }
@@ -99,6 +106,14 @@ impl LoopStateMirror {
         self.end_write();
     }
 
+    pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.current_latency_recipe.publish_pending(recipe);
+    }
+
+    pub fn publish_latched_latency_recipe(&self, recipe: Option<LatchedLatencyRecipe>) {
+        self.latched_latency_recipe.publish_latched(recipe);
+    }
+
     pub fn read(&self) -> LoopState {
         loop {
             let before = self.generation.load(Ordering::Acquire);
@@ -117,6 +132,8 @@ impl LoopStateMirror {
                 maybe_next_mode: (next_mode != NO_MODE)
                     .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
                 maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
+                current_latency_recipe: self.current_latency_recipe.read(),
+                latched_latency_recipe: self.latched_latency_recipe.read(),
             };
             std::sync::atomic::fence(Ordering::Acquire);
             let after = self.generation.load(Ordering::Relaxed);
@@ -994,6 +1011,20 @@ mod tests {
         check!(state.cycle_count == 3);
         check!(state.maybe_next_mode == Some(LoopMode::Recording));
         check!(state.maybe_next_mode_delay == Some(2));
+
+        let resolved = shoop_latency::resolve_latency_recipe(
+            shoop_latency::LatencyOperationKind::RecordDirect,
+            shoop_latency::RecordingReference::ExternalWorld,
+            &[],
+        )
+        .unwrap();
+        let recipe = RuntimeLatencyRecipe::from_resolved(&resolved, 7);
+        mirror.publish_current_latency_recipe(Some(recipe));
+        mirror.publish_latched_latency_recipe(Some(LatchedLatencyRecipe::new(recipe, 33)));
+        let state = mirror.read();
+        check!(state.current_latency_recipe.recipe == Some(recipe));
+        check!(state.latched_latency_recipe.recipe == Some(recipe));
+        check!(state.latched_latency_recipe.operation_frame == Some(33));
 
         mirror.publish(LoopMode::Stopped, 0, 0, 4, None);
         let state = mirror.read();
