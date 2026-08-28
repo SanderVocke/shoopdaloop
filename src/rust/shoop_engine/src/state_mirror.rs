@@ -657,9 +657,22 @@ pub struct MidiChannelStateMirror {
     n_notes_active: AtomicU32,
     length: AtomicU32,
     start_offset: AtomicI32,
+    capture_alignment_frames: AtomicI32,
+    retained_before_frames: AtomicU32,
+    retained_after_frames: AtomicU32,
+    postroll_remaining_frames: AtomicU32,
+    render_advance_frames: AtomicU32,
     played_back_sample: AtomicI32,
+    logical_played_position: AtomicI32,
+    raw_played_position: AtomicI32,
+    dispatch_position: AtomicI32,
     n_preplay_samples: AtomicU32,
+    latency_retention_incomplete: AtomicBool,
+    latency_history_variable: AtomicBool,
+    latency_history_revisions: AtomicU32,
     data_sequence: AtomicU64,
+    current_latency_recipe: AtomicLatencyRecipePublication,
+    latched_latency_recipe: AtomicLatencyRecipePublication,
 }
 
 impl Default for MidiChannelStateMirror {
@@ -670,9 +683,22 @@ impl Default for MidiChannelStateMirror {
             n_notes_active: AtomicU32::new(0),
             length: AtomicU32::new(0),
             start_offset: AtomicI32::new(0),
+            capture_alignment_frames: AtomicI32::new(0),
+            retained_before_frames: AtomicU32::new(0),
+            retained_after_frames: AtomicU32::new(0),
+            postroll_remaining_frames: AtomicU32::new(0),
+            render_advance_frames: AtomicU32::new(0),
             played_back_sample: AtomicI32::new(NO_SAMPLE),
+            logical_played_position: AtomicI32::new(NO_SAMPLE),
+            raw_played_position: AtomicI32::new(NO_SAMPLE),
+            dispatch_position: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
+            latency_retention_incomplete: AtomicBool::new(false),
+            latency_history_variable: AtomicBool::new(false),
+            latency_history_revisions: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
+            current_latency_recipe: AtomicLatencyRecipePublication::default(),
+            latched_latency_recipe: AtomicLatencyRecipePublication::default(),
         }
     }
 }
@@ -684,6 +710,9 @@ impl MidiChannelStateMirror {
         n_notes_active: u32,
         length: u32,
         start_offset: i32,
+        capture_alignment_frames: i32,
+        postroll_remaining_frames: u32,
+        render_advance_frames: u32,
         played_back_sample: Option<i32>,
         n_preplay_samples: u32,
         data_sequence: u64,
@@ -692,6 +721,12 @@ impl MidiChannelStateMirror {
         self.n_notes_active.store(n_notes_active, Ordering::Relaxed);
         self.length.store(length, Ordering::Relaxed);
         self.start_offset.store(start_offset, Ordering::Relaxed);
+        self.capture_alignment_frames
+            .store(capture_alignment_frames, Ordering::Relaxed);
+        self.postroll_remaining_frames
+            .store(postroll_remaining_frames, Ordering::Relaxed);
+        self.render_advance_frames
+            .store(render_advance_frames, Ordering::Relaxed);
         self.played_back_sample
             .store(played_back_sample.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
         self.n_preplay_samples
@@ -707,6 +742,11 @@ impl MidiChannelStateMirror {
         self.start_offset.store(offset, Ordering::Relaxed);
     }
 
+    pub fn set_capture_alignment_frames(&self, frames: i32) {
+        self.capture_alignment_frames
+            .store(frames, Ordering::Relaxed);
+    }
+
     pub fn set_n_preplay_samples(&self, samples: u32) {
         self.n_preplay_samples.store(samples, Ordering::Relaxed);
     }
@@ -715,8 +755,50 @@ impl MidiChannelStateMirror {
         self.n_events_triggered.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn publish_playback_positions(
+        &self,
+        logical: Option<i32>,
+        raw: Option<i32>,
+        dispatch: Option<i32>,
+    ) {
+        self.logical_played_position
+            .store(logical.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
+        self.raw_played_position
+            .store(raw.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
+        self.dispatch_position
+            .store(dispatch.unwrap_or(NO_SAMPLE), Ordering::Relaxed);
+    }
+
+    pub fn publish_retained_margins(&self, before: u32, after: u32) {
+        self.retained_before_frames.store(before, Ordering::Relaxed);
+        self.retained_after_frames.store(after, Ordering::Relaxed);
+    }
+
+    pub fn publish_latency_retention_incomplete(&self, incomplete: bool) {
+        self.latency_retention_incomplete
+            .store(incomplete, Ordering::Relaxed);
+    }
+
+    pub fn publish_latency_history(&self, variable: bool, revisions: u32) {
+        self.latency_history_variable
+            .store(variable, Ordering::Relaxed);
+        self.latency_history_revisions
+            .store(revisions, Ordering::Relaxed);
+    }
+
+    pub fn publish_current_latency_recipe(&self, recipe: Option<RuntimeLatencyRecipe>) {
+        self.current_latency_recipe.publish_pending(recipe);
+    }
+
+    pub fn publish_latched_latency_recipe(&self, recipe: Option<LatchedLatencyRecipe>) {
+        self.latched_latency_recipe.publish_latched(recipe);
+    }
+
     pub fn read(&self, acknowledged_data_sequence: u64) -> MidiChannelState {
         let played = self.played_back_sample.load(Ordering::Relaxed);
+        let logical = self.logical_played_position.load(Ordering::Relaxed);
+        let raw = self.raw_played_position.load(Ordering::Relaxed);
+        let dispatch = self.dispatch_position.load(Ordering::Relaxed);
         MidiChannelState {
             mode: ChannelMode::try_from(self.mode.load(Ordering::Relaxed))
                 .unwrap_or(ChannelMode::Disabled),
@@ -724,9 +806,22 @@ impl MidiChannelStateMirror {
             n_notes_active: self.n_notes_active.load(Ordering::Relaxed),
             length: self.length.load(Ordering::Relaxed),
             start_offset: self.start_offset.load(Ordering::Relaxed),
+            capture_alignment_frames: self.capture_alignment_frames.load(Ordering::Relaxed),
+            retained_before_frames: self.retained_before_frames.load(Ordering::Relaxed),
+            retained_after_frames: self.retained_after_frames.load(Ordering::Relaxed),
+            postroll_remaining_frames: self.postroll_remaining_frames.load(Ordering::Relaxed),
+            render_advance_frames: self.render_advance_frames.load(Ordering::Relaxed),
             played_back_sample: (played != NO_SAMPLE).then_some(played),
+            logical_played_position: (logical != NO_SAMPLE).then_some(logical),
+            raw_played_position: (raw != NO_SAMPLE).then_some(raw),
+            dispatch_position: (dispatch != NO_SAMPLE).then_some(dispatch),
             n_preplay_samples: self.n_preplay_samples.load(Ordering::Relaxed),
+            latency_retention_incomplete: self.latency_retention_incomplete.load(Ordering::Relaxed),
+            latency_history_variable: self.latency_history_variable.load(Ordering::Relaxed),
+            latency_history_revisions: self.latency_history_revisions.load(Ordering::Relaxed),
             data_dirty: self.data_sequence.load(Ordering::Relaxed) != acknowledged_data_sequence,
+            current_latency_recipe: self.current_latency_recipe.read(),
+            latched_latency_recipe: self.latched_latency_recipe.read(),
         }
     }
 
@@ -1032,7 +1127,7 @@ mod tests {
         check!(!audio.read(3).data_dirty);
 
         let midi = MidiChannelStateMirror::default();
-        midi.publish(ChannelMode::Direct, 0, 4, 0, None, 0, 7);
+        midi.publish(ChannelMode::Direct, 0, 4, 0, 0, 0, 0, None, 0, 7);
         check!(midi.read(0).data_dirty);
         check!(!midi.read(7).data_dirty);
     }

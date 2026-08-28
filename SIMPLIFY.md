@@ -242,23 +242,23 @@ Verification:
 
 Dependencies: Stages 2–3.
 
-Progress: the scalar audio-channel implementation and all 11 applicable reference audio-channel latency tests are transferred. Forty-eight complete audio-channel tests pass, covering signed mapping, bounded retention/postroll, callback/wrap playback, prerecord, replacement, snapshots, smoothing finalization, and allocation-free recording. MIDI-channel and loop/session integration remain open.
+Progress: the scalar audio/MIDI channel implementations and all applicable reference channel latency tests are transferred. Forty-eight audio-channel and 60 MIDI-channel-focused tests pass, covering signed mapping, bounded retention/postroll, callback/wrap playback, prerecord, replacement, snapshots/state ordering, smoothing finalization, and allocation-free recording. Loop/session integration remains open.
 
-- [ ] Separate media layout, frozen capture alignment, and current render advance in audio and MIDI channels.
-- [ ] Centralize checked scalar raw/logical mapping and use it for both channel types.
+- [x] Separate media layout, frozen capture alignment, and current render advance in audio and MIDI channels.
+- [x] Centralize checked scalar raw/logical mapping and use it for both channel types.
 - [ ] Reserve bounded prerecord/postroll storage before arming.
 - [ ] Continue finalization until required postroll is available while keeping content mutations unsettled transactionally.
-- [ ] Map ordinary playback through the single scalar across callbacks and loop wrap.
-- [ ] Preserve MIDI start state, equal-frame order, and events crossing retained boundaries.
+- [x] Map ordinary playback through the single scalar across callbacks and loop wrap.
+- [x] Preserve MIDI start state, equal-frame order, and events crossing retained boundaries.
 - [ ] Implement deterministic readiness/defer behavior for play-after-record and advances at or above one loop.
 
 Verification:
 
 - [ ] Ordinary record/play matrices pass for direct, dry, and wet audio/MIDI.
-- [ ] Positive, zero, and bounded negative alignments select exact expected raw frames.
-- [ ] Final events survive postroll; prerecord material supports negative alignment.
+- [x] Positive, zero, and bounded negative alignments select exact expected raw frames.
+- [x] Final events survive postroll; prerecord material supports negative alignment.
 - [ ] Start/stop/restart, callback crossings, loop wrap, and play-after-record tests pass.
-- [ ] Armed record/finalization remains allocation-free and lock-free.
+- [x] Armed record/finalization remains allocation-free and lock-free.
 
 ### Stage 5 — Implement scalar dry render-ahead and wet rerecording
 
@@ -266,11 +266,11 @@ Dependencies: Stage 4 and delayed processor fixture.
 
 Progress: audio-channel render advance and canonical dry-into-wet writes are implemented and directly tested; operation transitions, MIDI state, session routing, and monitoring matrices remain open.
 
-- [ ] Apply current processor render advance independently of frozen capture alignment.
+- [x] Apply current processor render advance independently of frozen capture alignment.
 - [ ] Start planned dry-through-wet dispatch early enough for exact target-frame output.
 - [ ] Implement explicit defer/warn behavior for immediate transitions lacking lead time.
 - [ ] Restore and clean MIDI state across early dispatch, wrap, stop, and latency changes.
-- [ ] Implement dry-into-wet canonical writes and `applied_during_render` provenance with no remaining processor playback contribution.
+- [x] Implement dry-into-wet canonical writes and `applied_during_render` provenance with no remaining processor playback contribution.
 - [ ] Keep live monitoring on the uncompensated shortest path.
 
 Verification:
