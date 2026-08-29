@@ -2229,6 +2229,13 @@ impl EngineBackend {
             .ok_or_else(|| anyhow!("unknown backend loop {id:?}"))
     }
 
+    fn loop_has_unsettled_latency_postroll(&self, loop_id: BackendLoopId) -> Result<bool> {
+        self.session
+            .loop_(self.engine_loop_index(loop_id)?)
+            .map(shoop_engine::AudioMidiLoop::has_unsettled_latency_postroll)
+            .ok_or_else(|| anyhow!("missing engine loop"))
+    }
+
     fn create_track_loop(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
         let (audio_routes, midi_route, latency) = {
             let track = self
@@ -4329,6 +4336,9 @@ impl Backend for EngineBackend {
     }
 
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
+        if self.loop_has_unsettled_latency_postroll(loop_id)? {
+            return Ok(None);
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -4350,6 +4360,9 @@ impl Backend for EngineBackend {
         &mut self,
         loop_id: BackendLoopId,
     ) -> Result<Option<BackendAudioData>> {
+        if self.loop_has_unsettled_latency_postroll(loop_id)? {
+            return Ok(None);
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -4374,6 +4387,9 @@ impl Backend for EngineBackend {
     }
 
     fn loop_midi_data(&mut self, loop_id: BackendLoopId) -> Result<Option<BackendMidiData>> {
+        if self.loop_has_unsettled_latency_postroll(loop_id)? {
+            return Ok(None);
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -4415,6 +4431,11 @@ impl Backend for EngineBackend {
         offset: usize,
         max_samples: usize,
     ) -> Result<BackendAudioDataChunk> {
+        if self.loop_has_unsettled_latency_postroll(loop_id)? {
+            return Err(anyhow!(
+                "loop alignment postroll is still finalizing; retry after it settles"
+            ));
+        }
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -8810,6 +8831,11 @@ mod tests {
         backend
             .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_none());
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_none());
         let immediate_error = backend
             .transition_loop(loop_id, BackendLoopMode::Recording, None)
             .unwrap_err();
@@ -8828,6 +8854,11 @@ mod tests {
         );
 
         backend.advance_frames(2);
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_some());
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_some());
         backend
             .transition_loop(loop_id, BackendLoopMode::Recording, None)
             .unwrap();

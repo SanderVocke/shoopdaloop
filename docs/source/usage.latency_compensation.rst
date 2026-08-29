@@ -33,8 +33,8 @@ Positive offsets retain and select post-record media. Negative offsets retain
 pre-record media. Recording starts only after the required bounded storage has
 been prepared and the required preroll has actually been captured. Content
 remains unsettled while required postroll is being captured; save, export, a new
-recording, and playback that would outrun the retained media wait or report that
-the content is still changing. If storage
+recording, playback that would outrun the retained media, and waveform/details
+reads wait or report that the content is still changing. If storage
 preparation, preroll capture, or finalization cannot complete, the operation
 fails without publishing a partially corrected take.
 

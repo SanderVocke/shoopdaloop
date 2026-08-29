@@ -1730,6 +1730,7 @@ impl Backend for RemoteWorkletBackend {
                         .collect(),
                 ));
             }
+            self.request_waveform_chunk(loop_id)?;
             return Ok(None);
         }
         let revision = self
@@ -1788,9 +1789,13 @@ impl Backend for RemoteWorkletBackend {
             return Err(anyhow!("unknown browser backend loop {loop_id:?}"));
         }
         if let Some(assembly) = self.midi_data.get(&loop_id) {
-            return Ok(assembly.complete.then(|| BackendMidiData {
-                channels: assembly.channels.clone(),
-            }));
+            if assembly.complete {
+                return Ok(Some(BackendMidiData {
+                    channels: assembly.channels.clone(),
+                }));
+            }
+            self.request_midi_data_chunk(loop_id)?;
+            return Ok(None);
         }
         self.restart_midi_data(loop_id)?;
         Ok(None)
@@ -2161,6 +2166,32 @@ impl Backend for RemoteWorkletBackend {
             match received.envelope.event {
                 Event::Ack | Event::Stopped => {}
                 Event::Error { message } => {
+                    let retry_media_read = match &received.command {
+                        Command::RequestWaveform { loop_id, .. }
+                            if message.contains("postroll is still finalizing") =>
+                        {
+                            if let Some(assembly) =
+                                self.waveforms.get_mut(&BackendLoopId::from_raw(*loop_id))
+                            {
+                                assembly.in_flight = false;
+                            }
+                            true
+                        }
+                        Command::RequestMidiData { loop_id, .. }
+                            if message == "MIDI detail data is not ready" =>
+                        {
+                            if let Some(assembly) =
+                                self.midi_data.get_mut(&BackendLoopId::from_raw(*loop_id))
+                            {
+                                assembly.in_flight = false;
+                            }
+                            true
+                        }
+                        _ => false,
+                    };
+                    if retry_media_read {
+                        continue;
+                    }
                     self.transport
                         .borrow_mut()
                         .reject_journaled(&received.command);
@@ -2677,6 +2708,21 @@ mod tests {
             &control,
             1,
             3,
+            Event::Error {
+                message: "loop alignment postroll is still finalizing; retry after it settles"
+                    .to_owned(),
+            },
+        );
+        backend.poll().unwrap();
+        assert!(!backend.waveforms[&loop_id].in_flight);
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_none());
+        deliver(
+            &control,
+            1,
+            4,
             Event::Waveform(WaveformChunk {
                 loop_id: loop_id.raw(),
                 revision: 1,

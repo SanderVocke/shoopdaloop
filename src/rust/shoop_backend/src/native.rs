@@ -2553,6 +2553,9 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        if loop_.handle.has_unsettled_latency_postroll()? {
+            return Ok(None);
+        }
         Ok(Some(
             loop_
                 .audio
@@ -2571,6 +2574,9 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        if loop_.handle.has_unsettled_latency_postroll()? {
+            return Ok(None);
+        }
         let channels = loop_
             .audio
             .iter()
@@ -2593,6 +2599,9 @@ impl Backend for NativeBackend {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        if loop_.handle.has_unsettled_latency_postroll()? {
+            return Ok(None);
+        }
         let channels = loop_
             .midi
             .iter()
@@ -3626,6 +3635,11 @@ mod tests {
         backend
             .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_none());
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_none());
         let immediate_error = backend
             .transition_loop(loop_id, BackendLoopMode::Recording, None)
             .unwrap_err();
@@ -3654,6 +3668,11 @@ mod tests {
             runtime.driver.dummy_run_requested_frames();
         }
         backend.wait_idle();
+        assert!(backend
+            .loop_audio_data_with_metadata(loop_id)
+            .unwrap()
+            .is_some());
+        assert!(backend.loop_midi_data(loop_id).unwrap().is_some());
         backend
             .transition_loop(loop_id, BackendLoopMode::Recording, None)
             .unwrap();
