@@ -14,7 +14,7 @@ effective recording offset:
   value.
 
 JACK is the only automatic provider. ShoopDaLoop accepts a JACK value only when
-all relevant track inputs report the same exact capture latency. CPAL, dummy,
+all relevant connected track inputs report the same exact capture latency. CPAL, dummy,
 Carla, built-in synth, and browser tracks use the manual path rather than an
 estimate. If an automatic value is unavailable, the menu asks for a manual
 value instead of assuming zero.
@@ -24,7 +24,7 @@ the track setting later affects the next operation and never moves an existing
 take. Once a recording transition is armed, cancel it before changing the track
 offset or input routes. Replacement requires the track offset to match the take.
 Retrospective grab is retained only at zero offset; use normal recording when
-compensation is needed. A completed take's signed alignment can be corrected separately using
+compensation is needed. Stop the loop before correcting a completed take's signed alignment with
 its alignment control in the same menu. The correction must fit the raw media
 retained with every channel in the take; otherwise it is rejected without
 changing any channel.

@@ -1708,19 +1708,20 @@ impl NativeRuntime {
             .tracks
             .get(&track_id)
             .expect("native track was checked above");
-        let mut observations = track
-            .audio_inputs
-            .iter()
-            .map(AudioPort::automatic_recording_offset_frames)
-            .collect::<Vec<_>>();
-        if let Some(midi) = &track.midi_input {
-            observations.push(midi.automatic_recording_offset_frames());
-        }
-        let automatic = observations.first().copied().flatten().filter(|first| {
-            observations
-                .iter()
-                .all(|observation| *observation == Some(*first))
+        let audio_observations = track.audio_inputs.iter().map(|port| {
+            port.get_connections_state_now()
+                .values()
+                .any(|connected| *connected)
+                .then(|| port.automatic_recording_offset_frames())
         });
+        let midi_observation = track.midi_input.iter().map(|port| {
+            port.get_connections_state_now()
+                .values()
+                .any(|connected| *connected)
+                .then(|| port.automatic_recording_offset_frames())
+        });
+        let automatic =
+            consistent_connected_recording_offset(audio_observations.chain(midi_observation));
         let track = self
             .tracks
             .get_mut(&track_id)
@@ -1764,6 +1765,9 @@ impl NativeRuntime {
             return Err(anyhow!(
                 "cannot edit take alignment while loop content is changing"
             ));
+        }
+        if loop_state.mode.is_playing_mode() {
+            return Err(anyhow!("stop loop playback before editing take alignment"));
         }
         let audio_states = loop_
             .audio
@@ -2056,6 +2060,16 @@ impl NativeRuntime {
         self.connection_revision = self.connection_revision.wrapping_add(1);
         Ok(())
     }
+}
+
+fn consistent_connected_recording_offset(
+    observations: impl IntoIterator<Item = Option<Option<i32>>>,
+) -> Option<i32> {
+    let mut connected = observations.into_iter().flatten();
+    let first = connected.next()??;
+    connected
+        .all(|observation| observation == Some(first))
+        .then_some(first)
 }
 
 impl Backend for NativeBackend {
@@ -3378,6 +3392,27 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn automatic_offset_uses_only_connected_exact_inputs() {
+        assert_eq!(
+            consistent_connected_recording_offset([Some(Some(37)), None]),
+            Some(37)
+        );
+        assert_eq!(
+            consistent_connected_recording_offset([Some(Some(37)), Some(Some(37))]),
+            Some(37)
+        );
+        assert_eq!(
+            consistent_connected_recording_offset([Some(Some(37)), Some(None)]),
+            None
+        );
+        assert_eq!(
+            consistent_connected_recording_offset([Some(Some(37)), Some(Some(38))]),
+            None
+        );
+        assert_eq!(consistent_connected_recording_offset([None, None]), None);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_exposes_engine_owned_composite_state_and_advancement() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
             sample_rate: 1_000,
@@ -3615,6 +3650,14 @@ mod tests {
                     length: Some(4),
                 },
             )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        let playing_error = backend.set_take_alignment(loop_id, -1).unwrap_err();
+        assert!(playing_error.to_string().contains("stop loop playback"));
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
         backend.set_take_alignment(loop_id, -1).unwrap();
         let error = backend.set_take_alignment(loop_id, 2).unwrap_err();

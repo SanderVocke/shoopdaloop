@@ -4044,6 +4044,9 @@ impl Backend for EngineBackend {
                 "cannot edit take alignment while loop content is changing"
             ));
         }
+        if engine_loop.mode().is_playing_mode() {
+            return Err(anyhow!("stop loop playback before editing take alignment"));
+        }
         let logical_length = engine_loop.length();
         for (index, channel) in channels.audio.iter().enumerate() {
             let channel = self
@@ -6593,6 +6596,14 @@ impl Backend for FakeBackend {
                 "cannot edit take alignment while loop content is changing"
             ));
         }
+        if self.loops.get(&loop_id).is_some_and(|state| {
+            matches!(
+                state.mode,
+                BackendLoopMode::Playing | BackendLoopMode::PlayingDryThroughWet
+            )
+        }) {
+            return Err(anyhow!("stop loop playback before editing take alignment"));
+        }
         let content = self
             .loop_content
             .get(&loop_id)
@@ -8280,6 +8291,14 @@ mod tests {
                     length: Some(4),
                 },
             )
+            .unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+        let playing_error = backend.set_take_alignment(loop_id, -1).unwrap_err();
+        assert!(playing_error.to_string().contains("stop loop playback"));
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
         backend.set_take_alignment(loop_id, -1).unwrap();
         let aligned = backend.capture_session().unwrap();
