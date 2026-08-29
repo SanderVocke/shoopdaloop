@@ -1067,6 +1067,7 @@ enum PendingIo {
         source: LoopModel,
         target: LoopId,
         update: BackendLoopContentUpdate,
+        capture_alignment_frames: i32,
         gain: f32,
         balance: f32,
     },
@@ -4008,6 +4009,9 @@ impl ApplicationModel {
                                     }
                                 } else {
                                     self.pending_io = Some(PendingIo::CommitLoopDuplicate {
+                                        capture_alignment_frames: source
+                                            .state
+                                            .capture_alignment_frames,
                                         source,
                                         target,
                                         update,
@@ -4034,6 +4038,7 @@ impl ApplicationModel {
                 source,
                 target,
                 update,
+                capture_alignment_frames,
                 gain,
                 balance,
             } => {
@@ -4045,11 +4050,24 @@ impl ApplicationModel {
                     });
                 match result {
                     Ok(BackendAsyncResult::Ready(())) => {
-                        match self
-                            .finish_primitive_loop_duplicate(backend, source, target, gain, balance)
-                        {
-                            Ok(()) => {}
-                            Err(error) => self.report_error(error),
+                        let result = self
+                            .loops
+                            .get(&target)
+                            .ok_or_else(|| format!("stale loop {target}"))
+                            .and_then(|model| {
+                                backend
+                                    .set_take_alignment(model.backend_id, capture_alignment_frames)
+                                    .map_err(|error| {
+                                        format!("could not align duplicate target: {error}")
+                                    })
+                            })
+                            .and_then(|()| {
+                                self.finish_primitive_loop_duplicate(
+                                    backend, source, target, gain, balance,
+                                )
+                            });
+                        if let Err(error) = result {
+                            self.report_error(error);
                         }
                     }
                     Ok(BackendAsyncResult::Pending(_)) => {
@@ -4057,6 +4075,7 @@ impl ApplicationModel {
                             source,
                             target,
                             update,
+                            capture_alignment_frames,
                             gain,
                             balance,
                         });
@@ -9928,7 +9947,7 @@ mod tests {
             }],
             midi: vec![BackendMidiChannelUpdate {
                 channel: 0,
-                length: 4,
+                length: 5,
                 start_state: vec![vec![0xB0, 7, 99]],
                 events: vec![BackendMidiEvent {
                     time: 2,
@@ -9942,6 +9961,7 @@ mod tests {
         backend
             .replace_loop_content(source_backend, &source_update)
             .unwrap();
+        backend.set_take_alignment(source_backend, 2).unwrap();
         backend.set_loop_gain(source_backend, 0.42).unwrap();
         backend.set_loop_balance(source_backend, -0.25).unwrap();
         backend

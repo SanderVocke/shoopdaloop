@@ -3080,6 +3080,11 @@ impl EngineBackend {
         let values = prepared_backend_latency(&latency)?;
         if require_existing_alignment {
             let expected = values.recording_offset().frames();
+            if expected != 0 {
+                return Err(anyhow!(
+                    "replacement with a nonzero recording offset is unsupported; record a new take instead"
+                ));
+            }
             let channel_set = self.loop_channels.get(&loop_id);
             let audio_matches = channel_set
                 .into_iter()
@@ -6891,6 +6896,11 @@ impl Backend for FakeBackend {
                 .map(|track| track.state.latency.effective_offset_frames)
                 .unwrap_or(Some(0))
                 .ok_or_else(|| anyhow!("recording offset is unavailable; enter a manual value"))?;
+            if mode == BackendLoopMode::Replacing && alignment != 0 {
+                return Err(anyhow!(
+                    "replacement with a nonzero recording offset is unsupported; record a new take instead"
+                ));
+            }
             if let Some(content) = self.loop_content.get_mut(&loop_id) {
                 for channel in &mut content.audio {
                     channel.capture_alignment_frames = alignment;
@@ -8316,6 +8326,20 @@ mod tests {
             .midi
             .iter()
             .all(|channel| channel.capture_alignment_frames == -1));
+
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(-1),
+                0,
+            )
+            .unwrap();
+        let replacement_error = backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, None)
+            .unwrap_err();
+        assert!(replacement_error
+            .to_string()
+            .contains("replacement with a nonzero recording offset"));
 
         let error = backend.set_take_alignment(loop_id, 2).unwrap_err();
         assert!(error.to_string().contains("retained raw window"));

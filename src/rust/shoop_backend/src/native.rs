@@ -2677,6 +2677,11 @@ impl Backend for NativeBackend {
                     .ok_or_else(|| {
                         anyhow!("recording offset is unavailable; enter a manual value")
                     })?;
+                if expected != 0 {
+                    return Err(anyhow!(
+                        "replacement with a nonzero recording offset is unsupported; record a new take instead"
+                    ));
+                }
                 let loop_ = runtime
                     .loops
                     .get(&loop_id)
@@ -3660,6 +3665,19 @@ mod tests {
             .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
         backend.set_take_alignment(loop_id, -1).unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(-1),
+                0,
+            )
+            .unwrap();
+        let replacement_error = backend
+            .transition_loop(loop_id, BackendLoopMode::Replacing, None)
+            .unwrap_err();
+        assert!(replacement_error
+            .to_string()
+            .contains("replacement with a nonzero recording offset"));
         let error = backend.set_take_alignment(loop_id, 2).unwrap_err();
         assert!(error.to_string().contains("retained raw window"));
 
