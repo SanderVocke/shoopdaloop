@@ -8,6 +8,69 @@ pub const MAX_RECIPE_COMPONENTS: usize = 16;
 pub const MAX_OBSERVATION_HISTORY: usize = 4_096;
 pub const MAX_SOURCE_IDENTITY_BYTES: usize = 256;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct RecordingOffset(i32);
+
+impl RecordingOffset {
+    pub fn new(frames: i32) -> Result<Self, LatencyDomainError> {
+        if frames.unsigned_abs() > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::SignedValueExceedsMaximum(frames));
+        }
+        Ok(Self(frames))
+    }
+
+    pub const fn frames(self) -> i32 {
+        self.0
+    }
+
+    pub fn checked_add(self, trim_frames: i32) -> Result<Self, LatencyDomainError> {
+        let frames = self
+            .0
+            .checked_add(trim_frames)
+            .ok_or(LatencyDomainError::FrameArithmeticOverflow)?;
+        Self::new(frames)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RecordingOffsetAdjustment {
+    #[default]
+    Automatic,
+    ManualOverride(i32),
+    AutomaticPlusTrim(i32),
+}
+
+pub fn resolve_recording_offset(
+    automatic: Option<RecordingOffset>,
+    adjustment: RecordingOffsetAdjustment,
+) -> Result<RecordingOffset, LatencyDomainError> {
+    match adjustment {
+        RecordingOffsetAdjustment::Automatic => {
+            automatic.ok_or(LatencyDomainError::AutomaticOffsetUnavailable)
+        }
+        RecordingOffsetAdjustment::ManualOverride(frames) => RecordingOffset::new(frames),
+        RecordingOffsetAdjustment::AutomaticPlusTrim(trim_frames) => automatic
+            .ok_or(LatencyDomainError::AutomaticOffsetUnavailable)?
+            .checked_add(trim_frames),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProcessorRenderAdvance(u32);
+
+impl ProcessorRenderAdvance {
+    pub fn new(frames: u32) -> Result<Self, LatencyDomainError> {
+        if frames > MAX_COMPENSATION_FRAMES {
+            return Err(LatencyDomainError::ValueExceedsMaximum(frames));
+        }
+        Ok(Self(frames))
+    }
+
+    pub const fn frames(self) -> u32 {
+        self.0
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CaptureFrameMapping {
     capture_alignment_frames: i32,
@@ -748,6 +811,8 @@ pub enum LatencyDomainError {
     TooManyRecipeComponents(usize),
     #[error("latency recipe is unresolved")]
     UnresolvedRecipe,
+    #[error("automatic recording offset is unavailable; enter a manual value")]
+    AutomaticOffsetUnavailable,
     #[error("retained latency margin exceeds the supported maximum")]
     RetainedMarginExceedsMaximum,
 }
@@ -824,6 +889,65 @@ mod tests {
         assert_eq!(
             CaptureFrameMapping::processor_dispatch_frame(100, 17).unwrap(),
             83
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn recording_offset_resolution_checks_manual_override_and_trim() {
+        let automatic = RecordingOffset::new(17).unwrap();
+        assert_eq!(
+            resolve_recording_offset(Some(automatic), RecordingOffsetAdjustment::Automatic),
+            Ok(automatic)
+        );
+        assert_eq!(
+            resolve_recording_offset(
+                Some(automatic),
+                RecordingOffsetAdjustment::ManualOverride(-23)
+            ),
+            RecordingOffset::new(-23)
+        );
+        assert_eq!(
+            resolve_recording_offset(
+                Some(automatic),
+                RecordingOffsetAdjustment::AutomaticPlusTrim(-5)
+            ),
+            RecordingOffset::new(12)
+        );
+        assert_eq!(
+            resolve_recording_offset(None, RecordingOffsetAdjustment::Automatic),
+            Err(LatencyDomainError::AutomaticOffsetUnavailable)
+        );
+        assert_eq!(
+            resolve_recording_offset(None, RecordingOffsetAdjustment::AutomaticPlusTrim(1)),
+            Err(LatencyDomainError::AutomaticOffsetUnavailable)
+        );
+        assert_eq!(
+            resolve_recording_offset(
+                Some(RecordingOffset::new(MAX_COMPENSATION_FRAMES as i32).unwrap()),
+                RecordingOffsetAdjustment::AutomaticPlusTrim(1)
+            ),
+            Err(LatencyDomainError::SignedValueExceedsMaximum(
+                MAX_COMPENSATION_FRAMES as i32 + 1
+            ))
+        );
+        assert_eq!(
+            resolve_recording_offset(
+                Some(RecordingOffset::new(1).unwrap()),
+                RecordingOffsetAdjustment::AutomaticPlusTrim(i32::MAX)
+            ),
+            Err(LatencyDomainError::FrameArithmeticOverflow)
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn capture_alignment_and_processor_advance_have_separate_domains() {
+        assert_eq!(RecordingOffset::new(-7).unwrap().frames(), -7);
+        assert_eq!(ProcessorRenderAdvance::new(7).unwrap().frames(), 7);
+        assert_eq!(
+            ProcessorRenderAdvance::new(MAX_COMPENSATION_FRAMES + 1),
+            Err(LatencyDomainError::ValueExceedsMaximum(
+                MAX_COMPENSATION_FRAMES + 1
+            ))
         );
     }
 
@@ -1087,7 +1211,7 @@ mod tests {
         let unresolved = resolve_latency_recipe(
             LatencyOperationKind::RecordDirect,
             RecordingReference::ExternalWorld,
-            &[input.clone()],
+            std::slice::from_ref(&input),
         )
         .unwrap();
         assert_eq!(unresolved.total_frames, None);
@@ -1354,7 +1478,7 @@ mod tests {
         let recipe = resolve_latency_recipe(
             LatencyOperationKind::RecordDirect,
             RecordingReference::ExternalWorld,
-            &[input.clone()],
+            std::slice::from_ref(&input),
         )
         .unwrap();
         let mut snapshot =
