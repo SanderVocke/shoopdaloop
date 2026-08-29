@@ -635,6 +635,8 @@ pub struct BackendAudioChannelUpdate {
     pub channel: usize,
     pub samples: Vec<f32>,
     pub start_offset: Option<i32>,
+    #[serde(default)]
+    pub capture_alignment_frames: Option<i32>,
     pub preplay: Option<u32>,
 }
 
@@ -645,6 +647,8 @@ pub struct BackendMidiChannelUpdate {
     pub start_state: Vec<Vec<u8>>,
     pub events: Vec<BackendMidiEvent>,
     pub start_offset: Option<i32>,
+    #[serde(default)]
+    pub capture_alignment_frames: Option<i32>,
     pub preplay: Option<u32>,
 }
 
@@ -4582,6 +4586,19 @@ impl Backend for EngineBackend {
         {
             return Err(anyhow!("loop content update contains a duplicate channel"));
         }
+        for alignment in update
+            .audio
+            .iter()
+            .filter_map(|item| item.capture_alignment_frames)
+            .chain(
+                update
+                    .midi
+                    .iter()
+                    .filter_map(|item| item.capture_alignment_frames),
+            )
+        {
+            shoop_latency::RecordingOffset::new(alignment)?;
+        }
         let midi_events = update
             .midi
             .iter()
@@ -4604,6 +4621,9 @@ impl Backend for EngineBackend {
             let retained_offset = channel.start_offset();
             channel.load_data(&item.samples);
             channel.set_start_offset(item.start_offset.unwrap_or(retained_offset));
+            if let Some(alignment) = item.capture_alignment_frames {
+                channel.set_capture_alignment_frames(alignment)?;
+            }
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
             }
@@ -4616,6 +4636,9 @@ impl Backend for EngineBackend {
             channel.set_contents(&events, item.length, Some(&item.start_state));
             if let Some(offset) = item.start_offset {
                 channel.set_start_offset(offset);
+            }
+            if let Some(alignment) = item.capture_alignment_frames {
+                channel.set_capture_alignment_frames(alignment)?;
             }
             if let Some(preplay) = item.preplay {
                 channel.set_pre_play_samples(preplay);
@@ -7030,6 +7053,19 @@ impl Backend for FakeBackend {
         {
             return Err(anyhow!("loop content update contains a duplicate channel"));
         }
+        for alignment in update
+            .audio
+            .iter()
+            .filter_map(|item| item.capture_alignment_frames)
+            .chain(
+                update
+                    .midi
+                    .iter()
+                    .filter_map(|item| item.capture_alignment_frames),
+            )
+        {
+            shoop_latency::RecordingOffset::new(alignment)?;
+        }
         if update
             .midi
             .iter()
@@ -7046,7 +7082,7 @@ impl Backend for FakeBackend {
         for item in &update.audio {
             let channel = &mut content.audio[item.channel];
             channel.samples.clone_from(&item.samples);
-            channel.capture_alignment_frames = 0;
+            channel.capture_alignment_frames = item.capture_alignment_frames.unwrap_or(0);
             if let Some(offset) = item.start_offset {
                 channel.start_offset = offset;
             }
@@ -7059,7 +7095,7 @@ impl Backend for FakeBackend {
             channel.length = item.length;
             channel.start_state.clone_from(&item.start_state);
             channel.events.clone_from(&item.events);
-            channel.capture_alignment_frames = 0;
+            channel.capture_alignment_frames = item.capture_alignment_frames.unwrap_or(0);
             if let Some(offset) = item.start_offset {
                 channel.start_offset = offset;
             }
@@ -7072,7 +7108,17 @@ impl Backend for FakeBackend {
         }
         let state = self.loops.get_mut(&loop_id).expect("loop was validated");
         state.mode = BackendLoopMode::Stopped;
-        state.capture_alignment_frames = 0;
+        state.capture_alignment_frames = content
+            .audio
+            .first()
+            .map(|channel| channel.capture_alignment_frames)
+            .or_else(|| {
+                content
+                    .midi
+                    .first()
+                    .map(|channel| channel.capture_alignment_frames)
+            })
+            .unwrap_or(0);
         state.next_mode = None;
         state.next_transition_delay = None;
         if let Some(length) = update.length {
@@ -8050,12 +8096,14 @@ mod tests {
                             channel: 0,
                             samples: vec![1.0, 2.0, 3.0],
                             start_offset: Some(-1),
+                            capture_alignment_frames: None,
                             preplay: Some(4),
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![10.0, 20.0, 30.0],
                             start_offset: Some(-2),
+                            capture_alignment_frames: None,
                             preplay: Some(5),
                         },
                     ],
@@ -8068,6 +8116,7 @@ mod tests {
                             data: vec![0x90, 64, 127],
                         }],
                         start_offset: Some(-3),
+                        capture_alignment_frames: None,
                         preplay: Some(6),
                     }],
                     length: Some(3),
@@ -8107,12 +8156,14 @@ mod tests {
                             channel: 0,
                             samples: vec![1.0, 2.0, 3.0],
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![10.0, 20.0, 30.0],
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                     ],
@@ -8169,6 +8220,7 @@ mod tests {
                         channel: 0,
                         samples: vec![99.0],
                         start_offset: None,
+                        capture_alignment_frames: None,
                         preplay: None,
                     }],
                     ..Default::default()
@@ -8211,12 +8263,14 @@ mod tests {
                             channel: 0,
                             samples: vec![99.0],
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 0,
                             samples: vec![100.0],
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                     ],
@@ -8288,12 +8342,14 @@ mod tests {
                             channel: 0,
                             samples: vec![0.0; 6],
                             start_offset: Some(1),
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![0.0; 6],
                             start_offset: Some(1),
+                            capture_alignment_frames: None,
                             preplay: None,
                         },
                     ],
@@ -8303,6 +8359,7 @@ mod tests {
                         start_state: Vec::new(),
                         events: Vec::new(),
                         start_offset: Some(1),
+                        capture_alignment_frames: None,
                         preplay: None,
                     }],
                     length: Some(4),
@@ -9781,6 +9838,7 @@ mod tests {
                         start_state: vec![vec![0xbf, 0, 3], vec![0xcf, 42]],
                         events: preserved_midi.clone(),
                         start_offset: None,
+                        capture_alignment_frames: None,
                         preplay: None,
                     }],
                     length: Some(128),
@@ -10263,6 +10321,7 @@ mod tests {
                             },
                         ],
                         start_offset: Some(-4),
+                        capture_alignment_frames: None,
                         preplay: Some(7),
                     }],
                     length: Some(32),

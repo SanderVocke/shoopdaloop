@@ -3394,6 +3394,7 @@ mod tests {
                 channel: 0,
                 samples: vec![0.25; 128],
                 start_offset: None,
+                capture_alignment_frames: None,
                 preplay: None,
             }],
             length: Some(128),

@@ -2776,6 +2776,7 @@ impl Backend for NativeBackend {
                         .ok_or_else(|| anyhow!("unknown audio channel {}", item.channel))?,
                     samples: &item.samples,
                     start_offset: item.start_offset,
+                    capture_alignment_frames: item.capture_alignment_frames,
                     preplay: item.preplay,
                 })
             })
@@ -2815,6 +2816,7 @@ impl Backend for NativeBackend {
                     messages,
                     length: item.length,
                     start_offset: item.start_offset,
+                    capture_alignment_frames: item.capture_alignment_frames,
                     preplay: item.preplay,
                 })
             })
@@ -3696,8 +3698,9 @@ mod tests {
                     audio: (0..2)
                         .map(|channel| BackendAudioChannelUpdate {
                             channel,
-                            samples: vec![0.0; 6],
+                            samples: vec![0.0; if channel == 0 { 7 } else { 6 }],
                             start_offset: Some(1),
+                            capture_alignment_frames: Some(if channel == 0 { 2 } else { 0 }),
                             preplay: None,
                         })
                         .collect(),
@@ -3707,12 +3710,29 @@ mod tests {
                         start_state: Vec::new(),
                         events: Vec::new(),
                         start_offset: Some(1),
+                        capture_alignment_frames: Some(0),
                         preplay: None,
                     }],
                     length: Some(4),
                 },
             )
             .unwrap();
+        let mixed = backend.capture_session().unwrap();
+        let mixed = mixed
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == loop_id.raw())
+            .unwrap();
+        assert_eq!(
+            mixed
+                .audio
+                .iter()
+                .map(|channel| channel.capture_alignment_frames)
+                .collect::<Vec<_>>(),
+            [2, 0]
+        );
+        assert_eq!(mixed.midi[0].capture_alignment_frames, 0);
         backend
             .transition_loop(loop_id, BackendLoopMode::Playing, None)
             .unwrap();
@@ -4118,12 +4138,14 @@ mod tests {
                             channel: 0,
                             samples: vec![1.0, 2.0, 3.0, 4.0],
                             start_offset: Some(-1),
+                            capture_alignment_frames: None,
                             preplay: Some(2),
                         },
                         BackendAudioChannelUpdate {
                             channel: 1,
                             samples: vec![5.0, 6.0, 7.0, 8.0],
                             start_offset: Some(-2),
+                            capture_alignment_frames: None,
                             preplay: Some(3),
                         },
                     ],
@@ -4136,6 +4158,7 @@ mod tests {
                             data: vec![0x90, 64, 127],
                         }],
                         start_offset: Some(-3),
+                        capture_alignment_frames: None,
                         preplay: Some(4),
                     }],
                     length: Some(4),
@@ -4245,12 +4268,14 @@ mod tests {
                                 channel: 0,
                                 samples: vec![sample; 16_384],
                                 start_offset: None,
+                                capture_alignment_frames: None,
                                 preplay: None,
                             },
                             BackendAudioChannelUpdate {
                                 channel: 1,
                                 samples: vec![-sample; 16_384],
                                 start_offset: None,
+                                capture_alignment_frames: None,
                                 preplay: None,
                             },
                         ],
@@ -4265,6 +4290,7 @@ mod tests {
                                 })
                                 .collect(),
                             start_offset: None,
+                            capture_alignment_frames: None,
                             preplay: None,
                         }],
                         length: Some(16_384),

@@ -1067,7 +1067,6 @@ enum PendingIo {
         source: LoopModel,
         target: LoopId,
         update: BackendLoopContentUpdate,
-        capture_alignment_frames: i32,
         gain: f32,
         balance: f32,
     },
@@ -3969,6 +3968,9 @@ impl ApplicationModel {
                                             channel,
                                             samples: content.samples,
                                             start_offset: Some(content.start_offset),
+                                            capture_alignment_frames: Some(
+                                                content.capture_alignment_frames,
+                                            ),
                                             preplay: Some(content.preplay),
                                         })
                                         .collect(),
@@ -3982,6 +3984,9 @@ impl ApplicationModel {
                                             start_state: content.start_state,
                                             events: content.events,
                                             start_offset: Some(content.start_offset),
+                                            capture_alignment_frames: Some(
+                                                content.capture_alignment_frames,
+                                            ),
                                             preplay: Some(content.preplay),
                                         })
                                         .collect(),
@@ -4009,9 +4014,6 @@ impl ApplicationModel {
                                     }
                                 } else {
                                     self.pending_io = Some(PendingIo::CommitLoopDuplicate {
-                                        capture_alignment_frames: source
-                                            .state
-                                            .capture_alignment_frames,
                                         source,
                                         target,
                                         update,
@@ -4038,7 +4040,6 @@ impl ApplicationModel {
                 source,
                 target,
                 update,
-                capture_alignment_frames,
                 gain,
                 balance,
             } => {
@@ -4050,23 +4051,9 @@ impl ApplicationModel {
                     });
                 match result {
                     Ok(BackendAsyncResult::Ready(())) => {
-                        let result = self
-                            .loops
-                            .get(&target)
-                            .ok_or_else(|| format!("stale loop {target}"))
-                            .and_then(|model| {
-                                backend
-                                    .set_take_alignment(model.backend_id, capture_alignment_frames)
-                                    .map_err(|error| {
-                                        format!("could not align duplicate target: {error}")
-                                    })
-                            })
-                            .and_then(|()| {
-                                self.finish_primitive_loop_duplicate(
-                                    backend, source, target, gain, balance,
-                                )
-                            });
-                        if let Err(error) = result {
+                        if let Err(error) = self
+                            .finish_primitive_loop_duplicate(backend, source, target, gain, balance)
+                        {
                             self.report_error(error);
                         }
                     }
@@ -4075,7 +4062,6 @@ impl ApplicationModel {
                             source,
                             target,
                             update,
-                            capture_alignment_frames,
                             gain,
                             balance,
                         });
@@ -8131,6 +8117,7 @@ impl ApplicationModel {
                     channel,
                     samples: source.samples.clone(),
                     start_offset: None,
+                    capture_alignment_frames: None,
                     preplay: None,
                 })
                 .collect(),
@@ -8172,6 +8159,7 @@ impl ApplicationModel {
                     })
                     .collect::<Result<Vec<_>, String>>()?,
                 start_offset: None,
+                capture_alignment_frames: None,
                 preplay: None,
             }],
             length: update_loop_length.then_some(length),
@@ -8210,6 +8198,7 @@ impl ApplicationModel {
                     channel,
                     samples: samples.clone(),
                     start_offset: Some(0),
+                    capture_alignment_frames: None,
                     preplay: Some(0),
                 })
                 .collect(),
@@ -8251,6 +8240,7 @@ impl ApplicationModel {
                 start_state: midi.start_state.clone(),
                 events,
                 start_offset: Some(0),
+                capture_alignment_frames: None,
                 preplay: Some(0),
             }],
             length: Some(length),
@@ -9943,6 +9933,7 @@ mod tests {
                 channel: 0,
                 samples: vec![0.25, -0.5, 0.75, -1.0],
                 start_offset: Some(-2),
+                capture_alignment_frames: Some(2),
                 preplay: Some(3),
             }],
             midi: vec![BackendMidiChannelUpdate {
@@ -9954,6 +9945,7 @@ mod tests {
                     data: vec![0x90, 64, 100],
                 }],
                 start_offset: Some(-1),
+                capture_alignment_frames: Some(0),
                 preplay: Some(2),
             }],
             length: Some(4),
@@ -9961,7 +9953,6 @@ mod tests {
         backend
             .replace_loop_content(source_backend, &source_update)
             .unwrap();
-        backend.set_take_alignment(source_backend, 2).unwrap();
         backend.set_loop_gain(source_backend, 0.42).unwrap();
         backend.set_loop_balance(source_backend, -0.25).unwrap();
         backend
@@ -9972,6 +9963,7 @@ mod tests {
                         channel: 0,
                         samples: vec![1.0, 1.0],
                         start_offset: Some(0),
+                        capture_alignment_frames: None,
                         preplay: Some(0),
                     }],
                     midi: Vec::new(),
@@ -14892,6 +14884,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                             },
                         ],
                         start_offset: Some(-3),
+                        capture_alignment_frames: None,
                         preplay: Some(4),
                     }],
                     length: Some(24),
@@ -17787,6 +17780,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                             channel,
                             samples: vec![channel as f32 + 0.25; 128],
                             start_offset: Some(11),
+                            capture_alignment_frames: None,
                             preplay: Some(12),
                         })
                         .collect(),
@@ -17799,6 +17793,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
                             data: vec![0x90, 70, 88],
                         }],
                         start_offset: Some(13),
+                        capture_alignment_frames: None,
                         preplay: Some(14),
                     }],
                     length: Some(128),

@@ -5202,6 +5202,7 @@ pub struct LoopAudioContentUpdate<'a> {
     pub channel: &'a AudioChannel,
     pub samples: &'a [f32],
     pub start_offset: Option<i32>,
+    pub capture_alignment_frames: Option<i32>,
     pub preplay: Option<u32>,
 }
 
@@ -5210,6 +5211,7 @@ pub struct LoopMidiContentUpdate<'a> {
     pub messages: &'a [MidiEvent],
     pub length: u32,
     pub start_offset: Option<i32>,
+    pub capture_alignment_frames: Option<i32>,
     pub preplay: Option<u32>,
 }
 
@@ -5271,6 +5273,13 @@ pub fn replace_loop_content(
     {
         return Err(anyhow!("loop content update contains a duplicate channel"));
     }
+    for alignment in audio
+        .iter()
+        .filter_map(|item| item.capture_alignment_frames)
+        .chain(midi.iter().filter_map(|item| item.capture_alignment_frames))
+    {
+        shoop_latency::RecordingOffset::new(alignment)?;
+    }
 
     let mut prepared_audio = Vec::with_capacity(audio.len());
     let mut prepared_midi = Vec::with_capacity(midi.len());
@@ -5299,6 +5308,7 @@ pub fn replace_loop_content(
             prepared,
             snapshot,
             item.start_offset,
+            item.capture_alignment_frames,
             item.preplay,
         ));
     }
@@ -5353,6 +5363,7 @@ pub fn replace_loop_content(
             ),
             snapshot,
             item.start_offset,
+            item.capture_alignment_frames,
             item.preplay,
         ));
     }
@@ -5385,24 +5396,34 @@ pub fn replace_loop_content(
             let Some(mut midi) = prepared_midi.take() else {
                 return;
             };
-            for (channel_id, prepared, snapshot, offset, preplay) in &mut audio {
+            for (channel_id, prepared, snapshot, offset, alignment, preplay) in &mut audio {
                 let channel = session
                     .audio_channel_mut(*channel_id)
                     .expect("loop content channels were preflighted");
                 let retained_offset = channel.start_offset();
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
                 channel.set_start_offset(offset.unwrap_or(retained_offset));
+                if let Some(alignment) = alignment {
+                    channel
+                        .set_capture_alignment_frames(*alignment)
+                        .expect("capture alignment was preflighted");
+                }
                 if let Some(preplay) = preplay {
                     channel.set_pre_play_samples(*preplay);
                 }
             }
-            for (channel_id, prepared, snapshot, offset, preplay) in &mut midi {
+            for (channel_id, prepared, snapshot, offset, alignment, preplay) in &mut midi {
                 let channel = session
                     .midi_channel_mut(*channel_id)
                     .expect("loop content channels were preflighted");
                 channel.commit_prepared_data_and_snapshot(prepared, *snapshot);
                 if let Some(offset) = offset {
                     channel.set_start_offset(*offset);
+                }
+                if let Some(alignment) = alignment {
+                    channel
+                        .set_capture_alignment_frames(*alignment)
+                        .expect("capture alignment was preflighted");
                 }
                 if let Some(preplay) = preplay {
                     channel.set_pre_play_samples(*preplay);
@@ -5445,6 +5466,12 @@ pub fn replace_loop_content(
         if let Some(offset) = item.start_offset {
             item.channel.control.mirror.set_start_offset(offset);
         }
+        if let Some(alignment) = item.capture_alignment_frames {
+            item.channel
+                .control
+                .mirror
+                .set_capture_alignment_frames(alignment);
+        }
         if let Some(preplay) = item.preplay {
             item.channel.control.mirror.set_n_preplay_samples(preplay);
         }
@@ -5455,6 +5482,12 @@ pub fn replace_loop_content(
             .store(Arc::new(item.messages.to_vec()));
         if let Some(offset) = item.start_offset {
             item.channel.control.mirror.set_start_offset(offset);
+        }
+        if let Some(alignment) = item.capture_alignment_frames {
+            item.channel
+                .control
+                .mirror
+                .set_capture_alignment_frames(alignment);
         }
         if let Some(preplay) = item.preplay {
             item.channel.control.mirror.set_n_preplay_samples(preplay);
@@ -7002,12 +7035,14 @@ mod tests {
                     channel: &left,
                     samples: &[10.0, 11.0, 12.0],
                     start_offset: Some(-1),
+                    capture_alignment_frames: None,
                     preplay: Some(5),
                 },
                 LoopAudioContentUpdate {
                     channel: &right,
                     samples: &[20.0, 21.0, 22.0],
                     start_offset: Some(-2),
+                    capture_alignment_frames: None,
                     preplay: Some(6),
                 },
             ],
@@ -7019,6 +7054,7 @@ mod tests {
                 ],
                 length: 3,
                 start_offset: Some(-3),
+                capture_alignment_frames: None,
                 preplay: Some(7),
             }],
             Some(3),

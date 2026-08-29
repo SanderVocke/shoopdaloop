@@ -191,7 +191,7 @@ when the relevant connected range is exact. Native tracks require all applicable
 connected inputs to agree, ignore disconnected inputs, refresh automatic state
 after unarmed route changes, reject route changes while recording is armed, and
 resolve restored automatic state only after saved routes are reconnected. Dummy, CPAL, Carla, built-in synth, and
-browser paths remain manual when they cannot make that claim. The browser protocol is version 15 and
+browser paths remain manual when they cannot make that claim. The browser protocol is version 16 and
 carries only the reduced controls and channel alignment.
 
 Recording preparation reserves the sign-derived pre/post window before the
@@ -217,10 +217,10 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 47 | 6,142 | 225 | 6,367 |
+| Final production/documentation | 47 | 6,261 | 223 | 6,484 |
 | Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 4,662 additions and 19,831 deletions across 77
+The simplification delta itself is 4,769 additions and 19,817 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
 simplification baseline, and 1,591 finally: 81 feature-branch tests were removed
 while 56 tests above the merge base remain. Inline unit tests are counted in their
@@ -239,7 +239,7 @@ bounds and allocation behavior it controls.
 | ---: | --- |
 | 1 | `engine_track_latency_applies_to_future_operations_only`, compensated audio/MIDI record-play tests, and the Worklet full-duplex manual-offset test |
 | 2 | operation-boundary latching, backend/app future-operation tests, and whole-queue armed offset/route update rejection |
-| 3 | version-7 round trip, version-6 zero migration, aligned duplication, retained-window validation, multi-rate assertions, and rounding-gap padding |
+| 3 | version-7 round trip, version-6 migration, per-channel aligned duplication, retained-window validation, multi-rate assertions, and rounding-gap padding |
 | 4 | positive/long postroll, actual preroll, deferred playback/media reads, final-event snapshot, and immediate/post-callback re-entry rejection |
 | 5 | insufficient-retention, immediate/imminent short-preroll abort, incremental exhaustion, nonzero replacement/grab preflight, and stopped/atomic take-alignment tests |
 | 6 | logical audio export assertions, exact/standard MIDI assertions including preroll start-state folding, and removed-command searches |
@@ -259,5 +259,5 @@ bounds and allocation behavior it controls.
 - Complete shared Wasm suite in Chromium 147: every package passed after the domain package's three browser tests were explicitly configured; after the latest review fixes, the changed engine, backend, app, Worklet client, and session packages passed all 820, 48, 84, 21, and 30 shared tests respectively.
 - Real JACK integration ran against the available server; the exact connected 37-frame value was latched onto a recording channel.
 - `RUSTFLAGS="-D warnings" cargo build --workspace`, formatting, focused warning-denied latency/backend/session/protocol/client Clippy, test-attribute policy, tracing inventory, dependency tree, smoke-budget check, and report parser tests pass.
-- `trunk build` builds both application and AudioWorklet Wasm. The raw Wasm host artifact contract passes with protocol version 15. Firefox 146 loaded the built hosted UI and produced the layout screenshot. The standalone Chromium smoke launcher is incompatible with this host's crash-handler wrapper, but the complete Chromedriver-based Chromium suite passed.
+- `trunk build` builds both application and AudioWorklet Wasm. The raw Wasm host artifact contract passes with protocol version 16. Firefox 146 loaded the built hosted UI and produced the layout screenshot. The standalone Chromium smoke launcher is incompatible with this host's crash-handler wrapper, but the complete Chromedriver-based Chromium suite passed.
 - Removed architecture/API and case-insensitive terminology searches return no tracked production matches. Remaining search matches in this audit are deletion history only.
