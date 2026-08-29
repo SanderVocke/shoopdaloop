@@ -78,15 +78,15 @@
 
 ### Stage 0: Baseline inventory and deletion map
 
-- [ ] Record the current branch commit, merge-base, path-based LOC, latency-related files, public API/protocol/session fields, and the full case-insensitive `scalar` inventory.
-- [ ] Map every retained behavior to its implementation and tests; classify all latency tests as retain, rewrite, or delete.
-- [ ] Identify whether any branch-only session/wire compatibility surface can be removed outright and document any released compatibility that must remain.
-- [ ] Turn the scope above into a deletion map ordered from domain types outward through engine, backend, protocols, app, UI, persistence, documentation, and tests.
+- [x] Record the current branch commit, merge-base, path-based LOC, latency-related files, public API/protocol/session fields, and the full case-insensitive `scalar` inventory.
+- [x] Map every retained behavior to its implementation and tests; classify all latency tests as retain, rewrite, or delete.
+- [x] Identify whether any branch-only session/wire compatibility surface can be removed outright and document any released compatibility that must remain.
+- [x] Turn the scope above into a deletion map ordered from domain types outward through engine, backend, protocols, app, UI, persistence, documentation, and tests.
 
 Verification:
 
-- [ ] Review the inventory against every acceptance criterion and confirm each retained behavior has at least one planned test owner.
-- [ ] Save reproducible `git diff --numstat`, `rg`, and test-list commands in the implementation audit.
+- [x] Review the inventory against every acceptance criterion and confirm each retained behavior has at least one planned test owner.
+- [x] Save reproducible `git diff --numstat`, `rg`, and test-list commands in the implementation audit.
 
 ### Stage 1: Reduce the domain and terminology
 

@@ -1,0 +1,174 @@
+# Latency simplification implementation audit
+
+## Stage 0 baseline
+
+The simplification work starts at `0ece22d5006738c10191e290f65c7660d94f7c1f`
+(`Plan streamlined latency compensation`). Its merge base with `origin/master` is
+`15cc18fe8274f1f04d9339774b9b51fef642425c`. The immediately preceding feature
+head is `ba770f17746afcfa25ad19db35c3dcfd70b93e8e`.
+
+The path-based baseline against the merge base is:
+
+| Path class | Paths | Added | Deleted | Changed |
+| --- | ---: | ---: | ---: | ---: |
+| Production/documentation | 72 | 18,672 | 428 | 19,100 |
+| Integration tests/examples | 6 | 2,891 | 3 | 2,894 |
+| Total | 78 | 21,563 | 431 | 21,994 |
+
+This classification counts paths containing `/tests/`, top-level `tests/`, test
+suffixes, and examples as test paths. Inline unit tests remain in their production
+path, so the final audit will additionally compare Rust test functions and
+`#[cfg(test)]` line ranges. The largest baseline paths are:
+
+| Path | Added | Deleted |
+| --- | ---: | ---: |
+| `src/rust/shoop_backend/src/lib.rs` | 2,396 | 31 |
+| `src/rust/shoop_engine/tests/latency_characterization.rs` | 1,878 | 0 |
+| `src/rust/shoop_app/src/lib.rs` | 1,652 | 93 |
+| `src/rust/shoop_engine/src/app_backend.rs` | 1,467 | 49 |
+| `src/rust/shoop_latency/src/lib.rs` | 1,418 | 0 |
+| `src/rust/shoop_egui/src/latency_panel.rs` | 1,056 | 0 |
+| `src/rust/shoop_engine/src/audio_midi_loop.rs` | 1,022 | 14 |
+| `src/rust/shoop_engine/src/session.rs` | 1,011 | 4 |
+| `src/rust/shoop_backend/src/native.rs` | 908 | 2 |
+| `src/rust/shoop_engine/src/midi_channel.rs` | 804 | 19 |
+| `src/rust/shoop_engine/src/latency_runtime.rs` | 756 | 0 |
+| `src/rust/shoop_engine/src/audio_channel.rs` | 669 | 14 |
+
+The first attempt to enter the prescribed Nix development shell failed while
+applying `third_party/carla/shoop-latency-adapter.patch`: patch reports a malformed
+hunk at line 163. This is baseline evidence rather than a passing gate. The patch
+and adapter are branch-only functionality scheduled for deletion in Stage 3.
+
+## Surface inventory
+
+Latency behavior is concentrated in these groups:
+
+- Domain: `src/rust/shoop_latency/`.
+- Callback/runtime and media: `src/rust/shoop_engine/src/{latency_runtime,audio_channel,midi_channel,audio_midi_loop,state,state_mirror,port,midi_port,session,app_backend}.rs`.
+- Providers: `src/rust/shoop_engine/src/{carla_processor,carla_native,carla_subprocess,oxisynth}.rs`, `src/rust/shoop_backend/src/native.rs`, and the Carla patch.
+- Backend/application: `src/rust/shoop_backend/src/{lib,native}.rs`, `src/rust/shoop_app/src/lib.rs`, and `src/rust/shoop_app_api/src/lib.rs`.
+- Browser/wire: `src/rust/shoop_audio_protocol/src/lib.rs`, `src/rust/shoop_audio_worklet/src/lib.rs`, `src/rust/shoop_worklet_client/src/{lib,transport}.rs`, `src/rust/shoopdaloop/src/browser_audio.rs`, and `src/rust/shoop_plugin_protocol/src/lib.rs`.
+- Persistence/media: `src/rust/shoop_session/src/{document,archive,media,resample,lib}.rs`.
+- UI/settings: `src/rust/shoop_egui/src/{latency_panel,app_widget,tracks_widget,track_widget,loop_widget,details_pane}.rs` and `src/rust/shoop_egui/examples/latency_panel_smoke.rs`.
+- Documentation: `docs/{port_model,session_format_v1,settings_format_v1,web_midi_contract}.md`, `docs/source/usage.latency_compensation.rst`, tracing inventory, browser README, and Carla README.
+- Main integration fixtures: `src/rust/shoop_engine/tests/{latency_characterization,latency_support/mod,jack_app_backend,carla_latency_compatibility}.rs`.
+
+The public domain currently exposes checked mapping plus ranges, certainty,
+component kinds and policy, source/interval identities, recipes, path aggregation,
+and forensic take snapshots. Engine public APIs mirror observations, recipes,
+history selection, latching, and atomic publication. Backend APIs expose provider
+capability, port observations, take provenance, policy commands, and consolidation.
+The app API additionally exposes component controls, cue selection, diagnostics,
+plots, provider identities, and incomplete/history state.
+
+The browser protocol currently carries component policies, observation records,
+media/take provenance, backend observations, diagnostics, and commands for backend
+configuration, take policy, and consolidation. The plugin worker protocol carries
+Carla observation certainty and diagnostics. Session documents currently persist
+track component policy and take alignment, margins, observation, history, warnings,
+and render provenance.
+
+All of these fields were introduced after the merge base. In particular, master
+uses session document version 6, exact-media document version 1, audio protocol
+version 14, and plugin protocol version 2; the feature branch changed those to 7,
+2, 18, and 3 respectively. There is no released-format requirement for these
+branch-only fields. They may be removed outright. Existing master-era sessions
+must still load with a zero/default alignment, while the final reduced document
+must preserve its own signed take alignment and sample-rate conversion.
+
+The initial case-insensitive `git grep -in scalar` inventory contains 45 tracked
+matches. They comprise this plan and audit wording, three documentation uses,
+`ScalarFrameMapping` and its call sites/tests, generic mirror publication helpers,
+two non-latency comments/tests, scripting's generic `set_loop_scalar` helper, and
+an architecture-test diagnostic. Stage 1 owns all 45, including generic uses that
+are unrelated to latency.
+
+## Test disposition
+
+Every latency test is classified by the following source-and-behavior rules. A
+final test audit will enumerate discovered test names and apply these same rules;
+no unclassified latency test may remain.
+
+| Existing test group | Disposition | Retained test purpose |
+| --- | --- | --- |
+| `shoop_latency` mapping, bounds, and arithmetic | Retain/rename | Signed capture mapping, overflow, bounds, and render-advance separation |
+| `shoop_latency` observation, identity, component, range, recipe, path, and take-snapshot tests | Rewrite | Effective automatic/manual/trim resolution only; delete identity, component matrix, range selection, overlap, recipe, and forensic assertions |
+| Audio/MIDI channel mapping, retained windows, postroll, wrap, snapshots, and no-allocation tests | Retain/rewrite | One latched alignment, complete pre/post media, settlement, deterministic playback, and callback safety |
+| Channel replacement and grab tests | Rewrite | Operation-boundary value, prepared retention, and atomic mutation; delete history selection and consolidation-required workflow |
+| `audio_midi_loop` latching, playback readiness, postroll, and dry/wet tests | Retain/rewrite | Effective value latching and exact-once processor advance without component recipes |
+| `latency_characterization` ordinary audio/MIDI and dry/wet oracles | Retain/consolidate | Callback-size/sample-rate/loop-boundary deterministic oracles using effective values |
+| `latency_characterization` component matrices and stable/variable history fixtures | Delete/rewrite | Keep pairwise effective-value boundaries and a simple grab; remove component/history coverage |
+| Port/mirror observation publication and JACK route tests | Rewrite | One truthful JACK effective observation and callback-safe publication |
+| Carla adapter, Carla provenance/diagnostic, OxiSynth phase-range, CPAL/midir, Web Audio/Web MIDI automatic-provider tests | Delete | Providers are removed or manual-only under the reduced contract |
+| Backend policy/latching tests | Rewrite | Automatic value plus manual override/trim, future-operation semantics, unsupported/manual capability, and no topology rebuild |
+| Backend diagnostics, ambiguity, current/frozen comparison, history, consolidation, and raw-media tests | Delete | Behavior and APIs are removed |
+| Audio/plugin protocol round trips | Rewrite/delete | Reduced effective value, processor advance, alignment, pending/finalizing/error only; remove Carla protocol latency status |
+| Worklet/browser tests | Rewrite | Manual-only compensation, settlement, logical playback/export, and concise failure |
+| Session/archive/resample tests | Rewrite | Alignment and source sample rate only, checked conversion, malformed bounds, and master-era defaults |
+| Logical export/import tests | Retain/rewrite | Normal compensated window; remove raw-margin metadata/export fixtures |
+| App intent/model tests | Rewrite | Effective value and per-take alignment edits with future-operation semantics |
+| Latency panel, diagnostic plot, provenance marker, consolidation, and raw-export UI tests/example | Delete/replace | Compact settings/take editor plus pending/error states and one replacement smoke fixture |
+| Generic control, loop, and scripting tests incidentally using the forbidden term | Retain/rename | Existing non-latency behavior |
+
+## Acceptance-criterion test ownership
+
+| Criterion | Planned automated owner and evidence |
+| ---: | --- |
+| 1 | Audio/MIDI channel and end-to-end backend record/play oracles with manual and JACK values |
+| 2 | Runtime/backend latching tests that change provider/manual values during and after operations |
+| 3 | Session archive and resampling round trips comparing alignment time within one-frame rounding |
+| 4 | Audio/MIDI positive/negative retention and postroll settlement tests |
+| 5 | Channel/backend capacity and interrupted-finalization transaction tests |
+| 6 | Normal audio/MIDI logical export tests plus API/UI absence searches |
+| 7 | Consolidated dry-through-wet and dry-into-wet audio/MIDI exact-once oracles and monitoring equivalence |
+| 8 | JACK capability tests and dummy/native/browser manual fallback tests |
+| 9 | App API and compact UI tests plus removed-symbol searches |
+| 10 | Channel/runtime no-allocation tests, atomic publication tests, and realtime lock audit |
+| 11 | Pairwise callback-size, sample-rate, wrap, transition, and session-round-trip matrices |
+| 12 | `git grep -in scalar` with no output |
+| 13 | Final prompt-to-test matrix, discovered-test audit, and full native/browser suites |
+| 14 | Final path `--numstat`, inline test LOC, and retained-subsystem explanation against this baseline |
+
+## Ordered deletion map
+
+1. **Domain:** rename the mapping, replace recipes/components/observations with
+   checked `RecordingOffset`, optional `ProcessorRenderAdvance`, a compact prepared
+   operation value, and concise errors.
+2. **Runtime:** replace observation history and recipe publication with one atomic
+   operation snapshot; retain frozen alignment, pre/post retention, postroll,
+   exact-once render advance, and transactional channel operations.
+3. **Providers:** collapse JACK observations to a truthful effective offset;
+   delete cue/path aggregation, Carla patch/provenance, OxiSynth timing ranges,
+   CPAL/midir/Web provider estimates, and associated dependency features.
+4. **Backend/API:** replace component policy and take provenance with effective
+   offset, manual adjustment, processor advance, frozen alignment, and concise
+   pending/finalizing/error state. Delete consolidation and diagnostics.
+5. **Wire/browser:** remove provider records, component policy, histories,
+   diagnostics, cue commands, and raw/consolidation commands; bump reduced wire
+   contracts and make browser automatic capability unavailable.
+6. **Persistence/export:** persist only the settled take alignment and source
+   sample rate needed for conversion. Remove margins/provenance/incomplete state,
+   raw latency export, and bake/recovery workflows while retaining logical export.
+7. **UI/docs:** replace the advanced panel and loop actions with compact controls;
+   rewrite provider, settings, session, browser, Carla, and troubleshooting text.
+8. **Tests/dead code:** apply the disposition table, remove orphan fixtures and
+   patches, run dependency/compiler/search audits, then execute all final gates.
+
+## Reproducible audit commands
+
+```sh
+START=0ece22d5006738c10191e290f65c7660d94f7c1f
+BASE=$(git merge-base "$START" origin/master)
+git diff --numstat "$BASE..$START"
+git diff --name-only "$BASE..$START"
+git grep -in scalar
+git grep -inE 'Latency(Component|Recipe|Observation|Certainty|Provider)|capture_alignment|render_advance|retained_(before|after)|postroll|consolidat'
+rg -n '#\[[^]]*test[^]]*\]' src/rust --glob '*.rs'
+cargo nextest list --workspace --features shoop_engine/app_backend
+python3 scripts/check_shoop_test_usage.py
+```
+
+The final audit must rerun these commands against the final commit, inspect every
+remaining match rather than relying on counts, and record test command output and
+any unavailable host/browser facility explicitly.
