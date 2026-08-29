@@ -488,7 +488,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, 7] {
+        for unsupported in [5, 8] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -497,6 +497,11 @@ mod tests {
                 Err(SessionError::UnsupportedVersion { .. })
             ));
         }
+        let legacy = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["document_version"] = serde_json::json!(6);
+        });
+        assert_eq!(decode_session(&legacy).unwrap(), bundle);
+
         let removed_tiny = rewrite_manifest(encoded, |manifest| {
             manifest["document"]["track_groups"][0]["tracks"][0]["topology"] =
                 serde_json::json!({"kind": "tiny_synth_fx", "audio_channels": 2});
@@ -975,10 +980,48 @@ mod tests {
             manual_frames: -13,
             processor_advance_frames: 17,
         };
+        track.loops[0].length_frames = 3;
+        track.loops[0].channels[0].start_offset_frames = 13;
         track.loops[0].channels[0].capture_alignment_frames = -13;
         let encoded = encode_session(&bundle, "latency-roundtrip").unwrap();
         let decoded = decode_session(&encoded).unwrap();
         assert_eq!(decoded, bundle);
+
+        let invalid_archive = rewrite_manifest(encoded.clone(), |manifest| {
+            let channel = &mut manifest["document"]["track_groups"][0]["tracks"][0]["loops"][0]
+                ["channels"][0];
+            channel["start_offset_frames"] = serde_json::json!(0);
+            channel["capture_alignment_frames"] = serde_json::json!(1);
+        });
+        assert!(matches!(
+            decode_session(&invalid_archive),
+            Err(SessionError::Validation(message)) if message.contains("retained media window")
+        ));
+
+        let legacy = rewrite_manifest(encoded, |manifest| {
+            manifest["document_version"] = serde_json::json!(6);
+        });
+        let legacy = decode_session(&legacy).unwrap();
+        assert_eq!(
+            legacy.document.track_groups[0].tracks[0].loops[0].channels[0].capture_alignment_frames,
+            0
+        );
+
+        {
+            let channel = &mut bundle.document.track_groups[0].tracks[0].loops[0].channels[0];
+            channel.start_offset_frames = 0;
+            channel.capture_alignment_frames = 1;
+        }
+        assert!(matches!(
+            encode_session(&bundle, "invalid-retained-window"),
+            Err(SessionError::Validation(message)) if message.contains("retained media window")
+        ));
+        bundle.document.track_groups[0].tracks[0].loops[0].channels[0].capture_alignment_frames =
+            -1;
+        assert!(matches!(
+            encode_session(&bundle, "invalid-negative-window"),
+            Err(SessionError::Validation(message)) if message.contains("retained media window")
+        ));
 
         bundle.document.track_groups[0].tracks[0].loops[0].channels[0].capture_alignment_frames =
             i64::from(shoop_latency::MAX_COMPENSATION_FRAMES) + 1;

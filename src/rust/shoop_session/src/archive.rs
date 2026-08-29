@@ -17,6 +17,7 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 const MANIFEST_PATH: &str = "manifest.json";
+const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
 const DEFAULT_MAX_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
@@ -213,7 +214,10 @@ pub fn decode_session_with_limits(
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     if header.format_version.major != FORMAT_MAJOR
         || header.format_version.minor > FORMAT_MINOR
-        || header.document_version != SESSION_DOCUMENT_VERSION
+        || !matches!(
+            header.document_version,
+            PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION | SESSION_DOCUMENT_VERSION
+        )
     {
         return Err(SessionError::UnsupportedVersion {
             format: header.format,
@@ -221,8 +225,11 @@ pub fn decode_session_with_limits(
             minor: header.format_version.minor,
         });
     }
-    let manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
+    let mut manifest: SessionManifest = serde_json::from_value(manifest_value.clone())
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
+    if manifest.document_version == PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION {
+        migrate_pre_alignment_document(&mut manifest.document);
+    }
     if manifest.format != SESSION_FORMAT {
         return Err(SessionError::UnsupportedFormat);
     }
@@ -293,6 +300,18 @@ pub fn decode_session_with_limits(
     };
     validate_bundle(&bundle)?;
     Ok(bundle)
+}
+
+fn migrate_pre_alignment_document(document: &mut SessionDocument) {
+    for group in &mut document.track_groups {
+        for track in &mut group.tracks {
+            for loop_ in &mut track.loops {
+                for channel in &mut loop_.channels {
+                    channel.capture_alignment_frames = 0;
+                }
+            }
+        }
+    }
 }
 
 fn decode_script_bundles(
@@ -745,6 +764,20 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         return Err(SessionError::Validation(
                             "take capture alignment exceeds the supported bound".to_owned(),
                         ));
+                    }
+                    if channel.capture_alignment_frames != 0 {
+                        let raw_start = i128::from(channel.start_offset_frames)
+                            + i128::from(channel.capture_alignment_frames);
+                        let raw_end = raw_start + i128::from(loop_.length_frames);
+                        if raw_start < 0
+                            || raw_end < raw_start
+                            || raw_end > i128::from(channel.data_length_frames)
+                        {
+                            return Err(SessionError::Validation(format!(
+                                "channel {} capture alignment exceeds its retained media window",
+                                channel.id
+                            )));
+                        }
                     }
                     if let Some(state_id) = channel.recording_fx_state_id {
                         let state_type = fx_state_types.get(&state_id).ok_or_else(|| {

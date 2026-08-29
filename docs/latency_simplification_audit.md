@@ -183,14 +183,14 @@ callback snapshot. Track state contains only automatic/manual/trim selection, th
 resolved value, processor advance, and pending/error state. Channel/take state
 contains one signed capture alignment. Session data stores track adjustment,
 manual and processor values, and one channel alignment; it stores no provider
-identity or observation history.
+identity or observation history. Session document version 7 owns this required
+field, while version 6 migrates explicitly to zero alignment.
 
 JACK recomputes connected capture latency on the control path and accepts it only
 when the relevant connected range is exact. Native tracks require all applicable
 connected inputs to agree, ignore disconnected inputs, and reject route changes
-while a recording operation is armed.
-Dummy, CPAL, Carla, built-in synth, and browser paths remain
-manual when they cannot make that claim. The browser protocol is version 15 and
+while a recording operation is armed. Dummy, CPAL, Carla, built-in synth, and
+browser paths remain manual when they cannot make that claim. The browser protocol is version 15 and
 carries only the reduced controls and channel alignment.
 
 Recording preparation reserves the sign-derived pre/post window before the
@@ -216,10 +216,10 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 47 | 5,626 | 174 | 5,800 |
+| Final production/documentation | 47 | 5,709 | 181 | 5,890 |
 | Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 4,119 additions and 19,753 deletions across 77
+The simplification delta itself is 4,185 additions and 19,743 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
 simplification baseline, and 1,588 finally: 84 feature-branch tests were removed
 while 53 tests above the merge base remain. Inline unit tests are counted in their
@@ -238,7 +238,7 @@ bounds and allocation behavior it controls.
 | ---: | --- |
 | 1 | `engine_track_latency_applies_to_future_operations_only`, compensated audio/MIDI record-play tests, and the Worklet full-duplex manual-offset test |
 | 2 | `recording_offset_latches_at_each_operation_boundary`, backend/app future-operation tests, and armed offset/route update rejection |
-| 3 | `latency_settings_and_take_alignment_round_trip_without_provider_metadata`, multi-rate assertions, and compensated-window rounding-gap padding |
+| 3 | version-7 alignment round trip, version-6 zero migration, retained-window validation, multi-rate assertions, and rounding-gap padding |
 | 4 | positive postroll, actual-captured-preroll, final-event, unsettled-snapshot, and postroll re-entry rejection tests |
 | 5 | insufficient-retention, immediate/imminent short-preroll abort, incremental audio exhaustion, MIDI exhaustion, compensated-grab preflight, and stopped/atomic take-alignment preflight tests |
 | 6 | logical audio export assertions, exact/standard MIDI assertions including preroll start-state folding, and removed-command searches |

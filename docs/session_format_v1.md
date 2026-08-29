@@ -9,7 +9,7 @@ This document defines the first application persistence format. Predecessor `.sh
 - All Shoop-native files (`.shoop`, `.shoop-audio`, and `.shoop-midi`) are ZIP64 containers and use Deflate lossless compression. Standard `.wav` and `.mid` exports retain their standard container formats.
 - The root entry is `manifest.json`, UTF-8 JSON with deterministic object fields and sorted collections.
 - Every manifest has `format`, `format_version: { major, minor }`, and `document_version`.
-- Format-major 1 readers require session `document_version: 6` exactly. Older and newer document versions are rejected before session mutation; no pre-release migration contract is retained.
+- Format-major 1 readers write session `document_version: 7`. Version 6 is accepted through an explicit migration that assigns zero capture alignment to every channel; older and newer document versions are rejected before session mutation.
 - Archive paths are relative, normalized ASCII paths. Duplicate names, traversal, undeclared payloads, mismatched lengths/hashes, and configured resource-limit violations are errors.
 - Payload records contain an uncompressed byte length and lowercase SHA-256. ZIP CRC remains an independent transport check.
 - Counts and indices are unsigned 32-bit values unless otherwise stated. The format imposes no lower channel-count ceiling; readers may apply explicit byte/resource budgets.
@@ -30,7 +30,7 @@ This document defines the first application persistence format. Predecessor `.sh
 - a Built-in Synth topology, OxiSynth chain identity, selected preset, additive sends, and MIDI assignments;
 - captured FX-state records referenced by recorded channels;
 - each track's automatic/manual/automatic-plus-trim choice, signed manual value, and processor advance;
-- one signed capture alignment per channel;
+- one signed capture alignment per channel (introduced in document version 7);
 - a sorted media index.
 
 Transient loop mode/position, queued transitions, meters, driver/device handles, permissions, xruns, task state, dialogs, and machine-wide settings are not session data. Loaded loops start stopped.
@@ -76,7 +76,7 @@ Float WAV is the baseline standard cross-target audio format. Normal WAV and exa
 
 `DryWetExternal` stores independent `dry_audio_channels`, `wet_audio_channels`, and `dry_midi`. Public ports preserve Audio input/send/return/output and MIDI input/send roles plus exact confirmed host IDs. `Carla` stores its chain type and legacy equal-count `audio_channels`/`midi` fields; optional `dry_audio_channels` and `wet_audio_channels` preserve new unequal shapes. When those optional fields are absent, readers interpret both counts as the legacy `audio_channels` value.
 
-`OxiSynth` stores no variable channel fields. It always means exactly two dry audio inputs, exactly two wet audio outputs, and one dry MIDI input. The dry audio inputs preserve the standard stereo track shape but their samples are ignored by the synth. Its chain type and stable runtime processor ID remain `OxiSynth`/`oxisynth`; **Built-in Synth** is the display label. The chain's `internal_state` must contain valid version-2 OxiSynth state, and no automatic recorded-take `fx_state` is written. Session document version 6 is the only accepted pre-release document schema.
+`OxiSynth` stores no variable channel fields. It always means exactly two dry audio inputs, exactly two wet audio outputs, and one dry MIDI input. The dry audio inputs preserve the standard stereo track shape but their samples are ignored by the synth. Its chain type and stable runtime processor ID remain `OxiSynth`/`oxisynth`; **Built-in Synth** is the display label. The chain's `internal_state` must contain valid version-2 OxiSynth state, and no automatic recorded-take `fx_state` is written. Session document version 7 is current; version 6 has only the explicit zero-alignment migration described above.
 
 `global_ports` contains either no global FX control port in legacy version-1 documents or exactly one canonical **Global FX Control MIDI In** port. Its shape is MIDI input, external input/internal output connectability, unity gain, unmuted, passthrough-muted, no internal links, and zero capture frames. New saves include it with exact external endpoint identities. A legacy omission migrates to a disconnected canonical port; conflicting IDs, multiple ports, or another shape are rejected before backend mutation. Runtime pending controller values are transient and are not serialized.
 
@@ -95,7 +95,7 @@ A source-rate mismatch always requires confirmation before mutation.
 - Enclosing durations and loop/data lengths use checked rational ceiling.
 - Event positions, signed start/capture offsets, manual trims, and processor advances use checked nearest conversion with ties away from zero.
 - MIDI events that collide retain original `order`; converted events are clamped below a non-zero converted duration only when required.
-- Audio channels are independently high-quality resampled to their declared converted frame count.
+- Audio channels are independently high-quality resampled to their declared converted frame count; compensated audio/MIDI payloads are padded when rounding would otherwise leave the converted logical window incomplete.
 - Preplay, ringbuffer sizes, composite delays, and every other sample-domain value use the documented category rule.
 - Conversion must not infer duration from media tails or introduce a spurious additional sync cycle.
 
