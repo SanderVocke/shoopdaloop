@@ -1007,21 +1007,6 @@ impl NativeRuntime {
             ] {
                 self.set_track_control(created.track_id, control)?;
             }
-            if let Err(error) = self.set_track_latency(
-                created.track_id,
-                source_track.state.latency.adjustment,
-                source_track.state.latency.processor_advance_frames,
-            ) {
-                if source_track.state.latency.effective_offset_frames.is_some() {
-                    return Err(error);
-                }
-                self.tracks
-                    .get_mut(&created.track_id)
-                    .expect("created track exists")
-                    .state
-                    .latency
-                    .clone_from(&source_track.state.latency);
-            }
             for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
                 let target = self
                     .loops
@@ -1106,6 +1091,21 @@ impl NativeRuntime {
                         self.connection_revision = self.connection_revision.wrapping_add(1);
                     }
                 }
+            }
+            if let Err(error) = self.set_track_latency(
+                created.track_id,
+                source_track.state.latency.adjustment,
+                source_track.state.latency.processor_advance_frames,
+            ) {
+                if source_track.state.latency.effective_offset_frames.is_some() {
+                    return Err(error);
+                }
+                self.tracks
+                    .get_mut(&created.track_id)
+                    .expect("created track exists")
+                    .state
+                    .latency
+                    .clone_from(&source_track.state.latency);
             }
             replacement.tracks.insert(source_track.source_id, created);
         }
@@ -3741,6 +3741,13 @@ mod tests {
         backend
             .set_port_connected(global, "controller:midi_out", true)
             .unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                17,
+            )
+            .unwrap();
         let mut captured = backend.capture_session().unwrap();
         assert_eq!(
             captured.global_ports[0].external_connections,
@@ -3776,6 +3783,14 @@ mod tests {
         assert_eq!(mapping.tracks.len(), captured.tracks.len());
         assert_eq!(mapping.loops.len(), 2);
         assert_eq!(mapping.global_ports.len(), 1);
+        let restored_loop = mapping.loops[&created.loops[0].raw()];
+        backend
+            .transition_loop(restored_loop, BackendLoopMode::PlayingDryThroughWet, None)
+            .unwrap();
+        assert!(backend.runtime().unwrap().loops[&restored_loop]
+            .audio
+            .iter()
+            .all(|channel| channel.get_state().unwrap().render_advance_frames == 17));
         let restored = backend.capture_session().unwrap();
         assert_eq!(restored.sample_rate, 48_000);
         assert_eq!(restored.tracks.len(), captured.tracks.len());
