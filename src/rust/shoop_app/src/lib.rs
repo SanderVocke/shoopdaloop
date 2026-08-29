@@ -8550,7 +8550,7 @@ impl ApplicationModel {
                         .audio
                         .get(*index as usize)
                         .ok_or_else(|| "selected audio channel is unavailable".to_owned())?;
-                    let mapping = shoop_latency::ScalarFrameMapping::new(
+                    let mapping = shoop_latency::CaptureFrameMapping::new(
                         channel.latency.capture_alignment_frames,
                     )
                     .map_err(|error| error.to_string())?;
@@ -8671,7 +8671,7 @@ impl ApplicationModel {
         );
         if !raw {
             let mapping =
-                shoop_latency::ScalarFrameMapping::new(content.latency.capture_alignment_frames)
+                shoop_latency::CaptureFrameMapping::new(content.latency.capture_alignment_frames)
                     .map_err(|error| error.to_string())?;
             let selected_start = mapping
                 .raw_media_frame(0, i64::from(content.start_offset))

@@ -9,11 +9,11 @@ pub const MAX_OBSERVATION_HISTORY: usize = 4_096;
 pub const MAX_SOURCE_IDENTITY_BYTES: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ScalarFrameMapping {
+pub struct CaptureFrameMapping {
     capture_alignment_frames: i32,
 }
 
-impl ScalarFrameMapping {
+impl CaptureFrameMapping {
     pub fn new(capture_alignment_frames: i32) -> Result<Self, LatencyDomainError> {
         if i64::from(capture_alignment_frames).unsigned_abs() > u64::from(MAX_COMPENSATION_FRAMES) {
             return Err(LatencyDomainError::SignedValueExceedsMaximum(
@@ -780,9 +780,9 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn scalar_mapping_uses_one_checked_signed_alignment() {
+    fn capture_mapping_uses_one_checked_signed_alignment() {
         for alignment in [-17, 0, 23] {
-            let mapping = ScalarFrameMapping::new(alignment).unwrap();
+            let mapping = CaptureFrameMapping::new(alignment).unwrap();
             assert_eq!(mapping.capture_alignment_frames(), alignment);
             assert_eq!(mapping.raw_frame(100).unwrap(), 100 + i64::from(alignment));
             assert_eq!(
@@ -801,28 +801,28 @@ mod tests {
             );
         }
         assert_eq!(
-            ScalarFrameMapping::new(MAX_COMPENSATION_FRAMES as i32 + 1),
+            CaptureFrameMapping::new(MAX_COMPENSATION_FRAMES as i32 + 1),
             Err(LatencyDomainError::SignedValueExceedsMaximum(
                 MAX_COMPENSATION_FRAMES as i32 + 1
             ))
         );
         assert_eq!(
-            ScalarFrameMapping::new(-(MAX_COMPENSATION_FRAMES as i32) - 1),
+            CaptureFrameMapping::new(-(MAX_COMPENSATION_FRAMES as i32) - 1),
             Err(LatencyDomainError::SignedValueExceedsMaximum(
                 -(MAX_COMPENSATION_FRAMES as i32) - 1
             ))
         );
-        let mapping = ScalarFrameMapping::new(1).unwrap();
+        let mapping = CaptureFrameMapping::new(1).unwrap();
         assert_eq!(
             mapping.raw_frame(i64::MAX),
             Err(LatencyDomainError::FrameArithmeticOverflow)
         );
         assert_eq!(
-            ScalarFrameMapping::processor_dispatch_frame(i64::MIN, 1),
+            CaptureFrameMapping::processor_dispatch_frame(i64::MIN, 1),
             Err(LatencyDomainError::FrameArithmeticOverflow)
         );
         assert_eq!(
-            ScalarFrameMapping::processor_dispatch_frame(100, 17).unwrap(),
+            CaptureFrameMapping::processor_dispatch_frame(100, 17).unwrap(),
             83
         );
     }
@@ -1396,7 +1396,7 @@ mod tests {
                     for token in forbidden {
                         assert!(
                             !source.contains(token),
-                            "forbidden scalar-latency architecture token {token:?} in {}",
+                            "forbidden legacy latency architecture token {token:?} in {}",
                             path.display()
                         );
                     }

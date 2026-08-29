@@ -4309,7 +4309,7 @@ impl Backend for EngineBackend {
             let raw = channel.data();
             let start = channel.start_offset();
             let mapping =
-                shoop_latency::ScalarFrameMapping::new(channel.capture_alignment_frames())?;
+                shoop_latency::CaptureFrameMapping::new(channel.capture_alignment_frames())?;
             let consolidated = (0..logical_length)
                 .map(|logical| {
                     mapping
@@ -4331,7 +4331,7 @@ impl Backend for EngineBackend {
                 .ok_or_else(|| anyhow!("missing MIDI channel"))?;
             let start = i64::from(channel.start_offset());
             let mapping =
-                shoop_latency::ScalarFrameMapping::new(channel.capture_alignment_frames())?;
+                shoop_latency::CaptureFrameMapping::new(channel.capture_alignment_frames())?;
             let mut state = shoop_engine::MidiStateTracker::new(shoop_engine::TrackWhat::ALL);
             for message in channel.recording_start_state_messages() {
                 state.process(&message);

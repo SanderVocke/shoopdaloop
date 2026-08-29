@@ -25,7 +25,7 @@ use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
 use crate::state_mirror::MidiChannelStateMirror;
-use shoop_latency::{LatencyDomainError, ScalarFrameMapping, MAX_COMPENSATION_FRAMES};
+use shoop_latency::{CaptureFrameMapping, LatencyDomainError, MAX_COMPENSATION_FRAMES};
 
 use std::sync::Arc;
 use thiserror::Error;
@@ -515,7 +515,7 @@ impl MidiChannel {
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
-        let mapping = ScalarFrameMapping::new(self.capture_alignment_frames).ok()?;
+        let mapping = CaptureFrameMapping::new(self.capture_alignment_frames).ok()?;
         i32::try_from(
             mapping
                 .raw_media_frame(i64::from(logical_position), i64::from(self.start_offset))
@@ -905,7 +905,7 @@ impl MidiChannel {
         }
 
         if flags.contains(ProcessFlags::PLAYBACK) {
-            let mapping = ScalarFrameMapping::new(self.capture_alignment_frames)
+            let mapping = CaptureFrameMapping::new(self.capture_alignment_frames)
                 .map_err(|_| MidiChannelError::LatencyPositionOverflow)?;
             let raw_position = i32::try_from(
                 mapping

@@ -5384,7 +5384,7 @@ impl AudioChannel {
             }
             std::thread::sleep(Duration::from_millis(1));
         };
-        let mapping = shoop_latency::ScalarFrameMapping::new(state.capture_alignment_frames)?;
+        let mapping = shoop_latency::CaptureFrameMapping::new(state.capture_alignment_frames)?;
         let mut consolidated = Vec::with_capacity(logical_length);
         for logical in 0..logical_length {
             let raw_position =
@@ -5671,7 +5671,7 @@ impl MidiChannel {
             }
             std::thread::sleep(Duration::from_millis(1));
         };
-        let mapping = shoop_latency::ScalarFrameMapping::new(state.capture_alignment_frames)?;
+        let mapping = shoop_latency::CaptureFrameMapping::new(state.capture_alignment_frames)?;
         let mut start_state = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
         let mut consolidated = Vec::new();
         for event in raw_events {
@@ -7938,7 +7938,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn scalar_control_commands_do_not_arm_graph_rebuilds() {
+    fn latency_control_commands_do_not_arm_graph_rebuilds() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
         sess.shared.flush_graph_changes();

@@ -78,7 +78,7 @@ impl MidiPort {
     }
 
     fn publish_state(&self) {
-        self.state.publish_scalars(
+        self.state.publish_values(
             self.n_notes_active(),
             0,
             self.muted,

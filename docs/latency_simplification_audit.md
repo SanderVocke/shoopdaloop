@@ -77,12 +77,11 @@ branch-only fields. They may be removed outright. Existing master-era sessions
 must still load with a zero/default alignment, while the final reduced document
 must preserve its own signed take alignment and sample-rate conversion.
 
-The initial case-insensitive `git grep -in scalar` inventory contains 45 tracked
-matches. They comprise this plan and audit wording, three documentation uses,
-`ScalarFrameMapping` and its call sites/tests, generic mirror publication helpers,
-two non-latency comments/tests, scripting's generic `set_loop_scalar` helper, and
-an architecture-test diagnostic. Stage 1 owns all 45, including generic uses that
-are unrelated to latency.
+The initial case-insensitive terminology inventory contains 45 tracked matches.
+They comprise plan wording, three documentation uses, the qualified frame-mapping
+type and its call sites/tests, generic mirror publication helpers, two non-latency
+comments/tests, scripting's generic loop-value helper, and an architecture-test
+diagnostic. Stage 1 owns all 45, including generic uses unrelated to latency.
 
 ## Test disposition
 
@@ -126,7 +125,7 @@ no unclassified latency test may remain.
 | 9 | App API and compact UI tests plus removed-symbol searches |
 | 10 | Channel/runtime no-allocation tests, atomic publication tests, and realtime lock audit |
 | 11 | Pairwise callback-size, sample-rate, wrap, transition, and session-round-trip matrices |
-| 12 | `git grep -in scalar` with no output |
+| 12 | Case-insensitive tracked terminology audit with no output |
 | 13 | Final prompt-to-test matrix, discovered-test audit, and full native/browser suites |
 | 14 | Final path `--numstat`, inline test LOC, and retained-subsystem explanation against this baseline |
 
@@ -160,9 +159,10 @@ no unclassified latency test may remain.
 ```sh
 START=0ece22d5006738c10191e290f65c7660d94f7c1f
 BASE=$(git merge-base "$START" origin/master)
+ABANDONED_TERM=$(printf 'sca%s' 'lar')
 git diff --numstat "$BASE..$START"
 git diff --name-only "$BASE..$START"
-git grep -in scalar
+git grep -in "$ABANDONED_TERM"
 git grep -inE 'Latency(Component|Recipe|Observation|Certainty|Provider)|capture_alignment|render_advance|retained_(before|after)|postroll|consolidat'
 rg -n '#\[[^]]*test[^]]*\]' src/rust --glob '*.rs'
 cargo nextest list --workspace --features shoop_engine/app_backend

@@ -250,7 +250,7 @@ fn a_port_reports_its_state() {
     // The name comes from this side, not from the audio thread, which cannot publish a
     // `String` -- so it is worth asserting it survives the round trip.
     check!(state.name == "in");
-    // Accepted scalar intent is visible immediately, without waiting for the audio thread.
+    // Accepted value intent is visible immediately, without waiting for the audio thread.
     check!(state.ringbuffer_n_samples == 128);
 }
 

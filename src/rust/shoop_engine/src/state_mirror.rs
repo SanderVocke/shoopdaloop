@@ -876,7 +876,7 @@ impl Default for AudioPortStateMirror {
 }
 
 impl AudioPortStateMirror {
-    pub fn publish_scalars(&self, gain: f32, muted: bool, passthrough_muted: bool, ring: usize) {
+    pub fn publish_values(&self, gain: f32, muted: bool, passthrough_muted: bool, ring: usize) {
         self.gain.store(gain.to_bits(), Ordering::Relaxed);
         self.muted.store(muted, Ordering::Relaxed);
         self.passthrough_muted
@@ -952,7 +952,7 @@ pub struct MidiPortStateMirror {
 }
 
 impl MidiPortStateMirror {
-    pub fn publish_scalars(
+    pub fn publish_values(
         &self,
         input_notes: u32,
         output_notes: u32,

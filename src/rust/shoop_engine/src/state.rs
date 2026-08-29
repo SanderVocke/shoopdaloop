@@ -1,6 +1,6 @@
 //! The state shapes the application-facing backend interface reports.
 //!
-//! Scalar fields are published through per-object mirrors. Port names remain handle-owned
+//! Atomic fields are published through per-object mirrors. Port names remain handle-owned
 //! strings and are supplied when a mirror is read, so the process thread never clones them.
 
 use crate::channel_mode::ChannelMode;

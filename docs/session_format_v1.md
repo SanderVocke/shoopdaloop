@@ -100,14 +100,14 @@ A source-rate mismatch always requires confirmation before mutation.
 - Audio channels are independently high-quality resampled to their declared converted frame count.
 - Preplay, ringbuffer sizes, composite delays, and every other sample-domain value use the documented category rule.
 - Observation bounds, retained margins, signed capture alignment, and manual trims are converted with checked nearest rounding (ties away from zero); raw durations use checked ceiling where required to avoid truncation.
-- Certainty, component identity, revision identity, warning flags, and applied-during-render identity are unchanged by conversion. Converted ranges are normalized so `minimum <= maximum` and the scalar alignment is revalidated after conversion.
+- Certainty, component identity, revision identity, warning flags, and applied-during-render identity are unchanged by conversion. Converted ranges are normalized so `minimum <= maximum` and the capture alignment is revalidated after conversion.
 - Conversion must not infer duration from media tails or introduce a spurious additional sync cycle.
 
 ## Transaction and safety contract
 
 Decode, decompression, hashes, versions, schema/references, capabilities, and optional resampling finish before commit. Backend loading uses begin/chunk/finalize/commit/abort generations. Failure or cancellation leaves the previous session usable.
 
-Saving captures scalar state and all settled channel content from one validated generation. Playing is not a content mutation and must continue. Recording, replacement, loading, clearing, or grab adoption yields an explicit wait/retry/cancel or rejection rather than a mixed-generation save.
+Saving captures alignment state and all settled channel content from one validated generation. Playing is not a content mutation and must continue. Recording, replacement, loading, clearing, or grab adoption yields an explicit wait/retry/cancel or rejection rather than a mixed-generation save.
 
 Native output uses a temporary sibling, flushes it, and atomically renames it; reads and writes run outside the GUI/application actor after picker selection. Browser upload/download uses asynchronous `rfd` file handles and Blob/download fallback according to browser capability. Picker handles, paths, and browser objects never enter `AppSnapshot` or a session document. Platform failures are reported back as typed task errors.
 

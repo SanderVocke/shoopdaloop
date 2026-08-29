@@ -1,6 +1,6 @@
 use shoop_latency::{
-    ComponentApplication, LatencyCertainty, LatencyComponentKind, LatencyDomainError,
-    LatencyOperationKind, LatencyRangeFrames, ResolvedLatencyRecipe, ScalarFrameMapping,
+    CaptureFrameMapping, ComponentApplication, LatencyCertainty, LatencyComponentKind,
+    LatencyDomainError, LatencyOperationKind, LatencyRangeFrames, ResolvedLatencyRecipe,
     MAX_RECIPE_COMPONENTS,
 };
 use std::array;
@@ -15,7 +15,7 @@ pub(crate) fn cyclic_render_dispatch_position(
     render_advance_frames: u32,
     logical_length: u32,
 ) -> Option<i32> {
-    let mapping = ScalarFrameMapping::new(capture_alignment_frames).ok()?;
+    let mapping = CaptureFrameMapping::new(capture_alignment_frames).ok()?;
     let raw_position = i32::try_from(mapping.raw_frame(i64::from(media_position)).ok()?).ok()?;
     if render_advance_frames == 0 || logical_length == 0 {
         return Some(raw_position);

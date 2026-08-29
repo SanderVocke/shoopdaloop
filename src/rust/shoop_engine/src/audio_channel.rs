@@ -17,7 +17,7 @@ use crate::latency_runtime::{
 };
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
-use shoop_latency::{LatencyDomainError, ScalarFrameMapping, MAX_COMPENSATION_FRAMES};
+use shoop_latency::{CaptureFrameMapping, LatencyDomainError, MAX_COMPENSATION_FRAMES};
 
 /// At most two copy commands (record and playback) per session sub-block.
 /// The session processes no more than 16 sub-blocks in one callback.
@@ -619,7 +619,7 @@ impl AudioChannel {
         Ok(())
     }
     pub fn raw_position_for_logical(&self, logical_position: i32) -> Option<i32> {
-        let mapping = ScalarFrameMapping::new(self.capture_alignment_frames).ok()?;
+        let mapping = CaptureFrameMapping::new(self.capture_alignment_frames).ok()?;
         i32::try_from(
             mapping
                 .raw_media_frame(i64::from(logical_position), i64::from(self.start_offset))
@@ -989,7 +989,7 @@ impl AudioChannel {
 
         if flags.contains(ProcessFlags::PLAYBACK) {
             self.last_played_back_sample = Some(params.position);
-            let mapping = ScalarFrameMapping::new(self.capture_alignment_frames)
+            let mapping = CaptureFrameMapping::new(self.capture_alignment_frames)
                 .map_err(|_| ChannelError::LatencyPositionOverflow)?;
             let raw_position = i32::try_from(
                 mapping

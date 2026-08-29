@@ -103,7 +103,7 @@ The worklet publishes acknowledgement, generic error, connection mutation failur
 
 - Malformed or wrong-version events fail the transport and driver.
 - Stale-generation callbacks are silently ignored.
-- Any accepted event decrements a scalar in-flight count; sequence identity, unknown replies, duplicates, and response ordering are not validated by the client.
+- Any accepted event decrements one in-flight count; sequence identity, unknown replies, duplicates, and response ordering are not validated by the client.
 - A generic remote command error fails `Backend::poll`, and application code marks the backend unavailable.
 - Connection rejection has a typed snapshot surface and does not fail the backend.
 - Session capture/replacement and loop-content replacement report normal pending progress using selected error-message strings. Application I/O control flow matches those strings.

@@ -14,7 +14,7 @@
 - Keep processor render advance only where dry-through-wet and dry-into-wet behavior requires it, separate from recording alignment.
 - Prefer reliable automatic backend observations with a manual fallback over a generalized provider, route, component, and provenance model.
 - Remove advanced diagnostics, historical reconstruction, raw-margin recovery/export, and other supporting surfaces that do not contribute directly to ordinary compensated recording and playback.
-- Remove `scalar`, in every capitalization, from tracked names, tests, comments, documentation, and other repository text; the single-offset design is the only supported design and needs no differentiating qualifier.
+- Remove the abandoned differentiating terminology, in every capitalization, from tracked names, tests, comments, documentation, and other repository text; the single-offset design needs no distinguishing qualifier.
 - Rework the test suite around the retained behavior and remove tests whose only purpose is to enforce deleted functionality.
 
 ## Scope
@@ -56,7 +56,7 @@
 9. Latency settings expose only the reduced effective recording value, its manual adjustment, any retained processor value, and concise pending/error state; deleted component, cue-route, provenance, and diagnostic controls are absent.
 10. Audio callback paths remain bounded, allocation-free after preparation, and free of blocking synchronization for latency work.
 11. Audio and MIDI behavior remains deterministic across callback sizes, loop boundaries, immediate/planned supported transitions, and session round trips.
-12. A case-insensitive repository search for the word `scalar` returns no tracked occurrences, including identifiers, test names, comments, and documentation.
+12. A case-insensitive repository search for the abandoned differentiating term returns no tracked occurrences, including identifiers, test names, comments, and documentation.
 13. Tests cover every retained acceptance criterion and no test, fixture, snapshot, protocol field, or compatibility assertion requires removed functionality.
 14. The final implementation has materially fewer changed production and test lines than this branch at the start of the work. The final audit records path-based added/deleted LOC and explains any retained large subsystem.
 
@@ -78,7 +78,7 @@
 
 ### Stage 0: Baseline inventory and deletion map
 
-- [x] Record the current branch commit, merge-base, path-based LOC, latency-related files, public API/protocol/session fields, and the full case-insensitive `scalar` inventory.
+- [x] Record the current branch commit, merge-base, path-based LOC, latency-related files, public API/protocol/session fields, and the full case-insensitive terminology inventory.
 - [x] Map every retained behavior to its implementation and tests; classify all latency tests as retain, rewrite, or delete.
 - [x] Identify whether any branch-only session/wire compatibility surface can be removed outright and document any released compatibility that must remain.
 - [x] Turn the scope above into a deletion map ordered from domain types outward through engine, backend, protocols, app, UI, persistence, documentation, and tests.
@@ -92,7 +92,7 @@ Verification:
 
 Depends on Stage 0.
 
-- [ ] Replace `ScalarFrameMapping` and related names with durable single-offset terminology; remove every remaining tracked use of `scalar`, including generic helper/test/comment occurrences elsewhere in the repository.
+- [x] Replace the qualified frame-mapping name and related names with durable single-offset terminology; remove every remaining tracked use of the abandoned term, including generic helper/test/comment occurrences elsewhere in the repository.
 - [ ] Reduce the latency domain to checked signed frame mapping, bounded effective recording offset, and a separate bounded processor render advance.
 - [ ] Remove component kinds and policies, recording references, cue applicability, path aggregation/ambiguity, observation interval/source identities, ranges/certainty where no provider boundary still needs them, resolved recipes, and forensic take snapshots.
 - [ ] Define the minimal control-path and callback-facing values, errors, and invariants needed by subsequent stages.
@@ -101,7 +101,7 @@ Verification:
 
 - [ ] Add focused domain tests for signed mapping, bounds, overflow, manual override/trim semantics, and separation of capture alignment from render advance.
 - [ ] Run the latency-domain crate tests and `cargo clippy`/format checks applicable to the touched crates.
-- [ ] Confirm `git grep -in -w scalar` has no tracked matches.
+- [x] Confirm the case-insensitive tracked terminology audit has no matches.
 
 ### Stage 2: Simplify engine latching, retention, and channel behavior
 
@@ -195,7 +195,7 @@ Verification:
 - [ ] Run `python3 scripts/check_shoop_test_usage.py` after modifying Rust tests.
 - [ ] Run formatting, clippy, dependency checks, and all focused latency suites with warnings denied.
 - [ ] Confirm every retained acceptance criterion maps to passing automated coverage and every deleted test maps to an explicitly removed behavior.
-- [ ] Confirm `git grep -in -w scalar` returns no tracked matches.
+- [ ] Confirm the case-insensitive tracked terminology audit returns no matches.
 
 ### Stage 8: End-to-end validation and size audit
 
@@ -206,7 +206,7 @@ Depends on all prior stages.
 - [ ] Validate a provider/setting change after recording leaves the existing take fixed and affects only the next take.
 - [ ] Validate positive and supported negative boundaries, insufficient retention, interrupted postroll, callback/loop boundaries, and supported dry/wet transitions without partial publication or double application.
 - [ ] Run realtime allocation/locking checks and verify latency updates remain topology-stable.
-- [ ] Run final repository audits for removed APIs, fields, files, documentation, compatibility artifacts, and all case variants of `scalar`.
+- [ ] Run final repository audits for removed APIs, fields, files, documentation, compatibility artifacts, and all case variants of the abandoned term.
 - [ ] Compare final path-based additions/deletions and test/production LOC with the Stage 0 baseline; document the achieved reduction and justify any remaining large latency subsystem.
 - [ ] Update this plan with checked stages and any approved design-rule revisions, then ensure each stage or meaningful milestone has its own commit.
 

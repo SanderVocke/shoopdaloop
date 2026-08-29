@@ -234,7 +234,7 @@ impl AudioPort {
     }
 
     fn publish_state(&self) {
-        self.state.publish_scalars(
+        self.state.publish_values(
             self.gain,
             self.muted,
             self.passthrough_muted,
