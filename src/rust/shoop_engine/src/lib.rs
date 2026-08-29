@@ -129,10 +129,8 @@ pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
 pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;
 pub use latency_runtime::{
-    AtomicEffectiveLatencyPublication, AtomicLatencyObservation, AtomicLatencyRecipePublication,
-    EffectiveLatencyLatch, LatchedLatency, LatchedLatencyRecipe, OperationLatencyLatch,
-    PreparedLatency, PublishedEffectiveLatency, PublishedLatencyRecipe, RetainedLatencySelection,
-    RuntimeLatencyComponent, RuntimeLatencyObservation, RuntimeLatencyRecipe,
+    AtomicEffectiveLatencyPublication, EffectiveLatencyLatch, LatchedLatency, PreparedLatency,
+    PublishedEffectiveLatency,
 };
 pub use loop_mode::LoopMode;
 pub use midi_buffering_input_port::MidiBufferingInputPort;

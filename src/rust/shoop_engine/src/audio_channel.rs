@@ -11,10 +11,7 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::chunked_samples::ChunkedSamples;
 use crate::content_snapshot::AudioProcessSnapshotWriter;
-use crate::latency_runtime::{
-    cyclic_render_dispatch_position, LatchedLatencyRecipe, RetainedLatencySelection,
-    RuntimeLatencyRecipe,
-};
+use crate::latency_runtime::{cyclic_render_dispatch_position, LatchedLatency, PreparedLatency};
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
 use shoop_latency::{CaptureFrameMapping, LatencyDomainError, MAX_COMPENSATION_FRAMES};
@@ -258,10 +255,8 @@ pub struct AudioChannel {
     postroll_remaining_frames: u32,
     finish_recording_after_finalize: bool,
     latency_retention_incomplete: bool,
-    pending_latency_recipe: Option<RuntimeLatencyRecipe>,
-    latched_latency_recipe: Option<LatchedLatencyRecipe>,
-    grab_latency_selection: RetainedLatencySelection,
-    prepared_replacement_alignment: Option<i32>,
+    pending_latency: Option<PreparedLatency>,
+    latched_latency: Option<LatchedLatency>,
     playback_smoother: PlaybackSmoother,
 }
 
@@ -340,10 +335,8 @@ impl AudioChannel {
             postroll_remaining_frames: 0,
             finish_recording_after_finalize: false,
             latency_retention_incomplete: false,
-            pending_latency_recipe: None,
-            latched_latency_recipe: None,
-            grab_latency_selection: RetainedLatencySelection::Unavailable,
-            prepared_replacement_alignment: None,
+            pending_latency: None,
+            latched_latency: None,
             playback_smoother: PlaybackSmoother::default(),
         };
         channel.publish_state();
@@ -412,57 +405,64 @@ impl AudioChannel {
     pub fn mode(&self) -> ChannelMode {
         self.mode
     }
-    pub fn pending_latency_recipe(&self) -> Option<RuntimeLatencyRecipe> {
-        self.pending_latency_recipe
+    pub const fn pending_latency(&self) -> Option<PreparedLatency> {
+        self.pending_latency
     }
-    pub fn latched_latency_recipe(&self) -> Option<LatchedLatencyRecipe> {
-        self.latched_latency_recipe
+
+    pub const fn latched_latency(&self) -> Option<LatchedLatency> {
+        self.latched_latency
     }
-    pub fn set_pending_latency_recipe(&mut self, recipe: Option<RuntimeLatencyRecipe>) {
-        self.pending_latency_recipe = recipe;
-        self.state.publish_current_latency_recipe(recipe);
+
+    pub fn set_pending_latency(&mut self, values: PreparedLatency) {
+        self.pending_latency = Some(values);
     }
-    pub fn set_latched_latency_recipe(&mut self, recipe: LatchedLatencyRecipe) {
-        if recipe.recipe.total_frames.is_none()
-            && matches!(
-                recipe.recipe.operation,
-                shoop_latency::LatencyOperationKind::DryThroughWet
-                    | shoop_latency::LatencyOperationKind::RecordDryIntoWet
-            )
-        {
-            self.render_advance_frames = 0;
-        }
-        if let Some(total) = recipe.recipe.total_frames {
-            match recipe.recipe.operation {
-                shoop_latency::LatencyOperationKind::RecordDirect
-                | shoop_latency::LatencyOperationKind::RecordDry
-                | shoop_latency::LatencyOperationKind::RecordWet => {
-                    self.capture_alignment_frames = total as i32;
-                    self.latency_retention_incomplete = total > self.retained_after_frames;
-                }
-                shoop_latency::LatencyOperationKind::DryThroughWet => {
-                    self.render_advance_frames = total;
-                }
-                shoop_latency::LatencyOperationKind::RecordDryIntoWet => {
-                    if self.mode == ChannelMode::Dry {
-                        self.render_advance_frames = total;
-                    } else {
-                        // The processor delay was consumed while rendering. The wet
-                        // destination is canonical logical media, not a newly delayed take.
-                        self.capture_alignment_frames = 0;
-                        self.render_advance_frames = 0;
-                    }
-                }
-                shoop_latency::LatencyOperationKind::Grab(_)
-                | shoop_latency::LatencyOperationKind::Replacement(_) => {}
-            }
-        }
-        self.latched_latency_recipe = Some(recipe);
-        self.state
-            .publish_latency_retention_incomplete(self.latency_retention_incomplete);
-        self.state.publish_latched_latency_recipe(Some(recipe));
+
+    pub fn latch_recording_latency(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        let frames = values.recording_offset().frames();
+        self.capture_alignment_frames = frames;
+        self.latency_retention_incomplete = if frames >= 0 {
+            frames as u32 > self.retained_after_frames
+        } else {
+            frames.unsigned_abs() > self.retained_before_frames
+        };
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
         self.publish_state();
+        true
     }
+
+    pub fn latch_render_latency(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        self.render_advance_frames = values.processor_advance().frames();
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
+    pub fn latch_canonical_render_destination(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
         self.publish_state();
@@ -514,8 +514,6 @@ impl AudioChannel {
         }
         self.retained_before_frames = retained_before_frames;
         self.retained_after_frames = retained_after_frames;
-        self.state
-            .publish_retained_margins(retained_before_frames, retained_after_frames);
         Ok(())
     }
     pub fn is_finalizing_latency_postroll(&self) -> bool {
@@ -526,36 +524,6 @@ impl AudioChannel {
     }
     pub fn latency_retention_incomplete(&self) -> bool {
         self.latency_retention_incomplete
-    }
-    pub fn grab_latency_selection(&self) -> RetainedLatencySelection {
-        self.grab_latency_selection
-    }
-    pub fn can_prepare_latency_replacement(&self, capture_alignment_frames: i32) -> bool {
-        self.capture_alignment_frames == capture_alignment_frames
-    }
-    pub fn prepare_latency_replacement(&mut self, capture_alignment_frames: i32) {
-        debug_assert!(self.can_prepare_latency_replacement(capture_alignment_frames));
-        self.prepared_replacement_alignment = Some(capture_alignment_frames);
-    }
-    pub fn apply_grab_latency_mapping(
-        &mut self,
-        media_layout_offset: i32,
-        capture_alignment_frames: i32,
-        selection: RetainedLatencySelection,
-    ) -> Result<(), LatencyDomainError> {
-        self.set_capture_alignment_frames(capture_alignment_frames)?;
-        self.start_offset = media_layout_offset;
-        self.grab_latency_selection = selection;
-        self.latency_retention_incomplete = false;
-        self.state.publish_latency_retention_incomplete(false);
-        let (variable, revisions) = match selection {
-            RetainedLatencySelection::Stable(_) => (false, 1),
-            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
-            RetainedLatencySelection::Unavailable => (false, 0),
-        };
-        self.state.publish_latency_history(variable, revisions);
-        self.publish_state();
-        Ok(())
     }
     pub fn compensated_take_ready(&self, logical_length: u32) -> bool {
         let Some(raw_start) = self.raw_position_for_logical(0) else {
@@ -604,10 +572,7 @@ impl AudioChannel {
         }
         self.retained_before_frames = retained_before_frames;
         self.retained_after_frames = retained_after_frames;
-        self.state
-            .publish_retained_margins(retained_before_frames, retained_after_frames);
         self.latency_retention_incomplete = false;
-        self.state.publish_latency_retention_incomplete(false);
         Ok(())
     }
     pub fn set_render_advance_frames(&mut self, frames: u32) -> Result<(), LatencyDomainError> {
@@ -672,11 +637,6 @@ impl AudioChannel {
         self.buffers.get(position).copied()
     }
 
-    fn reset_grab_latency_selection(&mut self) {
-        self.grab_latency_selection = RetainedLatencySelection::Unavailable;
-        self.state.publish_latency_history(false, 0);
-    }
-
     fn data_changed(&mut self) {
         self.data_seq_nr = self.data_seq_nr.wrapping_add(1);
         self.publish_state();
@@ -703,7 +663,6 @@ impl AudioChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Loading);
@@ -726,7 +685,6 @@ impl AudioChannel {
         }
         self.data_length = length;
         self.start_offset = 0;
-        self.reset_grab_latency_selection();
     }
 
     pub(crate) fn write_bounded_load(&mut self, mut offset: usize, mut samples: &[f32]) {
@@ -754,7 +712,6 @@ impl AudioChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.reset_grab_latency_selection();
         self.publish_all_data();
         self.data_changed();
     }
@@ -769,7 +726,6 @@ impl AudioChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.install_prepared(snapshot);
         }
@@ -786,7 +742,6 @@ impl AudioChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
@@ -806,7 +761,6 @@ impl AudioChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.reset_grab_latency_selection();
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
@@ -991,12 +945,6 @@ impl AudioChannel {
             self.last_played_back_sample = Some(params.position);
             let mapping = CaptureFrameMapping::new(self.capture_alignment_frames)
                 .map_err(|_| ChannelError::LatencyPositionOverflow)?;
-            let raw_position = i32::try_from(
-                mapping
-                    .raw_frame(i64::from(params.position))
-                    .map_err(|_| ChannelError::LatencyPositionOverflow)?,
-            )
-            .map_err(|_| ChannelError::LatencyPositionOverflow)?;
             let render_advance_frames = if matches!(
                 mode,
                 LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
@@ -1017,11 +965,6 @@ impl AudioChannel {
                 length_before.min(u32::MAX as usize) as u32,
             )
             .ok_or(ChannelError::LatencyPositionOverflow)?;
-            self.state.publish_playback_positions(
-                params.position.checked_sub(self.start_offset),
-                Some(raw_position),
-                Some(dispatch_position),
-            );
             let cyclic_window = (render_advance_frames > 0 && length_before > 0)
                 .then(|| {
                     let start = i32::try_from(
@@ -1041,7 +984,6 @@ impl AudioChannel {
             self.process_playback(dispatch_position, n_samples, cyclic_window)?;
         } else {
             self.last_played_back_sample = None;
-            self.state.publish_playback_positions(None, None, None);
         }
         if flags.contains(ProcessFlags::RECORD) {
             let from = (length_before as i64 + self.start_offset as i64).max(0) as usize;
@@ -1058,9 +1000,7 @@ impl AudioChannel {
         }
         if self.prev_process_flags.contains(ProcessFlags::REPLACE)
             && !flags.contains(ProcessFlags::REPLACE)
-        {
-            self.prepared_replacement_alignment = None;
-        }
+        {}
         self.prev_process_flags = if self.postroll_remaining_frames > 0 {
             flags.with(ProcessFlags::RECORD)
         } else {
@@ -1583,14 +1523,10 @@ mod tests {
         check!(ch.dispatch_raw_position_for_logical(0) == Some(7));
         check!(cycle(&mut ch, L::PlayingDryThroughWet, 2, 0, 8, &[]) == vec![7.0, 8.0]);
         let published = state.read(ch.data_seq_nr() as u64);
-        check!(published.logical_played_position == Some(0));
-        check!(published.raw_played_position == Some(5));
-        check!(published.dispatch_position == Some(7));
+        check!(published.capture_alignment_frames == 3);
+        check!(published.render_advance_frames == 2);
 
         check!(cycle(&mut ch, L::Playing, 2, 0, 8, &[]) == vec![5.0, 6.0]);
-        let published = state.read(ch.data_seq_nr() as u64);
-        check!(published.raw_played_position == Some(5));
-        check!(published.dispatch_position == Some(5));
 
         ch.set_capture_alignment_frames(-2).unwrap();
         ch.set_render_advance_frames(0).unwrap();
@@ -1668,7 +1604,6 @@ mod tests {
             let mut ch = AudioChannel::with_chunk_size(4, role);
             ch.load_data(&[0.0; 8]);
             ch.set_capture_alignment_frames(3).unwrap();
-            ch.prepare_latency_replacement(3);
             cycle(&mut ch, L::Replacing, 1, 5, 8, &[1.0]);
             check!(ch.data()[5] == 1.0);
             check!(cycle(&mut ch, playback_mode_for_test(role), 1, 2, 8, &[]) == vec![1.0]);
@@ -1806,10 +1741,8 @@ mod tests {
         ch.begin_bounded_load(4);
         ch.write_bounded_load(0, &[1.0, 2.0, 3.0, 4.0]);
         ch.finish_bounded_load();
-        let observation =
-            crate::latency_runtime::RuntimeLatencyObservation::exact(1, 48_000, 2).unwrap();
-        ch.apply_grab_latency_mapping(0, 1, RetainedLatencySelection::Stable(observation))
-            .unwrap();
+        ch.set_start_offset(0);
+        ch.set_capture_alignment_frames(1).unwrap();
 
         let deadline = Instant::now() + Duration::from_secs(2);
         let snapshot = loop {
@@ -1832,16 +1765,12 @@ mod tests {
     fn legacy_media_layout_offset_is_independent_of_latency_bounds() {
         let mut ch = channel();
         let media_offset = i32::MAX - 1;
-        ch.apply_grab_latency_mapping(media_offset, 7, RetainedLatencySelection::Unavailable)
-            .unwrap();
+        ch.set_start_offset(media_offset);
+        ch.set_capture_alignment_frames(7).unwrap();
         check!(ch.start_offset() == media_offset);
         check!(ch.capture_alignment_frames() == 7);
         assert!(ch
-            .apply_grab_latency_mapping(
-                media_offset,
-                shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1,
-                RetainedLatencySelection::Unavailable,
-            )
+            .set_capture_alignment_frames(shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1)
             .is_err());
         check!(ch.start_offset() == media_offset);
         check!(ch.capture_alignment_frames() == 7);

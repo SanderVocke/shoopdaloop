@@ -93,13 +93,13 @@ Verification:
 Depends on Stage 0.
 
 - [x] Replace the qualified frame-mapping name and related names with durable single-offset terminology; remove every remaining tracked use of the abandoned term, including generic helper/test/comment occurrences elsewhere in the repository.
-- [ ] Reduce the latency domain to checked signed frame mapping, bounded effective recording offset, and a separate bounded processor render advance.
-- [ ] Remove component kinds and policies, recording references, cue applicability, path aggregation/ambiguity, observation interval/source identities, ranges/certainty where no provider boundary still needs them, resolved recipes, and forensic take snapshots.
-- [ ] Define the minimal control-path and callback-facing values, errors, and invariants needed by subsequent stages.
+- [x] Reduce the latency domain to checked signed frame mapping, bounded effective recording offset, and a separate bounded processor render advance.
+- [x] Remove component kinds and policies, recording references, cue applicability, path aggregation/ambiguity, observation interval/source identities, ranges/certainty where no provider boundary still needs them, resolved recipes, and forensic take snapshots.
+- [x] Define the minimal control-path and callback-facing values, errors, and invariants needed by subsequent stages.
 
 Verification:
 
-- [ ] Add focused domain tests for signed mapping, bounds, overflow, manual override/trim semantics, and separation of capture alignment from render advance.
+- [x] Add focused domain tests for signed mapping, bounds, overflow, manual override/trim semantics, and separation of capture alignment from render advance.
 - [ ] Run the latency-domain crate tests and `cargo clippy`/format checks applicable to the touched crates.
 - [x] Confirm the case-insensitive tracked terminology audit has no matches.
 
@@ -107,8 +107,8 @@ Verification:
 
 Depends on Stage 1.
 
-- [ ] Replace recipe latching with one validated effective recording offset and, only for dry/wet modes, one processor render-advance value.
-- [ ] Remove retained observation spans, historical selection, variable-revision handling, recipe/component diagnostics, and incomplete-take recovery state.
+- [x] Replace recipe latching with one validated effective recording offset and, only for dry/wet modes, one processor render-advance value.
+- [x] Remove retained observation spans, historical selection, variable-revision handling, recipe/component diagnostics, and incomplete-take recovery state.
 - [ ] Prepare bounded pre/post retention before record, grab, or replacement operations; keep postroll content unsettled until finalization and abort atomically on capacity/finalization failure.
 - [ ] Apply the frozen take alignment during audio and MIDI playback and the processor advance exactly once in supported render modes.
 - [ ] Preserve immediate live monitoring, topology stability, callback safety, loop-wrap correctness, and transactional take edits.
@@ -125,13 +125,13 @@ Depends on Stage 2.
 
 - [ ] Replace component recipes and provider provenance with one effective recording-offset control and one optional processor-advance control.
 - [ ] Keep JACK automatic reporting only where it maps truthfully to the effective value; make unsupported backends explicitly manual rather than estimated.
-- [ ] Remove cue-route resolution, ambiguity tracking, Carla adapter/provenance integration, OxiSynth range modeling, and other automatic providers outside the reduced contract.
+- [x] Remove cue-route resolution, ambiguity tracking, Carla adapter/provenance integration, OxiSynth range modeling, and other automatic providers outside the reduced contract.
 - [ ] Simplify native backend commands, snapshots, state mirrors, and errors to the minimal values/status needed by the app and engine.
 
 Verification:
 
 - [ ] Rewrite JACK/backend tests for automatic effective values, manual fallback, latching, and unsupported capability behavior.
-- [ ] Remove provider compatibility fixtures and patches that no retained provider consumes.
+- [x] Remove provider compatibility fixtures and patches that no retained provider consumes.
 - [ ] Run native backend tests and assert latency updates neither rebuild topology nor block callback work.
 
 ### Stage 4: Simplify browser and cross-process protocols

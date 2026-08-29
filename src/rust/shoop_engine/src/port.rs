@@ -9,129 +9,10 @@
 //! with the driver implementations.
 
 use crate::buffer_queue::{BufferQueue, Snapshot};
-use crate::latency_runtime::{RetainedLatencySelection, RuntimeLatencyObservation};
 use crate::state_mirror::AudioPortStateMirror;
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use std::collections::VecDeque;
 use std::sync::Arc;
-
-#[derive(Clone, Copy, Debug)]
-struct LatencyHistorySpan {
-    start_frame: u64,
-    end_frame: u64,
-    observation: RuntimeLatencyObservation,
-}
-
-#[derive(Debug)]
-pub(crate) struct BoundedLatencyHistory {
-    spans: VecDeque<LatencyHistorySpan>,
-    end_frame: u64,
-    coverage_lost_before: u64,
-}
-
-impl BoundedLatencyHistory {
-    pub(crate) fn new() -> Self {
-        Self {
-            spans: VecDeque::with_capacity(shoop_latency::MAX_OBSERVATION_HISTORY),
-            end_frame: 0,
-            coverage_lost_before: 0,
-        }
-    }
-
-    pub(crate) fn append(
-        &mut self,
-        frames: usize,
-        observation: RuntimeLatencyObservation,
-        retained: usize,
-    ) {
-        let start = self.end_frame;
-        self.end_frame = self.end_frame.saturating_add(frames as u64);
-        if let Some(last) = self.spans.back_mut() {
-            if last.observation == observation && last.end_frame == start {
-                last.end_frame = self.end_frame;
-            } else {
-                if self.spans.len() == shoop_latency::MAX_OBSERVATION_HISTORY {
-                    if let Some(dropped) = self.spans.pop_front() {
-                        self.coverage_lost_before = dropped.end_frame;
-                    }
-                }
-                self.spans.push_back(LatencyHistorySpan {
-                    start_frame: start,
-                    end_frame: self.end_frame,
-                    observation,
-                });
-            }
-        } else {
-            self.spans.push_back(LatencyHistorySpan {
-                start_frame: start,
-                end_frame: self.end_frame,
-                observation,
-            });
-        }
-
-        let retained_start = self.end_frame.saturating_sub(retained as u64);
-        while self
-            .spans
-            .front()
-            .is_some_and(|region| region.end_frame <= retained_start)
-        {
-            self.spans.pop_front();
-        }
-        if let Some(first) = self.spans.front_mut() {
-            first.start_frame = first.start_frame.max(retained_start);
-        }
-        self.coverage_lost_before = self.coverage_lost_before.max(retained_start);
-    }
-
-    pub(crate) fn select(
-        &self,
-        retained: usize,
-        start: usize,
-        end: usize,
-    ) -> RetainedLatencySelection {
-        if start >= end || end > retained {
-            return RetainedLatencySelection::Unavailable;
-        }
-        let retained_start = self.end_frame.saturating_sub(retained as u64);
-        let absolute_start = retained_start.saturating_add(start as u64);
-        let absolute_end = retained_start.saturating_add(end as u64);
-        if absolute_start < self.coverage_lost_before {
-            return RetainedLatencySelection::Unavailable;
-        }
-
-        let mut cursor = absolute_start;
-        let mut newest = None;
-        let mut previous = None;
-        let mut revisions = 0_u32;
-        for region in self
-            .spans
-            .iter()
-            .filter(|region| region.end_frame > absolute_start && region.start_frame < absolute_end)
-        {
-            if region.start_frame > cursor {
-                return RetainedLatencySelection::Unavailable;
-            }
-            cursor = cursor.max(region.end_frame.min(absolute_end));
-            if previous != Some(region.observation) {
-                revisions = revisions.saturating_add(1);
-                previous = Some(region.observation);
-            }
-            newest = Some(region.observation);
-            if cursor >= absolute_end {
-                break;
-            }
-        }
-        if cursor < absolute_end {
-            return RetainedLatencySelection::Unavailable;
-        }
-        match (newest, revisions) {
-            (Some(observation), 1) => RetainedLatencySelection::Stable(observation),
-            (Some(newest), revisions) => RetainedLatencySelection::Variable { newest, revisions },
-            _ => RetainedLatencySelection::Unavailable,
-        }
-    }
-}
 
 /// Kind of data a port carries. Discriminants match `shoop_port_data_type_t`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Sequence)]
@@ -195,7 +76,6 @@ pub struct AudioPort {
     input_peak: f32,
     output_peak: f32,
     ringbuffer: BufferQueue,
-    latency_history: BoundedLatencyHistory,
     /// An effect inserted on this port. Boxed because most ports have none and a chain carries a
     /// delay line.
     fx: Option<Box<crate::fx_chain::FxChain>>,
@@ -216,7 +96,6 @@ impl AudioPort {
             fx: None,
             fx_scratch: Vec::new(),
             ringbuffer: BufferQueue::new(ringbuffer_buffer_size.max(1), 32),
-            latency_history: BoundedLatencyHistory::new(),
             state: Arc::new(AudioPortStateMirror::default()),
         }
     }
@@ -244,22 +123,6 @@ impl AudioPort {
 
     pub fn data_type(&self) -> PortDataType {
         PortDataType::Audio
-    }
-
-    pub fn publish_capture_latency(&self, observation: RuntimeLatencyObservation) {
-        self.state.publish_capture_latency(observation);
-    }
-
-    pub fn publish_playback_latency(&self, observation: RuntimeLatencyObservation) {
-        self.state.publish_playback_latency(observation);
-    }
-
-    pub fn capture_latency(&self) -> RuntimeLatencyObservation {
-        self.state.capture_latency()
-    }
-
-    pub fn playback_latency(&self) -> RuntimeLatencyObservation {
-        self.state.playback_latency()
     }
 
     pub fn gain(&self) -> f32 {
@@ -313,14 +176,6 @@ impl AudioPort {
     }
     pub fn visit_ringbuffer_range(&self, start: usize, end: usize, visit: impl FnMut(&[f32])) {
         self.ringbuffer.visit_range(start, end, visit);
-    }
-    pub fn ringbuffer_latency_selection(
-        &self,
-        start: usize,
-        end: usize,
-    ) -> RetainedLatencySelection {
-        self.latency_history
-            .select(self.ringbuffer.n_samples(), start, end)
     }
 
     /// The effect inserted on this port, if any.
@@ -403,11 +258,6 @@ impl AudioPort {
         // available for retroactive recording.
         if self.ringbuffer.max_buffers() > 0 {
             self.ringbuffer.put(buf);
-            self.latency_history.append(
-                buf.len(),
-                self.capture_latency(),
-                self.ringbuffer.n_samples(),
-            );
         }
         self.publish_state();
     }
@@ -647,45 +497,6 @@ mod tests {
         check!(p.ringbuffer_n_samples() == 4);
         p.set_ringbuffer_n_samples(16);
         check!(p.ringbuffer_n_samples() == 0);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn retained_latency_history_distinguishes_stable_and_variable_windows() {
-        let mut p = port();
-        p.set_ringbuffer_n_samples(12);
-        let first = RuntimeLatencyObservation::exact(3, 48_000, 1).unwrap();
-        let second = RuntimeLatencyObservation::exact(7, 48_000, 2).unwrap();
-        p.publish_capture_latency(first);
-        p.process(&mut [1.0; 4]);
-        p.publish_capture_latency(second);
-        p.process(&mut [2.0; 4]);
-
-        check!(p.ringbuffer_latency_selection(0, 4) == RetainedLatencySelection::Stable(first));
-        check!(
-            p.ringbuffer_latency_selection(0, 8)
-                == RetainedLatencySelection::Variable {
-                    newest: second,
-                    revisions: 2,
-                }
-        );
-        check!(p.ringbuffer_latency_selection(8, 9) == RetainedLatencySelection::Unavailable);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn retained_latency_history_updates_without_callback_allocation() {
-        let mut p = port();
-        p.set_ringbuffer_n_samples(128);
-        for revision in 0..32 {
-            p.publish_capture_latency(
-                RuntimeLatencyObservation::exact(revision, 48_000, u64::from(revision)).unwrap(),
-            );
-            p.process(&mut [0.0; 4]);
-        }
-        let observation = RuntimeLatencyObservation::exact(33, 48_000, 33).unwrap();
-        assert_no_alloc::assert_no_alloc(|| {
-            p.publish_capture_latency(observation);
-            p.process(&mut [0.0; 4]);
-        });
     }
 
     #[shoop_wasm_test_support::shoop_test]

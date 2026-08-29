@@ -17,10 +17,7 @@
 
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::content_snapshot::MidiProcessSnapshotWriter;
-use crate::latency_runtime::{
-    cyclic_render_dispatch_position, LatchedLatencyRecipe, RetainedLatencySelection,
-    RuntimeLatencyRecipe,
-};
+use crate::latency_runtime::{cyclic_render_dispatch_position, LatchedLatency, PreparedLatency};
 use crate::loop_mode::LoopMode;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
@@ -174,10 +171,8 @@ pub struct MidiChannel {
     retained_after_frames: u32,
     postroll_remaining_frames: u32,
     latency_retention_incomplete: bool,
-    pending_latency_recipe: Option<RuntimeLatencyRecipe>,
-    latched_latency_recipe: Option<LatchedLatencyRecipe>,
-    grab_latency_selection: RetainedLatencySelection,
-    prepared_replacement_alignment: Option<i32>,
+    pending_latency: Option<PreparedLatency>,
+    latched_latency: Option<LatchedLatency>,
 }
 
 impl MidiChannel {
@@ -240,10 +235,8 @@ impl MidiChannel {
             retained_after_frames: 0,
             postroll_remaining_frames: 0,
             latency_retention_incomplete: false,
-            pending_latency_recipe: None,
-            latched_latency_recipe: None,
-            grab_latency_selection: RetainedLatencySelection::Unavailable,
-            prepared_replacement_alignment: None,
+            pending_latency: None,
+            latched_latency: None,
         };
         channel.publish_state();
         channel
@@ -295,55 +288,64 @@ impl MidiChannel {
     pub fn mode(&self) -> ChannelMode {
         self.mode
     }
-    pub fn pending_latency_recipe(&self) -> Option<RuntimeLatencyRecipe> {
-        self.pending_latency_recipe
+    pub const fn pending_latency(&self) -> Option<PreparedLatency> {
+        self.pending_latency
     }
-    pub fn latched_latency_recipe(&self) -> Option<LatchedLatencyRecipe> {
-        self.latched_latency_recipe
+
+    pub const fn latched_latency(&self) -> Option<LatchedLatency> {
+        self.latched_latency
     }
-    pub fn set_pending_latency_recipe(&mut self, recipe: Option<RuntimeLatencyRecipe>) {
-        self.pending_latency_recipe = recipe;
-        self.state.publish_current_latency_recipe(recipe);
+
+    pub fn set_pending_latency(&mut self, values: PreparedLatency) {
+        self.pending_latency = Some(values);
     }
-    pub fn set_latched_latency_recipe(&mut self, recipe: LatchedLatencyRecipe) {
-        if recipe.recipe.total_frames.is_none()
-            && matches!(
-                recipe.recipe.operation,
-                shoop_latency::LatencyOperationKind::DryThroughWet
-                    | shoop_latency::LatencyOperationKind::RecordDryIntoWet
-            )
-        {
-            self.render_advance_frames = 0;
-        }
-        if let Some(total) = recipe.recipe.total_frames {
-            match recipe.recipe.operation {
-                shoop_latency::LatencyOperationKind::RecordDirect
-                | shoop_latency::LatencyOperationKind::RecordDry
-                | shoop_latency::LatencyOperationKind::RecordWet => {
-                    self.capture_alignment_frames = total as i32;
-                    self.latency_retention_incomplete = total > self.retained_after_frames;
-                }
-                shoop_latency::LatencyOperationKind::DryThroughWet => {
-                    self.render_advance_frames = total;
-                }
-                shoop_latency::LatencyOperationKind::RecordDryIntoWet => {
-                    if self.mode == ChannelMode::Dry {
-                        self.render_advance_frames = total;
-                    } else {
-                        self.capture_alignment_frames = 0;
-                        self.render_advance_frames = 0;
-                    }
-                }
-                shoop_latency::LatencyOperationKind::Grab(_)
-                | shoop_latency::LatencyOperationKind::Replacement(_) => {}
-            }
-        }
-        self.latched_latency_recipe = Some(recipe);
-        self.state
-            .publish_latency_retention_incomplete(self.latency_retention_incomplete);
-        self.state.publish_latched_latency_recipe(Some(recipe));
+
+    pub fn latch_recording_latency(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        let frames = values.recording_offset().frames();
+        self.capture_alignment_frames = frames;
+        self.latency_retention_incomplete = if frames >= 0 {
+            frames as u32 > self.retained_after_frames
+        } else {
+            frames.unsigned_abs() > self.retained_before_frames
+        };
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
         self.publish_state();
+        true
     }
+
+    pub fn latch_render_latency(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        self.render_advance_frames = values.processor_advance().frames();
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
+    pub fn latch_canonical_render_destination(&mut self, operation_frame: u64) -> bool {
+        let Some(values) = self.pending_latency else {
+            return false;
+        };
+        self.capture_alignment_frames = 0;
+        self.render_advance_frames = 0;
+        self.latched_latency = Some(LatchedLatency {
+            values,
+            operation_frame,
+        });
+        self.publish_state();
+        true
+    }
+
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
         self.publish_state();
@@ -391,8 +393,6 @@ impl MidiChannel {
         }
         self.retained_before_frames = retained_before_frames;
         self.retained_after_frames = retained_after_frames;
-        self.state
-            .publish_retained_margins(retained_before_frames, retained_after_frames);
         Ok(())
     }
     pub fn is_finalizing_latency_postroll(&self) -> bool {
@@ -404,31 +404,13 @@ impl MidiChannel {
     pub fn latency_retention_incomplete(&self) -> bool {
         self.latency_retention_incomplete
     }
-    pub fn grab_latency_selection(&self) -> RetainedLatencySelection {
-        self.grab_latency_selection
-    }
-    pub fn can_prepare_latency_replacement(&self, capture_alignment_frames: i32) -> bool {
-        self.capture_alignment_frames == capture_alignment_frames
-    }
-    pub fn prepare_latency_replacement(&mut self, capture_alignment_frames: i32) {
-        debug_assert!(self.can_prepare_latency_replacement(capture_alignment_frames));
-        self.prepared_replacement_alignment = Some(capture_alignment_frames);
-    }
     pub fn restore_take_latency_mapping(
         &mut self,
         media_layout_offset: i32,
         capture_alignment_frames: i32,
-        selection: RetainedLatencySelection,
     ) -> Result<(), LatencyDomainError> {
         self.set_capture_alignment_frames(capture_alignment_frames)?;
         self.start_offset = media_layout_offset;
-        self.grab_latency_selection = selection;
-        let (variable, revisions) = match selection {
-            RetainedLatencySelection::Stable(_) => (false, 1),
-            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
-            RetainedLatencySelection::Unavailable => (false, 0),
-        };
-        self.state.publish_latency_history(variable, revisions);
         self.publish_state();
         Ok(())
     }
@@ -443,7 +425,6 @@ impl MidiChannel {
         start_state: &MidiStateTracker,
         media_layout_offset: i32,
         capture_alignment_frames: i32,
-        selection: RetainedLatencySelection,
     ) -> Result<(), LatencyDomainError> {
         if media_layout_offset.unsigned_abs() > MAX_COMPENSATION_FRAMES
             || !self.can_commit_grab(source.n_events())
@@ -460,13 +441,6 @@ impl MidiChannel {
         self.recording_start_state.copy_relevant_state(start_state);
         self.recording_start_valid = true;
         self.loaded_contents = true;
-        self.grab_latency_selection = selection;
-        let (variable, revisions) = match selection {
-            RetainedLatencySelection::Stable(_) => (false, 1),
-            RetainedLatencySelection::Variable { revisions, .. } => (true, revisions),
-            RetainedLatencySelection::Unavailable => (false, 0),
-        };
-        self.state.publish_latency_history(variable, revisions);
         self.publish_snapshot_contents(
             crate::content_snapshot::ContentMutation::RingbufferAdoption,
         );
@@ -500,10 +474,7 @@ impl MidiChannel {
         }
         self.retained_before_frames = retained_before_frames;
         self.retained_after_frames = retained_after_frames;
-        self.state
-            .publish_retained_margins(retained_before_frames, retained_after_frames);
         self.latency_retention_incomplete = false;
-        self.state.publish_latency_retention_incomplete(false);
         Ok(())
     }
     pub fn set_render_advance_frames(&mut self, frames: u32) -> Result<(), LatencyDomainError> {
@@ -594,8 +565,6 @@ impl MidiChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.grab_latency_selection = RetainedLatencySelection::Unavailable;
-        self.state.publish_latency_history(false, 0);
         if let Some(snapshots) = self.content_snapshots.as_mut() {
             snapshots.begin_working_generation();
             snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
@@ -633,8 +602,6 @@ impl MidiChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.grab_latency_selection = RetainedLatencySelection::Unavailable;
-        self.state.publish_latency_history(false, 0);
         self.playback_cursor = self.storage.create_cursor();
         self.recording_start_state.clear();
         self.recording_start_valid = start_state.is_some();
@@ -660,8 +627,6 @@ impl MidiChannel {
         self.start_offset = 0;
         self.capture_alignment_frames = 0;
         self.render_advance_frames = 0;
-        self.grab_latency_selection = RetainedLatencySelection::Unavailable;
-        self.state.publish_latency_history(false, 0);
         self.playback_cursor = self.storage.create_cursor();
         self.loaded_contents = true;
         if let Some(snapshots) = self.content_snapshots.as_mut() {
@@ -907,12 +872,6 @@ impl MidiChannel {
         if flags.contains(ProcessFlags::PLAYBACK) {
             let mapping = CaptureFrameMapping::new(self.capture_alignment_frames)
                 .map_err(|_| MidiChannelError::LatencyPositionOverflow)?;
-            let raw_position = i32::try_from(
-                mapping
-                    .raw_frame(i64::from(params.position))
-                    .map_err(|_| MidiChannelError::LatencyPositionOverflow)?,
-            )
-            .map_err(|_| MidiChannelError::LatencyPositionOverflow)?;
             let render_advance_frames = if matches!(
                 mode,
                 LoopMode::PlayingDryThroughWet | LoopMode::RecordingDryIntoWet
@@ -933,11 +892,6 @@ impl MidiChannel {
                 length_before,
             )
             .ok_or(MidiChannelError::LatencyPositionOverflow)?;
-            self.state.publish_playback_positions(
-                params.position.checked_sub(self.start_offset),
-                Some(raw_position),
-                Some(dispatch_position),
-            );
             let restarting = !self.prev_process_flags.contains(ProcessFlags::PLAYBACK)
                 || self
                     .last_played_back_sample
@@ -1003,7 +957,6 @@ impl MidiChannel {
             }
         } else {
             self.last_played_back_sample = None;
-            self.state.publish_playback_positions(None, None, None);
         }
 
         if flags.contains(ProcessFlags::RECORD) {
@@ -1024,9 +977,7 @@ impl MidiChannel {
         self.prev_pos_after = pos_after;
         if self.prev_process_flags.contains(ProcessFlags::REPLACE)
             && !flags.contains(ProcessFlags::REPLACE)
-        {
-            self.prepared_replacement_alignment = None;
-        }
+        {}
         self.prev_process_flags = if self.postroll_remaining_frames > 0 {
             flags.with(ProcessFlags::RECORD)
         } else {
@@ -1492,15 +1443,13 @@ mod tests {
     fn legacy_media_layout_offset_is_independent_of_midi_latency_bounds() {
         let mut ch = channel();
         let media_offset = i32::MIN + 1;
-        ch.restore_take_latency_mapping(media_offset, 7, RetainedLatencySelection::Unavailable)
-            .unwrap();
+        ch.restore_take_latency_mapping(media_offset, 7).unwrap();
         check!(ch.start_offset() == media_offset);
         check!(ch.capture_alignment_frames() == 7);
         assert!(ch
             .restore_take_latency_mapping(
                 media_offset,
                 shoop_latency::MAX_COMPENSATION_FRAMES as i32 + 1,
-                RetainedLatencySelection::Unavailable,
             )
             .is_err());
         check!(ch.start_offset() == media_offset);
@@ -1693,7 +1642,6 @@ mod tests {
             let mut ch = MidiChannel::with_capacity_elems(64, role);
             ch.set_contents(&[], 8, Some(&[]));
             ch.set_capture_alignment_frames(3).unwrap();
-            ch.prepare_latency_replacement(3);
             let replacement = [ev(0, &midi::note_on(0, 60, 100))];
             cycle(&mut ch, L::Replacing, 1, 5, 8, &replacement);
             check!(ch
@@ -2040,17 +1988,13 @@ mod tests {
             .any(|event| event.time == 0 && event.data()[1] == 57));
         check!(!out.iter().any(|event| event.data()[1] == 50));
         let published = state.read(ch.data_seq_nr() as u64);
-        check!(published.logical_played_position == Some(0));
-        check!(published.raw_played_position == Some(5));
-        check!(published.dispatch_position == Some(7));
+        check!(published.capture_alignment_frames == 3);
+        check!(published.render_advance_frames == 2);
 
         let ordinary = cycle(&mut ch, L::Playing, 2, 0, 8, &[]);
         check!(!ordinary
             .iter()
             .any(|event| midi::is_note_on(event.data()) && event.data()[1] == 57));
-        let published = state.read(ch.data_seq_nr() as u64);
-        check!(published.raw_played_position == Some(5));
-        check!(published.dispatch_position == Some(5));
     }
 
     #[shoop_wasm_test_support::shoop_test]

@@ -4,7 +4,6 @@
 //! strings and are supplied when a mirror is read, so the process thread never clones them.
 
 use crate::channel_mode::ChannelMode;
-use crate::latency_runtime::{PublishedLatencyRecipe, RuntimeLatencyObservation};
 use crate::loop_mode::LoopMode;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -15,9 +14,6 @@ pub struct LoopState {
     pub cycle_count: u64,
     pub maybe_next_mode: Option<LoopMode>,
     pub maybe_next_mode_delay: Option<u32>,
-    pub deferred_latency_mode: Option<LoopMode>,
-    pub current_latency_recipe: PublishedLatencyRecipe,
-    pub latched_latency_recipe: PublishedLatencyRecipe,
 }
 
 impl Default for LoopState {
@@ -29,9 +25,6 @@ impl Default for LoopState {
             cycle_count: 0,
             maybe_next_mode: None,
             maybe_next_mode_delay: None,
-            deferred_latency_mode: None,
-            current_latency_recipe: PublishedLatencyRecipe::default(),
-            latched_latency_recipe: PublishedLatencyRecipe::default(),
         }
     }
 }
@@ -48,21 +41,11 @@ pub struct AudioChannelState {
     pub length: u32,
     pub start_offset: i32,
     pub capture_alignment_frames: i32,
-    pub retained_before_frames: u32,
-    pub retained_after_frames: u32,
     pub postroll_remaining_frames: u32,
     pub render_advance_frames: u32,
     pub played_back_sample: Option<i32>,
-    pub logical_played_position: Option<i32>,
-    pub raw_played_position: Option<i32>,
-    pub dispatch_position: Option<i32>,
     pub n_preplay_samples: u32,
-    pub latency_retention_incomplete: bool,
-    pub latency_history_variable: bool,
-    pub latency_history_revisions: u32,
     pub data_dirty: bool,
-    pub current_latency_recipe: PublishedLatencyRecipe,
-    pub latched_latency_recipe: PublishedLatencyRecipe,
 }
 
 /// MIDI-channel state exposed through the application-facing backend interface.
@@ -74,21 +57,11 @@ pub struct MidiChannelState {
     pub length: u32,
     pub start_offset: i32,
     pub capture_alignment_frames: i32,
-    pub retained_before_frames: u32,
-    pub retained_after_frames: u32,
     pub postroll_remaining_frames: u32,
     pub render_advance_frames: u32,
     pub played_back_sample: Option<i32>,
-    pub logical_played_position: Option<i32>,
-    pub raw_played_position: Option<i32>,
-    pub dispatch_position: Option<i32>,
     pub n_preplay_samples: u32,
-    pub latency_retention_incomplete: bool,
-    pub latency_history_variable: bool,
-    pub latency_history_revisions: u32,
     pub data_dirty: bool,
-    pub current_latency_recipe: PublishedLatencyRecipe,
-    pub latched_latency_recipe: PublishedLatencyRecipe,
 }
 
 /// Audio-port state exposed through the application-facing backend interface.
@@ -105,8 +78,6 @@ pub struct AudioPortState {
     /// Samples currently retained for retroactive recording, not the window that was
     /// requested.
     pub ringbuffer_n_samples: u32,
-    pub capture_latency: RuntimeLatencyObservation,
-    pub playback_latency: RuntimeLatencyObservation,
     pub name: String,
 }
 
@@ -144,8 +115,6 @@ pub struct MidiPortState {
     pub muted: bool,
     pub passthrough_muted: bool,
     pub ringbuffer_n_samples: u32,
-    pub capture_latency: RuntimeLatencyObservation,
-    pub playback_latency: RuntimeLatencyObservation,
     pub latest_input_message: Option<LatestMidiMessage>,
     pub name: String,
 }
