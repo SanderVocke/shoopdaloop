@@ -26,10 +26,11 @@ use shoop_audio_protocol::{
     Command, Event, MidiDataChunk, WaveformChunk, WireApplicationPortOwner, WireChannelMode,
     WireCompositeConfig, WireCompositeEntry, WireCompositeKind, WireCompositeTarget,
     WireGrabRequest, WireHostPort, WireLoopMode, WireMidiEvent, WireOxiSynthMidiCcAssignment,
-    WireOxiSynthParameter, WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot,
-    WireTrackControl, WireTrackFxControl, WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY,
-    MIDI_DETAIL_CHUNK_EVENTS, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireOxiSynthParameter, WirePortDataType, WirePortDirection, WirePortRole,
+    WireRecordingOffsetAdjustment, WireSnapshot, WireTrackControl, WireTrackFxControl,
+    WireTrackTopology, COMMAND_CAPACITY, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     encode_oxisynth_state, oxisynth_descriptor, Backend, BackendActiveCompositeChild,
@@ -51,7 +52,7 @@ use crate::transport::{transport_pair, TransportCore};
 struct WaveformAssembly {
     revision: u64,
     channels: Vec<Vec<f32>>,
-    timing: Vec<(i32, u32)>,
+    timing: Vec<(i32, i32, u32)>,
     next_channel: usize,
     next_offset: usize,
     complete: bool,
@@ -338,13 +339,17 @@ impl RemoteWorkletBackend {
         assembly.in_flight = false;
         if assembly.channels.len() < chunk.channel_count {
             assembly.channels.resize_with(chunk.channel_count, Vec::new);
-            assembly.timing.resize(chunk.channel_count, (0, 0));
+            assembly.timing.resize(chunk.channel_count, (0, 0, 0));
         }
         if let Some(channel) = assembly.channels.get_mut(chunk.channel) {
             channel.extend_from_slice(&chunk.samples);
         }
         if let Some(timing) = assembly.timing.get_mut(chunk.channel) {
-            *timing = (chunk.start_offset, chunk.preplay);
+            *timing = (
+                chunk.start_offset,
+                chunk.capture_alignment_frames,
+                chunk.preplay,
+            );
         }
         if chunk.final_chunk {
             assembly.next_channel += 1;
@@ -438,6 +443,7 @@ impl RemoteWorkletBackend {
                 length: chunk.length,
                 events: Vec::with_capacity(chunk.total_events),
                 start_offset: chunk.start_offset,
+                capture_alignment_frames: chunk.capture_alignment_frames,
                 preplay: chunk.preplay,
             });
         }
@@ -449,6 +455,7 @@ impl RemoteWorkletBackend {
         }
         if channel.length != chunk.length
             || channel.start_offset != chunk.start_offset
+            || channel.capture_alignment_frames != chunk.capture_alignment_frames
             || channel.preplay != chunk.preplay
             || channel.events.len() != chunk.offset
         {
@@ -838,6 +845,28 @@ impl RemoteWorkletBackend {
                         input_gain_db: track.input_gain_db,
                         input_balance: track.input_balance,
                         input_monitoring: track.input_monitoring,
+                        latency: shoop_backend::BackendTrackLatencyState {
+                            automatic_offset_frames: track.latency.automatic_offset_frames,
+                            adjustment: match track.latency.adjustment {
+                                WireRecordingOffsetAdjustment::Automatic => {
+                                    shoop_backend::BackendRecordingOffsetAdjustment::Automatic
+                                }
+                                WireRecordingOffsetAdjustment::ManualOverride => {
+                                    shoop_backend::BackendRecordingOffsetAdjustment::ManualOverride(
+                                        track.latency.manual_frames,
+                                    )
+                                }
+                                WireRecordingOffsetAdjustment::AutomaticPlusTrim => {
+                                    shoop_backend::BackendRecordingOffsetAdjustment::AutomaticPlusTrim(
+                                        track.latency.manual_frames,
+                                    )
+                                }
+                            },
+                            effective_offset_frames: track.latency.effective_offset_frames,
+                            processor_advance_frames: track.latency.processor_advance_frames,
+                            pending: track.latency.pending,
+                            error: track.latency.error,
+                        },
                         input_peaks: track.input_peaks,
                         output_peaks: track.output_peaks,
                         latest_input_midi_message: track.latest_input_midi_message.map(|message| {
@@ -868,6 +897,7 @@ impl RemoteWorkletBackend {
                         balance: loop_.balance,
                         audio_peaks: loop_.audio_peaks,
                         midi_activity: loop_.midi_activity,
+                        capture_alignment_frames: loop_.capture_alignment_frames,
                     },
                 )
             })
@@ -1097,7 +1127,7 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
             BackendMutationKind::CompositeStructure,
             Some(*expected_composite_id),
         ),
-        Command::SetTrackControl { track_id, .. } => {
+        Command::SetTrackControl { track_id, .. } | Command::SetTrackLatency { track_id, .. } => {
             (BackendMutationKind::TrackControl, Some(*track_id))
         }
         Command::SetTrackFxControl { track_id, .. } => {
@@ -1113,7 +1143,8 @@ fn command_mutation_identity(command: &Command) -> Option<(BackendMutationKind, 
         | Command::TransitionLoop { loop_id, .. }
         | Command::ClearLoop { loop_id }
         | Command::SetLoopLength { loop_id, .. }
-        | Command::SetLoopTiming { loop_id, .. } => {
+        | Command::SetLoopTiming { loop_id, .. }
+        | Command::SetTakeAlignment { loop_id, .. } => {
             (BackendMutationKind::LoopControl, Some(*loop_id))
         }
         Command::GrabLoops { requests } => (
@@ -1483,6 +1514,48 @@ impl Backend for RemoteWorkletBackend {
         })
     }
 
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: shoop_backend::BackendRecordingOffsetAdjustment,
+        processor_advance_frames: u32,
+    ) -> Result<()> {
+        if !self.track_resources.contains_key(&track_id) {
+            return Err(anyhow!("unknown remote backend track {track_id:?}"));
+        }
+        let (adjustment, manual_frames) = match adjustment {
+            shoop_backend::BackendRecordingOffsetAdjustment::Automatic => {
+                (WireRecordingOffsetAdjustment::Automatic, 0)
+            }
+            shoop_backend::BackendRecordingOffsetAdjustment::ManualOverride(frames) => {
+                (WireRecordingOffsetAdjustment::ManualOverride, frames)
+            }
+            shoop_backend::BackendRecordingOffsetAdjustment::AutomaticPlusTrim(frames) => {
+                (WireRecordingOffsetAdjustment::AutomaticPlusTrim, frames)
+            }
+        };
+        self.submit(Command::SetTrackLatency {
+            track_id: track_id.raw(),
+            adjustment,
+            manual_frames,
+            processor_advance_frames,
+        })
+    }
+
+    fn set_take_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        if !self.has_loop(loop_id) {
+            return Err(anyhow!("unknown remote backend loop {loop_id:?}"));
+        }
+        self.submit(Command::SetTakeAlignment {
+            loop_id: loop_id.raw(),
+            capture_alignment_frames,
+        })
+    }
+
     fn set_track_fx_control(
         &mut self,
         track_id: BackendTrackId,
@@ -1694,10 +1767,12 @@ impl Backend for RemoteWorkletBackend {
                 .into_iter()
                 .enumerate()
                 .map(|(index, samples)| {
-                    let (start_offset, preplay) = timing.get(index).copied().unwrap_or_default();
+                    let (start_offset, capture_alignment_frames, preplay) =
+                        timing.get(index).copied().unwrap_or_default();
                     BackendAudioChannelData {
                         samples,
                         start_offset,
+                        capture_alignment_frames,
                         preplay,
                     }
                 })
@@ -1858,7 +1933,7 @@ impl Backend for RemoteWorkletBackend {
                     timing.0 = offset;
                 }
                 if let Some(samples) = preplay {
-                    timing.1 = samples;
+                    timing.2 = samples;
                 }
             }
         }
@@ -2607,6 +2682,7 @@ mod tests {
                 offset: 0,
                 total_samples: 3,
                 start_offset: -4,
+                capture_alignment_frames: 0,
                 preplay: 6,
                 final_chunk: true,
                 samples: vec![0.25, -0.5, 0.75],
@@ -2631,6 +2707,7 @@ mod tests {
                     length: 16,
                     events: Vec::new(),
                     start_offset: -4,
+                    capture_alignment_frames: 0,
                     preplay: 6,
                 }],
                 next_channel: 1,
@@ -2714,6 +2791,7 @@ mod tests {
             input_gain_db: -4.0,
             input_balance: -0.25,
             input_monitoring: true,
+            latency: Default::default(),
             input_peaks: vec![0.1, 0.2],
             output_peaks: vec![0.3, 0.4],
             latest_input_midi_message: Some(WireLatestMidiMessage {
@@ -2798,6 +2876,7 @@ mod tests {
                         balance: -0.1,
                         audio_peaks: vec![0.2, 0.3],
                         midi_activity: true,
+                        capture_alignment_frames: 0,
                     })
                     .collect(),
                 composites: vec![WireCompositeState {

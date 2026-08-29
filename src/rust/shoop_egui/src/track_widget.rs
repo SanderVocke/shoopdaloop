@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::{
     colors, composite_loop_widget::LoopDragPayload, AppIntent, FxLifecycle, GlobalControlState,
-    LoopId, LoopWidget, LoopWidgetAction, TrackControls, TrackProcessorDescriptor, TrackState,
-    TrackWidgetAction,
+    LoopId, LoopWidget, LoopWidgetAction, RecordingOffsetAdjustmentState, TrackControls,
+    TrackProcessorDescriptor, TrackState, TrackWidgetAction,
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_DRAG_INDICATOR, ICON_MORE_VERT};
 
@@ -59,6 +59,8 @@ pub struct TrackWidget {
     #[cfg(test)]
     test_options_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_latency_offset_rect: Option<egui::Rect>,
+    #[cfg(test)]
     test_connections_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_delete_rect: Option<egui::Rect>,
@@ -112,6 +114,8 @@ impl Default for TrackWidget {
             test_controls_clip_rect: None,
             #[cfg(test)]
             test_options_rect: None,
+            #[cfg(test)]
+            test_latency_offset_rect: None,
             #[cfg(test)]
             test_connections_rect: None,
             #[cfg(test)]
@@ -740,6 +744,105 @@ impl TrackWidget {
                         result.connections_requested = true;
                         ui.close();
                     }
+                    ui.separator();
+                    ui.label("Recording alignment");
+                    let mut adjustment = state.latency.adjustment;
+                    let adjustment_changed =
+                        egui::ComboBox::from_id_salt(("recording_offset_adjustment", state.id))
+                            .selected_text(match adjustment {
+                                RecordingOffsetAdjustmentState::Automatic => "Automatic",
+                                RecordingOffsetAdjustmentState::ManualOverride => "Manual",
+                                RecordingOffsetAdjustmentState::AutomaticPlusTrim => {
+                                    "Automatic + trim"
+                                }
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut adjustment,
+                                    RecordingOffsetAdjustmentState::Automatic,
+                                    "Automatic",
+                                );
+                                ui.selectable_value(
+                                    &mut adjustment,
+                                    RecordingOffsetAdjustmentState::ManualOverride,
+                                    "Manual",
+                                );
+                                ui.selectable_value(
+                                    &mut adjustment,
+                                    RecordingOffsetAdjustmentState::AutomaticPlusTrim,
+                                    "Automatic + trim",
+                                );
+                            })
+                            .response
+                            .changed();
+                    let mut manual_frames = state.latency.manual_frames;
+                    let manual_response = ui
+                        .horizontal(|ui| {
+                            ui.label(
+                                if adjustment == RecordingOffsetAdjustmentState::AutomaticPlusTrim {
+                                    "Trim"
+                                } else {
+                                    "Offset"
+                                },
+                            );
+                            ui.add_enabled(
+                                adjustment != RecordingOffsetAdjustmentState::Automatic,
+                                egui::DragValue::new(&mut manual_frames).suffix(" frames"),
+                            )
+                        })
+                        .inner;
+                    #[cfg(test)]
+                    {
+                        self.test_latency_offset_rect = Some(manual_response.rect);
+                    }
+                    let manual_changed = manual_response.changed();
+                    let mut processor_advance_frames = state.latency.processor_advance_frames;
+                    let processor_changed = ui
+                        .horizontal(|ui| {
+                            ui.label("Processor");
+                            ui.add(
+                                egui::DragValue::new(&mut processor_advance_frames)
+                                    .suffix(" frames"),
+                            )
+                        })
+                        .inner
+                        .changed();
+                    if adjustment_changed || manual_changed || processor_changed {
+                        result.io_intents.push(AppIntent::SetTrackLatency {
+                            track_id: state.id,
+                            adjustment,
+                            manual_frames,
+                            processor_advance_frames,
+                        });
+                    }
+                    if let Some(effective) = state.latency.effective_offset_frames {
+                        ui.label(format!("Effective: {effective} frames"));
+                    } else {
+                        ui.label("Effective value unavailable; enter a manual offset.");
+                    }
+                    if state.latency.pending {
+                        ui.label("Latency update pending");
+                    }
+                    if let Some(error) = &state.latency.error {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
+                    for loop_ in state.loops.iter().filter(|loop_| !loop_.empty) {
+                        let mut alignment = loop_.capture_alignment_frames;
+                        if ui
+                            .horizontal(|ui| {
+                                ui.label(format!("{} alignment", loop_.name));
+                                ui.add(egui::DragValue::new(&mut alignment).suffix(" frames"))
+                            })
+                            .inner
+                            .changed()
+                        {
+                            result.io_intents.push(AppIntent::SetTakeAlignment {
+                                loop_id: loop_.id,
+                                capture_alignment_frames: alignment,
+                            });
+                        }
+                    }
+                    ui.separator();
                     if !state.is_sync {
                         let delete = ui.button("Delete Track");
                         #[cfg(test)]
@@ -1186,6 +1289,7 @@ mod tests {
             .actions
             .is_empty());
         let _ = frame(&context, &mut widget, &state, Vec::new());
+        assert!(widget.test_latency_offset_rect.is_some());
         let delete = widget.test_delete_rect.unwrap().center();
         assert_eq!(
             click(&context, &mut widget, &state, delete).actions,

@@ -33,6 +33,13 @@ pub fn resample_session(
     converted.document.sample_rate = target_sample_rate;
     for group in &mut converted.document.track_groups {
         for track in &mut group.tracks {
+            track.latency.manual_frames =
+                scale_signed_nearest(track.latency.manual_frames, source, target_sample_rate)?;
+            track.latency.processor_advance_frames = scale_nearest(
+                track.latency.processor_advance_frames,
+                source,
+                target_sample_rate,
+            )?;
             for port in &mut track.ports {
                 port.ringbuffer_frames =
                     scale_duration(port.ringbuffer_frames, source, target_sample_rate)?;
@@ -51,6 +58,11 @@ pub fn resample_session(
                         scale_duration(channel.data_length_frames, source, target_sample_rate)?;
                     channel.start_offset_frames = scale_signed_nearest(
                         channel.start_offset_frames,
+                        source,
+                        target_sample_rate,
+                    )?;
+                    channel.capture_alignment_frames = scale_signed_nearest(
+                        channel.capture_alignment_frames,
                         source,
                         target_sample_rate,
                     )?;

@@ -89,6 +89,7 @@ mod tests {
                 data_type: DataTypeDocument::Audio,
                 data_length_frames: 3,
                 start_offset_frames: -1,
+                capture_alignment_frames: 0,
                 preplay_frames: 2,
                 gain: 1.0,
                 connected_port_ids: vec![input_id, output_id],
@@ -122,6 +123,7 @@ mod tests {
             data_type: DataTypeDocument::Midi,
             data_length_frames: 301,
             start_offset_frames: 0,
+            capture_alignment_frames: 0,
             preplay_frames: 0,
             gain: 1.0,
             connected_port_ids: Vec::new(),
@@ -160,6 +162,7 @@ mod tests {
                         input_balance: -0.5,
                         input_monitoring: true,
                     },
+                    latency: TrackLatencyDocument::default(),
                     loops: vec![LoopDocument {
                         id: 10,
                         name: "Loop".to_owned(),
@@ -276,6 +279,7 @@ mod tests {
                     dry_midi: true,
                 },
                 controls: TrackControlsDocument::default(),
+                latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
                     id: 20,
                     name: "Deferred primitive".to_owned(),
@@ -290,6 +294,7 @@ mod tests {
                             data_type: DataTypeDocument::Audio,
                             data_length_frames: 0,
                             start_offset_frames: -24,
+                            capture_alignment_frames: 0,
                             preplay_frames: 48,
                             gain: 0.9,
                             connected_port_ids: Vec::new(),
@@ -303,6 +308,7 @@ mod tests {
                             data_type: DataTypeDocument::Audio,
                             data_length_frames: 0,
                             start_offset_frames: 12,
+                            capture_alignment_frames: 0,
                             preplay_frames: 24,
                             gain: 0.7,
                             connected_port_ids: Vec::new(),
@@ -316,6 +322,7 @@ mod tests {
                             data_type: DataTypeDocument::Midi,
                             data_length_frames: 0,
                             start_offset_frames: 0,
+                            capture_alignment_frames: 0,
                             preplay_frames: 0,
                             gain: 1.0,
                             connected_port_ids: Vec::new(),
@@ -337,6 +344,7 @@ mod tests {
                 width: None,
                 topology: TrackTopologyDocument::Trigger,
                 controls: TrackControlsDocument::default(),
+                latency: TrackLatencyDocument::default(),
                 loops: vec![LoopDocument {
                     id: 30,
                     name: "Script composite".to_owned(),
@@ -373,6 +381,7 @@ mod tests {
                     wet_audio_channels: None,
                 },
                 controls: TrackControlsDocument::default(),
+                latency: TrackLatencyDocument::default(),
                 loops: Vec::new(),
                 ports: Vec::new(),
                 fx_chain: Some(FxChainDocument {
@@ -958,8 +967,37 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn latency_settings_and_take_alignment_round_trip_without_provider_metadata() {
+        let mut bundle = direct_bundle(1);
+        let track = &mut bundle.document.track_groups[0].tracks[0];
+        track.latency = TrackLatencyDocument {
+            adjustment: RecordingOffsetAdjustmentDocument::ManualOverride,
+            manual_frames: -13,
+            processor_advance_frames: 17,
+        };
+        track.loops[0].channels[0].capture_alignment_frames = -13;
+        let encoded = encode_session(&bundle, "latency-roundtrip").unwrap();
+        let decoded = decode_session(&encoded).unwrap();
+        assert_eq!(decoded, bundle);
+
+        bundle.document.track_groups[0].tracks[0].loops[0].channels[0].capture_alignment_frames =
+            i64::from(shoop_latency::MAX_COMPENSATION_FRAMES) + 1;
+        assert!(matches!(
+            encode_session(&bundle, "invalid-latency"),
+            Err(SessionError::Validation(message)) if message.contains("capture alignment")
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn resampling_converts_every_sample_domain_and_preserves_midi_order() {
-        let bundle = direct_bundle(2);
+        let mut bundle = direct_bundle(2);
+        let source_track = &mut bundle.document.track_groups[0].tracks[0];
+        source_track.latency = TrackLatencyDocument {
+            adjustment: RecordingOffsetAdjustmentDocument::AutomaticPlusTrim,
+            manual_frames: -9,
+            processor_advance_frames: 12,
+        };
+        source_track.loops[0].channels[0].capture_alignment_frames = 9;
         for rate in [44_100, 32_000, 96_000] {
             let converted = resample_session(&bundle, rate).unwrap();
             assert_eq!(converted.document.sample_rate, rate);
@@ -974,10 +1012,13 @@ mod tests {
         assert_eq!(converted.scripts, bundle.scripts);
         let track = &converted.document.track_groups[0].tracks[0];
         assert_eq!(track.ports[0].ringbuffer_frames, 64_000);
+        assert_eq!(track.latency.manual_frames, -6);
+        assert_eq!(track.latency.processor_advance_frames, 8);
         let loop_ = &track.loops[0];
         assert_eq!(loop_.length_frames, 201);
         assert_eq!(loop_.channels[0].data_length_frames, 2);
         assert_eq!(loop_.channels[0].start_offset_frames, -1);
+        assert_eq!(loop_.channels[0].capture_alignment_frames, 6);
         assert_eq!(loop_.channels[0].preplay_frames, 2);
         let MediaPayload::Midi(midi) = &converted.media["midi_main"] else {
             panic!("MIDI payload missing")

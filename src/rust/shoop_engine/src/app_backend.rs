@@ -4265,6 +4265,39 @@ impl Loop {
         }
     }
 
+    pub fn prepare_latency(
+        &self,
+        values: engine::PreparedLatency,
+        logical_capacity: usize,
+    ) -> Result<()> {
+        let control = Arc::clone(&self.control);
+        let outcome = Arc::new(Mutex::new(None));
+        let command_outcome = Arc::clone(&outcome);
+        let sequence = self.shared.send_control(move |s: &mut engine::Session| {
+            let result = control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .and_then(|idx| s.loop_mut(idx))
+                .ok_or_else(|| "loop is unavailable".to_owned())
+                .and_then(|loop_| {
+                    loop_
+                        .prepare_latency(values, logical_capacity)
+                        .map_err(|error| error.to_string())
+                });
+            *command_outcome
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Some(result);
+        })?;
+        self.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)?;
+        let result = outcome
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+            .ok_or_else(|| anyhow!("latency preparation did not complete"))?;
+        result.map_err(|error| anyhow!(error))
+    }
+
     pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
         let control = Arc::clone(&self.control);
         let sequence = self.shared.send_control(move |s: &mut engine::Session| {
@@ -4636,6 +4669,17 @@ impl AudioChannel {
             self.control.mirror.set_start_offset(offset);
         }
         result
+    }
+
+    pub fn set_capture_alignment_frames(&self, frames: i32) -> Result<CommandSequence> {
+        shoop_latency::RecordingOffset::new(frames)?;
+        let result = self.with_mut(move |channel| {
+            channel
+                .set_capture_alignment_frames(frames)
+                .expect("capture alignment was validated");
+        })?;
+        self.control.mirror.set_capture_alignment_frames(frames);
+        Ok(result)
     }
 
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
@@ -5043,6 +5087,17 @@ impl MidiChannel {
         result
     }
 
+    pub fn set_capture_alignment_frames(&self, frames: i32) -> Result<CommandSequence> {
+        shoop_latency::RecordingOffset::new(frames)?;
+        let result = self.with_mut(move |channel| {
+            channel
+                .set_capture_alignment_frames(frames)
+                .expect("capture alignment was validated");
+        })?;
+        self.control.mirror.set_capture_alignment_frames(frames);
+        Ok(result)
+    }
+
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
         let result = self.with_mut(move |channel| channel.set_pre_play_samples(n));
         if result.is_ok() {
@@ -5408,6 +5463,26 @@ impl AudioPort {
         })
     }
 
+    pub fn automatic_recording_offset_frames(&self) -> Option<i32> {
+        let jack = self.shared.jack()?;
+        let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
+        let result = jack
+            .ports
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .find_map(|port| match port {
+                JackRegisteredPort::AudioIn { control, jack }
+                    if Arc::ptr_eq(control, &self.control) =>
+                {
+                    let (min, max) = jack.get_latency_range(jack::LatencyType::Capture);
+                    (min == max).then(|| i32::try_from(max).ok()).flatten()
+                }
+                _ => None,
+            });
+        result
+    }
+
     pub fn lifecycle(&self) -> ObjectLifecycle {
         observed_lifecycle(&self.shared, &self.control)
     }
@@ -5735,6 +5810,27 @@ impl MidiPort {
             name: name.to_string(),
         })
     }
+
+    pub fn automatic_recording_offset_frames(&self) -> Option<i32> {
+        let jack = self.shared.jack()?;
+        let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
+        let result = jack
+            .ports
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .find_map(|port| match port {
+                JackRegisteredPort::MidiIn { control, jack }
+                    if Arc::ptr_eq(control, &self.control) =>
+                {
+                    let (min, max) = jack.get_latency_range(jack::LatencyType::Capture);
+                    (min == max).then(|| i32::try_from(max).ok()).flatten()
+                }
+                _ => None,
+            });
+        result
+    }
+
     pub fn input_connectability(&self) -> PortConnectability {
         match self.direction {
             PortDirection::Input => PortConnectability::EXTERNAL,

@@ -668,6 +668,15 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             validate_finite(track.controls.output_balance, "track output balance")?;
             validate_finite(track.controls.input_gain_db, "track input gain")?;
             validate_finite(track.controls.input_balance, "track input balance")?;
+            if track.latency.manual_frames.unsigned_abs()
+                > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
+                || track.latency.processor_advance_frames
+                    > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
+            {
+                return Err(SessionError::Validation(
+                    "track latency value exceeds the supported bound".to_owned(),
+                ));
+            }
             if let Some(chain) = &track.fx_chain {
                 require_id(chain.id, "FX chain")?;
                 if !fx_chain_ids.insert(chain.id) {
@@ -730,6 +739,13 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         )));
                     }
                     validate_finite(channel.gain, "channel gain")?;
+                    if channel.capture_alignment_frames.unsigned_abs()
+                        > u64::from(shoop_latency::MAX_COMPENSATION_FRAMES)
+                    {
+                        return Err(SessionError::Validation(
+                            "take capture alignment exceeds the supported bound".to_owned(),
+                        ));
+                    }
                     if let Some(state_id) = channel.recording_fx_state_id {
                         let state_type = fx_state_types.get(&state_id).ok_or_else(|| {
                             SessionError::Validation(format!(

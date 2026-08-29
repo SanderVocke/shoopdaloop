@@ -88,13 +88,6 @@ Version 1 registers the cross-target appearance scale, track defaults, and dynam
 | `appearance.ui_scale_factor` | number | `1.0`, or `1.25` when the detected screen's shortest side is at most 800 UI points | Explicit Apply and save; allowed range is 0.75–2.0 |
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
-| `latency.defaults.external_capture_enabled` | boolean | `true` | Seeds the next Add Track latency policy |
-| `latency.defaults.processor_enabled` | boolean | `true` | Seeds the next Add Track latency policy |
-| `latency.defaults.cue_output_enabled` | boolean | `false` | Seeds the next Add Track latency policy; cue contribution still requires the operation to be marked cue-followed |
-| `latency.defaults.backend_buffering_enabled` | boolean | `false` | Seeds the next Add Track latency policy and avoids double-counting unless explicitly enabled |
-| `latency.defaults.range_selection` | string choice | `"maximum"` | Seeds minimum, midpoint, or maximum range selection for the next Add Track policy |
-| `latency.defaults.manual_trim_frames` | `i32` | `0` | Seeds a bounded signed automatic external-capture trim for the next Add Track policy |
-| `latency.defaults.cue_output_identity` | string | `""` | Optional normalized host cue endpoint for the next Add Track policy |
 | `scripting.builtins.location` | string | source-tree `resources/builtins` when an exact executable-sibling `SHOOP_SRC_TREE` marker is present; otherwise packaged `builtins` beside the executable on Linux/Windows, `Contents/Resources/builtins` on macOS, and external `builtins` root in hosted browser builds | Startup, successful Save, or explicit rescan |
 | `scripting.builtins.scripts` | ordered string/toggle list | `[]` | After a successful Save |
 | `scripting.user_scripts` | ordered string/toggle list | `[]` | After a successful Save |
@@ -123,7 +116,7 @@ An ordered string/toggle list is a JSON array. Each entry is exactly an object w
 
 The UI scale multiplies egui's monitor-native pixels-per-point value and is applied at startup. Moving its slider only changes the settings draft; applying it requires the explicit **Apply and save** action.
 
-The track and latency defaults do not change an existing track, an already-open Add Track draft, or session data. Missing latency keys in an older version-1 settings document migrate through ordinary registered defaults without changing the settings document version. Invalid range strings, trims outside ±768,000 frames, and wrong types produce diagnostics and resolve to defaults. A non-empty cue identity is retained as a normalized host endpoint candidate; the track latency panel reports it as missing until the current backend inventory exposes a matching connected output. Built-in identities are normalized slash-separated paths, never basenames. New discoveries are disabled until explicitly enabled. The former keyboard/MK1 boolean keys migrate once into `scripting.builtins.scripts` when present and are removed from the active document model. Dynamic toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state.
+The track defaults do not change an existing track, an already-open Add Track draft, or session data. Built-in identities are normalized slash-separated paths, never basenames. New discoveries are disabled until explicitly enabled. The former keyboard/MK1 boolean keys migrate once into `scripting.builtins.scripts` when present and are removed from the active document model. Dynamic toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state.
 
 ## Version checks and migration
 

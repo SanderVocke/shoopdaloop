@@ -252,6 +252,32 @@ fn registered_ports_are_visible_to_jack_with_direction_flags() {
 }
 
 #[shoop_wasm_test_support::shoop_test]
+fn exact_jack_capture_latency_is_available_as_one_recording_offset() {
+    let suffix = std::process::id();
+    let name = format!("shoop-app-latency-{suffix}");
+    let Some((driver, session)) = app_jack(&name) else {
+        return;
+    };
+    let app_name = driver.get_state().maybe_instance_name;
+    let input =
+        AudioPort::new_driver_port(&session, &driver, "latency_in", &PortDirection::Input, 0)
+            .unwrap();
+    let Some(peer) = peer_client(&format!("shoop-app-latency-peer-{suffix}")) else {
+        return;
+    };
+    let source = peer
+        .register_port("source", jack::AudioOut::default())
+        .unwrap();
+    source.set_latency_range(jack::LatencyType::Capture, (37, 37));
+    connect_checked(
+        &peer,
+        &source.name().unwrap(),
+        &format!("{app_name}:latency_in"),
+    );
+    assert_eq!(input.automatic_recording_offset_frames(), Some(37));
+}
+
+#[shoop_wasm_test_support::shoop_test]
 fn jack_audio_input_reaches_a_recording_channel() {
     let suffix = std::process::id();
     let Some(producer_client) = peer_client(&format!("shoop-app-producer-{suffix}")) else {

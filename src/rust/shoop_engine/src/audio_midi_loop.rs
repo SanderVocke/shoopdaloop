@@ -593,6 +593,17 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn prepared_latency_latching_allocates_nothing() {
+        let mut l = loop_with_channel();
+        l.prepare_latency(prepared_latency(3, 0), 4).unwrap();
+        assert_no_alloc::assert_no_alloc(|| l.set_mode(L::Recording));
+        assert_no_alloc::assert_no_alloc(|| {
+            l.set_mode(L::Stopped);
+            l.set_mode(L::Recording);
+        });
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn insufficient_retention_fails_before_the_operation_is_latched() {
         let mut l = AudioMidiLoop::default();
         l.add_audio_channel_with_bounded_capacity(4, 8, C::Direct);

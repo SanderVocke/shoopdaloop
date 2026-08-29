@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 14;
+pub const PROTOCOL_VERSION: u16 = 15;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -90,6 +90,16 @@ pub enum Command {
     SetTrackControl {
         track_id: u64,
         control: WireTrackControl,
+    },
+    SetTrackLatency {
+        track_id: u64,
+        adjustment: WireRecordingOffsetAdjustment,
+        manual_frames: i32,
+        processor_advance_frames: u32,
+    },
+    SetTakeAlignment {
+        loop_id: u64,
+        capture_alignment_frames: i32,
     },
     SetTrackFxControl {
         track_id: u64,
@@ -596,6 +606,26 @@ pub struct WireMidiOutputEvent {
     pub data: Vec<u8>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireRecordingOffsetAdjustment {
+    Automatic,
+    #[default]
+    ManualOverride,
+    AutomaticPlusTrim,
+}
+
+#[derive(Clone, Debug, Default, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireTrackLatencyState {
+    pub automatic_offset_frames: Option<i32>,
+    pub adjustment: WireRecordingOffsetAdjustment,
+    pub manual_frames: i32,
+    pub effective_offset_frames: Option<i32>,
+    pub processor_advance_frames: u32,
+    pub pending: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WireTrackState {
     pub id: u64,
@@ -609,6 +639,8 @@ pub struct WireTrackState {
     pub input_gain_db: f32,
     pub input_balance: f32,
     pub input_monitoring: bool,
+    #[serde(default)]
+    pub latency: WireTrackLatencyState,
     pub input_peaks: Vec<f32>,
     pub output_peaks: Vec<f32>,
     #[serde(default)]
@@ -645,6 +677,7 @@ pub struct WireLoopState {
     pub balance: f32,
     pub audio_peaks: Vec<f32>,
     pub midi_activity: bool,
+    pub capture_alignment_frames: i32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
@@ -678,6 +711,7 @@ pub struct WaveformChunk {
     pub offset: usize,
     pub total_samples: usize,
     pub start_offset: i32,
+    pub capture_alignment_frames: i32,
     pub preplay: u32,
     pub final_chunk: bool,
     pub samples: Vec<f32>,
@@ -695,6 +729,7 @@ pub struct MidiDataChunk {
     pub total_events: usize,
     pub length: u32,
     pub start_offset: i32,
+    pub capture_alignment_frames: i32,
     pub preplay: u32,
     pub final_chunk: bool,
     pub events: Vec<WireMidiEvent>,
@@ -894,6 +929,29 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn reduced_latency_commands_round_trip() {
+        for command in [
+            Command::SetTrackLatency {
+                track_id: 7,
+                adjustment: WireRecordingOffsetAdjustment::AutomaticPlusTrim,
+                manual_frames: -11,
+                processor_advance_frames: 23,
+            },
+            Command::SetTakeAlignment {
+                loop_id: 9,
+                capture_alignment_frames: -17,
+            },
+        ] {
+            let envelope = CommandEnvelope::new(41, command);
+            let encoded = serde_json::to_vec(&envelope).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<CommandEnvelope>(&encoded).unwrap(),
+                envelope
+            );
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn midi_detail_chunks_round_trip_with_request_identity_and_metadata() {
         let request = CommandEnvelope::new(
             4,
@@ -925,6 +983,7 @@ mod tests {
                 total_events: 129,
                 length: 512,
                 start_offset: -7,
+                capture_alignment_frames: 11,
                 preplay: 9,
                 final_chunk: true,
                 events: vec![WireMidiEvent {
@@ -960,7 +1019,7 @@ mod tests {
         let command = serde_json::to_string(&CommandEnvelope::new(17, Command::Poll)).unwrap();
         assert_eq!(
             command,
-            r#"{"version":14,"sequence":17,"command":{"kind":"poll"}}"#
+            r#"{"version":15,"sequence":17,"command":{"kind":"poll"}}"#
         );
 
         let event = serde_json::to_string(&EventEnvelope {
@@ -971,7 +1030,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event,
-            r#"{"version":14,"sequence":17,"event":{"kind":"ack"}}"#
+            r#"{"version":15,"sequence":17,"event":{"kind":"ack"}}"#
         );
     }
 

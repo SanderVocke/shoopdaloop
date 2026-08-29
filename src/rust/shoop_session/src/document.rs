@@ -117,6 +117,8 @@ pub struct TrackDocument {
     pub width: Option<f32>,
     pub topology: TrackTopologyDocument,
     pub controls: TrackControlsDocument,
+    #[serde(default)]
+    pub latency: TrackLatencyDocument,
     pub loops: Vec<LoopDocument>,
     pub ports: Vec<PortDocument>,
     pub fx_chain: Option<FxChainDocument>,
@@ -148,6 +150,22 @@ pub enum TrackTopologyDocument {
     Trigger,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordingOffsetAdjustmentDocument {
+    Automatic,
+    #[default]
+    ManualOverride,
+    AutomaticPlusTrim,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct TrackLatencyDocument {
+    pub adjustment: RecordingOffsetAdjustmentDocument,
+    pub manual_frames: i64,
+    pub processor_advance_frames: u64,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct TrackControlsDocument {
     pub output_gain_db: f32,
@@ -177,6 +195,8 @@ pub struct ChannelDocument {
     pub data_type: DataTypeDocument,
     pub data_length_frames: u64,
     pub start_offset_frames: i64,
+    #[serde(default)]
+    pub capture_alignment_frames: i64,
     pub preplay_frames: u64,
     pub gain: f32,
     pub connected_port_ids: Vec<u64>,

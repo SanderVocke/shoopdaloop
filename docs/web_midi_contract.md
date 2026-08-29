@@ -32,7 +32,7 @@ Endpoint state changes remove current host truth without deleting desired track 
 
 ## Timing and event behavior
 
-Web MIDI has no sample clock shared with AudioWorklet. Accepted track input is assigned to frame zero of the next available render quantum, matching the coarse timing class of CPAL+midir. Output preserves engine event order but incurs worklet polling, main-thread, and browser scheduling latency. No sample-exact Web MIDI claim is made. Latency capability is therefore coarse/manual or unknown; policy and frozen-take metadata can cross protocol version 18, but Web MIDI permission or device return changes only current observations and never retimes an existing take.
+Web MIDI has no sample clock shared with AudioWorklet. Accepted track input is assigned to frame zero of the next available render quantum, matching the coarse timing class of CPAL+midir. Output preserves engine event order but incurs worklet polling, main-thread, and browser scheduling latency. No sample-exact Web MIDI claim is made.
 
 Track recording accepts nonempty messages of at most four bytes, the engine's fixed realtime payload. Lua control accepts nonempty messages of at most 256 bytes, including SysEx when permission is granted. Messages are rejected rather than truncated.
 

@@ -7,11 +7,11 @@ use shoop_audio_protocol::{
     WireCompositeConfig, WireCompositeKind, WireCompositeState, WireCompositeTarget,
     WireConfirmedLink, WireHostPort, WireLatestMidiMessage, WireLoopMode, WireLoopState,
     WireMidiOutputEvent, WireOxiSynthMidiCcAssignment, WireOxiSynthParameter, WireOxiSynthState,
-    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl,
-    WireTrackFxControl, WireTrackFxState, WireTrackState, WireTrackTopology, COMMAND_MAX_BYTES,
-    MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY, MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES,
-    WAVEFORM_CHUNK_SAMPLES,
+    WirePortDataType, WirePortDirection, WirePortRole, WireRecordingOffsetAdjustment, WireSnapshot,
+    WireTrackControl, WireTrackFxControl, WireTrackFxState, WireTrackLatencyState, WireTrackState,
+    WireTrackTopology, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, MIDI_BATCH_CAPACITY,
+    MIDI_DETAIL_CHUNK_EVENTS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, TRACK_MIDI_MESSAGE_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendCompositeConfig, BackendCompositeEntry, BackendCompositeId,
@@ -365,6 +365,45 @@ impl WorkletHost {
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
+            Command::SetTrackLatency {
+                track_id,
+                adjustment,
+                manual_frames,
+                processor_advance_frames,
+            } => {
+                let adjustment = match adjustment {
+                    WireRecordingOffsetAdjustment::Automatic => {
+                        shoop_backend::BackendRecordingOffsetAdjustment::Automatic
+                    }
+                    WireRecordingOffsetAdjustment::ManualOverride => {
+                        shoop_backend::BackendRecordingOffsetAdjustment::ManualOverride(
+                            manual_frames,
+                        )
+                    }
+                    WireRecordingOffsetAdjustment::AutomaticPlusTrim => {
+                        shoop_backend::BackendRecordingOffsetAdjustment::AutomaticPlusTrim(
+                            manual_frames,
+                        )
+                    }
+                };
+                self.backend
+                    .set_track_latency(
+                        BackendTrackId::from_raw(track_id),
+                        adjustment,
+                        processor_advance_frames,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetTakeAlignment {
+                loop_id,
+                capture_alignment_frames,
+            } => {
+                self.backend
+                    .set_take_alignment(BackendLoopId::from_raw(loop_id), capture_alignment_frames)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::SetTrackFxControl { track_id, control } => {
                 self.backend
                     .set_track_fx_control(
@@ -549,6 +588,7 @@ impl WorkletHost {
                     offset: chunk.offset,
                     total_samples: chunk.total_samples,
                     start_offset: chunk.start_offset,
+                    capture_alignment_frames: chunk.capture_alignment_frames,
                     preplay: chunk.preplay,
                     final_chunk: chunk.offset.saturating_add(chunk.samples.len())
                         >= chunk.total_samples,
@@ -604,6 +644,7 @@ impl WorkletHost {
                     total_events: channel_data.events.len(),
                     length: channel_data.length,
                     start_offset: channel_data.start_offset,
+                    capture_alignment_frames: channel_data.capture_alignment_frames,
                     preplay: channel_data.preplay,
                     final_chunk: end >= channel_data.events.len(),
                     events: channel_data.events[offset..end]
@@ -1036,6 +1077,31 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 input_gain_db: track.input_gain_db,
                 input_balance: track.input_balance,
                 input_monitoring: track.input_monitoring,
+                latency: WireTrackLatencyState {
+                    automatic_offset_frames: track.latency.automatic_offset_frames,
+                    adjustment: match track.latency.adjustment {
+                        shoop_backend::BackendRecordingOffsetAdjustment::Automatic => {
+                            WireRecordingOffsetAdjustment::Automatic
+                        }
+                        shoop_backend::BackendRecordingOffsetAdjustment::ManualOverride(_) => {
+                            WireRecordingOffsetAdjustment::ManualOverride
+                        }
+                        shoop_backend::BackendRecordingOffsetAdjustment::AutomaticPlusTrim(_) => {
+                            WireRecordingOffsetAdjustment::AutomaticPlusTrim
+                        }
+                    },
+                    manual_frames: match track.latency.adjustment {
+                        shoop_backend::BackendRecordingOffsetAdjustment::Automatic => 0,
+                        shoop_backend::BackendRecordingOffsetAdjustment::ManualOverride(frames)
+                        | shoop_backend::BackendRecordingOffsetAdjustment::AutomaticPlusTrim(
+                            frames,
+                        ) => frames,
+                    },
+                    effective_offset_frames: track.latency.effective_offset_frames,
+                    processor_advance_frames: track.latency.processor_advance_frames,
+                    pending: track.latency.pending,
+                    error: track.latency.error,
+                },
                 input_peaks: track.input_peaks,
                 output_peaks: track.output_peaks,
                 latest_input_midi_message: track.latest_input_midi_message.map(|message| {
@@ -1061,6 +1127,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 balance: loop_.balance,
                 audio_peaks: loop_.audio_peaks,
                 midi_activity: loop_.midi_activity,
+                capture_alignment_frames: loop_.capture_alignment_frames,
             })
             .collect(),
         composites: snapshot
@@ -1485,6 +1552,20 @@ mod tests {
             command(
                 &mut host,
                 4,
+                Command::SetTrackLatency {
+                    track_id: 1,
+                    adjustment: WireRecordingOffsetAdjustment::ManualOverride,
+                    manual_frames: 3,
+                    processor_advance_frames: 0,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
                 Command::TransitionLoop {
                     loop_id: 1,
                     mode: WireLoopMode::Recording,
@@ -1501,7 +1582,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                5,
+                6,
                 Command::TransitionLoop {
                     loop_id: 1,
                     mode: WireLoopMode::Stopped,
@@ -1511,9 +1592,11 @@ mod tests {
             .event,
             Event::Ack
         ));
+        host.input()[..3].fill(0.25);
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 3)));
         let waveform = command(
             &mut host,
-            6,
+            7,
             Command::RequestWaveform {
                 loop_id: 1,
                 revision: 1,
@@ -1525,20 +1608,21 @@ mod tests {
         let Event::Waveform(waveform) = waveform.event else {
             panic!("expected waveform");
         };
-        assert_eq!(waveform.total_samples, 128);
+        assert_eq!(waveform.total_samples, 131);
+        assert_eq!(waveform.capture_alignment_frames, 3);
         assert!(waveform.samples.iter().all(|sample| *sample == 0.25));
-        let status = command(&mut host, 7, Command::Poll);
+        let status = command(&mut host, 8, Command::Poll);
         let Event::Snapshot(snapshot) = status.event else {
             panic!("expected snapshot");
         };
-        assert_eq!(snapshot.callback_count, 1);
-        assert_eq!(snapshot.processed_frames, 128);
+        assert_eq!(snapshot.callback_count, 2);
+        assert_eq!(snapshot.processed_frames, 131);
         assert!(snapshot.input_peak > 0.0);
         assert!(snapshot.output_peak > 0.0);
         assert!(matches!(
             command(
                 &mut host,
-                8,
+                9,
                 Command::SetLoopBalance {
                     loop_id: 1,
                     balance: 0.5,
@@ -1547,7 +1631,7 @@ mod tests {
             .event,
             Event::Ack
         ));
-        let Event::Snapshot(snapshot) = command(&mut host, 9, Command::Poll).event else {
+        let Event::Snapshot(snapshot) = command(&mut host, 10, Command::Poll).event else {
             panic!("expected snapshot");
         };
         assert_eq!(snapshot.loops[0].balance, 0.5);
@@ -2466,6 +2550,7 @@ mod tests {
                 data: vec![0x90, 60, 100],
             }],
             start_offset: 0,
+            capture_alignment_frames: 0,
             preplay: 0,
         };
         let replacement = serde_json::to_vec(&session).unwrap();

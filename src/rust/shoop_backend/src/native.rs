@@ -768,6 +768,21 @@ impl NativeRuntime {
                 ) {
                     return Err(anyhow!("loop content is changing"));
                 }
+                let finalizing_audio = loop_.audio.iter().any(|channel| {
+                    channel
+                        .poll_state()
+                        .is_some_and(|state| state.postroll_remaining_frames > 0)
+                });
+                let finalizing_midi = loop_.midi.iter().any(|channel| {
+                    channel
+                        .poll_state()
+                        .is_some_and(|state| state.postroll_remaining_frames > 0)
+                });
+                if finalizing_audio || finalizing_midi {
+                    return Err(anyhow!(
+                        "loop alignment postroll is still finalizing; retry after it settles"
+                    ));
+                }
                 let audio = loop_
                     .audio
                     .iter()
@@ -779,6 +794,7 @@ impl NativeRuntime {
                             samples: channel.get_data(),
                             gain: state.gain,
                             start_offset: state.start_offset,
+                            capture_alignment_frames: state.capture_alignment_frames,
                             preplay: state.n_preplay_samples,
                         })
                     })
@@ -807,6 +823,7 @@ impl NativeRuntime {
                                 })
                                 .collect(),
                             start_offset: state.start_offset,
+                            capture_alignment_frames: state.capture_alignment_frames,
                             preplay: state.n_preplay_samples,
                         })
                     })
@@ -990,6 +1007,21 @@ impl NativeRuntime {
             ] {
                 self.set_track_control(created.track_id, control)?;
             }
+            if let Err(error) = self.set_track_latency(
+                created.track_id,
+                source_track.state.latency.adjustment,
+                source_track.state.latency.processor_advance_frames,
+            ) {
+                if source_track.state.latency.effective_offset_frames.is_some() {
+                    return Err(error);
+                }
+                self.tracks
+                    .get_mut(&created.track_id)
+                    .expect("created track exists")
+                    .state
+                    .latency
+                    .clone_from(&source_track.state.latency);
+            }
             for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
                 let target = self
                     .loops
@@ -1016,6 +1048,7 @@ impl NativeRuntime {
                     channel.load_data(&content.samples)?;
                     channel.set_gain(content.gain)?;
                     channel.set_start_offset(content.start_offset)?;
+                    channel.set_capture_alignment_frames(content.capture_alignment_frames)?;
                     channel.set_n_preplay_samples(content.preplay)?;
                 }
                 for (channel, content) in target.midi.iter().zip(&source_loop.midi) {
@@ -1033,6 +1066,7 @@ impl NativeRuntime {
                     }));
                     channel.load_midi_data(&events, content.length)?;
                     channel.set_start_offset(content.start_offset)?;
+                    channel.set_capture_alignment_frames(content.capture_alignment_frames)?;
                     channel.set_n_preplay_samples(content.preplay)?;
                 }
                 target.handle.set_length(source_loop.length)?;
@@ -1541,6 +1575,30 @@ impl NativeRuntime {
         })
     }
 
+    fn prepare_loop_latency(&mut self, loop_id: BackendLoopId) -> Result<()> {
+        let (track_id, adjustment, processor_advance_frames) = self
+            .tracks
+            .iter()
+            .find(|(_, track)| track.loops.contains(&loop_id))
+            .map(|(track_id, track)| {
+                (
+                    *track_id,
+                    track.state.latency.adjustment,
+                    track.state.latency.processor_advance_frames,
+                )
+            })
+            .ok_or_else(|| anyhow!("loop has no owning track"))?;
+        self.set_track_latency(track_id, adjustment, processor_advance_frames)?;
+        let latency = self.tracks[&track_id].state.latency.clone();
+        let values = prepared_backend_latency(&latency)?;
+        let loop_ = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        let logical_capacity = loop_.handle.get_state()?.length as usize;
+        loop_.handle.prepare_latency(values, logical_capacity)
+    }
+
     fn set_track_control(
         &mut self,
         track_id: BackendTrackId,
@@ -1589,6 +1647,73 @@ impl NativeRuntime {
             }
         }
         self.apply_track_routing(track_id)
+    }
+
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: BackendRecordingOffsetAdjustment,
+        processor_advance_frames: u32,
+    ) -> Result<()> {
+        let track = self
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
+        let mut observations = track
+            .audio_inputs
+            .iter()
+            .map(AudioPort::automatic_recording_offset_frames)
+            .collect::<Vec<_>>();
+        if let Some(midi) = &track.midi_input {
+            observations.push(midi.automatic_recording_offset_frames());
+        }
+        let automatic = observations.first().copied().flatten().filter(|first| {
+            observations
+                .iter()
+                .all(|observation| *observation == Some(*first))
+        });
+        let track = self
+            .tracks
+            .get_mut(&track_id)
+            .expect("track was checked above");
+        track.state.latency.automatic_offset_frames = automatic;
+        update_backend_latency(
+            &mut track.state.latency,
+            adjustment,
+            processor_advance_frames,
+        )?;
+        let values = prepared_backend_latency(&track.state.latency)?;
+        let loops = track.loops.clone();
+        for loop_id in loops {
+            let loop_ = self
+                .loops
+                .get(&loop_id)
+                .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+            loop_
+                .handle
+                .prepare_latency(values, loop_.handle.get_state()?.length as usize)?;
+        }
+        Ok(())
+    }
+
+    fn set_take_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        shoop_latency::RecordingOffset::new(capture_alignment_frames)?;
+        let loop_ = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+        for channel in &loop_.audio {
+            channel.set_capture_alignment_frames(capture_alignment_frames)?;
+        }
+        for channel in &loop_.midi {
+            channel.set_capture_alignment_frames(capture_alignment_frames)?;
+        }
+        self.wait();
+        Ok(())
     }
 
     fn set_track_fx_control(
@@ -2172,6 +2297,25 @@ impl Backend for NativeBackend {
         self.runtime_mut()?.set_track_control(track_id, control)
     }
 
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: BackendRecordingOffsetAdjustment,
+        processor_advance_frames: u32,
+    ) -> Result<()> {
+        self.runtime_mut()?
+            .set_track_latency(track_id, adjustment, processor_advance_frames)
+    }
+
+    fn set_take_alignment(
+        &mut self,
+        loop_id: BackendLoopId,
+        capture_alignment_frames: i32,
+    ) -> Result<()> {
+        self.runtime_mut()?
+            .set_take_alignment(loop_id, capture_alignment_frames)
+    }
+
     fn inject_midi_input(
         &mut self,
         track_id: BackendTrackId,
@@ -2235,6 +2379,17 @@ impl Backend for NativeBackend {
             if !runtime.loops.contains_key(&request.loop_id) {
                 return Err(anyhow!("unknown native loop {:?}", request.loop_id));
             }
+            let offset = runtime
+                .tracks
+                .values()
+                .find(|track| track.loops.contains(&request.loop_id))
+                .and_then(|track| track.state.latency.effective_offset_frames)
+                .ok_or_else(|| anyhow!("recording offset is unavailable; enter a manual value"))?;
+            if offset != 0 {
+                return Err(anyhow!(
+                    "grab with a nonzero recording offset is unsupported; record the loop instead"
+                ));
+            }
         }
         for request in requests {
             let input = runtime
@@ -2297,6 +2452,7 @@ impl Backend for NativeBackend {
                 Ok(BackendAudioChannelData {
                     samples: Arc::from(channel.get_data()),
                     start_offset: state.start_offset,
+                    capture_alignment_frames: state.capture_alignment_frames,
                     preplay: state.n_preplay_samples,
                 })
             })
@@ -2331,6 +2487,7 @@ impl Backend for NativeBackend {
                         })
                         .collect(),
                     start_offset: state.start_offset,
+                    capture_alignment_frames: state.capture_alignment_frames,
                     preplay: state.n_preplay_samples,
                 })
             })
@@ -2379,6 +2536,43 @@ impl Backend for NativeBackend {
         align_to_sync_at: Option<u32>,
     ) -> Result<()> {
         let runtime = self.runtime_mut()?;
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            runtime.prepare_loop_latency(loop_id)?;
+            if mode == BackendLoopMode::Replacing {
+                let expected = runtime
+                    .tracks
+                    .values()
+                    .find(|track| track.loops.contains(&loop_id))
+                    .and_then(|track| track.state.latency.effective_offset_frames)
+                    .ok_or_else(|| {
+                        anyhow!("recording offset is unavailable; enter a manual value")
+                    })?;
+                let loop_ = runtime
+                    .loops
+                    .get(&loop_id)
+                    .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+                let audio_matches = loop_.audio.iter().all(|channel| {
+                    channel
+                        .get_state()
+                        .is_ok_and(|state| state.capture_alignment_frames == expected)
+                });
+                let midi_matches = loop_.midi.iter().all(|channel| {
+                    channel
+                        .get_state()
+                        .is_ok_and(|state| state.capture_alignment_frames == expected)
+                });
+                if !audio_matches || !midi_matches {
+                    return Err(anyhow!(
+                        "replacement offset differs from the take; match the take alignment first"
+                    ));
+                }
+            }
+        }
         runtime
             .loops
             .get(&loop_id)
@@ -2711,6 +2905,19 @@ impl Backend for NativeBackend {
                             state.n_events_triggered > 0 || state.n_notes_active > 0
                         })
                     }),
+                    capture_alignment_frames: loop_
+                        .audio
+                        .first()
+                        .and_then(AudioChannel::poll_state)
+                        .map(|state| state.capture_alignment_frames)
+                        .or_else(|| {
+                            loop_
+                                .midi
+                                .first()
+                                .and_then(MidiChannel::poll_state)
+                                .map(|state| state.capture_alignment_frames)
+                        })
+                        .unwrap_or(0),
                 },
             );
         }
@@ -3197,6 +3404,7 @@ mod tests {
                 data: vec![0x90, 60, 100],
             }],
             start_offset: -4,
+            capture_alignment_frames: 0,
             preplay: 8,
         };
         captured.tracks[0]

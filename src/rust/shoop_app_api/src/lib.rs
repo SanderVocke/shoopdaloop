@@ -266,6 +266,39 @@ pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RecordingOffsetAdjustmentState {
+    Automatic,
+    #[default]
+    ManualOverride,
+    AutomaticPlusTrim,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrackLatencyState {
+    pub automatic_offset_frames: Option<i32>,
+    pub adjustment: RecordingOffsetAdjustmentState,
+    pub manual_frames: i32,
+    pub effective_offset_frames: Option<i32>,
+    pub processor_advance_frames: u32,
+    pub pending: bool,
+    pub error: Option<String>,
+}
+
+impl Default for TrackLatencyState {
+    fn default() -> Self {
+        Self {
+            automatic_offset_frames: None,
+            adjustment: RecordingOffsetAdjustmentState::ManualOverride,
+            manual_frames: 0,
+            effective_offset_frames: Some(0),
+            processor_advance_frames: 0,
+            pending: false,
+            error: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DefaultRecordingAction {
     #[default]
     Record,
@@ -623,6 +656,7 @@ pub struct LoopState {
     pub peak_right_db: f32,
     pub midi_activity: bool,
     pub has_recorded_fx_state: bool,
+    pub capture_alignment_frames: i32,
 }
 
 impl Default for LoopState {
@@ -656,6 +690,7 @@ impl Default for LoopState {
             peak_right_db: -200.0,
             midi_activity: false,
             has_recorded_fx_state: false,
+            capture_alignment_frames: 0,
         }
     }
 }
@@ -841,6 +876,7 @@ pub struct TrackState {
     pub fx: Option<TrackFxState>,
     pub loops: Vec<LoopState>,
     pub controls: TrackControlState,
+    pub latency: TrackLatencyState,
     pub port_ids: Arc<[PortId]>,
 }
 
@@ -1565,6 +1601,16 @@ pub enum AppIntent {
         track_id: TrackId,
         action: TrackAction,
     },
+    SetTrackLatency {
+        track_id: TrackId,
+        adjustment: RecordingOffsetAdjustmentState,
+        manual_frames: i32,
+        processor_advance_frames: u32,
+    },
+    SetTakeAlignment {
+        loop_id: LoopId,
+        capture_alignment_frames: i32,
+    },
     Global(GlobalControlAction),
     Piano(PianoAction),
     AddTrack(DirectTrackSpec),
@@ -1851,6 +1897,8 @@ impl AppIntent {
             Self::SetLoopTimeline { .. } => "loop.timeline",
             Self::Loop { action, .. } => action.kind(),
             Self::Track { action, .. } => action.kind(),
+            Self::SetTrackLatency { .. } => "track.latency",
+            Self::SetTakeAlignment { .. } => "loop.capture_alignment",
             Self::Global(action) => action.kind(),
             Self::Piano(action) => action.kind(),
             Self::AddTrack(_) => "track.add_direct",

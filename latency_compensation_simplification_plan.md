@@ -109,28 +109,28 @@ Depends on Stage 1.
 
 - [x] Replace recipe latching with one validated effective recording offset and, only for dry/wet modes, one processor render-advance value.
 - [x] Remove retained observation spans, historical selection, variable-revision handling, recipe/component diagnostics, and incomplete-take recovery state.
-- [ ] Prepare bounded pre/post retention before record, grab, or replacement operations; keep postroll content unsettled until finalization and abort atomically on capacity/finalization failure.
-- [ ] Apply the frozen take alignment during audio and MIDI playback and the processor advance exactly once in supported render modes.
-- [ ] Preserve immediate live monitoring, topology stability, callback safety, loop-wrap correctness, and transactional take edits.
+- [x] Prepare bounded pre/post retention before record, grab, or replacement operations; keep postroll content unsettled until finalization and abort atomically on capacity/finalization failure.
+- [x] Apply the frozen take alignment during audio and MIDI playback and the processor advance exactly once in supported render modes.
+- [x] Preserve immediate live monitoring, topology stability, callback safety, loop-wrap correctness, and transactional take edits.
 
 Verification:
 
-- [ ] Rewrite channel/runtime tests around start-latched values, later setting changes, complete pre/post windows, atomic insufficient-capacity failure, postroll settlement, loop wrap, and no callback allocations.
-- [ ] Retain deterministic audio/MIDI oracles for ordinary record/play and supported dry/wet modes; delete component/history matrices.
+- [x] Rewrite channel/runtime tests around start-latched values, later setting changes, complete pre/post windows, atomic insufficient-capacity failure, postroll settlement, loop wrap, and no callback allocations.
+- [x] Retain deterministic audio/MIDI oracles for ordinary record/play and supported dry/wet modes; delete component/history matrices.
 - [ ] Run focused engine unit and integration tests under representative callback sizes and sample rates.
 
 ### Stage 3: Collapse backend and provider policy
 
 Depends on Stage 2.
 
-- [ ] Replace component recipes and provider provenance with one effective recording-offset control and one optional processor-advance control.
-- [ ] Keep JACK automatic reporting only where it maps truthfully to the effective value; make unsupported backends explicitly manual rather than estimated.
+- [x] Replace component recipes and provider provenance with one effective recording-offset control and one optional processor-advance control.
+- [x] Keep JACK automatic reporting only where it maps truthfully to the effective value; make unsupported backends explicitly manual rather than estimated.
 - [x] Remove cue-route resolution, ambiguity tracking, Carla adapter/provenance integration, OxiSynth range modeling, and other automatic providers outside the reduced contract.
-- [ ] Simplify native backend commands, snapshots, state mirrors, and errors to the minimal values/status needed by the app and engine.
+- [x] Simplify native backend commands, snapshots, state mirrors, and errors to the minimal values/status needed by the app and engine.
 
 Verification:
 
-- [ ] Rewrite JACK/backend tests for automatic effective values, manual fallback, latching, and unsupported capability behavior.
+- [x] Rewrite JACK/backend tests for automatic effective values, manual fallback, latching, and unsupported capability behavior.
 - [x] Remove provider compatibility fixtures and patches that no retained provider consumes.
 - [ ] Run native backend tests and assert latency updates neither rebuild topology nor block callback work.
 
@@ -138,47 +138,47 @@ Verification:
 
 Depends on Stage 3.
 
-- [ ] Remove component observations, provenance, history, diagnostics, cue routing, and deleted commands from audio protocol, worklet, client, and plugin protocol surfaces.
-- [ ] Carry only effective recording offset, optional processor advance, frozen take alignment, and concise pending/error/finalizing state.
-- [ ] Use manual-only browser latency unless browser APIs provide a truthful value under the reduced contract without special certainty/range semantics.
-- [ ] Remove obsolete wire compatibility code and update transport versioning if the protocol contract requires it.
+- [x] Remove component observations, provenance, history, diagnostics, cue routing, and deleted commands from audio protocol, worklet, client, and plugin protocol surfaces.
+- [x] Carry only effective recording offset, optional processor advance, frozen take alignment, and concise pending/error/finalizing state.
+- [x] Use manual-only browser latency unless browser APIs provide a truthful value under the reduced contract without special certainty/range semantics.
+- [x] Remove obsolete wire compatibility code and update transport versioning if the protocol contract requires it.
 
 Verification:
 
-- [ ] Rewrite protocol round-trip and worklet tests for the reduced state and commands.
+- [x] Rewrite protocol round-trip and worklet tests for the reduced state and commands.
 - [ ] Run Wasm/worklet tests and browser smoke coverage for manual compensation, recording finalization, playback, and failure reporting.
 
 ### Stage 5: Minimize app model, persistence, and exports
 
 Depends on Stages 3 and 4.
 
-- [ ] Replace app/API track policy with effective value, manual adjustment, optional processor value, and concise pending/error state.
-- [ ] Reduce per-take state and session documents to signed alignment plus timing/status data required for correct settled content; remove forensic provenance and persistent incomplete state.
-- [ ] Preserve save/load and resampling of the frozen alignment with checked rounding and bounds.
-- [ ] Remove latency-specific raw-margin export and consolidate/bake intents, commands, transformations, confirmations, and recovery behavior; keep normal logical audio/MIDI export correct.
-- [ ] Ensure snapshots and saves wait for postroll settlement or return one explicit retry/failure result without mixed generations.
+- [x] Replace app/API track policy with effective value, manual adjustment, optional processor value, and concise pending/error state.
+- [x] Reduce per-take state and session documents to signed alignment plus timing/status data required for correct settled content; remove forensic provenance and persistent incomplete state.
+- [x] Preserve save/load and resampling of the frozen alignment with checked rounding and bounds.
+- [x] Remove latency-specific raw-margin export and consolidate/bake intents, commands, transformations, confirmations, and recovery behavior; keep normal logical audio/MIDI export correct.
+- [x] Ensure snapshots and saves wait for postroll settlement or return one explicit retry/failure result without mixed generations.
 
 Verification:
 
-- [ ] Rewrite app and session tests for track edits, future-operation semantics, per-take manual alignment, round trips, sample-rate conversion, settlement, and logical exports.
-- [ ] Delete raw-margin/consolidation/provenance tests and confirm no orphaned API or serialized fields remain.
-- [ ] Run app, session archive, resampling, and export test suites, including malformed/out-of-range input cases.
+- [x] Rewrite app and session tests for track edits, future-operation semantics, per-take manual alignment, round trips, sample-rate conversion, settlement, and logical exports.
+- [x] Delete raw-margin/consolidation/provenance tests and confirm no orphaned API or serialized fields remain.
+- [x] Run app, session archive, resampling, and export test suites, including malformed/out-of-range input cases.
 
 ### Stage 6: Replace the advanced UI and documentation
 
 Depends on Stage 5.
 
-- [ ] Replace the component grid, cue selector, frozen-provenance comparison, diagnostic counters/plots, and recovery controls with compact effective-value and per-take alignment controls.
-- [ ] Show only actionable automatic/manual capability, pending postroll, and atomic failure feedback.
-- [ ] Remove raw-margin export and latency consolidation actions from loop menus.
-- [ ] Rewrite user, settings, session-format, port-model, browser, Carla, and troubleshooting documentation to describe only retained behavior and provider support.
+- [x] Replace the component grid, cue selector, frozen-provenance comparison, diagnostic counters/plots, and recovery controls with compact effective-value and per-take alignment controls.
+- [x] Show only actionable automatic/manual capability, pending postroll, and atomic failure feedback.
+- [x] Remove raw-margin export and latency consolidation actions from loop menus.
+- [x] Rewrite user, settings, session-format, port-model, browser, Carla, and troubleshooting documentation to describe only retained behavior and provider support.
 - [ ] Update or replace the latency UI smoke example and visual validation assets.
 
 Verification:
 
 - [ ] Run UI unit/smoke tests and inspect native and browser layouts for direct, FX, unsupported/manual, pending, and failure states.
 - [ ] Take required screenshots of the perceptible web UI change and verify controls remain usable at supported sizes.
-- [ ] Confirm removed terms and workflows no longer appear in user-facing text or documentation.
+- [x] Confirm removed terms and workflows no longer appear in user-facing text or documentation.
 
 ### Stage 7: Test-suite reconciliation and dead-code audit
 

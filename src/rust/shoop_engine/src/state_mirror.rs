@@ -529,6 +529,11 @@ impl AudioChannelStateMirror {
         self.start_offset.store(offset, Ordering::Relaxed);
     }
 
+    pub fn set_capture_alignment_frames(&self, frames: i32) {
+        self.capture_alignment_frames
+            .store(frames, Ordering::Relaxed);
+    }
+
     pub fn set_n_preplay_samples(&self, samples: u32) {
         self.n_preplay_samples.store(samples, Ordering::Relaxed);
     }
@@ -630,6 +635,11 @@ impl MidiChannelStateMirror {
 
     pub fn set_start_offset(&self, offset: i32) {
         self.start_offset.store(offset, Ordering::Relaxed);
+    }
+
+    pub fn set_capture_alignment_frames(&self, frames: i32) {
+        self.capture_alignment_frames
+            .store(frames, Ordering::Relaxed);
     }
 
     pub fn set_n_preplay_samples(&self, samples: u32) {
