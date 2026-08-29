@@ -22,9 +22,9 @@ value instead of assuming zero.
 The value is latched when recording, replacement, or rendering starts. Changing
 the track setting later affects the next operation and never moves an existing
 take. Once a recording transition is armed, cancel it before changing the track
-offset. Replacement requires the track offset to match the take. Retrospective
-grab is retained only at zero offset; use normal recording when compensation is
-needed. A completed take's signed alignment can be corrected separately using
+offset or input routes. Replacement requires the track offset to match the take.
+Retrospective grab is retained only at zero offset; use normal recording when
+compensation is needed. A completed take's signed alignment can be corrected separately using
 its alignment control in the same menu. The correction must fit the raw media
 retained with every channel in the take; otherwise it is rejected without
 changing any channel.

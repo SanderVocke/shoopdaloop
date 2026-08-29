@@ -187,7 +187,8 @@ identity or observation history.
 
 JACK recomputes connected capture latency on the control path and accepts it only
 when the relevant connected range is exact. Native tracks require all applicable
-inputs to agree. Dummy, CPAL, Carla, built-in synth, and browser paths remain
+inputs to agree, and reject route changes while a recording operation is armed.
+Dummy, CPAL, Carla, built-in synth, and browser paths remain
 manual when they cannot make that claim. The browser protocol is version 15 and
 carries only the reduced controls and channel alignment.
 
@@ -214,10 +215,10 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 47 | 5,397 | 172 | 5,569 |
+| Final production/documentation | 47 | 5,449 | 172 | 5,621 |
 | Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 3,873 additions and 19,734 deletions across 77
+The simplification delta itself is 3,924 additions and 19,733 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
 simplification baseline, and 1,586 finally: 86 feature-branch tests were removed
 while 51 tests above the merge base remain. Inline unit tests are counted in their
@@ -235,7 +236,7 @@ bounds and allocation behavior it controls.
 | Criterion | Concrete evidence |
 | ---: | --- |
 | 1 | `engine_track_latency_applies_to_future_operations_only`, compensated audio/MIDI record-play tests, and the Worklet full-duplex manual-offset test |
-| 2 | `recording_offset_latches_at_each_operation_boundary`, backend/app future-operation tests, and armed-operation update rejection |
+| 2 | `recording_offset_latches_at_each_operation_boundary`, backend/app future-operation tests, and armed offset/route update rejection |
 | 3 | `latency_settings_and_take_alignment_round_trip_without_provider_metadata` and multi-rate resampling assertions |
 | 4 | positive postroll, actual-captured-preroll, final-event, unsettled-snapshot, and postroll re-entry rejection tests |
 | 5 | insufficient-retention, immediate/imminent short-preroll abort, incremental audio exhaustion, MIDI exhaustion, compensated-grab preflight, and atomic take-alignment raw-window preflight tests |
@@ -252,8 +253,8 @@ bounds and allocation behavior it controls.
 ### Final command evidence
 
 - `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`: 1,577 passed, two host-dependent skips.
-- Complete shared Wasm suite in Node 22.22.2: every discovered package test passed; after the latest review fixes, the changed engine and backend packages passed all 819 and 47 tests respectively.
-- Complete shared Wasm suite in Chromium 147: every package passed after the domain package's three browser tests were explicitly configured; after the latest review fixes, the changed engine and backend packages passed all 819 and 47 tests respectively.
+- Complete shared Wasm suite in Node 22.22.2: every discovered package test passed; after the latest review fixes, the changed engine, backend, and Worklet client packages passed all 819, 47, and 21 shared tests respectively.
+- Complete shared Wasm suite in Chromium 147: every package passed after the domain package's three browser tests were explicitly configured; after the latest review fixes, the changed engine, backend, and Worklet client packages passed all 819, 47, and 21 shared tests respectively.
 - Real JACK integration ran against the available server; the exact connected 37-frame value was latched onto a recording channel.
 - `RUSTFLAGS="-D warnings" cargo build --workspace`, formatting, focused warning-denied latency/backend/session/protocol/client Clippy, test-attribute policy, tracing inventory, dependency tree, smoke-budget check, and report parser tests pass.
 - `trunk build` builds both application and AudioWorklet Wasm. The raw Wasm host artifact contract passes with protocol version 15. Firefox 146 loaded the built hosted UI and produced the layout screenshot. The standalone Chromium smoke launcher is incompatible with this host's crash-handler wrapper, but the complete Chromedriver-based Chromium suite passed.

@@ -1553,7 +1553,10 @@ impl Backend for RemoteWorkletBackend {
         self.submit(Command::SetTakeAlignment {
             loop_id: loop_id.raw(),
             capture_alignment_frames,
-        })
+        })?;
+        self.waveforms.remove(&loop_id);
+        self.midi_data.remove(&loop_id);
+        Ok(())
     }
 
     fn set_track_fx_control(
@@ -2733,6 +2736,21 @@ mod tests {
         assert_eq!(audio.channels[0].preplay, 12);
         let midi = &backend.midi_data[&loop_id].channels[0];
         assert_eq!((midi.start_offset, midi.preplay, midi.length), (-8, 12, 32));
+
+        backend.set_take_alignment(loop_id, 5).unwrap();
+        assert!(!backend.waveforms.contains_key(&loop_id));
+        assert!(!backend.midi_data.contains_key(&loop_id));
+        assert!(sent.borrow().iter().any(|message| {
+            matches!(
+                serde_json::from_str::<CommandEnvelope>(message)
+                    .unwrap()
+                    .command,
+                Command::SetTakeAlignment {
+                    loop_id: raw,
+                    capture_alignment_frames: 5,
+                } if raw == loop_id.raw()
+            )
+        }));
 
         let commands_before_restart = sent.borrow().len();
         control.detach(false);

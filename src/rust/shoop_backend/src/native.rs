@@ -1667,12 +1667,7 @@ impl NativeRuntime {
         self.apply_track_routing(track_id)
     }
 
-    fn set_track_latency(
-        &mut self,
-        track_id: BackendTrackId,
-        adjustment: BackendRecordingOffsetAdjustment,
-        processor_advance_frames: u32,
-    ) -> Result<()> {
+    fn track_has_armed_recording(&self, track_id: BackendTrackId) -> Result<bool> {
         let track = self
             .tracks
             .get(&track_id)
@@ -1692,11 +1687,27 @@ impl NativeRuntime {
                         | shoop_engine::LoopMode::RecordingDryIntoWet
                 )
             }) {
-                return Err(anyhow!(
-                    "cannot change recording offset while an operation is armed; cancel it first"
-                ));
+                return Ok(true);
             }
         }
+        Ok(false)
+    }
+
+    fn set_track_latency(
+        &mut self,
+        track_id: BackendTrackId,
+        adjustment: BackendRecordingOffsetAdjustment,
+        processor_advance_frames: u32,
+    ) -> Result<()> {
+        if self.track_has_armed_recording(track_id)? {
+            return Err(anyhow!(
+                "cannot change recording offset while an operation is armed; cancel it first"
+            ));
+        }
+        let track = self
+            .tracks
+            .get(&track_id)
+            .expect("native track was checked above");
         let mut observations = track
             .audio_inputs
             .iter()
@@ -2013,6 +2024,17 @@ impl NativeRuntime {
             .ports
             .get(&port_id)
             .ok_or_else(|| anyhow!("unknown native port {port_id:?}"))?;
+        if let Some(track_id) = self
+            .tracks
+            .iter()
+            .find_map(|(track_id, track)| track.ports.contains(&port_id).then_some(*track_id))
+        {
+            if self.track_has_armed_recording(track_id)? {
+                return Err(anyhow!(
+                    "cannot change track routes while a recording operation is armed; cancel it first"
+                ));
+            }
+        }
         port.handle.wait_ready(&self.session)?;
         if connected {
             port.handle.connect(endpoint);
@@ -3460,6 +3482,17 @@ mod tests {
         backend
             .transition_loop(created.loops[0], BackendLoopMode::Recording, Some(1))
             .unwrap();
+        let input = created
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioInput)
+            .unwrap();
+        let route_error = backend
+            .set_port_connected(input.id, "system:capture_1", true)
+            .unwrap_err();
+        assert!(route_error
+            .to_string()
+            .contains("recording operation is armed"));
         let error = backend
             .set_track_latency(
                 created.track_id,
