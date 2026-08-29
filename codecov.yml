@@ -18,3 +18,6 @@ coverage:
     patch:
       default:
         target: auto
+        # Native coverage cannot exercise every platform and hardware adapter in
+        # a cross-platform feature, while project coverage remains the backstop.
+        threshold: 3%
