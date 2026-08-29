@@ -2230,12 +2230,12 @@ impl EngineBackend {
     }
 
     fn create_track_loop(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
-        let (audio_routes, midi_route) = {
+        let (audio_routes, midi_route, latency) = {
             let track = self
                 .tracks
                 .get(&track_id)
                 .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?;
-            match track.topology {
+            let (audio_routes, midi_route) = match track.topology {
                 BackendTrackTopology::Direct { .. } => (
                     track
                         .audio_inputs
@@ -2275,7 +2275,8 @@ impl EngineBackend {
                         "External topology is unavailable in the engine backend"
                     ));
                 }
-            }
+            };
+            (audio_routes, midi_route, track.latency.clone())
         };
         let loop_id = self.create_loop()?;
         let engine_loop = self.engine_loop_index(loop_id)?;
@@ -2336,6 +2337,12 @@ impl EngineBackend {
             .expect("track was validated before loop construction")
             .loops
             .push(loop_id);
+        if let Ok(values) = prepared_backend_latency(&latency) {
+            self.session
+                .loop_mut(engine_loop)
+                .expect("engine loop was created above")
+                .set_pending_latency(values);
+        }
         Ok(loop_id)
     }
 
@@ -8648,6 +8655,39 @@ mod tests {
                 .unwrap()
                 .capture_alignment_frames(),
             7
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn engine_new_loop_inherits_configured_processor_advance() {
+        let mut backend = EngineBackend::new_dummy(48_000, 64).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "future-loop-latency".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 0,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                track.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                19,
+            )
+            .unwrap();
+        let loop_id = backend.add_loop_to_track(track.track_id).unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
+            .unwrap();
+        let channel = backend.loop_channels[&loop_id].audio[0];
+        assert_eq!(
+            backend
+                .session
+                .audio_channel(channel)
+                .unwrap()
+                .render_advance_frames(),
+            19
         );
     }
 

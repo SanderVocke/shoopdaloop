@@ -188,9 +188,9 @@ field, while version 6 migrates explicitly to zero alignment.
 
 JACK recomputes connected capture latency on the control path and accepts it only
 when the relevant connected range is exact. Native tracks require all applicable
-connected inputs to agree, ignore disconnected inputs, reject route changes while
-a recording operation is armed, and resolve restored automatic state only after
-saved routes are reconnected. Dummy, CPAL, Carla, built-in synth, and
+connected inputs to agree, ignore disconnected inputs, refresh automatic state
+after unarmed route changes, reject route changes while recording is armed, and
+resolve restored automatic state only after saved routes are reconnected. Dummy, CPAL, Carla, built-in synth, and
 browser paths remain manual when they cannot make that claim. The browser protocol is version 15 and
 carries only the reduced controls and channel alignment.
 
@@ -217,13 +217,13 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 47 | 5,792 | 187 | 5,979 |
+| Final production/documentation | 47 | 5,921 | 217 | 6,138 |
 | Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 4,252 additions and 19,733 deletions across 77
+The simplification delta itself is 4,331 additions and 19,713 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
-simplification baseline, and 1,588 finally: 84 feature-branch tests were removed
-while 53 tests above the merge base remain. Inline unit tests are counted in their
+simplification baseline, and 1,590 finally: 82 feature-branch tests were removed
+while 55 tests above the merge base remain. Inline unit tests are counted in their
 production path, which is why the path table is supplemented by this test count.
 
 The retained large files are general application/backend and audio/MIDI channel
@@ -243,20 +243,20 @@ bounds and allocation behavior it controls.
 | 4 | positive postroll, actual-captured-preroll, final-event, unsettled-snapshot, and postroll re-entry rejection tests |
 | 5 | insufficient-retention, immediate/imminent short-preroll abort, incremental exhaustion, nonzero replacement/grab preflight, and stopped/atomic take-alignment tests |
 | 6 | logical audio export assertions, exact/standard MIDI assertions including preroll start-state folding, and removed-command searches |
-| 7 | audio/MIDI dry-through-wet, dry-into-wet canonical-write, route-restored processor advance, wrap, and independent-domain tests |
+| 7 | audio/MIDI dry-through-wet, dry-into-wet canonical-write, restored/future-loop processor advance, wrap, and independent-domain tests |
 | 8 | real-JACK exact observation-and-record-boundary test, connected-input agreement test, unsupported automatic error test, manual browser Worklet test |
 | 9 | reduced app/backend/wire structs, track-menu UI test, screenshot, and removed-symbol searches |
 | 10 | prepared-latch, armed audio/MIDI postroll, publication, and complete engine no-allocation suites; topology-arm test |
 | 11 | 64/64, 127/1, and 31/17/80 audio partition test; MIDI callback/wrap tests; 44.1/32/96 kHz session conversion |
 | 12 | case-insensitive tracked terminology audit returns no output |
-| 13 | disposition table above, 1,579-test native suite, complete Node and Chromium shared suites, and orphan searches |
+| 13 | disposition table above, 1,581-test native suite, complete Node and Chromium shared suites, and orphan searches |
 | 14 | path table, test counts, simplification delta, and retained-file explanation above |
 
 ### Final command evidence
 
-- `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`: 1,579 passed, two host-dependent skips.
-- Complete shared Wasm suite in Node 22.22.2: every discovered package test passed; after the latest review fixes, the changed engine, backend, app, Worklet client, and session packages passed all 819, 47, 84, 21, and 30 shared tests respectively.
-- Complete shared Wasm suite in Chromium 147: every package passed after the domain package's three browser tests were explicitly configured; after the latest review fixes, the changed engine, backend, app, Worklet client, and session packages passed all 819, 47, 84, 21, and 30 shared tests respectively.
+- `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`: 1,581 passed, two host-dependent skips.
+- Complete shared Wasm suite in Node 22.22.2: every discovered package test passed; after the latest review fixes, the changed engine, backend, app, Worklet client, and session packages passed all 819, 48, 84, 21, and 30 shared tests respectively.
+- Complete shared Wasm suite in Chromium 147: every package passed after the domain package's three browser tests were explicitly configured; after the latest review fixes, the changed engine, backend, app, Worklet client, and session packages passed all 819, 48, 84, 21, and 30 shared tests respectively.
 - Real JACK integration ran against the available server; the exact connected 37-frame value was latched onto a recording channel.
 - `RUSTFLAGS="-D warnings" cargo build --workspace`, formatting, focused warning-denied latency/backend/session/protocol/client Clippy, test-attribute policy, tracing inventory, dependency tree, smoke-budget check, and report parser tests pass.
 - `trunk build` builds both application and AudioWorklet Wasm. The raw Wasm host artifact contract passes with protocol version 15. Firefox 146 loaded the built hosted UI and produced the layout screenshot. The standalone Chromium smoke launcher is incompatible with this host's crash-handler wrapper, but the complete Chromedriver-based Chromium suite passed.

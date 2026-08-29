@@ -17,7 +17,8 @@ JACK is the only automatic provider. ShoopDaLoop accepts a JACK value only when
 all relevant connected track inputs report the same exact capture latency. CPAL, dummy,
 Carla, built-in synth, and browser tracks use the manual path rather than an
 estimate. If an automatic value is unavailable, the menu asks for a manual
-value instead of assuming zero.
+value instead of assuming zero. Changing an unarmed JACK input route refreshes
+the automatic value, and loops added later inherit the current track values.
 
 The value is latched when recording, replacement, or rendering starts. Changing
 the track setting later affects the next operation and never moves an existing

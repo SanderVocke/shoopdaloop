@@ -575,6 +575,7 @@ impl NativeRuntime {
             audio_returns,
             midi_input,
             midi_output,
+            latency,
         ) = {
             let track = self
                 .tracks
@@ -588,6 +589,7 @@ impl NativeRuntime {
                 track.audio_returns.clone(),
                 track.midi_input.clone(),
                 track.midi_output.clone(),
+                track.state.latency.clone(),
             )
         };
         let handle = self.session.create_loop()?;
@@ -660,6 +662,13 @@ impl NativeRuntime {
             .expect("track was checked before loop creation")
             .loops
             .push(id);
+        if let Ok(values) = prepared_backend_latency(&latency) {
+            self.loops
+                .get(&id)
+                .expect("native loop was created above")
+                .handle
+                .set_pending_latency(values)?;
+        }
         self.wait();
         self.apply_track_routing(track_id)?;
         Ok(id)
@@ -2028,11 +2037,11 @@ impl NativeRuntime {
             .ports
             .get(&port_id)
             .ok_or_else(|| anyhow!("unknown native port {port_id:?}"))?;
-        if let Some(track_id) = self
+        let owning_track = self
             .tracks
             .iter()
-            .find_map(|(track_id, track)| track.ports.contains(&port_id).then_some(*track_id))
-        {
+            .find_map(|(track_id, track)| track.ports.contains(&port_id).then_some(*track_id));
+        if let Some(track_id) = owning_track {
             if self.track_has_armed_recording(track_id)? {
                 return Err(anyhow!(
                     "cannot change track routes while a recording operation is armed; cancel it first"
@@ -2058,6 +2067,23 @@ impl NativeRuntime {
             ));
         }
         self.connection_revision = self.connection_revision.wrapping_add(1);
+        if let Some(track_id) = owning_track {
+            let latency = &self.tracks[&track_id].state.latency;
+            let adjustment = latency.adjustment;
+            let processor_advance_frames = latency.processor_advance_frames;
+            if let Err(error) =
+                self.set_track_latency(track_id, adjustment, processor_advance_frames)
+            {
+                if self.tracks[&track_id]
+                    .state
+                    .latency
+                    .effective_offset_frames
+                    .is_some()
+                {
+                    return Err(error);
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -3491,6 +3517,38 @@ mod tests {
 
         backend.remove_composite_loop(composite).unwrap();
         assert!(!backend.poll().unwrap().composites.contains_key(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_new_loop_inherits_configured_processor_advance() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "native-future-loop-latency".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 0,
+            })
+            .unwrap();
+        backend
+            .set_track_latency(
+                created.track_id,
+                BackendRecordingOffsetAdjustment::ManualOverride(0),
+                19,
+            )
+            .unwrap();
+        let loop_id = backend.add_loop_to_track(created.track_id).unwrap();
+        backend
+            .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
+            .unwrap();
+        assert!(backend.runtime().unwrap().loops[&loop_id]
+            .audio
+            .iter()
+            .all(|channel| channel.get_state().unwrap().render_advance_frames == 19));
     }
 
     #[shoop_wasm_test_support::shoop_test]
