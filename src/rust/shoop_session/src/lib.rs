@@ -991,12 +991,17 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn resampling_converts_every_sample_domain_and_preserves_midi_order() {
         let mut bundle = direct_bundle(2);
+        let MediaPayload::Audio(audio) = bundle.media.get_mut("audio_0").unwrap() else {
+            panic!("audio payload missing")
+        };
+        audio.samples.resize(309, 0.25);
         let source_track = &mut bundle.document.track_groups[0].tracks[0];
         source_track.latency = TrackLatencyDocument {
             adjustment: RecordingOffsetAdjustmentDocument::AutomaticPlusTrim,
             manual_frames: -9,
             processor_advance_frames: 12,
         };
+        source_track.loops[0].channels[0].data_length_frames = 309;
         source_track.loops[0].channels[0].capture_alignment_frames = 9;
         for rate in [44_100, 32_000, 96_000] {
             let converted = resample_session(&bundle, rate).unwrap();
@@ -1004,7 +1009,7 @@ mod tests {
             assert_eq!(
                 converted.document.track_groups[0].tracks[0].loops[0].channels[0]
                     .data_length_frames,
-                scale_duration(3, 48_000, rate).unwrap()
+                scale_duration(309, 48_000, rate).unwrap()
             );
         }
         let converted = resample_session(&bundle, 32_000).unwrap();
@@ -1016,7 +1021,7 @@ mod tests {
         assert_eq!(track.latency.processor_advance_frames, 8);
         let loop_ = &track.loops[0];
         assert_eq!(loop_.length_frames, 201);
-        assert_eq!(loop_.channels[0].data_length_frames, 2);
+        assert_eq!(loop_.channels[0].data_length_frames, 206);
         assert_eq!(loop_.channels[0].start_offset_frames, -1);
         assert_eq!(loop_.channels[0].capture_alignment_frames, 6);
         assert_eq!(loop_.channels[0].preplay_frames, 2);
@@ -1038,6 +1043,50 @@ mod tests {
                 .start_cycle,
             2
         );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn resampling_pads_rounding_gap_at_compensated_window_end() {
+        let mut bundle = direct_bundle(1);
+        let loop_ = &mut bundle.document.track_groups[0].tracks[0].loops[0];
+        loop_.length_frames = 101;
+        let channel = &mut loop_.channels[0];
+        channel.data_length_frames = 102;
+        channel.start_offset_frames = 0;
+        channel.capture_alignment_frames = 1;
+        let midi_channel = loop_.channels.last_mut().unwrap();
+        midi_channel.data_length_frames = 102;
+        midi_channel.capture_alignment_frames = 1;
+        let MediaPayload::Audio(audio) = bundle.media.get_mut("audio_0").unwrap() else {
+            panic!("audio payload missing")
+        };
+        audio.samples.resize(102, 0.5);
+        let MediaPayload::Midi(midi) = bundle.media.get_mut("midi_main").unwrap() else {
+            panic!("MIDI payload missing")
+        };
+        midi.length_frames = 102;
+        midi.events.clear();
+
+        let converted = resample_session(&bundle, 24_000).unwrap();
+        let loop_ = &converted.document.track_groups[0].tracks[0].loops[0];
+        let channel = &loop_.channels[0];
+        assert_eq!(loop_.length_frames, 51);
+        assert_eq!(channel.capture_alignment_frames, 1);
+        assert_eq!(channel.data_length_frames, 52);
+        let MediaPayload::Audio(audio) = &converted.media["audio_0"] else {
+            panic!("audio payload missing")
+        };
+        assert_eq!(audio.samples.len(), 52);
+        let midi_channel = loop_.channels.last().unwrap();
+        assert_eq!(midi_channel.data_length_frames, 52);
+        let MediaPayload::Midi(midi) = &converted.media["midi_main"] else {
+            panic!("MIDI payload missing")
+        };
+        assert_eq!(midi.length_frames, 52);
+        let raw_end = channel.start_offset_frames
+            + channel.capture_alignment_frames
+            + loop_.length_frames as i64;
+        assert_eq!(raw_end, channel.data_length_frames as i64);
     }
 
     #[shoop_wasm_test_support::shoop_test]
