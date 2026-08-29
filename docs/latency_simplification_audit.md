@@ -214,13 +214,13 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 46 | 4,473 | 153 | 4,626 |
+| Final production/documentation | 46 | 4,515 | 153 | 4,668 |
 | Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 2,988 additions and 19,754 deletions across 77
+The simplification delta itself is 3,030 additions and 19,754 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
-simplification baseline, and 1,575 finally: 97 feature-branch tests were removed
-while 40 tests above the merge base remain. Inline unit tests are counted in their
+simplification baseline, and 1,576 finally: 96 feature-branch tests were removed
+while 41 tests above the merge base remain. Inline unit tests are counted in their
 production path, which is why the path table is supplemented by this test count.
 
 The retained large files are general application/backend and audio/MIDI channel
@@ -246,12 +246,12 @@ bounds and allocation behavior it controls.
 | 10 | prepared-latch, armed audio/MIDI postroll, publication, and complete engine no-allocation suites; topology-arm test |
 | 11 | 64/64, 127/1, and 31/17/80 audio partition test; MIDI callback/wrap tests; 44.1/32/96 kHz session conversion |
 | 12 | case-insensitive tracked terminology audit returns no output |
-| 13 | disposition table above, 1,566-test native suite, complete Node and Chromium shared suites, and orphan searches |
+| 13 | disposition table above, 1,567-test native suite, complete Node and Chromium shared suites, and orphan searches |
 | 14 | path table, test counts, simplification delta, and retained-file explanation above |
 
 ### Final command evidence
 
-- `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`: 1,566 passed, two host-dependent skips.
+- `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`: 1,567 passed, two host-dependent skips.
 - Complete shared Wasm suite in Node 22.22.2: every discovered package test passed; the changed engine package was rerun at 817 tests after the final atomic-failure changes.
 - Complete shared Wasm suite in Chromium 147: every package passed after the domain package's three browser tests were explicitly configured; the changed engine package was rerun at 817 tests.
 - Real JACK integration ran against the available server; the exact connected 37-frame value was latched onto a recording channel.

@@ -1311,6 +1311,48 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn compact_latency_controls_render_manual_pending_error_and_processor_states() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let states = [
+            TrackState {
+                id: TrackId::from_raw(2),
+                name: "Manual".to_owned(),
+                ..Default::default()
+            },
+            TrackState {
+                id: TrackId::from_raw(3),
+                name: "Unavailable".to_owned(),
+                latency: crate::TrackLatencyState {
+                    adjustment: RecordingOffsetAdjustmentState::Automatic,
+                    effective_offset_frames: None,
+                    pending: true,
+                    error: Some("enter a manual value".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            TrackState {
+                id: TrackId::from_raw(4),
+                name: "Processor".to_owned(),
+                latency: crate::TrackLatencyState {
+                    processor_advance_frames: 17,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ];
+        for state in states {
+            let mut widget = TrackWidget::default();
+            let _ = frame(&context, &mut widget, &state, Vec::new());
+            let options = widget.test_options_rect.unwrap().center();
+            let _ = click(&context, &mut widget, &state, options);
+            let _ = frame(&context, &mut widget, &state, Vec::new());
+            assert!(widget.test_latency_offset_rect.is_some());
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn track_and_sync_options_menus_request_connection_scope() {
         let context = egui::Context::default();
         crate::initialize(&context);
