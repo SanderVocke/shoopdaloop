@@ -172,3 +172,89 @@ python3 scripts/check_shoop_test_usage.py
 The final audit must rerun these commands against the final commit, inspect every
 remaining match rather than relying on counts, and record test command output and
 any unavailable host/browser facility explicitly.
+
+## Final implementation audit
+
+### Delivered surface
+
+The final implementation has one checked signed `RecordingOffset`, one separate
+`ProcessorRenderAdvance`, `CaptureFrameMapping`, and a compact prepared/latched
+callback snapshot. Track state contains only automatic/manual/trim selection, the
+resolved value, processor advance, and pending/error state. Channel/take state
+contains one signed capture alignment. Session data stores track adjustment,
+manual and processor values, and one channel alignment; it stores no provider
+identity or observation history.
+
+JACK recomputes connected capture latency on the control path and accepts it only
+when the relevant connected range is exact. Native tracks require all applicable
+inputs to agree. Dummy, CPAL, Carla, built-in synth, and browser paths remain
+manual when they cannot make that claim. The browser protocol is version 15 and
+carries only the reduced controls and channel alignment.
+
+Recording preparation reserves the sign-derived pre/post window before the
+operation. Postroll remains an unsettled content mutation. Audio or MIDI storage
+exhaustion stops the operation and clears its partial take. Differently aligned
+replacement and nonzero-offset retrospective grab fail before mutation. Playback
+and normal audio/MIDI export map the logical window; no special raw export or
+bake command remains.
+
+The compact controls live directly in the track options menu and include manual
+completed-take alignment. Browser layout evidence is
+`artifacts/latency-controls.png` in the validation workspace (the repository's
+artifact directory is intentionally ignored). It shows the Manual selector,
+Offset, Processor, and Effective rows at 1200 by 800; minimum/common-size UI tests
+also pass.
+
+### Size result
+
+Both measurements use merge base
+`15cc18fe8274f1f04d9339774b9b51fef642425c` and `git diff --numstat`.
+
+| Measurement | Paths | Added | Deleted | Changed |
+| --- | ---: | ---: | ---: | ---: |
+| Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
+| Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
+| Final production/documentation | 46 | 4,288 | 144 | 4,432 |
+| Final integration tests/examples | 2 | 27 | 1 | 28 |
+
+The simplification delta itself is 2,765 additions and 19,727 deletions across 77
+paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
+simplification baseline, and 1,573 finally: 99 feature-branch tests were removed
+while 38 tests above the merge base remain. Inline unit tests are counted in their
+production path, which is why the path table is supplemented by this test count.
+
+The retained large files are general application/backend and audio/MIDI channel
+implementations. They own track/session orchestration, chunked audio, MIDI state,
+content snapshots, smoothing, and non-latency controls. There is no dedicated
+advanced panel or characterization matrix. The focused latency domain and runtime
+are small, while channel retention/mapping stays beside the callback code whose
+bounds and allocation behavior it controls.
+
+### Prompt-to-artifact completion checklist
+
+| Criterion | Concrete evidence |
+| ---: | --- |
+| 1 | `engine_track_latency_applies_to_future_operations_only`, compensated audio/MIDI record-play tests, and the Worklet full-duplex manual-offset test |
+| 2 | `recording_offset_latches_at_each_operation_boundary`, backend/app future-operation tests |
+| 3 | `latency_settings_and_take_alignment_round_trip_without_provider_metadata` and multi-rate resampling assertions |
+| 4 | positive postroll, negative prerecord, final-event, and unsettled-snapshot channel tests |
+| 5 | insufficient-retention, incremental audio exhaustion, MIDI exhaustion, and compensated-grab preflight tests |
+| 6 | logical audio export assertions, logical exact/standard MIDI assertions, and removed-command searches |
+| 7 | audio/MIDI dry-through-wet, dry-into-wet canonical-write, wrap, and independent-domain tests |
+| 8 | real-JACK exact observation-and-record-boundary test, unsupported automatic error test, manual browser Worklet test |
+| 9 | reduced app/backend/wire structs, track-menu UI test, screenshot, and removed-symbol searches |
+| 10 | prepared-latch, armed audio/MIDI postroll, publication, and complete engine no-allocation suites; topology-arm test |
+| 11 | 64/64, 127/1, and 31/17/80 audio partition test; MIDI callback/wrap tests; 44.1/32/96 kHz session conversion |
+| 12 | case-insensitive tracked terminology audit returns no output |
+| 13 | disposition table above, 1,566-test native suite, complete Node and Chromium shared suites, and orphan searches |
+| 14 | path table, test counts, simplification delta, and retained-file explanation above |
+
+### Final command evidence
+
+- `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend --profile ci`: 1,566 passed, two host-dependent skips.
+- Complete shared Wasm suite in Node 22.22.2: every discovered package test passed; the changed engine package was rerun at 817 tests after the final atomic-failure changes.
+- Complete shared Wasm suite in Chromium 147: every package passed after the domain package's three browser tests were explicitly configured; the changed engine package was rerun at 817 tests.
+- Real JACK integration ran against the available server; the exact connected 37-frame value was latched onto a recording channel.
+- `RUSTFLAGS="-D warnings" cargo build --workspace`, formatting, focused warning-denied latency/backend/session/protocol/client Clippy, test-attribute policy, tracing inventory, dependency tree, smoke-budget check, and report parser tests pass.
+- `trunk build` builds both application and AudioWorklet Wasm. Firefox 146 loaded the built hosted UI and produced the layout screenshot. The standalone Chromium smoke launcher is incompatible with this host's crash-handler wrapper, but the complete Chromedriver-based Chromium suite passed.
+- Removed architecture/API and case-insensitive terminology searches return no tracked production matches. Remaining search matches in this audit are deletion history only.

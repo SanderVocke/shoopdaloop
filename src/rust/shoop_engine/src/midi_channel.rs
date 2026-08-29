@@ -45,6 +45,8 @@ pub enum MidiChannelError {
     LatencyPositionOverflow,
     #[error("retained latency margin {frames} exceeds the supported maximum")]
     RetentionExceedsMaximum { frames: u32 },
+    #[error("MIDI recording storage is exhausted at its prepared capacity of {capacity} events")]
+    StorageExhausted { capacity: usize },
 }
 
 /// How much of the cycle's input buffer has been consumed.
@@ -1189,19 +1191,30 @@ impl MidiChannel {
                     }
                 }
                 let at = record_from + e.time - rec.n_frames_processed;
+                let storage_full = if into_prerecord {
+                    self.prerecord_storage.n_events() as usize
+                        >= self.prerecord_storage.capacity_elems()
+                } else {
+                    self.storage.n_events() as usize >= self.storage.capacity_elems()
+                };
                 let stored = if into_prerecord {
                     self.prerecord_storage.append(at, e.data(), false, None)
                 } else {
                     self.storage.append(at, e.data(), false, None)
                 };
+                if !stored && storage_full {
+                    return Err(MidiChannelError::StorageExhausted {
+                        capacity: self.storage.capacity_elems(),
+                    });
+                }
                 if stored {
                     if let Some(snapshots) = self.content_snapshots.as_mut() {
                         if let Some(event) = MidiStorageElem::new(at, e.data()) {
                             snapshots.append_storage_events(&[event], at, false);
                         }
                     }
+                    changed = true;
                 }
-                changed |= stored;
             }
             self.input_state.process(e.data());
             idx += 1;

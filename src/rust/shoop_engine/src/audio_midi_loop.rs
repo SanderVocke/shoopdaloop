@@ -455,15 +455,15 @@ impl AudioMidiLoop {
         if matches!(
             err,
             Some(LoopError::Audio(ChannelError::StorageExhausted { .. }))
+                | Some(LoopError::Midi(MidiChannelError::StorageExhausted { .. }))
         ) {
-            let retained = self
-                .audio_channels
-                .iter()
-                .map(AudioChannel::length)
-                .min()
-                .unwrap_or(0)
-                .min(u32::MAX as usize) as u32;
-            self.loop_.set_length(retained);
+            for channel in &mut self.audio_channels {
+                channel.clear(0);
+            }
+            for channel in &mut self.midi_channels {
+                channel.clear();
+            }
+            self.loop_.set_length(0);
             self.loop_.set_position(0);
             self.loop_.set_mode(LoopMode::Stopped);
         }
@@ -594,6 +594,34 @@ mod tests {
         let wet = l.audio_channel(1).unwrap();
         check!(wet.capture_alignment_frames() == 0);
         check!(wet.render_advance_frames() == 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn compensated_audio_is_deterministic_across_callback_partitions() {
+        let run = |partitions: &[usize]| {
+            let mut l = loop_with_channel();
+            l.prepare_latency(prepared_latency(2, 0), 128).unwrap();
+            let source = (0..130).map(|frame| frame as f32).collect::<Vec<_>>();
+            l.set_mode(L::Recording);
+            let mut cursor = 0;
+            for &frames in partitions {
+                cycle(&mut l, frames, &source[cursor..cursor + frames]);
+                cursor += frames;
+            }
+            check!(cursor == 128);
+            l.set_mode(L::Stopped);
+            cycle(&mut l, 2, &source[128..]);
+            l.set_mode(L::Playing);
+            let mut output = Vec::new();
+            for &frames in partitions {
+                output.extend(cycle(&mut l, frames, &[]));
+            }
+            output
+        };
+        let expected = (2..130).map(|frame| frame as f32).collect::<Vec<_>>();
+        for partitions in [&[64, 64][..], &[127, 1], &[31, 17, 80]] {
+            check!(run(partitions) == expected);
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -748,6 +776,47 @@ mod tests {
         assert_eq!(loop_.mode(), L::Stopped);
         assert_eq!(loop_.length(), 0);
         assert_eq!(loop_.audio_channel(0).unwrap().length(), 0);
+
+        let mut incremental = AudioMidiLoop::default();
+        incremental.add_audio_channel_with_bounded_capacity(4, 4, C::Direct);
+        incremental.set_mode(L::Recording);
+        cycle(&mut incremental, 4, &[1.0, 2.0, 3.0, 4.0]);
+        let channel = incremental.audio_channel_mut(0).unwrap();
+        channel.set_recording_buffer_size(1);
+        channel.set_playback_buffer_size(1);
+        incremental.resync_poi();
+        assert!(matches!(
+            incremental.process(1, &[] as &[&[MidiStorageElem]], &mut []),
+            Err(LoopError::Audio(ChannelError::StorageExhausted { .. }))
+        ));
+        assert_eq!(incremental.mode(), L::Stopped);
+        assert_eq!(incremental.length(), 0);
+        assert_eq!(incremental.audio_channel(0).unwrap().length(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn midi_storage_exhaustion_clears_the_partial_take() {
+        let mut loop_ = AudioMidiLoop::default();
+        loop_.add_midi_channel(1, C::Direct);
+        loop_.set_mode(L::Recording);
+        let channel = loop_.midi_channel_mut(0).unwrap();
+        channel.set_recording_buffer(4);
+        channel.set_playback_buffer(4);
+        loop_.resync_poi();
+        let input = vec![
+            MidiStorageElem::new(0, &[0x90, 60, 100]).unwrap(),
+            MidiStorageElem::new(1, &[0x80, 60, 0]).unwrap(),
+        ];
+        let mut output = vec![Vec::new()];
+        assert_eq!(
+            loop_.process(4, &[input], &mut output),
+            Err(LoopError::Midi(MidiChannelError::StorageExhausted {
+                capacity: 1,
+            }))
+        );
+        assert_eq!(loop_.mode(), L::Stopped);
+        assert_eq!(loop_.length(), 0);
+        assert_eq!(loop_.midi_channel(0).unwrap().n_events(), 0);
     }
 
     #[shoop_wasm_test_support::shoop_test]

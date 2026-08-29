@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use shoop_engine::app_backend::{
     AudioDriver, AudioDriverSettings, AudioPort, BackendSession, JackAudioDriverSettings, MidiPort,
 };
-use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, PortDirection};
+use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, PortDirection, PreparedLatency};
 
 mod backend_availability;
 use backend_availability::require_backend;
@@ -274,7 +274,27 @@ fn exact_jack_capture_latency_is_available_as_one_recording_offset() {
         &source.name().unwrap(),
         &format!("{app_name}:latency_in"),
     );
-    assert_eq!(input.automatic_recording_offset_frames(), Some(37));
+    let mut automatic = None;
+    assert!(wait_until(|| {
+        automatic = input.automatic_recording_offset_frames();
+        automatic == Some(37)
+    }));
+    let automatic = automatic.unwrap();
+    let loop_ = session.create_loop().unwrap();
+    let channel = loop_.add_audio_channel(ChannelMode::Direct).unwrap();
+    channel.connect_input(&input).unwrap();
+    loop_
+        .prepare_latency(
+            PreparedLatency::new(
+                shoop_latency::RecordingOffset::new(automatic).unwrap(),
+                shoop_latency::ProcessorRenderAdvance::new(0).unwrap(),
+            ),
+            64,
+        )
+        .unwrap();
+    loop_.transition(LoopMode::Recording, -1, -1).unwrap();
+    driver.wait_process();
+    assert_eq!(channel.get_state().unwrap().capture_alignment_frames, 37);
 }
 
 #[shoop_wasm_test_support::shoop_test]

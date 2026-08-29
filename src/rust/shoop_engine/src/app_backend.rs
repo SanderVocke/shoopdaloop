@@ -6889,7 +6889,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn value_control_commands_do_not_arm_graph_rebuilds() {
+    fn value_and_latency_control_commands_do_not_arm_graph_rebuilds() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
         sess.shared.flush_graph_changes();
@@ -6900,6 +6900,14 @@ mod tests {
         sess.shared
             .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
             .expect("command fence");
+        let latency = engine::PreparedLatency::new(
+            shoop_latency::RecordingOffset::new(7).unwrap(),
+            shoop_latency::ProcessorRenderAdvance::new(11).unwrap(),
+        );
+        let sequence = loop_.set_pending_latency(latency).expect("queue latency");
+        sess.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("latency command fence");
 
         assert_eq!(scheduler.n_arms(), before);
     }

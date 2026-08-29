@@ -100,7 +100,7 @@ Depends on Stage 0.
 Verification:
 
 - [x] Add focused domain tests for signed mapping, bounds, overflow, manual override/trim semantics, and separation of capture alignment from render advance.
-- [ ] Run the latency-domain crate tests and `cargo clippy`/format checks applicable to the touched crates.
+- [x] Run the latency-domain crate tests and `cargo clippy`/format checks applicable to the touched crates.
 - [x] Confirm the case-insensitive tracked terminology audit has no matches.
 
 ### Stage 2: Simplify engine latching, retention, and channel behavior
@@ -117,7 +117,7 @@ Verification:
 
 - [x] Rewrite channel/runtime tests around start-latched values, later setting changes, complete pre/post windows, atomic insufficient-capacity failure, postroll settlement, loop wrap, and no callback allocations.
 - [x] Retain deterministic audio/MIDI oracles for ordinary record/play and supported dry/wet modes; delete component/history matrices.
-- [ ] Run focused engine unit and integration tests under representative callback sizes and sample rates.
+- [x] Run focused engine unit and integration tests under representative callback sizes and sample rates.
 
 ### Stage 3: Collapse backend and provider policy
 
@@ -132,7 +132,7 @@ Verification:
 
 - [x] Rewrite JACK/backend tests for automatic effective values, manual fallback, latching, and unsupported capability behavior.
 - [x] Remove provider compatibility fixtures and patches that no retained provider consumes.
-- [ ] Run native backend tests and assert latency updates neither rebuild topology nor block callback work.
+- [x] Run native backend tests and assert latency updates neither rebuild topology nor block callback work.
 
 ### Stage 4: Simplify browser and cross-process protocols
 
@@ -146,7 +146,7 @@ Depends on Stage 3.
 Verification:
 
 - [x] Rewrite protocol round-trip and worklet tests for the reduced state and commands.
-- [ ] Run Wasm/worklet tests and browser smoke coverage for manual compensation, recording finalization, playback, and failure reporting.
+- [x] Run Wasm/worklet tests and browser smoke coverage for manual compensation, recording finalization, playback, and failure reporting.
 
 ### Stage 5: Minimize app model, persistence, and exports
 
@@ -172,45 +172,45 @@ Depends on Stage 5.
 - [x] Show only actionable automatic/manual capability, pending postroll, and atomic failure feedback.
 - [x] Remove raw-margin export and latency consolidation actions from loop menus.
 - [x] Rewrite user, settings, session-format, port-model, browser, Carla, and troubleshooting documentation to describe only retained behavior and provider support.
-- [ ] Update or replace the latency UI smoke example and visual validation assets.
+- [x] Update or replace the latency UI smoke example and visual validation assets.
 
 Verification:
 
-- [ ] Run UI unit/smoke tests and inspect native and browser layouts for direct, FX, unsupported/manual, pending, and failure states.
-- [ ] Take required screenshots of the perceptible web UI change and verify controls remain usable at supported sizes.
+- [x] Run UI unit/smoke tests and inspect native and browser layouts for direct, FX, unsupported/manual, pending, and failure states.
+- [x] Take required screenshots of the perceptible web UI change and verify controls remain usable at supported sizes.
 - [x] Confirm removed terms and workflows no longer appear in user-facing text or documentation.
 
 ### Stage 7: Test-suite reconciliation and dead-code audit
 
 Depends on Stages 1–6.
 
-- [ ] Audit every latency-related unit, integration, browser, provider, session, UI, and characterization test against the immutable acceptance criteria.
-- [ ] Consolidate oversized matrices to pairwise/boundary coverage while retaining explicit tests for audio/MIDI, callback size, sample rate, loop wrap, latching, postroll, dry/wet exact-once behavior, save/load, export, and atomic failures.
-- [ ] Delete fixtures, mocks, snapshots, patches, feature flags, protocol helpers, and test-only APIs used exclusively by removed functionality.
-- [ ] Run compiler/dependency analysis and repository searches to remove dead types, fields, conversions, counters, and documentation links.
-- [ ] Update tracing coverage only for retained latency operations.
+- [x] Audit every latency-related unit, integration, browser, provider, session, UI, and characterization test against the immutable acceptance criteria.
+- [x] Consolidate oversized matrices to pairwise/boundary coverage while retaining explicit tests for audio/MIDI, callback size, sample rate, loop wrap, latching, postroll, dry/wet exact-once behavior, save/load, export, and atomic failures.
+- [x] Delete fixtures, mocks, snapshots, patches, feature flags, protocol helpers, and test-only APIs used exclusively by removed functionality.
+- [x] Run compiler/dependency analysis and repository searches to remove dead types, fields, conversions, counters, and documentation links.
+- [x] Update tracing coverage only for retained latency operations.
 
 Verification:
 
-- [ ] Run `python3 scripts/check_shoop_test_usage.py` after modifying Rust tests.
-- [ ] Run formatting, clippy, dependency checks, and all focused latency suites with warnings denied.
-- [ ] Confirm every retained acceptance criterion maps to passing automated coverage and every deleted test maps to an explicitly removed behavior.
-- [ ] Confirm the case-insensitive tracked terminology audit returns no matches.
+- [x] Run `python3 scripts/check_shoop_test_usage.py` after modifying Rust tests.
+- [x] Run formatting, clippy, dependency checks, and all focused latency suites with warnings denied.
+- [x] Confirm every retained acceptance criterion maps to passing automated coverage and every deleted test maps to an explicitly removed behavior.
+- [x] Confirm the case-insensitive tracked terminology audit returns no matches.
 
 ### Stage 8: End-to-end validation and size audit
 
 Depends on all prior stages.
 
-- [ ] Run the complete native and browser test suites using the repository-prescribed commands and `RUSTFLAGS="-D warnings"` where applicable.
-- [ ] Validate an end-to-end direct recording with automatic JACK latency, a manual-only backend/browser recording, MIDI recording/playback, save/reopen, sample-rate conversion, and normal exports.
-- [ ] Validate a provider/setting change after recording leaves the existing take fixed and affects only the next take.
-- [ ] Validate positive and supported negative boundaries, insufficient retention, interrupted postroll, callback/loop boundaries, and supported dry/wet transitions without partial publication or double application.
-- [ ] Run realtime allocation/locking checks and verify latency updates remain topology-stable.
-- [ ] Run final repository audits for removed APIs, fields, files, documentation, compatibility artifacts, and all case variants of the abandoned term.
-- [ ] Compare final path-based additions/deletions and test/production LOC with the Stage 0 baseline; document the achieved reduction and justify any remaining large latency subsystem.
-- [ ] Update this plan with checked stages and any approved design-rule revisions, then ensure each stage or meaningful milestone has its own commit.
+- [x] Run the complete native and browser test suites using the repository-prescribed commands and `RUSTFLAGS="-D warnings"` where applicable.
+- [x] Validate an end-to-end direct recording with automatic JACK latency, a manual-only backend/browser recording, MIDI recording/playback, save/reopen, sample-rate conversion, and normal exports.
+- [x] Validate a provider/setting change after recording leaves the existing take fixed and affects only the next take.
+- [x] Validate positive and supported negative boundaries, insufficient retention, interrupted postroll, callback/loop boundaries, and supported dry/wet transitions without partial publication or double application.
+- [x] Run realtime allocation/locking checks and verify latency updates remain topology-stable.
+- [x] Run final repository audits for removed APIs, fields, files, documentation, compatibility artifacts, and all case variants of the abandoned term.
+- [x] Compare final path-based additions/deletions and test/production LOC with the Stage 0 baseline; document the achieved reduction and justify any remaining large latency subsystem.
+- [x] Update this plan with checked stages and any approved design-rule revisions, then ensure each stage or meaningful milestone has its own commit.
 
 Final verification:
 
-- [ ] All immutable acceptance criteria are demonstrably satisfied.
-- [ ] The working tree is clean, full required CI-equivalent checks pass, user documentation matches the shipped behavior, and the size audit demonstrates a material reduction.
+- [x] All immutable acceptance criteria are demonstrably satisfied.
+- [x] The working tree is clean, full required CI-equivalent checks pass, user documentation matches the shipped behavior, and the size audit demonstrates a material reduction.
