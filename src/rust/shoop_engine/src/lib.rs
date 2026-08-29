@@ -129,8 +129,9 @@ pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
 pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;
 pub use latency_runtime::{
-    AtomicLatencyObservation, AtomicLatencyRecipePublication, LatchedLatencyRecipe,
-    OperationLatencyLatch, PublishedLatencyRecipe, RetainedLatencySelection,
+    AtomicEffectiveLatencyPublication, AtomicLatencyObservation, AtomicLatencyRecipePublication,
+    EffectiveLatencyLatch, LatchedLatency, LatchedLatencyRecipe, OperationLatencyLatch,
+    PreparedLatency, PublishedEffectiveLatency, PublishedLatencyRecipe, RetainedLatencySelection,
     RuntimeLatencyComponent, RuntimeLatencyObservation, RuntimeLatencyRecipe,
 };
 pub use loop_mode::LoopMode;
