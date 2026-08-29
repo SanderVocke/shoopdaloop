@@ -1682,20 +1682,11 @@ impl NativeRuntime {
             .get(&track_id)
             .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
         for loop_id in &track.loops {
-            let state = self
+            let loop_ = self
                 .loops
                 .get(loop_id)
-                .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?
-                .handle
-                .get_state()?;
-            if state.maybe_next_mode.is_some_and(|mode| {
-                matches!(
-                    mode,
-                    shoop_engine::LoopMode::Recording
-                        | shoop_engine::LoopMode::Replacing
-                        | shoop_engine::LoopMode::RecordingDryIntoWet
-                )
-            }) {
+                .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
+            if loop_.handle.has_planned_recording_transition()? {
                 return Ok(true);
             }
         }
@@ -3578,7 +3569,10 @@ mod tests {
             .transition_loop(created.loops[0], BackendLoopMode::Playing, None)
             .unwrap();
         backend
-            .transition_loop(created.loops[0], BackendLoopMode::Recording, Some(1))
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, Some(2))
             .unwrap();
         let input = created
             .ports

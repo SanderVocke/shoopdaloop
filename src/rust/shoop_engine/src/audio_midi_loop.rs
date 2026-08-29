@@ -28,6 +28,8 @@ pub enum LoopError {
     Midi(#[from] MidiChannelError),
     #[error("recording started before the required latency preroll was captured")]
     LatencyPrerecordIncomplete,
+    #[error("playback was deferred until latency postroll settles")]
+    PlaybackDeferredForPostroll,
 }
 
 #[derive(Debug, Default)]
@@ -222,6 +224,19 @@ impl AudioMidiLoop {
         self.loop_.n_planned_transitions()
     }
 
+    pub fn has_planned_recording_transition(&self) -> bool {
+        (0..self.loop_.n_planned_transitions()).any(|index| {
+            self.loop_
+                .planned_transition_mode(index)
+                .is_some_and(|mode| {
+                    matches!(
+                        mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    )
+                })
+        })
+    }
+
     pub const fn pending_latency(&self) -> Option<PreparedLatency> {
         self.pending_latency
     }
@@ -407,6 +422,7 @@ impl AudioMidiLoop {
         let active_latency_mode = &mut self.active_latency_mode;
         let processed_frames = &mut self.processed_frames;
         let mut err: Option<LoopError> = None;
+        let mut deferred_playback = false;
         self.loop_.process_with(n_samples, |params| {
             if params.mode != *active_latency_mode {
                 if let Some(values) = pending_latency {
@@ -426,9 +442,26 @@ impl AudioMidiLoop {
                 *processed_frames = processed_frames.saturating_add(u64::from(params.n_samples));
                 return;
             }
+            deferred_playback = deferred_playback
+                || (params.mode.is_playing_mode()
+                    && (audio.iter().any(|channel| {
+                        channel.capture_alignment_frames() > 0
+                            && !channel.compensated_take_ready(params.length_before)
+                    }) || midi.iter().any(|channel| {
+                        channel.capture_alignment_frames() > 0
+                            && !channel.compensated_take_ready(params.length_before)
+                    })));
+            let process_mode = if deferred_playback {
+                if err.is_none() {
+                    err = Some(LoopError::PlaybackDeferredForPostroll);
+                }
+                LoopMode::Stopped
+            } else {
+                params.mode
+            };
             for c in audio.iter_mut() {
                 let r = c.process(
-                    params.mode,
+                    process_mode,
                     params.next_planned_mode,
                     params.next_planned_delay_cycles,
                     params.next_planned_eta,
@@ -445,7 +478,7 @@ impl AudioMidiLoop {
             }
             for ((c, input), out) in midi.iter_mut().zip(midi_in.iter()).zip(midi_out.iter_mut()) {
                 let r = c.process(
-                    params.mode,
+                    process_mode,
                     params.next_planned_mode,
                     params.next_planned_delay_cycles,
                     params.next_planned_eta,
@@ -462,6 +495,11 @@ impl AudioMidiLoop {
             }
             *processed_frames = processed_frames.saturating_add(u64::from(params.n_samples));
         });
+        if deferred_playback {
+            self.loop_.set_position(0);
+            self.loop_.set_mode(LoopMode::Stopped);
+            self.active_latency_mode = LoopMode::Stopped;
+        }
         if matches!(
             err,
             Some(LoopError::Audio(ChannelError::StorageExhausted { .. }))
@@ -635,6 +673,42 @@ mod tests {
         for partitions in [&[64, 64][..], &[127, 1], &[31, 17, 80]] {
             check!(run(partitions) == expected);
         }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn playback_waits_when_positive_postroll_exceeds_loop_length() {
+        let mut l = loop_with_channel();
+        l.prepare_latency(prepared_latency(5, 0), 4).unwrap();
+        l.set_mode(L::Recording);
+        cycle(&mut l, 4, &[1.0, 2.0, 3.0, 4.0]);
+        check!(l.length() == 4);
+
+        l.set_mode(L::Playing);
+        let channel = l.audio_channel_mut(0).unwrap();
+        channel.set_recording_buffer_size(1);
+        channel.set_playback_buffer_size(1);
+        l.resync_poi();
+        let mut midi_out: [Vec<MidiStorageElem>; 0] = [];
+        let error = assert_no_alloc::assert_no_alloc(|| {
+            l.process::<Vec<MidiStorageElem>>(1, &[], &mut midi_out)
+        })
+        .unwrap_err();
+        check!(error == LoopError::PlaybackDeferredForPostroll);
+        let mut output = [0.0];
+        l.finalize_process(&mut [(&[5.0], &mut output)]);
+        check!(output == [0.0]);
+        check!(l.mode() == L::Stopped);
+        check!(
+            l.audio_channel(0)
+                .unwrap()
+                .latency_postroll_remaining_frames()
+                == 4
+        );
+
+        cycle(&mut l, 4, &[6.0, 7.0, 8.0, 9.0]);
+        check!(!l.audio_channel(0).unwrap().is_finalizing_latency_postroll());
+        l.set_mode(L::Playing);
+        check!(cycle(&mut l, 4, &[]) == vec![6.0, 7.0, 8.0, 9.0]);
     }
 
     #[shoop_wasm_test_support::shoop_test]

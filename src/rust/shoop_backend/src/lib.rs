@@ -4007,12 +4007,7 @@ impl Backend for EngineBackend {
                 .session
                 .loop_(self.engine_loop_index(*loop_id)?)
                 .ok_or_else(|| anyhow!("missing engine loop"))?;
-            if loop_.first_planned_transition().is_some_and(|(mode, _)| {
-                matches!(
-                    mode,
-                    LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
-                )
-            }) {
+            if loop_.has_planned_recording_transition() {
                 return Err(anyhow!(
                     "cannot change recording offset while an operation is armed; cancel it first"
                 ));
@@ -8251,7 +8246,10 @@ mod tests {
             .transition_loop(created.loops[0], BackendLoopMode::Playing, None)
             .unwrap();
         backend
-            .transition_loop(created.loops[0], BackendLoopMode::Recording, Some(1))
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, Some(1))
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, Some(2))
             .unwrap();
         let error = backend
             .set_track_latency(
