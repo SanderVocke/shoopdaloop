@@ -329,10 +329,13 @@ struct JackLatencySlot {
     internal_min: AtomicU32,
     internal_max: AtomicU32,
     peers: [AtomicUsize; MAX_JACK_LATENCY_CONNECTIONS],
+    peers_overflow: AtomicBool,
     last_capture_min: AtomicU32,
     last_capture_max: AtomicU32,
     last_playback_min: AtomicU32,
     last_playback_max: AtomicU32,
+    last_capture_unknown: AtomicBool,
+    last_playback_unknown: AtomicBool,
     revision: AtomicU64,
 }
 
@@ -346,10 +349,13 @@ impl Default for JackLatencySlot {
             internal_min: AtomicU32::new(0),
             internal_max: AtomicU32::new(0),
             peers: std::array::from_fn(|_| AtomicUsize::new(0)),
+            peers_overflow: AtomicBool::new(false),
             last_capture_min: AtomicU32::new(u32::MAX),
             last_capture_max: AtomicU32::new(u32::MAX),
             last_playback_min: AtomicU32::new(u32::MAX),
             last_playback_max: AtomicU32::new(u32::MAX),
+            last_capture_unknown: AtomicBool::new(false),
+            last_playback_unknown: AtomicBool::new(false),
             revision: AtomicU64::new(1),
         }
     }
@@ -362,9 +368,11 @@ struct JackLatencyContext {
     backend_capture_min: AtomicU32,
     backend_capture_max: AtomicU32,
     backend_capture_revision: AtomicU64,
+    backend_capture_unknown: AtomicBool,
     backend_playback_min: AtomicU32,
     backend_playback_max: AtomicU32,
     backend_playback_revision: AtomicU64,
+    backend_playback_unknown: AtomicBool,
     dirty: AtomicBool,
 }
 
@@ -377,9 +385,11 @@ impl JackLatencyContext {
             backend_capture_min: AtomicU32::new(0),
             backend_capture_max: AtomicU32::new(0),
             backend_capture_revision: AtomicU64::new(1),
+            backend_capture_unknown: AtomicBool::new(false),
             backend_playback_min: AtomicU32::new(0),
             backend_playback_max: AtomicU32::new(0),
             backend_playback_revision: AtomicU64::new(1),
+            backend_playback_unknown: AtomicBool::new(false),
             dirty: AtomicBool::new(false),
         }
     }
@@ -408,6 +418,7 @@ impl JackLatencyContext {
         for peer in &slot.peers {
             peer.store(0, Ordering::Relaxed);
         }
+        slot.peers_overflow.store(false, Ordering::Relaxed);
         slot.port.store(port as usize, Ordering::Release);
         Ok(())
     }
@@ -428,6 +439,7 @@ impl JackLatencyContext {
             for peer in &slot.peers {
                 peer.store(0, Ordering::Relaxed);
             }
+            slot.peers_overflow.store(false, Ordering::Relaxed);
         }
     }
 
@@ -459,11 +471,14 @@ impl JackLatencyContext {
                 {
                     continue;
                 }
-                let _ = slot.peers.iter().any(|entry| {
+                let stored = slot.peers.iter().any(|entry| {
                     entry
                         .compare_exchange(0, peer, Ordering::AcqRel, Ordering::Relaxed)
                         .is_ok()
                 });
+                if !stored {
+                    slot.peers_overflow.store(true, Ordering::Release);
+                }
             } else {
                 for entry in &slot.peers {
                     let _ = entry.compare_exchange(peer, 0, Ordering::AcqRel, Ordering::Relaxed);
@@ -499,19 +514,27 @@ impl JackLatencyContext {
     }
 
     fn backend_observation(&self, capture: bool) -> engine::RuntimeLatencyObservation {
-        let (minimum, maximum, revision) = if capture {
+        let (minimum, maximum, revision, unknown) = if capture {
             (
                 self.backend_capture_min.load(Ordering::Acquire),
                 self.backend_capture_max.load(Ordering::Acquire),
                 self.backend_capture_revision.load(Ordering::Acquire),
+                self.backend_capture_unknown.load(Ordering::Acquire),
             )
         } else {
             (
                 self.backend_playback_min.load(Ordering::Acquire),
                 self.backend_playback_max.load(Ordering::Acquire),
                 self.backend_playback_revision.load(Ordering::Acquire),
+                self.backend_playback_unknown.load(Ordering::Acquire),
             )
         };
+        if unknown {
+            return engine::RuntimeLatencyObservation::unknown(
+                self.sample_rate.load(Ordering::Acquire),
+                revision,
+            );
+        }
         runtime_latency_from_range(
             minimum,
             maximum,
@@ -564,14 +587,24 @@ unsafe fn publish_jack_latency_slot(
     range: (u32, u32),
     kind: u8,
     sample_rate: u32,
+    unknown: bool,
 ) {
-    let (last_min, last_max) = if capture {
-        (&slot.last_capture_min, &slot.last_capture_max)
+    let (last_min, last_max, last_unknown) = if capture {
+        (
+            &slot.last_capture_min,
+            &slot.last_capture_max,
+            &slot.last_capture_unknown,
+        )
     } else {
-        (&slot.last_playback_min, &slot.last_playback_max)
+        (
+            &slot.last_playback_min,
+            &slot.last_playback_max,
+            &slot.last_playback_unknown,
+        )
     };
     let changed = last_min.swap(range.0, Ordering::Relaxed) != range.0
-        || last_max.swap(range.1, Ordering::Relaxed) != range.1;
+        || last_max.swap(range.1, Ordering::Relaxed) != range.1
+        || last_unknown.swap(unknown, Ordering::Relaxed) != unknown;
     let revision = if changed {
         slot.revision
             .fetch_add(1, Ordering::Relaxed)
@@ -579,7 +612,11 @@ unsafe fn publish_jack_latency_slot(
     } else {
         slot.revision.load(Ordering::Relaxed)
     };
-    let observation = runtime_latency_from_range(range.0, range.1, sample_rate, revision);
+    let observation = if unknown {
+        engine::RuntimeLatencyObservation::unknown(sample_rate, revision)
+    } else {
+        runtime_latency_from_range(range.0, range.1, sample_rate, revision)
+    };
     let mirror = slot.mirror.load(Ordering::Relaxed);
     if mirror == 0 {
         return;
@@ -636,6 +673,7 @@ unsafe extern "C" fn jack_latency_callback(
     let capture = mode == jack_sys::JackCaptureLatency;
     let sample_rate = context.sample_rate.load(Ordering::Relaxed);
     let mut aggregate = None;
+    let mut aggregate_unknown = false;
     for slot in &context.slots {
         let port = slot.port.load(Ordering::Acquire);
         if port == 0 || port == usize::MAX {
@@ -652,7 +690,9 @@ unsafe extern "C" fn jack_latency_callback(
         }
         let range = jack_connected_latency_range(slot, port as *mut _, mode);
         aggregate = aggregate_parallel_latency(aggregate, range);
-        publish_jack_latency_slot(slot, capture, range, kind, sample_rate);
+        let unknown = slot.peers_overflow.load(Ordering::Acquire);
+        aggregate_unknown |= unknown;
+        publish_jack_latency_slot(slot, capture, range, kind, sample_rate, unknown);
     }
     let aggregate = aggregate.unwrap_or((0, 0));
     for slot in &context.slots {
@@ -681,23 +721,26 @@ unsafe extern "C" fn jack_latency_callback(
             max: range.1,
         };
         jack_sys::jack_port_set_latency_range(port as *mut _, mode, &mut ffi_range);
-        publish_jack_latency_slot(slot, capture, range, kind, sample_rate);
+        publish_jack_latency_slot(slot, capture, range, kind, sample_rate, aggregate_unknown);
     }
-    let (minimum, maximum, revision) = if capture {
+    let (minimum, maximum, revision, unknown) = if capture {
         (
             &context.backend_capture_min,
             &context.backend_capture_max,
             &context.backend_capture_revision,
+            &context.backend_capture_unknown,
         )
     } else {
         (
             &context.backend_playback_min,
             &context.backend_playback_max,
             &context.backend_playback_revision,
+            &context.backend_playback_unknown,
         )
     };
     let changed = minimum.swap(aggregate.0, Ordering::Release) != aggregate.0
-        || maximum.swap(aggregate.1, Ordering::Release) != aggregate.1;
+        || maximum.swap(aggregate.1, Ordering::Release) != aggregate.1
+        || unknown.swap(aggregate_unknown, Ordering::Release) != aggregate_unknown;
     if changed {
         revision.fetch_add(1, Ordering::Release);
     }
@@ -9468,11 +9511,16 @@ mod tests {
         slot.mirror
             .store(Arc::as_ptr(&mirror) as usize, Ordering::Relaxed);
         assert_no_alloc::assert_no_alloc(|| unsafe {
-            publish_jack_latency_slot(&slot, true, (3, 7), JACK_LATENCY_AUDIO_IN, 48_000);
+            publish_jack_latency_slot(&slot, true, (3, 7), JACK_LATENCY_AUDIO_IN, 48_000, false);
         });
         let observation = mirror.capture_latency();
         assert_eq!(observation.range.unwrap().min(), 3);
         assert_eq!(observation.range.unwrap().max(), 7);
+
+        unsafe {
+            publish_jack_latency_slot(&slot, true, (3, 7), JACK_LATENCY_AUDIO_IN, 48_000, true);
+        }
+        assert!(mirror.capture_latency().range.is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]

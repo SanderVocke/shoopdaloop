@@ -55,7 +55,7 @@
 +    struct State {
 +        uint32_t id, latency, indegree, outdegree;
 +        uint64_t minimum, maximum, paths;
-+        bool reachable, audioIo;
++        bool reachable, hostInput, hostOutput;
 +    };
 +    std::vector<State> states(static_cast<size_t>(nodeCount));
 +    std::vector<std::vector<uint32_t> > edges(static_cast<size_t>(nodeCount));
@@ -68,9 +68,15 @@
 +            if (plugin && plugin->isEnabled())
 +                latency = plugin->getLatencyInFrames();
 +        }
++        AudioProcessor* const processor = node->getProcessor();
++        CARLA_SAFE_ASSERT_RETURN(processor != nullptr, false);
++        const bool audioIo = node->properties.isAudio && ! node->properties.isPlugin;
++        const bool hostInput = audioIo &&
++            processor->getTotalNumOutputChannels(AudioProcessor::ChannelTypeAudio) != 0;
++        const bool hostOutput = audioIo &&
++            processor->getTotalNumInputChannels(AudioProcessor::ChannelTypeAudio) != 0;
 +        states[static_cast<size_t>(i)] = {
-+            node->nodeId, latency, 0, 0, 0, 0, 0, false,
-+            node->properties.isAudio && ! node->properties.isPlugin
++            node->nodeId, latency, 0, 0, 0, 0, 0, false, hostInput, hostOutput
 +        };
 +    }
 +    const auto indexForId = [&states](const uint32_t id) noexcept -> int {
@@ -99,7 +105,7 @@
 +        indegrees.push_back(states[i].indegree);
 +        if (states[i].indegree == 0) {
 +            queue.push_back(static_cast<uint32_t>(i));
-+            if (states[i].audioIo) {
++            if (states[i].hostInput) {
 +                states[i].reachable = true;
 +                states[i].paths = 1;
 +            }
@@ -136,7 +142,7 @@
 +    bool found = false;
 +    uint64_t minimum = std::numeric_limits<uint64_t>::max(), maximum = 0, paths = 0;
 +    for (const State& state : states) {
-+        if (! state.audioIo || state.outdegree != 0 || ! state.reachable)
++        if (! state.hostOutput || ! state.reachable)
 +            continue;
 +        found = true;
 +        if (state.minimum < minimum)
