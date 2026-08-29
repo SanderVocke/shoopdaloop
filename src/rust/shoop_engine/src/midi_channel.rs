@@ -302,7 +302,11 @@ impl MidiChannel {
         self.pending_latency = Some(values);
     }
 
-    pub fn latch_recording_latency(&mut self, operation_frame: u64) -> bool {
+    pub fn latch_recording_latency(
+        &mut self,
+        operation_frame: u64,
+        require_captured_prerecord: bool,
+    ) -> bool {
         let Some(values) = self.pending_latency else {
             return false;
         };
@@ -311,7 +315,9 @@ impl MidiChannel {
         self.latency_retention_incomplete = if frames >= 0 {
             frames as u32 > self.retained_after_frames
         } else {
-            frames.unsigned_abs() > self.retained_before_frames
+            let required = frames.unsigned_abs();
+            required > self.retained_before_frames
+                || (require_captured_prerecord && required > self.prerecord_data_length)
         };
         self.latched_latency = Some(LatchedLatency {
             values,
@@ -574,6 +580,15 @@ impl MidiChannel {
             snapshots.finish_mutation(false);
         }
         self.data_changed();
+    }
+
+    pub(crate) fn abort_latency_take(&mut self) {
+        self.clear();
+        self.prev_process_flags = ProcessFlags::NONE;
+        self.postroll_remaining_frames = 0;
+        self.latency_retention_incomplete = false;
+        self.latched_latency = None;
+        self.publish_state();
     }
 
     /// Replaces contents. `start_state` is the state to restore when playback

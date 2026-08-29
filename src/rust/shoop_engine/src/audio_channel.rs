@@ -417,7 +417,11 @@ impl AudioChannel {
         self.pending_latency = Some(values);
     }
 
-    pub fn latch_recording_latency(&mut self, operation_frame: u64) -> bool {
+    pub fn latch_recording_latency(
+        &mut self,
+        operation_frame: u64,
+        require_captured_prerecord: bool,
+    ) -> bool {
         let Some(values) = self.pending_latency else {
             return false;
         };
@@ -426,7 +430,9 @@ impl AudioChannel {
         self.latency_retention_incomplete = if frames >= 0 {
             frames as u32 > self.retained_after_frames
         } else {
-            frames.unsigned_abs() > self.retained_before_frames
+            let required = frames.unsigned_abs();
+            required > self.retained_before_frames
+                || (require_captured_prerecord && required as usize > self.prerecord_data_length)
         };
         self.latched_latency = Some(LatchedLatency {
             values,
@@ -749,6 +755,22 @@ impl AudioChannel {
             snapshots.finish_mutation(false);
         }
         self.data_changed();
+    }
+
+    pub(crate) fn abort_latency_take(&mut self) {
+        self.clear(0);
+        self.prerecord_buffers.reset();
+        self.prerecord_data_length = 0;
+        self.queue.clear();
+        self.prev_process_flags = ProcessFlags::NONE;
+        self.postroll_remaining_frames = 0;
+        self.finish_recording_after_finalize = false;
+        self.latency_retention_incomplete = false;
+        self.latched_latency = None;
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.clear_prerecord();
+        }
+        self.publish_state();
     }
 
     /// Replaces `length` samples with silence.

@@ -21,7 +21,8 @@ value instead of assuming zero.
 
 The value is latched when recording, replacement, or rendering starts. Changing
 the track setting later affects the next operation and never moves an existing
-take. Replacement requires the track offset to match the take. Retrospective
+take. Once a recording transition is armed, cancel it before changing the track
+offset. Replacement requires the track offset to match the take. Retrospective
 grab is retained only at zero offset; use normal recording when compensation is
 needed. A completed take's signed alignment can be corrected separately using
 its alignment control in the same menu. The correction must fit the raw media
@@ -30,10 +31,11 @@ changing any channel.
 
 Positive offsets retain and select post-record media. Negative offsets retain
 pre-record media. Recording starts only after the required bounded storage has
-been prepared. Content remains unsettled while required postroll is being
-captured; save and export wait or report that the content is still changing. If
-storage preparation or finalization cannot complete, the operation fails
-without publishing a partially corrected take.
+been prepared and the required preroll has actually been captured. Content
+remains unsettled while required postroll is being captured; save, export, and a
+new recording wait or report that the content is still changing. If storage
+preparation, preroll capture, or finalization cannot complete, the operation
+fails without publishing a partially corrected take.
 
 Normal playback, WAV/Shoop audio export, and standard/exact MIDI export use the
 logical compensated loop window. There is no latency-specific raw-margin export
