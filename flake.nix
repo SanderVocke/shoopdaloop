@@ -28,10 +28,6 @@
         targets = [ "wasm32-unknown-unknown" ];
       };
 
-      carlaWithLatency = pkgs.carla.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./third_party/carla/shoop-latency-adapter.patch ];
-      });
-
       python = pkgs.python3.withPackages (pythonPackages: [
         pythonPackages.pip
         pythonPackages.selenium
@@ -84,12 +80,8 @@
 
         buildInputs = buildLibraries;
 
-        SHOOP_CARLA_NATIVE_LIBRARY = "${carlaWithLatency}/lib/carla/libcarla_native-plugin.so";
-        SHOOP_CARLA_RESOURCE_DIR = "${carlaWithLatency}/share/carla/resources";
-        SHOOP_CARLA_UNPATCHED_NATIVE_LIBRARY = "${pkgs.carla}/lib/carla/libcarla_native-plugin.so";
-        SHOOP_CARLA_UNPATCHED_RESOURCE_DIR = "${pkgs.carla}/share/carla/resources";
-        SHOOP_CARLA_NONZERO_PLUGIN_BINARY = "${pkgs.rubberband}/lib/ladspa/ladspa-rubberband.so";
-
+        SHOOP_CARLA_NATIVE_LIBRARY = "${pkgs.carla}/lib/carla/libcarla_native-plugin.so";
+        SHOOP_CARLA_RESOURCE_DIR = "${pkgs.carla}/share/carla/resources";
         shellHook = ''
           jack_provider="''${SHOOP_JACK_PROVIDER_OVERRIDE:-auto}"
 
