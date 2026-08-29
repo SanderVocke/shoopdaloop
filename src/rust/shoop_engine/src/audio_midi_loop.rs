@@ -224,6 +224,16 @@ impl AudioMidiLoop {
         self.loop_.n_planned_transitions()
     }
 
+    pub fn has_unsettled_latency_postroll(&self) -> bool {
+        self.audio_channels
+            .iter()
+            .any(AudioChannel::has_unsettled_latency_postroll)
+            || self
+                .midi_channels
+                .iter()
+                .any(MidiChannel::has_unsettled_latency_postroll)
+    }
+
     pub fn has_planned_recording_transition(&self) -> bool {
         (0..self.loop_.n_planned_transitions()).any(|index| {
             self.loop_

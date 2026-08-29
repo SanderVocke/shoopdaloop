@@ -3041,35 +3041,22 @@ impl EngineBackend {
         loop_id: BackendLoopId,
         require_existing_alignment: bool,
     ) -> Result<()> {
-        let audio_channels = if let Some(channel_set) = self.loop_channels.get(&loop_id) {
-            for channel in &channel_set.audio {
-                if self
-                    .session
-                    .audio_channel(*channel)
-                    .ok_or_else(|| anyhow!("missing audio loop channel"))?
-                    .is_finalizing_latency_postroll()
-                {
-                    return Err(anyhow!(
-                        "loop alignment postroll is still finalizing; retry after it settles"
-                    ));
-                }
-            }
-            for channel in &channel_set.midi {
-                if self
-                    .session
-                    .midi_channel(*channel)
-                    .ok_or_else(|| anyhow!("missing MIDI loop channel"))?
-                    .is_finalizing_latency_postroll()
-                {
-                    return Err(anyhow!(
-                        "loop alignment postroll is still finalizing; retry after it settles"
-                    ));
-                }
-            }
-            channel_set.audio.clone()
-        } else {
-            Vec::new()
-        };
+        let engine_loop = self.engine_loop_index(loop_id)?;
+        if self
+            .session
+            .loop_(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .has_unsettled_latency_postroll()
+        {
+            return Err(anyhow!(
+                "loop alignment postroll is still finalizing; retry after it settles"
+            ));
+        }
+        let audio_channels = self
+            .loop_channels
+            .get(&loop_id)
+            .map(|channels| channels.audio.clone())
+            .unwrap_or_default();
         if self.port_model == EnginePortModel::Physical {
             for channel in audio_channels {
                 self.session
@@ -3115,7 +3102,6 @@ impl EngineBackend {
                 ));
             }
         }
-        let engine_loop = self.engine_loop_index(loop_id)?;
         let logical_capacity = self
             .session
             .loop_(engine_loop)
@@ -4053,6 +4039,11 @@ impl Backend for EngineBackend {
         }
         if engine_loop.mode().is_playing_mode() {
             return Err(anyhow!("stop loop playback before editing take alignment"));
+        }
+        if engine_loop.has_unsettled_latency_postroll() {
+            return Err(anyhow!(
+                "cannot edit take alignment while latency postroll is finalizing"
+            ));
         }
         let logical_length = engine_loop.length();
         for (index, channel) in channels.audio.iter().enumerate() {
@@ -8819,6 +8810,12 @@ mod tests {
         backend
             .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
+        let immediate_error = backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, None)
+            .unwrap_err();
+        assert!(immediate_error
+            .to_string()
+            .contains("postroll is still finalizing"));
         backend.advance_frames(1);
 
         let error = backend

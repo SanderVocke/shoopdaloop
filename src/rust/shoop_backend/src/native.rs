@@ -1601,19 +1601,10 @@ impl NativeRuntime {
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
-        for channel in &loop_.audio {
-            if channel.get_state()?.postroll_remaining_frames > 0 {
-                return Err(anyhow!(
-                    "loop alignment postroll is still finalizing; retry after it settles"
-                ));
-            }
-        }
-        for channel in &loop_.midi {
-            if channel.get_state()?.postroll_remaining_frames > 0 {
-                return Err(anyhow!(
-                    "loop alignment postroll is still finalizing; retry after it settles"
-                ));
-            }
+        if loop_.handle.has_unsettled_latency_postroll()? {
+            return Err(anyhow!(
+                "loop alignment postroll is still finalizing; retry after it settles"
+            ));
         }
         let logical_capacity = loop_.handle.get_state()?.length as usize;
         self.set_track_latency(track_id, adjustment, processor_advance_frames)?;
@@ -1769,6 +1760,11 @@ impl NativeRuntime {
         if loop_state.mode.is_playing_mode() {
             return Err(anyhow!("stop loop playback before editing take alignment"));
         }
+        if loop_.handle.has_unsettled_latency_postroll()? {
+            return Err(anyhow!(
+                "cannot edit take alignment while latency postroll is finalizing"
+            ));
+        }
         let audio_states = loop_
             .audio
             .iter()
@@ -1779,17 +1775,6 @@ impl NativeRuntime {
             .iter()
             .map(MidiChannel::get_state)
             .collect::<Result<Vec<_>>>()?;
-        if audio_states
-            .iter()
-            .any(|state| state.postroll_remaining_frames > 0)
-            || midi_states
-                .iter()
-                .any(|state| state.postroll_remaining_frames > 0)
-        {
-            return Err(anyhow!(
-                "cannot edit take alignment while latency postroll is finalizing"
-            ));
-        }
         for (index, state) in audio_states.iter().enumerate() {
             validate_take_alignment_window(
                 capture_alignment_frames,
@@ -3641,6 +3626,12 @@ mod tests {
         backend
             .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
+        let immediate_error = backend
+            .transition_loop(loop_id, BackendLoopMode::Recording, None)
+            .unwrap_err();
+        assert!(immediate_error
+            .to_string()
+            .contains("postroll is still finalizing"));
         {
             let runtime = backend.runtime_mut().unwrap();
             runtime.driver.dummy_request_controlled_frames(1);

@@ -406,6 +406,11 @@ impl MidiChannel {
     pub fn is_finalizing_latency_postroll(&self) -> bool {
         self.postroll_remaining_frames > 0
     }
+    pub fn has_unsettled_latency_postroll(&self) -> bool {
+        self.is_finalizing_latency_postroll()
+            || (self.retained_after_frames > 0
+                && self.prev_process_flags.contains(ProcessFlags::RECORD))
+    }
     pub fn latency_postroll_remaining_frames(&self) -> u32 {
         self.postroll_remaining_frames
     }

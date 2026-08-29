@@ -217,10 +217,10 @@ Both measurements use merge base
 | --- | ---: | ---: | ---: | ---: |
 | Starting production/documentation | 72 | 18,672 | 428 | 19,100 |
 | Starting integration tests/examples | 6 | 2,891 | 3 | 2,894 |
-| Final production/documentation | 47 | 6,019 | 222 | 6,241 |
+| Final production/documentation | 47 | 6,022 | 191 | 6,213 |
 | Final integration tests/examples | 2 | 48 | 2 | 50 |
 
-The simplification delta itself is 4,416 additions and 19,705 deletions across 77
+The simplification delta itself is 4,533 additions and 19,788 deletions across 77
 paths. Repository Shoop-test attributes are 1,535 at the merge base, 1,672 at the
 simplification baseline, and 1,591 finally: 81 feature-branch tests were removed
 while 56 tests above the merge base remain. Inline unit tests are counted in their
@@ -240,7 +240,7 @@ bounds and allocation behavior it controls.
 | 1 | `engine_track_latency_applies_to_future_operations_only`, compensated audio/MIDI record-play tests, and the Worklet full-duplex manual-offset test |
 | 2 | operation-boundary latching, backend/app future-operation tests, and whole-queue armed offset/route update rejection |
 | 3 | version-7 round trip, version-6 zero migration, aligned duplication, retained-window validation, multi-rate assertions, and rounding-gap padding |
-| 4 | positive/long postroll, actual-captured-preroll, deferred playback, final-event, unsettled-snapshot, and re-entry rejection tests |
+| 4 | positive/long postroll, actual preroll, deferred playback, final-event, unsettled snapshot, and immediate/post-callback re-entry rejection |
 | 5 | insufficient-retention, immediate/imminent short-preroll abort, incremental exhaustion, nonzero replacement/grab preflight, and stopped/atomic take-alignment tests |
 | 6 | logical audio export assertions, exact/standard MIDI assertions including preroll start-state folding, and removed-command searches |
 | 7 | audio/MIDI dry-through-wet, dry-into-wet canonical-write, restored/future-loop processor advance, wrap, and independent-domain tests |
