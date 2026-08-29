@@ -242,6 +242,11 @@ impl AudioMidiLoop {
         for channel in &mut self.midi_channels {
             channel.prepare_latency_retention(retained_before, retained_after)?;
         }
+        self.set_pending_latency(values);
+        Ok(())
+    }
+
+    pub fn set_pending_latency(&mut self, values: PreparedLatency) {
         self.pending_latency = Some(values);
         for channel in &mut self.audio_channels {
             channel.set_pending_latency(values);
@@ -249,7 +254,6 @@ impl AudioMidiLoop {
         for channel in &mut self.midi_channels {
             channel.set_pending_latency(values);
         }
-        Ok(())
     }
 
     fn latch_latency_for_mode(&mut self, mode: LoopMode) {

@@ -4265,6 +4265,22 @@ impl Loop {
         }
     }
 
+    pub fn set_pending_latency(
+        &self,
+        values: engine::PreparedLatency,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        let control = Arc::clone(&self.control);
+        self.shared.send_control(move |s: &mut engine::Session| {
+            if let Some(loop_) = control
+                .ready_id()
+                .map(ObjectIdentity::index)
+                .and_then(|idx| s.loop_mut(idx))
+            {
+                loop_.set_pending_latency(values);
+            }
+        })
+    }
+
     pub fn prepare_latency(
         &self,
         values: engine::PreparedLatency,
@@ -5465,15 +5481,19 @@ impl AudioPort {
 
     pub fn automatic_recording_offset_frames(&self) -> Option<i32> {
         let jack = self.shared.jack()?;
-        let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
-        let result = jack
+        let backend = jack.lock().unwrap_or_else(|error| error.into_inner());
+        unsafe {
+            jack_sys::jack_recompute_total_latencies(backend.client().raw());
+        }
+        let result = backend
             .ports
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .iter()
             .find_map(|port| match port {
                 JackRegisteredPort::AudioIn { control, jack }
-                    if Arc::ptr_eq(control, &self.control) =>
+                    if Arc::ptr_eq(control, &self.control)
+                        && !jack.get_connections().is_empty() =>
                 {
                     let (min, max) = jack.get_latency_range(jack::LatencyType::Capture);
                     (min == max).then(|| i32::try_from(max).ok()).flatten()
@@ -5813,15 +5833,19 @@ impl MidiPort {
 
     pub fn automatic_recording_offset_frames(&self) -> Option<i32> {
         let jack = self.shared.jack()?;
-        let jack = jack.lock().unwrap_or_else(|error| error.into_inner());
-        let result = jack
+        let backend = jack.lock().unwrap_or_else(|error| error.into_inner());
+        unsafe {
+            jack_sys::jack_recompute_total_latencies(backend.client().raw());
+        }
+        let result = backend
             .ports
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .iter()
             .find_map(|port| match port {
                 JackRegisteredPort::MidiIn { control, jack }
-                    if Arc::ptr_eq(control, &self.control) =>
+                    if Arc::ptr_eq(control, &self.control)
+                        && !jack.get_connections().is_empty() =>
                 {
                     let (min, max) = jack.get_latency_range(jack::LatencyType::Capture);
                     (min == max).then(|| i32::try_from(max).ok()).flatten()

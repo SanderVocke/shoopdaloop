@@ -3036,9 +3036,8 @@ impl EngineBackend {
         let channels = self
             .loop_channels
             .get(&loop_id)
-            .ok_or_else(|| anyhow!("missing loop channels"))?
-            .audio
-            .clone();
+            .map(|channels| channels.audio.clone())
+            .unwrap_or_default();
         if self.port_model == EnginePortModel::Physical {
             for channel in channels {
                 self.session
@@ -3051,26 +3050,28 @@ impl EngineBackend {
             .tracks
             .values()
             .find(|track| track.loops.contains(&loop_id))
-            .ok_or_else(|| anyhow!("loop has no owning track"))?
-            .latency
-            .clone();
+            .map(|track| track.latency.clone())
+            .unwrap_or_default();
         let values = prepared_backend_latency(&latency)?;
         if require_existing_alignment {
             let expected = values.recording_offset().frames();
-            let channel_set = self
-                .loop_channels
-                .get(&loop_id)
-                .ok_or_else(|| anyhow!("missing loop channels"))?;
-            let audio_matches = channel_set.audio.iter().all(|channel| {
-                self.session
-                    .audio_channel(*channel)
-                    .is_some_and(|channel| channel.capture_alignment_frames() == expected)
-            });
-            let midi_matches = channel_set.midi.iter().all(|channel| {
-                self.session
-                    .midi_channel(*channel)
-                    .is_some_and(|channel| channel.capture_alignment_frames() == expected)
-            });
+            let channel_set = self.loop_channels.get(&loop_id);
+            let audio_matches = channel_set
+                .into_iter()
+                .flat_map(|set| &set.audio)
+                .all(|channel| {
+                    self.session
+                        .audio_channel(*channel)
+                        .is_some_and(|channel| channel.capture_alignment_frames() == expected)
+                });
+            let midi_matches = channel_set
+                .into_iter()
+                .flat_map(|set| &set.midi)
+                .all(|channel| {
+                    self.session
+                        .midi_channel(*channel)
+                        .is_some_and(|channel| channel.capture_alignment_frames() == expected)
+                });
             if !audio_matches || !midi_matches {
                 return Err(anyhow!(
                     "replacement offset differs from the take; match the take alignment first"
@@ -3142,7 +3143,7 @@ fn update_backend_latency(
             candidate.pending = false;
             candidate.error = Some(error.to_string());
             *state = candidate;
-            Err(error.into())
+            Err(error)
         }
     }
 }
@@ -3926,9 +3927,14 @@ impl Backend for EngineBackend {
             .get_mut(&track_id)
             .ok_or_else(|| anyhow!("unknown backend track {track_id:?}"))?;
         update_backend_latency(&mut track.latency, adjustment, processor_advance_frames)?;
+        let values = prepared_backend_latency(&track.latency)?;
         let loops = track.loops.clone();
         for loop_id in loops {
-            self.prepare_recording_storage(loop_id, false)?;
+            let engine_loop = self.engine_loop_index(loop_id)?;
+            self.session
+                .loop_mut(engine_loop)
+                .ok_or_else(|| anyhow!("missing engine loop"))?
+                .set_pending_latency(values);
         }
         Ok(())
     }
@@ -6327,8 +6333,11 @@ impl Backend for FakeBackend {
                 (0..audio_channels)
                     .map(|_| empty_audio_content(BackendChannelMode::Direct))
                     .collect::<Vec<_>>(),
-                midi.then(|| vec![empty_midi_content(BackendChannelMode::Direct)])
-                    .unwrap_or_default(),
+                if midi {
+                    vec![empty_midi_content(BackendChannelMode::Direct)]
+                } else {
+                    Vec::new()
+                },
                 audio_channels,
             ),
             BackendTrackTopology::DryWetExternal {
@@ -6349,9 +6358,11 @@ impl Backend for FakeBackend {
                             .map(|_| empty_audio_content(BackendChannelMode::Wet)),
                     )
                     .collect::<Vec<_>>(),
-                dry_midi
-                    .then(|| vec![empty_midi_content(BackendChannelMode::Dry)])
-                    .unwrap_or_default(),
+                if dry_midi {
+                    vec![empty_midi_content(BackendChannelMode::Dry)]
+                } else {
+                    Vec::new()
+                },
                 wet_audio_channels,
             ),
         };
@@ -6674,7 +6685,8 @@ impl Backend for FakeBackend {
                 .tracks
                 .values()
                 .find(|track| track.loops.contains(&loop_id))
-                .and_then(|track| track.state.latency.effective_offset_frames)
+                .map(|track| track.state.latency.effective_offset_frames)
+                .unwrap_or(Some(0))
                 .ok_or_else(|| anyhow!("recording offset is unavailable; enter a manual value"))?;
             if let Some(content) = self.loop_content.get_mut(&loop_id) {
                 for channel in &mut content.audio {

@@ -44,9 +44,9 @@ impl Parse for ShoopTestOptions {
                 input.parse::<Token![,]>()?;
             }
         }
-        if options.no_wasm.is_some() && options.wasm_only.is_some() {
+        if let (Some(_), Some(wasm_only)) = (&options.no_wasm, &options.wasm_only) {
             return Err(syn::Error::new(
-                options.wasm_only.as_ref().unwrap().span(),
+                wasm_only.span(),
                 "no_wasm and wasm_only cannot be combined",
             ));
         }

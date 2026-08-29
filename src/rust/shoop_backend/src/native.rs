@@ -1689,10 +1689,9 @@ impl NativeRuntime {
                 .loops
                 .get(&loop_id)
                 .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
-            loop_
-                .handle
-                .prepare_latency(values, loop_.handle.get_state()?.length as usize)?;
+            loop_.handle.set_pending_latency(values)?;
         }
+        self.wait();
         Ok(())
     }
 
